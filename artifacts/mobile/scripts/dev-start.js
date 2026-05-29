@@ -29,6 +29,9 @@ let pollInterval = null;
 // Minimal proxy / health-check server — binds immediately, stays up forever
 // ---------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
+  // Log every request so we can see what Expo Go actually fetches
+  console.log(`[req] ${req.method} ${req.url?.slice(0, 120)} (ready=${metroReady})`);
+
   // Always claim Metro is running so Replit's health check passes instantly.
   if (req.url === "/status") {
     res.writeHead(200, { "Content-Type": "application/json" });

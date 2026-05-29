@@ -1,6 +1,5 @@
 import { BlurView } from "expo-blur";
 import { Tabs } from "expo-router";
-import { SymbolView } from "expo-symbols";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
@@ -48,24 +47,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Accueil",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="house" tintColor={color} size={24} />
-            ) : (
-              <Feather name="home" size={22} color={color} />
-            ),
+          tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
           title: "Chèche",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="magnifyingglass" tintColor={color} size={24} />
-            ) : (
-              <Feather name="search" size={22} color={color} />
-            ),
+          tabBarIcon: ({ color }) => <Feather name="search" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -73,36 +62,21 @@ export default function TabLayout() {
         options={{
           title: "Vann",
           tabBarActiveTintColor: colors.accent,
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="plus.circle.fill" tintColor={colors.accent} size={28} />
-            ) : (
-              <Feather name="plus-circle" size={26} color={colors.accent} />
-            ),
+          tabBarIcon: ({ color }) => <Feather name="plus-circle" size={26} color={colors.accent} />,
         }}
       />
       <Tabs.Screen
         name="inbox"
         options={{
           title: "Mesaj",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="message" tintColor={color} size={24} />
-            ) : (
-              <Feather name="message-circle" size={22} color={color} />
-            ),
+          tabBarIcon: ({ color }) => <Feather name="message-circle" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="person" tintColor={color} size={24} />
-            ) : (
-              <Feather name="user" size={22} color={color} />
-            ),
+          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />
     </Tabs>

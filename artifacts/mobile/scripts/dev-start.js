@@ -257,7 +257,6 @@ function startMetro() {
     ...process.env,
     PORT: String(METRO_PORT),
     NODE_OPTIONS: "--max-old-space-size=4096",
-    CI: "1",                // non-interactive mode (requires EXPO_TOKEN)
     EXPO_NO_TELEMETRY: "1", // skip telemetry prompt
   };
 

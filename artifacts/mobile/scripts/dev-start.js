@@ -128,9 +128,17 @@ function startMetro() {
     NODE_OPTIONS: "--max-old-space-size=4096",
   };
 
+  // Allow on-demand cache busting via env flag without changing the script.
+  // Set EXPO_CLEAR_CACHE=1 in the workflow env to do a one-time cold start.
+  const expoArgs = ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT)];
+  if (process.env.EXPO_CLEAR_CACHE === "1") {
+    expoArgs.push("--clear");
+    console.log("[dev-start] EXPO_CLEAR_CACHE=1 — Metro cache will be cleared this run");
+  }
+
   metro = spawn(
     "pnpm",
-    ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT)],
+    expoArgs,
     {
       stdio: "inherit",
       env: expoEnv,

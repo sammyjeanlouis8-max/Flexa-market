@@ -240,12 +240,18 @@ async function downloadFile(url, outputPath) {
 
 async function downloadBundle(platform, timestamp) {
   const entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
-  // Use path relative to projectRoot (not workspaceRoot) so the URL is always
-  // "node_modules/expo-router/entry" — Metro resolves it from its project root
-  // by following the symlink, regardless of where pnpm placed the .pnpm store.
-  // Using workspaceRoot caused a double-prefix bug when pnpm created a local
-  // .pnpm store under artifacts/mobile/ during deployment builds.
-  const bundlePath = path.relative(projectRoot, entryPath);
+  // Metro's effective URL-resolution root is the common ancestor of projectRoot and
+  // all watchFolders.  Because metro.config.js sets watchFolders:[workspaceRoot] and
+  // projectRoot = artifacts/mobile, the common ancestor is workspaceRoot.  Metro
+  // therefore interprets every bundle URL as relative to workspaceRoot, NOT projectRoot.
+  // Using path.relative(projectRoot, ...) yielded "node_modules/expo-router/entry",
+  // which Metro resolved as workspaceRoot/node_modules/expo-router/entry — a path
+  // that does not exist under pnpm's node-linker layout.
+  // Using path.relative(workspaceRoot, ...) yields
+  // "artifacts/mobile/node_modules/expo-router/entry", which Metro resolves as
+  // workspaceRoot/artifacts/mobile/node_modules/expo-router/entry — the pnpm symlink
+  // that DOES exist and points into the real .pnpm store.
+  const bundlePath = path.relative(workspaceRoot, entryPath);
   const url = new URL(`http://localhost:8081/${bundlePath}.bundle`);
   url.searchParams.set("platform", platform);
   url.searchParams.set("dev", "false");

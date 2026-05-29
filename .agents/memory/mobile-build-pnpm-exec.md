@@ -1,39 +1,45 @@
 ---
-name: Mobile build pnpm-exec project-root bug
-description: Why build.js must call the expo binary directly AND pass projectRoot as explicit <dir> arg
+name: Mobile build Metro project-root and bundle URL bugs
+description: Three compounding issues that cause the mobile production build to 404 on expo-router/entry.bundle
 ---
 
 ## Rule
-`artifacts/mobile/scripts/build.js` must spawn Expo CLI with the project directory as an explicit
-positional argument AND use the direct binary path:
+`artifacts/mobile/scripts/build.js` must:
+1. Use the direct expo binary (not `pnpm exec expo`)
+2. Pass `projectRoot` as explicit `<dir>` positional arg to `expo start`
+3. Build the bundle URL relative to **workspaceRoot**, not projectRoot
 
 ```javascript
 const expoBin = path.join(projectRoot, "node_modules", ".bin", "expo");
 spawn(expoBin, ["start", projectRoot, "--no-dev", "--minify", "--localhost"], { cwd: projectRoot });
+
+// In downloadBundle():
+const entryPath = path.resolve(projectRoot, "node_modules", "expo-router", "entry");
+const bundlePath = path.relative(workspaceRoot, entryPath);
+// => "artifacts/mobile/node_modules/expo-router/entry"
+// URL => http://localhost:8081/artifacts/mobile/node_modules/expo-router/entry.bundle
 ```
 
-Never use `pnpm exec expo start` (no explicit dir arg) in this script.
+**Why (three compounding bugs):**
 
-**Why (two compounding bugs):**
+**Bug 1 — pnpm exec CWD interference:** `pnpm exec expo` in a monorepo can silently shift
+Metro's project root to the workspace root. Fix: use the direct binary path.
 
-1. `pnpm exec expo` in a monorepo can silently shift Metro's project root to the workspace root
-   instead of `artifacts/mobile`. Using the direct binary path (`node_modules/.bin/expo`) ensures
-   the correct binary runs without pnpm exec interference.
+**Bug 2 — Expo SDK 54 monorepo detection:** When no `<dir>` argument is given to `expo start`,
+Expo CLI walks up the tree, finds `pnpm-workspace.yaml`, and treats the workspace root as the
+project root for Metro. Fix: pass `projectRoot` explicitly as the first positional arg.
 
-2. Expo SDK 54 CLI performs monorepo detection: when no `<dir>` argument is given, it walks up the
-   directory tree, finds `pnpm-workspace.yaml` at `/home/runner/workspace/`, and sets Metro's
-   project root to the workspace root. This causes Metro to search for `expo-router/entry` in
-   `/home/runner/workspace/node_modules/expo-router` which does not exist under pnpm's node-linker
-   layout (only in `artifacts/mobile/node_modules/expo-router`), producing an HTTP 404 on the
-   bundle URL. Passing `projectRoot` explicitly as the first positional arg (`expo start <dir>`)
-   overrides this detection.
+**Bug 3 — Metro URL resolution root (the key bug):** Metro's effective URL-resolution root is
+the **common ancestor** of `projectRoot` and all `watchFolders`. Because `metro.config.js` sets
+`watchFolders: [workspaceRoot]` and projectRoot = `artifacts/mobile`, the common ancestor is
+`workspaceRoot`. Metro therefore interprets every bundle URL path as relative to workspaceRoot.
+- `node_modules/expo-router/entry` → looks for `workspaceRoot/node_modules/expo-router/entry` → NOT FOUND (pnpm doesn't hoist it there)
+- `artifacts/mobile/node_modules/expo-router/entry` → looks for `workspaceRoot/artifacts/mobile/node_modules/expo-router/entry` → pnpm symlink EXISTS → follows to `.pnpm` store → FOUND ✅
 
-**Symptom:** Build logs show `[Metro Build Error] HTTP 404` for the bundle URL, and the error JSON
-shows `"originModulePath": "/home/runner/workspace/."` (workspace root) instead of
-`".../artifacts/mobile/."`.
+Fix: `path.relative(workspaceRoot, entryPath)` instead of `path.relative(projectRoot, entryPath)`.
 
-**How to verify the fix:** Run `node scripts/build.js` locally (with a free port 8081); the Metro
-log must say `Starting project at /home/runner/workspace/artifacts/mobile`.
+**Symptom:** Build logs show `[Metro Build Error] HTTP 404` and error JSON has
+`"originModulePath": "/home/runner/workspace/."` despite Metro logging
+`Starting project at .../artifacts/mobile`.
 
-**How to apply:** Any time the build script needs to start Metro/Expo, use the absolute binary path
-and always pass `projectRoot` as the first positional argument.
+**How to verify:** Run `node -e "require('expo-router/entry', {paths:['/home/runner/workspace/artifacts/mobile']})"` — should resolve to the real `.pnpm` store path. The `entry.js` file is accessible via the symlink `artifacts/mobile/node_modules/expo-router → ../../../node_modules/.pnpm/expo-router@.../node_modules/expo-router`.

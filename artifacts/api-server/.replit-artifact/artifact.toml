@@ -21,9 +21,10 @@ args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
 NODE_ENV = "production"
 
 [services.production.run]
-# Explicitly set DATABASE_URL from NEON_DATABASE_URL in the shell command so the
-# Replit-managed internal DATABASE_URL (hostname: base) cannot override it.
-args = ["sh", "-c", "DATABASE_URL=$NEON_DATABASE_URL node --enable-source-maps artifacts/api-server/dist/index.mjs"]
+# Use the DATABASE_URL secret directly — NEON_DATABASE_URL does not exist in production
+# and the sh-c override was silently clearing DATABASE_URL, preventing the server from
+# binding to its port before the 60-second startup timeout expired.
+args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [services.production.run.env]
 PORT = "8080"

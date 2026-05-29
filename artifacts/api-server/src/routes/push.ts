@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
+import { upsertExpoPushToken, deleteExpoPushToken } from "../lib/expo-push";
 
 // Strict bounds for the encryption keys the browser supplies. The real
 // values are short fixed-length base64url blobs; anything wildly outside
@@ -71,6 +72,41 @@ router.post("/push/unsubscribe", requireAuth, async (req, res): Promise<void> =>
   const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : null;
   if (!endpoint) { res.status(400).json({ error: "endpoint required" }); return; }
   await deleteSubscription(req.userId!, endpoint);
+  res.json({ ok: true });
+});
+
+/**
+ * POST /api/push/expo-token  (auth)
+ * Body: { token, platform?, deviceId? }
+ * Registers an Expo push token for the authenticated user.
+ */
+router.post("/push/expo-token", requireAuth, async (req, res): Promise<void> => {
+  const { token, platform, deviceId } = req.body ?? {};
+  if (typeof token !== "string" || !token.startsWith("Expo")) {
+    res.status(400).json({ error: "Invalid Expo push token" });
+    return;
+  }
+  await upsertExpoPushToken({
+    userId: req.userId!,
+    token,
+    platform: typeof platform === "string" ? platform : null,
+    deviceId: typeof deviceId === "string" ? deviceId : null,
+  });
+  res.json({ ok: true });
+});
+
+/**
+ * DELETE /api/push/expo-token  (auth)
+ * Body: { token }
+ * Unregisters an Expo push token (e.g. on logout).
+ */
+router.delete("/push/expo-token", requireAuth, async (req, res): Promise<void> => {
+  const { token } = req.body ?? {};
+  if (typeof token !== "string") {
+    res.status(400).json({ error: "token required" });
+    return;
+  }
+  await deleteExpoPushToken(req.userId!, token);
   res.json({ ok: true });
 });
 

@@ -5,6 +5,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, requireNotRestricted } from "../middlewares/auth";
 import { CreateConversationBody } from "@workspace/api-zod";
 import { sendPushToUser } from "../lib/push";
+import { sendExpoPushToUser } from "../lib/expo-push";
 import { emitNewMessage, emitConvUpdate, emitAudioListened, emitMsgDeleted } from "../lib/socketServer";
 import { z } from "zod";
 
@@ -227,11 +228,16 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
   try {
     const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? "🎤 Mesaj vwa" : content.slice(0, 120);
     const pushTitle = sender?.name ? `Mesaj nan men ${sender.name}` : "Nouvo mesaj";
-    await sendPushToUser(recipientId, {
+    void sendPushToUser(recipientId, {
       title: pushTitle,
       body: pushBody,
       url: `/messages/${id}`,
       tag: `conv-${id}`,
+    });
+    void sendExpoPushToUser(recipientId, {
+      title: pushTitle,
+      body: pushBody,
+      data: { screen: "messages", params: { conversationId: String(id) } },
     });
   } catch {}
 

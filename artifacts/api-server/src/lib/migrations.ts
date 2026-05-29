@@ -1629,6 +1629,27 @@ export async function runStartupMigrations(): Promise<void> {
     sql: `CREATE INDEX IF NOT EXISTS users_kyc_status_idx ON users (kyc_status)`,
   });
 
+  migrations.push({
+    name: "expo_push_tokens.create_table",
+    sql: `CREATE TABLE IF NOT EXISTS expo_push_tokens (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token text NOT NULL,
+      device_id text,
+      platform text,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "expo_push_tokens.indexes",
+    sql: `
+      CREATE UNIQUE INDEX IF NOT EXISTS expo_push_tokens_token_idx    ON expo_push_tokens(token);
+      CREATE        INDEX IF NOT EXISTS expo_push_tokens_user_id_idx  ON expo_push_tokens(user_id)
+    `,
+  });
+
   let applied = 0;
   let failed = 0;
 

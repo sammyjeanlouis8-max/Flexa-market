@@ -14,6 +14,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,6 +32,7 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   const { token, isLoading } = useAuth();
+  usePushNotifications();
 
   useEffect(() => {
     if (!isLoading) {

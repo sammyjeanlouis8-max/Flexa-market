@@ -24,9 +24,6 @@
   "pnpm": {
     "overrides": {
       "@babel/helper-compilation-targets>lru-cache": "5.1.1"
-    },
-    "patchedDependencies": {
-      "@babel/helper-compilation-targets@7.28.6": "patches/@babel__helper-compilation-targets@7.28.6.patch"
     }
   }
 }

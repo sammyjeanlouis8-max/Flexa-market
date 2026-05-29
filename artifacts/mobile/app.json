@@ -77,6 +77,15 @@
         {
           "locationAlwaysAndWhenInUsePermission": "FlexaMarket itilize GPS ou pou montre annons ki tou pre ou."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0F172A",
+          "sounds": [],
+          "iosDisplayInForeground": true
+        }
       ]
     ],
     "experiments": {

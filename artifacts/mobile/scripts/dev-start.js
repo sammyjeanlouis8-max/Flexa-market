@@ -6,8 +6,12 @@
  * to initialise before it can answer.  Solution:
  *  1. Open port immediately, respond to /status with the expected payload.
  *  2. Start Metro on PORT+1.
- *  3. Once Metro is up, proxy all requests to it transparently.
- *  4. If Metro crashes, restart it automatically (keep port 18115 open).
+ *  3. Pre-warm the iOS bundle right after Metro starts; hold any incoming
+ *     manifest requests (GET /) until the bundle is in Metro's cache.
+ *     This ensures Expo Go never waits for a cold compile — the bundle
+ *     delivers in < 1 s from cache.
+ *  4. Once bundle is ready, release held requests and proxy normally.
+ *  5. If Metro crashes, restart it automatically (keep port open).
  */
 
 "use strict";
@@ -20,37 +24,19 @@ const PORT = parseInt(process.env.PORT || "18115", 10);
 const METRO_PORT = PORT + 1;
 const MAX_RESTARTS = 5;
 
+const SYMLINK_MODULE = "artifacts/mobile/node_modules/expo-router/entry";
+
 let metroReady = false;
+let bundleReady = false;   // true once iOS bundle is pre-warmed into Metro cache
+let manifestWaiters = [];  // GET / requests held while bundle is pre-warming
 let restartCount = 0;
 let metro = null;
 let pollInterval = null;
 
 // ---------------------------------------------------------------------------
-// Minimal proxy / health-check server — binds immediately, stays up forever
+// Core proxy: forward req → Metro, rewrite JSON manifests on the way back
 // ---------------------------------------------------------------------------
-const server = http.createServer((req, res) => {
-  // Log every request so we can see what Expo Go actually fetches
-  console.log(`[req] ${req.method} ${req.url?.slice(0, 120)} (ready=${metroReady})`);
-
-  // Always claim Metro is running so Replit's health check passes instantly.
-  if (req.url === "/status") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "packager-status:running" }));
-    return;
-  }
-
-  if (!metroReady) {
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end(
-      '<html><body style="font-family:sans-serif;padding:2rem">' +
-        "<h2>FlexaMarket Mobile</h2>" +
-        "<p>Metro bundler is starting, please wait…</p>" +
-        '<script>setTimeout(()=>location.reload(),3000)</script>' +
-        "</body></html>"
-    );
-    return;
-  }
-
+function proxyToMetro(req, res) {
   const options = {
     hostname: "127.0.0.1",
     port: METRO_PORT,
@@ -64,23 +50,16 @@ const server = http.createServer((req, res) => {
     const ct = proxyRes.headers["content-type"] || "";
 
     // ── Rewrite Expo manifest to replace pnpm real-store bundle paths ────────
-    // Metro resolves expo-router/entry to its real pnpm-store path
-    // (node_modules/.pnpm/expo-router@6.0.24_@types+…/node_modules/expo-router/entry).
-    // The `@` and `+` characters in that path are rejected by Replit's
-    // expo.picard.replit.dev proxy, causing Expo Go to get a 404 for the bundle.
-    // We swap the real path for the pnpm-symlink path
-    // (artifacts/mobile/node_modules/expo-router/entry) which:
-    //   • contains no special characters
-    //   • Metro serves correctly (it follows the symlink to the same real file)
+    // Metro resolves expo-router/entry to its real pnpm-store path which
+    // contains @ and + chars that Replit's proxy rejects with 404.
+    // We swap it for the clean pnpm-symlink path that Metro also serves fine.
     if ((ct.includes("application/json") || ct.includes("expo+json")) && req.method === "GET") {
       let raw = "";
       proxyRes.on("data", (chunk) => { raw += chunk; });
       proxyRes.on("end", () => {
         try {
           const manifest = JSON.parse(raw);
-          const SYMLINK_MODULE = "artifacts/mobile/node_modules/expo-router/entry";
 
-          // Rewrite launchAsset.url
           if (manifest.launchAsset && typeof manifest.launchAsset.url === "string") {
             try {
               const u = new URL(manifest.launchAsset.url);
@@ -91,7 +70,6 @@ const server = http.createServer((req, res) => {
             } catch (_) {}
           }
 
-          // Rewrite mainModuleName inside expoGo extra
           const expoGo = manifest.extra && manifest.extra.expoGo;
           if (expoGo && typeof expoGo.mainModuleName === "string" &&
               expoGo.mainModuleName.includes("expo-router")) {
@@ -99,14 +77,12 @@ const server = http.createServer((req, res) => {
           }
 
           const rewritten = JSON.stringify(manifest);
-          const headers = {
+          res.writeHead(proxyRes.statusCode ?? 200, {
             ...proxyRes.headers,
             "content-length": Buffer.byteLength(rewritten).toString(),
-          };
-          res.writeHead(proxyRes.statusCode ?? 200, headers);
+          });
           res.end(rewritten);
         } catch (_) {
-          // Not a manifest JSON — pass through unchanged
           res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
           res.end(raw);
         }
@@ -126,6 +102,57 @@ const server = http.createServer((req, res) => {
   });
 
   req.pipe(proxyReq, { end: true });
+}
+
+// ---------------------------------------------------------------------------
+// Release all manifest requests held during pre-warm
+// ---------------------------------------------------------------------------
+function flushManifestWaiters() {
+  const waiters = manifestWaiters.splice(0);
+  if (waiters.length > 0) {
+    console.log(`[dev-start] Releasing ${waiters.length} held manifest request(s) → Metro`);
+  }
+  for (const { req, res } of waiters) {
+    proxyToMetro(req, res);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP server — binds immediately, stays up forever
+// ---------------------------------------------------------------------------
+const server = http.createServer((req, res) => {
+  console.log(`[req] ${req.method} ${(req.url ?? "").slice(0, 120)} (ready=${metroReady})`);
+
+  // /status — always return OK so Replit health-check passes instantly
+  if (req.url === "/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "packager-status:running" }));
+    return;
+  }
+
+  // Metro not up yet — show loading page
+  if (!metroReady) {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    res.end(
+      '<html><body style="font-family:sans-serif;padding:2rem">' +
+        "<h2>FlexaMarket Mobile</h2>" +
+        "<p>Metro bundler is starting, please wait…</p>" +
+        '<script>setTimeout(()=>location.reload(),3000)</script>' +
+        "</body></html>"
+    );
+    return;
+  }
+
+  // Hold manifest requests until bundle pre-warm completes so Expo Go
+  // never downloads a cold bundle — it gets cached < 1 s response instead.
+  const isManifest = req.url === "/" || req.url === "" || (req.url ?? "").startsWith("/?");
+  if (isManifest && !bundleReady) {
+    console.log("[dev-start] Manifest held — bundle pre-warm in progress…");
+    manifestWaiters.push({ req, res });
+    return;
+  }
+
+  proxyToMetro(req, res);
 });
 
 // ---------------------------------------------------------------------------
@@ -159,7 +186,7 @@ server.on("error", (err) => {
 });
 
 // ---------------------------------------------------------------------------
-// Graceful shutdown on SIGTERM
+// Graceful shutdown
 // ---------------------------------------------------------------------------
 process.on("SIGTERM", () => {
   console.log("[dev-start] SIGTERM — shutting down");
@@ -169,17 +196,15 @@ process.on("SIGTERM", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pre-warm: compile iOS bundle into Metro cache right after Metro starts.
-// This way the bundle is ready before Expo Go ever connects.
+// Pre-warm: compile iOS bundle right after Metro starts
 // ---------------------------------------------------------------------------
 function prewarmBundle() {
-  const ENTRY = "artifacts/mobile/node_modules/expo-router/entry";
   const bundlePath =
-    `/${ENTRY}.bundle?platform=ios&dev=true&hot=false&lazy=true` +
+    `/${SYMLINK_MODULE}.bundle?platform=ios&dev=true&hot=false&lazy=true` +
     `&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app` +
     `&unstable_transformProfile=hermes-stable`;
 
-  console.log("[dev-start] Pre-warming iOS bundle (this takes ~60–120 s)…");
+  console.log("[dev-start] Pre-warming iOS bundle…");
   const t0 = Date.now();
 
   const req = http.request(
@@ -196,18 +221,22 @@ function prewarmBundle() {
       timeout: 300000,
     },
     (res) => {
-      res.resume(); // drain response
+      res.resume();
       res.on("end", () => {
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
         console.log(
           `[dev-start] ✅ Bundle pre-warmed in ${secs}s (HTTP ${res.statusCode}) — Expo Go ready`
         );
+        bundleReady = true;
+        flushManifestWaiters();
       });
     }
   );
 
   req.on("error", (err) => {
-    console.warn("[dev-start] Pre-warm request error (non-fatal):", err.message);
+    console.warn("[dev-start] Pre-warm error (non-fatal):", err.message);
+    bundleReady = true;
+    flushManifestWaiters();
   });
 
   req.end();
@@ -219,35 +248,30 @@ function prewarmBundle() {
 function startMetro() {
   if (pollInterval) clearInterval(pollInterval);
   metroReady = false;
+  bundleReady = false;
+  manifestWaiters = [];
 
   console.log(`[dev-start] Starting Metro (attempt ${restartCount + 1})…`);
 
-  // Increase Node heap for Metro's file crawler (prevents OOM crashes)
   const expoEnv = {
     ...process.env,
     PORT: String(METRO_PORT),
     NODE_OPTIONS: "--max-old-space-size=4096",
+    EXPO_NO_TELEMETRY: "1", // skip telemetry prompt
   };
 
-  // Allow on-demand cache busting via env flag without changing the script.
-  // Set EXPO_CLEAR_CACHE=1 in the workflow env to do a one-time cold start.
   const expoArgs = ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT)];
   if (process.env.EXPO_CLEAR_CACHE === "1") {
     expoArgs.push("--clear");
-    console.log("[dev-start] EXPO_CLEAR_CACHE=1 — Metro cache will be cleared this run");
+    console.log("[dev-start] EXPO_CLEAR_CACHE=1 — Metro cache cleared");
   }
 
-  metro = spawn(
-    "pnpm",
-    expoArgs,
-    {
-      stdio: "inherit",
-      env: expoEnv,
-      cwd: process.cwd(),
-    }
-  );
+  metro = spawn("pnpm", expoArgs, {
+    stdio: "inherit",
+    env: expoEnv,
+    cwd: process.cwd(),
+  });
 
-  // Poll Metro port until it accepts TCP connections
   pollInterval = setInterval(() => {
     const probe = net.createConnection({ host: "127.0.0.1", port: METRO_PORT, timeout: 1000 });
     probe.on("connect", () => {
@@ -256,7 +280,7 @@ function startMetro() {
         metroReady = true;
         clearInterval(pollInterval);
         pollInterval = null;
-        restartCount = 0; // reset on successful start
+        restartCount = 0;
         console.log(`[dev-start] Metro ready — full proxy active on :${PORT}`);
         prewarmBundle();
       }
@@ -269,6 +293,7 @@ function startMetro() {
     clearInterval(pollInterval);
     pollInterval = null;
     metroReady = false;
+    bundleReady = false;
     console.error(`[dev-start] Metro exited (code=${code}, signal=${signal})`);
 
     restartCount++;
@@ -289,7 +314,7 @@ function startMetro() {
 }
 
 // ---------------------------------------------------------------------------
-// Start: bind proxy port first, then launch Metro
+// Start: bind port first, then launch Metro
 // ---------------------------------------------------------------------------
 server.listen(PORT, () => {
   console.log(`[dev-start] Proxy ready on :${PORT} → Metro :${METRO_PORT}`);

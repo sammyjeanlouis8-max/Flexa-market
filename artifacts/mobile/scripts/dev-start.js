@@ -24,6 +24,9 @@ const PORT = parseInt(process.env.PORT || "18115", 10);
 const METRO_PORT = PORT + 1;
 const MAX_RESTARTS = 5;
 
+// Cache-busting: unique per server restart so Expo Go can't serve stale bundles
+const BUILD_ID = Date.now();
+
 const SYMLINK_MODULE = "artifacts/mobile/node_modules/expo-router/entry";
 
 let metroReady = false;
@@ -37,10 +40,18 @@ let pollInterval = null;
 // Core proxy: forward req → Metro, rewrite JSON manifests on the way back
 // ---------------------------------------------------------------------------
 function proxyToMetro(req, res) {
+  // Strip our cache-busting _v param before sending to Metro
+  let metroPath = req.url;
+  try {
+    const u = new URL(req.url, "http://localhost");
+    u.searchParams.delete("_v");
+    metroPath = u.pathname + (u.search ? u.search : "");
+  } catch (_) {}
+
   const options = {
     hostname: "127.0.0.1",
     port: METRO_PORT,
-    path: req.url,
+    path: metroPath,
     method: req.method,
     headers: { ...req.headers, host: `localhost:${METRO_PORT}` },
     timeout: 300000,
@@ -65,6 +76,8 @@ function proxyToMetro(req, res) {
               const u = new URL(manifest.launchAsset.url);
               if (u.pathname.includes("expo-router") && u.pathname.includes("entry")) {
                 u.pathname = `/${SYMLINK_MODULE}.bundle`;
+                // Cache-bust: new BUILD_ID per restart forces Expo Go to re-download
+                u.searchParams.set("_v", String(BUILD_ID));
                 manifest.launchAsset.url = u.toString();
               }
             } catch (_) {}
@@ -90,7 +103,14 @@ function proxyToMetro(req, res) {
       return;
     }
 
-    res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+    // Strip pnpm-store paths from non-JSON responses too (e.g. plain JS bundles)
+    const headers = {
+      ...proxyRes.headers,
+      // Prevent Expo Go from caching the bundle between restarts
+      "cache-control": "no-store, max-age=0",
+      "pragma": "no-cache",
+    };
+    res.writeHead(proxyRes.statusCode ?? 200, headers);
     proxyRes.pipe(res, { end: true });
   });
 

@@ -57,7 +57,7 @@ const server = http.createServer((req, res) => {
     path: req.url,
     method: req.method,
     headers: { ...req.headers, host: `localhost:${METRO_PORT}` },
-    timeout: 30000,
+    timeout: 300000,
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
@@ -169,6 +169,51 @@ process.on("SIGTERM", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Pre-warm: compile iOS bundle into Metro cache right after Metro starts.
+// This way the bundle is ready before Expo Go ever connects.
+// ---------------------------------------------------------------------------
+function prewarmBundle() {
+  const ENTRY = "artifacts/mobile/node_modules/expo-router/entry";
+  const bundlePath =
+    `/${ENTRY}.bundle?platform=ios&dev=true&hot=false&lazy=true` +
+    `&transform.engine=hermes&transform.bytecode=1&transform.routerRoot=app` +
+    `&unstable_transformProfile=hermes-stable`;
+
+  console.log("[dev-start] Pre-warming iOS bundle (this takes ~60–120 s)…");
+  const t0 = Date.now();
+
+  const req = http.request(
+    {
+      hostname: "127.0.0.1",
+      port: METRO_PORT,
+      path: bundlePath,
+      method: "GET",
+      headers: {
+        "expo-platform": "ios",
+        "expo-sdk-version": "54.0.0",
+        host: `localhost:${METRO_PORT}`,
+      },
+      timeout: 300000,
+    },
+    (res) => {
+      res.resume(); // drain response
+      res.on("end", () => {
+        const secs = ((Date.now() - t0) / 1000).toFixed(1);
+        console.log(
+          `[dev-start] ✅ Bundle pre-warmed in ${secs}s (HTTP ${res.statusCode}) — Expo Go ready`
+        );
+      });
+    }
+  );
+
+  req.on("error", (err) => {
+    console.warn("[dev-start] Pre-warm request error (non-fatal):", err.message);
+  });
+
+  req.end();
+}
+
+// ---------------------------------------------------------------------------
 // Launch Metro — with auto-restart on crash
 // ---------------------------------------------------------------------------
 function startMetro() {
@@ -213,6 +258,7 @@ function startMetro() {
         pollInterval = null;
         restartCount = 0; // reset on successful start
         console.log(`[dev-start] Metro ready — full proxy active on :${PORT}`);
+        prewarmBundle();
       }
     });
     probe.on("error", () => probe.destroy());

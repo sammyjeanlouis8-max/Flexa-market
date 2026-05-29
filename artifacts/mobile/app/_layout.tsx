@@ -17,6 +17,16 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
+// DEV: capture global JS errors and print them to Metro console
+if (__DEV__) {
+  const prevHandler = globalThis.ErrorUtils?.getGlobalHandler?.();
+  globalThis.ErrorUtils?.setGlobalHandler?.((error: Error, isFatal?: boolean) => {
+    console.error("[GLOBAL ERROR]", isFatal ? "FATAL" : "non-fatal", error?.message);
+    console.error("[STACK]", error?.stack ?? "(no stack)");
+    prevHandler?.(error, isFatal);
+  });
+}
+
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {

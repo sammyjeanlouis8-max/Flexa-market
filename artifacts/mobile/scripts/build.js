@@ -146,11 +146,17 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
     console.log(`Setting EXPO_PUBLIC_REPL_ID=${expoPublicReplId}`);
   }
 
+  // Call the Expo binary directly (not via `pnpm exec`) so the process
+  // inherits the correct CWD (projectRoot = artifacts/mobile) rather than
+  // the pnpm workspace root.  Using `pnpm exec expo` in a monorepo can
+  // silently shift Metro's project root to the workspace root, causing it
+  // to look for expo-router/entry under /workspace/node_modules instead of
+  // artifacts/mobile/node_modules, which produces a 404 bundle error.
+  const expoBin = path.join(projectRoot, "node_modules", ".bin", "expo");
+
   metroProcess = spawn(
-    "pnpm",
+    expoBin,
     [
-      "exec",
-      "expo",
       "start",
       "--no-dev",
       "--minify",

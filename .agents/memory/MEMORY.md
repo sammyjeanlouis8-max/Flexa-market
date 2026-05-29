@@ -1,3 +1,4 @@
 - [Flexa Market repo + Replit dev setup](flexa-market-setup.md) — repo is ~1.5GB (attached_assets); clone via GitHub blob API skipping assets; dev DB needs schema push (drop schema first to avoid drizzle rename prompts); user speaks Haitian Creole.
 - [Expo SDK version updates & freshness gate](expo-version-updates.md) — bump mobile Expo deps with expo install --check; minimumReleaseAge:1440 blocks same-day SDK patch batches (exclude expo/'expo-*'/'@expo/*'/babel-preset-expo); --clear makes dev cold start trip port-detection.
 - [Flexa Market email/SMS/payments config](flexa-comms-config.md) — login is email-OTP via Resend (RESEND_API_KEY); Twilio SMS is intentionally stubbed; Stripe uses Replit connector fallback.
+- [Mobile build pnpm-exec project-root bug](mobile-build-pnpm-exec.md) — use expo bin directly in build.js, NOT pnpm exec expo, to keep Metro project root at artifacts/mobile.

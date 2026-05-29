@@ -21,4 +21,16 @@ config.resolver.blockList = [
   /\/\.local\/.*/,
 ];
 
+// Early error capture polyfill — runs before ANY app module so module-init
+// errors are stored in globalThis.__earlyErrors and rendered on-screen.
+config.serializer = config.serializer || {};
+const _getPolyfills = config.serializer.getPolyfills;
+config.serializer.getPolyfills = (ctx) => {
+  const base = _getPolyfills ? _getPolyfills(ctx) : [];
+  return [
+    ...base,
+    path.resolve(projectRoot, "polyfills/early-error-capture.js"),
+  ];
+};
+
 module.exports = config;

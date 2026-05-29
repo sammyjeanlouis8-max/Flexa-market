@@ -34,6 +34,10 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@replit/*'
   - stripe-replit-sync
+  - expo
+  - 'expo-*'
+  - '@expo/*'
+  - babel-preset-expo
 
 onlyBuiltDependencies:
   - '@swc/core'

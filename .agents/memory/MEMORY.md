@@ -1,1 +1,2 @@
 - [Flexa Market repo + Replit dev setup](flexa-market-setup.md) — repo is ~1.5GB (attached_assets); clone via GitHub blob API skipping assets; dev DB needs schema push (drop schema first to avoid drizzle rename prompts); user speaks Haitian Creole.
+- [Expo SDK version updates & freshness gate](expo-version-updates.md) — bump mobile Expo deps with expo install --check; minimumReleaseAge:1440 blocks same-day SDK patch batches (exclude expo/'expo-*'/'@expo/*'/babel-preset-expo); --clear makes dev cold start trip port-detection.

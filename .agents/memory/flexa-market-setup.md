@@ -29,3 +29,8 @@ Workspace `DATABASE_URL` points to Replit's local Postgres (`helium/heliumdb`), 
 ## Original issues (resolved)
 - OTP recovery emails were switched to English — reverted to Kreyòl (subject "FLEXA MARKET – Kòd Rekiperasyon Kont Ou"). Communicate with this user in Haitian Creole.
 - "Could not connect to server" login error was a Neon free-compute quota exhaustion that reset on the new billing period, not a code bug.
+
+## Mobile (Expo) — App Store launch
+- iOS publishing on Replit is via built-in **Expo Launch** (Publish button), NOT terminal/EAS CLI. Do not run `eas build`/`eas submit`.
+- Canonical Expo config is `artifacts/mobile/app.json` (name FlexaMarket, bundleId `com.flexamarket.mobile`, EAS projectId 45ba4fe9..., owner muelsa89). Stray root `app.json`/`eas.json` (bundleId com.muelsa89.workspace, projectId e3b847bb...) were scaffold stubs referenced nowhere — removed to avoid identifier conflicts.
+- `restart_workflow` on the Expo workflow often reports **failed (DIDNT_OPEN_A_PORT)** even when the app is fine — Metro takes >120-180s to open its port. Check the log for `Metro ready — full proxy active` and screenshot the preview; if it serves, the "failed" status is a false alarm. Do not keep restarting.

@@ -1,45 +1,83 @@
-# [Project name]
+# FlexaMarket Marketplace
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+## Overview
 
-## Run & Operate
+FlexaMarket is a full-stack buy & sell marketplace web application, akin to OfferUp or Facebook Marketplace, built as a pnpm monorepo using React + Vite for the frontend and Express.js for the backend. The platform's core purpose is to facilitate secure, localized e-commerce within a user's country, incorporating advanced features like country-based content filtering, OTP verification, real-time communication, and a comprehensive admin control panel. The project aims to deliver a robust, anti-fraud enabled marketplace experience with ambitions for a peer-to-peer job board and vendor subscription services.
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+## User Preferences
 
-## Stack
+## System Architecture
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+FlexaMarket operates as a pnpm monorepo, separating the `api-server` (Express API) and `marketplace` (React + Vite frontend). Replit routing directs `/api/*` to the API server and `/*` to the frontend.
 
-## Where things live
+**Key Architectural Decisions:**
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+*   **Monorepo Structure:** Utilizes pnpm workspaces for managing frontend and backend.
+*   **Frontend Technologies:** React with Vite for development, Tailwind CSS v4 and shadcn/ui for styling, and TanStack Query for data fetching. Wouter is used for client-side routing.
+*   **Backend Technologies:** Express 5 handles API requests, with PostgreSQL and Drizzle ORM for database interactions. Zod and `drizzle-zod` are used for robust API validation.
+*   **Authentication:** JWT tokens, stored in `localStorage` (`flexamarket_token`), secure user sessions. SHA-256 with a `SESSION_SECRET` is used for password hashing. Production Neon DB schema kept in sync via `artifacts/api-server/src/lib/migrations.ts` — idempotent `ALTER TABLE IF NOT EXISTS` statements run on every server boot (107 migrations, applied: 107, failed: 0).
+*   **API Generation:** Orval generates type-safe API hooks from an OpenAPI specification.
+*   **Internationalization (i18n):** Supports 3 languages post-login (English, French, Haitian Creole) and 2 languages pre-login (English, French). Browser language auto-detection at startup, DB-persisted preference (`preferred_language` column on `users`), first-login language picker modal (`LanguagePickerModal`), and `PATCH /api/auth/language` endpoint for saving preferences. MobileMoreDrawer language switch now also persists to API (same as UserMenu). All locale files (en/fr/ht) contain `editProfile` namespace covering ~40 keys used in `EditProfile.tsx`. Corrected ht.ts errors: "vwazan"→"vizit" (views), "Avis"→"Evalyasyon" (reviews).
+*   **UI/UX Design:** Features an orange primary color theme, dark mode, category badges with emoji icons, country flags on listings, and enforced mandatory profile completion.
+*   **Security & Anti-Fraud:** Implements email uniqueness, phone OTP verification, IP tracking, device fingerprinting, a dynamic risk score system, API rate limiting, and an Admin Security Panel for risk analysis.
+*   **Account Recovery System:** Full multi-step password reset wizard (identify → OTP → security questions → reset → done). Users set up 2 security questions at registration (optional, skippable) and can manage them in Settings → Security. OTP via SMS/email with "Try another way" fallback to security questions. Rate-limited: 3 OTP attempts → 15-min lock, 3 security-question attempts → 1-hr lock. DB tables: `security_questions`, `account_recovery_sessions`. All routes under `/api/recovery/*`.
+*   **Image Management:** Employs presigned GCS URLs via Replit Object Storage for secure image uploads with inline previews.
+*   **Core Feature Specifications:**
+    *   **Country-based System:** Enforces country-specific listings with a 30-day lock on country changes, requiring re-verification.
+    *   **Phone OTP Verification:** Integrates a 4-step registration process with phone verification.
+    *   **Product Listings:** Supports comprehensive listings with images, categories, conditions, locations, and pricing.
+    *   **Hierarchical Category System:** Features 22 parent categories and 231 subcategories, synced at server startup.
+    *   **Search & Filters:** Provides full-text search with cascading category filters, condition, city, and price range, auto-filtered by user's country.
+    *   **Real-time Communication:** A chat system with WebSocket (Socket.io) for real-time messaging, including text, image, and video messages (no voice), with file uploads via presigned S3 URLs and typing indicators.
+    *   **Boosted Video Post System (Social):** Facebook/Instagram-style video post page at `/listings/:id/video`. Features: muted-autoplay 16:9 HTML5 video player with tap-to-play/pause and unmute button; real-time ❤️ like (favorites API), 💬 comment (socket.io `listing:${id}` room), 🔗 share with count tracking, and 👁️ view count; inline threaded comments with real-time socket updates; WhatsApp/Facebook/copy-link sharing; boost impression tracking (`POST /api/listings/:id/impression` increments active boost's `impressions` column); share count tracking (`POST /api/listings/:id/share` increments `shares_count`); ListingCard "Watch Video" button for listings with a `listingVideoUrl`. DB additions: `shares_count` on `listings`, `impressions`+`clicks` on `boosts`; 4 new comments indexes + 1 boosts index; `emitNewListingComment()` socket helper broadcasts new comments to all viewers in real-time.
+    *   **Listing Promotion/Boosts:** A paid feature for promoting listings, including short promo videos, with various payment methods (wallet, card via Stripe Checkout, USDT, SEPA, Apple Pay). Geo-targeting is strictly country-isolated: `boostAudienceCountry` is always set (admin boosts use listing's country as fallback); the boosted-feed and random-video queries use `COALESCE(boostAudienceCountry, listing.country)` — the `IS NULL` global-leak loophole is closed. Card payment uses real Stripe Checkout Session (redirect to Stripe hosted page → webhook auto-activates boost on `checkout.session.completed` with `meta.type="boost"`). Success return URL: `/boost/:id?boost_success=1` → frontend auto-shows success screen. Wallet payment remains instant (deductWalletHybrid). USDT/SEPA/Apple go to `pending_review` awaiting admin approval.
+    *   **Wallet + Promo + Multi-Payment System:** Three-layer balance model:
+        - `balanceUsd` (Real) — funded by MonCash/Stripe recharges; withdrawable and transferable.
+        - `promoBalance` (Locked Promo) — credited from referral bonuses and purchase loyalty bonuses; cannot be withdrawn; can be spent on boosts.
+        - `unlockedBalance` (Unlocked Promo) — promo that has crossed the $20 real-boost-spend threshold; user can convert to real balance.
+        - Unlock rule: every $20 of real-wallet boost spend (`boost_debit` tx type) unlocks $1 from `promoBalance` → `unlockedBalance`.
+        - Convert: `POST /wallet/promo/convert` moves entire `unlockedBalance` → `balanceUsd`.
+        - Unlock: `POST /wallet/promo/unlock` moves newly eligible promo from `promoBalance` → `unlockedBalance`.
+        - Status: `GET /wallet/promo/status` returns unlock progress details.
+        - Boost payments use promo-first logic via `deductWalletHybrid()` (promo → real, combined must cover full amount).
+        - New tx types: `promo_boost_debit`, `promo_unlock`, `promo_convert`.
+        - DB columns: `promo_balance`, `unlocked_balance` on `promo_wallets` table (added via startup migration).
+    *   **Referral / Promo Code System:** Provides unique referral codes for users, awarding bonuses for referred users' first recharges (+$20). Referral bonus now credits `promoBalance` (locked), not real balance.
+    *   **Promo Reward & Loyalty Bonus System:** Implements a three-layer reward system: discount promo codes, purchase loyalty bonuses (credited to `promoBalance`, locked), and a progress banner.
+    *   **User Profiles:** Detailed profiles with verification status, ratings, reviews, and listings.
+    *   **Admin Panel:** Role-based access (Admin/Super Admin) for managing users, listings, reports, and system activity. Super-admins are defined by an allowlist.
+    *   **Support System:** A hybrid system combining an Anthropic-powered ZenoBot AI chatbot with live human support via a Messenger-style chat interface and push notifications.
+    *   **Hierarchical Admin Scope System:** Defines admin access based on country, department, and city, ensuring data visibility aligns with their scope.
+    *   **Global Delivery & Payment (Escrow) System:** Supports end-to-end escrow for purchase orders, with different flows for Haiti (manual driver) and non-Haiti (carrier tracking) deliveries. Funds are released based on delivery confirmation or auto-release timers.
+    *   **Vendor Subscription Plans:** Offers four-tier SaaS plans for sellers (Basic, Standard, Premium, VIP) managed via Stripe for recurring payments. Full subscription management: `/api/subscription/my` returns live billing details (nextBillingDate, cancelAtPeriodEnd, gracePeriodActive, graceUntil, priceUsd, status). Cancel flow keeps `status=active` + sets `cancelAtPeriodEnd=true` (access until period end). `/api/subscription/uncancel` reactivates via Stripe. 5-day grace period on `invoice.payment_failed` webhook. `runSubscriptionExpiryJob` handles active expiry, grace period expiry, and 3-day pre-billing reminders. Notification types: `subscription_payment_failed`, `subscription_billing_reminder`, `subscription_grace_expired`. DB columns: `grace_until`, `next_billing_date`, `cancel_at_period_end` on `vendor_subscriptions`.
+    *   **Jobs (Djòb) feature:** A peer-to-peer job board, currently Haiti-only, allowing users to post and claim jobs with a posting fee.
+*   **Automatic Delivery Price Calculation Engine:** Haversine distance formula with 50+ city coordinates (Haiti + DR), regional pricing tables (HTG motorcycle/car, DOP motorcycle/car), driver 85% / platform 15% commission split. `POST /api/delivery/calculate-price` and `GET /api/delivery/cities` endpoints. DB columns: `fee_local`, `fee_usd`, `distance_km` on deliveries table (migration applied). Frontend: `DeliveryFeeCard.tsx` (checkout summary) + `DeliveryPriceEstimator.tsx` (listing detail). AvailableDeliveries.tsx updated to show distance + fee breakdown per delivery card. Admin delivery analytics tab (`AdminDeliveryPanel.tsx`) with stat cards, filters (status/country), and full delivery list with seller/driver names.
+*   **Enterprise Financial Infrastructure (P2P Transfers + Authorized Agents):** DB tables: `wallet_transfers`, `transfer_daily_fees`, `agent_applications`, `transfer_monthly_usage` (10 migrations applied). Transfer rules: $3/day access fee, $4,000/month standard limit, $15,000/month authorized agent limit, +10% fee on international (non-Haiti/DR) transfers, $100/day international cap. API routes: `GET /api/wallet/transfer/search`, `POST /api/wallet/transfer/preview`, `POST /api/wallet/transfer`, `GET /api/wallet/transfer/history`, `GET /api/admin/transfers`. Authorized agent routes: `GET /api/agents/my`, `POST /api/agents/apply`, `GET/PATCH /api/admin/agents/:id/approve|reject|suspend`. Frontend: `WalletTransfer.tsx` (3-step: search → amount → confirm), `AgentApplication.tsx` (4-step KYC form with doc uploads). Layout nav: "Voye Lajan" + "Ajans Otorize" items. App routes: `/wallet/transfer`, `/agents/apply`.
+*   **MonCash Market (Fintech Marketplace):** A standalone fintech application at `/fintech/` with a dark blue, bank-grade design. It shares the same API server and database, reuses JWT authentication, and features Admin, Vendor, and Customer roles. It includes API routes for revenue, commission, vendor management, order processing, and payouts, with a fixed 10% commission rate.
 
-## Architecture decisions
+## External Dependencies
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+*   **Database:** PostgreSQL
+*   **ORM:** Drizzle ORM
+*   **Cloud Storage:** Google Cloud Storage (GCS) via Replit Object Storage
+*   **IP Geolocation:** ip-api.com
+*   **API Client Generation:** Orval
+*   **UI Components:** shadcn/ui
+*   **Data Fetching:** TanStack Query
+*   **Payment Gateway:** Stripe (platform-owned central account only — Stripe Connect is DISABLED for sellers). Sellers configure MonCash or bank transfer payout accounts via `/settings`. Admin verifies both payout types before use. DB: `seller_payout_accounts` table has MonCash fields + bank fields + `card_payout_method` (`fm_wallet` | `stripe`, default `fm_wallet`) added via startup migration. Backend routes: `PUT /api/seller/payout-account/moncash`, `PUT /api/seller/payout-account/bank`, `PATCH /api/seller/payout-account/card-method`. Admin verify/reject: `POST /api/admin/seller-payout-accounts/:id/verify|reject|verify-bank|reject-bank`. **Kat FM payout**: when seller's `card_payout_method=fm_wallet`, Stripe webhook auto-credits `sellerEarnings` into seller's FM wallet after purchase — no Stripe account needed.
+*   **Chatbot AI:** Anthropic (for ZenoBot)
+*   **SMS:** Twilio (for MonCash OTP flow)
 
-## Product
+## Production Readiness (Last Audit: 2026-05-11)
 
-_Describe the high-level user-facing capabilities of this app once they exist._
-
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+*   **Validation:** 92/92 pre-deploy checks pass (`pnpm --filter @workspace/scripts run validate-deploy`).
+*   **lib/api-zod:** `src/index.ts` exports only `./generated/api` (Zod schemas); removed conflicting `./generated/types` re-export that caused TS2308 duplicate-export errors. TypeScript clean except pre-existing files.
+*   **Logging:** All server code uses `req.log` (in-request) or the singleton `logger` from `lib/logger.ts` (out-of-request). Zero `console.*` calls remain anywhere in the API server.
+*   **Restricted-User System:** `requireNotRestricted` middleware on listings/comments/messages/boost/jobs routes. Frontend `useRestriction` hook + `RestrictionBanner` component wired into CommentsSection, Messages, Sell, VideoFeed CommentPanel, VideoCard (like/share/comment blocked). Admin UI restrict/unrestrict dialog.
+*   **TikTok-style Video Feed (`/videos`):** Boosted-only feed filtered by `isBoosted=true AND boostVideoUrl IS NOT NULL AND boostExpiresAt > NOW() AND boostStartAt <= NOW()`. Full-screen scroll-snap, IntersectionObserver auto-play, right-side engagement column, comment panel, product overlay ("Achte" button with 1.5s reveal). Country-based visibility (super_admin sees all; admin/user see own country; no-country → `NoCountryPrompt`). Impression tracking fires `POST /api/videos/:id/impression` on each video becoming active. Real-time 30s expiry pruning on client. `boostStartAt` set correctly by both wallet/card flow (boost.ts) and MonCash return handler (moncash-pay.ts).
+*   **Pre-existing TS errors (do not fix):** subscription.ts, objectStorage.ts, stripeClient.ts, admin.ts, fintech.ts, listings.ts, offers.ts, payment-providers.ts — all pre-date current work.
+*   **Real-time Communication:** Socket.io
+*   **Stripe Chargeback System (2026-05-11):** `chargebacks` DB table (startup migration). Webhook handlers in `stripeCheckout.ts` for `charge.dispute.created` (status=`open`) and `charge.dispute.closed` (status=`won`/`lost`). `GET /admin/chargebacks` + `POST /admin/chargebacks/:id/resolve` endpoints in `admin.ts`. "Chajbak" tab in `Admin.tsx` (super admin only) with badge count, stats cards, and action buttons.
+*   **Force Password Change After Temp Login (2026-05-11):** `users.must_change_password BOOLEAN DEFAULT false` column (startup migration). `POST /api/auth/login-temp` sets flag + returns `mustChangePassword:true`. New `POST /api/auth/set-new-password` endpoint (JWT required, no current password needed, clears flag, invalidates old token, returns fresh token). `SetNewPassword.tsx` page at `/auth/set-new-password` — dark-themed forced change form with password strength indicator, confirm match, success screen. `ForgotPassword.tsx` redirects there after temp login instead of `/`.
+*   **Admin Investigation Panel — Tiered Access (2026-05-11):** `GET /admin/users/:id/security` now returns: parsed device model/OS/browser (`latestDevice`, `uniqueDevices`) extracted from login user-agents via `parseUserAgent()`; GPS coordinates (`latitude`, `longitude`, `lastSeenAt`, `location`); phone number. Tier rules: admin gets last 60 login logs + partial device ID (first 8 chars masked); super admin gets ALL login logs (no limit) + full device ID + raw user-agent intelligence section (purple badge). `PATCH /admin/users/:id/phone` (requireAdmin) lets any admin override a user's phone with uniqueness check. Security dialog redesigned: "Aparèy Itilize" card, GPS card with Google Maps link, phone edit inline, IP/Device ID grid, super-admin-only "Intelligence" section.
+*   **ApplyForDriver Photo Upload Redesign (2026-05-11):** `VehiclePhotoCard` component fully redesigned. Empty state: dark slate-950 card split into 2 halves — left = Camera (primary, orange accent ring icon + gradient top line), right = Gallery (secondary, dimmed). Uploading state: dark card with spinner. Preview state: full-cover image + glassmorphism vignette + backdrop-blur ✕ button + status pill (emerald "Verifye" / blue "AI ap verifye…"). Rejected state: dark card with `CameraOff` red icon + message + white/ghost retry buttons.

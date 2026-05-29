@@ -1,0 +1,38 @@
+kind = "web"
+previewPath = "/"
+title = "Marketplace"
+version = "1.0.0"
+id = "artifacts/marketplace"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 5173
+
+[services.development]
+run = "pnpm --filter @workspace/marketplace run dev"
+
+[services.production]
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/marketplace", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+CI = "true"
+
+[services.production.run]
+args = ["node", "artifacts/marketplace/serve.mjs"]
+
+[services.production.run.env]
+PORT = "5173"
+NODE_ENV = "production"
+
+[services.env]
+PORT = "5173"
+BASE_PATH = "/"

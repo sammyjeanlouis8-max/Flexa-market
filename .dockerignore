@@ -1,0 +1,13 @@
+node_modules
+artifacts/*/node_modules
+lib/*/node_modules
+scripts/node_modules
+artifacts/*/dist
+artifacts/marketplace/dist
+.git
+.replit
+replit.nix
+.local
+attached_assets
+push.sh
+*.log

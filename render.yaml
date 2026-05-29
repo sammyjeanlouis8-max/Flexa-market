@@ -1,0 +1,81 @@
+services:
+  - type: web
+    name: flexa-api
+    runtime: node
+    nodeVersion: "22"
+    region: oregon
+    plan: free
+    buildCommand: "npm install -g pnpm@10.26.1 && NODE_ENV=development pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server run build"
+    startCommand: "node --enable-source-maps artifacts/api-server/dist/index.mjs"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # ── Database (set to your Neon connection string in Render dashboard) ──────
+      - key: DATABASE_URL
+        sync: false
+      # ── Auth ───────────────────────────────────────────────────────────────────
+      - key: SESSION_SECRET
+        sync: false
+      # ── Stripe ─────────────────────────────────────────────────────────────────
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      # ── Frontend URL for Stripe redirect URLs ──────────────────────────────────
+      - key: FRONTEND_URL
+        value: https://flexa-market.onrender.com
+      # ── AWS / Object Storage ───────────────────────────────────────────────────
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-2
+      - key: DEFAULT_OBJECT_STORAGE_BUCKET_ID
+        sync: false
+      - key: PRIVATE_OBJECT_DIR
+        sync: false
+      - key: PUBLIC_OBJECT_SEARCH_PATHS
+        sync: false
+      # ── Cloudinary image storage ───────────────────────────────────────────────
+      - key: CLOUDINARY_CLOUD_NAME
+        value: dvkbgodbk
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # ── Resend (email OTP + transactional emails) ──────────────────────────────
+      # Sign up free at resend.com — 3,000 emails/month included
+      # Add your domain (flexamarket.com) in Resend → Domains, then set RESEND_FROM_EMAIL
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: noreply@flexamarket.com
+      - key: RESEND_FROM_NAME
+        value: FLEXA MARKET
+      # ── Anthropic AI (ZenoBot chatbot, AI Guardian, visual search, calculator) ─
+      - key: AI_INTEGRATIONS_ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_INTEGRATIONS_ANTHROPIC_BASE_URL
+        sync: false
+      # ── OpenAI (content moderation) ────────────────────────────────────────────
+      - key: AI_INTEGRATIONS_OPENAI_API_KEY
+        sync: false
+      - key: AI_INTEGRATIONS_OPENAI_BASE_URL
+        sync: false
+
+  - type: web
+    name: flexa-marketplace
+    runtime: node
+    nodeVersion: "22"
+    region: oregon
+    plan: free
+    buildCommand: "npm install -g pnpm@10.26.1 && NODE_ENV=development pnpm install --frozen-lockfile && pnpm --filter @workspace/marketplace run build"
+    startCommand: "node /opt/render/project/src/artifacts/marketplace/serve.mjs"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"

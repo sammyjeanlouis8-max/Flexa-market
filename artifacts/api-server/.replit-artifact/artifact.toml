@@ -21,8 +21,9 @@ args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
 NODE_ENV = "production"
 
 [services.production.run]
-# we don't run through pnpm to make startup faster in production
-args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
+# Explicitly set DATABASE_URL from NEON_DATABASE_URL in the shell command so the
+# Replit-managed internal DATABASE_URL (hostname: base) cannot override it.
+args = ["sh", "-c", "DATABASE_URL=$NEON_DATABASE_URL node --enable-source-maps artifacts/api-server/dist/index.mjs"]
 
 [services.production.run.env]
 PORT = "8080"

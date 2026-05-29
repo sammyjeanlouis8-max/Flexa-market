@@ -2,6 +2,9 @@
 
 # compiled output
 dist
+# Allow marketplace pre-built frontend in git so production always has latest code
+!artifacts/marketplace/dist/
+!artifacts/marketplace/dist/**
 tmp
 out-tsc
 *.tsbuildinfo
@@ -47,3 +50,4 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+push.sh

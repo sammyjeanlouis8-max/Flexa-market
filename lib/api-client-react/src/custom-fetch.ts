@@ -356,6 +356,14 @@ export async function customFetch<T = unknown>(
     if (token) {
       headers.set("authorization", `Bearer ${token}`);
     }
+  } else if (!headers.has("authorization")) {
+    // Fallback to local storage if no getter is configured but we are in a browser environment
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("flexamarket_token");
+      if (token) {
+        headers.set("authorization", `Bearer ${token}`);
+      }
+    }
   }
 
   const requestInfo = { method, url: resolveUrl(input) };

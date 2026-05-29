@@ -1,0 +1,1 @@
+- [Flexa Market repo + Replit dev setup](flexa-market-setup.md) — repo is ~1.5GB (attached_assets); clone via GitHub blob API skipping assets; dev DB needs schema push (drop schema first to avoid drizzle rename prompts); user speaks Haitian Creole.

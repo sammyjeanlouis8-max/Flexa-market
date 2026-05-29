@@ -1,0 +1,104 @@
+workflows:
+  android-release:
+    name: Android Release Build
+    max_build_duration: 60
+    environment:
+      node: "18"
+      java: "17"
+      vars:
+        CI: "1"
+        EXPO_NO_TELEMETRY: "1"
+    scripts:
+      - name: Enable pnpm via corepack
+        script: |
+          corepack enable pnpm
+          pnpm --version
+
+      - name: Install all workspace dependencies
+        script: pnpm install --no-frozen-lockfile
+
+      - name: Expo Prebuild Android (no install)
+        script: |
+          cd artifacts/mobile
+          npx expo prebuild --platform android --clean --no-install
+
+      - name: Pin Gradle to 8.10.2 (fixes Gradle 9 incompatibility)
+        script: |
+          WRAPPER=artifacts/mobile/android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's|gradle-[0-9.]*-bin.zip|gradle-8.10.2-bin.zip|g' "$WRAPPER"
+          sed -i 's|gradle-[0-9.]*-all.zip|gradle-8.10.2-bin.zip|g' "$WRAPPER"
+          echo "--- gradle-wrapper.properties after patch ---"
+          cat "$WRAPPER"
+
+      - name: Install deps after prebuild
+        script: pnpm install --no-frozen-lockfile
+
+      - name: Build Android App Bundle
+        script: |
+          cd artifacts/mobile/android
+          chmod +x ./gradlew
+          ./gradlew bundleRelease --stacktrace 2>&1 | tail -120
+
+    artifacts:
+      - artifacts/mobile/android/app/build/outputs/**/*.aab
+      - artifacts/mobile/android/app/build/outputs/**/*.apk
+      - artifacts/mobile/android/app/build/outputs/**/mapping.txt
+
+    publishing:
+      email:
+        recipients:
+          - sammyjeanlouis8@gmail.com
+        notify:
+          success: true
+          failure: true
+
+  ios-release:
+    name: iOS Release Build
+    max_build_duration: 90
+    environment:
+      node: "18"
+      xcode: latest
+      cocoapods: default
+      vars:
+        CI: "1"
+        EXPO_NO_TELEMETRY: "1"
+    scripts:
+      - name: Enable pnpm via corepack
+        script: |
+          corepack enable pnpm
+          pnpm --version
+
+      - name: Install all workspace dependencies
+        script: pnpm install --no-frozen-lockfile
+
+      - name: Expo Prebuild iOS
+        script: |
+          cd artifacts/mobile
+          npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install deps after prebuild
+        script: pnpm install --no-frozen-lockfile
+
+      - name: Install CocoaPods
+        script: |
+          cd artifacts/mobile/ios
+          pod install
+
+      - name: Build iOS IPA
+        script: |
+          cd artifacts/mobile
+          xcode-project build-ipa \
+            --workspace ios/FlexaMarket.xcworkspace \
+            --scheme FlexaMarket
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      email:
+        recipients:
+          - sammyjeanlouis8@gmail.com
+        notify:
+          success: true
+          failure: true

@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Logs & maps
+*.log
+*.map
+
+# Dev artifacts
+node_modules
+.cache
+dist
+coverage
+
+# Other workspace packages (not needed for mobile build)
+../../artifacts/marketplace
+../../artifacts/api-server
+../../artifacts/mockup-sandbox
+../../lib
+../../scripts
+../../.local
+../../attached_assets
+
+# Docs
+*.md
+README*
+
+# OS files
+.DS_Store
+Thumbs.db

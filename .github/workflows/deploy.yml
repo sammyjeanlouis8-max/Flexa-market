@@ -1,0 +1,60 @@
+name: Build & Deploy to Render
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: NODE_ENV=development pnpm install --frozen-lockfile
+
+      - name: Build API server
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build marketplace (frontend)
+        run: pnpm --filter @workspace/marketplace run build
+        env:
+          NODE_ENV: production
+          BASE_PATH: /
+
+      - name: Deploy API server to Render
+        if: success()
+        run: |
+          echo "Triggering Render API deploy..."
+          curl -s -o /dev/null -w "HTTP %{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+          echo " — API deploy triggered"
+
+      - name: Deploy marketplace to Render
+        if: success()
+        run: |
+          echo "Triggering Render marketplace deploy..."
+          curl -s -o /dev/null -w "HTTP %{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_MARKETPLACE }}"
+          echo " — Marketplace deploy triggered"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Build failed — Render was NOT deployed."
+          echo "Fix the errors above, then push again."
+          exit 1

@@ -1,0 +1,91 @@
+{
+  "expo": {
+    "name": "FlexaMarket",
+    "slug": "mobile",
+    "owner": "muelsa89",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "flexamarket",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.flexamarket.mobile",
+      "buildNumber": "1",
+      "deploymentTarget": "15.1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "FlexaMarket bezwen aksè kamera ou pou pran foto pou annons ou.",
+        "NSPhotoLibraryUsageDescription": "FlexaMarket bezwen aksè galerif ou pou ajoute foto nan annons ou.",
+        "NSPhotoLibraryAddUsageDescription": "FlexaMarket bezwen sove foto nan galerif ou.",
+        "NSLocationWhenInUseUsageDescription": "FlexaMarket itilize GPS ou pou montre annons ki tou pre ou.",
+        "NSMicrophoneUsageDescription": "FlexaMarket bezwen mikwofòn ou pou videyo annons.",
+        "NSFaceIDUsageDescription": "Itilize Face ID pou konekte pi vit."
+      }
+    },
+    "android": {
+      "package": "com.flexamarket.mobile",
+      "versionCode": 1,
+      "compileSdkVersion": 35,
+      "targetSdkVersion": 35,
+      "minSdkVersion": 24,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://flexamarket.com"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FlexaMarket bezwen aksè galerif ou pou ajoute foto nan annons ou.",
+          "cameraPermission": "FlexaMarket bezwen aksè kamera ou pou pran foto pou annons ou."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "FlexaMarket itilize GPS ou pou montre annons ki tou pre ou."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"
+      }
+    }
+  }
+}

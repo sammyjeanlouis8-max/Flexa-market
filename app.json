@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "e3b847bb-5404-44f3-9793-9065fe53b840"
+      }
+    },
+    "android": {
+      "package": "com.muelsa89.workspace"
+    },
+    "ios": {
+      "bundleIdentifier": "com.muelsa89.workspace",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

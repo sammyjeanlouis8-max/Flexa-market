@@ -281,9 +281,10 @@ function startMetro() {
   };
 
   const expoArgs = ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT)];
-  if (process.env.EXPO_CLEAR_CACHE === "1") {
+  // Always clear on first start so stale pnpm _tmp entries never break the FileMap
+  if (restartCount === 0 || process.env.EXPO_CLEAR_CACHE === "1") {
     expoArgs.push("--clear");
-    console.log("[dev-start] EXPO_CLEAR_CACHE=1 — Metro cache cleared");
+    console.log("[dev-start] Clearing Metro cache (first start or EXPO_CLEAR_CACHE=1)");
   }
 
   metro = spawn("pnpm", expoArgs, {

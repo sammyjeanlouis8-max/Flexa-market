@@ -1,0 +1,13 @@
+diff --git a/lib/index.js b/lib/index.js
+index 1111111..2222222 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -143,7 +143,8 @@ function resolveTargets(queries, env) {
+   });
+   return getLowestVersions(resolved);
+ }
+-const targetsCache = new _lruCache({
++const _LRUCacheClass = _lruCache.LRUCache || _lruCache;
++const targetsCache = new _LRUCacheClass({
+   max: 64
+ });

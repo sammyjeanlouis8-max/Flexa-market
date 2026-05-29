@@ -98,7 +98,7 @@ server.on("error", (err) => {
   console.error("[dev-start] Proxy server error:", err.message);
   if (err.code === "EADDRINUSE") {
     console.log("[dev-start] Port in use, retrying in 2s…");
-    setTimeout(() => server.listen(PORT, "0.0.0.0"), 2000);
+    setTimeout(() => server.listen(PORT), 2000);
   }
 });
 
@@ -130,7 +130,7 @@ function startMetro() {
 
   metro = spawn(
     "pnpm",
-    ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT), "--clear"],
+    ["exec", "expo", "start", "--localhost", "--port", String(METRO_PORT)],
     {
       stdio: "inherit",
       env: expoEnv,
@@ -181,7 +181,7 @@ function startMetro() {
 // ---------------------------------------------------------------------------
 // Start: bind proxy port first, then launch Metro
 // ---------------------------------------------------------------------------
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, () => {
   console.log(`[dev-start] Proxy ready on :${PORT} → Metro :${METRO_PORT}`);
   console.log(`[dev-start] Health check: /status → {"status":"packager-status:running"}`);
   startMetro();

@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import http from "node:http";
 // PORT is only required for the dev/preview server — the production build
 // generates static files and never needs to bind to a port.
 const isBuild = process.env.NODE_ENV === "production";
@@ -27,6 +28,61 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Expo Go proxy: forward Expo-specific requests to the Mobile dev server.
+    // expo.picard.replit.dev routes to this Marketplace service (port 5173)
+    // because Marketplace owns the root path "/". We detect Expo Go requests
+    // by their headers and proxy them to the Mobile proxy on port 18115.
+    ...(!isBuild
+      ? [
+          {
+            name: "expo-go-proxy",
+            configureServer(server: { middlewares: { use: (fn: (req: http.IncomingMessage, res: http.ServerResponse, next: () => void) => void) => void } }) {
+              server.middlewares.use((req, res, next) => {
+                const headers = req.headers as Record<string, string | string[] | undefined>;
+                const accept = (headers["accept"] ?? "") as string;
+                const url = req.url ?? "";
+
+                const isExpo =
+                  !!headers["expo-platform"] ||
+                  !!headers["expo-sdk-version"] ||
+                  !!headers["expo-runtime-version"] ||
+                  accept.includes("expo+json") ||
+                  url.startsWith("/artifacts/mobile/") ||
+                  url.startsWith("/_expo/");
+
+                if (!isExpo) {
+                  next();
+                  return;
+                }
+
+                console.log(`[expo-proxy] → 18115 ${req.method} ${url.slice(0, 80)}`);
+
+                const proxyReq = http.request(
+                  {
+                    hostname: "localhost",
+                    port: 18115,
+                    path: url,
+                    method: req.method,
+                    headers: { ...headers, host: "localhost:18115" },
+                  },
+                  (proxyRes) => {
+                    res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers as Record<string, string>);
+                    proxyRes.pipe(res, { end: true });
+                  }
+                );
+
+                proxyReq.on("error", (err) => {
+                  console.error("[expo-proxy] error:", err.message);
+                  res.writeHead(502);
+                  res.end("Mobile service unavailable");
+                });
+
+                req.pipe(proxyReq, { end: true });
+              });
+            },
+          },
+        ]
+      : []),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

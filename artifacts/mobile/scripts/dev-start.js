@@ -58,6 +58,59 @@ const server = http.createServer((req, res) => {
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
+    const ct = proxyRes.headers["content-type"] || "";
+
+    // ── Rewrite Expo manifest to replace pnpm real-store bundle paths ────────
+    // Metro resolves expo-router/entry to its real pnpm-store path
+    // (node_modules/.pnpm/expo-router@6.0.24_@types+…/node_modules/expo-router/entry).
+    // The `@` and `+` characters in that path are rejected by Replit's
+    // expo.picard.replit.dev proxy, causing Expo Go to get a 404 for the bundle.
+    // We swap the real path for the pnpm-symlink path
+    // (artifacts/mobile/node_modules/expo-router/entry) which:
+    //   • contains no special characters
+    //   • Metro serves correctly (it follows the symlink to the same real file)
+    if ((ct.includes("application/json") || ct.includes("expo+json")) && req.method === "GET") {
+      let raw = "";
+      proxyRes.on("data", (chunk) => { raw += chunk; });
+      proxyRes.on("end", () => {
+        try {
+          const manifest = JSON.parse(raw);
+          const SYMLINK_MODULE = "artifacts/mobile/node_modules/expo-router/entry";
+
+          // Rewrite launchAsset.url
+          if (manifest.launchAsset && typeof manifest.launchAsset.url === "string") {
+            try {
+              const u = new URL(manifest.launchAsset.url);
+              if (u.pathname.includes("expo-router") && u.pathname.includes("entry")) {
+                u.pathname = `/${SYMLINK_MODULE}.bundle`;
+                manifest.launchAsset.url = u.toString();
+              }
+            } catch (_) {}
+          }
+
+          // Rewrite mainModuleName inside expoGo extra
+          const expoGo = manifest.extra && manifest.extra.expoGo;
+          if (expoGo && typeof expoGo.mainModuleName === "string" &&
+              expoGo.mainModuleName.includes("expo-router")) {
+            expoGo.mainModuleName = SYMLINK_MODULE;
+          }
+
+          const rewritten = JSON.stringify(manifest);
+          const headers = {
+            ...proxyRes.headers,
+            "content-length": Buffer.byteLength(rewritten).toString(),
+          };
+          res.writeHead(proxyRes.statusCode ?? 200, headers);
+          res.end(rewritten);
+        } catch (_) {
+          // Not a manifest JSON — pass through unchanged
+          res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+          res.end(raw);
+        }
+      });
+      return;
+    }
+
     res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
     proxyRes.pipe(res, { end: true });
   });

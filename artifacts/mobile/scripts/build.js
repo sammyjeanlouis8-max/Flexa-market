@@ -158,6 +158,7 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
     expoBin,
     [
       "start",
+      projectRoot,   // explicit <dir> arg overrides monorepo-root detection
       "--no-dev",
       "--minify",
       "--localhost",

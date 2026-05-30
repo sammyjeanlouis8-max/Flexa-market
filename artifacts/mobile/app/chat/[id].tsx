@@ -41,6 +41,15 @@ function timeLabel(iso: string) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function lastSeenLabel(lastSeenAt: string | null): string {
+  if (!lastSeenAt) return "";
+  const diff = Math.floor((Date.now() - new Date(lastSeenAt).getTime()) / 1000);
+  if (diff < 60) return "li te la kounye a";
+  if (diff < 3600) return `li te la ${Math.floor(diff / 60)} min pase`;
+  if (diff < 86400) return `li te la ${Math.floor(diff / 3600)}h pase`;
+  return `li te la ${Math.floor(diff / 86400)} jou pase`;
+}
+
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
@@ -53,8 +62,11 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [otherOnline, setOtherOnline] = useState<boolean | null>(null);
+  const [otherLastSeen, setOtherLastSeen] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const presencePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchMessages = useCallback(async (silent = false) => {
     if (!id) return;
@@ -83,12 +95,35 @@ export default function ChatScreen() {
     }
   }, [id, request]);
 
+  const fetchPresence = useCallback(async (otherUserId: number) => {
+    try {
+      const data = await request<{ isOnline: boolean; lastSeenAt: string | null }>(
+        `/users/${otherUserId}/presence`
+      );
+      setOtherOnline(data.isOnline);
+      setOtherLastSeen(data.lastSeenAt);
+    } catch {
+      // ignore
+    }
+  }, [request]);
+
   useEffect(() => {
     setLoading(true);
     Promise.all([fetchConv(), fetchMessages()]).finally(() => setLoading(false));
     pollRef.current = setInterval(() => fetchMessages(true), 4000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      if (presencePollRef.current) clearInterval(presencePollRef.current);
+    };
   }, [fetchConv, fetchMessages]);
+
+  useEffect(() => {
+    if (!conv?.otherUser?.id) return;
+    const otherId = conv.otherUser.id;
+    fetchPresence(otherId);
+    presencePollRef.current = setInterval(() => fetchPresence(otherId), 20000);
+    return () => { if (presencePollRef.current) clearInterval(presencePollRef.current); };
+  }, [conv?.otherUser?.id, fetchPresence]);
 
   async function handleSend() {
     if (!text.trim() || !id || sending) return;
@@ -137,18 +172,30 @@ export default function ChatScreen() {
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          {avatar ? (
-            <Image source={{ uri: avatar }} style={styles.headerAvatar} contentFit="cover" />
-          ) : (
-            <View style={[styles.headerAvatarFallback, { backgroundColor: colors.primary }]}>
-              <Text style={styles.initials}>{otherName.slice(0, 2).toUpperCase()}</Text>
-            </View>
-          )}
+          <View style={styles.avatarWrap}>
+            {avatar ? (
+              <Image source={{ uri: avatar }} style={styles.headerAvatar} contentFit="cover" />
+            ) : (
+              <View style={[styles.headerAvatarFallback, { backgroundColor: colors.primary }]}>
+                <Text style={styles.initials}>{otherName.slice(0, 2).toUpperCase()}</Text>
+              </View>
+            )}
+            {otherOnline !== null && (
+              <View style={[
+                styles.presenceDot,
+                { backgroundColor: otherOnline ? "#22C55E" : "#9CA3AF", borderColor: colors.card }
+              ]} />
+            )}
+          </View>
           <View style={styles.headerNames}>
             <Text style={[styles.headerName, { color: colors.foreground }]} numberOfLines={1}>{otherName}</Text>
-            {listingTitle && (
+            {otherOnline === true ? (
+              <Text style={[styles.headerSub, { color: "#22C55E" }]}>Online</Text>
+            ) : otherOnline === false && otherLastSeen ? (
+              <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>{lastSeenLabel(otherLastSeen)}</Text>
+            ) : listingTitle ? (
               <Text style={[styles.headerSub, { color: colors.primary }]} numberOfLines={1}>{listingTitle}</Text>
-            )}
+            ) : null}
           </View>
         </View>
         <View style={{ width: 36 }} />
@@ -248,8 +295,13 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  avatarWrap: { position: "relative", width: 38, height: 38 },
   headerAvatar: { width: 38, height: 38, borderRadius: 19 },
   headerAvatarFallback: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  presenceDot: {
+    position: "absolute", bottom: 0, right: 0,
+    width: 11, height: 11, borderRadius: 6, borderWidth: 2,
+  },
   initials: { color: "#FFF", fontSize: 14, fontFamily: "Inter_600SemiBold" },
   headerNames: { flex: 1 },
   headerName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },

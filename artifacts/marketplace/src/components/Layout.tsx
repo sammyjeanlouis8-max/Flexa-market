@@ -663,6 +663,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/settings\/stripe/,
     /^\/order-label\//,
     /^\/videos$/,
+    /^\/wallet/,
   ].some(rx => rx.test(location));
 
   return (

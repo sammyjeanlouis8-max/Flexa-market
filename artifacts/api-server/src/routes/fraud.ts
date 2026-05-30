@@ -1,16 +1,40 @@
 import { Router } from "express";
-import { db, usersTable } from "@workspace/db";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { db, usersTable, notificationsTable } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { getClientIp, upsertRiskScore, logFraudEvent, createFraudAlert, applyRiskActions, assessNewAccount } from "../lib/fraudEngine";
+import { getClientIp, upsertRiskScore, logFraudEvent, createFraudAlert, applyRiskActions, assessNewAccount, getUserRiskScore } from "../lib/fraudEngine";
 import type { RiskLevel } from "../lib/fraudEngine";
 
 const router = Router();
 
+// ─── Whitelists (prevent SQL injection on enum columns) ───────────────────────
+
+const VALID_SEVERITIES = new Set(["low", "medium", "high", "critical"]);
+const VALID_RISK_LEVELS = new Set(["low", "medium", "high", "critical"]);
+const VALID_EVENT_TYPES = new Set([
+  "device_reuse", "banned_device", "vpn_detected", "datacenter_ip",
+  "high_risk_country", "rapid_account_creation", "rapid_posting",
+  "mass_messaging", "scam_message", "scam_listing", "suspicious_price",
+  "ban_bypass_attempt", "ip_shared", "chargeback_risk",
+  "kyc_triggered", "auto_suspended", "admin_review",
+]);
+
+function validateSeverity(v: unknown): string | null {
+  if (typeof v === "string" && VALID_SEVERITIES.has(v)) return v;
+  return null;
+}
+function validateLevel(v: unknown): string | null {
+  if (typeof v === "string" && VALID_RISK_LEVELS.has(v)) return v;
+  return null;
+}
+function validateEventType(v: unknown): string | null {
+  if (typeof v === "string" && VALID_EVENT_TYPES.has(v)) return v;
+  return null;
+}
+
 // ─── POST /api/fraud/fingerprint ──────────────────────────────────────────────
 // Authenticated users submit a client-side device fingerprint.
-// Used for ban-bypass detection and duplicate-account detection.
 router.post("/fraud/fingerprint", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const { fingerprint, platform, screenRes, timezone, languages, hardwareConcurrency } = req.body as {
@@ -29,9 +53,8 @@ router.post("/fraud/fingerprint", requireAuth, async (req, res): Promise<void> =
 
   const ip = getClientIp(req);
 
-  // Check if this fingerprint belongs to a banned account
   const [existing] = await db.execute(sql`
-    SELECT user_id, is_banned FROM fraud_device_fingerprints fp
+    SELECT fp.user_id, u.is_banned FROM fraud_device_fingerprints fp
     JOIN users u ON u.id = fp.user_id
     WHERE fp.fingerprint = ${fingerprint} AND fp.user_id != ${userId}
     LIMIT 1
@@ -45,9 +68,8 @@ router.post("/fraud/fingerprint", requireAuth, async (req, res): Promise<void> =
       `User #${userId} shares browser fingerprint with banned account #${(existing as any).user_id}.`,
       { linkedUserId: (existing as any).user_id }
     );
-    const existing2 = await db.execute(sql`SELECT score, device_score FROM fraud_risk_scores WHERE user_id = ${userId}`);
-    const prev = (existing2[0] as any);
-    const newDeviceScore = Math.min(20, (prev?.device_score ?? 0) + 20);
+    const prev = await getUserRiskScore(userId);
+    const newDeviceScore = Math.min(20, (prev?.deviceScore ?? 0) + 20);
     const newScore = await upsertRiskScore(userId, { deviceScore: newDeviceScore });
     const level: RiskLevel = newScore >= 80 ? "critical" : newScore >= 60 ? "high" : "medium";
     await applyRiskActions(userId, newScore, level);
@@ -56,11 +78,15 @@ router.post("/fraud/fingerprint", requireAuth, async (req, res): Promise<void> =
       { fingerprint: fingerprint.slice(0, 16), linkedUserId: (existing as any).user_id }, ip);
   }
 
-  // Upsert fingerprint
   await db.execute(sql`
-    INSERT INTO fraud_device_fingerprints (user_id, fingerprint, platform, screen_res, timezone, languages, hardware_concurrency, last_seen_ip, last_seen_at, created_at)
-    VALUES (${userId}, ${fingerprint}, ${platform ?? null}, ${screenRes ?? null}, ${timezone ?? null}, ${languages ?? null}, ${hardwareConcurrency ?? null}, ${ip}, NOW(), NOW())
-    ON CONFLICT (user_id, fingerprint) DO UPDATE SET last_seen_ip = EXCLUDED.last_seen_ip, last_seen_at = NOW()
+    INSERT INTO fraud_device_fingerprints
+      (user_id, fingerprint, platform, screen_res, timezone, languages, hardware_concurrency, last_seen_ip, last_seen_at, created_at)
+    VALUES
+      (${userId}, ${fingerprint}, ${platform ?? null}, ${screenRes ?? null},
+       ${timezone ?? null}, ${languages ?? null}, ${hardwareConcurrency ?? null},
+       ${ip}, NOW(), NOW())
+    ON CONFLICT (user_id, fingerprint)
+    DO UPDATE SET last_seen_ip = EXCLUDED.last_seen_ip, last_seen_at = NOW()
   `);
 
   res.json({ ok: true });
@@ -71,18 +97,21 @@ router.get("/admin/fraud/dashboard", requireAdmin, async (req, res): Promise<voi
   try {
     const [stats] = await db.execute(sql`
       SELECT
-        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false)::int AS open_alerts,
-        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false AND severity = 'critical')::int AS critical_alerts,
-        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false AND severity = 'high')::int AS high_alerts,
-        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'critical')::int AS critical_users,
-        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'high')::int AS high_users,
-        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'medium')::int AS medium_users,
-        (SELECT COUNT(*) FROM users WHERE is_flagged = true AND is_banned = false)::int AS flagged_users,
-        (SELECT COUNT(*) FROM users WHERE is_banned = true)::int AS banned_users,
-        (SELECT COUNT(*) FROM fraud_events WHERE created_at > NOW() - INTERVAL '24 hours')::int AS events_24h,
-        (SELECT COUNT(*) FROM fraud_events WHERE event_type = 'scam_message' AND created_at > NOW() - INTERVAL '24 hours')::int AS scam_msgs_24h,
-        (SELECT COUNT(*) FROM fraud_events WHERE event_type IN ('vpn_detected','datacenter_ip') AND created_at > NOW() - INTERVAL '24 hours')::int AS vpn_24h,
-        (SELECT COUNT(*) FROM fraud_events WHERE event_type = 'ban_bypass_attempt' AND created_at > NOW() - INTERVAL '24 hours')::int AS bypass_24h
+        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false)::int                             AS open_alerts,
+        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false AND severity = 'critical')::int   AS critical_alerts,
+        (SELECT COUNT(*) FROM fraud_alerts WHERE resolved = false AND severity = 'high')::int       AS high_alerts,
+        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'critical')::int                     AS critical_users,
+        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'high')::int                         AS high_users,
+        (SELECT COUNT(*) FROM fraud_risk_scores WHERE level = 'medium')::int                       AS medium_users,
+        (SELECT COUNT(*) FROM users WHERE is_flagged = true AND is_banned = false)::int            AS flagged_users,
+        (SELECT COUNT(*) FROM users WHERE is_banned = true)::int                                   AS banned_users,
+        (SELECT COUNT(*) FROM fraud_events WHERE created_at > NOW() - INTERVAL '24 hours')::int    AS events_24h,
+        (SELECT COUNT(*) FROM fraud_events WHERE event_type = 'scam_message'
+          AND created_at > NOW() - INTERVAL '24 hours')::int                                       AS scam_msgs_24h,
+        (SELECT COUNT(*) FROM fraud_events WHERE event_type IN ('vpn_detected','datacenter_ip')
+          AND created_at > NOW() - INTERVAL '24 hours')::int                                       AS vpn_24h,
+        (SELECT COUNT(*) FROM fraud_events WHERE event_type = 'ban_bypass_attempt'
+          AND created_at > NOW() - INTERVAL '24 hours')::int                                       AS bypass_24h
     `);
 
     const recentAlerts = await db.execute(sql`
@@ -99,20 +128,17 @@ router.get("/admin/fraud/dashboard", requireAdmin, async (req, res): Promise<voi
     `);
 
     const topRiskUsers = await db.execute(sql`
-      SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score, frs.behavior_score, frs.payment_score, frs.content_score,
+      SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score,
+             frs.behavior_score, frs.payment_score, frs.content_score,
              u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.created_at AS joined_at
       FROM fraud_risk_scores frs
       JOIN users u ON u.id = frs.user_id
-      WHERE frs.level IN ('critical','high')
+      WHERE frs.level IN ('critical', 'high')
       ORDER BY frs.score DESC
       LIMIT 15
     `);
 
-    res.json({
-      stats: stats as any,
-      recentAlerts,
-      topRiskUsers,
-    });
+    res.json({ stats: stats as any, recentAlerts, topRiskUsers });
   } catch (err) {
     logger.error({ err }, "fraud dashboard error");
     res.status(500).json({ error: "Internal error" });
@@ -121,37 +147,53 @@ router.get("/admin/fraud/dashboard", requireAdmin, async (req, res): Promise<voi
 
 // ─── GET /api/admin/fraud/alerts ──────────────────────────────────────────────
 router.get("/admin/fraud/alerts", requireAdmin, async (req, res): Promise<void> => {
-  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const limit = 30;
+  const page   = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+  const limit  = 30;
   const offset = (page - 1) * limit;
-  const severityFilter = req.query.severity as string | undefined;
-  const resolvedFilter = req.query.resolved === "true";
+  // Validate enum values against whitelists — never interpolate raw user input
+  const severity   = validateSeverity(req.query.severity);
+  const resolved   = req.query.resolved === "true";
 
   try {
-    const whereClause = [
-      `fa.resolved = ${resolvedFilter}`,
-      severityFilter ? `fa.severity = '${severityFilter}'` : null,
-    ].filter(Boolean).join(" AND ");
+    const alerts = await db.execute(
+      severity
+        ? sql`
+            SELECT fa.id, fa.user_id, fa.alert_type, fa.severity, fa.title, fa.description, fa.meta,
+                   fa.resolved, fa.resolved_at, fa.created_at,
+                   u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar,
+                   u.country, u.is_banned, u.is_flagged,
+                   resolver.name AS resolved_by_name
+            FROM fraud_alerts fa
+            JOIN users u ON u.id = fa.user_id
+            LEFT JOIN users resolver ON resolver.id = fa.resolved_by
+            WHERE fa.resolved = ${resolved} AND fa.severity = ${severity}
+            ORDER BY
+              CASE fa.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+              fa.created_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `
+        : sql`
+            SELECT fa.id, fa.user_id, fa.alert_type, fa.severity, fa.title, fa.description, fa.meta,
+                   fa.resolved, fa.resolved_at, fa.created_at,
+                   u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar,
+                   u.country, u.is_banned, u.is_flagged,
+                   resolver.name AS resolved_by_name
+            FROM fraud_alerts fa
+            JOIN users u ON u.id = fa.user_id
+            LEFT JOIN users resolver ON resolver.id = fa.resolved_by
+            WHERE fa.resolved = ${resolved}
+            ORDER BY
+              CASE fa.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+              fa.created_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `
+    );
 
-    const alerts = await db.execute(sql.raw(`
-      SELECT fa.id, fa.user_id, fa.alert_type, fa.severity, fa.title, fa.description, fa.meta,
-             fa.resolved, fa.resolved_at, fa.created_at,
-             u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar,
-             u.country, u.is_banned, u.is_flagged,
-             resolver.name AS resolved_by_name
-      FROM fraud_alerts fa
-      JOIN users u ON u.id = fa.user_id
-      LEFT JOIN users resolver ON resolver.id = fa.resolved_by
-      WHERE ${whereClause}
-      ORDER BY
-        CASE fa.severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
-        fa.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `));
-
-    const [countRow] = await db.execute(sql.raw(`
-      SELECT COUNT(*)::int AS total FROM fraud_alerts fa WHERE ${whereClause}
-    `));
+    const [countRow] = await db.execute(
+      severity
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_alerts WHERE resolved = ${resolved} AND severity = ${severity}`
+        : sql`SELECT COUNT(*)::int AS total FROM fraud_alerts WHERE resolved = ${resolved}`
+    );
 
     res.json({ alerts, total: (countRow as any)?.total ?? 0, page, limit });
   } catch (err) {
@@ -164,9 +206,11 @@ router.get("/admin/fraud/alerts", requireAdmin, async (req, res): Promise<void> 
 router.post("/admin/fraud/alerts/:id/resolve", requireAdmin, async (req, res): Promise<void> => {
   const alertId = parseInt(req.params.id, 10);
   const adminId = req.userId!;
+  if (isNaN(alertId)) { res.status(400).json({ error: "Invalid alert id" }); return; }
   try {
     await db.execute(sql`
-      UPDATE fraud_alerts SET resolved = true, resolved_by = ${adminId}, resolved_at = NOW()
+      UPDATE fraud_alerts
+      SET resolved = true, resolved_by = ${adminId}, resolved_at = NOW()
       WHERE id = ${alertId}
     `);
     res.json({ ok: true });
@@ -177,32 +221,72 @@ router.post("/admin/fraud/alerts/:id/resolve", requireAdmin, async (req, res): P
 
 // ─── GET /api/admin/fraud/users ───────────────────────────────────────────────
 router.get("/admin/fraud/users", requireAdmin, async (req, res): Promise<void> => {
-  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const limit = 25;
+  const page   = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+  const limit  = 25;
   const offset = (page - 1) * limit;
-  const level = req.query.level as string | undefined;
-  const search = req.query.q as string | undefined;
+  // Validated whitelist — never interpolate raw level string
+  const level  = validateLevel(req.query.level);
+  // Search: passed as a SQL parameter, never interpolated as raw SQL
+  const search = typeof req.query.q === "string" && req.query.q.trim().length > 0
+    ? `%${req.query.q.trim()}%`
+    : null;
 
   try {
-    const levelFilter = level ? `AND frs.level = '${level}'` : "AND frs.level IN ('critical','high','medium')";
-    const searchFilter = search ? `AND (u.name ILIKE '%${search.replace(/'/g, "''")}%' OR u.email ILIKE '%${search.replace(/'/g, "''")}%')` : "";
+    const users = await db.execute(
+      level !== null && search !== null
+        ? sql`
+            SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score,
+                   frs.behavior_score, frs.payment_score, frs.content_score, frs.last_computed_at,
+                   u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.is_trusted, u.created_at AS joined_at,
+                   (SELECT COUNT(*)::int FROM fraud_events fe WHERE fe.user_id = u.id) AS event_count,
+                   (SELECT COUNT(*)::int FROM fraud_alerts fa WHERE fa.user_id = u.id AND fa.resolved = false) AS open_alerts
+            FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id
+            WHERE frs.level = ${level} AND (u.name ILIKE ${search} OR u.email ILIKE ${search})
+            ORDER BY frs.score DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : level !== null
+        ? sql`
+            SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score,
+                   frs.behavior_score, frs.payment_score, frs.content_score, frs.last_computed_at,
+                   u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.is_trusted, u.created_at AS joined_at,
+                   (SELECT COUNT(*)::int FROM fraud_events fe WHERE fe.user_id = u.id) AS event_count,
+                   (SELECT COUNT(*)::int FROM fraud_alerts fa WHERE fa.user_id = u.id AND fa.resolved = false) AS open_alerts
+            FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id
+            WHERE frs.level = ${level}
+            ORDER BY frs.score DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : search !== null
+        ? sql`
+            SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score,
+                   frs.behavior_score, frs.payment_score, frs.content_score, frs.last_computed_at,
+                   u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.is_trusted, u.created_at AS joined_at,
+                   (SELECT COUNT(*)::int FROM fraud_events fe WHERE fe.user_id = u.id) AS event_count,
+                   (SELECT COUNT(*)::int FROM fraud_alerts fa WHERE fa.user_id = u.id AND fa.resolved = false) AS open_alerts
+            FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id
+            WHERE frs.level IN ('critical','high','medium') AND (u.name ILIKE ${search} OR u.email ILIKE ${search})
+            ORDER BY frs.score DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : sql`
+            SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score,
+                   frs.behavior_score, frs.payment_score, frs.content_score, frs.last_computed_at,
+                   u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.is_trusted, u.created_at AS joined_at,
+                   (SELECT COUNT(*)::int FROM fraud_events fe WHERE fe.user_id = u.id) AS event_count,
+                   (SELECT COUNT(*)::int FROM fraud_alerts fa WHERE fa.user_id = u.id AND fa.resolved = false) AS open_alerts
+            FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id
+            WHERE frs.level IN ('critical','high','medium')
+            ORDER BY frs.score DESC LIMIT ${limit} OFFSET ${offset}
+          `
+    );
 
-    const users = await db.execute(sql.raw(`
-      SELECT frs.user_id, frs.score, frs.level, frs.device_score, frs.ip_score, frs.behavior_score, frs.payment_score, frs.content_score, frs.last_computed_at,
-             u.name, u.email, u.avatar, u.country, u.is_banned, u.is_flagged, u.is_trusted, u.created_at AS joined_at,
-             (SELECT COUNT(*)::int FROM fraud_events fe WHERE fe.user_id = u.id) AS event_count,
-             (SELECT COUNT(*)::int FROM fraud_alerts fa WHERE fa.user_id = u.id AND fa.resolved = false) AS open_alerts
-      FROM fraud_risk_scores frs
-      JOIN users u ON u.id = frs.user_id
-      WHERE 1=1 ${levelFilter} ${searchFilter}
-      ORDER BY frs.score DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `));
-
-    const [countRow] = await db.execute(sql.raw(`
-      SELECT COUNT(*)::int AS total FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id
-      WHERE 1=1 ${levelFilter} ${searchFilter}
-    `));
+    const [countRow] = await db.execute(
+      level !== null && search !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id WHERE frs.level = ${level} AND (u.name ILIKE ${search} OR u.email ILIKE ${search})`
+        : level !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_risk_scores WHERE level = ${level}`
+        : search !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_risk_scores frs JOIN users u ON u.id = frs.user_id WHERE frs.level IN ('critical','high','medium') AND (u.name ILIKE ${search} OR u.email ILIKE ${search})`
+        : sql`SELECT COUNT(*)::int AS total FROM fraud_risk_scores WHERE level IN ('critical','high','medium')`
+    );
 
     res.json({ users, total: (countRow as any)?.total ?? 0, page, limit });
   } catch (err) {
@@ -214,11 +298,14 @@ router.get("/admin/fraud/users", requireAdmin, async (req, res): Promise<void> =
 // ─── GET /api/admin/fraud/user/:id ────────────────────────────────────────────
 router.get("/admin/fraud/user/:id", requireAdmin, async (req, res): Promise<void> => {
   const userId = parseInt(req.params.id, 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid user id" }); return; }
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-    const [riskScore] = await db.execute(sql`SELECT * FROM fraud_risk_scores WHERE user_id = ${userId}`);
+    const [riskScore] = await db.execute(sql`
+      SELECT * FROM fraud_risk_scores WHERE user_id = ${userId}
+    `);
     const events = await db.execute(sql`
       SELECT * FROM fraud_events WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 50
     `);
@@ -228,19 +315,22 @@ router.get("/admin/fraud/user/:id", requireAdmin, async (req, res): Promise<void
       WHERE fa.user_id = ${userId} ORDER BY fa.created_at DESC LIMIT 30
     `);
     const fingerprints = await db.execute(sql`
-      SELECT * FROM fraud_device_fingerprints WHERE user_id = ${userId} ORDER BY last_seen_at DESC LIMIT 10
+      SELECT * FROM fraud_device_fingerprints WHERE user_id = ${userId}
+      ORDER BY last_seen_at DESC LIMIT 10
     `);
     const ipLogs = await db.execute(sql`
-      SELECT * FROM fraud_ip_logs WHERE user_id = ${userId} ORDER BY created_at DESC LIMIT 20
+      SELECT * FROM fraud_ip_logs WHERE user_id = ${userId}
+      ORDER BY created_at DESC LIMIT 20
     `);
-
-    // Shared IP accounts
+    // Accounts that share an IP address with this user
     const sharedIpUsers = await db.execute(sql`
       SELECT DISTINCT u.id, u.name, u.email, u.is_banned, u.is_flagged, uil.ip
       FROM fraud_ip_logs uil
-      JOIN fraud_ip_logs uil2 ON uil2.ip = uil.ip AND uil2.user_id = ${userId} AND uil2.user_id != uil.user_id
+      JOIN fraud_ip_logs uil2
+        ON uil2.ip = uil.ip
+       AND uil2.user_id = ${userId}
+       AND uil.user_id  != ${userId}
       JOIN users u ON u.id = uil.user_id
-      WHERE uil.user_id != ${userId}
       LIMIT 10
     `);
 
@@ -265,12 +355,16 @@ router.get("/admin/fraud/user/:id", requireAdmin, async (req, res): Promise<void
 
 // ─── POST /api/admin/fraud/user/:id/action ────────────────────────────────────
 router.post("/admin/fraud/user/:id/action", requireAdmin, async (req, res): Promise<void> => {
-  const userId = parseInt(req.params.id, 10);
+  const userId  = parseInt(req.params.id, 10);
   const adminId = req.userId!;
-  const { action, reason } = req.body as { action: string; reason?: string };
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid user id" }); return; }
 
-  const validActions = ["ban", "unban", "flag", "unflag", "trust", "untrust", "kyc_require", "resolve_alerts", "reassess"];
-  if (!validActions.includes(action)) {
+  const { action, reason } = req.body as { action: string; reason?: string };
+  const VALID_ACTIONS = new Set([
+    "ban", "unban", "flag", "unflag", "trust", "untrust",
+    "kyc_require", "resolve_alerts", "reassess",
+  ]);
+  if (!VALID_ACTIONS.has(action)) {
     res.status(400).json({ error: "Invalid action" });
     return;
   }
@@ -279,22 +373,24 @@ router.post("/admin/fraud/user/:id/action", requireAdmin, async (req, res): Prom
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+    const safeReason = typeof reason === "string" ? reason.slice(0, 500) : null;
+
     switch (action) {
       case "ban":
         await db.update(usersTable).set({ isBanned: true, isFlagged: true }).where(eq(usersTable.id, userId));
-        await logFraudEvent(userId, "admin_review", "high", 0, { action: "ban", adminId, reason });
+        await logFraudEvent(userId, "admin_review", "high", 0, { action: "ban", adminId, reason: safeReason });
         break;
       case "unban":
         await db.update(usersTable).set({ isBanned: false }).where(eq(usersTable.id, userId));
-        await logFraudEvent(userId, "admin_review", "low", 0, { action: "unban", adminId, reason });
+        await logFraudEvent(userId, "admin_review", "low", 0, { action: "unban", adminId, reason: safeReason });
         break;
       case "flag":
         await db.update(usersTable).set({ isFlagged: true }).where(eq(usersTable.id, userId));
-        await logFraudEvent(userId, "admin_review", "medium", 0, { action: "flag", adminId, reason });
+        await logFraudEvent(userId, "admin_review", "medium", 0, { action: "flag", adminId, reason: safeReason });
         break;
       case "unflag":
         await db.update(usersTable).set({ isFlagged: false }).where(eq(usersTable.id, userId));
-        await logFraudEvent(userId, "admin_review", "low", 0, { action: "unflag", adminId, reason });
+        await logFraudEvent(userId, "admin_review", "low", 0, { action: "unflag", adminId, reason: safeReason });
         break;
       case "trust":
         await db.update(usersTable).set({ isTrusted: true, isFlagged: false }).where(eq(usersTable.id, userId));
@@ -308,21 +404,25 @@ router.post("/admin/fraud/user/:id/action", requireAdmin, async (req, res): Prom
         await db.update(usersTable).set({ isFlagged: true }).where(eq(usersTable.id, userId));
         await createFraudAlert(userId, "kyc_required_manual", "high",
           "KYC Required — Admin Triggered",
-          `Admin #${adminId} manually triggered KYC for user #${userId}. Reason: ${reason ?? "none"}`,
-          { adminId, reason }
+          `Admin #${adminId} manually triggered KYC for user #${userId}. Reason: ${safeReason ?? "none"}`,
+          { adminId, reason: safeReason }
         );
         break;
       case "resolve_alerts":
         await db.execute(sql`
-          UPDATE fraud_alerts SET resolved = true, resolved_by = ${adminId}, resolved_at = NOW()
+          UPDATE fraud_alerts
+          SET resolved = true, resolved_by = ${adminId}, resolved_at = NOW()
           WHERE user_id = ${userId} AND resolved = false
         `);
         break;
-      case "reassess": {
-        const ip = user.registrationIp ?? "unknown";
-        void assessNewAccount(userId, ip, user.deviceId ?? null, user.country ?? null);
+      case "reassess":
+        void assessNewAccount(
+          userId,
+          user.registrationIp ?? "unknown",
+          user.deviceId ?? null,
+          user.country ?? null,
+        );
         break;
-      }
     }
 
     res.json({ ok: true, action });
@@ -334,28 +434,52 @@ router.post("/admin/fraud/user/:id/action", requireAdmin, async (req, res): Prom
 
 // ─── GET /api/admin/fraud/events ──────────────────────────────────────────────
 router.get("/admin/fraud/events", requireAdmin, async (req, res): Promise<void> => {
-  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
-  const limit = 40;
-  const offset = (page - 1) * limit;
-  const eventType = req.query.type as string | undefined;
-  const severity = req.query.severity as string | undefined;
+  const page      = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+  const limit     = 40;
+  const offset    = (page - 1) * limit;
+  // Validated against whitelists — no raw interpolation
+  const eventType = validateEventType(req.query.type);
+  const severity  = validateSeverity(req.query.severity);
 
   try {
-    const typeFilter = eventType ? `AND fe.event_type = '${eventType}'` : "";
-    const severityFilter = severity ? `AND fe.severity = '${severity}'` : "";
+    const events = await db.execute(
+      eventType !== null && severity !== null
+        ? sql`
+            SELECT fe.*, u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.country, u.is_banned
+            FROM fraud_events fe JOIN users u ON u.id = fe.user_id
+            WHERE fe.event_type = ${eventType} AND fe.severity = ${severity}
+            ORDER BY fe.created_at DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : eventType !== null
+        ? sql`
+            SELECT fe.*, u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.country, u.is_banned
+            FROM fraud_events fe JOIN users u ON u.id = fe.user_id
+            WHERE fe.event_type = ${eventType}
+            ORDER BY fe.created_at DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : severity !== null
+        ? sql`
+            SELECT fe.*, u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.country, u.is_banned
+            FROM fraud_events fe JOIN users u ON u.id = fe.user_id
+            WHERE fe.severity = ${severity}
+            ORDER BY fe.created_at DESC LIMIT ${limit} OFFSET ${offset}
+          `
+        : sql`
+            SELECT fe.*, u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.country, u.is_banned
+            FROM fraud_events fe JOIN users u ON u.id = fe.user_id
+            ORDER BY fe.created_at DESC LIMIT ${limit} OFFSET ${offset}
+          `
+    );
 
-    const events = await db.execute(sql.raw(`
-      SELECT fe.*, u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.country, u.is_banned
-      FROM fraud_events fe
-      JOIN users u ON u.id = fe.user_id
-      WHERE 1=1 ${typeFilter} ${severityFilter}
-      ORDER BY fe.created_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `));
-
-    const [countRow] = await db.execute(sql.raw(`
-      SELECT COUNT(*)::int AS total FROM fraud_events fe WHERE 1=1 ${typeFilter} ${severityFilter}
-    `));
+    const [countRow] = await db.execute(
+      eventType !== null && severity !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_events WHERE event_type = ${eventType} AND severity = ${severity}`
+        : eventType !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_events WHERE event_type = ${eventType}`
+        : severity !== null
+        ? sql`SELECT COUNT(*)::int AS total FROM fraud_events WHERE severity = ${severity}`
+        : sql`SELECT COUNT(*)::int AS total FROM fraud_events`
+    );
 
     res.json({ events, total: (countRow as any)?.total ?? 0, page, limit });
   } catch (err) {
@@ -366,7 +490,9 @@ router.get("/admin/fraud/events", requireAdmin, async (req, res): Promise<void> 
 // ─── GET /api/admin/fraud/rules ───────────────────────────────────────────────
 router.get("/admin/fraud/rules", requireAdmin, async (req, res): Promise<void> => {
   try {
-    const rules = await db.execute(sql`SELECT * FROM fraud_rules ORDER BY country NULLS FIRST, rule_key`);
+    const rules = await db.execute(sql`
+      SELECT * FROM fraud_rules ORDER BY country NULLS FIRST, rule_key
+    `);
     res.json({ rules });
   } catch (err) {
     res.status(500).json({ error: "Internal error" });
@@ -378,14 +504,28 @@ router.post("/admin/fraud/rules", requireAdmin, async (req, res): Promise<void> 
   const { country, ruleKey, ruleValue, description, enabled } = req.body as {
     country?: string; ruleKey: string; ruleValue: string; description?: string; enabled?: boolean;
   };
-  if (!ruleKey || !ruleValue) { res.status(400).json({ error: "ruleKey and ruleValue required" }); return; }
+
+  if (!ruleKey || typeof ruleKey !== "string" || !ruleValue || typeof ruleValue !== "string") {
+    res.status(400).json({ error: "ruleKey and ruleValue required" });
+    return;
+  }
+  // Sanitise: rule keys and values are short identifiers/numbers — enforce length caps
+  const safeKey     = ruleKey.slice(0, 100);
+  const safeValue   = ruleValue.slice(0, 500);
+  const safeCountry = typeof country === "string" ? country.slice(0, 100) : null;
+  const safeDesc    = typeof description === "string" ? description.slice(0, 500) : null;
+  const safeEnabled = typeof enabled === "boolean" ? enabled : true;
+
   try {
     await db.execute(sql`
       INSERT INTO fraud_rules (country, rule_key, rule_value, description, enabled, updated_at)
-      VALUES (${country ?? null}, ${ruleKey}, ${ruleValue}, ${description ?? null}, ${enabled ?? true}, NOW())
-      ON CONFLICT (COALESCE(country,'__global__'), rule_key) DO UPDATE SET
-        rule_value = EXCLUDED.rule_value, description = EXCLUDED.description,
-        enabled = EXCLUDED.enabled, updated_at = NOW()
+      VALUES (${safeCountry}, ${safeKey}, ${safeValue}, ${safeDesc}, ${safeEnabled}, NOW())
+      ON CONFLICT (COALESCE(country, '__global__'), rule_key)
+      DO UPDATE SET
+        rule_value  = EXCLUDED.rule_value,
+        description = EXCLUDED.description,
+        enabled     = EXCLUDED.enabled,
+        updated_at  = NOW()
     `);
     res.json({ ok: true });
   } catch (err) {

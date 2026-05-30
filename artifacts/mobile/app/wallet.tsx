@@ -1,15 +1,18 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -53,6 +56,8 @@ const TX_COLOR: Record<string, string> = {
   transfer: "#3B82F6",
 };
 
+const PRESET_AMOUNTS = [10, 25, 50, 100, 200];
+
 export default function WalletScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -62,6 +67,13 @@ export default function WalletScreen() {
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Stripe Recharge Modal ───────────────────────────────────────────────
+  const [rechargeVisible, setRechargeVisible] = useState(false);
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(25);
+  const [customAmount, setCustomAmount] = useState("");
+  const [recharging, setRecharging] = useState(false);
+  const customInputRef = useRef<TextInput>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -87,6 +99,51 @@ export default function WalletScreen() {
     await fetchData();
     setRefreshing(false);
   }, [fetchData]);
+
+  const getEffectiveAmount = (): number | null => {
+    if (customAmount.trim()) {
+      const v = parseFloat(customAmount.replace(",", "."));
+      return isNaN(v) ? null : v;
+    }
+    return selectedAmount;
+  };
+
+  const handleStripeRecharge = async () => {
+    const amount = getEffectiveAmount();
+    if (!amount || amount < 1) {
+      Alert.alert("Montan pa valid", "Montan minimòm se $1.00 USD");
+      return;
+    }
+    if (amount > 500) {
+      Alert.alert("Montan twò elve", "Montan maksimòm se $500 USD");
+      return;
+    }
+
+    setRecharging(true);
+    try {
+      const data = await request<{ sessionUrl: string }>("/wallet/topup/card/session", {
+        method: "POST",
+        body: JSON.stringify({ amountUsd: amount }),
+      });
+
+      if (!data?.sessionUrl) {
+        Alert.alert("Erè", "Nou pa ka kreye sesyon Stripe. Eseye ankò.");
+        return;
+      }
+
+      setRechargeVisible(false);
+      await Linking.openURL(data.sessionUrl);
+
+      // Refresh wallet after returning from Stripe (slight delay for webhook)
+      setTimeout(() => {
+        fetchData();
+      }, 3000);
+    } catch (err: any) {
+      Alert.alert("Erè rechaj", err?.message ?? "Erè enkoni. Eseye ankò.");
+    } finally {
+      setRecharging(false);
+    }
+  };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -135,20 +192,38 @@ export default function WalletScreen() {
                 </View>
               )}
 
+              {/* ── Stripe Card Recharge Button ── */}
               <Pressable
                 style={styles.rechargeHero}
-                onPress={() => Alert.alert(t("rechargeTitle"), t("rechargeMsg"), [{ text: t("ok") }])}
+                onPress={() => setRechargeVisible(true)}
               >
                 <View style={styles.rechargeHeroLeft}>
                   <View style={styles.rechargeIconCircle}>
-                    <Feather name="plus-circle" size={26} color="#fff" />
+                    <Feather name="credit-card" size={26} color="#fff" />
                   </View>
                   <View>
-                    <Text style={styles.rechargeHeroLabel}>{t("recharge")}</Text>
-                    <Text style={styles.rechargeHeroSub}>MonCash · Stripe · Kòd FM</Text>
+                    <Text style={styles.rechargeHeroLabel}>Recharge ak Kat Kredi</Text>
+                    <Text style={styles.rechargeHeroSub}>Visa · Mastercard · Stripe</Text>
                   </View>
                 </View>
                 <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.8)" />
+              </Pressable>
+
+              {/* ── MonCash / Other Recharge ── */}
+              <Pressable
+                style={[styles.rechargeSecondary, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => Alert.alert(t("rechargeTitle"), t("rechargeMsg"), [{ text: t("ok") }])}
+              >
+                <View style={styles.rechargeHeroLeft}>
+                  <View style={[styles.rechargeIconCircle, { backgroundColor: "#EF4444" }]}>
+                    <Feather name="smartphone" size={22} color="#fff" />
+                  </View>
+                  <View>
+                    <Text style={[styles.rechargeSecondaryLabel, { color: colors.foreground }]}>MonCash · Kòd FM</Text>
+                    <Text style={[styles.rechargeHeroSub, { color: colors.mutedForeground }]}>Recharge lokal Ayiti</Text>
+                  </View>
+                </View>
+                <Feather name="chevron-right" size={20} color={colors.mutedForeground} />
               </Pressable>
 
               <View style={styles.actionsRow}>
@@ -205,6 +280,99 @@ export default function WalletScreen() {
           }}
         />
       )}
+
+      {/* ── Stripe Recharge Modal ── */}
+      <Modal
+        visible={rechargeVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRechargeVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Recharge ak Kat Kredi</Text>
+              <TouchableOpacity onPress={() => setRechargeVisible(false)} style={styles.modalClose}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
+              Chwazi montan ou vle recharge nan pòtfèy FM ou (min $1 · max $500)
+            </Text>
+
+            {/* Preset amounts */}
+            <View style={styles.presetRow}>
+              {PRESET_AMOUNTS.map((amt) => {
+                const active = selectedAmount === amt && !customAmount;
+                return (
+                  <Pressable
+                    key={amt}
+                    style={[
+                      styles.presetBtn,
+                      { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary + "18" : colors.background },
+                    ]}
+                    onPress={() => { setSelectedAmount(amt); setCustomAmount(""); }}
+                  >
+                    <Text style={[styles.presetLabel, { color: active ? colors.primary : colors.foreground }]}>
+                      ${amt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Custom amount */}
+            <View style={[styles.customRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+              <Text style={[styles.customDollar, { color: colors.mutedForeground }]}>$</Text>
+              <TextInput
+                ref={customInputRef}
+                style={[styles.customInput, { color: colors.foreground }]}
+                placeholder="Montan pèsonalize..."
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="decimal-pad"
+                value={customAmount}
+                onChangeText={(v) => { setCustomAmount(v); setSelectedAmount(null); }}
+              />
+            </View>
+
+            {/* Effective amount display */}
+            {(getEffectiveAmount() ?? 0) > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Ou ap recharge:</Text>
+                <Text style={[styles.summaryAmount, { color: colors.primary }]}>
+                  ${(getEffectiveAmount() ?? 0).toFixed(2)} USD
+                </Text>
+              </View>
+            )}
+
+            <Text style={[styles.stripeNote, { color: colors.mutedForeground }]}>
+              🔒 Peman pwoteje pa Stripe. Kòb la ap parèt nan pòtfèy ou imedyatman apre konfirmasyon.
+            </Text>
+
+            <Pressable
+              style={[styles.payBtn, { backgroundColor: colors.primary, opacity: recharging ? 0.7 : 1 }]}
+              onPress={handleStripeRecharge}
+              disabled={recharging}
+            >
+              {recharging ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Feather name="credit-card" size={18} color="#fff" />
+                  <Text style={styles.payBtnLabel}>
+                    Peye ${(getEffectiveAmount() ?? 0).toFixed(2)} ak Stripe
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            <View style={{ height: insets.bottom + 8 }} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -227,8 +395,12 @@ const styles = StyleSheet.create({
   promoValue: { fontSize: 16, color: "#fff", fontFamily: "Inter_700Bold" },
   rechargeHero: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: "#16A34A", borderRadius: 18, padding: 18, marginBottom: 12,
+    backgroundColor: "#16A34A", borderRadius: 18, padding: 18, marginBottom: 10,
     shadowColor: "#16A34A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+  },
+  rechargeSecondary: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1,
   },
   rechargeHeroLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
   rechargeIconCircle: {
@@ -236,6 +408,7 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center",
   },
   rechargeHeroLabel: { fontSize: 17, fontFamily: "Inter_700Bold", color: "#fff" },
+  rechargeSecondaryLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   rechargeHeroSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.75)", marginTop: 2 },
   actionsRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
   actionBtn: { flex: 1, alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
@@ -250,4 +423,24 @@ const styles = StyleSheet.create({
   txNote: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   txDate: { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   txAmount: { fontSize: 16, fontFamily: "Inter_700Bold" },
+  // ── Modal ──
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 12 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", alignSelf: "center", marginBottom: 16 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalClose: { padding: 4 },
+  modalSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 20, lineHeight: 18 },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
+  presetBtn: { borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 10 },
+  presetLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  customRow: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16 },
+  customDollar: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginRight: 6 },
+  customInput: { flex: 1, fontSize: 18, fontFamily: "Inter_500Medium" },
+  summaryRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  summaryLabel: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  summaryAmount: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  stripeNote: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginBottom: 20, lineHeight: 17 },
+  payBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, padding: 16 },
+  payBtnLabel: { fontSize: 16, fontFamily: "Inter_700Bold", color: "#fff" },
 });

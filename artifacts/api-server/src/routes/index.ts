@@ -59,6 +59,7 @@ import driverSelfieRouter from "./driverSelfie";
 import kycRouter from "./kyc";
 import sitemapRouter from "./sitemap";
 import fraudRouter from "./fraud";
+import shippingRouter from "./shipping";
 import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -224,5 +225,6 @@ router.use(driverSelfieRouter);
 router.use(kycRouter);
 router.use(sitemapRouter);
 router.use(fraudRouter);
+router.use(shippingRouter);
 
 export default router;

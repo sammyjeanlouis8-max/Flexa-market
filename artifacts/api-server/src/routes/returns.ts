@@ -10,10 +10,9 @@ import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { returnRequestedSellerEmail, returnStatusBuyerEmail } from "../lib/emailTemplates";
 import { getStripeClient } from "../lib/stripeClient";
+import { getReturnWindowDays } from "../lib/internationalShipping";
 
 const router = Router();
-
-const RETURN_WINDOW_DAYS = 3;
 
 const VALID_REASONS = [
   "not_as_described",
@@ -54,11 +53,16 @@ router.post("/orders/:id/return", requireAuth, async (req, res): Promise<void> =
     res.status(409).json({ error: "Retou pa disponib pou livrezon lokal (Ayiti / RD)" }); return;
   }
 
+  const countryWindow = getReturnWindowDays(tx.listingCountry ?? "");
+  if (countryWindow === 0) {
+    res.status(409).json({ error: `Retou pa disponib pou peyi ${tx.listingCountry ?? "sa a"} — vant final` }); return;
+  }
+
   const releaseDate = tx.escrowReleasedAt ?? tx.deliveredAt ?? tx.buyerConfirmedAt;
   if (!releaseDate) { res.status(409).json({ error: "Kòmand pa livré toujou" }); return; }
   const daysSince = (Date.now() - new Date(releaseDate).getTime()) / 86400000;
-  if (daysSince > RETURN_WINDOW_DAYS) {
-    res.status(409).json({ error: `Delè retou ekspire (limit ${RETURN_WINDOW_DAYS} jou apre livrezon)` }); return;
+  if (daysSince > countryWindow) {
+    res.status(409).json({ error: `Delè retou ekspire (limit ${countryWindow} jou apre livrezon pou ${tx.listingCountry ?? "peyi sa"})` }); return;
   }
 
   const existing = await db.execute(

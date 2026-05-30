@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, promoWalletTable, walletTransactionsTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
+import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
 import { eq, desc, sql, and, gte, ilike, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { requireAdmin } from "../middlewares/auth";
@@ -642,10 +642,16 @@ router.post("/wallet/transfer", requireAuth, async (req, res): Promise<void> => 
     return;
   }
 
-  // ── 5. Sufficient balance check — balanceUsd is SPENDABLE only (security excluded) ──
-  const senderAvailable = Math.max(0, senderWallet.balanceUsd);
+  // ── 5. Sufficient balance check — enforce $1.50 minimum floor ───────────────
+  const MIN_FLOOR = 1.50;
+  const senderAvailable = Math.max(0, senderWallet.balanceUsd - MIN_FLOOR);
   if (senderAvailable < parsedAmount - 0.0001) {
-    res.status(400).json({ error: "Balans ou ensifizan pou fè transfè sa a" });
+    const maxSend = Math.max(0, Math.round(senderAvailable * 100) / 100);
+    res.status(400).json({
+      error: maxSend > 0
+        ? `Ou ka voye $${maxSend.toFixed(2)} sèlman — FlexaMarket rezève $${MIN_FLOOR.toFixed(2)} nan kont ou.`
+        : `Balans ou ensifizan. Ou bezwen plis ke $${MIN_FLOOR.toFixed(2)} pou voye lajan.`,
+    });
     return;
   }
 
@@ -715,6 +721,24 @@ router.post("/wallet/transfer", requireAuth, async (req, res): Promise<void> => 
     note: `Resevwa depi ${senderWallet.accountNumber ?? "unknown"} (apre frè 2%)`,
     paymentRef: `TRF-${receiverWallet.userId}-${Date.now()}`,
   });
+
+  // ── 10b. Record transfer in walletTransfersTable so platform revenue tracks it ──
+  await db.insert(walletTransfersTable).values({
+    fromUserId: req.userId!,
+    toUserId: receiverWallet.userId,
+    amountUsd: parsedAmount,
+    feeUsd,
+    netAmountUsd: netAmount,
+    note: null,
+    status: "completed",
+    dailyFeeCharged: false,
+    dailyFeeDate: null,
+    fromCountry: null,
+    toCountry: null,
+    isInternational: false,
+    internationalFeeRate: null,
+    ipAddress: req.ip ?? null,
+  }).catch(() => {});
 
   // ── 11. Notify receiver ───────────────────────────────────────────────────
   await db.insert(notificationsTable).values({

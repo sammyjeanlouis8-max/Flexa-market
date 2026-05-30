@@ -44,13 +44,12 @@ function assertAgentAppInScope(admin: any, appCountry: string | null): string | 
   return null;
 }
 
-// GET /api/agents/public — list approved agents filtered by user's country
+// GET /api/agents/public — list ALL approved agents; user's country shown first, then by proximity (online → city)
 router.get("/agents/public", requireAuth, async (req, res): Promise<void> => {
-  const userCountry = (req.user as any)?.country;
+  const userCountry = (req.user as any)?.country ?? "";
   const onlineOnly = req.query.onlineOnly === "1";
 
   const conditions: any[] = [eq(agentApplicationsTable.status, "approved")];
-  if (userCountry) conditions.push(eq(agentApplicationsTable.country, userCountry));
   if (onlineOnly) conditions.push(eq(agentApplicationsTable.isOnline as any, true));
 
   const agents = await db
@@ -80,8 +79,13 @@ router.get("/agents/public", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(usersTable, eq(agentApplicationsTable.userId, usersTable.id))
     .leftJoin(promoWalletTable, eq(agentApplicationsTable.userId, promoWalletTable.userId))
     .where(conditions.length > 1 ? and(...conditions) : conditions[0])
-    .orderBy(desc(agentApplicationsTable.isOnline as any), asc(agentApplicationsTable.city))
-    .limit(100);
+    .orderBy(
+      // Same country as user appears first (closest), then other countries
+      sql`CASE WHEN ${agentApplicationsTable.country} = ${userCountry} THEN 0 ELSE 1 END`,
+      desc(agentApplicationsTable.isOnline as any),
+      asc(agentApplicationsTable.city),
+    )
+    .limit(200);
 
   res.json({ agents });
 });

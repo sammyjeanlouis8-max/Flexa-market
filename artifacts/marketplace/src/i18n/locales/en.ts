@@ -1290,7 +1290,7 @@ export default {
     agentPageSubtitle: "Find an authorized agent near you to top up your account in cash",
     agentOnline: "Online",
     agentOffline: "Offline",
-    agentNoAgents: "No agents available in your country at the moment",
+    agentNoAgents: "No agents available at the moment",
     agentNoAgentsHint: "Check back later or use MonCash / Card to top up",
     agentCity: "City",
     agentBusiness: "Business",

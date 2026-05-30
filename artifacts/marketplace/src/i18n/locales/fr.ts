@@ -1290,7 +1290,7 @@ export default {
     agentPageSubtitle: "Trouvez un agent autorisé près de chez vous pour recharger votre compte en espèces",
     agentOnline: "En ligne",
     agentOffline: "Hors ligne",
-    agentNoAgents: "Aucun agent disponible dans votre pays en ce moment",
+    agentNoAgents: "Aucun agent disponible en ce moment",
     agentNoAgentsHint: "Revenez plus tard ou utilisez MonCash / Carte pour recharger",
     agentCity: "Ville",
     agentBusiness: "Commerce",

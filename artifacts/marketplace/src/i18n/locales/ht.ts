@@ -1290,7 +1290,7 @@ export default {
     agentPageSubtitle: "Jwenn yon ajan otorize pre ou pou rechaje kont ou ak lajan kach",
     agentOnline: "Disponib",
     agentOffline: "Pa disponib",
-    agentNoAgents: "Pa gen ajan disponib nan peyi ou pou kounye a",
+    agentNoAgents: "Pa gen ajan disponib pou kounye a",
     agentNoAgentsHint: "Reponn pita oswa itilize MonCash / Kat pou rechaje",
     agentCity: "Vil",
     agentBusiness: "Biznis",

@@ -74,6 +74,10 @@ function RootLayoutNav() {
         name="chat/[id]"
         options={{ headerShown: false, animation: "slide_from_right" }}
       />
+      <Stack.Screen
+        name="language-picker"
+        options={{ headerShown: false, animation: "slide_from_bottom" }}
+      />
     </Stack>
   );
 }

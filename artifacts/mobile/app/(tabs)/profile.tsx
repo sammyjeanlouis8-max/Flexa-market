@@ -126,6 +126,7 @@ export default function ProfileScreen() {
           { icon: "credit-card" as const, label: t("myWallet"), onPress: () => router.push("/wallet") },
           { icon: "shield" as const, label: t("myKyc"), onPress: () => router.push("/kyc") },
           { icon: "star" as const, label: t("myReviews"), onPress: () => {} },
+          { icon: "globe" as const, label: t("sLanguage"), onPress: () => router.push("/language-picker") },
           { icon: "settings" as const, label: t("mySettings"), onPress: () => router.push("/settings") },
         ].map((item, idx, arr) => (
           <TouchableOpacity

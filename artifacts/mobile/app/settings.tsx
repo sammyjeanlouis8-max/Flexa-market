@@ -13,19 +13,15 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { useLanguage, type Lang } from "@/context/LanguageContext";
+import { LANGUAGES, useLanguage } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
-
-const LANG_LABEL: Record<Lang, string> = {
-  ht: "Kreyòl Ayisyen",
-  fr: "Français",
-};
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const { t, lang, setLang } = useLanguage();
+  const { t, lang } = useLanguage();
+  const currentLangLabel = LANGUAGES.find((l) => l.code === lang)?.native ?? lang;
   const [notifEnabled, setNotifEnabled] = useState(true);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -44,18 +40,7 @@ export default function SettingsScreen() {
   }
 
   function handleLanguagePick() {
-    Alert.alert(t("sLanguage"), "", [
-      {
-        text: "Kreyòl Ayisyen",
-        onPress: () => setLang("ht"),
-        style: lang === "ht" ? "default" : "default",
-      },
-      {
-        text: "Français",
-        onPress: () => setLang("fr"),
-      },
-      { text: t("cancel"), style: "cancel" },
-    ]);
+    router.push("/language-picker");
   }
 
   type SettingItem = {
@@ -114,7 +99,7 @@ export default function SettingsScreen() {
         {
           icon: "globe",
           label: t("sLanguage"),
-          sublabel: LANG_LABEL[lang],
+          sublabel: currentLangLabel,
           onPress: handleLanguagePick,
         },
         {

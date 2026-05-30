@@ -2,8 +2,8 @@ import { Server as SocketIOServer } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "./logger";
 import { db } from "@workspace/db";
-import { messagesTable, usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { messagesTable, usersTable, agentApplicationsTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 
 let io: SocketIOServer | null = null;
 
@@ -18,6 +18,13 @@ export function isUserOnline(userId: number): boolean {
 
 export async function setLastSeen(userId: number): Promise<void> {
   await db.update(usersTable).set({ lastSeenAt: new Date() }).where(eq(usersTable.id, userId));
+}
+
+async function setAgentOnlineStatus(userId: number, isOnline: boolean): Promise<void> {
+  await db
+    .update(agentApplicationsTable)
+    .set({ isOnline, lastSeenAt: new Date(), updatedAt: new Date() } as any)
+    .where(and(eq(agentApplicationsTable.userId, userId), eq(agentApplicationsTable.status, "approved")));
 }
 
 export function initSocketServer(httpServer: HttpServer): SocketIOServer {
@@ -37,6 +44,7 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
       if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
       onlineUsers.get(userId)!.add(socket.id);
       setLastSeen(userId).catch(() => {});
+      setAgentOnlineStatus(userId, true).catch(() => {});
       socket.broadcast.emit("presence:status", { userId, isOnline: true });
     });
 
@@ -125,6 +133,7 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
             onlineUsers.delete(userId);
             const lastSeenAt = new Date();
             db.update(usersTable).set({ lastSeenAt }).where(eq(usersTable.id, userId)).catch(() => {});
+            setAgentOnlineStatus(userId, false).catch(() => {});
             if (io) io.emit("presence:status", { userId, isOnline: false, lastSeenAt: lastSeenAt.toISOString() });
           }
         }

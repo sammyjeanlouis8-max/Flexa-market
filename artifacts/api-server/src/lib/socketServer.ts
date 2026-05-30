@@ -44,7 +44,8 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
       if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
       onlineUsers.get(userId)!.add(socket.id);
       setLastSeen(userId).catch(() => {});
-      setAgentOnlineStatus(userId, true).catch(() => {});
+      // Agent availability (isOnline) is controlled ONLY via PATCH /agents/set-online.
+      // Socket connect/disconnect must NOT override the agent's manual toggle.
       socket.broadcast.emit("presence:status", { userId, isOnline: true });
     });
 
@@ -133,7 +134,8 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
             onlineUsers.delete(userId);
             const lastSeenAt = new Date();
             db.update(usersTable).set({ lastSeenAt }).where(eq(usersTable.id, userId)).catch(() => {});
-            setAgentOnlineStatus(userId, false).catch(() => {});
+            // Do NOT call setAgentOnlineStatus(false) here — agent availability
+            // persists through disconnects and is only changed via PATCH /agents/set-online.
             if (io) io.emit("presence:status", { userId, isOnline: false, lastSeenAt: lastSeenAt.toISOString() });
           }
         }

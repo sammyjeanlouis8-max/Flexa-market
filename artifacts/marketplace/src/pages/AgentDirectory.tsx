@@ -51,6 +51,8 @@ interface Agent {
   userName: string | null;
   exchangeRate: number | null;
   exchangeRateDop: number | null;
+  wholesaleRate: number | null;
+  retailRate: number | null;
   saleType: string | null;
 }
 
@@ -146,9 +148,19 @@ function AgentCard({ agent, onChat, chatLoading }: {
         </div>
       </div>
 
-      {(agent.exchangeRate || agent.exchangeRateDop || agent.saleType) && (
+      {(agent.wholesaleRate || agent.retailRate || agent.exchangeRate || agent.exchangeRateDop || agent.saleType) && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {agent.exchangeRate && (
+          {agent.wholesaleRate && (
+            <span className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 rounded-full px-2.5 py-0.5 font-semibold">
+              📦 An Gro: {agent.wholesaleRate.toFixed(1)} HTG/$
+            </span>
+          )}
+          {agent.retailRate && (
+            <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 rounded-full px-2.5 py-0.5 font-semibold">
+              🏪 An Detay: {agent.retailRate.toFixed(1)} HTG/$
+            </span>
+          )}
+          {!agent.wholesaleRate && !agent.retailRate && agent.exchangeRate && (
             <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 rounded-full px-2.5 py-0.5 font-semibold">
               {t("wallet.agentExchangeRate")}: {agent.exchangeRate.toFixed(1)} HTG/$
             </span>

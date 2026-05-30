@@ -62,6 +62,8 @@ router.get("/agents/public", requireAuth, async (req, res): Promise<void> => {
       supportedMethods: sql<string | null>`${agentApplicationsTable}.supported_methods`,
       exchangeRate: sql<number | null>`${agentApplicationsTable}.exchange_rate`,
       exchangeRateDop: sql<number | null>`${agentApplicationsTable}.exchange_rate_dop`,
+      wholesaleRate: sql<number | null>`${agentApplicationsTable}.wholesale_rate`,
+      retailRate: sql<number | null>`${agentApplicationsTable}.retail_rate`,
       saleType: sql<string | null>`${agentApplicationsTable}.sale_type`,
       userAvatar: usersTable.avatar,
       userName: usersTable.name,
@@ -105,10 +107,10 @@ router.patch("/agents/set-online", requireAuth, async (req, res): Promise<void> 
   res.json({ isOnline: !!isOnline });
 });
 
-// PATCH /api/agents/my/profile — agent updates their public profile (exchange rate + sale type)
+// PATCH /api/agents/my/profile — agent updates their public profile (rates + sale type)
 router.patch("/agents/my/profile", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { exchangeRate, exchangeRateDop, saleType } = req.body;
+  const { exchangeRate, exchangeRateDop, wholesaleRate, retailRate, saleType } = req.body;
 
   const [app] = await db
     .select()
@@ -127,6 +129,14 @@ router.patch("/agents/my/profile", requireAuth, async (req, res): Promise<void> 
   if (exchangeRateDop !== undefined) {
     const rate = parseFloat(String(exchangeRateDop));
     updates.exchangeRateDop = isNaN(rate) ? null : rate;
+  }
+  if (wholesaleRate !== undefined) {
+    const rate = parseFloat(String(wholesaleRate));
+    updates.wholesaleRate = isNaN(rate) ? null : rate;
+  }
+  if (retailRate !== undefined) {
+    const rate = parseFloat(String(retailRate));
+    updates.retailRate = isNaN(rate) ? null : rate;
   }
   if (saleType !== undefined) {
     if (["wholesale", "retail", "both"].includes(String(saleType))) {

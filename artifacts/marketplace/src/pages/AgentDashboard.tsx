@@ -95,7 +95,8 @@ export default function AgentDashboard() {
   const [cardResult, setCardResult] = useState<{ codes: string[]; amountUsd: number; totalCost: number; batchId: string } | null>(null);
   const [showCardHistory, setShowCardHistory] = useState(false);
 
-  const [rateInput, setRateInput] = useState("");
+  const [wholesaleRateInput, setWholesaleRateInput] = useState("");
+  const [retailRateInput, setRetailRateInput] = useState("");
   const [rateDopInput, setRateDopInput] = useState("");
   const [saleTypeInput, setSaleTypeInput] = useState<"wholesale" | "retail" | "both">("both");
 
@@ -146,7 +147,9 @@ export default function AgentDashboard() {
   useEffect(() => {
     if (myAgentData?.application) {
       const app = myAgentData.application;
-      if (app.exchangeRate != null) setRateInput(String(app.exchangeRate));
+      if (app.wholesaleRate != null) setWholesaleRateInput(String(app.wholesaleRate));
+      else if (app.exchangeRate != null) setWholesaleRateInput(String(app.exchangeRate));
+      if (app.retailRate != null) setRetailRateInput(String(app.retailRate));
       if (app.exchangeRateDop != null) setRateDopInput(String(app.exchangeRateDop));
       if (app.saleType) setSaleTypeInput(app.saleType as "wholesale" | "retail" | "both");
     }
@@ -155,8 +158,8 @@ export default function AgentDashboard() {
   const isOnline: boolean = !!(myAgentData?.application?.isOnline);
 
   const profileMut = useMutation({
-    mutationFn: ({ exchangeRate, exchangeRateDop, saleType }: { exchangeRate: number | null; exchangeRateDop: number | null; saleType: string }) =>
-      apiFetch("/agents/my/profile", "PATCH", { exchangeRate, exchangeRateDop, saleType }),
+    mutationFn: ({ wholesaleRate, retailRate, exchangeRateDop, saleType }: { wholesaleRate: number | null; retailRate: number | null; exchangeRateDop: number | null; saleType: string }) =>
+      apiFetch("/agents/my/profile", "PATCH", { wholesaleRate, retailRate, exchangeRateDop, saleType }),
     onSuccess: () => {
       refetchAgent();
       toast({ title: t("agentDashboard.profileSaved") });
@@ -343,17 +346,30 @@ export default function AgentDashboard() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateLabel")}</label>
+              <label className="text-xs text-muted-foreground font-medium">📦 Taux an Gro (HTG/$)</label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="ex: 132.5"
-                value={rateInput}
-                onChange={(e) => setRateInput(e.target.value)}
+                placeholder="ex: 128.0"
+                value={wholesaleRateInput}
+                onChange={(e) => setWholesaleRateInput(e.target.value)}
                 className="h-9 text-sm"
               />
-              <p className="text-[10px] text-violet-400 font-semibold">HTG / $</p>
+              <p className="text-[10px] text-emerald-400 font-semibold">An Gro — HTG / $</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground font-medium">🏪 Taux an Detay (HTG/$)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="ex: 133.5"
+                value={retailRateInput}
+                onChange={(e) => setRetailRateInput(e.target.value)}
+                className="h-9 text-sm"
+              />
+              <p className="text-[10px] text-violet-400 font-semibold">An Detay — HTG / $</p>
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateDopLabel")}</label>
@@ -393,7 +409,8 @@ export default function AgentDashboard() {
             size="sm"
             disabled={profileMut.isPending}
             onClick={() => profileMut.mutate({
-              exchangeRate: rateInput ? parseFloat(rateInput) : null,
+              wholesaleRate: wholesaleRateInput ? parseFloat(wholesaleRateInput) : null,
+              retailRate: retailRateInput ? parseFloat(retailRateInput) : null,
               exchangeRateDop: rateDopInput ? parseFloat(rateDopInput) : null,
               saleType: saleTypeInput,
             })}

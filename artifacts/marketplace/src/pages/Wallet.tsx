@@ -655,6 +655,7 @@ export default function WalletPage() {
   const isDeliveryCountry = isHaiti || user?.country === "Dominican Republic";
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin" || user?.role === "super_admin");
   const isSuperAdmin = !!(user?.isSuperAdmin || user?.role === "super_admin");
+  const isApprovedAgent = !!(user?.role === "agent" || isAdmin);
   const [selectedTopupMethod, setSelectedTopupMethod] = useState<"card" | "agents" | "crypto">("card");
 
   // ── Platform revenue card (super admin only) ─────────────────────────────
@@ -3174,6 +3175,33 @@ export default function WalletPage() {
           <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
       </button>
+
+      {/* ── Panel Ajan Otorize (ajan ki déjà apwouve) ───────────────────────── */}
+      {isApprovedAgent && (
+        <button
+          type="button"
+          onClick={() => setLocation("/agent")}
+          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 p-[1.5px] shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
+        >
+          <div className="relative rounded-2xl bg-gradient-to-br from-emerald-500/95 via-teal-600 to-cyan-700 px-4 py-4 flex items-center gap-4 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+            <div className="relative w-12 h-12 rounded-xl bg-white/15 ring-2 ring-white/25 flex items-center justify-center shrink-0">
+              <ShieldCheck className="h-6 w-6 text-white" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
+                <span className="text-[8px] font-black text-yellow-900">✓</span>
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <p className="text-sm font-bold text-white leading-tight">Panel Ajan Mwen</p>
+                <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">Otorize</span>
+              </div>
+              <p className="text-xs text-emerald-100 leading-snug">Modifye taux an gro, taux an detay, estati, ak profil ou</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+          </div>
+        </button>
+      )}
 
       {/* ── Aplike pou Ajan Otorize ─────────────────────────────────────────── */}
       <button

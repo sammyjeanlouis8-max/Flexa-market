@@ -27,6 +27,21 @@ function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
 }
 
+function getReturnDays(country: string | null | undefined): number {
+  const map: Record<string, number> = {
+    "USA": 30, "Canada": 30, "Australia": 30,
+    "United Kingdom": 14, "France": 14, "Germany": 14, "Italy": 14,
+    "Netherlands": 14, "Belgium": 14, "Portugal": 14, "Switzerland": 14,
+    "Sweden": 14, "Norway": 14, "Japan": 14, "South Korea": 14,
+    "Brazil": 14, "Mexico": 14, "Colombia": 14, "Chile": 14, "South Africa": 14,
+    "Jamaica": 7, "Trinidad and Tobago": 7, "Barbados": 7,
+    "Bahamas": 7, "Puerto Rico": 7, "Haiti": 3, "Dominican Republic": 3,
+    "Nigeria": 7, "Ghana": 7, "Kenya": 7, "Senegal": 7,
+    "Philippines": 7, "India": 7, "United Arab Emirates": 7, "Saudi Arabia": 7,
+  };
+  return map[country ?? ""] ?? 14;
+}
+
 // Weight-based carrier rate estimates (USD). Uses billableWeight = max(actual, DIM).
 function calcCarrierRate(carrier: string, lbs: number): number {
   type Tier = [number, number];
@@ -1409,6 +1424,56 @@ export default function ListingDetail() {
             <span>{t("listing.postedOn")} {new Date(listing.createdAt).toLocaleDateString()}</span>
           </div>
         </div>
+
+        {/* ── DELIVERY & RETURN POLICY ── */}
+        {country && (
+          <div className="px-4 pb-4">
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-2.5">
+              <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">Livrezon &amp; Retou</h2>
+
+              {/* Return guarantee */}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200/60 dark:border-green-800/40">
+                <span className="text-xl mt-0.5">↩️</span>
+                <div>
+                  <p className="text-sm font-bold text-green-800 dark:text-green-300">
+                    {getReturnDays(country)} jou retou garanti
+                  </p>
+                  <p className="text-xs text-green-700/80 dark:text-green-400/80 mt-0.5">
+                    Si pwodwi a pa kòrèk jan yo dekri l, ou ka retounen l gratis
+                  </p>
+                </div>
+              </div>
+
+              {/* Delivery */}
+              {isHaitiListingCountry ? (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40">
+                  <span className="text-xl mt-0.5">🚗</span>
+                  <div>
+                    <p className="text-sm font-bold text-blue-800 dark:text-blue-300">Livrezon pa chofè FlexaMarket</p>
+                    <p className="text-xs text-blue-700/80 dark:text-blue-400/80 mt-0.5">Traking an tan reyèl · Konfirmasyon pa kòd sekrè</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40">
+                  <span className="text-xl mt-0.5">📦</span>
+                  <div>
+                    <p className="text-sm font-bold text-blue-800 dark:text-blue-300">Livrezon lokal disponib</p>
+                    <p className="text-xs text-blue-700/80 dark:text-blue-400/80 mt-0.5">USPS · DHL · FedEx · UPS · ak transpòtè lokal nan peyi ou</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Escrow protection */}
+              <div className="flex items-start gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-950/20 border border-violet-200/60 dark:border-violet-800/40">
+                <span className="text-xl mt-0.5">🔒</span>
+                <div>
+                  <p className="text-sm font-bold text-violet-800 dark:text-violet-300">Peman pwoteje (Escrow)</p>
+                  <p className="text-xs text-violet-700/80 dark:text-violet-400/80 mt-0.5">Lajan ou kenbe jiskaske ou konfime ou resevwa pwodwi a</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── OWNER ACTIONS ── */}
         {isOwner && (

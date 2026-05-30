@@ -2,11 +2,12 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -21,6 +22,21 @@ import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguageContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+function getReturnDays(country: string | null | undefined): number {
+  const map: Record<string, number> = {
+    "USA": 30, "Canada": 30, "Australia": 30,
+    "United Kingdom": 14, "France": 14, "Germany": 14, "Italy": 14,
+    "Netherlands": 14, "Belgium": 14, "Portugal": 14, "Switzerland": 14,
+    "Sweden": 14, "Norway": 14, "Japan": 14, "South Korea": 14,
+    "Brazil": 14, "Mexico": 14, "Colombia": 14, "Chile": 14, "South Africa": 14,
+    "Jamaica": 7, "Trinidad and Tobago": 7, "Barbados": 7,
+    "Bahamas": 7, "Puerto Rico": 7, "Haiti": 3, "Dominican Republic": 3,
+    "Nigeria": 7, "Ghana": 7, "Kenya": 7, "Senegal": 7,
+    "Philippines": 7, "India": 7, "United Arab Emirates": 7, "Saudi Arabia": 7,
+  };
+  return map[country ?? ""] ?? 14;
+}
 
 const CONDITION_COLORS: Record<string, string> = {
   new: "#22C55E",
@@ -57,7 +73,10 @@ export default function ListingDetailScreen() {
   }
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
-  const conditionColor = CONDITION_COLORS[listing?.condition?.toLowerCase() ?? ""] ?? colors.mutedForeground;
+  const conditionColor  = CONDITION_COLORS[listing?.condition?.toLowerCase() ?? ""] ?? colors.mutedForeground;
+  const listingCountry  = (listing as any)?.country as string | null | undefined;
+  const isLocalDelivery = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
+  const returnDays      = getReturnDays(listingCountry);
 
   if (loading) {
     return (
@@ -167,6 +186,41 @@ export default function ListingDetailScreen() {
             </View>
           ) : null}
 
+          {/* ── Livrezon & Retou ── */}
+          {listingCountry && (
+            <View style={[styles.policySection, { borderTopColor: colors.border }]}>
+              <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>LIVREZON &amp; RETOU</Text>
+
+              <View style={[styles.policyCard, { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }]}>
+                <Text style={styles.policyIcon}>↩️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.policyTitle, { color: "#166534" }]}>{returnDays} jou retou garanti</Text>
+                  <Text style={[styles.policyDesc, { color: "#15803D" }]}>Si pa kòrèk jan yo dekri l, retounen l gratis</Text>
+                </View>
+              </View>
+
+              <View style={[styles.policyCard, { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE" }]}>
+                <Text style={styles.policyIcon}>{isLocalDelivery ? "🚗" : "📦"}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.policyTitle, { color: "#1E3A8A" }]}>
+                    {isLocalDelivery ? "Chofè FlexaMarket" : "USPS · DHL · FedEx · UPS"}
+                  </Text>
+                  <Text style={[styles.policyDesc, { color: "#1D4ED8" }]}>
+                    {isLocalDelivery ? "Traking an tan reyèl · Kòd konfirmasyon" : "Transpòtè lokal ak traking"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.policyCard, { backgroundColor: "#FAF5FF", borderColor: "#E9D5FF" }]}>
+                <Text style={styles.policyIcon}>🔒</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.policyTitle, { color: "#6B21A8" }]}>Peman pwoteje (Escrow)</Text>
+                  <Text style={[styles.policyDesc, { color: "#7E22CE" }]}>Lajan ou lib sèlman apre ou konfime resepsyon</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
           {seller && (
             <View style={[styles.sellerSection, { borderTopColor: colors.border }]}>
               <Text style={[styles.sellerLabel, { color: colors.foreground }]}>{t("seller")}</Text>
@@ -237,6 +291,12 @@ const styles = StyleSheet.create({
   descSection: { gap: 8 },
   descLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   descText: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  policySection: { borderTopWidth: 1, paddingTop: 16, gap: 8 },
+  sectionLabel:  { fontSize: 10, fontFamily: "Inter_700Bold", letterSpacing: 1.5, marginBottom: 4 },
+  policyCard:    { flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  policyIcon:    { fontSize: 22 },
+  policyTitle:   { fontSize: 13, fontFamily: "Inter_700Bold" },
+  policyDesc:    { fontSize: 11, fontFamily: "Inter_400Regular", marginTop: 2 },
   sellerSection: { borderTopWidth: 1, paddingTop: 16, gap: 12 },
   sellerLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   sellerRow: { flexDirection: "row", alignItems: "center", gap: 12 },

@@ -141,7 +141,7 @@ export default function OrdersScreen() {
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.card, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.85 : 1 }]}
-              onPress={() => item.listingId && router.push({ pathname: "/listing/[id]", params: { id: item.listingId } })}
+              onPress={() => router.push({ pathname: "/orders/[id]", params: { id: String(item.id) } })}
             >
               <View style={styles.cardTop}>
                 <View style={[styles.iconBox, { backgroundColor: colors.muted }]}>

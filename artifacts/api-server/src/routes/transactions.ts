@@ -1435,12 +1435,16 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
       ))
       .then(r => r[0]),
 
-    // Vendor subscription revenue
+    // Vendor subscription revenue (wallet-pay, manual renewal, auto-renewal, Stripe webhook)
     db.select({
       total: sql<number>`coalesce(sum(abs(${walletTransactionsTable.amountUsd})),0)::float`,
       count: sql<number>`count(*)::int`,
     }).from(walletTransactionsTable)
-      .where(and(eq(walletTransactionsTable.type, "vendor_subscription"), eq(walletTransactionsTable.status, "completed"), walletSince))
+      .where(and(
+        sql`${walletTransactionsTable.type} IN ('vendor_subscription','promo_subscription_debit')`,
+        eq(walletTransactionsTable.status, "completed"),
+        walletSince,
+      ))
       .then(r => r[0]),
 
     // P2P transfer daily access fees ($3/day per sender)
@@ -1596,11 +1600,11 @@ router.get("/admin/platform-revenue/monthly", requireSuperAdmin, async (req, res
       GROUP BY mo ORDER BY mo
     `).then(r => r.rows as { mo: string; total: number }[]),
 
-    // Subscriptions
+    // Subscriptions (wallet-pay, manual renewal, auto-renewal, promo portion)
     db.execute(sql`
       SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(abs(amount_usd)),0)::float AS total
       FROM wallet_transactions
-      WHERE type = 'vendor_subscription' AND status = 'completed'
+      WHERE type IN ('vendor_subscription','promo_subscription_debit') AND status = 'completed'
         AND EXTRACT(YEAR FROM created_at) = ${year}
       GROUP BY mo ORDER BY mo
     `).then(r => r.rows as { mo: string; total: number }[]),

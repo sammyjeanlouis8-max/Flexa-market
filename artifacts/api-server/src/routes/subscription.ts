@@ -202,7 +202,7 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
       userId,
       config.priceUsd,
       `Abònman ${config.name} — 1 mwa`,
-      "boost_debit",
+      "vendor_subscription",
       userId,
     );
     if (!deduction.ok) {
@@ -386,7 +386,7 @@ router.post("/subscription/wallet-retry", requireAuth, async (req: any, res: any
       userId,
       config.priceUsd,
       `Renouvèlman manyèl abònman ${config.name}`,
-      "boost_debit",
+      "vendor_subscription",
       userId,
     );
 
@@ -748,7 +748,7 @@ export async function runSubscriptionExpiryJob(): Promise<void> {
           sub.userId,
           config.priceUsd,
           `Renouvèlman abònman ${config.name} — mwa`,
-          "boost_debit",
+          "vendor_subscription",
           sub.userId,
         );
         renewed = result.ok;

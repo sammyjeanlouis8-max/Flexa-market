@@ -315,7 +315,9 @@ export async function deductWalletHybrid(
     if (updatedPromo.length === 0) {
       return { ok: false, error: "Balans promo pa ase (race condition)", promoBalance: promoAvail, realBalance: realAvail };
     }
-    const promoTxType = txType === "purchase_debit" ? "promo_purchase_debit" : "promo_boost_debit";
+    const promoTxType = txType === "purchase_debit" ? "promo_purchase_debit"
+      : txType === "vendor_subscription" ? "promo_subscription_debit"
+      : "promo_boost_debit";
     await db.insert(walletTransactionsTable).values({
       userId, type: promoTxType, amountUsd: -promoUsed, status: "completed", note: `[Promo] ${note}`,
     });

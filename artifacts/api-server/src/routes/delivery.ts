@@ -887,6 +887,7 @@ router.get("/delivery/my", requireAuth, async (req, res): Promise<void> => {
       acceptedAt: deliveriesTable.acceptedAt,
       pickedUpAt: deliveriesTable.pickedUpAt,
       deliveredAt: deliveriesTable.deliveredAt,
+      arrivedAt: deliveriesTable.arrivedAt,
       buyerAbsentAt: deliveriesTable.buyerAbsentAt,
       buyerRescheduleDeadline: deliveriesTable.buyerRescheduleDeadline,
       rescheduleCount: deliveriesTable.rescheduleCount,
@@ -1006,6 +1007,7 @@ router.patch("/delivery/:id/status", requireAuth, async (req, res): Promise<void
   };
 
   if (status === "picked_up") updates.pickedUpAt = now;
+  if (status === "arrived") (updates as any).arrivedAt = now;
   if (status === "delivered") {
     updates.deliveredAt = now;
     updates.paymentHeldUntil = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -1252,6 +1254,22 @@ router.post("/delivery/:id/report-buyer-absent", requireAuth, async (req, res): 
     return;
   }
 
+  // Driver must wait 20 minutes at buyer's location before reporting absent
+  const ARRIVED_WAIT_MINUTES = 20;
+  const arrivedAt = (delivery as any).arrivedAt ? new Date((delivery as any).arrivedAt) : null;
+  if (arrivedAt) {
+    const waitUntil = new Date(arrivedAt.getTime() + ARRIVED_WAIT_MINUTES * 60 * 1000);
+    const nowCheck = new Date();
+    if (nowCheck < waitUntil) {
+      const remainMin = Math.ceil((waitUntil.getTime() - nowCheck.getTime()) / 60000);
+      res.status(429).json({
+        error: `Ou dwe tann ${remainMin} minit ankò apre ou rive avan ou ka rapòte kliyan absan.`,
+        waitUntil: waitUntil.toISOString(),
+      });
+      return;
+    }
+  }
+
   const BUYER_ABSENT_GRACE_HOURS = 2;
   const now = new Date();
   const deadline = new Date(now.getTime() + BUYER_ABSENT_GRACE_HOURS * 3600 * 1000);
@@ -1375,10 +1393,10 @@ router.post("/delivery/:id/reschedule", requireAuth, async (req, res): Promise<v
   res.json({ ok: true, message: "Reskèd konfime. Chofè a ap retounen ba ou." });
 });
 
-// POST /api/delivery/:id/driver-return — driver manually initiates return after 15-min cooldown
+// POST /api/delivery/:id/driver-return — driver manually initiates return after 20-min cooldown
 // Rules:
 //   • Status must be buyer_absent
-//   • Must wait 15 minutes after buyerAbsentAt (give buyer a chance to arrive)
+//   • Must wait 20 minutes after buyerAbsentAt (give buyer a chance to arrive)
 //   • Credits driver 2× earnings (original trip + return trip)
 //   • Refunds buyer: max(0, tx.amount − feeUsd) — deducts return delivery fee from escrow
 //   • Seller is notified that buyer must pay re-delivery fee via FM transfer to get item back
@@ -1394,7 +1412,7 @@ router.post("/delivery/:id/driver-return", requireAuth, async (req, res): Promis
     res.status(400).json({ error: "Retou sèlman posib si status = buyer_absent." }); return;
   }
 
-  const RETURN_COOLDOWN_MINUTES = 15;
+  const RETURN_COOLDOWN_MINUTES = 20;
   const absentAt = delivery.buyerAbsentAt ? new Date(delivery.buyerAbsentAt) : null;
   if (!absentAt) { res.status(400).json({ error: "buyerAbsentAt pa defini." }); return; }
 

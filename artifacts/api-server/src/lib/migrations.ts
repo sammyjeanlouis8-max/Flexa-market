@@ -1541,6 +1541,10 @@ export async function runStartupMigrations(): Promise<void> {
   },
   // ── Buyer-absent delivery flow ────────────────────────────────────────────
   {
+    name: "deliveries.arrived_at",
+    sql: `ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS arrived_at timestamptz`,
+  },
+  {
     name: "deliveries.buyer_absent_at",
     sql: `ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS buyer_absent_at timestamptz`,
   },

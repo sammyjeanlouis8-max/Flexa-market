@@ -82,6 +82,7 @@ interface ActiveDelivery {
   holdAmountUsd?: number | null;
   returnCode?: string | null;
   returnFeeUsd?: number | null;
+  arrivedAt?: string | null;
   failedPickupAt?: string | null;
   buyerAbsentAt?: string | null;
   buyerRescheduleDeadline?: string | null;
@@ -602,12 +603,35 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
     return () => clearInterval(interval);
   }, [delivery.status, delivery.buyerRescheduleDeadline]);
 
-  // 15-minute return cooldown — driver must wait before initiating return
+  // 20-minute arrived window — driver must wait before reporting absent
+  const [arrivedCountdown, setArrivedCountdown] = useState<string>("");
+  const [arrivedWaitAllowed, setArrivedWaitAllowed] = useState(false);
+  useEffect(() => {
+    if (delivery.status !== "arrived" || !delivery.arrivedAt) {
+      setArrivedWaitAllowed(!delivery.arrivedAt); // if no arrivedAt, allow immediately
+      return;
+    }
+    const WAIT_MS = 20 * 60 * 1000;
+    const check = () => {
+      const elapsed = Date.now() - new Date(delivery.arrivedAt!).getTime();
+      const remaining = WAIT_MS - elapsed;
+      if (remaining <= 0) { setArrivedWaitAllowed(true); setArrivedCountdown(""); return; }
+      setArrivedWaitAllowed(false);
+      const m = Math.floor(remaining / 60000);
+      const s = Math.floor((remaining % 60000) / 1000);
+      setArrivedCountdown(`${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+    };
+    check();
+    const interval = setInterval(check, 1000);
+    return () => clearInterval(interval);
+  }, [delivery.status, delivery.arrivedAt]);
+
+  // 20-minute return cooldown — driver must wait after reporting absent before initiating return
   const [returnCooldown, setReturnCooldown] = useState<string>("");
   const [returnAllowed, setReturnAllowed] = useState(false);
   useEffect(() => {
     if (delivery.status !== "buyer_absent" || !delivery.buyerAbsentAt) return;
-    const COOLDOWN_MS = 15 * 60 * 1000;
+    const COOLDOWN_MS = 20 * 60 * 1000;
     const check = () => {
       const elapsed = Date.now() - new Date(delivery.buyerAbsentAt!).getTime();
       const remaining = COOLDOWN_MS - elapsed;
@@ -615,7 +639,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
       setReturnAllowed(false);
       const m = Math.floor(remaining / 60000);
       const s = Math.floor((remaining % 60000) / 1000);
-      setReturnCooldown(`${m}m ${s.toString().padStart(2, "0")}s`);
+      setReturnCooldown(`${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
     };
     check();
     const interval = setInterval(check, 1000);
@@ -1035,7 +1059,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-center">
               <p className="text-xs font-black text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-2">⏳ Achtè Pa Disponib</p>
               <p className="text-xs text-amber-600 dark:text-amber-400 leading-relaxed mb-3">
-                SMS + notifikasyon voye. Achtè a gen 2h pou reskède. Ou ka tann oswa fè retou apre 15 minit.
+                SMS + notifikasyon voye. Achtè a gen 2h pou reskède. Ou ka tann oswa fè retou apre 20 minit.
               </p>
               {countdown && (
                 <div className="inline-flex items-center gap-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl px-4 py-2">
@@ -1051,9 +1075,9 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
               /* Cooldown: button greyed with countdown */
               <div className="rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 px-4 py-4 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">⏱ Bouton Retou Aktive Nan</p>
-                <p className="text-2xl font-black text-slate-700 dark:text-slate-300 tabular-nums">{returnCooldown || "15:00"}</p>
+                <p className="text-2xl font-black text-slate-700 dark:text-slate-300 tabular-nums">{returnCooldown || "20:00"}</p>
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Ba achtè a chans pou rive. Apre 15 min, bouton retou a ap aktive.
+                  Ba achtè a chans pou rive. Apre 20 min, bouton retou a ap aktive.
                 </p>
               </div>
             ) : (
@@ -1160,22 +1184,47 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
           </div>
 
         ) : isArrived ? (
-          /* ── Screen 2: arrived, show "Antre kòd konfimasyon" button ── */
+          /* ── Screen 2: arrived — 20-min client window + "Kliyan Prezan" flow ── */
           <div className="space-y-3">
-            {/* Aksyon pwochen banner */}
-            <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl px-4 py-3">
-              <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0 mt-0.5">
-                <Navigation className="h-4 w-4 text-blue-700 dark:text-blue-400" />
-              </div>
-              <div>
-                <p className="font-black text-xs text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-0.5">Aksyon pwochen</p>
-                <p className="text-xs text-blue-700/80 dark:text-blue-500 leading-relaxed">
-                  Mande kliyan an pou li ba ou kòd konfimasyon an pou w ka konfime livrezon an.
+
+            {/* ── 20-minute countdown banner ── */}
+            {delivery.arrivedAt ? (
+              <div className={`rounded-2xl p-4 text-center ${arrivedWaitAllowed
+                ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+                : "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"}`}>
+                <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${arrivedWaitAllowed
+                  ? "text-red-700 dark:text-red-400"
+                  : "text-amber-700 dark:text-amber-400"}`}>
+                  {arrivedWaitAllowed ? "⏰ Delè 20 min ekspire" : "⏳ Tann Kliyan — Kronomèt"}
+                </p>
+                {!arrivedWaitAllowed && arrivedCountdown && (
+                  <div className="inline-flex items-center gap-3 bg-amber-100 dark:bg-amber-900/50 rounded-2xl px-6 py-3 mb-2">
+                    <Clock className="h-6 w-6 text-amber-700 dark:text-amber-400 shrink-0" />
+                    <span className="font-black text-4xl text-amber-800 dark:text-amber-200 tabular-nums tracking-widest">{arrivedCountdown}</span>
+                  </div>
+                )}
+                <p className={`text-xs leading-relaxed ${arrivedWaitAllowed
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-amber-600 dark:text-amber-500"}`}>
+                  {arrivedWaitAllowed
+                    ? "Kliyan pa rive nan 20 minit. Ou ka rapòte li absan kounye a."
+                    : "Ba kliyan an 20 minit pou rive. Si li prezan, klike bouton vèt la anba a."}
                 </p>
               </div>
-            </div>
+            ) : (
+              /* No arrivedAt yet — simple instruction */
+              <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl px-4 py-3">
+                <Navigation className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-black text-xs text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-0.5">Ou rive kote kliyan an</p>
+                  <p className="text-xs text-blue-700/80 dark:text-blue-500 leading-relaxed">
+                    Mande kliyan an pou li ba ou kòd konfimasyon an.
+                  </p>
+                </div>
+              </div>
+            )}
 
-            {/* Delivery photo — taken at buyer's door before confirming */}
+            {/* ── Delivery photo ── */}
             <input
               ref={dropoffInputRef}
               type="file"
@@ -1204,24 +1253,35 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
               </Button>
             )}
 
+            {/* ── PRIMARY: Kliyan Prezan button (always active) ── */}
             <Button
-              className="w-full rounded-2xl py-5 font-black text-base bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/25"
+              className="w-full rounded-2xl py-5 font-black text-lg bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2"
               onClick={() => { setDigits(Array(6).fill("")); setShowCodeEntry(true); }}
             >
-              Antre kòd konfimasyon
+              <CheckCircle className="h-6 w-6 shrink-0" />
+              Kliyan Prezan — Antre Kòd
             </Button>
 
-            <Button
-              variant="outline"
-              className="w-full rounded-2xl py-3 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-bold"
-              onClick={handleReportBuyerAbsent}
-              disabled={reportingAbsent || updating}
-            >
-              {reportingAbsent
-                ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                : <AlertCircle className="h-4 w-4 mr-2" />}
-              Achtè Pa Disponib
-            </Button>
+            {/* ── SECONDARY: Absent button — locked until 20-min timer expires ── */}
+            {arrivedWaitAllowed || !delivery.arrivedAt ? (
+              <Button
+                variant="outline"
+                className="w-full rounded-2xl py-3 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-bold"
+                onClick={handleReportBuyerAbsent}
+                disabled={reportingAbsent || updating}
+              >
+                {reportingAbsent
+                  ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  : <AlertCircle className="h-4 w-4 mr-2" />}
+                Kliyan Pa Prezan
+              </Button>
+            ) : (
+              /* Locked — show countdown in button */
+              <div className="w-full rounded-2xl py-3 px-4 border-2 border-dashed border-slate-300 dark:border-slate-700 text-center opacity-70 cursor-not-allowed">
+                <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest">🔒 Rapòte Absan Aktive Nan</p>
+                <p className="text-xl font-black text-slate-600 dark:text-slate-400 tabular-nums mt-0.5">{arrivedCountdown}</p>
+              </div>
+            )}
           </div>
 
         ) : isBeforeArrived ? (

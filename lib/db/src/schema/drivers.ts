@@ -156,6 +156,7 @@ export const deliveriesTable = pgTable("deliveries", {
   returnConfirmedAt: timestamp("return_confirmed_at", { withTimezone: true }),
   failedPickupAt: timestamp("failed_pickup_at", { withTimezone: true }),
   returnFeeUsd: real("return_fee_usd"),
+  arrivedAt: timestamp("arrived_at", { withTimezone: true }),
   buyerAbsentAt: timestamp("buyer_absent_at", { withTimezone: true }),
   buyerRescheduleDeadline: timestamp("buyer_reschedule_deadline", { withTimezone: true }),
   rescheduleCount: integer("reschedule_count").notNull().default(0),

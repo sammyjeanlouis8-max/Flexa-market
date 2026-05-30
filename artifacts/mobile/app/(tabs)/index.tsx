@@ -1,13 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -24,7 +22,20 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 
-const GUEST_COUNTRY_KEY = "flexa_guest_country";
+const COUNTRY_FLAGS: Record<string, string> = {
+  "Haiti": "🇭🇹", "Dominican Republic": "🇩🇴", "USA": "🇺🇸",
+  "Canada": "🇨🇦", "Mexico": "🇲🇽", "Brazil": "🇧🇷",
+  "Jamaica": "🇯🇲", "Trinidad and Tobago": "🇹🇹", "Barbados": "🇧🇧",
+  "Bahamas": "🇧🇸", "Puerto Rico": "🇵🇷", "Colombia": "🇨🇴",
+  "Chile": "🇨🇱", "United Kingdom": "🇬🇧", "France": "🇫🇷",
+  "Germany": "🇩🇪", "Italy": "🇮🇹", "Netherlands": "🇳🇱",
+  "Belgium": "🇧🇪", "Portugal": "🇵🇹", "Switzerland": "🇨🇭",
+  "Sweden": "🇸🇪", "Norway": "🇳🇴", "South Africa": "🇿🇦",
+  "Nigeria": "🇳🇬", "Ghana": "🇬🇭", "Kenya": "🇰🇪",
+  "Senegal": "🇸🇳", "Philippines": "🇵🇭", "India": "🇮🇳",
+  "Japan": "🇯🇵", "South Korea": "🇰🇷", "Australia": "🇦🇺",
+  "United Arab Emirates": "🇦🇪", "Saudi Arabia": "🇸🇦",
+};
 
 const CATEGORIES = [
   { id: "all", label: "Tout" },
@@ -35,44 +46,6 @@ const CATEGORIES = [
   { id: "Sports & Fitness", label: "Espò" },
   { id: "Real Estate", label: "Imobilye" },
   { id: "Jobs & Services", label: "Djòb" },
-];
-
-const COUNTRIES: { name: string; flag: string }[] = [
-  { name: "Haiti", flag: "🇭🇹" },
-  { name: "Dominican Republic", flag: "🇩🇴" },
-  { name: "USA", flag: "🇺🇸" },
-  { name: "Canada", flag: "🇨🇦" },
-  { name: "Mexico", flag: "🇲🇽" },
-  { name: "Brazil", flag: "🇧🇷" },
-  { name: "Jamaica", flag: "🇯🇲" },
-  { name: "Trinidad and Tobago", flag: "🇹🇹" },
-  { name: "Barbados", flag: "🇧🇧" },
-  { name: "Bahamas", flag: "🇧🇸" },
-  { name: "Puerto Rico", flag: "🇵🇷" },
-  { name: "Colombia", flag: "🇨🇴" },
-  { name: "Chile", flag: "🇨🇱" },
-  { name: "United Kingdom", flag: "🇬🇧" },
-  { name: "France", flag: "🇫🇷" },
-  { name: "Germany", flag: "🇩🇪" },
-  { name: "Italy", flag: "🇮🇹" },
-  { name: "Netherlands", flag: "🇳🇱" },
-  { name: "Belgium", flag: "🇧🇪" },
-  { name: "Portugal", flag: "🇵🇹" },
-  { name: "Switzerland", flag: "🇨🇭" },
-  { name: "Sweden", flag: "🇸🇪" },
-  { name: "Norway", flag: "🇳🇴" },
-  { name: "South Africa", flag: "🇿🇦" },
-  { name: "Nigeria", flag: "🇳🇬" },
-  { name: "Ghana", flag: "🇬🇭" },
-  { name: "Kenya", flag: "🇰🇪" },
-  { name: "Senegal", flag: "🇸🇳" },
-  { name: "Philippines", flag: "🇵🇭" },
-  { name: "India", flag: "🇮🇳" },
-  { name: "Japan", flag: "🇯🇵" },
-  { name: "South Korea", flag: "🇰🇷" },
-  { name: "Australia", flag: "🇦🇺" },
-  { name: "United Arab Emirates", flag: "🇦🇪" },
-  { name: "Saudi Arabia", flag: "🇸🇦" },
 ];
 
 export default function HomeScreen() {
@@ -91,77 +64,78 @@ export default function HomeScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // ── Country selection (guest + override for logged-in) ──────────────────
-  const [guestCountry, setGuestCountry] = useState<string | null>(null);
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [countryLoaded, setCountryLoaded] = useState(false);
+  // ── GPS auto-detection (guests only — logged-in users use profile country) ──
+  const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"idle" | "detecting" | "done" | "denied">("idle");
 
-  // Effective country: logged-in user's profile country takes priority,
-  // guest picks their own from modal
-  const effectiveCountry = user?.country ?? guestCountry;
+  // The country used for filtering (profile country wins, GPS fallback for guests)
+  const effectiveCountry = user?.country ?? detectedCountry;
 
-  // Load saved guest country on mount
+  // Auto-detect country via GPS on mount for guests
   useEffect(() => {
-    AsyncStorage.getItem(GUEST_COUNTRY_KEY).then((saved) => {
-      if (saved) setGuestCountry(saved);
-      setCountryLoaded(true);
-    });
-  }, []);
-
-  // Show picker to guests who have no country set yet
-  useEffect(() => {
-    if (countryLoaded && !user && !guestCountry) {
-      setShowCountryPicker(true);
-    }
-  }, [countryLoaded, user, guestCountry]);
-
-  const selectCountry = useCallback(async (country: string) => {
-    setGuestCountry(country);
-    setShowCountryPicker(false);
-    await AsyncStorage.setItem(GUEST_COUNTRY_KEY, country);
-    // Re-fetch with the new country
-    setPage(1);
-    setHasMore(true);
-  }, []);
+    if (user?.country || gpsStatus !== "idle") return;
+    setGpsStatus("detecting");
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") { setGpsStatus("denied"); return; }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+        const [geo] = await Location.reverseGeocodeAsync({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+        // expo-location returns isoCountryCode (e.g. "HT") — map to our country names
+        const isoMap: Record<string, string> = {
+          HT: "Haiti", DO: "Dominican Republic", US: "USA", CA: "Canada",
+          MX: "Mexico", BR: "Brazil", JM: "Jamaica", TT: "Trinidad and Tobago",
+          BB: "Barbados", BS: "Bahamas", PR: "Puerto Rico", CO: "Colombia",
+          CL: "Chile", GB: "United Kingdom", FR: "France", DE: "Germany",
+          IT: "Italy", NL: "Netherlands", BE: "Belgium", PT: "Portugal",
+          CH: "Switzerland", SE: "Sweden", NO: "Norway", ZA: "South Africa",
+          NG: "Nigeria", GH: "Ghana", KE: "Kenya", SN: "Senegal",
+          PH: "Philippines", IN: "India", JP: "Japan", KR: "South Korea",
+          AU: "Australia", AE: "United Arab Emirates", SA: "Saudi Arabia",
+        };
+        const country = isoMap[geo?.isoCountryCode ?? ""] ?? null;
+        setDetectedCountry(country);
+        setGpsStatus("done");
+      } catch {
+        setGpsStatus("denied");
+      }
+    })();
+  }, [user?.country]);
 
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchListings = useCallback(
-    async (cat: string, pageNum: number, reset = false, country?: string | null) => {
+    async (cat: string, pageNum: number, reset = false) => {
       abortRef.current?.abort();
       abortRef.current = new AbortController();
-
-      const activeCountry = country !== undefined ? country : effectiveCountry;
-
       try {
         const params = new URLSearchParams({ limit: "20", page: String(pageNum) });
         if (cat !== "all") params.set("category", cat);
-        if (activeCountry) params.set("country", activeCountry);
+        if (effectiveCountry) params.set("country", effectiveCountry);
 
         const data = await request<{ listings: Listing[]; total: number }>(
           `/listings?${params.toString()}`
         );
         const items = data.listings ?? (data as unknown as Listing[]);
-        if (reset) {
-          setListings(Array.isArray(items) ? items : []);
-        } else {
-          setListings((prev) => [...prev, ...(Array.isArray(items) ? items : [])]);
-        }
+        if (reset) setListings(Array.isArray(items) ? items : []);
+        else setListings((prev) => [...prev, ...(Array.isArray(items) ? items : [])]);
         setHasMore(Array.isArray(items) && items.length === 20);
-      } catch {
-        // ignore abort errors
-      }
+      } catch { /* ignore abort */ }
     },
     [request, effectiveCountry]
   );
 
   useEffect(() => {
-    if (!countryLoaded) return;
+    // Wait for GPS if guest and still detecting
+    if (!user && gpsStatus === "detecting") return;
     setLoading(true);
     setPage(1);
     setHasMore(true);
     fetchListings(category, 1, true).finally(() => setLoading(false));
-  }, [category, effectiveCountry, countryLoaded]);
+  }, [category, effectiveCountry, gpsStatus]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -180,10 +154,7 @@ export default function HomeScreen() {
   }, [hasMore, loadingMore, page, category, fetchListings]);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-
-  const countryEntry = COUNTRIES.find((c) => c.name === effectiveCountry);
-  const countryFlag = countryEntry?.flag ?? "🌍";
-  const countryLabel = effectiveCountry ?? "Chwazi peyi";
+  const countryFlag = effectiveCountry ? (COUNTRY_FLAGS[effectiveCountry] ?? "🌍") : "🌍";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -196,17 +167,19 @@ export default function HomeScreen() {
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>FlexaMarket</Text>
           </View>
 
-          {/* ── Country pill button ── */}
-          <TouchableOpacity
-            style={[styles.countryBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
-            onPress={() => setShowCountryPicker(true)}
-          >
-            <Text style={styles.countryFlag}>{countryFlag}</Text>
-            <Text style={[styles.countryName, { color: colors.foreground }]} numberOfLines={1}>
-              {countryLabel.length > 10 ? countryLabel.slice(0, 10) + "…" : countryLabel}
-            </Text>
-            <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
-          </TouchableOpacity>
+          {/* ── Country badge (display-only, auto-detected via GPS) ── */}
+          <View style={[styles.countryBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            {gpsStatus === "detecting" && !user ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ width: 18 }} />
+            ) : (
+              <Text style={styles.countryFlag}>{countryFlag}</Text>
+            )}
+            {effectiveCountry ? (
+              <Text style={[styles.countryName, { color: colors.foreground }]} numberOfLines={1}>
+                {effectiveCountry.length > 10 ? effectiveCountry.slice(0, 10) + "…" : effectiveCountry}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.searchWrap}>
@@ -242,9 +215,7 @@ export default function HomeScreen() {
 
       {loading ? (
         <View style={styles.grid}>
-          {[...Array(6)].map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+          {[...Array(6)].map((_, i) => <SkeletonCard key={i} />)}
         </View>
       ) : listings.length === 0 ? (
         <View style={styles.empty}>
@@ -253,16 +224,8 @@ export default function HomeScreen() {
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
             {effectiveCountry
               ? `Pa gen annons nan ${effectiveCountry} pou moman.`
-              : "Pa gen annons disponib nan kategori sa a pou moman."}
+              : "Pa gen annons disponib pou moman."}
           </Text>
-          {effectiveCountry && (
-            <Pressable
-              style={[styles.changeCountryBtn, { borderColor: colors.primary }]}
-              onPress={() => setShowCountryPicker(true)}
-            >
-              <Text style={[styles.changeCountryText, { color: colors.primary }]}>Chanje peyi</Text>
-            </Pressable>
-          )}
         </View>
       ) : (
         <FlatList
@@ -285,59 +248,6 @@ export default function HomeScreen() {
           }
         />
       )}
-
-      {/* ── Country Picker Modal ── */}
-      <Modal
-        visible={showCountryPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => {
-          if (effectiveCountry) setShowCountryPicker(false);
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeaderRow}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                Chwazi peyi ou 🌍
-              </Text>
-              {effectiveCountry && (
-                <TouchableOpacity onPress={() => setShowCountryPicker(false)} style={styles.modalCloseBtn}>
-                  <Feather name="x" size={20} color={colors.mutedForeground} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <Text style={[styles.modalSub, { color: colors.mutedForeground }]}>
-              Ou ap wè sèlman pwodwi ki nan peyi ou chwazi a.
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={styles.countryList}>
-              {COUNTRIES.map((c) => {
-                const active = effectiveCountry === c.name;
-                return (
-                  <Pressable
-                    key={c.name}
-                    style={[
-                      styles.countryRow,
-                      {
-                        backgroundColor: active ? colors.primary + "18" : "transparent",
-                        borderColor: active ? colors.primary : colors.border,
-                      },
-                    ]}
-                    onPress={() => selectCountry(c.name)}
-                  >
-                    <Text style={styles.countryRowFlag}>{c.flag}</Text>
-                    <Text style={[styles.countryRowName, { color: colors.foreground }]}>{c.name}</Text>
-                    {active && <Feather name="check" size={18} color={colors.primary} />}
-                  </Pressable>
-                );
-              })}
-              <View style={{ height: insets.bottom + 20 }} />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -348,10 +258,10 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 },
   greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 2 },
-  countryBtn: {
+  countryBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
     borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-    maxWidth: 130, flexShrink: 0,
+    maxWidth: 140, flexShrink: 0,
   },
   countryFlag: { fontSize: 18 },
   countryName: { fontSize: 12, fontFamily: "Inter_500Medium", flexShrink: 1 },
@@ -366,22 +276,5 @@ const styles = StyleSheet.create({
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
   emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
-  changeCountryBtn: { marginTop: 4, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 20, paddingVertical: 8 },
-  changeCountryText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   loadMore: { padding: 20, alignItems: "center" },
-  // ── Modal ──
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 12, paddingHorizontal: 20, maxHeight: "85%" },
-  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", alignSelf: "center", marginBottom: 16 },
-  modalHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  modalTitle: { fontSize: 20, fontFamily: "Inter_700Bold" },
-  modalCloseBtn: { padding: 4 },
-  modalSub: { fontSize: 13, fontFamily: "Inter_400Regular", marginBottom: 16 },
-  countryList: { flexGrow: 0 },
-  countryRow: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13, marginBottom: 8,
-  },
-  countryRowFlag: { fontSize: 24 },
-  countryRowName: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
 });

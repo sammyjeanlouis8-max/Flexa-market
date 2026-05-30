@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 
-import { Search, ChevronRight, Zap, TrendingUp, Package, ArrowRight, MapPin, Navigation, Globe, AlertCircle, ShieldCheck, BadgeCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video } from "lucide-react";
+import { Search, ChevronRight, Zap, TrendingUp, Package, ArrowRight, MapPin, Navigation, AlertCircle, ShieldCheck, BadgeCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
@@ -485,27 +485,6 @@ export default function Home() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  // ── Guest country (visitors not logged in) ──
-  const GUEST_COUNTRY_KEY = "flexa_guest_country";
-  const [guestCountry, setGuestCountryState] = useState<string | null>(() => {
-    try { return localStorage.getItem(GUEST_COUNTRY_KEY) ?? null; } catch { return null; }
-  });
-  const [showGuestCountryDialog, setShowGuestCountryDialog] = useState(false);
-
-  // Show country picker to visitors with no country set
-  useEffect(() => {
-    if (!user && !guestCountry) {
-      setShowGuestCountryDialog(true);
-    }
-  }, [user, guestCountry]);
-
-  const setGuestCountry = (c: string) => {
-    setGuestCountryState(c);
-    try { localStorage.setItem(GUEST_COUNTRY_KEY, c); } catch {}
-    setShowGuestCountryDialog(false);
-    queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/stats/home"] });
-  };
 
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
   const isSuperAdmin = !!(user?.isSuperAdmin);
@@ -522,8 +501,8 @@ export default function Home() {
   const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdmin) ? null : ((user as any)?.adminScopeCountry ?? user?.country ?? null);
   // The country actually used in all queries
   const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdmin ? adminCountry : scopeLock);
-  // For guests: use guestCountry; for logged-in users: use profile country
-  const activeCountry = user?.country ?? guestCountry ?? undefined;
+  // Country comes from profile only — GPS handles it server-side for logged-in users
+  const activeCountry = user?.country ?? undefined;
 
   // ── Location detection state ──
   const [locationMode, setLocationModeState] = useState<LocationMode>("auto");
@@ -578,9 +557,7 @@ export default function Home() {
         ...(activeCategory ? { category: activeCategory } : {}),
         ...(isAdmin
           ? effectiveAdminCountry ? { country: effectiveAdminCountry } : {}
-          : !user && activeCountry
-            ? { country: activeCountry }  // Guest: send country param directly
-            : scope !== "country" ? { scope } : {}),
+          : scope !== "country" ? { scope } : {}),
       });
       return apiFetch<{ listings: NormalListing[]; page: number; totalPages: number }>(
         `/api/listings?${params}`
@@ -918,55 +895,6 @@ export default function Home() {
                 {t("home.locked", "Locked")}
               </span>
             </div>
-          </div>
-        )}
-
-        {/* === GUEST COUNTRY PICKER (visitors not logged in) === */}
-        {!user && showGuestCountryDialog && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-4 pb-6 sm:pb-0">
-            <div className="w-full max-w-sm bg-background rounded-2xl shadow-2xl p-6 space-y-5 max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center gap-3">
-                <span className="text-3xl">🌍</span>
-                <div>
-                  <p className="text-base font-bold text-foreground">Chwazi peyi ou</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Ou ap wè sèlman pwodwi ki nan peyi ou chwazi a.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {SUPPORTED_COUNTRIES.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
-                    onClick={() => setGuestCountry(c)}
-                  >
-                    <span className="text-2xl">{COUNTRY_FLAGS[c]}</span>
-                    <span className="text-sm font-semibold text-foreground">{c}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* === GUEST COUNTRY BANNER (visitor with country set) === */}
-        {!user && activeCountry && (
-          <div className="flex items-center justify-between bg-primary/8 border border-primary/15 rounded-xl px-4 py-2.5 gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xl shrink-0">{COUNTRY_FLAGS[activeCountry] ?? "🌍"}</span>
-              <p className="text-sm font-semibold text-foreground truncate">
-                Pwodwi nan <strong>{activeCountry}</strong>
-              </p>
-            </div>
-            <button
-              type="button"
-              className="text-xs text-primary font-semibold shrink-0 hover:underline flex items-center gap-1"
-              onClick={() => setShowGuestCountryDialog(true)}
-            >
-              <Globe className="h-3 w-3" /> Chanje peyi
-            </button>
           </div>
         )}
 

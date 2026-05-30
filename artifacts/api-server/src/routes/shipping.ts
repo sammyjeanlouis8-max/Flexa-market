@@ -19,6 +19,7 @@ import {
   getReturnPolicyLabel,
   CARRIERS,
 } from "../lib/internationalShipping";
+import { getLocalDeliveryQuotes, supportsLocalDelivery } from "../lib/localDelivery";
 
 const router = Router();
 
@@ -166,6 +167,55 @@ router.get("/orders/:id/tracking", requireAuth, async (req, res): Promise<void> 
     returnWindow:   tx.listingCountry
       ? { days: getReturnWindowDays(tx.listingCountry), policy: getReturnPolicyLabel(getReturnWindowDays(tx.listingCountry), tx.listingCountry) }
       : null,
+  });
+});
+
+// ─── POST /api/delivery/local-quote ──────────────────────────────────────────
+// Body: { country: string, weightKg: number }
+// Returns local delivery carrier options for ANY supported country.
+// Haiti & Dominican Republic return a flag to use the driver-matching system instead.
+
+router.post("/delivery/local-quote", (req, res): void => {
+  const { country, weightKg } = req.body ?? {};
+
+  if (!country || typeof country !== "string") {
+    res.status(400).json({ error: "country obligatwa" });
+    return;
+  }
+
+  const weight = parseFloat(weightKg ?? 1);
+  if (!weight || weight <= 0 || weight > 200) {
+    res.status(400).json({ error: "weightKg dwe ant 0.01 ak 200 kg" });
+    return;
+  }
+
+  // Haiti & DR → driver-matching system handles this
+  if (["Haiti", "Dominican Republic"].includes(country)) {
+    res.json({ country, isDriverMatching: true, message: "Itilize sistèm chauffeur lokal pou livrezon nan Ayiti / RD" });
+    return;
+  }
+
+  if (!supportsLocalDelivery(country)) {
+    res.status(404).json({ error: `Livrezon lokal poko disponib nan "${country}"` });
+    return;
+  }
+
+  const quotes = getLocalDeliveryQuotes(country, weight);
+  logger.info({ country, weightKg: weight, options: quotes.length }, "Local delivery quote generated");
+  res.json({ country, weightKg: weight, isDriverMatching: false, options: quotes });
+});
+
+// ─── GET /api/delivery/countries ─────────────────────────────────────────────
+// Returns list of countries that support local delivery.
+
+router.get("/delivery/countries", (_req, res) => {
+  const { LOCAL_DELIVERY_CONFIGS, DRIVER_MATCHING_COUNTRIES } = require("../lib/localDelivery");
+  const localCountries = Object.keys(LOCAL_DELIVERY_CONFIGS);
+  const driverCountries = Array.from(DRIVER_MATCHING_COUNTRIES as Set<string>);
+  res.json({
+    driverMatchingCountries: driverCountries,
+    carrierCountries: localCountries,
+    all: [...driverCountries, ...localCountries],
   });
 });
 

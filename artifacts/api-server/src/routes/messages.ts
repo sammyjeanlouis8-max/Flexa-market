@@ -200,6 +200,14 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
     imageUrl: imageUrl ?? null,
   }).returning();
 
+  // Fraud: scan message for scam patterns + mass-messaging check (fire-and-forget)
+  if (content && messageType === "text") {
+    void import("../lib/fraudEngine").then(({ assessMessage, assessMassMessaging }) => {
+      void assessMessage(req.userId!, content, id);
+      void assessMassMessaging(req.userId!);
+    });
+  }
+
   await db.update(conversationsTable)
     .set({ lastMessage: lastMessagePreview, lastMessageAt: new Date() })
     .where(eq(conversationsTable.id, id));

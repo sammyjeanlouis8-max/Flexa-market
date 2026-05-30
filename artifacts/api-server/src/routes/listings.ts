@@ -677,6 +677,17 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     moderatedAt: new Date(),
   }).returning();
 
+  // Fraud: assess listing for scam content + rapid posting (fire-and-forget)
+  void import("../lib/fraudEngine").then(({ assessListing }) => {
+    void assessListing(
+      req.userId!,
+      listing.id,
+      parsed.data.title ?? "",
+      parsed.data.description ?? "",
+      parsed.data.price ?? 0,
+    );
+  });
+
   if (moderationStatus === "approved") {
     await db.update(categoriesTable).set({ listingCount: sql`${categoriesTable.listingCount} + 1` }).where(eq(categoriesTable.id, cat.id));
     if (listing.subcategoryId) {

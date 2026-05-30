@@ -1665,6 +1665,153 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // ── Fraud Prevention Tables ───────────────────────────────────────────────
+
+  migrations.push({
+    name: "fraud.risk_scores_table_v1",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_risk_scores (
+      id serial PRIMARY KEY,
+      user_id integer UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      score integer NOT NULL DEFAULT 0,
+      level text NOT NULL DEFAULT 'low',
+      device_score integer NOT NULL DEFAULT 0,
+      ip_score integer NOT NULL DEFAULT 0,
+      behavior_score integer NOT NULL DEFAULT 0,
+      payment_score integer NOT NULL DEFAULT 0,
+      content_score integer NOT NULL DEFAULT 0,
+      last_computed_at timestamptz DEFAULT NOW(),
+      updated_at timestamptz DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.events_table_v1",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_events (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type text NOT NULL,
+      severity text NOT NULL DEFAULT 'low',
+      score_delta integer NOT NULL DEFAULT 0,
+      details jsonb,
+      ip text,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.events_indexes_v1",
+    sql: `
+      CREATE INDEX IF NOT EXISTS fraud_events_user_id_idx  ON fraud_events(user_id);
+      CREATE INDEX IF NOT EXISTS fraud_events_type_idx     ON fraud_events(event_type);
+      CREATE INDEX IF NOT EXISTS fraud_events_created_idx  ON fraud_events(created_at DESC)
+    `,
+  });
+
+  migrations.push({
+    name: "fraud.alerts_table_v1",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_alerts (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      alert_type text NOT NULL,
+      severity text NOT NULL DEFAULT 'medium',
+      title text NOT NULL,
+      description text,
+      meta jsonb,
+      resolved boolean NOT NULL DEFAULT false,
+      resolved_by integer REFERENCES users(id),
+      resolved_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.alerts_indexes_v1",
+    sql: `
+      CREATE INDEX IF NOT EXISTS fraud_alerts_user_id_idx  ON fraud_alerts(user_id);
+      CREATE INDEX IF NOT EXISTS fraud_alerts_resolved_idx ON fraud_alerts(resolved);
+      CREATE INDEX IF NOT EXISTS fraud_alerts_severity_idx ON fraud_alerts(severity)
+    `,
+  });
+
+  migrations.push({
+    name: "fraud.device_fingerprints_table_v1",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_device_fingerprints (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      fingerprint text NOT NULL,
+      platform text,
+      screen_res text,
+      timezone text,
+      languages text,
+      hardware_concurrency integer,
+      last_seen_ip text,
+      last_seen_at timestamptz DEFAULT NOW(),
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      UNIQUE (user_id, fingerprint)
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.device_fingerprints_idx_v1",
+    sql: `CREATE INDEX IF NOT EXISTS fraud_fingerprint_idx ON fraud_device_fingerprints(fingerprint)`,
+  });
+
+  migrations.push({
+    name: "fraud.ip_logs_table_v1",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_ip_logs (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      ip text NOT NULL,
+      country text,
+      is_vpn boolean NOT NULL DEFAULT false,
+      is_datacenter boolean NOT NULL DEFAULT false,
+      asn text,
+      action text,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.ip_logs_indexes_v1",
+    sql: `
+      CREATE INDEX IF NOT EXISTS fraud_ip_logs_user_idx ON fraud_ip_logs(user_id);
+      CREATE INDEX IF NOT EXISTS fraud_ip_logs_ip_idx   ON fraud_ip_logs(ip)
+    `,
+  });
+
+  migrations.push({
+    name: "fraud.rules_table_v2",
+    sql: `CREATE TABLE IF NOT EXISTS fraud_rules (
+      id serial PRIMARY KEY,
+      country text,
+      rule_key text NOT NULL,
+      rule_value text NOT NULL,
+      description text,
+      enabled boolean NOT NULL DEFAULT true,
+      updated_at timestamptz DEFAULT NOW()
+    )`,
+  });
+
+  migrations.push({
+    name: "fraud.rules_unique_idx_v1",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS fraud_rules_country_key_uidx
+          ON fraud_rules (COALESCE(country, '__global__'), rule_key)`,
+  });
+
+  migrations.push({
+    name: "fraud.rules_defaults_v2",
+    sql: `INSERT INTO fraud_rules (country, rule_key, rule_value, description, enabled)
+      VALUES
+        (NULL, 'max_listings_per_hour',   '8',    'Max listings per hour before rapid-posting flag', true),
+        (NULL, 'max_messages_per_hour',   '15',   'Max unique conversations per hour before mass-messaging flag', true),
+        (NULL, 'max_accounts_per_ip_day', '3',    'Max new accounts from same IP per 24h', true),
+        (NULL, 'scam_score_medium',       '30',   'Content scam score threshold for medium severity', true),
+        (NULL, 'scam_score_high',         '60',   'Content scam score threshold for high severity', true),
+        (NULL, 'auto_suspend_threshold',  '80',   'Risk score that triggers auto-suspension', true),
+        (NULL, 'vpn_ip_score_weight',     '12',   'Score added when VPN/datacenter IP detected', true)
+      ON CONFLICT DO NOTHING`,
+  });
+
   let applied = 0;
   let failed = 0;
 

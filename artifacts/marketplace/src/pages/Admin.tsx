@@ -2595,6 +2595,9 @@ export default function Admin() {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="fraud" className="text-xs font-bold text-red-600 dark:text-red-400" onClick={() => setLocation("/admin/fraud")} data-testid="tab-fraud">
+              <Shield className="h-3 w-3 mr-1" />Fraud
+            </TabsTrigger>
             <TabsTrigger value="boosts" className="text-xs" onClick={loadBoostRecords}><Zap className="h-3 w-3 mr-1" />Boosts</TabsTrigger>
             {can("payments") && (
               <TabsTrigger value="payments" className="text-xs" onClick={loadPayments} data-testid="tab-payments"><CreditCard className="h-3 w-3 mr-1" />Payments</TabsTrigger>

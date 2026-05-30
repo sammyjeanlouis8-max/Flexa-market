@@ -93,6 +93,7 @@ const DriverApplicationStatus        = lazy(() => import("@/pages/DriverApplicat
 const Cart                           = lazy(() => import("@/pages/Cart"));
 const LoanPage                       = lazy(() => import("@/pages/LoanPage"));
 const AdminLoanPanel                 = lazy(() => import("@/pages/AdminLoanPanel"));
+const AdminFraudPanel                = lazy(() => import("@/pages/AdminFraudPanel"));
 const CreditScorePage                = lazy(() => import("@/pages/CreditScorePage"));
 const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 
@@ -237,6 +238,7 @@ function LayoutRoutes() {
           <Route path="/cart" component={Cart} />
           <Route path="/loans" component={LoanPage} />
           <Route path="/admin/loans" component={AdminLoanPanel} />
+          <Route path="/admin/fraud" component={AdminFraudPanel} />
           <Route path="/credit-score" component={CreditScorePage} />
           <Route path="/delivery/tracking/:id" component={DeliveryTracking} />
           <Route path="/delivery/suspended" component={DriverSuspensionPage} />

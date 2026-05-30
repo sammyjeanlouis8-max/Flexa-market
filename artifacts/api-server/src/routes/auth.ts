@@ -340,6 +340,12 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   await logAction(user.id, ip, ua, "login");
 
+  // Fraud: assess login for ban-bypass attempts (fire-and-forget)
+  const loginDeviceId = (req.body.deviceId as string | undefined) ?? null;
+  void import("../lib/fraudEngine").then(({ assessLogin }) => {
+    void assessLogin(user.id, ip, loginDeviceId);
+  });
+
   // Transparent bcrypt migration: if the stored hash is still SHA-256,
   // re-hash with bcrypt now that we know the plaintext password is correct.
   // We also set requiresPasswordUpgrade so the client can prompt the user to

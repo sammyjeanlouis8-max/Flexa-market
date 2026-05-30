@@ -661,7 +661,25 @@ export default function WalletPage() {
   const [platformRev, setPlatformRev] = useState<{
     totalRevenue: number; boostRevenue: number; merchantCommission: number;
     rechargeFees: number; subscriptionRevenue: number; transferFees: number;
+    p2pTransferFees: number; deliveryFees: number;
   } | null>(null);
+  const [showStatements, setShowStatements] = useState(false);
+  const [statements, setStatements] = useState<Array<{
+    month: string; totalRevenue: number; boostRevenue: number;
+    merchantCommission: number; rechargeFees: number; subscriptionRevenue: number;
+    p2pTransferFees: number; deliveryFees: number; orderCount: number;
+  }> | null>(null);
+  const [statementsLoading, setStatementsLoading] = useState(false);
+  const loadStatements = async () => {
+    if (statements) { setShowStatements(true); return; }
+    setStatementsLoading(true);
+    try {
+      const tk = getToken();
+      const year = new Date().getFullYear();
+      const r = await fetch(`/api/admin/platform-revenue/monthly?year=${year}`, { headers: { Authorization: `Bearer ${tk}` } });
+      if (r.ok) { const d = await r.json(); setStatements(d.months); setShowStatements(true); }
+    } finally { setStatementsLoading(false); }
+  };
   const [platformRevLoading, setPlatformRevLoading] = useState(false);
   const loadPlatformRev = async () => {
     if (!isSuperAdmin) return;
@@ -2827,19 +2845,24 @@ export default function WalletPage() {
               {/* Breakdown lines */}
               {platformRev && platformRev.totalRevenue > 0 && (
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
-                  {platformRev.boostRevenue > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Boost <span className="text-white">${platformRev.boostRevenue.toFixed(2)}</span>
-                    </p>
-                  )}
                   {platformRev.merchantCommission > 0 && (
                     <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
                       Komisyon <span className="text-white">${platformRev.merchantCommission.toFixed(2)}</span>
                     </p>
                   )}
-                  {platformRev.rechargeFees > 0 && (
+                  {platformRev.boostRevenue > 0 && (
                     <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Frè Rechaj <span className="text-white">${platformRev.rechargeFees.toFixed(2)}</span>
+                      Boost <span className="text-white">${platformRev.boostRevenue.toFixed(2)}</span>
+                    </p>
+                  )}
+                  {platformRev.p2pTransferFees > 0 && (
+                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
+                      Frè Transfè <span className="text-white">${platformRev.p2pTransferFees.toFixed(2)}</span>
+                    </p>
+                  )}
+                  {platformRev.deliveryFees > 0 && (
+                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
+                      Livrezon 15% <span className="text-white">${platformRev.deliveryFees.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.subscriptionRevenue > 0 && (
@@ -2847,39 +2870,79 @@ export default function WalletPage() {
                       Abònman <span className="text-white">${platformRev.subscriptionRevenue.toFixed(2)}</span>
                     </p>
                   )}
+                  {platformRev.rechargeFees > 0 && (
+                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
+                      Rechaj <span className="text-white">${platformRev.rechargeFees.toFixed(2)}</span>
+                    </p>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Bottom action buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => { navigator.clipboard?.writeText("FM-FLEXA-MARKET"); toast({ title: "ID kopye" }); }}
                 className="flex items-center gap-1 transition-all active:scale-95"
-                style={{
-                  padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
-                  color: "rgba(255,255,255,0.78)",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backdropFilter: "blur(8px)",
-                }}
+                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", backdropFilter: "blur(8px)" }}
               >
                 <Copy style={{ width: 11, height: 11 }} /> Copy ID
               </button>
               <button
+                onClick={loadStatements}
+                disabled={statementsLoading}
+                className="flex items-center gap-1 transition-all active:scale-95"
+                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.90)", background: "rgba(16,185,129,0.25)", border: "1px solid rgba(52,211,153,0.45)", backdropFilter: "blur(8px)" }}
+              >
+                {statementsLoading ? "..." : "📊 Relevé Mwa"}
+              </button>
+              <button
                 onClick={() => { const url = window.location.origin; navigator.share?.({ title: "FlexaMarket Platform", text: `Kont Platfòm: FM-FLEXA-MARKET\nRevni: $${platformRev?.totalRevenue?.toFixed(2) ?? "0.00"}`, url }); }}
                 className="flex items-center gap-1 transition-all active:scale-95"
-                style={{
-                  padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
-                  color: "rgba(255,255,255,0.78)",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backdropFilter: "blur(8px)",
-                }}
+                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", backdropFilter: "blur(8px)" }}
               >
                 <Share2 style={{ width: 11, height: 11 }} /> Share
               </button>
             </div>
+
+            {/* ── Monthly Statements Panel ── */}
+            {showStatements && statements && (
+              <div className="mt-3 rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.35)", border: "1px solid rgba(52,211,153,0.25)" }}>
+                <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid rgba(52,211,153,0.15)" }}>
+                  <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em" }}>RELEVÉ MANSYÈL {new Date().getFullYear()}</span>
+                  <button onClick={() => setShowStatements(false)} style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, lineHeight: 1 }}>✕</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table style={{ width: "100%", fontSize: 10.5, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ color: "rgba(167,243,208,0.60)", borderBottom: "1px solid rgba(52,211,153,0.12)" }}>
+                        {["Mwa","Total","Komisyon","Boost","Transfè","Livrezon","Abònman","Rechaj","Lòd"].map(h => (
+                          <th key={h} style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statements.filter(m => m.totalRevenue > 0).reverse().map(m => (
+                        <tr key={m.month} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)" }}>
+                          <td style={{ padding: "5px 8px", fontWeight: 700, color: "#34d399" }}>{m.month.slice(5)}/{m.month.slice(0,4)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: "#fff" }}>${m.totalRevenue.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.merchantCommission.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.boostRevenue.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.p2pTransferFees.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.deliveryFees.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.subscriptionRevenue.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.rechargeFees.toFixed(2)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right" }}>{m.orderCount}</td>
+                        </tr>
+                      ))}
+                      {statements.every(m => m.totalRevenue === 0) && (
+                        <tr><td colSpan={9} style={{ padding: "12px 8px", textAlign: "center", color: "rgba(255,255,255,0.35)", fontStyle: "italic" }}>Pa gen done pou ane sa a</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

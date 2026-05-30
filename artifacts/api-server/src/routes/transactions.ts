@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
+import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin, requireFinanceAdmin } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
@@ -1394,6 +1394,8 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     ? sql`${transactionsTable.createdAt} >= ${since}`
     : sql`1=1`;
 
+  const delivSince = since ? sql`AND created_at >= ${since}` : sql`AND 1=1`;
+
   const [
     rechargeFeesRow,
     merchantRow,
@@ -1401,6 +1403,8 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     subscriptionRow,
     transferFeeRow,
     walletFeeRow,
+    p2pTransferFeeRow,
+    deliveryPlatformRow,
   ] = await Promise.all([
     // Recharge fee revenue (type='recharge_fee')
     db.select({
@@ -1453,6 +1457,24 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     }).from(walletTransactionsTable)
       .where(and(eq(walletTransactionsTable.type, "wallet_fee"), eq(walletTransactionsTable.status, "completed"), walletSince))
       .then(r => r[0]),
+
+    // P2P transfer fees: 5% of each completed transfer
+    db.select({
+      total: sql<number>`coalesce(sum(${walletTransfersTable.feeUsd}),0)::float`,
+      count: sql<number>`count(*)::int`,
+    }).from(walletTransfersTable)
+      .where(and(
+        eq(walletTransfersTable.status, "completed"),
+        since ? sql`${walletTransfersTable.createdAt} >= ${since}` : sql`1=1`,
+      ))
+      .then(r => r[0]),
+
+    // Delivery platform commission: 15% of each completed delivery fee
+    db.execute(
+      since
+        ? sql`SELECT coalesce(sum(fee_usd * 0.15),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL AND created_at >= ${since}`
+        : sql`SELECT coalesce(sum(fee_usd * 0.15),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL`,
+    ).then(r => ({ total: Number((r.rows[0] as any)?.total ?? 0), count: Number((r.rows[0] as any)?.count ?? 0) })),
   ]);
 
   // Daily breakdown for last 30 days (purchases + boost revenue combined)
@@ -1503,14 +1525,16 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     };
   });
 
-  const rechargeFees       = rechargeFeesRow?.total    ?? 0;
-  const merchantCommission = merchantRow?.total        ?? 0;
-  const boostRevenue       = boostRow?.total           ?? 0;
-  const subscriptionRevenue = subscriptionRow?.total   ?? 0;
-  const transferFees       = transferFeeRow?.total     ?? 0;
-  const walletFees         = walletFeeRow?.total       ?? 0;
+  const rechargeFees        = rechargeFeesRow?.total    ?? 0;
+  const merchantCommission  = merchantRow?.total        ?? 0;
+  const boostRevenue        = boostRow?.total           ?? 0;
+  const subscriptionRevenue = subscriptionRow?.total    ?? 0;
+  const transferFees        = transferFeeRow?.total     ?? 0;
+  const walletFees          = walletFeeRow?.total       ?? 0;
+  const p2pTransferFees     = p2pTransferFeeRow?.total  ?? 0;
+  const deliveryFees        = deliveryPlatformRow?.total ?? 0;
 
-  const totalRevenue = rechargeFees + merchantCommission + boostRevenue + subscriptionRevenue + transferFees + walletFees;
+  const totalRevenue = rechargeFees + merchantCommission + boostRevenue + subscriptionRevenue + transferFees + walletFees + p2pTransferFees + deliveryFees;
 
   res.json({
     period,
@@ -1523,6 +1547,8 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
       subscriptionRevenue:   parseFloat(subscriptionRevenue.toFixed(2)),
       transferFees:          parseFloat(transferFees.toFixed(2)),
       walletFees:            parseFloat(walletFees.toFixed(2)),
+      p2pTransferFees:       parseFloat(p2pTransferFees.toFixed(2)),
+      deliveryFees:          parseFloat(deliveryFees.toFixed(2)),
       rechargeCount:         rechargeFeesRow?.count    ?? 0,
       orderCount:            merchantRow?.count        ?? 0,
       boostCount:            boostRow?.count           ?? 0,
@@ -1531,6 +1557,118 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     },
     daily,
   });
+});
+
+// ─── Admin: monthly revenue statements ────────────────────────────────────────
+
+router.get("/admin/platform-revenue/monthly", requireSuperAdmin, async (req, res): Promise<void> => {
+  const year = parseInt(String(req.query.year ?? new Date().getFullYear()), 10);
+  if (!Number.isFinite(year) || year < 2020 || year > 2100) {
+    res.status(400).json({ error: "Invalid year" }); return;
+  }
+
+  // One query per revenue stream, grouped by month — efficient batch approach
+  const [boostRows, commRows, rechargeRows, subscRows, p2pRows, delivRows, monthlyTxRows] = await Promise.all([
+    // Boost
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(abs(amount_usd)),0)::float AS total
+      FROM wallet_transactions
+      WHERE type IN ('boost_debit','promo_boost_debit') AND status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // Merchant commission
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(commission_amount),0)::float AS total
+      FROM transactions
+      WHERE type = 'purchase' AND payment_status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // Recharge fees
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(abs(amount_usd)),0)::float AS total
+      FROM wallet_transactions
+      WHERE type = 'recharge_fee' AND status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // Subscriptions
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(abs(amount_usd)),0)::float AS total
+      FROM wallet_transactions
+      WHERE type = 'vendor_subscription' AND status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // P2P transfer fees (5%)
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(fee_usd),0)::float AS total
+      FROM wallet_transfers
+      WHERE status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // Delivery platform commission (15%)
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(fee_usd * 0.15),0)::float AS total
+      FROM deliveries
+      WHERE status = 'completed' AND fee_usd IS NOT NULL
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; total: number }[]),
+
+    // All monthly totals grouped (for summary row)
+    db.execute(sql`
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, count(*)::int AS tx_count
+      FROM transactions
+      WHERE type = 'purchase' AND payment_status = 'completed'
+        AND EXTRACT(YEAR FROM created_at) = ${year}
+      GROUP BY mo ORDER BY mo
+    `).then(r => r.rows as { mo: string; tx_count: number }[]),
+  ]);
+
+  // Build month index map helpers
+  const toMap = (rows: { mo: string; total: number }[]) =>
+    Object.fromEntries(rows.map(r => [r.mo, r.total]));
+  const boostMap   = toMap(boostRows);
+  const commMap    = toMap(commRows);
+  const rechMap    = toMap(rechargeRows);
+  const subsMap    = toMap(subscRows);
+  const p2pMap     = toMap(p2pRows);
+  const delivMap   = toMap(delivRows);
+  const txCountMap = Object.fromEntries(monthlyTxRows.map(r => [r.mo, r.tx_count]));
+
+  // Generate all 12 months for the year
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const mo = `${year}-${String(i + 1).padStart(2, "0")}`;
+    const boost        = boostMap[mo]  ?? 0;
+    const commission   = commMap[mo]   ?? 0;
+    const recharge     = rechMap[mo]   ?? 0;
+    const subscription = subsMap[mo]   ?? 0;
+    const p2p          = p2pMap[mo]    ?? 0;
+    const delivery     = delivMap[mo]  ?? 0;
+    const total = boost + commission + recharge + subscription + p2p + delivery;
+    return {
+      month:              mo,
+      totalRevenue:       parseFloat(total.toFixed(2)),
+      boostRevenue:       parseFloat(boost.toFixed(2)),
+      merchantCommission: parseFloat(commission.toFixed(2)),
+      rechargeFees:       parseFloat(recharge.toFixed(2)),
+      subscriptionRevenue:parseFloat(subscription.toFixed(2)),
+      p2pTransferFees:    parseFloat(p2p.toFixed(2)),
+      deliveryFees:       parseFloat(delivery.toFixed(2)),
+      orderCount:         txCountMap[mo] ?? 0,
+    };
+  });
+
+  const grandTotal = months.reduce((s, m) => s + m.totalRevenue, 0);
+  res.json({ year, grandTotal: parseFloat(grandTotal.toFixed(2)), months });
 });
 
 router.get("/admin/transactions", requireFinanceAdmin, async (req, res): Promise<void> => {

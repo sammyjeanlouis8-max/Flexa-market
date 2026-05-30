@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface WalletInfo {
   balanceUsd: number;
@@ -63,10 +64,29 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { request } = useApi();
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Platform revenue (super admin only) ───────────────────────────────────
+  const [platformRev, setPlatformRev] = useState<{
+    totalRevenue: number; boostRevenue: number; merchantCommission: number;
+    rechargeFees: number; subscriptionRevenue: number;
+    p2pTransferFees: number; deliveryFees: number;
+  } | null>(null);
+  const [platformRevLoading, setPlatformRevLoading] = useState(false);
+  const loadPlatformRev = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    setPlatformRevLoading(true);
+    try {
+      const data = await request<{ summary: typeof platformRev }>("/admin/platform-revenue?period=all");
+      if (data?.summary) setPlatformRev(data.summary);
+    } catch { /* silent */ } finally { setPlatformRevLoading(false); }
+  }, [isSuperAdmin, request]);
+  useEffect(() => { if (isSuperAdmin) loadPlatformRev(); }, [isSuperAdmin]);
 
   // ── Stripe Recharge Modal ───────────────────────────────────────────────
   const [rechargeVisible, setRechargeVisible] = useState(false);
@@ -190,6 +210,54 @@ export default function WalletScreen() {
                     </View>
                   </View>
                 </View>
+              )}
+
+              {/* ── Platform Green Card (super admin only) ── */}
+              {isSuperAdmin && (
+                <Pressable
+                  onPress={loadPlatformRev}
+                  style={[styles.platformCard, { opacity: platformRevLoading ? 0.75 : 1 }]}
+                >
+                  <View style={styles.platformCardTop}>
+                    <View>
+                      <Text style={styles.platformCardTitle}>KAT FM FLEXAMARKET</Text>
+                      <Text style={styles.platformCardId}>FM-FLEXA-MARKET</Text>
+                    </View>
+                    <View style={styles.platformRefreshBtn}>
+                      <Feather name="refresh-cw" size={13} color="rgba(255,255,255,0.75)" />
+                    </View>
+                  </View>
+                  <Text style={styles.platformCardLabel}>Kont Platfòm Ofisyèl</Text>
+                  {platformRevLoading ? (
+                    <ActivityIndicator color="#34d399" size="small" style={{ marginVertical: 6 }} />
+                  ) : (
+                    <Text style={styles.platformCardAmount}>
+                      ${platformRev?.totalRevenue?.toFixed(2) ?? "0.00"}
+                    </Text>
+                  )}
+                  {platformRev && platformRev.totalRevenue > 0 && (
+                    <View style={styles.platformBreakdown}>
+                      {platformRev.merchantCommission > 0 && (
+                        <Text style={styles.platformBreakItem}>Komisyon <Text style={{ color: "#fff" }}>${platformRev.merchantCommission.toFixed(2)}</Text></Text>
+                      )}
+                      {platformRev.boostRevenue > 0 && (
+                        <Text style={styles.platformBreakItem}>Boost <Text style={{ color: "#fff" }}>${platformRev.boostRevenue.toFixed(2)}</Text></Text>
+                      )}
+                      {platformRev.p2pTransferFees > 0 && (
+                        <Text style={styles.platformBreakItem}>Transfè <Text style={{ color: "#fff" }}>${platformRev.p2pTransferFees.toFixed(2)}</Text></Text>
+                      )}
+                      {platformRev.deliveryFees > 0 && (
+                        <Text style={styles.platformBreakItem}>Livrezon 15% <Text style={{ color: "#fff" }}>${platformRev.deliveryFees.toFixed(2)}</Text></Text>
+                      )}
+                      {platformRev.subscriptionRevenue > 0 && (
+                        <Text style={styles.platformBreakItem}>Abònman <Text style={{ color: "#fff" }}>${platformRev.subscriptionRevenue.toFixed(2)}</Text></Text>
+                      )}
+                      {platformRev.rechargeFees > 0 && (
+                        <Text style={styles.platformBreakItem}>Rechaj <Text style={{ color: "#fff" }}>${platformRev.rechargeFees.toFixed(2)}</Text></Text>
+                      )}
+                    </View>
+                  )}
+                </Pressable>
               )}
 
               {/* ── Stripe Card Recharge Button ── */}
@@ -443,4 +511,22 @@ const styles = StyleSheet.create({
   stripeNote: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginBottom: 20, lineHeight: 17 },
   payBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, padding: 16 },
   payBtnLabel: { fontSize: 16, fontFamily: "Inter_700Bold", color: "#fff" },
+  // ── Platform Green Card ──
+  platformCard: {
+    borderRadius: 20, padding: 20, marginBottom: 12,
+    backgroundColor: "#064E3B",
+    shadowColor: "#10B981", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.45, shadowRadius: 14, elevation: 8,
+    borderWidth: 1, borderColor: "rgba(52,211,153,0.35)",
+  },
+  platformCardTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 },
+  platformCardTitle: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: 1.2 },
+  platformCardId: { fontSize: 10, fontFamily: "Inter_500Medium", color: "rgba(52,211,153,0.65)", marginTop: 2, letterSpacing: 0.5 },
+  platformRefreshBtn: {
+    width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+  },
+  platformCardLabel: { fontSize: 11, fontFamily: "Inter_500Medium", color: "#34d399", marginBottom: 4, letterSpacing: 0.5 },
+  platformCardAmount: { fontSize: 38, fontFamily: "Inter_700Bold", color: "#fff", letterSpacing: -0.5, marginBottom: 10 },
+  platformBreakdown: { flexDirection: "row", flexWrap: "wrap", gap: 8, rowGap: 4 },
+  platformBreakItem: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "rgba(167,243,208,0.70)" },
 });

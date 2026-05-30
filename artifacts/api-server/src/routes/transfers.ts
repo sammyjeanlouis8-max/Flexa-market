@@ -96,13 +96,15 @@ router.post("/wallet/p2p/preview", requireAuth, async (req, res): Promise<void> 
   const available = Math.max(0, (wallet?.balanceUsd ?? 0) - minFloor);
 
   if (available < amount) {
-    const reserveMsg = minFloor > 0 ? ` ($${minFloor.toFixed(2)} toujou rezève nan kont ou)` : "";
     res.json({
       amountUsd: amount, feeUsd, netAmountUsd,
       isInternational, feeRate: TRANSFER_FEE_RATE,
       dailyFee: 0, monthlyUsed, monthlyLimit,
+      maxSendable: parseFloat(available.toFixed(2)),
       canTransfer: false,
-      blockReason: `Balans ensifizan. Ou ka depanse $${available.toFixed(2)} maksimòm${reserveMsg}.`,
+      blockReason: minFloor > 0
+        ? `Ou ka voye $${available.toFixed(2)} sèlman — FlexaMarket rezève $${minFloor.toFixed(2)} nan kont ou.`
+        : `Balans ensifizan. Ou ka voye $${available.toFixed(2)} maksimòm.`,
     });
     return;
   }
@@ -111,6 +113,7 @@ router.post("/wallet/p2p/preview", requireAuth, async (req, res): Promise<void> 
     amountUsd: amount, feeUsd, netAmountUsd,
     isInternational, feeRate: TRANSFER_FEE_RATE,
     dailyFee: 0, monthlyUsed, monthlyLimit,
+    maxSendable: parseFloat(available.toFixed(2)),
     canTransfer: true, blockReason: null,
   });
 });

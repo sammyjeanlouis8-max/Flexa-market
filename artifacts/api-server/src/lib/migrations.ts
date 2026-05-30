@@ -1653,6 +1653,11 @@ export async function runStartupMigrations(): Promise<void> {
   });
 
   migrations.push({
+    name: "agent_applications.exchange_rate_dop",
+    sql: `ALTER TABLE agent_applications ADD COLUMN IF NOT EXISTS exchange_rate_dop real`,
+  });
+
+  migrations.push({
     name: "expo_push_tokens.indexes",
     sql: `
       CREATE UNIQUE INDEX IF NOT EXISTS expo_push_tokens_token_idx    ON expo_push_tokens(token);

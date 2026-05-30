@@ -50,6 +50,7 @@ interface Agent {
   userAvatar: string | null;
   userName: string | null;
   exchangeRate: number | null;
+  exchangeRateDop: number | null;
   saleType: string | null;
 }
 
@@ -145,11 +146,16 @@ function AgentCard({ agent, onChat, chatLoading }: {
         </div>
       </div>
 
-      {(agent.exchangeRate || agent.saleType) && (
+      {(agent.exchangeRate || agent.exchangeRateDop || agent.saleType) && (
         <div className="mt-2 flex flex-wrap gap-2">
           {agent.exchangeRate && (
             <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 rounded-full px-2.5 py-0.5 font-semibold">
-              {t("wallet.agentExchangeRate")}: {agent.exchangeRate.toFixed(1)} HTG/USD
+              {t("wallet.agentExchangeRate")}: {agent.exchangeRate.toFixed(1)} HTG/$
+            </span>
+          )}
+          {agent.exchangeRateDop && (
+            <span className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-full px-2.5 py-0.5 font-semibold">
+              {t("wallet.agentExchangeRateDop")}: {agent.exchangeRateDop.toFixed(1)} RD/$
             </span>
           )}
           {agent.saleType && (

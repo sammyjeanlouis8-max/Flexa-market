@@ -96,6 +96,7 @@ export default function AgentDashboard() {
   const [showCardHistory, setShowCardHistory] = useState(false);
 
   const [rateInput, setRateInput] = useState("");
+  const [rateDopInput, setRateDopInput] = useState("");
   const [saleTypeInput, setSaleTypeInput] = useState<"wholesale" | "retail" | "both">("both");
 
   const isAgent = (user as any)?.role === "agent" || user?.isAdmin || user?.isSuperAdmin;
@@ -146,6 +147,7 @@ export default function AgentDashboard() {
     if (myAgentData?.application) {
       const app = myAgentData.application;
       if (app.exchangeRate != null) setRateInput(String(app.exchangeRate));
+      if (app.exchangeRateDop != null) setRateDopInput(String(app.exchangeRateDop));
       if (app.saleType) setSaleTypeInput(app.saleType as "wholesale" | "retail" | "both");
     }
   }, [myAgentData]);
@@ -153,8 +155,8 @@ export default function AgentDashboard() {
   const isOnline: boolean = !!(myAgentData?.application?.isOnline);
 
   const profileMut = useMutation({
-    mutationFn: ({ exchangeRate, saleType }: { exchangeRate: number | null; saleType: string }) =>
-      apiFetch("/agents/my/profile", "PATCH", { exchangeRate, saleType }),
+    mutationFn: ({ exchangeRate, exchangeRateDop, saleType }: { exchangeRate: number | null; exchangeRateDop: number | null; saleType: string }) =>
+      apiFetch("/agents/my/profile", "PATCH", { exchangeRate, exchangeRateDop, saleType }),
     onSuccess: () => {
       refetchAgent();
       toast({ title: t("agentDashboard.profileSaved") });
@@ -339,17 +341,33 @@ export default function AgentDashboard() {
             <h2 className="font-bold text-sm">{t("agentDashboard.profileSettings")}</h2>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateLabel")}</label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="ex: 132.5"
-              value={rateInput}
-              onChange={(e) => setRateInput(e.target.value)}
-              className="h-9 text-sm"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateLabel")}</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="ex: 132.5"
+                value={rateInput}
+                onChange={(e) => setRateInput(e.target.value)}
+                className="h-9 text-sm"
+              />
+              <p className="text-[10px] text-violet-400 font-semibold">HTG / $</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateDopLabel")}</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="ex: 60.5"
+                value={rateDopInput}
+                onChange={(e) => setRateDopInput(e.target.value)}
+                className="h-9 text-sm"
+              />
+              <p className="text-[10px] text-orange-400 font-semibold">RD / $</p>
+            </div>
           </div>
 
           <div className="space-y-1">
@@ -376,6 +394,7 @@ export default function AgentDashboard() {
             disabled={profileMut.isPending}
             onClick={() => profileMut.mutate({
               exchangeRate: rateInput ? parseFloat(rateInput) : null,
+              exchangeRateDop: rateDopInput ? parseFloat(rateDopInput) : null,
               saleType: saleTypeInput,
             })}
             className="w-full h-9 font-bold bg-violet-600 hover:bg-violet-700 text-white"

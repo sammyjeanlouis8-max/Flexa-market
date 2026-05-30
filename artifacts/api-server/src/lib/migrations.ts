@@ -1812,15 +1812,15 @@ export async function runStartupMigrations(): Promise<void> {
       ON CONFLICT DO NOTHING`,
   });
 
-  // ── Commission rate update: 20% platform cut (merchant + delivery) ──────────
+  // ── Commission rate: 7% merchant sales, 20% delivery (platform cut) ─────────
   migrations.push({
-    name: "platform.commission_rates_20pct_v1",
+    name: "platform.commission_rates_7pct_merchant_v1",
     sql: `INSERT INTO platform_settings (key, value, updated_at)
       VALUES
-        ('commission_rate_default',  '0.2', NOW()),
-        ('commission_rate_moncash',  '0.2', NOW()),
-        ('commission_rate_stripe',   '0.2', NOW()),
-        ('stripe_commission_rate',   '0.2', NOW())
+        ('commission_rate_default',  '0.07', NOW()),
+        ('commission_rate_moncash',  '0.07', NOW()),
+        ('commission_rate_stripe',   '0.07', NOW()),
+        ('stripe_commission_rate',   '0.07', NOW())
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
   });
 

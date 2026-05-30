@@ -4,10 +4,10 @@ import { eq } from "drizzle-orm";
 // ╔══════════════════════════════════════════════════════════════════╗
 // ║  ⚠️  LOCKED FINANCIAL CONSTANTS — DO NOT CHANGE WITHOUT APPROVAL ║
 // ║  Validated by scripts/src/validate-deploy.ts on every deploy.   ║
-// ║  Commission : 20% all methods (MonCash + Stripe + Wallet)       ║
+// ║  Commission : 7% all methods (MonCash + Stripe + Wallet)        ║
 // ║  Buyer fee  : 0% — completely removed for all payment methods   ║
 // ╚══════════════════════════════════════════════════════════════════╝
-export const DEFAULT_COMMISSION_RATE = 0.20;  // ⚠️ LOCKED 20%
+export const DEFAULT_COMMISSION_RATE = 0.07;  // ⚠️ LOCKED 7%
 export const COMMISSION_KEY = "commission_rate_default";
 export const COMMISSION_KEY_MONCASH = "commission_rate_moncash";
 export const COMMISSION_KEY_STRIPE = "commission_rate_stripe";
@@ -15,8 +15,8 @@ export const COMMISSION_KEY_BUYER_STRIPE = "buyer_fee_rate_stripe";
 export const MIN_RATE = 0.05;
 export const MAX_RATE = 0.50;
 
-export const DEFAULT_RATE_MONCASH = 0.20;  // ⚠️ LOCKED 20%
-export const DEFAULT_RATE_STRIPE  = 0.20;  // ⚠️ LOCKED 20%
+export const DEFAULT_RATE_MONCASH = 0.07;  // ⚠️ LOCKED 7%
+export const DEFAULT_RATE_STRIPE  = 0.07;  // ⚠️ LOCKED 7%
 export const DEFAULT_BUYER_FEE_STRIPE = 0; // ⚠️ LOCKED 0% — no buyer service fee
 
 export type PaymentMethod = "card" | "moncash" | "natcash" | "usdt" | "sepa" | "apple" | "wallet";

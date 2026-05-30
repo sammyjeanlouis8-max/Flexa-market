@@ -29,7 +29,7 @@ function decrementStock(listing: typeof listingsTable.$inferSelect): Partial<typ
   return next > 0 ? { stockQuantity: next } : { stockQuantity: 0, status: "sold" };
 }
 
-const DEFAULT_COMMISSION = 0.07; // 7%
+const DEFAULT_COMMISSION = 0.20; // 20%
 
 async function getPlatformCommission(): Promise<number> {
   try {

@@ -24,8 +24,8 @@
 export const PRICE_PER_7KM_USD       = 2;
 export const KM_RATE_USD             = PRICE_PER_7KM_USD / 7;  // ≈ $0.2857 / km
 export const MIN_FEE_USD             = 10.00;  // ⚠️ LOCKED $10 minimum
-export const DRIVER_COMMISSION_PCT   = 0.85;   // ⚠️ LOCKED 85% driver
-export const PLATFORM_COMMISSION_PCT = 0.15;   // ⚠️ LOCKED 15% platform
+export const DRIVER_COMMISSION_PCT   = 0.80;   // ⚠️ LOCKED 80% driver
+export const PLATFORM_COMMISSION_PCT = 0.20;   // ⚠️ LOCKED 20% platform
 const DEFAULT_DISTANCE_KM            = 8;
 
 /** Distance threshold (km) below which we treat pickup & delivery as the same commune */

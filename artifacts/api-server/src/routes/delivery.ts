@@ -1087,11 +1087,11 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
     });
   }
 
-  // ── 2. Credit driver FM wallet immediately (85% fee + 100% tip) ────────────
-  // Split: 85% of delivery fee → driver, 15% → platform.
+  // ── 2. Credit driver FM wallet immediately (80% fee + 100% tip) ────────────
+  // Split: 80% of delivery fee → driver, 20% → platform.
   const baseFeeEarnings =
     delivery.driverEarnings ??
-    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.85 * 100) / 100 : 0);
+    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
   const tipEarnings = delivery.tipUsd != null && delivery.tipUsd > 0 ? delivery.tipUsd : 0;
   const driverEarningsUsd = Math.round((baseFeeEarnings + tipEarnings) * 100) / 100;
 
@@ -1476,9 +1476,9 @@ router.post("/delivery/:id/confirm-buyer-return", requireAuth, async (req, res):
 
   const now = new Date();
   const driverFeePerTrip = delivery.driverEarnings ??
-    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.85 * 100) / 100 : 0);
+    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
   const driverTotal = Math.round(driverFeePerTrip * 2 * 100) / 100;
-  const feeUsd = delivery.feeUsd ?? (driverFeePerTrip > 0 ? Math.round(driverFeePerTrip / 0.85 * 100) / 100 : 0);
+  const feeUsd = delivery.feeUsd ?? (driverFeePerTrip > 0 ? Math.round(driverFeePerTrip / 0.80 * 100) / 100 : 0);
 
   // Mark delivery returned + record confirmation time
   await db.update(deliveriesTable)

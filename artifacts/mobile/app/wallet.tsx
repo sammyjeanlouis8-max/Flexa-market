@@ -135,14 +135,23 @@ export default function WalletScreen() {
                 </View>
               )}
 
+              <Pressable
+                style={styles.rechargeHero}
+                onPress={() => Alert.alert(t("rechargeTitle"), t("rechargeMsg"), [{ text: t("ok") }])}
+              >
+                <View style={styles.rechargeHeroLeft}>
+                  <View style={styles.rechargeIconCircle}>
+                    <Feather name="plus-circle" size={26} color="#fff" />
+                  </View>
+                  <View>
+                    <Text style={styles.rechargeHeroLabel}>{t("recharge")}</Text>
+                    <Text style={styles.rechargeHeroSub}>MonCash · Stripe · Kòd FM</Text>
+                  </View>
+                </View>
+                <Feather name="chevron-right" size={20} color="rgba(255,255,255,0.8)" />
+              </Pressable>
+
               <View style={styles.actionsRow}>
-                <Pressable
-                  style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => Alert.alert(t("rechargeTitle"), t("rechargeMsg"), [{ text: t("ok") }])}
-                >
-                  <Feather name="plus-circle" size={20} color={colors.primary} />
-                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>{t("recharge")}</Text>
-                </Pressable>
                 <Pressable
                   style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => Alert.alert(t("sendTitle"), t("sendMsg"), [{ text: t("ok") }])}
@@ -216,6 +225,18 @@ const styles = StyleSheet.create({
   promoDivider: { width: 1, backgroundColor: "rgba(255,255,255,0.2)", marginVertical: 4 },
   promoLabel: { fontSize: 11, color: "rgba(255,255,255,0.65)", fontFamily: "Inter_400Regular", marginBottom: 2 },
   promoValue: { fontSize: 16, color: "#fff", fontFamily: "Inter_700Bold" },
+  rechargeHero: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    backgroundColor: "#16A34A", borderRadius: 18, padding: 18, marginBottom: 12,
+    shadowColor: "#16A34A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
+  },
+  rechargeHeroLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+  rechargeIconCircle: {
+    width: 46, height: 46, borderRadius: 23, backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center", justifyContent: "center",
+  },
+  rechargeHeroLabel: { fontSize: 17, fontFamily: "Inter_700Bold", color: "#fff" },
+  rechargeHeroSub: { fontSize: 11, fontFamily: "Inter_400Regular", color: "rgba(255,255,255,0.75)", marginTop: 2 },
   actionsRow: { flexDirection: "row", gap: 10, marginBottom: 24 },
   actionBtn: { flex: 1, alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1, gap: 6 },
   actionLabel: { fontSize: 12, fontFamily: "Inter_500Medium" },

@@ -10,7 +10,8 @@ const REGIONAL_COUNTRIES = ["Haiti", "Dominican Republic"];
 const STANDARD_MONTHLY_LIMIT_USD = 4000;
 const AGENT_MONTHLY_LIMIT_USD = 15000;
 const TRANSFER_FEE_RATE = 0.05; // 5% flat fee on all transfers
-const MIN_REAL_BALANCE_USD = 0; // No balance floor — full balance is spendable
+const POST_RECHARGE_MIN_USD = 1.50;
+const effectiveMin = (firstRechargeDone: boolean) => firstRechargeDone ? POST_RECHARGE_MIN_USD : 0;
 
 function monthKey(): string {
   const d = new Date();
@@ -89,16 +90,19 @@ router.post("/wallet/p2p/preview", requireAuth, async (req, res): Promise<void> 
   const [wallet] = await db.select({
     balanceUsd: promoWalletTable.balanceUsd,
     securityBalance: promoWalletTable.securityBalance,
+    firstRechargeDone: promoWalletTable.firstRechargeDone,
   }).from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
-  const available = Math.max(0, (wallet?.balanceUsd ?? 0) - MIN_REAL_BALANCE_USD);
+  const minFloor = effectiveMin(wallet?.firstRechargeDone ?? false);
+  const available = Math.max(0, (wallet?.balanceUsd ?? 0) - minFloor);
 
   if (available < amount) {
+    const reserveMsg = minFloor > 0 ? ` ($${minFloor.toFixed(2)} toujou rezève nan kont ou)` : "";
     res.json({
       amountUsd: amount, feeUsd, netAmountUsd,
       isInternational, feeRate: TRANSFER_FEE_RATE,
       dailyFee: 0, monthlyUsed, monthlyLimit,
       canTransfer: false,
-      blockReason: `Balans ensifizan. Ou ka depanse $${available.toFixed(2)} maksimòm ($2.50 rezève nan kont ou toujou).`,
+      blockReason: `Balans ensifizan. Ou ka depanse $${available.toFixed(2)} maksimòm${reserveMsg}.`,
     });
     return;
   }
@@ -146,21 +150,23 @@ router.post("/wallet/p2p", requireAuth, async (req, res): Promise<void> => {
   const [wallet] = await db.select({
     balanceUsd: promoWalletTable.balanceUsd,
     securityBalance: promoWalletTable.securityBalance,
+    firstRechargeDone: promoWalletTable.firstRechargeDone,
   }).from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
-  const available = Math.max(0, (wallet?.balanceUsd ?? 0) - MIN_REAL_BALANCE_USD);
+  const minFloor = effectiveMin(wallet?.firstRechargeDone ?? false);
+  const available = Math.max(0, (wallet?.balanceUsd ?? 0) - minFloor);
 
   if (available < amount) {
-    res.status(400).json({ error: `Balans ensifizan. Ou ka depanse $${available.toFixed(2)} maksimòm — $2.50 ap toujou rete nan kont ou.` });
+    const reserveMsg = minFloor > 0 ? ` — $${minFloor.toFixed(2)} ap toujou rete nan kont ou` : "";
+    res.status(400).json({ error: `Balans ensifizan. Ou ka depanse $${available.toFixed(2)} maksimòm${reserveMsg}.` });
     return;
   }
 
-  // Deduct full amount from sender (includes fee); $2.50 floor enforced in WHERE clause
   if (wallet) {
     await db.update(promoWalletTable)
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${amount}` })
       .where(and(
         eq(promoWalletTable.userId, userId),
-        sql`${promoWalletTable.balanceUsd} >= ${amount + MIN_REAL_BALANCE_USD - 0.001}`,
+        sql`${promoWalletTable.balanceUsd} >= ${amount + minFloor - 0.001}`,
       ));
   }
 

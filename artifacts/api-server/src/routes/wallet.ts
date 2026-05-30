@@ -33,8 +33,14 @@ const MAX_LOOKUPS_PER_HOUR = 40;
 const TRANSFER_FEE_PCT = 0.05;
 /** Platform fee on ALL recharges (2%) */
 const RECHARGE_FEE_PCT = 0.02;
-/** Minimum real balance reserved — $0 (no funds locked) */
+/** Minimum real balance reserved BEFORE first recharge — $0 (new users not yet constrained) */
 export const MIN_REAL_BALANCE_USD = 0;
+/** Minimum balance that must ALWAYS remain after the user has made their first recharge */
+export const POST_RECHARGE_MIN_BALANCE_USD = 1.50;
+/** Returns the effective minimum balance floor for a user based on whether they've recharged */
+export function effectiveMinBalance(firstRechargeDone: boolean): number {
+  return firstRechargeDone ? POST_RECHARGE_MIN_BALANCE_USD : 0;
+}
 
 function checkTransferLimits(
   userId: number,
@@ -217,18 +223,17 @@ export async function deductWallet(userId: number, amountUsd: number, note: stri
     return false;
   }
   const wallet = await getOrCreateWallet(userId);
-  // Full balance is spendable — no minimum reserve
-  const available = wallet.balanceUsd - MIN_REAL_BALANCE_USD;
+  const minBal = effectiveMinBalance(wallet.firstRechargeDone);
+  const available = wallet.balanceUsd - minBal;
   if (available < amountUsd - 0.001) return false;
-  // Atomic deduction: WHERE clause prevents negative balance under concurrent load
   const updated = await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${amountUsd}`, updatedAt: new Date() })
     .where(and(
       eq(promoWalletTable.userId, userId),
-      sql`${promoWalletTable.balanceUsd} >= ${amountUsd + MIN_REAL_BALANCE_USD - 0.001}`,
+      sql`${promoWalletTable.balanceUsd} >= ${amountUsd + minBal - 0.001}`,
     ))
     .returning({ id: promoWalletTable.id });
-  if (updated.length === 0) return false; // concurrent request already spent the balance
+  if (updated.length === 0) return false;
   await db.insert(walletTransactionsTable).values({
     userId,
     type: "boost_debit",
@@ -283,9 +288,9 @@ export async function deductWalletHybrid(
     return { ok: false, error: "Aksyon sa refize — moun ki mande a pa pwopriyetè pòtfèy la", promoBalance: 0, realBalance: 0 };
   }
   const wallet = await getOrCreateWallet(userId);
+  const minBal = effectiveMinBalance(wallet.firstRechargeDone);
   const promoAvail = Math.max(0, wallet.promoBalance);
-  // Full balance available — no reserve floor.
-  const realAvail = Math.max(0, wallet.balanceUsd - MIN_REAL_BALANCE_USD);
+  const realAvail = Math.max(0, wallet.balanceUsd - minBal);
 
   const promoToUse = Math.min(promoAvail, totalUsd);
   const realToUse = Math.min(realAvail, totalUsd - promoToUse);
@@ -321,7 +326,7 @@ export async function deductWalletHybrid(
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${realUsed}`, updatedAt: new Date() })
       .where(and(
         eq(promoWalletTable.userId, userId),
-        sql`${promoWalletTable.balanceUsd} >= ${realUsed + MIN_REAL_BALANCE_USD - 0.001}`,
+        sql`${promoWalletTable.balanceUsd} >= ${realUsed + minBal - 0.001}`,
       ))
       .returning({ id: promoWalletTable.id });
     if (updatedReal.length === 0) {
@@ -439,13 +444,13 @@ router.get("/wallet/balance", requireAuth, async (req, res): Promise<void> => {
   ));
 
   const spendableUsd = Math.max(0, wallet.balanceUsd);
-  // Full balance is free to spend — no reserve
-  const freeToSpendUsd = Math.max(0, spendableUsd - MIN_REAL_BALANCE_USD);
+  const minReserved = effectiveMinBalance(wallet.firstRechargeDone ?? false);
+  const freeToSpendUsd = Math.max(0, spendableUsd - minReserved);
 
   res.json({
-    balanceUsd: spendableUsd,         // total balance
-    availableUsd: freeToSpendUsd,     // same as balanceUsd — no reserve
-    minReservedUsd: MIN_REAL_BALANCE_USD,
+    balanceUsd: spendableUsd,
+    availableUsd: freeToSpendUsd,
+    minReservedUsd: minReserved,
     securityBalance: 0,               // security deposit removed
     firstRechargeDone: wallet.firstRechargeDone ?? false,
     balanceHtg: Math.round(spendableUsd * settings.rateHtgToUsd),

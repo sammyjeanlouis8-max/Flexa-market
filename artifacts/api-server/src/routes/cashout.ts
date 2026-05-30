@@ -10,6 +10,8 @@ const router = Router();
 
 /** Platform fee applied to all cash-out requests (2%) */
 const CASHOUT_FEE_PCT = 0.02;
+/** Minimum balance always reserved after first recharge */
+const POST_RECHARGE_MIN_USD = 1.50;
 
 function generateOTP(): string {
   return crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -82,9 +84,11 @@ router.post("/cashout/request", requireAuth, async (req, res): Promise<void> => 
   }
 
   const [wallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
-  const availableForCashout = Math.max(0, wallet?.balanceUsd ?? 0);
+  const cashoutMinFloor = wallet?.firstRechargeDone ? POST_RECHARGE_MIN_USD : 0;
+  const availableForCashout = Math.max(0, (wallet?.balanceUsd ?? 0) - cashoutMinFloor);
   if (!wallet || availableForCashout < parsed - 0.001) {
-    res.status(400).json({ error: `Balans pa sifiza. Ou gen $${availableForCashout.toFixed(2)} disponib pou retrè.` });
+    const reserveNote = cashoutMinFloor > 0 ? ` ($${cashoutMinFloor.toFixed(2)} toujou rezève nan kont ou)` : "";
+    res.status(400).json({ error: `Balans pa sifiza. Ou gen $${availableForCashout.toFixed(2)} disponib pou retrè${reserveNote}.` });
     return;
   }
 
@@ -92,12 +96,12 @@ router.post("/cashout/request", requireAuth, async (req, res): Promise<void> => 
   const feeUsd = Math.round(parsed * CASHOUT_FEE_PCT * 100) / 100;
   const netAmountUsd = Math.round((parsed - feeUsd) * 100) / 100;
 
-  // Deduct from wallet atomically
+  // Deduct from wallet atomically (floor enforced in WHERE clause)
   await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
     .where(and(
       eq(promoWalletTable.userId, req.userId!),
-      sql`${promoWalletTable.balanceUsd} >= ${parsed - 0.001}`,
+      sql`${promoWalletTable.balanceUsd} >= ${parsed + cashoutMinFloor - 0.001}`,
     ));
 
   const methodLabel = method === "moncash" ? "MonCash" : method === "agent_transfer" ? "Ajan Otorize" : "Ajant";
@@ -160,9 +164,11 @@ router.post("/cashout/stripe", requireAuth, async (req, res): Promise<void> => {
 
   // Check wallet balance
   const [wallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
-  const availableForCashout = Math.max(0, wallet?.balanceUsd ?? 0);
+  const stripeMinFloor = wallet?.firstRechargeDone ? POST_RECHARGE_MIN_USD : 0;
+  const availableForCashout = Math.max(0, (wallet?.balanceUsd ?? 0) - stripeMinFloor);
   if (!wallet || availableForCashout < parsed - 0.001) {
-    res.status(400).json({ error: `Balans pa sifiza. Ou gen $${availableForCashout.toFixed(2)} disponib.` });
+    const reserveNote = stripeMinFloor > 0 ? ` ($${stripeMinFloor.toFixed(2)} toujou rezève nan kont ou)` : "";
+    res.status(400).json({ error: `Balans pa sifiza. Ou gen $${availableForCashout.toFixed(2)} disponib${reserveNote}.` });
     return;
   }
 
@@ -175,12 +181,12 @@ router.post("/cashout/stripe", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  // Deduct from wallet atomically
+  // Deduct from wallet atomically (floor enforced in WHERE clause)
   const result = await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
     .where(and(
       eq(promoWalletTable.userId, req.userId!),
-      sql`${promoWalletTable.balanceUsd} >= ${parsed - 0.001}`,
+      sql`${promoWalletTable.balanceUsd} >= ${parsed + stripeMinFloor - 0.001}`,
     ))
     .returning();
 

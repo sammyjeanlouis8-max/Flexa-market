@@ -14,18 +14,10 @@ function parseAdminCountries(admin: any): string[] {
   try { return JSON.parse(admin.adminScopeCountries) as string[]; } catch { return []; }
 }
 
-function agentAppScopeConditions(admin: any) {
-  if (admin?.isSuperAdmin) return [];
-  const conds: any[] = [];
-  const countries = parseAdminCountries(admin);
-  if (countries.length > 1) {
-    conds.push(inArray(agentApplicationsTable.country, countries));
-  } else if (countries.length === 1) {
-    conds.push(eq(agentApplicationsTable.country, countries[0]));
-  } else if (admin?.adminScopeCountry) {
-    conds.push(eq(agentApplicationsTable.country, admin.adminScopeCountry));
-  }
-  return conds;
+function agentAppScopeConditions(_admin: any) {
+  // All admins (including scoped admins) can view agents from all countries.
+  // Country scope is only enforced for approve/reject actions (assertAgentAppInScope).
+  return [];
 }
 
 function assertAgentAppInScope(admin: any, appCountry: string | null): string | null {

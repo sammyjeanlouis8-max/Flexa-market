@@ -3257,63 +3257,24 @@ export default function WalletPage() {
         </button>
       )}
 
-      {/* ── Recent Transactions ─────────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{t("wallet.txHistory")}</p>
-          {history && history.length > 0 && (
-            <button type="button" onClick={() => setLocation("/wallet/history")} className="text-xs text-primary font-semibold hover:underline">
-              {t("wallet.viewAll")}
-            </button>
-          )}
+      {/* ── Bouton Rechaje Wallet ────────────────────────────────────────────── */}
+      <button
+        type="button"
+        onClick={() => setStep(isHaiti ? "topup" : "card")}
+        className="group w-full rounded-2xl bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:shadow-xl transition-all duration-300 text-left"
+      >
+        <div className="px-4 py-3.5 flex items-center gap-3 overflow-hidden relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+          <div className="w-10 h-10 rounded-xl bg-white/20 ring-2 ring-white/30 flex items-center justify-center shrink-0">
+            <ArrowUpCircle className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-black text-white leading-tight">Rechaje Wallet Ou</p>
+            <p className="text-xs text-emerald-100">MonCash, Kart Kredi, Ajant, Crypto</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-white/80 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
-
-        {!history ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}
-          </div>
-        ) : history.length === 0 ? (
-          <div className="flex flex-col items-center py-8 gap-2 text-muted-foreground">
-            <Clock className="h-8 w-8 opacity-20" />
-            <p className="text-xs">{t("wallet.noTx")}</p>
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {history.slice(0, 5).map(tx => {
-              const meta = typeLabel(tx.type, tx.amountUsd, t);
-              const { Icon } = meta;
-              const isIn = tx.amountUsd > 0;
-              return (
-                <div key={tx.id} className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
-                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0", meta.iconColor)}>
-                    <Icon style={{ width: 15, height: 15 }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">{meta.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(tx.createdAt).toLocaleDateString("fr-HT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0 space-y-0.5">
-                    <p className={cn("text-sm font-black", isIn ? "text-emerald-500" : "text-red-500")}>
-                      {isIn ? "+" : "-"}${Math.abs(tx.amountUsd).toFixed(2)}
-                    </p>
-                    {statusBadge(tx.status, t)}
-                  </div>
-                </div>
-              );
-            })}
-            {history.length > 5 && (
-              <a
-                href="/wallet/history"
-                className="block text-center text-xs text-primary font-semibold py-2.5 rounded-xl border border-border hover:bg-accent transition-colors"
-              >
-                Wè {history.length - 5} lòt tranzaksyon →
-              </a>
-            )}
-          </div>
-        )}
-      </div>
+      </button>
 
       {/* ── Compact Referral / Promo Card ──────────────────────────────────── */}
       {referral?.referralCode ? (
@@ -3394,6 +3355,64 @@ export default function WalletPage() {
       ) : (
         <div className="text-xs text-muted-foreground animate-pulse">{t("wallet.loadingPromo")}</div>
       )}
+
+      {/* ── Recent Transactions ─────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{t("wallet.txHistory")}</p>
+          {history && history.length > 0 && (
+            <button type="button" onClick={() => setLocation("/wallet/history")} className="text-xs text-primary font-semibold hover:underline">
+              {t("wallet.viewAll")}
+            </button>
+          )}
+        </div>
+
+        {!history ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}
+          </div>
+        ) : history.length === 0 ? (
+          <div className="flex flex-col items-center py-8 gap-2 text-muted-foreground">
+            <Clock className="h-8 w-8 opacity-20" />
+            <p className="text-xs">{t("wallet.noTx")}</p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {history.slice(0, 5).map(tx => {
+              const meta = typeLabel(tx.type, tx.amountUsd, t);
+              const { Icon } = meta;
+              const isIn = tx.amountUsd > 0;
+              return (
+                <div key={tx.id} className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0", meta.iconColor)}>
+                    <Icon style={{ width: 15, height: 15 }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">{meta.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(tx.createdAt).toLocaleDateString("fr-HT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0 space-y-0.5">
+                    <p className={cn("text-sm font-black", isIn ? "text-emerald-500" : "text-red-500")}>
+                      {isIn ? "+" : "-"}${Math.abs(tx.amountUsd).toFixed(2)}
+                    </p>
+                    {statusBadge(tx.status, t)}
+                  </div>
+                </div>
+              );
+            })}
+            {history.length > 5 && (
+              <a
+                href="/wallet/history"
+                className="block text-center text-xs text-primary font-semibold py-2.5 rounded-xl border border-border hover:bg-accent transition-colors"
+              >
+                Wè {history.length - 5} lòt tranzaksyon →
+              </a>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Security notice (compact) ──────────────────────────────────────── */}
       <div className="rounded-xl border border-amber-200/60 bg-amber-50/40 dark:bg-amber-950/15 px-3 py-2.5 flex items-center gap-2">

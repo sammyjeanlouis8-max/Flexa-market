@@ -69,6 +69,8 @@ router.get("/agents/public", requireAuth, async (req, res): Promise<void> => {
       lastSeenAt: agentApplicationsTable.lastSeenAt,
       fmWalletNumber: sql<string | null>`${agentApplicationsTable}.fm_wallet_number`,
       supportedMethods: sql<string | null>`${agentApplicationsTable}.supported_methods`,
+      exchangeRate: sql<number | null>`${agentApplicationsTable}.exchange_rate`,
+      saleType: sql<string | null>`${agentApplicationsTable}.sale_type`,
       userAvatar: usersTable.avatar,
       userName: usersTable.name,
       accountNumber: promoWalletTable.accountNumber,
@@ -104,6 +106,37 @@ router.patch("/agents/set-online", requireAuth, async (req, res): Promise<void> 
   } as any).where(eq(agentApplicationsTable.id, app.id));
 
   res.json({ isOnline: !!isOnline });
+});
+
+// PATCH /api/agents/my/profile — agent updates their public profile (exchange rate + sale type)
+router.patch("/agents/my/profile", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const { exchangeRate, saleType } = req.body;
+
+  const [app] = await db
+    .select()
+    .from(agentApplicationsTable)
+    .where(and(eq(agentApplicationsTable.userId, userId), eq(agentApplicationsTable.status, "approved")))
+    .orderBy(desc(agentApplicationsTable.createdAt))
+    .limit(1);
+
+  if (!app) { res.status(404).json({ error: "No approved agent application found" }); return; }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (exchangeRate !== undefined) {
+    const rate = parseFloat(String(exchangeRate));
+    updates.exchangeRate = isNaN(rate) ? null : rate;
+  }
+  if (saleType !== undefined) {
+    if (["wholesale", "retail", "both"].includes(String(saleType))) {
+      updates.saleType = String(saleType);
+    } else if (saleType === null || saleType === "") {
+      updates.saleType = null;
+    }
+  }
+
+  await db.update(agentApplicationsTable).set(updates as any).where(eq(agentApplicationsTable.id, app.id));
+  res.json({ ok: true });
 });
 
 // POST /api/agents/:userId/start-chat — create/find direct agent-recharge conversation

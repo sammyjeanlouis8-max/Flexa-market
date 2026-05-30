@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi, Conversation } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -78,6 +79,7 @@ export default function InboxScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { request } = useApi();
+  const { t } = useLanguage();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +109,7 @@ export default function InboxScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Mesaj</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>{t("inboxTitle")}</Text>
       </View>
 
       {loading ? (
@@ -117,9 +119,9 @@ export default function InboxScreen() {
       ) : conversations.length === 0 ? (
         <View style={styles.empty}>
           <Feather name="message-circle" size={48} color={colors.mutedForeground} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Pa gen mesaj</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("noConversations")}</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            Konvèsasyon ou yo ap parèt isit la lè ou kòmanse pale ak yon vandè.
+            {t("noConvHint")}
           </Text>
         </View>
       ) : (

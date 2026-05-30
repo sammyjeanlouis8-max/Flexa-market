@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 type KycStatus = "not_submitted" | "pending" | "approved" | "rejected";
 
@@ -31,6 +32,7 @@ export default function KycScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { request } = useApi();
+  const { t } = useLanguage();
 
   const [kycInfo, setKycInfo] = useState<KycInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export default function KycScreen() {
 
   async function handleSubmit() {
     if (!docPhoto || !selfiePhoto) {
-      Alert.alert("Erè", "Ou bezwen telechaje foto dokiman ak selfie ou.");
+      Alert.alert(t("kycErrTitle"), t("kycErrDocs"));
       return;
     }
     setSubmitting(true);
@@ -84,9 +86,9 @@ export default function KycScreen() {
         headers: { "Content-Type": "multipart/form-data" },
       });
       await fetchKyc();
-      Alert.alert("Soumèt!", "Demann KYC ou soumèt. Admin pral revize li nan 24 èdtan.");
+      Alert.alert(t("kycSubmitTitle"), t("kycSubmitMsg"));
     } catch (e: any) {
-      Alert.alert("Erè", e?.message ?? "Echèk soumisyon. Eseye ankò.");
+      Alert.alert(t("kycErrTitle"), e?.message ?? t("kycErrMsg"));
     } finally {
       setSubmitting(false);
     }
@@ -101,7 +103,7 @@ export default function KycScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Verifikasyon Idantite</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("kycTitle")}</Text>
           <View style={{ width: 36 }} />
         </View>
         <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>
@@ -116,7 +118,7 @@ export default function KycScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Verifikasyon Idantite</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("kycTitle")}</Text>
           <View style={{ width: 36 }} />
         </View>
       </View>
@@ -168,22 +170,22 @@ export default function KycScreen() {
               </Text>
             </View>
 
-            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Tip Dokiman</Text>
+            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>{t("kycDocType")}</Text>
             <View style={[styles.docTypeRow]}>
-              {(["national_id", "passport", "driving_license"] as const).map((t) => (
+              {(["national_id", "passport", "driving_license"] as const).map((dtype) => (
                 <TouchableOpacity
-                  key={t}
-                  style={[styles.docTypeBtn, { borderColor: docType === t ? colors.primary : colors.border, backgroundColor: docType === t ? colors.primary + "22" : colors.card }]}
-                  onPress={() => setDocType(t)}
+                  key={dtype}
+                  style={[styles.docTypeBtn, { borderColor: docType === dtype ? colors.primary : colors.border, backgroundColor: docType === dtype ? colors.primary + "22" : colors.card }]}
+                  onPress={() => setDocType(dtype)}
                 >
-                  <Text style={[styles.docTypeText, { color: docType === t ? colors.primary : colors.mutedForeground }]}>
-                    {t === "national_id" ? "CIN" : t === "passport" ? "Paspo" : "Lisans"}
+                  <Text style={[styles.docTypeText, { color: docType === dtype ? colors.primary : colors.mutedForeground }]}>
+                    {dtype === "national_id" ? t("kycNatId") : dtype === "passport" ? t("kycPassport") : t("kycDrivingLicense")}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Foto Dokiman</Text>
+            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>{t("kycDocFront")}</Text>
             <Pressable
               style={[styles.photoBox, { backgroundColor: colors.card, borderColor: docPhoto ? colors.primary : colors.border }]}
               onPress={() => pickImage("doc")}
@@ -194,13 +196,13 @@ export default function KycScreen() {
                 <View style={styles.photoPlaceholder}>
                   <Feather name="file" size={28} color={colors.mutedForeground} />
                   <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-                    Pran foto recto dokiman
+                    {t("kycDocFrontHint")}
                   </Text>
                 </View>
               )}
             </Pressable>
 
-            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Selfie Avèk Dokiman</Text>
+            <Text style={[styles.sectionLabel, { color: colors.foreground }]}>{t("kycSelfie")}</Text>
             <Pressable
               style={[styles.photoBox, { backgroundColor: colors.card, borderColor: selfiePhoto ? colors.primary : colors.border }]}
               onPress={() => pickImage("selfie")}
@@ -211,7 +213,7 @@ export default function KycScreen() {
                 <View style={styles.photoPlaceholder}>
                   <Feather name="camera" size={28} color={colors.mutedForeground} />
                   <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
-                    Selfie ou ak dokiman ou nan men ou
+                    {t("kycSelfieHint")}
                   </Text>
                 </View>
               )}
@@ -227,7 +229,7 @@ export default function KycScreen() {
               ) : (
                 <>
                   <Feather name="send" size={18} color="#fff" />
-                  <Text style={styles.submitText}>Soumèt pou Verifikasyon</Text>
+                  <Text style={styles.submitText}>{t("kycSubmitBtn")}</Text>
                 </>
               )}
             </TouchableOpacity>

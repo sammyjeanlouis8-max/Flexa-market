@@ -13,34 +13,27 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage, type Lang } from "@/context/LanguageContext";
 import { useColors } from "@/hooks/useColors";
 
-type SettingSection = {
-  title: string;
-  items: SettingItem[];
-};
-
-type SettingItem = {
-  icon: string;
-  label: string;
-  sublabel?: string;
-  onPress: () => void;
-  danger?: boolean;
-  badge?: string;
+const LANG_LABEL: Record<Lang, string> = {
+  ht: "Kreyòl Ayisyen",
+  fr: "Français",
 };
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { t, lang, setLang } = useLanguage();
   const [notifEnabled, setNotifEnabled] = useState(true);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   function handleLogout() {
-    Alert.alert("Dekonekte", "Ou sèten ou vle dekonekte?", [
-      { text: "Anile", style: "cancel" },
+    Alert.alert(t("logoutTitle"), t("logoutMsg"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Dekonekte",
+        text: t("sLogout"),
         style: "destructive",
         onPress: async () => {
           await logout();
@@ -50,92 +43,121 @@ export default function SettingsScreen() {
     ]);
   }
 
+  function handleLanguagePick() {
+    Alert.alert(t("sLanguage"), "", [
+      {
+        text: "Kreyòl Ayisyen",
+        onPress: () => setLang("ht"),
+        style: lang === "ht" ? "default" : "default",
+      },
+      {
+        text: "Français",
+        onPress: () => setLang("fr"),
+      },
+      { text: t("cancel"), style: "cancel" },
+    ]);
+  }
+
+  type SettingItem = {
+    icon: string;
+    label: string;
+    sublabel?: string;
+    onPress: () => void;
+    danger?: boolean;
+    badge?: string;
+  };
+
+  type SettingSection = {
+    title: string;
+    items: SettingItem[];
+  };
+
   const sections: SettingSection[] = [
     {
-      title: "Kont",
+      title: t("sAccount"),
       items: [
         {
           icon: "user",
-          label: "Modifye Pwofil",
+          label: t("sEditProfile"),
           sublabel: user?.name,
-          onPress: () => Alert.alert("Modifye Pwofil", "Ouvè sit entènèt FlexaMarket pou modifye pwofil ou a.", [{ text: "OK" }]),
+          onPress: () => Alert.alert(t("sEditProfile"), t("sEditProfileHint"), [{ text: t("ok") }]),
         },
         {
           icon: "lock",
-          label: "Modpas & Sekirite",
-          onPress: () => Alert.alert("Modpas & Sekirite", "Ale nan Paramèt → Sekirite sou sit entènèt FlexaMarket pou chanje modpas ou.", [{ text: "OK" }]),
+          label: t("sPasswordSecurity"),
+          onPress: () => Alert.alert(t("sPasswordSecurity"), t("sPasswordSecurityHint"), [{ text: t("ok") }]),
         },
         {
           icon: "shield",
-          label: "Verifikasyon Idantite (KYC)",
-          sublabel: user?.kycStatus ?? "Pa verifye",
-          badge: user?.kycStatus === "approved" ? "✓ Verifye" : undefined,
+          label: t("sKyc"),
+          sublabel: user?.kycStatus ?? t("notVerifiedKyc"),
+          badge: user?.kycStatus === "approved" ? `✓ ${t("verified")}` : undefined,
           onPress: () => router.push("/kyc"),
         },
         {
           icon: "phone",
-          label: "Telefòn & OTP",
-          sublabel: user?.phone ?? "Pa defini",
-          onPress: () => Alert.alert("Telefòn & OTP", "Kontakte sipò FlexaMarket pou chanje nimewo telefòn ou.", [{ text: "OK" }]),
+          label: t("sPhone"),
+          sublabel: user?.phone ?? t("notVerifiedKyc"),
+          onPress: () => Alert.alert(t("sPhone"), t("sPhoneHint"), [{ text: t("ok") }]),
         },
       ],
     },
     {
-      title: "Preferans",
+      title: t("sPreferences"),
       items: [
         {
           icon: "bell",
-          label: "Notifikasyon",
-          sublabel: notifEnabled ? "Aktif" : "Dezaktive",
+          label: t("sNotifications"),
+          sublabel: notifEnabled ? t("sNotifOn") : t("sNotifOff"),
           onPress: () => setNotifEnabled((v) => !v),
         },
         {
           icon: "globe",
-          label: "Lang",
-          sublabel: "Kreyòl ayisyen",
-          onPress: () => {},
+          label: t("sLanguage"),
+          sublabel: LANG_LABEL[lang],
+          onPress: handleLanguagePick,
         },
         {
           icon: "moon",
-          label: "Aparans",
-          sublabel: "Mode nwa",
+          label: t("sAppearance"),
+          sublabel: t("sDarkMode"),
           onPress: () => {},
         },
       ],
     },
     {
-      title: "Finans",
+      title: t("sFinances"),
       items: [
         {
           icon: "credit-card",
-          label: "Pòtfèy FM",
+          label: t("sWalletFM"),
           onPress: () => router.push("/wallet"),
         },
         {
           icon: "send",
-          label: "Kont Peman Vandè",
-          onPress: () => Alert.alert("Kont Peman Vandè", "Konfigire kont MonCash ak Bank ou nan Paramèt sou sit entènèt FlexaMarket.", [{ text: "OK" }]),
+          label: t("sPayoutAccount"),
+          onPress: () => Alert.alert(t("sPayoutAccount"), t("sPayoutAccountHint"), [{ text: t("ok") }]),
         },
       ],
     },
     {
-      title: "Asistans",
+      title: t("sSupport"),
       items: [
         {
           icon: "help-circle",
-          label: "Sipò",
-          onPress: () => Alert.alert("Sipò FlexaMarket", "Voye yon mesaj nan support@flexamarket.com oswa itilize seksyon Sipò sou sit entènèt la.", [{ text: "OK" }]),
+          label: t("sHelpSupport"),
+          onPress: () => Alert.alert("FlexaMarket", t("sHelpSupportHint"), [{ text: t("ok") }]),
         },
         {
           icon: "file-text",
-          label: "Kondisyon Itilizasyon",
-          onPress: () => Alert.alert("Kondisyon Itilizasyon", "Ale sou flexamarket.com/terms pou li kondisyon itilizasyon yo.", [{ text: "OK" }]),
+          label: t("sTerms"),
+          onPress: () => Alert.alert(t("sTerms"), t("sTermsHint"), [{ text: t("ok") }]),
         },
         {
           icon: "info",
-          label: "Sou FlexaMarket",
+          label: t("sAbout"),
           sublabel: "v1.0.0",
-          onPress: () => Alert.alert("FLEXA MARKET", "Premye marketplace achte & vann ann Ayiti.\n\nVèsyon 1.0.0\n© 2026 FlexaMarket", [{ text: "OK" }]),
+          onPress: () => Alert.alert("FLEXA MARKET", t("sAboutMsg"), [{ text: t("ok") }]),
         },
       ],
     },
@@ -144,7 +166,7 @@ export default function SettingsScreen() {
       items: [
         {
           icon: "log-out",
-          label: "Dekonekte",
+          label: t("sLogout"),
           danger: true,
           onPress: handleLogout,
         },
@@ -159,7 +181,7 @@ export default function SettingsScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Paramèt</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("mySettings")}</Text>
           <View style={{ width: 36 }} />
         </View>
       </View>
@@ -247,7 +269,7 @@ const styles = StyleSheet.create({
   iconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   rowContent: { flex: 1 },
   rowLabel: { fontSize: 15, fontFamily: "Inter_500Medium" },
-  rowSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
-  badge: { backgroundColor: "#22C55E22", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: "#22C55E55" },
+  rowSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
+  badge: { backgroundColor: "#22C55E22", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   badgeText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#22C55E" },
 });

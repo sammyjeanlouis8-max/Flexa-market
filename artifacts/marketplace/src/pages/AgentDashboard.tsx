@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -11,7 +11,7 @@ import {
   ShieldCheck, Clock, CheckCircle2, XCircle, DollarSign,
   User, MapPin, Loader2, KeyRound, RefreshCw, LogOut,
   Wifi, WifiOff, ImageIcon, Send, ChevronDown, ChevronUp,
-  CreditCard, Gift, Download, Copy, Package,
+  CreditCard, Gift, Download, Copy, Package, Settings2,
 } from "lucide-react";
 
 function getToken() {
@@ -95,6 +95,9 @@ export default function AgentDashboard() {
   const [cardResult, setCardResult] = useState<{ codes: string[]; amountUsd: number; totalCost: number; batchId: string } | null>(null);
   const [showCardHistory, setShowCardHistory] = useState(false);
 
+  const [rateInput, setRateInput] = useState("");
+  const [saleTypeInput, setSaleTypeInput] = useState<"wholesale" | "retail" | "both">("both");
+
   const isAgent = (user as any)?.role === "agent" || user?.isAdmin || user?.isSuperAdmin;
 
   const { data: myAgentData, refetch: refetchAgent } = useQuery<any>({
@@ -139,7 +142,25 @@ export default function AgentDashboard() {
     a.download = `FM-Kart-${batchId}.csv`; a.click();
     URL.revokeObjectURL(url);
   }
+  useEffect(() => {
+    if (myAgentData?.application) {
+      const app = myAgentData.application;
+      if (app.exchangeRate != null) setRateInput(String(app.exchangeRate));
+      if (app.saleType) setSaleTypeInput(app.saleType as "wholesale" | "retail" | "both");
+    }
+  }, [myAgentData]);
+
   const isOnline: boolean = !!(myAgentData?.application?.isOnline);
+
+  const profileMut = useMutation({
+    mutationFn: ({ exchangeRate, saleType }: { exchangeRate: number | null; saleType: string }) =>
+      apiFetch("/agents/my/profile", "PATCH", { exchangeRate, saleType }),
+    onSuccess: () => {
+      refetchAgent();
+      toast({ title: t("agentDashboard.profileSaved") });
+    },
+    onError: (e: Error) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   const onlineMut = useMutation({
     mutationFn: (online: boolean) => apiFetch("/agents/set-online", "PATCH", { isOnline: online }),
@@ -306,6 +327,60 @@ export default function AgentDashboard() {
                 ? t("agentDashboard.setOffline")
                 : t("agentDashboard.setOnline")
             }
+          </Button>
+        </div>
+
+        {/* ── Profile Settings ── */}
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-8 w-8 rounded-lg bg-violet-600/20 flex items-center justify-center">
+              <Settings2 className="h-4 w-4 text-violet-400" />
+            </div>
+            <h2 className="font-bold text-sm">{t("agentDashboard.profileSettings")}</h2>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.exchangeRateLabel")}</label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="ex: 132.5"
+              value={rateInput}
+              onChange={(e) => setRateInput(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground font-medium">{t("agentDashboard.saleTypeLabel")}</label>
+            <div className="flex gap-2">
+              {(["wholesale", "retail", "both"] as const).map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setSaleTypeInput(st)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    saleTypeInput === st
+                      ? "bg-violet-600 text-white border-violet-600"
+                      : "bg-muted/50 text-muted-foreground border-border hover:border-violet-500/50"
+                  }`}
+                >
+                  {st === "wholesale" ? t("agentDashboard.saleTypeWholesale") : st === "retail" ? t("agentDashboard.saleTypeRetail") : t("agentDashboard.saleTypeBoth")}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            disabled={profileMut.isPending}
+            onClick={() => profileMut.mutate({
+              exchangeRate: rateInput ? parseFloat(rateInput) : null,
+              saleType: saleTypeInput,
+            })}
+            className="w-full h-9 font-bold bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            {profileMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("agentDashboard.saveProfile")}
           </Button>
         </div>
 

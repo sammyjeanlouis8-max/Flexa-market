@@ -49,6 +49,8 @@ interface Agent {
   lastSeenAt: string | null;
   userAvatar: string | null;
   userName: string | null;
+  exchangeRate: number | null;
+  saleType: string | null;
 }
 
 function timeAgo(date: string | null) {
@@ -142,6 +144,21 @@ function AgentCard({ agent, onChat, chatLoading }: {
           )}
         </div>
       </div>
+
+      {(agent.exchangeRate || agent.saleType) && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {agent.exchangeRate && (
+            <span className="text-xs bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20 rounded-full px-2.5 py-0.5 font-semibold">
+              {t("wallet.agentExchangeRate")}: {agent.exchangeRate.toFixed(1)} HTG/USD
+            </span>
+          )}
+          {agent.saleType && (
+            <span className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 rounded-full px-2.5 py-0.5 font-semibold">
+              {t(`wallet.agentSaleType${agent.saleType.charAt(0).toUpperCase()}${agent.saleType.slice(1)}`)}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
         <div className="text-xs text-muted-foreground">
@@ -251,9 +268,9 @@ export default function AgentDirectory() {
         <div className="rounded-xl border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-950/20 p-3 flex items-start gap-2.5">
           <ShieldCheck className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
           <div>
-            <p className="text-xs font-bold text-green-800 dark:text-green-400">Ajans Verifye / Verified Agents</p>
+            <p className="text-xs font-bold text-green-800 dark:text-green-400">{t("wallet.agentTrustBannerTitle")}</p>
             <p className="text-xs text-green-700 dark:text-green-500 mt-0.5">
-              Chak ajan nan lis sa a te verifye pa ekip FLEXA MARKET. Itilize bouton "Pale ak Ajan" pou kòmanse.
+              {t("wallet.agentTrustBannerDesc")}
             </p>
           </div>
         </div>

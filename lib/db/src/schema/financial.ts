@@ -96,6 +96,10 @@ export const agentApplicationsTable = pgTable("agent_applications", {
   fmWalletNumber: text("fm_wallet_number"),
   supportedMethods: text("supported_methods"),
 
+  // Agent profile (editable by agent)
+  exchangeRate: real("exchange_rate"),        // e.g. 150.5 HTG per 1 USD
+  saleType: text("sale_type"),               // 'wholesale' | 'retail' | 'both'
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

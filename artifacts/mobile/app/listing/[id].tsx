@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -34,6 +35,7 @@ export default function ListingDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { request } = useApi();
+  const { t } = useLanguage();
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +46,7 @@ export default function ListingDetailScreen() {
   useEffect(() => {
     request<Listing>(`/listings/${id}`)
       .then((data) => setListing(data))
-      .catch(() => setError("Annons pa jwenn"))
+      .catch(() => setError(t("listingNotFound")))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -69,9 +71,9 @@ export default function ListingDetailScreen() {
     return (
       <View style={[styles.center, { backgroundColor: colors.background }]}>
         <Feather name="alert-circle" size={40} color={colors.mutedForeground} />
-        <Text style={[styles.errorText, { color: colors.foreground }]}>{error || "Erè chajman"}</Text>
+        <Text style={[styles.errorText, { color: colors.foreground }]}>{error || t("listingLoadErr")}</Text>
         <TouchableOpacity onPress={() => router.back()} style={[styles.backPill, { backgroundColor: colors.muted }]}>
-          <Text style={[styles.backPillText, { color: colors.foreground }]}>Retounen</Text>
+          <Text style={[styles.backPillText, { color: colors.foreground }]}>{t("back")}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -132,7 +134,7 @@ export default function ListingDetailScreen() {
             </Text>
             {listing.isBoosted && (
               <View style={[styles.boostedBadge, { backgroundColor: colors.accent }]}>
-                <Text style={styles.boostedText}>Sponsorisé</Text>
+                <Text style={styles.boostedText}>{t("sponsored")}</Text>
               </View>
             )}
           </View>
@@ -160,14 +162,14 @@ export default function ListingDetailScreen() {
 
           {listing.description ? (
             <View style={styles.descSection}>
-              <Text style={[styles.descLabel, { color: colors.foreground }]}>Deskripsyon</Text>
+              <Text style={[styles.descLabel, { color: colors.foreground }]}>{t("description")}</Text>
               <Text style={[styles.descText, { color: colors.mutedForeground }]}>{listing.description}</Text>
             </View>
           ) : null}
 
           {seller && (
             <View style={[styles.sellerSection, { borderTopColor: colors.border }]}>
-              <Text style={[styles.sellerLabel, { color: colors.foreground }]}>Vandè</Text>
+              <Text style={[styles.sellerLabel, { color: colors.foreground }]}>{t("seller")}</Text>
               <View style={styles.sellerRow}>
                 {seller.avatarUrl ? (
                   <Image source={{ uri: seller.avatarUrl }} style={styles.sellerAvatar} contentFit="cover" />
@@ -183,7 +185,7 @@ export default function ListingDetailScreen() {
                   )}
                 </View>
                 <TouchableOpacity style={[styles.viewProfileBtn, { borderColor: colors.border }]}>
-                  <Text style={[styles.viewProfileText, { color: colors.primary }]}>Profil</Text>
+                  <Text style={[styles.viewProfileText, { color: colors.primary }]}>{t("profile")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -194,11 +196,11 @@ export default function ListingDetailScreen() {
       <View style={[styles.footer, { paddingBottom: bottomPad + 8, backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TouchableOpacity style={[styles.msgBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Feather name="message-circle" size={18} color={colors.foreground} />
-          <Text style={[styles.msgText, { color: colors.foreground }]}>Mesaj</Text>
+          <Text style={[styles.msgText, { color: colors.foreground }]}>{t("listingContact")}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.offerBtn, { backgroundColor: colors.accent }]}>
           <Feather name="tag" size={18} color="#FFF" />
-          <Text style={styles.offerText}>Fè yon Òf</Text>
+          <Text style={styles.offerText}>{t("listingOffer")}</Text>
         </TouchableOpacity>
       </View>
     </View>

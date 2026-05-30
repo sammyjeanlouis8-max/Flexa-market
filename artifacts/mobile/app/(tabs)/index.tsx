@@ -18,6 +18,7 @@ import { ListingCard } from "@/components/ListingCard";
 import { SkeletonCard } from "@/components/SkeletonCard";
 import { SearchBar } from "@/components/SearchBar";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const { request } = useApi();
 
   const [listings, setListings] = useState<Listing[]>([]);
@@ -107,7 +109,7 @@ export default function HomeScreen() {
         <View style={styles.headerTop}>
           <View>
             <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
-              Bonjou{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
+              {t("greeting")}{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
             </Text>
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>FlexaMarket</Text>
           </View>
@@ -159,7 +161,7 @@ export default function HomeScreen() {
       ) : listings.length === 0 ? (
         <View style={styles.empty}>
           <Feather name="shopping-bag" size={48} color={colors.mutedForeground} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Pa gen annons</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("noListings")}</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
             Pa gen annons disponib nan kategori sa a pou moman.
           </Text>

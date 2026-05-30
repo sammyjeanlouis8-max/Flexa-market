@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useLanguage } from "@/context/LanguageContext";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 import { ListingCard } from "@/components/ListingCard";
@@ -25,6 +26,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, refreshUser } = useAuth();
   const { request } = useApi();
+  const { t } = useLanguage();
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,10 +54,10 @@ export default function ProfileScreen() {
   }, [refreshUser, fetchMyListings]);
 
   function handleLogout() {
-    Alert.alert("Dekonekte", "Ou sèten ou vle dekonekte?", [
-      { text: "Anile", style: "cancel" },
+    Alert.alert(t("logoutTitle"), t("logoutMsg"), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Dekonekte",
+        text: t("logout"),
         style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -100,31 +102,31 @@ export default function ProfileScreen() {
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
           <View style={styles.stat}>
             <Text style={[styles.statNum, { color: colors.foreground }]}>{listings.length}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Annons</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("listingsCount")}</Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.stat}>
             <Feather name={user?.isPhoneVerified ? "check-circle" : "alert-circle"} size={20} color={user?.isPhoneVerified ? "#22C55E" : colors.mutedForeground} />
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-              {user?.isPhoneVerified ? "Verifye" : "Pa verifye"}
+              {user?.isPhoneVerified ? t("verified") : t("notVerified")}
             </Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.stat}>
             <Feather name="star" size={20} color="#F59E0B" />
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>Nòt</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("rating")}</Text>
           </View>
         </View>
       </View>
 
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {[
-          { icon: "shopping-bag" as const, label: "Mes Favoris", onPress: () => {} },
-          { icon: "truck" as const, label: "Kòmand yo", onPress: () => router.push("/orders") },
-          { icon: "credit-card" as const, label: "Pòtfèy FM", onPress: () => router.push("/wallet") },
-          { icon: "shield" as const, label: "Verifikasyon (KYC)", onPress: () => router.push("/kyc") },
-          { icon: "star" as const, label: "Avis reçus", onPress: () => {} },
-          { icon: "settings" as const, label: "Paramèt", onPress: () => router.push("/settings") },
+          { icon: "shopping-bag" as const, label: t("myFavorites"), onPress: () => {} },
+          { icon: "truck" as const, label: t("myOrders"), onPress: () => router.push("/orders") },
+          { icon: "credit-card" as const, label: t("myWallet"), onPress: () => router.push("/wallet") },
+          { icon: "shield" as const, label: t("myKyc"), onPress: () => router.push("/kyc") },
+          { icon: "star" as const, label: t("myReviews"), onPress: () => {} },
+          { icon: "settings" as const, label: t("mySettings"), onPress: () => router.push("/settings") },
         ].map((item, idx, arr) => (
           <TouchableOpacity
             key={item.label}
@@ -142,7 +144,7 @@ export default function ProfileScreen() {
 
       {listings.length > 0 && (
         <View style={styles.listingsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Mes Annonces ({listings.length})</Text>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("myListings")} ({listings.length})</Text>
           <View style={styles.grid}>
             {listings.slice(0, 4).map((item) => (
               <ListingCard key={item.id} item={item} />
@@ -150,7 +152,7 @@ export default function ProfileScreen() {
           </View>
           {listings.length > 4 && (
             <Pressable style={[styles.seeAllBtn, { borderColor: colors.border }]}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>Wè tout ({listings.length})</Text>
+              <Text style={[styles.seeAllText, { color: colors.primary }]}>{t("seeAll")} ({listings.length})</Text>
             </Pressable>
           )}
         </View>
@@ -162,7 +164,7 @@ export default function ProfileScreen() {
         testID="logout-btn"
       >
         <Feather name="log-out" size={18} color={colors.destructive} />
-        <Text style={[styles.logoutText, { color: colors.destructive }]}>Dekonekte</Text>
+        <Text style={[styles.logoutText, { color: colors.destructive }]}>{t("logout")}</Text>
       </Pressable>
     </ScrollView>
   );

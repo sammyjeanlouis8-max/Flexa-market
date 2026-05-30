@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 type OrderStatus =
   | "pending"
@@ -63,6 +64,7 @@ export default function OrdersScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { request } = useApi();
+  const { t } = useLanguage();
   const [tab, setTab] = useState<TabType>("buying");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,18 +102,18 @@ export default function OrdersScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Kòmand yo</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("ordersTitle")}</Text>
           <View style={{ width: 36 }} />
         </View>
         <View style={[styles.tabs, { backgroundColor: colors.muted }]}>
-          {(["buying", "selling"] as const).map((t) => (
+          {(["buying", "selling"] as const).map((tabKey) => (
             <TouchableOpacity
-              key={t}
-              style={[styles.tabBtn, tab === t && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }]}
-              onPress={() => setTab(t)}
+              key={tabKey}
+              style={[styles.tabBtn, tab === tabKey && { backgroundColor: colors.card, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }]}
+              onPress={() => setTab(tabKey)}
             >
-              <Text style={[styles.tabText, { color: tab === t ? colors.foreground : colors.mutedForeground }]}>
-                {t === "buying" ? "Achte" : "Vann"}
+              <Text style={[styles.tabText, { color: tab === tabKey ? colors.foreground : colors.mutedForeground }]}>
+                {tabKey === "buying" ? t("ordersBuying") : t("ordersSelling")}
               </Text>
             </TouchableOpacity>
           ))}
@@ -125,9 +127,9 @@ export default function OrdersScreen() {
       ) : filtered.length === 0 ? (
         <View style={styles.centered}>
           <Feather name="shopping-bag" size={48} color={colors.mutedForeground} />
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Pa gen kòmand</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{t("noOrders")}</Text>
           <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-            {tab === "buying" ? "Ou pa fè okenn acha toujou." : "Ou pa fè okenn vant toujou."}
+            {t("noOrdersHint")}
           </Text>
         </View>
       ) : (

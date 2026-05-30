@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface WalletInfo {
   balanceUsd: number;
@@ -56,6 +57,7 @@ export default function WalletScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { request } = useApi();
+  const { t } = useLanguage();
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +100,7 @@ export default function WalletScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground }]}>Pòtfèy FM</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{t("walletTitle")}</Text>
           <View style={{ width: 36 }} />
         </View>
       </View>
@@ -117,16 +119,16 @@ export default function WalletScreen() {
             <>
               {wallet && (
                 <View style={[styles.balanceCard, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.balanceLabel}>Balans Reyèl</Text>
+                  <Text style={styles.balanceLabel}>{t("realBalance")}</Text>
                   <Text style={styles.balanceAmount}>${wallet.balanceUsd?.toFixed(2) ?? "0.00"}</Text>
                   <View style={styles.promoRow}>
                     <View style={styles.promoItem}>
-                      <Text style={styles.promoLabel}>Promo</Text>
+                      <Text style={styles.promoLabel}>{t("promoBalance")}</Text>
                       <Text style={styles.promoValue}>${wallet.promoBalance?.toFixed(2) ?? "0.00"}</Text>
                     </View>
                     <View style={[styles.promoDivider]} />
                     <View style={styles.promoItem}>
-                      <Text style={styles.promoLabel}>Debloke</Text>
+                      <Text style={styles.promoLabel}>{t("unlockedBalance")}</Text>
                       <Text style={styles.promoValue}>${wallet.unlockedBalance?.toFixed(2) ?? "0.00"}</Text>
                     </View>
                   </View>
@@ -136,46 +138,34 @@ export default function WalletScreen() {
               <View style={styles.actionsRow}>
                 <Pressable
                   style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => Alert.alert(
-                    "Recharge Pòtfèy",
-                    "Voye MonCash nan +509 40-40-1234 epi mete nimewo tranzaksyon ou a nan sipò pou konfirmasyon rapid.",
-                    [{ text: "OK" }]
-                  )}
+                  onPress={() => Alert.alert(t("rechargeTitle"), t("rechargeMsg"), [{ text: t("ok") }])}
                 >
                   <Feather name="plus-circle" size={20} color={colors.primary} />
-                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>Recharge</Text>
+                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>{t("recharge")}</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => Alert.alert(
-                    "Voye Lajan",
-                    "Itilize seksyon 'Voye Lajan' sou sit entènèt FlexaMarket pou fè transfè P2P.",
-                    [{ text: "OK" }]
-                  )}
+                  onPress={() => Alert.alert(t("sendTitle"), t("sendMsg"), [{ text: t("ok") }])}
                 >
                   <Feather name="send" size={20} color={colors.primary} />
-                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>Voye</Text>
+                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>{t("send")}</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => Alert.alert(
-                    "Retire Lajan",
-                    "Kontakte sipò FlexaMarket pou fè demann retrè. Nou ap voye yon vèsman MonCash nan 24-48 è.",
-                    [{ text: "OK" }]
-                  )}
+                  onPress={() => Alert.alert(t("withdrawTitle"), t("withdrawMsg"), [{ text: t("ok") }])}
                 >
                   <Feather name="arrow-up-circle" size={20} color={colors.primary} />
-                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>Retire</Text>
+                  <Text style={[styles.actionLabel, { color: colors.foreground }]}>{t("withdraw")}</Text>
                 </Pressable>
               </View>
 
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Istwa Tranzaksyon</Text>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("txHistory")}</Text>
             </>
           }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="credit-card" size={40} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Pa gen tranzaksyon toujou</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>{t("noTransactionsHint")}</Text>
             </View>
           }
           renderItem={({ item }) => {

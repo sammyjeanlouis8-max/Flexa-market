@@ -4,10 +4,12 @@ import React from "react";
 import { Platform, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function TabLayout() {
   const colors = useColors();
   const colorScheme = useColorScheme();
+  const { t } = useLanguage();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
@@ -47,21 +49,21 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Accueil",
+          title: t("tabHome"),
           tabBarIcon: ({ color }) => <Feather name="home" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
-          title: "Chèche",
+          title: t("tabSearch"),
           tabBarIcon: ({ color }) => <Feather name="search" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="sell"
         options={{
-          title: "Vann",
+          title: t("tabSell"),
           tabBarActiveTintColor: colors.accent,
           tabBarIcon: ({ color }) => <Feather name="plus-circle" size={26} color={colors.accent} />,
         }}
@@ -69,14 +71,14 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Mesaj",
+          title: t("tabMessages"),
           tabBarIcon: ({ color }) => <Feather name="message-circle" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Profil",
+          title: t("tabProfile"),
           tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />

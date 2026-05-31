@@ -26,7 +26,7 @@
       "autoIncrement": true,
       "env": {
         "NODE_ENV": "production",
-        "EXPO_PUBLIC_DOMAIN": "f66c895f-9f08-483c-b4dc-160283cddc97-00-7tfbq27zhwzp.picard.replit.dev"
+        "EXPO_PUBLIC_DOMAIN": "bonjour-tool.replit.app"
       }
     }
   },

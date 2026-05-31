@@ -103,7 +103,7 @@ export default function ProfileScreen() {
     {
       label: "🌐 Site Wèb Konplè",
       items: [
-        { icon: "monitor" as FeatherIconName, label: "Ouvri tout fonksyon sit wèb la", onPress: () => router.push("/website"), color: "#F97316" },
+        { icon: "monitor" as FeatherIconName, label: "Ouvri tout fonksyon sit wèb la", onPress: () => router.push({ pathname: "/website", params: { path: "/" } }), color: "#F97316" },
       ],
     },
     ...(isAdmin ? [{

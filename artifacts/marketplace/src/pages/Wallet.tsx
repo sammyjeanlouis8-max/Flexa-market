@@ -3152,25 +3152,65 @@ export default function WalletPage() {
       )}
 
       {/* ── Aplike Pou Prè Biznis ──────────────────────────────────────────── */}
-      {/* ── Bouton Rechaje Wallet — premier bouton, animasyon flash ──────────── */}
-      <button
-        type="button"
-        onClick={() => setStep(isHaiti ? "topup" : "card")}
-        className="group relative w-full rounded-2xl bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:shadow-xl transition-all duration-300 text-left animate-pulse hover:animate-none"
-        style={{ animationDuration: "1.8s" }}
-      >
-        <div className="px-4 py-4 flex items-center gap-3 overflow-hidden relative rounded-2xl">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-          <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center shrink-0">
-            <ArrowUpCircle className="h-6 w-6 text-white" />
+      {/* ── Recharge + Retrait — 2 bouton animé côte-à-côte ──────────────────── */}
+      <style>{`
+        @keyframes fmGradientShift {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes fmBtnPulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
+          50%       { opacity: 0.88; box-shadow: 0 0 18px 4px rgba(255,255,255,0.18); }
+        }
+        .fm-recharge-btn {
+          background: linear-gradient(135deg, #10b981, #3b82f6, #8b5cf6, #06b6d4, #10b981);
+          background-size: 300% 300%;
+          animation: fmGradientShift 3s ease infinite, fmBtnPulse 1.8s ease-in-out infinite;
+        }
+        .fm-recharge-btn:hover { animation: none; background: linear-gradient(135deg,#059669,#2563eb); }
+        .fm-retrait-btn {
+          background: linear-gradient(135deg, #f59e0b, #ef4444, #ec4899, #f97316, #f59e0b);
+          background-size: 300% 300%;
+          animation: fmGradientShift 3s ease infinite 1s, fmBtnPulse 1.8s ease-in-out infinite 0.9s;
+        }
+        .fm-retrait-btn:hover { animation: none; background: linear-gradient(135deg,#d97706,#dc2626); }
+      `}</style>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setStep(isHaiti ? "topup" : "card")}
+          className="fm-recharge-btn group relative rounded-2xl shadow-lg text-left overflow-hidden"
+        >
+          <div className="px-3 py-4 flex flex-col gap-2 relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+            <div className="w-10 h-10 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
+              <ArrowUpCircle className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-white leading-tight">{t("wallet.panelRechargeTitle")}</p>
+              <p className="text-[11px] text-white/80 leading-snug mt-0.5">{t("wallet.panelRechargeSub")}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-black text-white leading-tight">Rechaje Wallet Ou</p>
-            <p className="text-xs text-emerald-100">MonCash, Kart Kredi, Ajant, Crypto</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStep("cashout")}
+          className="fm-retrait-btn group relative rounded-2xl shadow-lg text-left overflow-hidden"
+        >
+          <div className="px-3 py-4 flex flex-col gap-2 relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+            <div className="w-10 h-10 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
+              <ArrowDownCircle className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm font-black text-white leading-tight">{t("wallet.panelWithdrawTitle")}</p>
+              <p className="text-[11px] text-white/80 leading-snug mt-0.5">{t("wallet.panelWithdrawSub")}</p>
+            </div>
           </div>
-          <ChevronRight className="h-5 w-5 text-white/80 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-        </div>
-      </button>
+        </button>
+      </div>
 
       <button
         type="button"

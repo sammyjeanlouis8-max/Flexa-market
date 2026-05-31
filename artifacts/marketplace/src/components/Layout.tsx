@@ -668,6 +668,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/wallet/,
     /^\/chatbot/,
     /^\/calculator/,
+    /^\/delivery\/apply/,
   ].some(rx => rx.test(location));
 
   return (

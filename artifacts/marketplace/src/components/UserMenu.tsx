@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
@@ -44,6 +45,7 @@ export default function UserMenu() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const currentLang = SUPPORTED_LANGUAGES.find(l => l.code === i18n.language) ?? SUPPORTED_LANGUAGES[0];
+  const [showLangSub, setShowLangSub] = useState(false);
 
   const saveLangMut = useMutation({
     mutationFn: (lang: SupportedLanguage) => apiPatch("/auth/language", { language: lang }),
@@ -157,25 +159,38 @@ export default function UserMenu() {
 
         <DropdownMenuSeparator />
 
-        {/* Language picker — every supported language is listed inline so
-            users can switch in one tap without navigating to /settings.
-            Persisted via setLanguage() (writes to localStorage + i18n). */}
-        <DropdownMenuLabel className="font-normal text-xs uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 pt-2">
-          <Globe className="h-3 w-3" />
-          {t("userMenu.language", { defaultValue: "Lang" })} · {currentLang.flag} {currentLang.name}
-        </DropdownMenuLabel>
-        {SUPPORTED_LANGUAGES.map(lang => (
-          <DropdownMenuItem
-            key={lang.code}
-            onClick={(e) => { e.preventDefault(); handleLangChange(lang.code as SupportedLanguage); }}
-            className={`gap-2 cursor-pointer ${i18n.language === lang.code ? "bg-accent font-semibold" : ""}`}
-            data-testid={`menu-lang-${lang.code}`}
-          >
-            <span className="text-base leading-none">{lang.flag}</span>
-            <span className="text-sm">{lang.name}</span>
-            {i18n.language === lang.code && <span className="ml-auto text-primary text-xs font-bold">✓</span>}
-          </DropdownMenuItem>
-        ))}
+        {/* Language — compact toggle button */}
+        <DropdownMenuItem
+          onSelect={(e) => e.preventDefault()}
+          onClick={() => setShowLangSub(v => !v)}
+          className="gap-2 cursor-pointer"
+          data-testid="menu-lang-toggle"
+        >
+          <Globe className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="flex-1 text-sm font-medium">{t("userMenu.language", { defaultValue: "Languages" })}</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span>{currentLang.flag}</span>
+            <span>{currentLang.name}</span>
+          </span>
+          <span className={`text-muted-foreground text-xs transition-transform duration-200 ${showLangSub ? "rotate-90" : ""}`}>›</span>
+        </DropdownMenuItem>
+        {showLangSub && (
+          <div className="ml-3 border-l-2 border-primary/20 pl-2 py-0.5 space-y-0.5">
+            {SUPPORTED_LANGUAGES.map(lang => (
+              <DropdownMenuItem
+                key={lang.code}
+                onSelect={(e) => e.preventDefault()}
+                onClick={() => { handleLangChange(lang.code as SupportedLanguage); setShowLangSub(false); }}
+                className={`gap-2 cursor-pointer py-1.5 ${i18n.language === lang.code ? "bg-accent font-semibold" : ""}`}
+                data-testid={`menu-lang-${lang.code}`}
+              >
+                <span className="text-base leading-none">{lang.flag}</span>
+                <span className="text-sm">{lang.name}</span>
+                {i18n.language === lang.code && <span className="ml-auto text-primary text-xs font-bold">✓</span>}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        )}
 
         <DropdownMenuSeparator />
 

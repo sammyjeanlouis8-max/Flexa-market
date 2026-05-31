@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator,
+  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
@@ -332,6 +332,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
     {
       heading: t("nav.discover"),
       items: [
+        { icon: Sparkles,   label: "FlexaBot AI",    href: "/chatbot" },
         { icon: Briefcase,  label: t("nav.jobs"),    href: "/jobs" },
         { icon: HelpCircle, label: t("nav.support"), href: "/support" },
         { kind: "lang" as const, icon: Globe, label: t("userMenu.language") },
@@ -635,6 +636,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     {
       heading: t("nav.discover"),
       items: [
+        { href: "/chatbot", icon: Sparkles,   label: "FlexaBot AI",    key: "chatbot" },
         { href: "/jobs",    icon: Briefcase,  label: t("nav.jobs"),    key: "jobs" },
         { href: "/support", icon: HelpCircle, label: t("nav.support"), key: "support" },
       ],
@@ -664,6 +666,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/order-label\//,
     /^\/videos$/,
     /^\/wallet/,
+    /^\/chatbot/,
+    /^\/calculator/,
   ].some(rx => rx.test(location));
 
   return (

@@ -6,7 +6,7 @@ const TOKEN_KEY = "flexamarket_token";
 export function getBaseUrl() {
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain}/api`;
-  return "https://flexa-api-uk4y.onrender.com/api";
+  return "https://f66c895f-9f08-483c-b4dc-160283cddc97-00-7tfbq27zhwzp.picard.replit.dev/api";
 }
 
 export interface User {

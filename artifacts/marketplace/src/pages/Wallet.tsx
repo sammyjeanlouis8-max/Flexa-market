@@ -2629,7 +2629,7 @@ export default function WalletPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => window.history.back()}
+            onClick={() => step === "home" ? window.history.back() : setStep("home")}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Retounen"
           >

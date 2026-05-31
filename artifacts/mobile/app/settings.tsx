@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import * as Updates from "expo-updates";
 import React, { useState } from "react";
 import {
   Alert,
@@ -23,7 +24,49 @@ export default function SettingsScreen() {
   const { t, lang } = useLanguage();
   const currentLangLabel = LANGUAGES.find((l) => l.code === lang)?.native ?? lang;
   const [notifEnabled, setNotifEnabled] = useState(true);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+
+  async function handleCheckUpdate() {
+    if (Platform.OS === "web") {
+      Alert.alert("Update", "OTA updates pa disponib sou wèb.");
+      return;
+    }
+    setCheckingUpdate(true);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) {
+        Alert.alert(
+          "🆕 Nouvo Update!",
+          "Yon nouvo vèsyon disponib. Vle ou enstale li kounye a?",
+          [
+            { text: "Non", style: "cancel" },
+            {
+              text: "Wi, Enstale",
+              onPress: async () => {
+                try {
+                  await Updates.fetchUpdateAsync();
+                  Alert.alert(
+                    "✅ Update Chaje!",
+                    "App la pral rouze pou aplike chanjman yo.",
+                    [{ text: "OK", onPress: () => Updates.reloadAsync() }]
+                  );
+                } catch {
+                  Alert.alert("Erè", "Pa ka chaje update. Eseye ankò.");
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert("✅ Ajou", "Ou gen dènye vèsyon app la déjà.");
+      }
+    } catch {
+      Alert.alert("Erè", "Pa ka chèche update. Verifye entènèt ou.");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
 
   function handleLogout() {
     Alert.alert(t("logoutTitle"), t("logoutMsg"), [
@@ -143,6 +186,12 @@ export default function SettingsScreen() {
           label: t("sAbout"),
           sublabel: "v1.0.0",
           onPress: () => Alert.alert("FLEXA MARKET", t("sAboutMsg"), [{ text: t("ok") }]),
+        },
+        {
+          icon: "download",
+          label: checkingUpdate ? "Ap chèche..." : "🔄 Chèche Mise à Jour",
+          sublabel: "Jwenn dènye chanjman yo",
+          onPress: handleCheckUpdate,
         },
       ],
     },

@@ -74,29 +74,36 @@ export default function ProfileScreen() {
         { icon: "heart", label: "Sauvegardés", onPress: () => router.push("/favorites") },
         { icon: "tag", label: "Ofè", onPress: () => router.push("/offers") },
         { icon: "shopping-bag", label: t("myOrders"), onPress: () => router.push("/orders") },
-        { icon: "trending-up", label: "Ventes", onPress: () => router.push("/orders") },
+        { icon: "trending-up", label: "Ventes", onPress: () => router.push("/sales") },
+      ],
+    },
+    {
+      label: "Vendè",
+      items: [
+        { icon: "zap", label: "⚡ Mes Boosts Actifs", onPress: () => router.push("/my-boosts") },
+        { icon: "video", label: "🎬 Vidéos Promo", onPress: () => router.push("/videos") },
       ],
     },
     {
       label: "Finans",
       items: [
         { icon: "credit-card", label: t("myWallet"), onPress: () => router.push("/wallet") },
+        { icon: "dollar-sign", label: "🏛 Demande de Prêt", onPress: () => router.push("/loans"), color: "#6366F1" },
       ],
     },
     {
-      label: "Platfòm",
+      label: "Kont & Preferans",
       items: [
         { icon: "bell", label: "Notifikasyon", onPress: () => router.push("/notifications"), badge: unreadNotifs },
-        { icon: "video", label: "Vidéos Promo", onPress: () => router.push("/videos") },
         { icon: "shield", label: t("myKyc"), onPress: () => router.push("/kyc") },
         { icon: "globe", label: t("sLanguage"), onPress: () => router.push("/language-picker") },
         { icon: "settings", label: t("mySettings"), onPress: () => router.push("/settings") },
       ],
     },
     ...(isAdmin ? [{
-      label: "Admin",
+      label: "Administration",
       items: [
-        { icon: "shield" as FeatherIconName, label: "Panneau Admin", onPress: () => router.push("/admin"), color: "#6366F1" },
+        { icon: "shield" as FeatherIconName, label: "🛡 Panneau Admin", onPress: () => router.push("/admin"), color: "#6366F1" },
       ],
     }] : []),
   ];

@@ -22,6 +22,21 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 
+const MORE_CATEGORIES = [
+  { id: "all", label: "Tout" },
+  { id: "Electronics", label: "📱 Elektronik" },
+  { id: "Vehicles", label: "🚗 Machin" },
+  { id: "Fashion & Clothing", label: "👗 Rad" },
+  { id: "Home & Garden", label: "🏠 Kay" },
+  { id: "Sports & Fitness", label: "⚽ Espò" },
+  { id: "Real Estate", label: "🏘 Imobilye" },
+  { id: "Jobs & Services", label: "💼 Djòb" },
+  { id: "Food & Beverages", label: "🍔 Manje" },
+  { id: "Health & Beauty", label: "💄 Sante" },
+  { id: "Animals & Pets", label: "🐾 Bèt" },
+  { id: "Agriculture", label: "🌾 Agrikilti" },
+];
+
 const COUNTRY_FLAGS: Record<string, string> = {
   "Haiti": "🇭🇹", "Dominican Republic": "🇩🇴", "USA": "🇺🇸",
   "Canada": "🇨🇦", "Mexico": "🇲🇽", "Brazil": "🇧🇷",
@@ -37,16 +52,6 @@ const COUNTRY_FLAGS: Record<string, string> = {
   "United Arab Emirates": "🇦🇪", "Saudi Arabia": "🇸🇦",
 };
 
-const CATEGORIES = [
-  { id: "all", label: "Tout" },
-  { id: "Electronics", label: "Elektronik" },
-  { id: "Vehicles", label: "Machin" },
-  { id: "Fashion & Clothing", label: "Rad" },
-  { id: "Home & Garden", label: "Kay" },
-  { id: "Sports & Fitness", label: "Espò" },
-  { id: "Real Estate", label: "Imobilye" },
-  { id: "Jobs & Services", label: "Djòb" },
-];
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -63,6 +68,7 @@ export default function HomeScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
   // ── GPS auto-detection (guests only — logged-in users use profile country) ──
   const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
@@ -70,6 +76,14 @@ export default function HomeScreen() {
 
   // The country used for filtering (profile country wins, GPS fallback for guests)
   const effectiveCountry = user?.country ?? detectedCountry;
+
+  // Fetch unread notification count for logged-in users
+  useEffect(() => {
+    if (!user) return;
+    request<{ count?: number; unread?: number }>("/notifications/unread-count")
+      .then((d) => setUnreadNotifs(Number((d as any).count ?? (d as any).unread ?? 0)))
+      .catch(() => {});
+  }, [user]);
 
   // Auto-detect country via GPS on mount for guests
   useEffect(() => {
@@ -167,18 +181,30 @@ export default function HomeScreen() {
             <Text style={[styles.headerTitle, { color: colors.foreground }]}>FlexaMarket</Text>
           </View>
 
-          {/* ── Country badge (display-only, auto-detected via GPS) ── */}
-          <View style={[styles.countryBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            {gpsStatus === "detecting" && !user ? (
-              <ActivityIndicator size="small" color={colors.primary} style={{ width: 18 }} />
-            ) : (
-              <Text style={styles.countryFlag}>{countryFlag}</Text>
+          {/* ── Right icons: notifications + country ── */}
+          <View style={styles.headerIcons}>
+            {user && (
+              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push("/notifications")}>
+                <Feather name="bell" size={22} color={colors.foreground} />
+                {unreadNotifs > 0 && (
+                  <View style={[styles.notifBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.notifBadgeText}>{unreadNotifs > 9 ? "9+" : unreadNotifs}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
             )}
-            {effectiveCountry ? (
-              <Text style={[styles.countryName, { color: colors.foreground }]} numberOfLines={1}>
-                {effectiveCountry.length > 10 ? effectiveCountry.slice(0, 10) + "…" : effectiveCountry}
-              </Text>
-            ) : null}
+            <View style={[styles.countryBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              {gpsStatus === "detecting" && !user ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ width: 18 }} />
+              ) : (
+                <Text style={styles.countryFlag}>{countryFlag}</Text>
+              )}
+              {effectiveCountry ? (
+                <Text style={[styles.countryName, { color: colors.foreground }]} numberOfLines={1}>
+                  {effectiveCountry.length > 9 ? effectiveCountry.slice(0, 9) + "…" : effectiveCountry}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
 
@@ -193,7 +219,7 @@ export default function HomeScreen() {
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll} contentContainerStyle={styles.catContent}>
-          {CATEGORIES.map((c) => (
+          {MORE_CATEGORIES.map((c) => (
             <TouchableOpacity
               key={c.id}
               style={[
@@ -258,10 +284,18 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 10 },
   greeting: { fontSize: 13, fontFamily: "Inter_400Regular" },
   headerTitle: { fontSize: 22, fontFamily: "Inter_700Bold", marginTop: 2 },
+  headerIcons: { flexDirection: "row", alignItems: "center", gap: 8 },
+  iconBtn: { position: "relative", padding: 4 },
+  notifBadge: {
+    position: "absolute", top: 0, right: 0,
+    minWidth: 17, height: 17, borderRadius: 9,
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+  },
+  notifBadgeText: { color: "#FFF", fontSize: 10, fontFamily: "Inter_700Bold" },
   countryBadge: {
     flexDirection: "row", alignItems: "center", gap: 5,
     borderWidth: 1, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-    maxWidth: 140, flexShrink: 0,
+    maxWidth: 130, flexShrink: 0,
   },
   countryFlag: { fontSize: 18 },
   countryName: { fontSize: 12, fontFamily: "Inter_500Medium", flexShrink: 1 },

@@ -1,0 +1,100 @@
+Compare the current FlexaMarket mobile app with the FlexaMarket website and make the mobile app 100% feature-complete with the website.
+
+Requirements:
+
+1. Replicate all website menu items inside the mobile app:
+   - Admin Dashboard
+   - Videos Promo
+   - Active Boosts
+   - Profile
+   - Saved/Favorites
+   - Offers
+   - Orders
+   - Sales
+   - Promo Account
+   - Loan Request
+   - Wallet
+   - KYC Verification
+   - Reviews
+   - Language
+   - Settings
+
+2. Synchronize all user data between website and mobile app:
+   - Listings
+   - Orders
+   - Sales
+   - Favorites
+   - Messages
+   - Wallet balance
+   - Notifications
+   - Reviews
+   - KYC status
+
+3. Recreate the website homepage inside the app:
+   - Featured listings
+   - Promo videos section
+   - Category chips
+   - Country selector
+   - Admin country selector
+   - Featured products
+   - Search bar
+   - Shopping cart
+   - Notifications
+   - Language switcher
+
+4. Add all missing seller tools:
+   - Seller dashboard
+   - Listing management
+   - Sales analytics
+   - Boost management
+   - Promo video management
+   - Subscription management
+   - Promo account management
+
+5. Add all missing admin tools:
+   - Admin dashboard
+   - User management
+   - Listing moderation
+   - Promo video moderation
+   - Reports
+   - Analytics
+   - Country management
+
+6. Navigation:
+   - Ensure every website page has an equivalent mobile screen.
+   - No website feature should be missing in the app.
+   - Mobile navigation must be clean and optimized for iOS and Android.
+
+7. UI/UX:
+   - Match website branding exactly.
+   - Use FlexaMarket colors, typography and icons.
+   - Support dark mode and light mode.
+   - Responsive on all screen sizes.
+
+8. Performance:
+   - Use existing API endpoints.
+   - Optimize API calls.
+   - Implement loading states.
+   - Implement caching.
+   - Implement error handling.
+
+9. Notifications:
+   - Orders
+   - Messages
+   - Sales
+   - Offers
+   - Boost expiration
+   - Promo video expiration
+   - Wallet transactions
+
+10. Final Goal:
+    The mobile app must contain every major feature available on the website so that users can use the app without ever needing to visit the website.
+
+Before coding, scan the entire FlexaMarket codebase and generate a report listing:
+- Features present on website
+- Features present on mobile app
+- Missing features
+- Screens to create
+- APIs to connect
+
+Then automatically implement all missing features.

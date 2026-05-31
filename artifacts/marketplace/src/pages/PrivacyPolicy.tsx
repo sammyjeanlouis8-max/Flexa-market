@@ -138,7 +138,7 @@ export default function PrivacyPolicy() {
           <Section id="seller-accounts" title="3. Seller Accounts">
             <p>Sellers have access to additional features and share additional data:</p>
             <ul className="space-y-1.5 mt-2">
-              <Li><strong className="text-foreground">Payout information:</strong> MonCash number or bank account details for receiving earnings. This data is encrypted at rest and visible only to verified administrators.</Li>
+              <Li><strong className="text-foreground">Payout information:</strong> FM Card or bank account details for receiving earnings. This data is encrypted at rest and visible only to verified administrators.</Li>
               <Li><strong className="text-foreground">Listing analytics:</strong> view count, favorite count, share count, and boost impression data.</Li>
               <Li><strong className="text-foreground">Subscription plan:</strong> Basic, Standard, Premium, or VIP — linked to Stripe for recurring billing.</Li>
               <Li><strong className="text-foreground">Vendor identity:</strong> store name, verified badge status, seller rating and reviews submitted by buyers.</Li>
@@ -153,7 +153,7 @@ export default function PrivacyPolicy() {
             <p>We process payments through the following providers:</p>
             <ul className="space-y-1.5 mt-2">
               <Li><strong className="text-foreground">Stripe:</strong> card payments, subscription billing, and Stripe Checkout. Stripe stores and processes card data directly — we never receive or store raw card numbers. Stripe's privacy policy applies.</Li>
-              <Li><strong className="text-foreground">MonCash:</strong> mobile money payments for Haitian users. MonCash OTP is verified via Twilio SMS.</Li>
+              <Li><strong className="text-foreground">FM Card:</strong> virtual card for Haiti and Dominican Republic users, managed through authorized agents within the app.</Li>
               <Li><strong className="text-foreground">USDT (crypto):</strong> we record the transaction hash submitted by the buyer for admin verification.</Li>
               <Li><strong className="text-foreground">Escrow:</strong> funds are held in our platform wallet until delivery is confirmed. We store transaction records for accounting and dispute resolution.</Li>
               <Li><strong className="text-foreground">Promo wallet:</strong> referral bonuses and loyalty credits are recorded in our internal ledger.</Li>
@@ -173,7 +173,7 @@ export default function PrivacyPolicy() {
             <ul className="space-y-1.5 mt-2">
               <Li>Messages are stored to allow conversation history across sessions and devices.</Li>
               <Li>Administrators may access messages when investigating reported abuse, fraud, or safety violations.</Li>
-              <Li>You may send text messages, images, and short videos. Voice messages are not supported.</Li>
+              <Li>You may send text messages, images, short videos, and voice messages between buyers and sellers.</Li>
               <Li>Do not share sensitive personal information (passwords, full payment card numbers) via messages.</Li>
               <Li>AI-powered ZenoBot support chat is available; conversations with ZenoBot are used to improve support quality.</Li>
             </ul>
@@ -212,7 +212,7 @@ export default function PrivacyPolicy() {
           <Section id="data-sharing" title="8. Data Sharing">
             <p>We do not sell your personal information. We may share data with:</p>
             <ul className="space-y-1.5 mt-2">
-              <Li><strong className="text-foreground">Payment processors:</strong> Stripe and MonCash, solely for processing payments.</Li>
+              <Li><strong className="text-foreground">Payment processors:</strong> Stripe, solely for processing payments.</Li>
               <Li><strong className="text-foreground">SMS providers:</strong> Twilio, for OTP verification messages.</Li>
               <Li><strong className="text-foreground">Cloud infrastructure:</strong> Replit and Neon (PostgreSQL), for hosting and database services. These providers process data under data processing agreements.</Li>
               <Li><strong className="text-foreground">AI services:</strong> Anthropic (Claude), for powering ZenoBot customer support. Conversation snippets may be sent to Anthropic's API.</Li>

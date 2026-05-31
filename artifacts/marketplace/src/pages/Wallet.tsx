@@ -625,6 +625,7 @@ export default function WalletPage() {
   // Cashout state
   const [cashoutAmount, setCashoutAmount] = useState("");
   const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "agent" | "agent_transfer" | "stripe_card">("moncash");
+  const [cashoutRetraitOnly, setCashoutRetraitOnly] = useState(false);
   const [cashoutPhone, setCashoutPhone] = useState(user?.phone ?? "");
   const [cashoutAgentLoc, setCashoutAgentLoc] = useState("");
   const [cashoutResult, setCashoutResult] = useState<{ requestId: number } | null>(null);
@@ -1845,7 +1846,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("home")} />
+        <BackButton onClick={() => { setCashoutRetraitOnly(false); setStep("home"); }} />
 
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -1908,9 +1909,11 @@ export default function WalletPage() {
         <div className="space-y-2">
           <label className="text-sm font-semibold">Metòd Retrait</label>
           <div className="grid grid-cols-3 gap-2">
-            {(isHaiti
-              ? (["moncash", "agent", "agent_transfer"] as const)
-              : (["agent", "agent_transfer"] as const)
+            {(cashoutRetraitOnly
+              ? (["agent_transfer"] as const)
+              : isHaiti
+                ? (["moncash", "agent", "agent_transfer"] as const)
+                : (["agent", "agent_transfer"] as const)
             ).map(m => {
               const cfg = {
                 moncash:       { icon: <Phone className="h-5 w-5 text-violet-500" />,  label: "MonCash",          sub: "Via admin" },
@@ -1932,7 +1935,7 @@ export default function WalletPage() {
                 </button>
               );
             })}
-            {hasStripe && (
+            {hasStripe && !cashoutRetraitOnly && (
               <button
                 onClick={() => setCashoutMethod("stripe_card")}
                 className={cn(
@@ -3196,7 +3199,7 @@ export default function WalletPage() {
 
         <button
           type="button"
-          onClick={() => setStep("cashout")}
+          onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); setStep("cashout"); }}
           className="fm-retrait-btn group relative rounded-2xl shadow-lg text-left overflow-hidden"
         >
           <div className="px-3 py-4 flex flex-col gap-2 relative">

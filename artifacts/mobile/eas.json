@@ -31,6 +31,15 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleTeamId": "D782MM56VY",
+        "ascAppId": "METTRE_ASC_APP_ID_ICI"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-key.json",
+        "track": "internal"
+      }
+    }
   }
 }

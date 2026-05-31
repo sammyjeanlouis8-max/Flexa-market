@@ -5,7 +5,7 @@ export { getBaseUrl };
 export function useApi() {
   const { token } = useAuth();
 
-  async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  async function request<T>(path: string, options: RequestInit = {}, timeoutMs = 12000): Promise<T> {
     const url = `${getBaseUrl()}${path}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -13,12 +13,22 @@ export function useApi() {
     };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const res = await fetch(url, { ...options, headers });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ message: "Request failed" }));
-      throw new Error(err.message || `HTTP ${res.status}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, { ...options, headers, signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Request failed" }));
+        throw new Error(err.message || `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<T>;
+    } catch (e: any) {
+      clearTimeout(timer);
+      if (e?.name === "AbortError") throw new Error("Koneksyon twò lant. Eseye ankò.");
+      throw e;
     }
-    return res.json() as Promise<T>;
   }
 
   return { request };

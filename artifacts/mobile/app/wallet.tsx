@@ -70,6 +70,7 @@ export default function WalletScreen() {
   const [txs, setTxs] = useState<WalletTx[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Platform revenue (super admin only) ───────────────────────────────────
   const [platformRev, setPlatformRev] = useState<{
@@ -96,16 +97,19 @@ export default function WalletScreen() {
   const customInputRef = useRef<TextInput>(null);
 
   const fetchData = useCallback(async () => {
+    setError(null);
     try {
       const [walletData, txData] = await Promise.all([
         request<WalletInfo>("/wallet"),
         request<{ transactions: WalletTx[] } | WalletTx[]>("/wallet/history?limit=50"),
       ]);
-      setWallet(walletData);
-      const items = Array.isArray(txData) ? txData : ((txData as { transactions: WalletTx[] }).transactions ?? []);
+      setWallet(walletData as WalletInfo);
+      const raw = txData as any;
+      const items: WalletTx[] = Array.isArray(raw) ? raw : (raw?.transactions ?? []);
       setTxs(items);
-    } catch {
+    } catch (e: any) {
       setWallet(null);
+      setError(e?.message ?? "Erè koneksyon. Verifye entènèt ou.");
     }
   }, [request]);
 
@@ -185,6 +189,19 @@ export default function WalletScreen() {
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Feather name="wifi-off" size={52} color={colors.mutedForeground} />
+          <Text style={[styles.errorTitle, { color: colors.foreground }]}>Koneksyon echwe</Text>
+          <Text style={[styles.errorMsg, { color: colors.mutedForeground }]}>{error}</Text>
+          <Pressable
+            style={[styles.retryBtn, { backgroundColor: colors.accent }]}
+            onPress={() => { setLoading(true); fetchData().finally(() => setLoading(false)); }}
+          >
+            <Feather name="refresh-cw" size={16} color="#FFF" />
+            <Text style={styles.retryText}>Eseye Ankò</Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList
@@ -451,7 +468,11 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   title: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 32 },
+  errorTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  errorMsg: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center", lineHeight: 20 },
+  retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 4 },
+  retryText: { color: "#FFF", fontSize: 15, fontFamily: "Inter_600SemiBold" },
   listContent: { padding: 16, gap: 8 },
   balanceCard: { borderRadius: 20, padding: 24, marginBottom: 16 },
   balanceLabel: { fontSize: 13, color: "rgba(255,255,255,0.75)", fontFamily: "Inter_500Medium", marginBottom: 4 },

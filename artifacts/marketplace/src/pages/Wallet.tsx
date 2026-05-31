@@ -579,7 +579,7 @@ function AgentSelectStep({
 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-type Step = "home" | "topup" | "moncash" | "moncash_confirm" | "moncash_submit" | "moncash_done" | "send" | "send_confirm" | "card" | "cashout" | "cashout_phone_verify" | "cashout_done" | "crypto" | "cashout_agent_select" | "cashout_agent_pay" | "cashout_agent_proof" | "cashout_agent_done" | "redeem_card" | "my_card";
+type Step = "home" | "choice" | "topup" | "moncash" | "moncash_confirm" | "moncash_submit" | "moncash_done" | "send" | "send_confirm" | "card" | "cashout" | "cashout_phone_verify" | "cashout_done" | "crypto" | "cashout_agent_select" | "cashout_agent_pay" | "cashout_agent_proof" | "cashout_agent_done" | "redeem_card" | "my_card";
 
 export default function WalletPage() {
   const { user } = useAuth();
@@ -1846,7 +1846,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => { setCashoutRetraitOnly(false); setStep("home"); }} />
+        <BackButton onClick={() => { const dest = cashoutRetraitOnly ? "choice" : "home"; setCashoutRetraitOnly(false); setStep(dest); }} />
 
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -2547,6 +2547,79 @@ export default function WalletPage() {
   }
 
   // =========================================================================
+  // ── CHOICE (Recharge / Retrait) ───────────────────────────────────────────
+  // =========================================================================
+  if (step === "choice") {
+    return (
+      <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+        <BackButton onClick={() => setStep("home")} />
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Wallet className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-black">{t("wallet.myWallet")}</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">Chwazi opsyon ou an pou kontinye</p>
+        </div>
+        <style>{`
+          @keyframes fmColorSwap {
+            0%   { background: linear-gradient(135deg,#10b981,#06d6a0); }
+            25%  { background: linear-gradient(135deg,#3b82f6,#6366f1); }
+            50%  { background: linear-gradient(135deg,#ef4444,#f97316); }
+            75%  { background: linear-gradient(135deg,#ec4899,#8b5cf6); }
+            100% { background: linear-gradient(135deg,#10b981,#06d6a0); }
+          }
+          @keyframes fmGlowFlash {
+            0%,100% { box-shadow:0 0 8px 2px rgba(255,255,255,0.1); filter:brightness(1); }
+            50%     { box-shadow:0 0 36px 10px rgba(255,255,255,0.55); filter:brightness(1.6); }
+          }
+          .fm-choice-recharge {
+            animation: fmColorSwap 1.6s ease infinite, fmGlowFlash 0.8s ease-in-out infinite;
+          }
+          .fm-choice-recharge:hover { animation:none; background:linear-gradient(135deg,#059669,#2563eb); }
+          .fm-choice-retrait {
+            animation: fmColorSwap 1.6s ease infinite 0.8s, fmGlowFlash 0.8s ease-in-out infinite 0.4s;
+          }
+          .fm-choice-retrait:hover { animation:none; background:linear-gradient(135deg,#d97706,#dc2626); }
+        `}</style>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => setStep(isHaiti ? "topup" : "card")}
+            className="fm-choice-recharge group relative rounded-2xl shadow-xl text-left overflow-hidden"
+          >
+            <div className="px-4 py-6 flex flex-col gap-3 relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+              <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
+                <ArrowUpCircle className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-base font-black text-white leading-tight">{t("wallet.panelRechargeTitle")}</p>
+                <p className="text-xs text-white/80 leading-snug mt-1">{t("wallet.panelRechargeSub")}</p>
+              </div>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); setStep("cashout"); }}
+            className="fm-choice-retrait group relative rounded-2xl shadow-xl text-left overflow-hidden"
+          >
+            <div className="px-4 py-6 flex flex-col gap-3 relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+              <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
+                <ArrowDownCircle className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <p className="text-base font-black text-white leading-tight">{t("wallet.panelWithdrawTitle")}</p>
+                <p className="text-xs text-white/80 leading-snug mt-1">{t("wallet.panelWithdrawSub")}</p>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
   // ── HOME ──────────────────────────────────────────────────────────────────
   // =========================================================================
   return (
@@ -2556,7 +2629,7 @@ export default function WalletPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => step === "home" ? window.history.back() : setStep("home")}
+            onClick={() => window.history.back()}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Retounen"
           >
@@ -3154,66 +3227,38 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* ── Aplike Pou Prè Biznis ──────────────────────────────────────────── */}
-      {/* ── Recharge + Retrait — 2 bouton animé côte-à-côte ──────────────────── */}
+      {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
       <style>{`
-        @keyframes fmGradientShift {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
+        @keyframes fmEntryPulse {
+          0%,100% { box-shadow:0 0 10px 2px rgba(99,102,241,0.3); }
+          50%     { box-shadow:0 0 28px 8px rgba(99,102,241,0.7); }
         }
-        @keyframes fmBtnPulse {
-          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
-          50%       { opacity: 0.88; box-shadow: 0 0 18px 4px rgba(255,255,255,0.18); }
-        }
-        .fm-recharge-btn {
-          background: linear-gradient(135deg, #10b981, #3b82f6, #8b5cf6, #06b6d4, #10b981);
-          background-size: 300% 300%;
-          animation: fmGradientShift 3s ease infinite, fmBtnPulse 1.8s ease-in-out infinite;
-        }
-        .fm-recharge-btn:hover { animation: none; background: linear-gradient(135deg,#059669,#2563eb); }
-        .fm-retrait-btn {
-          background: linear-gradient(135deg, #f59e0b, #ef4444, #ec4899, #f97316, #f59e0b);
-          background-size: 300% 300%;
-          animation: fmGradientShift 3s ease infinite 1s, fmBtnPulse 1.8s ease-in-out infinite 0.9s;
-        }
-        .fm-retrait-btn:hover { animation: none; background: linear-gradient(135deg,#d97706,#dc2626); }
+        .fm-entry-btn { animation: fmEntryPulse 1.4s ease-in-out infinite; }
       `}</style>
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => setStep(isHaiti ? "topup" : "card")}
-          className="fm-recharge-btn group relative rounded-2xl shadow-lg text-left overflow-hidden"
-        >
-          <div className="px-3 py-4 flex flex-col gap-2 relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-            <div className="w-10 h-10 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
-              <ArrowUpCircle className="h-5 w-5 text-white" />
+      <button
+        type="button"
+        onClick={() => setStep("choice")}
+        className="fm-entry-btn w-full group relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-left shadow-lg"
+      >
+        <div className="px-4 py-4 flex items-center justify-between relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1">
+              <div className="w-9 h-9 rounded-xl bg-white/20 ring-2 ring-white/30 flex items-center justify-center">
+                <ArrowUpCircle className="h-5 w-5 text-white" />
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-white/20 ring-2 ring-white/30 flex items-center justify-center">
+                <ArrowDownCircle className="h-5 w-5 text-white" />
+              </div>
             </div>
             <div>
-              <p className="text-sm font-black text-white leading-tight">{t("wallet.panelRechargeTitle")}</p>
-              <p className="text-[11px] text-white/80 leading-snug mt-0.5">{t("wallet.panelRechargeSub")}</p>
+              <p className="text-sm font-black text-white">{t("wallet.panelRechargeTitle")} · {t("wallet.panelWithdrawTitle")}</p>
+              <p className="text-[11px] text-white/75">{t("wallet.panelRechargeSub")}</p>
             </div>
           </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); setStep("cashout"); }}
-          className="fm-retrait-btn group relative rounded-2xl shadow-lg text-left overflow-hidden"
-        >
-          <div className="px-3 py-4 flex flex-col gap-2 relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-            <div className="w-10 h-10 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
-              <ArrowDownCircle className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-black text-white leading-tight">{t("wallet.panelWithdrawTitle")}</p>
-              <p className="text-[11px] text-white/80 leading-snug mt-0.5">{t("wallet.panelWithdrawSub")}</p>
-            </div>
-          </div>
-        </button>
-      </div>
+          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+        </div>
+      </button>
 
       <button
         type="button"

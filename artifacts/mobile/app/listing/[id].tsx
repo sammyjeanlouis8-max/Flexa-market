@@ -2,17 +2,21 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
+  KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -20,6 +24,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi, Listing } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/context/AuthContext";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -52,12 +57,21 @@ export default function ListingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { request } = useApi();
   const { t } = useLanguage();
+  const { user } = useAuth();
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [imgIndex, setImgIndex] = useState(0);
   const [favorited, setFavorited] = useState(false);
+
+  // ── Stripe checkout state ──────────────────────────────────────────────────
+  const [buyModalVisible, setBuyModalVisible] = useState(false);
+  const [shippingName, setShippingName] = useState("");
+  const [shippingPhone, setShippingPhone] = useState("");
+  const [shippingCity, setShippingCity] = useState("");
+  const [buying, setBuying] = useState(false);
+  const nameRef = useRef<TextInput>(null);
 
   useEffect(() => {
     request<Listing>(`/listings/${id}`)
@@ -66,10 +80,65 @@ export default function ListingDetailScreen() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Pre-fill user name from auth context
+  useEffect(() => {
+    if (user?.name) setShippingName(user.name);
+  }, [user]);
+
   function handleFav() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setFavorited((v) => !v);
     request(`/favorites/${id}`, { method: favorited ? "DELETE" : "POST" }).catch(() => {});
+  }
+
+  function handleBuyPress() {
+    if (!user) {
+      Alert.alert("Koneksyon obligatwa", "Konekte nan kont ou pou achte.", [
+        { text: "Anile", style: "cancel" },
+        { text: "Konekte", onPress: () => router.push("/auth/login") },
+      ]);
+      return;
+    }
+    if (listing?.sellerId === user.id) {
+      Alert.alert("Pa posib", "Ou pa ka achte pwòp atik ou a.");
+      return;
+    }
+    setBuyModalVisible(true);
+    setTimeout(() => nameRef.current?.focus(), 400);
+  }
+
+  async function handleStripeCheckout() {
+    if (!listing) return;
+    if (!shippingName.trim()) {
+      Alert.alert("Non obligatwa", "Tanpri antre non ou pou livrezon.");
+      return;
+    }
+
+    setBuying(true);
+    try {
+      const data = await request<{ url: string; sessionId: string }>("/stripe/checkout", {
+        method: "POST",
+        body: JSON.stringify({
+          listingId: listing.id,
+          shippingName: shippingName.trim(),
+          shippingPhone: shippingPhone.trim() || undefined,
+          shippingCity: shippingCity.trim() || undefined,
+          deliveryMethod: "standard",
+        }),
+      });
+
+      if (!data?.url) {
+        Alert.alert("Erè", "Nou pa ka kreye sesyon peman. Eseye ankò.");
+        return;
+      }
+
+      setBuyModalVisible(false);
+      await Linking.openURL(data.url);
+    } catch (err: any) {
+      Alert.alert("Erè peman", err?.message ?? "Erè enkoni. Eseye ankò.");
+    } finally {
+      setBuying(false);
+    }
   }
 
   const bottomPad = Platform.OS === "web" ? 34 : insets.bottom;
@@ -77,6 +146,7 @@ export default function ListingDetailScreen() {
   const listingCountry  = (listing as any)?.country as string | null | undefined;
   const isLocalDelivery = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
   const returnDays      = getReturnDays(listingCountry);
+  const priceNum        = parseFloat(listing?.price ?? "0");
 
   if (loading) {
     return (
@@ -149,7 +219,7 @@ export default function ListingDetailScreen() {
         <View style={[styles.content, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.priceRow}>
             <Text style={[styles.price, { color: colors.foreground }]}>
-              ${parseFloat(listing.price || "0").toLocaleString()}
+              ${priceNum.toLocaleString()}
             </Text>
             {listing.isBoosted && (
               <View style={[styles.boostedBadge, { backgroundColor: colors.accent }]}>
@@ -186,7 +256,6 @@ export default function ListingDetailScreen() {
             </View>
           ) : null}
 
-          {/* ── Livrezon & Retou ── */}
           {listingCountry && (
             <View style={[styles.policySection, { borderTopColor: colors.border }]}>
               <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>LIVREZON &amp; RETOU</Text>
@@ -247,16 +316,111 @@ export default function ListingDetailScreen() {
         </View>
       </ScrollView>
 
+      {/* ── Footer: Message · Offer · Buy ── */}
       <View style={[styles.footer, { paddingBottom: bottomPad + 8, backgroundColor: colors.card, borderTopColor: colors.border }]}>
         <TouchableOpacity style={[styles.msgBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Feather name="message-circle" size={18} color={colors.foreground} />
           <Text style={[styles.msgText, { color: colors.foreground }]}>{t("listingContact")}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.offerBtn, { backgroundColor: colors.accent }]}>
-          <Feather name="tag" size={18} color="#FFF" />
-          <Text style={styles.offerText}>{t("listingOffer")}</Text>
+        <TouchableOpacity
+          style={[styles.buyBtn]}
+          onPress={handleBuyPress}
+          activeOpacity={0.82}
+        >
+          <Feather name="credit-card" size={18} color="#FFF" />
+          <Text style={styles.buyText}>Achte · ${priceNum.toLocaleString()}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* ── Stripe Checkout Modal ── */}
+      <Modal
+        visible={buyModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setBuyModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setBuyModalVisible(false)} />
+          <View style={[styles.modalSheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 12 }]}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Konfime Acha</Text>
+              <TouchableOpacity onPress={() => setBuyModalVisible(false)} style={styles.modalClose}>
+                <Feather name="x" size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Listing summary */}
+            <View style={[styles.listingSummary, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.listingSummaryTitle, { color: colors.foreground }]} numberOfLines={2}>{listing.title}</Text>
+                <Text style={[styles.listingSummarySub, { color: colors.mutedForeground }]}>
+                  {listing.condition} · {listing.category}
+                </Text>
+              </View>
+              <Text style={[styles.listingSummaryPrice, { color: colors.primary }]}>${priceNum.toLocaleString()}</Text>
+            </View>
+
+            {/* Shipping fields */}
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Non pou livrezon *</Text>
+            <TextInput
+              ref={nameRef}
+              style={[styles.field, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="Non konplè..."
+              placeholderTextColor={colors.mutedForeground}
+              value={shippingName}
+              onChangeText={setShippingName}
+              returnKeyType="next"
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Nimewo telefòn (opsyonèl)</Text>
+            <TextInput
+              style={[styles.field, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="+509 ..."
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="phone-pad"
+              value={shippingPhone}
+              onChangeText={setShippingPhone}
+              returnKeyType="next"
+            />
+
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Vil livrezon (opsyonèl)</Text>
+            <TextInput
+              style={[styles.field, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+              placeholder="Port-au-Prince, Miami..."
+              placeholderTextColor={colors.mutedForeground}
+              value={shippingCity}
+              onChangeText={setShippingCity}
+              returnKeyType="done"
+              onSubmitEditing={handleStripeCheckout}
+            />
+
+            <Text style={[styles.stripeNote, { color: colors.mutedForeground }]}>
+              🔒 Peman pwoteje pa Stripe · Visa · Mastercard · AMEX
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.checkoutBtn, { opacity: buying ? 0.7 : 1 }]}
+              onPress={handleStripeCheckout}
+              disabled={buying}
+              activeOpacity={0.85}
+            >
+              {buying ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Feather name="credit-card" size={18} color="#fff" />
+                  <Text style={styles.checkoutBtnText}>Peye ${priceNum.toLocaleString()} ak Stripe</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -308,9 +472,36 @@ const styles = StyleSheet.create({
   sellerCity: { fontSize: 12, fontFamily: "Inter_400Regular" },
   viewProfileBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1 },
   viewProfileText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  footer: { flexDirection: "row", padding: 16, borderTopWidth: 1, gap: 12 },
+  // ── Footer ──
+  footer: { flexDirection: "row", padding: 16, borderTopWidth: 1, gap: 10 },
   msgBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 14, borderWidth: 1 },
-  msgText: { fontSize: 15, fontFamily: "Inter_500Medium" },
-  offerBtn: { flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 50, borderRadius: 14 },
-  offerText: { color: "#FFF", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  msgText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  buyBtn: {
+    flex: 2, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, height: 50, borderRadius: 14,
+    backgroundColor: "#2563EB",
+    shadowColor: "#2563EB", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  },
+  buyText: { color: "#FFF", fontSize: 15, fontFamily: "Inter_700Bold" },
+  // ── Modal ──
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)" },
+  modalSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, paddingTop: 12 },
+  modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB", alignSelf: "center", marginBottom: 16 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  modalClose: { padding: 4 },
+  listingSummary: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 20 },
+  listingSummaryTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", lineHeight: 20 },
+  listingSummarySub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  listingSummaryPrice: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  fieldLabel: { fontSize: 12, fontFamily: "Inter_600SemiBold", marginBottom: 6, letterSpacing: 0.3 },
+  field: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 15, fontFamily: "Inter_400Regular", marginBottom: 14 },
+  stripeNote: { fontSize: 12, fontFamily: "Inter_400Regular", textAlign: "center", marginBottom: 18, lineHeight: 17 },
+  checkoutBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 10, borderRadius: 16, padding: 16,
+    backgroundColor: "#2563EB",
+    shadowColor: "#2563EB", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 5,
+  },
+  checkoutBtnText: { fontSize: 16, fontFamily: "Inter_700Bold", color: "#fff" },
 });

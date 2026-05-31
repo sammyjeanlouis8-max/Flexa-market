@@ -589,6 +589,25 @@ export default function WalletPage() {
   const qc = useQueryClient();
 
   const [step, setStep] = useState<Step>("home");
+  const [stepStack, setStepStack] = useState<Step[]>([]);
+
+  function navigateTo(next: Step) {
+    setStepStack(prev => [...prev, step]);
+    setStep(next);
+  }
+  function goBack() {
+    setStepStack(prev => {
+      const arr = [...prev];
+      const previous = arr.pop() ?? "home";
+      setStep(previous);
+      return arr;
+    });
+  }
+  function resetToHome() {
+    setStepStack([]);
+    setStep("home");
+  }
+
   const [showQR, setShowQR] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [showReferralDetails, setShowReferralDetails] = useState(false);
@@ -760,7 +779,7 @@ export default function WalletPage() {
     onSuccess: (data) => {
       setPendingRef(data.paymentRef);
       setPendingDetails({ amountHtg: data.amountHtg, totalUsd: data.totalUsd, bonusUsd: data.bonusUsd, baseUsd: data.baseUsd, rateUsed: data.rateUsed, bonusPct: data.bonusPct });
-      setStep("moncash_confirm");
+      navigateTo("moncash_confirm");
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
     },
     onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
@@ -774,7 +793,7 @@ export default function WalletPage() {
       const net   = (data.netAmountUsd ?? data.amountUsd ?? 0).toFixed(2);
       toast({ title: t("wallet.moneySent"), description: t("wallet.moneySentFeeDesc", { gross, fee, net, name: data.receiverName }) });
       setToAccount(""); setSendAmount(""); setRecipient(null); setLookupState("idle");
-      setStep("home");
+      resetToHome();
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
     },
@@ -831,7 +850,7 @@ export default function WalletPage() {
     }),
     onSuccess: (data) => {
       setCashoutResult({ requestId: data.requestId });
-      setStep("cashout_done");
+      navigateTo("cashout_done");
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       qc.invalidateQueries({ queryKey: ["/cashout/my"] });
@@ -843,7 +862,7 @@ export default function WalletPage() {
   const cashoutStripeMut = useMutation({
     mutationFn: () => apiPost("/cashout/stripe", { amountUsd: parseFloat(cashoutAmount) }),
     onSuccess: (data) => {
-      setStep("cashout_done");
+      navigateTo("cashout_done");
       setCashoutResult({ requestId: data.transferId });
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
@@ -863,7 +882,7 @@ export default function WalletPage() {
     }),
     onSuccess: (data) => {
       setCashoutResult({ requestId: data.requestId });
-      setStep("cashout_agent_done");
+      navigateTo("cashout_agent_done");
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       qc.invalidateQueries({ queryKey: ["/cashout/my"] });
@@ -942,7 +961,7 @@ export default function WalletPage() {
       screenshotUrl: screenshotUrl || undefined,
     }),
     onSuccess: () => {
-      setStep("moncash_done");
+      navigateTo("moncash_done");
       setUserTransferRef("");
       setScreenshotFile(null);
       setScreenshotPreview(null);
@@ -1038,7 +1057,7 @@ export default function WalletPage() {
     const platformNum = balance?.moncashPlatformNumber;
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("moncash")} />
+        <BackButton onClick={() => goBack()} />
         <div className="text-center space-y-1">
           <p className="text-2xl font-black">{t("wallet.mcConfirmTitle")}</p>
           <p className="text-sm text-muted-foreground">{t("wallet.mcConfirmSubtitle")}</p>
@@ -1094,10 +1113,10 @@ export default function WalletPage() {
           ))}
         </div>
 
-        <Button className="w-full h-14 font-bold text-base" onClick={() => setStep("moncash_submit")}>
+        <Button className="w-full h-14 font-bold text-base" onClick={() => navigateTo("moncash_submit")}>
           {t("wallet.finishedPayBtn")}
         </Button>
-        <Button variant="ghost" className="w-full text-muted-foreground text-sm" onClick={() => { setStep("home"); qc.invalidateQueries({ queryKey: ["/wallet/history"] }); }}>
+        <Button variant="ghost" className="w-full text-muted-foreground text-sm" onClick={() => { resetToHome(); qc.invalidateQueries({ queryKey: ["/wallet/history"] }); }}>
           {t("wallet.doLater")}
         </Button>
       </div>
@@ -1111,7 +1130,7 @@ export default function WalletPage() {
     const canSubmit = (userTransferRef.trim().length >= 4 || !!screenshotUrl) && !screenshotUploading;
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("moncash_confirm")} />
+        <BackButton onClick={() => goBack()} />
         <div className="text-center space-y-1">
           <p className="text-2xl font-black">{t("wallet.submitProofTitle")}</p>
           <p className="text-sm text-muted-foreground">{t("wallet.submitProofSubtitle")}</p>
@@ -1217,7 +1236,7 @@ export default function WalletPage() {
 
         <Button
           className="w-full h-12 font-bold"
-          onClick={() => { setStep("home"); qc.invalidateQueries({ queryKey: ["/wallet/history"] }); }}
+          onClick={() => { resetToHome(); qc.invalidateQueries({ queryKey: ["/wallet/history"] }); }}
         >
           {t("wallet.backToWallet")}
         </Button>
@@ -1231,7 +1250,7 @@ export default function WalletPage() {
   if (step === "moncash") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-6">
-        <BackButton onClick={() => setStep("topup")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <h1 className="text-2xl font-black">{t("wallet.moncashTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("wallet.moncashSubtitle")}</p>
@@ -1315,7 +1334,7 @@ export default function WalletPage() {
   if (step === "card") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-6">
-        <BackButton onClick={() => setStep("topup")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <h1 className="text-2xl font-black">{t("wallet.cardTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("wallet.cardTitleSub")}</p>
@@ -1399,7 +1418,7 @@ export default function WalletPage() {
   if (step === "redeem_card") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-6">
-        <BackButton onClick={() => { setStep("home"); setRedeemCode(""); setRedeemSuccess(null); }} />
+        <BackButton onClick={() => { goBack(); setRedeemCode(""); setRedeemSuccess(null); }} />
 
         {redeemSuccess ? (
           <div className="flex flex-col items-center gap-6 py-6">
@@ -1411,7 +1430,7 @@ export default function WalletPage() {
               <p className="text-4xl font-black text-green-500 mt-2">${redeemSuccess.amountUsd.toFixed(2)}</p>
               <p className="text-sm text-muted-foreground">Krédite sou Wallet FM ou enstantane ⚡</p>
             </div>
-            <Button className="w-full h-12 font-bold text-base" onClick={() => setStep("home")}>
+            <Button className="w-full h-12 font-bold text-base" onClick={() => resetToHome()}>
               Retounen nan Wallet
             </Button>
           </div>
@@ -1509,7 +1528,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("home")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <h1 className="text-2xl font-black">{t("wallet.topupTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("wallet.topupSubtitle")}</p>
@@ -1562,8 +1581,8 @@ export default function WalletPage() {
           className="w-full h-12 font-bold text-base"
           onClick={() => {
             if (selectedTopupMethod === "agents") { setLocation("/wallet/agents"); }
-            else if (selectedTopupMethod === "crypto") { setStep("crypto"); }
-            else { setStep("card"); }
+            else if (selectedTopupMethod === "crypto") { navigateTo("crypto"); }
+            else { navigateTo("card"); }
           }}
         >
           {t("wallet.continueBtn")}
@@ -1582,7 +1601,7 @@ export default function WalletPage() {
     const usdtErc20 = "0xFleXaMarketUSDTAddressERC20Placeholder";
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("topup")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 text-xl font-black">₮</div>
@@ -1644,7 +1663,7 @@ export default function WalletPage() {
   if (step === "send_confirm" && recipient) {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("send")} />
+        <BackButton onClick={() => goBack()} />
         <div className="text-center space-y-1">
           <p className="text-2xl font-black">{t("wallet.confirmTransfer")}</p>
           <p className="text-sm text-muted-foreground">{t("wallet.confirmTransferSub")}</p>
@@ -1689,7 +1708,7 @@ export default function WalletPage() {
             : <><Send className="h-5 w-5 mr-2" />{t("wallet.confirmSendBtn")} {sendCurrency === "USDT" ? "₮" : "$"}{sendAmt.toFixed(2)} {sendCurrency}</>
           }
         </Button>
-        <Button variant="ghost" className="w-full" onClick={() => setStep("send")}>{t("wallet.cancel")}</Button>
+        <Button variant="ghost" className="w-full" onClick={() => goBack()}>{t("wallet.cancel")}</Button>
       </div>
     );
   }
@@ -1700,7 +1719,7 @@ export default function WalletPage() {
   if (step === "send") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("home")} />
+        <BackButton onClick={() => goBack()} />
         <div className="space-y-1">
           <h2 className="text-2xl font-black">{t("wallet.sendTitle")}</h2>
           <p className="text-sm text-muted-foreground">{t("wallet.sendSubtitle")}</p>
@@ -1822,7 +1841,7 @@ export default function WalletPage() {
         <Button
           className="w-full h-12 font-bold text-base"
           disabled={!canSendConfirm || lookupState !== "found"}
-          onClick={() => setStep("send_confirm")}
+          onClick={() => navigateTo("send_confirm")}
         >
           {t("wallet.verifyAndConfirm")}
         </Button>
@@ -1846,7 +1865,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => { const dest = cashoutRetraitOnly ? "choice" : "home"; setCashoutRetraitOnly(false); setStep(dest); }} />
+        <BackButton onClick={() => { setCashoutRetraitOnly(false); goBack(); }} />
 
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -2018,7 +2037,7 @@ export default function WalletPage() {
           disabled={!canSubmit || cashoutStripeMut.isPending}
           onClick={() => {
             if (cashoutMethod === "agent_transfer") {
-              setStep("cashout_agent_select");
+              navigateTo("cashout_agent_select");
               return;
             }
             if (cashoutMethod === "stripe_card") {
@@ -2031,7 +2050,7 @@ export default function WalletPage() {
             setOtpError("");
             setOtpDevCode(null);
             setOtpCountdown(0);
-            setStep("cashout_phone_verify");
+            navigateTo("cashout_phone_verify");
           }}
         >
           {cashoutStripeMut.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <ArrowDownCircle className="h-5 w-5 mr-2" />}
@@ -2051,8 +2070,8 @@ export default function WalletPage() {
     return (
       <AgentSelectStep
         cashoutAmount={cashoutAmount}
-        onBack={() => setStep("cashout")}
-        onSelect={(agent) => { setSelectedAgent(agent); setStep("cashout_agent_pay"); }}
+        onBack={() => goBack()}
+        onSelect={(agent) => { setSelectedAgent(agent); navigateTo("cashout_agent_pay"); }}
       />
     );
   }
@@ -2071,7 +2090,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("cashout_agent_select")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Users className="h-6 w-6 text-green-500" />
@@ -2150,7 +2169,7 @@ export default function WalletPage() {
           </a>
         )}
 
-        <Button className="w-full h-12 font-bold bg-green-600 hover:bg-green-700" onClick={() => setStep("cashout_agent_proof")}>
+        <Button className="w-full h-12 font-bold bg-green-600 hover:bg-green-700" onClick={() => navigateTo("cashout_agent_proof")}>
           Mwen voye kòb la — Kontinye ➜
         </Button>
       </div>
@@ -2165,7 +2184,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("cashout_agent_pay")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Upload className="h-6 w-6 text-green-500" />
@@ -2275,7 +2294,7 @@ export default function WalletPage() {
             <li>• Si pa gen nouvèl nan 2 zè, kontakte sipò nou</li>
           </ul>
         </div>
-        <Button className="w-full font-bold" onClick={() => setStep("home")}>
+        <Button className="w-full font-bold" onClick={() => resetToHome()}>
           Retounen nan Wallet
         </Button>
       </div>
@@ -2294,7 +2313,7 @@ export default function WalletPage() {
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("cashout")} />
+        <BackButton onClick={() => goBack()} />
 
         <div>
           <div className="flex items-center gap-2 mb-1">
@@ -2478,7 +2497,7 @@ export default function WalletPage() {
 
         <Button
           className="w-full h-12 font-bold"
-          onClick={() => { setStep("home"); qc.invalidateQueries({ queryKey: ["/cashout/my"] }); }}
+          onClick={() => { resetToHome(); qc.invalidateQueries({ queryKey: ["/cashout/my"] }); }}
         >
           {t("wallet.backToWallet")}
         </Button>
@@ -2492,7 +2511,7 @@ export default function WalletPage() {
   if (step === "my_card") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
-        <BackButton onClick={() => setStep("home")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <h1 className="text-2xl font-black">Kat FM ou</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -2552,7 +2571,7 @@ export default function WalletPage() {
   if (step === "choice") {
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-6">
-        <BackButton onClick={() => setStep("home")} />
+        <BackButton onClick={() => goBack()} />
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="h-6 w-6 text-primary" />
@@ -2584,7 +2603,7 @@ export default function WalletPage() {
         <div className="grid grid-cols-2 gap-4">
           <button
             type="button"
-            onClick={() => setStep(isHaiti ? "topup" : "card")}
+            onClick={() => navigateTo(isHaiti ? "topup" : "card")}
             className="fm-choice-recharge group relative rounded-2xl shadow-xl text-left overflow-hidden"
           >
             <div className="px-4 py-6 flex flex-col gap-3 relative">
@@ -2600,7 +2619,7 @@ export default function WalletPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); setStep("cashout"); }}
+            onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); navigateTo("cashout"); }}
             className="fm-choice-retrait group relative rounded-2xl shadow-xl text-left overflow-hidden"
           >
             <div className="px-4 py-6 flex flex-col gap-3 relative">
@@ -2629,7 +2648,7 @@ export default function WalletPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => step === "home" ? window.history.back() : setStep("home")}
+            onClick={() => stepStack.length > 0 ? goBack() : window.history.back()}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Retounen"
           >
@@ -3033,7 +3052,7 @@ export default function WalletPage() {
             bg: "linear-gradient(145deg,#0f1f3d,#0d1a35)",
             border: "rgba(59,130,246,0.35)",
             glow: "rgba(59,130,246,0.15)",
-            action: () => setStep(isHaiti ? "topup" : "card"),
+            action: () => navigateTo(isHaiti ? "topup" : "card"),
           },
           {
             label: t("wallet.actionSend"), Icon: Send,
@@ -3041,7 +3060,7 @@ export default function WalletPage() {
             bg: "linear-gradient(145deg,#0c1c3a,#0b1830)",
             border: "rgba(96,165,250,0.30)",
             glow: "rgba(96,165,250,0.12)",
-            action: () => setStep("send"),
+            action: () => navigateTo("send"),
           },
           {
             label: t("wallet.actionContacts"), Icon: Users,
@@ -3057,7 +3076,7 @@ export default function WalletPage() {
             bg: "linear-gradient(145deg,#2d150a,#261008)",
             border: "rgba(249,115,22,0.30)",
             glow: "rgba(249,115,22,0.12)",
-            action: () => { setRedeemCode(""); setRedeemSuccess(null); setStep("redeem_card"); },
+            action: () => { setRedeemCode(""); setRedeemSuccess(null); navigateTo("redeem_card"); },
           },
           {
             label: t("wallet.actionReceive"), Icon: ArrowDownCircle,
@@ -3065,7 +3084,7 @@ export default function WalletPage() {
             bg: "linear-gradient(145deg,#130d2e,#0f0926)",
             border: "rgba(139,92,246,0.30)",
             glow: "rgba(139,92,246,0.12)",
-            action: () => setStep("cashout"),
+            action: () => navigateTo("cashout"),
           },
           {
             label: t("wallet.actionHistory"), Icon: Zap,
@@ -3081,7 +3100,7 @@ export default function WalletPage() {
             bg: "linear-gradient(145deg,#07231f,#061d1a)",
             border: "rgba(45,212,191,0.30)",
             glow: "rgba(45,212,191,0.12)",
-            action: () => setStep("my_card"),
+            action: () => navigateTo("my_card"),
           },
         ]).map(({ label, Icon, iconColor, bg, border, glow, action }) => (
           <button
@@ -3237,7 +3256,7 @@ export default function WalletPage() {
       `}</style>
       <button
         type="button"
-        onClick={() => setStep("choice")}
+        onClick={() => navigateTo("choice")}
         className="fm-entry-btn w-full group relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-left shadow-lg"
       >
         <div className="px-4 py-4 flex items-center justify-between relative">

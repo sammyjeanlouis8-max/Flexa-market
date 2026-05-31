@@ -4,22 +4,14 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+  Alert, Platform, Pressable, RefreshControl,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
-import { useApi, Listing } from "@/hooks/useApi";
+import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
-import { ListingCard } from "@/components/ListingCard";
 
 export default function ProfileScreen() {
   const colors = useColors();
@@ -27,38 +19,35 @@ export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const { request } = useApi();
   const { t } = useLanguage();
-
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [listingCount, setListingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
-  const fetchMyListings = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const data = await request<{ listings: Listing[] } | Listing[]>(`/users/${user.id}/listings`);
-      const items = Array.isArray(data) ? data : (data as { listings: Listing[] }).listings ?? [];
-      setListings(items);
-    } catch {
-      setListings([]);
-    }
+      const [countData, notifData] = await Promise.allSettled([
+        request<{ count: number }>(`/listings/my-count`),
+        request<{ count: number }>(`/notifications/unread-count`),
+      ]);
+      if (countData.status === "fulfilled") setListingCount((countData.value as any).count ?? 0);
+      if (notifData.status === "fulfilled") setUnreadNotifs((notifData.value as any).count ?? 0);
+    } catch {}
   }, [request, user]);
 
-  useEffect(() => {
-    fetchMyListings().finally(() => setLoading(false));
-  }, [fetchMyListings]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshUser(), fetchMyListings()]);
+    await Promise.all([refreshUser(), fetchData()]);
     setRefreshing(false);
-  }, [refreshUser, fetchMyListings]);
+  }, [refreshUser, fetchData]);
 
   function handleLogout() {
     Alert.alert(t("logoutTitle"), t("logoutMsg"), [
       { text: t("cancel"), style: "cancel" },
       {
-        text: t("logout"),
-        style: "destructive",
+        text: t("logout"), style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
           await logout();
@@ -70,6 +59,47 @@ export default function ProfileScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const initials = user?.name?.slice(0, 2).toUpperCase() ?? "?";
+  const isAdmin = user?.isAdmin || user?.isSuperAdmin || user?.role === "admin" || user?.role === "superadmin";
+
+  type FeatherIconName = React.ComponentProps<typeof Feather>["name"];
+
+  const menuSections: Array<{
+    label: string;
+    items: Array<{ icon: FeatherIconName; label: string; onPress: () => void; badge?: number; color?: string }>;
+  }> = [
+    {
+      label: "Kont Mwen",
+      items: [
+        { icon: "package", label: "Mes Annonces", onPress: () => router.push("/my-listings") },
+        { icon: "heart", label: "Sauvegardés", onPress: () => router.push("/favorites") },
+        { icon: "tag", label: "Ofè", onPress: () => router.push("/offers") },
+        { icon: "shopping-bag", label: t("myOrders"), onPress: () => router.push("/orders") },
+        { icon: "trending-up", label: "Ventes", onPress: () => router.push("/orders") },
+      ],
+    },
+    {
+      label: "Finans",
+      items: [
+        { icon: "credit-card", label: t("myWallet"), onPress: () => router.push("/wallet") },
+      ],
+    },
+    {
+      label: "Platfòm",
+      items: [
+        { icon: "bell", label: "Notifikasyon", onPress: () => router.push("/notifications"), badge: unreadNotifs },
+        { icon: "video", label: "Vidéos Promo", onPress: () => router.push("/videos") },
+        { icon: "shield", label: t("myKyc"), onPress: () => router.push("/kyc") },
+        { icon: "globe", label: t("sLanguage"), onPress: () => router.push("/language-picker") },
+        { icon: "settings", label: t("mySettings"), onPress: () => router.push("/settings") },
+      ],
+    },
+    ...(isAdmin ? [{
+      label: "Admin",
+      items: [
+        { icon: "shield" as FeatherIconName, label: "Panneau Admin", onPress: () => router.push("/admin"), color: "#6366F1" },
+      ],
+    }] : []),
+  ];
 
   return (
     <ScrollView
@@ -86,9 +116,15 @@ export default function ProfileScreen() {
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
           )}
-
           <View style={styles.userInfo}>
-            <Text style={[styles.name, { color: colors.foreground }]}>{user?.name ?? "—"}</Text>
+            <View style={styles.nameRow}>
+              <Text style={[styles.name, { color: colors.foreground }]}>{user?.name ?? "—"}</Text>
+              {isAdmin && (
+                <View style={[styles.adminBadge, { backgroundColor: "#6366F122" }]}>
+                  <Text style={[styles.adminText, { color: "#6366F1" }]}>Admin</Text>
+                </View>
+              )}
+            </View>
             <Text style={[styles.email, { color: colors.mutedForeground }]}>{user?.email ?? ""}</Text>
             {user?.country && (
               <View style={[styles.countryBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
@@ -100,10 +136,10 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.statsRow, { borderTopColor: colors.border }]}>
-          <View style={styles.stat}>
-            <Text style={[styles.statNum, { color: colors.foreground }]}>{listings.length}</Text>
+          <TouchableOpacity style={styles.stat} onPress={() => router.push("/my-listings")}>
+            <Text style={[styles.statNum, { color: colors.foreground }]}>{listingCount}</Text>
             <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{t("listingsCount")}</Text>
-          </View>
+          </TouchableOpacity>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.stat}>
             <Feather name={user?.isPhoneVerified ? "check-circle" : "alert-circle"} size={20} color={user?.isPhoneVerified ? "#22C55E" : colors.mutedForeground} />
@@ -119,45 +155,31 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {[
-          { icon: "shopping-bag" as const, label: t("myFavorites"), onPress: () => {} },
-          { icon: "truck" as const, label: t("myOrders"), onPress: () => router.push("/orders") },
-          { icon: "credit-card" as const, label: t("myWallet"), onPress: () => router.push("/wallet") },
-          { icon: "shield" as const, label: t("myKyc"), onPress: () => router.push("/kyc") },
-          { icon: "star" as const, label: t("myReviews"), onPress: () => {} },
-          { icon: "globe" as const, label: t("sLanguage"), onPress: () => router.push("/language-picker") },
-          { icon: "settings" as const, label: t("mySettings"), onPress: () => router.push("/settings") },
-        ].map((item, idx, arr) => (
-          <TouchableOpacity
-            key={item.label}
-            style={[styles.menuItem, { borderBottomColor: colors.border, borderBottomWidth: idx < arr.length - 1 ? 1 : 0 }]}
-            onPress={item.onPress}
-          >
-            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
-              <Feather name={item.icon} size={18} color={colors.primary} />
-            </View>
-            <Text style={[styles.menuLabel, { color: colors.foreground }]}>{item.label}</Text>
-            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {listings.length > 0 && (
-        <View style={styles.listingsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{t("myListings")} ({listings.length})</Text>
-          <View style={styles.grid}>
-            {listings.slice(0, 4).map((item) => (
-              <ListingCard key={item.id} item={item} />
+      {menuSections.map((section) => (
+        <View key={section.label} style={styles.sectionWrap}>
+          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>{section.label.toUpperCase()}</Text>
+          <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {section.items.map((item, idx, arr) => (
+              <TouchableOpacity
+                key={item.label}
+                style={[styles.menuItem, { borderBottomColor: colors.border, borderBottomWidth: idx < arr.length - 1 ? 1 : 0 }]}
+                onPress={item.onPress}
+              >
+                <View style={[styles.menuIcon, { backgroundColor: item.color ? item.color + "22" : colors.muted }]}>
+                  <Feather name={item.icon} size={18} color={item.color ?? colors.primary} />
+                </View>
+                <Text style={[styles.menuLabel, { color: item.color ?? colors.foreground }]}>{item.label}</Text>
+                {(item.badge ?? 0) > 0 && (
+                  <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.badgeText}>{item.badge}</Text>
+                  </View>
+                )}
+                <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+              </TouchableOpacity>
             ))}
           </View>
-          {listings.length > 4 && (
-            <Pressable style={[styles.seeAllBtn, { borderColor: colors.border }]}>
-              <Text style={[styles.seeAllText, { color: colors.primary }]}>{t("seeAll")} ({listings.length})</Text>
-            </Pressable>
-          )}
         </View>
-      )}
+      ))}
 
       <Pressable
         style={({ pressed }) => [styles.logoutBtn, { borderColor: colors.destructive, opacity: pressed ? 0.7 : 1 }]}
@@ -179,7 +201,10 @@ const styles = StyleSheet.create({
   avatarFallback: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", borderWidth: 2 },
   avatarText: { color: "#FFF", fontSize: 24, fontFamily: "Inter_700Bold" },
   userInfo: { flex: 1, gap: 4 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   name: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  adminBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  adminText: { fontSize: 11, fontFamily: "Inter_600SemiBold" },
   email: { fontSize: 13, fontFamily: "Inter_400Regular" },
   countryBadge: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1, marginTop: 2 },
   countryText: { fontSize: 11, fontFamily: "Inter_500Medium" },
@@ -188,15 +213,14 @@ const styles = StyleSheet.create({
   statNum: { fontSize: 20, fontFamily: "Inter_700Bold" },
   statLabel: { fontSize: 12, fontFamily: "Inter_400Regular" },
   statDivider: { width: 1, marginVertical: 4 },
-  section: { marginHorizontal: 16, marginTop: 16, borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  sectionWrap: { marginHorizontal: 16, marginTop: 16 },
+  sectionLabel: { fontSize: 11, fontFamily: "Inter_600SemiBold", marginBottom: 6, marginLeft: 4, letterSpacing: 0.8 },
+  section: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
   menuItem: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   menuIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   menuLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
-  listingsSection: { paddingHorizontal: 16, marginTop: 24 },
-  sectionTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", marginBottom: 12 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" },
-  seeAllBtn: { marginTop: 12, height: 44, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  seeAllText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  badge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
+  badgeText: { color: "#FFF", fontSize: 11, fontFamily: "Inter_700Bold" },
   logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, margin: 16, marginTop: 24, height: 50, borderRadius: 14, borderWidth: 1.5 },
   logoutText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });

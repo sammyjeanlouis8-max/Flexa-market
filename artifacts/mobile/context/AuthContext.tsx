@@ -21,6 +21,8 @@ export interface User {
   isPhoneVerified?: boolean;
   role?: string;
   phone?: string;
+  isAdmin?: boolean;
+  isSuperAdmin?: boolean;
   kycStatus?: "not_submitted" | "pending" | "approved" | "rejected";
 }
 

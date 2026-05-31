@@ -1,6 +1,6 @@
 ---
 name: FlexaMarket production API + OTA config
-description: Stable production API URL, OTA env var bundling rules, demo account, and EAS channel config.
+description: Stable production API URL, OTA env var bundling rules, and EAS channel config.
 ---
 
 ## Production API URL
@@ -20,10 +20,9 @@ description: Stable production API URL, OTA env var bundling rules, demo account
 - Production build profile must have `"channel": "production"` in eas.json
 - OTA updates pushed with `--branch production` match TestFlight/App Store builds
 
-## Apple Demo Account (production DB)
-- Email: `samueljanlouis37@icloud.com`
-- Password: `JHonnpypot12@`
-- Created in production DB via `/api/auth/register` with phone `+50937000001`, country `HT`
+## Apple Demo Account
+- Demo account exists in production DB (email is icloud-based, stored securely outside memory)
+- Created via `/api/auth/register` with country `HT`
 
 ## OTA Update Flow
 - `eas update` bundles locally — shell env vars and `.env` file are used

@@ -27,6 +27,7 @@ const CATEGORIES = [
 ];
 
 const CONDITIONS = ["New", "Like New", "Good", "Fair", "Poor"];
+const MAX_IMAGES = 10;
 
 export default function SellScreen() {
   const colors = useColors();
@@ -40,24 +41,48 @@ export default function SellScreen() {
   const [category, setCategory] = useState("");
   const [condition, setCondition] = useState("");
   const [location, setLocation] = useState(user?.city ?? user?.location ?? "");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUris, setImageUris] = useState<string[]>([]);
   const [showCats, setShowCats] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  async function pickImage() {
+  async function pickImages() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") return;
+    const remaining = MAX_IMAGES - imageUris.length;
+    if (remaining <= 0) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
       quality: 0.8,
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
     });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    if (!result.canceled && result.assets.length > 0) {
+      const newUris = result.assets.map((a) => a.uri);
+      setImageUris((prev) => [...prev, ...newUris].slice(0, MAX_IMAGES));
     }
+  }
+
+  function removeImage(index: number) {
+    setImageUris((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function uploadImage(uri: string): Promise<string> {
+    const filename = uri.split("/").pop() ?? "image.jpg";
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "jpg";
+    const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
+
+    const formData = new FormData();
+    formData.append("file", { uri, name: filename, type: mime } as any);
+
+    const result = await request("/upload", {
+      method: "POST",
+      body: formData,
+      headers: {},
+    });
+    return (result as any).url as string;
   }
 
   async function handlePost() {
@@ -71,7 +96,16 @@ export default function SellScreen() {
     }
     setError("");
     setLoading(true);
+
     try {
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < imageUris.length; i++) {
+        setUploadProgress(`Telechaje foto ${i + 1} / ${imageUris.length}...`);
+        const url = await uploadImage(imageUris[i]);
+        uploadedUrls.push(url);
+      }
+      setUploadProgress("");
+
       await request("/listings", {
         method: "POST",
         body: JSON.stringify({
@@ -82,7 +116,7 @@ export default function SellScreen() {
           condition: condition.toLowerCase(),
           location: location.trim() || (user?.location ?? ""),
           country: user?.country ?? "Haiti",
-          images: [],
+          images: uploadedUrls,
         }),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -92,6 +126,7 @@ export default function SellScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
+      setUploadProgress("");
     }
   }
 
@@ -110,7 +145,10 @@ export default function SellScreen() {
           </Text>
           <Pressable
             style={[styles.btn, { backgroundColor: colors.accent }]}
-            onPress={() => { setSuccess(false); setTitle(""); setPrice(""); setDescription(""); setCategory(""); setCondition(""); setImageUri(null); }}
+            onPress={() => {
+              setSuccess(false); setTitle(""); setPrice(""); setDescription("");
+              setCategory(""); setCondition(""); setImageUris([]);
+            }}
           >
             <Text style={styles.btnText}>Pibliye Yon Lòt</Text>
           </Pressable>
@@ -142,23 +180,42 @@ export default function SellScreen() {
           </View>
         ) : null}
 
-        <TouchableOpacity style={[styles.imagePicker, { backgroundColor: colors.muted, borderColor: colors.border }]} onPress={pickImage}>
-          {imageUri ? (
-            <>
-              <Image source={{ uri: imageUri }} style={styles.imagePreview} contentFit="cover" />
-              <View style={styles.imageOverlay}>
-                <Feather name="camera" size={20} color="#FFF" />
-                <Text style={styles.imageOverlayText}>Chanje foto</Text>
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: colors.foreground }]}>
+            Foto ({imageUris.length}/{MAX_IMAGES})
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoRow}>
+            {imageUris.map((uri, idx) => (
+              <View key={uri + idx} style={styles.photoThumbWrap}>
+                <Image source={{ uri }} style={styles.photoThumb} contentFit="cover" />
+                {idx === 0 && (
+                  <View style={styles.mainBadge}>
+                    <Text style={styles.mainBadgeText}>Prensipal</Text>
+                  </View>
+                )}
+                <TouchableOpacity style={styles.removeBtn} onPress={() => removeImage(idx)}>
+                  <Feather name="x" size={12} color="#FFF" />
+                </TouchableOpacity>
               </View>
-            </>
-          ) : (
-            <>
-              <Feather name="camera" size={32} color={colors.mutedForeground} />
-              <Text style={[styles.imagePickerText, { color: colors.mutedForeground }]}>Ajoute Foto</Text>
-              <Text style={[styles.imagePickerSub, { color: colors.mutedForeground }]}>Klike pou chwazi imaj</Text>
-            </>
+            ))}
+            {imageUris.length < MAX_IMAGES && (
+              <TouchableOpacity
+                style={[styles.addPhotoBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                onPress={pickImages}
+              >
+                <Feather name="camera" size={24} color={colors.mutedForeground} />
+                <Text style={[styles.addPhotoText, { color: colors.mutedForeground }]}>
+                  {imageUris.length === 0 ? "Ajoute Foto" : "Plis Foto"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+          {imageUris.length === 0 && (
+            <Text style={[styles.photoHint, { color: colors.mutedForeground }]}>
+              Ou ka ajoute jiska {MAX_IMAGES} foto — premye foto a se foto prensipal
+            </Text>
           )}
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Tit Annons *</Text>
@@ -256,6 +313,13 @@ export default function SellScreen() {
           />
         </View>
 
+        {uploadProgress ? (
+          <View style={[styles.progressBox, { backgroundColor: colors.muted }]}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={[styles.progressText, { color: colors.foreground }]}>{uploadProgress}</Text>
+          </View>
+        ) : null}
+
         <Pressable
           style={({ pressed }) => [styles.submitBtn, { backgroundColor: colors.accent, opacity: pressed || loading ? 0.85 : 1 }]}
           onPress={handlePost}
@@ -283,14 +347,17 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 4 },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 8, backgroundColor: "rgba(239,68,68,0.06)" },
   errorText: { fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
-  imagePicker: { height: 160, borderRadius: 14, borderWidth: 1.5, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16, overflow: "hidden" },
-  imagePreview: { position: "absolute", width: "100%", height: "100%" },
-  imageOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.5)", padding: 12, flexDirection: "row", alignItems: "center", gap: 8, justifyContent: "center" },
-  imageOverlayText: { color: "#FFF", fontSize: 13, fontFamily: "Inter_500Medium" },
-  imagePickerText: { fontSize: 14, fontFamily: "Inter_500Medium" },
-  imagePickerSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
   section: { marginBottom: 16 },
   sectionLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  photoRow: { flexDirection: "row" },
+  photoThumbWrap: { width: 100, height: 100, borderRadius: 12, marginRight: 10, overflow: "hidden", position: "relative" },
+  photoThumb: { width: "100%", height: "100%" },
+  mainBadge: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.55)", paddingVertical: 3, alignItems: "center" },
+  mainBadgeText: { color: "#FFF", fontSize: 10, fontFamily: "Inter_600SemiBold" },
+  removeBtn: { position: "absolute", top: 5, right: 5, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 10, width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  addPhotoBtn: { width: 100, height: 100, borderRadius: 12, borderWidth: 1.5, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 6, marginRight: 10 },
+  addPhotoText: { fontSize: 11, fontFamily: "Inter_500Medium", textAlign: "center" },
+  photoHint: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 8 },
   input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   selectRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   selectText: { fontSize: 15 },
@@ -304,6 +371,8 @@ const styles = StyleSheet.create({
   condPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   condText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   textArea: { height: 100, paddingTop: 12 },
+  progressBox: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 10, marginBottom: 8 },
+  progressText: { fontSize: 13, fontFamily: "Inter_400Regular" },
   submitBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, height: 54, borderRadius: 14, marginTop: 8 },
   submitText: { color: "#FFF", fontSize: 16, fontFamily: "Inter_600SemiBold" },
   successWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 16 },

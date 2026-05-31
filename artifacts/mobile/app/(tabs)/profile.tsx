@@ -5,10 +5,11 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert, Platform, Pressable, RefreshControl,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { useApi } from "@/hooks/useApi";
 import { useColors } from "@/hooks/useColors";
@@ -19,6 +20,7 @@ export default function ProfileScreen() {
   const { user, logout, refreshUser } = useAuth();
   const { request } = useApi();
   const { t } = useLanguage();
+  const { isDark, toggleDark } = useTheme();
   const [listingCount, setListingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -193,6 +195,28 @@ export default function ProfileScreen() {
           </View>
         </View>
       ))}
+
+      {/* Dark mode toggle */}
+      <View style={[styles.sectionWrap, { marginTop: 16 }]}>
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>APARANS</Text>
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.menuItem}>
+            <View style={[styles.menuIcon, { backgroundColor: colors.muted }]}>
+              <Feather name={isDark ? "moon" : "sun"} size={18} color={colors.primary} />
+            </View>
+            <Text style={[styles.menuLabel, { color: colors.foreground }]}>Mode Sòm</Text>
+            <Switch
+              value={isDark}
+              onValueChange={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                toggleDark();
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+      </View>
 
       <Pressable
         style={({ pressed }) => [styles.logoutBtn, { borderColor: colors.destructive, opacity: pressed ? 0.7 : 1 }]}

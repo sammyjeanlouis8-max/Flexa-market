@@ -1,167 +1,153 @@
 import { Feather } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
 import { router, useLocalSearchParams } from "expo-router";
-import React from "react";
+import React, { useRef, useState } from "react";
 import {
-  Platform, ScrollView, StyleSheet, Text,
-  TouchableOpacity, View,
+  ActivityIndicator, Platform, Pressable,
+  StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import WebView, { WebViewNavigation } from "react-native-webview";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
 const WEBSITE = "https://flexamarket.com";
 
-interface PageItem {
-  icon: string;
-  label: string;
-  path: string;
-  color?: string;
-}
-
-const SECTIONS: Array<{ title: string; items: PageItem[] }> = [
-  {
-    title: "🏠 Akèy",
-    items: [
-      { icon: "home", label: "Akèy / Listings", path: "/" },
-      { icon: "search", label: "Rechèch", path: "/search" },
-      { icon: "video", label: "Vidéos Promo", path: "/videos" },
-    ],
-  },
-  {
-    title: "👤 Kont Mwen",
-    items: [
-      { icon: "user", label: "Profil", path: "/profile" },
-      { icon: "package", label: "Mes Annonces", path: "/my-listings" },
-      { icon: "heart", label: "Sauvegardés", path: "/favorites" },
-      { icon: "tag", label: "Ofè", path: "/offers" },
-      { icon: "shopping-bag", label: "Mes Kòmand", path: "/orders" },
-    ],
-  },
-  {
-    title: "📈 Vendè",
-    items: [
-      { icon: "trending-up", label: "Ventes / Sales", path: "/sales" },
-      { icon: "zap", label: "Mes Boosts Actifs", path: "/boosts", color: "#F59E0B" },
-      { icon: "video", label: "Mes Vidéos Promo", path: "/promo-videos" },
-      { icon: "bar-chart-2", label: "Analytik", path: "/analytics" },
-    ],
-  },
-  {
-    title: "💰 Finans",
-    items: [
-      { icon: "credit-card", label: "Wallet", path: "/wallet" },
-      { icon: "dollar-sign", label: "Demande Prêt", path: "/loans", color: "#6366F1" },
-      { icon: "gift", label: "Kont Promo", path: "/promo-account" },
-      { icon: "repeat", label: "Abonnman", path: "/subscription" },
-    ],
-  },
-  {
-    title: "🔒 Kont & Sekirite",
-    items: [
-      { icon: "shield", label: "KYC Verifikasyon", path: "/kyc" },
-      { icon: "star", label: "Revize / Reviews", path: "/reviews" },
-      { icon: "bell", label: "Notifikasyon", path: "/notifications" },
-      { icon: "settings", label: "Paramèt", path: "/settings" },
-    ],
-  },
-  {
-    title: "🛡 Admin",
-    items: [
-      { icon: "grid", label: "Admin Dashboard", path: "/admin", color: "#6366F1" },
-      { icon: "users", label: "Gere Itilizatè", path: "/admin/users", color: "#6366F1" },
-      { icon: "list", label: "Jere Annons", path: "/admin/listings", color: "#6366F1" },
-      { icon: "flag", label: "Rapò", path: "/admin/reports", color: "#6366F1" },
-    ],
-  },
-];
-
-async function openPage(path: string) {
-  await WebBrowser.openBrowserAsync(`${WEBSITE}${path}`, {
-    presentationStyle: Platform.OS === "ios"
-      ? WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN
-      : undefined,
-    toolbarColor: "#F97316",
-    controlsColor: "#FFFFFF",
-    enableBarCollapsing: true,
-  });
-}
-
 export default function WebsiteScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { token } = useAuth();
   const params = useLocalSearchParams<{ path?: string }>();
+
+  const startPath = params.path && params.path !== "/" ? params.path : "/";
+  const startUrl = `${WEBSITE}${startPath}`;
+
+  const webRef = useRef<WebView>(null);
+  const [navState, setNavState] = useState<WebViewNavigation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  // If called with a specific path, open it immediately
-  React.useEffect(() => {
-    if (params.path && params.path !== "/") {
-      openPage(params.path);
-    }
-  }, []);
+  // Inject auth token so the user is auto-logged-in on the website
+  const injectedJS = token
+    ? `
+      (function() {
+        try {
+          localStorage.setItem('fm_token', ${JSON.stringify(token)});
+          localStorage.setItem('auth_token', ${JSON.stringify(token)});
+        } catch(e) {}
+      })();
+      true;
+    `
+    : undefined;
+
+  const canGoBack = navState?.canGoBack ?? false;
+  const canGoForward = navState?.canGoForward ?? false;
+  const currentUrl = navState?.url ?? startUrl;
+  const displayHost = currentUrl.replace(/^https?:\/\//, "").split("/")[0];
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border, backgroundColor: colors.background }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color={colors.foreground} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: colors.foreground }]}>🌐 Site Wèb Konplè</Text>
-          <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>flexamarket.com</Text>
+      {/* Header */}
+      <View
+        style={[
+          styles.header,
+          { paddingTop: topPad + 8, backgroundColor: colors.card, borderBottomColor: colors.border },
+        ]}
+      >
+        <Pressable onPress={() => router.back()} style={styles.headerBtn} hitSlop={8}>
+          <Feather name="x" size={22} color={colors.foreground} />
+        </Pressable>
+
+        <View style={styles.urlBar}>
+          <Feather name="lock" size={12} color="#22C55E" />
+          <Text style={[styles.urlText, { color: colors.foreground }]} numberOfLines={1}>
+            {displayHost}
+          </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.openAllBtn, { backgroundColor: colors.accent }]}
-          onPress={() => openPage("/")}
+
+        <Pressable
+          onPress={() => webRef.current?.reload()}
+          style={styles.headerBtn}
+          hitSlop={8}
         >
-          <Feather name="external-link" size={14} color="#FFF" />
-          <Text style={styles.openAllText}>Ouvri</Text>
-        </TouchableOpacity>
+          <Feather name={loading ? "x" : "refresh-cw"} size={18} color={colors.mutedForeground} />
+        </Pressable>
       </View>
 
-      {!user && (
-        <View style={[styles.loginBanner, { backgroundColor: "#F59E0B22", borderColor: "#F59E0B44" }]}>
-          <Feather name="alert-circle" size={16} color="#F59E0B" />
-          <Text style={[styles.loginBannerText, { color: colors.foreground }]}>
-            Konekte sou sit wèb la pou jwenn tout fonksyon yo.
-          </Text>
+      {/* Progress bar */}
+      {loading && (
+        <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+          <View
+            style={[
+              styles.progressFill,
+              { backgroundColor: colors.primary, width: `${loadProgress * 100}%` as any },
+            ]}
+          />
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: insets.bottom + 80 }}>
-        {SECTIONS.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{section.title}</Text>
-            <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {section.items.map((item, idx) => (
-                <TouchableOpacity
-                  key={item.path}
-                  style={[
-                    styles.row,
-                    idx < section.items.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  ]}
-                  onPress={() => openPage(item.path)}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: (item.color ?? colors.primary) + "18" }]}>
-                    <Feather name={item.icon as any} size={17} color={item.color ?? colors.primary} />
-                  </View>
-                  <Text style={[styles.rowLabel, { color: colors.foreground }]}>{item.label}</Text>
-                  <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
-                </TouchableOpacity>
-              ))}
-            </View>
+      {/* WebView */}
+      <WebView
+        ref={webRef}
+        source={{ uri: startUrl }}
+        style={{ flex: 1, backgroundColor: colors.background }}
+        injectedJavaScript={injectedJS}
+        javaScriptEnabled
+        domStorageEnabled
+        sharedCookiesEnabled
+        allowsBackForwardNavigationGestures
+        onNavigationStateChange={setNavState}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onLoadProgress={({ nativeEvent }) => setLoadProgress(nativeEvent.progress)}
+        renderLoading={() => (
+          <View style={[styles.loadingOverlay, { backgroundColor: colors.background }]}>
+            <ActivityIndicator color={colors.primary} size="large" />
           </View>
-        ))}
+        )}
+      />
 
-        <View style={[styles.infoBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-          <Feather name="info" size={15} color={colors.mutedForeground} />
-          <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-            Paj yo ouvri nan navigatè entegre a. Demen, yon nouvo build ap entegre yo dirèkteman nan app la.
-          </Text>
-        </View>
-      </ScrollView>
+      {/* Bottom nav bar */}
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: insets.bottom + 4, backgroundColor: colors.card, borderTopColor: colors.border },
+        ]}
+      >
+        <Pressable
+          style={[styles.navBtn, !canGoBack && styles.disabled]}
+          onPress={() => webRef.current?.goBack()}
+          disabled={!canGoBack}
+          hitSlop={10}
+        >
+          <Feather name="arrow-left" size={22} color={canGoBack ? colors.foreground : colors.border} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.navBtn, !canGoForward && styles.disabled]}
+          onPress={() => webRef.current?.goForward()}
+          disabled={!canGoForward}
+          hitSlop={10}
+        >
+          <Feather name="arrow-right" size={22} color={canGoForward ? colors.foreground : colors.border} />
+        </Pressable>
+
+        <Pressable
+          style={styles.navBtn}
+          onPress={() => webRef.current?.injectJavaScript(`window.location.href = '${WEBSITE}/';`)}
+          hitSlop={10}
+        >
+          <Feather name="home" size={22} color={colors.foreground} />
+        </Pressable>
+
+        <Pressable
+          style={styles.navBtn}
+          onPress={() => webRef.current?.reload()}
+          hitSlop={10}
+        >
+          <Feather name="refresh-cw" size={22} color={colors.foreground} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -169,34 +155,26 @@ export default function WebsiteScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    flexDirection: "row", alignItems: "center",
-    paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, gap: 12,
-  },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
-  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 1 },
-  openAllBtn: {
-    flexDirection: "row", alignItems: "center", gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20,
-  },
-  openAllText: { color: "#FFF", fontSize: 13, fontFamily: "Inter_600SemiBold" },
-  loginBanner: {
     flexDirection: "row", alignItems: "center", gap: 10,
-    margin: 16, marginBottom: 0, padding: 12, borderRadius: 12, borderWidth: 1,
+    paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 1,
   },
-  loginBannerText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
-  section: { gap: 8 },
-  sectionTitle: { fontSize: 14, fontFamily: "Inter_700Bold", paddingLeft: 2 },
-  sectionCard: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
-  row: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    paddingVertical: 13, paddingHorizontal: 14,
+  headerBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  urlBar: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: "rgba(0,0,0,0.06)", borderRadius: 10,
+    paddingHorizontal: 10, paddingVertical: 7,
   },
-  rowIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  rowLabel: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
-  infoBox: {
-    flexDirection: "row", alignItems: "flex-start", gap: 10,
-    padding: 14, borderRadius: 12, borderWidth: 1,
+  urlText: { flex: 1, fontSize: 13, fontFamily: "Inter_500Medium" },
+  progressTrack: { height: 2, width: "100%" },
+  progressFill: { height: 2 },
+  loadingOverlay: {
+    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: "center", justifyContent: "center",
   },
-  infoText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular", lineHeight: 18 },
+  bottomBar: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-around",
+    paddingTop: 10, borderTopWidth: 1,
+  },
+  navBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  disabled: { opacity: 0.3 },
 });

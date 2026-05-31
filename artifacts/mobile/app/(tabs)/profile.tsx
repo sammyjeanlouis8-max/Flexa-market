@@ -100,6 +100,12 @@ export default function ProfileScreen() {
         { icon: "settings", label: t("mySettings"), onPress: () => router.push("/settings") },
       ],
     },
+    {
+      label: "🌐 Site Wèb Konplè",
+      items: [
+        { icon: "monitor" as FeatherIconName, label: "Ouvri tout fonksyon sit wèb la", onPress: () => router.push("/website"), color: "#F97316" },
+      ],
+    },
     ...(isAdmin ? [{
       label: "Administration",
       items: [

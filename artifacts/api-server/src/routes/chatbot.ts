@@ -7,7 +7,9 @@ const router = Router();
 const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
 const apiKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
 
-const client = baseURL && apiKey ? new Anthropic({ baseURL, apiKey }) : null;
+const client = baseURL && apiKey
+  ? new Anthropic({ baseURL, apiKey, timeout: 25000 })
+  : null;
 
 const SYSTEM_PROMPT = `You are FlexaBot, the friendly AI assistant for FLEXA MARKET — a peer-to-peer marketplace serving primarily Haitian users (with Haitian Creole, French, English, Spanish, and Portuguese speakers).
 
@@ -54,20 +56,25 @@ router.post("/chatbot/message", requireAuth, async (req, res) => {
   }
 
   try {
-    const reply = await client.messages.create({
+    let fullText = "";
+    const stream = client.messages.stream({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: parsed.messages,
     });
 
-    const block = reply.content[0];
-    const text = block && block.type === "text" ? block.text : "";
+    for await (const event of stream) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        fullText += event.delta.text;
+      }
+    }
 
-    res.json({ reply: text });
+    res.json({ reply: fullText || "…" });
   } catch (err: any) {
-    // Log full error server-side, return a generic message to the client so we
-    // don't leak upstream provider details or internal stack info.
     req.log.error({ err }, "[chatbot] Anthropic call failed");
     const status = typeof err?.status === "number" ? err.status : 500;
     const safeStatus = status >= 400 && status < 600 ? status : 500;

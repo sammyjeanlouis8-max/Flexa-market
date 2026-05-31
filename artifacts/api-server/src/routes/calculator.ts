@@ -8,7 +8,9 @@ const router = Router();
 const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
 const apiKey  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
 
-const client = baseURL && apiKey ? new Anthropic({ baseURL, apiKey }) : null;
+const client = baseURL && apiKey
+  ? new Anthropic({ baseURL, apiKey, timeout: 25000 })
+  : null;
 
 const calcLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -90,7 +92,13 @@ router.post("/calculator/ask", requireAuth, calcLimiter, async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders();
+
+  // Heartbeat comment every 5 s to keep the proxy connection alive
+  const heartbeat = setInterval(() => {
+    try { res.write(": keep-alive\n\n"); } catch { /* ignore */ }
+  }, 5000);
 
   try {
     const stream = client.messages.stream({
@@ -109,9 +117,11 @@ router.post("/calculator/ask", requireAuth, calcLimiter, async (req, res) => {
       }
     }
 
+    clearInterval(heartbeat);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
   } catch (err: any) {
+    clearInterval(heartbeat);
     req.log.error({ err }, "[calculator] Anthropic stream failed");
     const status = typeof err?.status === "number" ? err.status : 500;
     const safeStatus = status >= 400 && status < 600 ? status : 500;

@@ -55,3 +55,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 RESEND_FROM_NAME = "Flexa Market"
+FRONTEND_URL = "https://f66c895f-9f08-483c-b4dc-160283cddc97-00-7tfbq27zhwzp.picard.replit.dev"

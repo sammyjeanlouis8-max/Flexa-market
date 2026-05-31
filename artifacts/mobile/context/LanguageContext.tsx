@@ -6,10 +6,10 @@ export type Lang = "en" | "ht" | "fr" | "es" | "pt" | "de" | "hi" | "fil" | "ha"
 const LANG_KEY = "flexa_lang";
 
 export const LANGUAGES: { code: Lang; label: string; native: string; flag: string }[] = [
-  { code: "en",  label: "English",          native: "English",          flag: "🇺🇸" },
   { code: "ht",  label: "Kreyòl Ayisyen",   native: "Kreyòl Ayisyen",   flag: "🇭🇹" },
   { code: "fr",  label: "Français",         native: "Français",         flag: "🇫🇷" },
   { code: "es",  label: "Español",          native: "Español",          flag: "🇪🇸" },
+  { code: "en",  label: "English",          native: "English",          flag: "🇺🇸" },
   { code: "pt",  label: "Português",        native: "Português",        flag: "🇧🇷" },
   { code: "de",  label: "Deutsch",          native: "Deutsch",          flag: "🇩🇪" },
   { code: "hi",  label: "Hindi",            native: "हिन्दी",            flag: "🇮🇳" },

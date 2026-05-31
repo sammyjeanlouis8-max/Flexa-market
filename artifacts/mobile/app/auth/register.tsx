@@ -19,7 +19,42 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth, getBaseUrl } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
-const COUNTRIES = ["Haiti", "USA", "Canada", "France", "Dominican Republic", "Other"];
+const COUNTRIES = [
+  "Haiti",
+  "Dominican Republic",
+  "USA",
+  "Canada",
+  "France",
+  "Jamaica",
+  "Trinidad and Tobago",
+  "Barbados",
+  "Guadeloupe",
+  "Martinique",
+  "Saint Lucia",
+  "Grenada",
+  "Saint Vincent and the Grenadines",
+  "Antigua and Barbuda",
+  "Saint Kitts and Nevis",
+  "Dominica",
+  "Bahamas",
+  "Cuba",
+  "Puerto Rico",
+  "Belize",
+  "Panama",
+  "Colombia",
+  "Venezuela",
+  "Brazil",
+  "Mexico",
+  "Guatemala",
+  "Honduras",
+  "El Salvador",
+  "Nicaragua",
+  "Costa Rica",
+  "Ecuador",
+  "Peru",
+  "Bolivia",
+  "Other",
+];
 
 export default function RegisterScreen() {
   const colors = useColors();

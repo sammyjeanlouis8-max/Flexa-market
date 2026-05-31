@@ -80,10 +80,19 @@ export default function ProfileScreen() {
       ],
     },
     {
+      label: "Achte",
+      items: [
+        { icon: "shopping-cart", label: "🛒 Panye (Cart)", onPress: () => router.push("/cart"), color: "#F97316" },
+        { icon: "package", label: "📦 Swiv Livrezon", onPress: () => router.push("/orders"), color: "#3B82F6" },
+      ],
+    },
+    {
       label: "Vendè",
       items: [
         { icon: "zap", label: "⚡ Mes Boosts Actifs", onPress: () => router.push("/my-boosts") },
+        { icon: "trending-up", label: "🚀 Boost yon Lis", onPress: () => router.push("/boost") },
         { icon: "video", label: "🎬 Vidéos Promo", onPress: () => router.push("/videos") },
+        { icon: "award", label: "💳 Abonneman", onPress: () => router.push("/subscription"), color: "#8B5CF6" },
       ],
     },
     {
@@ -94,8 +103,16 @@ export default function ProfileScreen() {
       ],
     },
     {
+      label: "Chofè FM",
+      items: [
+        { icon: "truck", label: "🚗 Dashboard Chofè", onPress: () => router.push("/driver-dashboard"), color: "#22C55E" },
+        { icon: "user-check", label: "📋 Aplike kòm Chofè", onPress: () => router.push("/driver-apply"), color: "#0EA5E9" },
+      ],
+    },
+    {
       label: "Kont & Preferans",
       items: [
+        { icon: "edit-2", label: "👤 Modifye Profil", onPress: () => router.push("/edit-profile"), color: "#6366F1" },
         { icon: "bell", label: "Notifikasyon", onPress: () => router.push("/notifications"), badge: unreadNotifs },
         { icon: "shield", label: t("myKyc"), onPress: () => router.push("/kyc") },
         { icon: "globe", label: t("sLanguage"), onPress: () => router.push("/language-picker") },

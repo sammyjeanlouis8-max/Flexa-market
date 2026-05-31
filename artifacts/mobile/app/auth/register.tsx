@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth, getBaseUrl } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useLanguage, LANGUAGES } from "@/context/LanguageContext";
 
 const COUNTRIES = [
   "Haiti",
@@ -60,6 +61,7 @@ export default function RegisterScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
+  const { t, lang } = useLanguage();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -70,13 +72,15 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const currentLang = LANGUAGES.find((l) => l.code === lang);
+
   async function handleRegister() {
     if (!name.trim() || !email.trim() || !password || !country) {
-      setError("Tanpri ranpli tout chan obligatwa yo.");
+      setError(t("errFillAll"));
       return;
     }
     if (password.length < 6) {
-      setError("Modepas dwe gen omwen 6 karaktè.");
+      setError(t("errPassword6"));
       return;
     }
     setError("");
@@ -93,12 +97,12 @@ export default function RegisterScreen() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Enskripsyon echwe");
+      if (!res.ok) throw new Error(data.message || t("errRegisterFailed"));
       await login(data.token);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/(tabs)");
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Erè enskripsyon");
+      setError(e instanceof Error ? e.message : t("errConnection"));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
@@ -115,12 +119,21 @@ export default function RegisterScreen() {
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 32 }]}
           keyboardShouldPersistTaps="handled"
         >
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Feather name="arrow-left" size={22} color="#F8FAFC" />
-          </TouchableOpacity>
+          <View style={styles.topRow}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Feather name="arrow-left" size={22} color="#F8FAFC" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.langBtn}
+              onPress={() => router.push("/language-picker")}
+            >
+              <Text style={styles.langFlag}>{currentLang?.flag ?? "🌐"}</Text>
+              <Feather name="chevron-down" size={12} color="#94A3B8" />
+            </TouchableOpacity>
+          </View>
 
-          <Text style={styles.heading}>Kreye kont</Text>
-          <Text style={styles.sub}>Rejwenn kominote FlexaMarket la.</Text>
+          <Text style={styles.heading}>{t("registerTitle")}</Text>
+          <Text style={styles.sub}>{t("registerSubtitle")}</Text>
 
           <View style={styles.form}>
             {error ? (
@@ -130,37 +143,48 @@ export default function RegisterScreen() {
               </View>
             ) : null}
 
-            {[
-              { label: "Non Konplè", value: name, setter: setName, placeholder: "Jan Pyè", icon: "user" as const, keyboardType: "default" as const },
-              { label: "Email", value: email, setter: setEmail, placeholder: "ou@email.com", icon: "mail" as const, keyboardType: "email-address" as const },
-            ].map((f) => (
-              <View key={f.label} style={styles.fieldWrap}>
-                <Text style={styles.label}>{f.label}</Text>
-                <View style={[styles.inputRow, { backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.15)" }]}>
-                  <Feather name={f.icon} size={16} color="#94A3B8" />
-                  <TextInput
-                    style={styles.input}
-                    value={f.value}
-                    onChangeText={f.setter}
-                    placeholder={f.placeholder}
-                    placeholderTextColor="#64748B"
-                    keyboardType={f.keyboardType}
-                    autoCapitalize={f.keyboardType === "email-address" ? "none" : "words"}
-                    autoCorrect={false}
-                  />
-                </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>{t("registerFullName")}</Text>
+              <View style={[styles.inputRow, { backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.15)" }]}>
+                <Feather name="user" size={16} color="#94A3B8" />
+                <TextInput
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder={t("registerFullNamePlaceholder")}
+                  placeholderTextColor="#64748B"
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
               </View>
-            ))}
+            </View>
 
             <View style={styles.fieldWrap}>
-              <Text style={styles.label}>Modepas</Text>
+              <Text style={styles.label}>Email</Text>
+              <View style={[styles.inputRow, { backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.15)" }]}>
+                <Feather name="mail" size={16} color="#94A3B8" />
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="you@email.com"
+                  placeholderTextColor="#64748B"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>{t("loginPassword")}</Text>
               <View style={[styles.inputRow, { backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.15)" }]}>
                 <Feather name="lock" size={16} color="#94A3B8" />
                 <TextInput
                   style={styles.input}
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="Omwen 6 karaktè"
+                  placeholder={t("registerPasswordPlaceholder")}
                   placeholderTextColor="#64748B"
                   secureTextEntry={!showPw}
                   autoCapitalize="none"
@@ -172,7 +196,7 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.fieldWrap}>
-              <Text style={styles.label}>Peyi</Text>
+              <Text style={styles.label}>{t("registerCountry")}</Text>
               <TouchableOpacity
                 style={[styles.inputRow, { backgroundColor: "rgba(255,255,255,0.08)", borderColor: "rgba(255,255,255,0.15)" }]}
                 onPress={() => setShowCountries((v) => !v)}
@@ -206,9 +230,16 @@ export default function RegisterScreen() {
               {loading ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.btnText}>Kreye Kont</Text>
+                <Text style={styles.btnText}>{t("registerBtn")}</Text>
               )}
             </Pressable>
+
+            <View style={styles.alreadyRow}>
+              <Text style={styles.alreadyText}>{t("alreadyAccount")}</Text>
+              <TouchableOpacity onPress={() => router.back()}>
+                <Text style={[styles.alreadyLink, { color: colors.accent }]}>{t("loginBtn")}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -219,7 +250,10 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
   scroll: { paddingHorizontal: 24, alignItems: "stretch" },
-  backBtn: { marginBottom: 24, alignSelf: "flex-start", padding: 4 },
+  topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 24 },
+  backBtn: { padding: 4 },
+  langBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(255,255,255,0.08)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  langFlag: { fontSize: 18 },
   heading: { color: "#F8FAFC", fontSize: 28, fontFamily: "Inter_700Bold", marginBottom: 6 },
   sub: { color: "#94A3B8", fontSize: 15, fontFamily: "Inter_400Regular", marginBottom: 28 },
   form: { gap: 14 },
@@ -234,4 +268,7 @@ const styles = StyleSheet.create({
   dropText: { color: "#F8FAFC", fontSize: 14, fontFamily: "Inter_400Regular" },
   btn: { height: 52, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   btnText: { color: "#FFF", fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  alreadyRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 6, marginTop: 4 },
+  alreadyText: { color: "#94A3B8", fontSize: 14, fontFamily: "Inter_400Regular" },
+  alreadyLink: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
 });

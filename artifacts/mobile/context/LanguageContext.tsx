@@ -85,6 +85,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "No results", searchHint: "Try another keyword.",
     chatOnline: "Online", notVerifiedKyc: "Unverified",
     languagesTitle: "Languages", selectLanguage: "Select your language",
+    loginTitle: "Sign In", loginSubtitle: "Welcome back! Enter your account.",
+    loginEmailPlaceholder: "you@email.com", loginPassword: "Password",
+    loginBtn: "Sign In", loginOr: "or", loginCreateBtn: "Create an account",
+    registerTitle: "Create Account", registerSubtitle: "Join the FlexaMarket community.",
+    registerFullName: "Full Name", registerFullNamePlaceholder: "John Smith",
+    registerPasswordPlaceholder: "At least 6 characters",
+    registerCountry: "Country", registerBtn: "Create Account",
+    errFillAll: "Please fill in all required fields.",
+    errPassword6: "Password must be at least 6 characters.",
+    errLoginFailed: "Login failed", errRegisterFailed: "Registration failed",
+    errConnection: "Connection error", alreadyAccount: "Already have an account?",
   },
 
   ht: {
@@ -152,6 +163,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Pa gen rezilta", searchHint: "Eseye yon lòt mo rechèch.",
     chatOnline: "An liy", notVerifiedKyc: "Pa verifye",
     languagesTitle: "Chwa Lang", selectLanguage: "Chwazi lang ou",
+    loginTitle: "Konekte", loginSubtitle: "Bon retonn! Antre nan kont ou.",
+    loginEmailPlaceholder: "ou@email.com", loginPassword: "Modepas",
+    loginBtn: "Konekte", loginOr: "oswa", loginCreateBtn: "Kreye yon kont",
+    registerTitle: "Kreye Kont", registerSubtitle: "Rejwenn kominote FlexaMarket la.",
+    registerFullName: "Non Konplè", registerFullNamePlaceholder: "Jan Pyè",
+    registerPasswordPlaceholder: "Omwen 6 karaktè",
+    registerCountry: "Peyi", registerBtn: "Kreye Kont",
+    errFillAll: "Tanpri ranpli tout chan obligatwa yo.",
+    errPassword6: "Modepas dwe gen omwen 6 karaktè.",
+    errLoginFailed: "Koneksyon echwe", errRegisterFailed: "Enskripsyon echwe",
+    errConnection: "Erè koneksyon", alreadyAccount: "Ou gen yon kont deja?",
   },
 
   fr: {
@@ -219,6 +241,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Aucun résultat", searchHint: "Essayez un autre mot-clé.",
     chatOnline: "En ligne", notVerifiedKyc: "Non vérifié",
     languagesTitle: "Langues", selectLanguage: "Choisissez votre langue",
+    loginTitle: "Se connecter", loginSubtitle: "Bon retour ! Connectez-vous à votre compte.",
+    loginEmailPlaceholder: "vous@email.com", loginPassword: "Mot de passe",
+    loginBtn: "Se connecter", loginOr: "ou", loginCreateBtn: "Créer un compte",
+    registerTitle: "Créer un compte", registerSubtitle: "Rejoignez la communauté FlexaMarket.",
+    registerFullName: "Nom complet", registerFullNamePlaceholder: "Jean Dupont",
+    registerPasswordPlaceholder: "Au moins 6 caractères",
+    registerCountry: "Pays", registerBtn: "Créer un compte",
+    errFillAll: "Veuillez remplir tous les champs obligatoires.",
+    errPassword6: "Le mot de passe doit comporter au moins 6 caractères.",
+    errLoginFailed: "Connexion échouée", errRegisterFailed: "Inscription échouée",
+    errConnection: "Erreur de connexion", alreadyAccount: "Vous avez déjà un compte ?",
   },
 
   es: {
@@ -286,6 +319,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Sin resultados", searchHint: "Intenta con otra palabra clave.",
     chatOnline: "En línea", notVerifiedKyc: "No verificado",
     languagesTitle: "Idiomas", selectLanguage: "Elige tu idioma",
+    loginTitle: "Iniciar sesión", loginSubtitle: "¡Bienvenido de vuelta! Ingresa a tu cuenta.",
+    loginEmailPlaceholder: "tu@email.com", loginPassword: "Contraseña",
+    loginBtn: "Iniciar sesión", loginOr: "o", loginCreateBtn: "Crear una cuenta",
+    registerTitle: "Crear cuenta", registerSubtitle: "Únete a la comunidad FlexaMarket.",
+    registerFullName: "Nombre completo", registerFullNamePlaceholder: "Juan García",
+    registerPasswordPlaceholder: "Al menos 6 caracteres",
+    registerCountry: "País", registerBtn: "Crear cuenta",
+    errFillAll: "Por favor completa todos los campos obligatorios.",
+    errPassword6: "La contraseña debe tener al menos 6 caracteres.",
+    errLoginFailed: "Error al iniciar sesión", errRegisterFailed: "Error al registrarse",
+    errConnection: "Error de conexión", alreadyAccount: "¿Ya tienes una cuenta?",
   },
 
   pt: {
@@ -353,6 +397,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Sem resultados", searchHint: "Tente outra palavra-chave.",
     chatOnline: "Online", notVerifiedKyc: "Não verificado",
     languagesTitle: "Idiomas", selectLanguage: "Escolha seu idioma",
+    loginTitle: "Entrar", loginSubtitle: "Bem-vindo de volta! Acesse sua conta.",
+    loginEmailPlaceholder: "voce@email.com", loginPassword: "Senha",
+    loginBtn: "Entrar", loginOr: "ou", loginCreateBtn: "Criar uma conta",
+    registerTitle: "Criar conta", registerSubtitle: "Junte-se à comunidade FlexaMarket.",
+    registerFullName: "Nome completo", registerFullNamePlaceholder: "João Silva",
+    registerPasswordPlaceholder: "Pelo menos 6 caracteres",
+    registerCountry: "País", registerBtn: "Criar conta",
+    errFillAll: "Por favor preencha todos os campos obrigatórios.",
+    errPassword6: "A senha deve ter pelo menos 6 caracteres.",
+    errLoginFailed: "Falha ao entrar", errRegisterFailed: "Falha no registro",
+    errConnection: "Erro de conexão", alreadyAccount: "Já tem uma conta?",
   },
 
   de: {
@@ -420,6 +475,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Keine Ergebnisse", searchHint: "Versuchen Sie ein anderes Stichwort.",
     chatOnline: "Online", notVerifiedKyc: "Nicht verifiziert",
     languagesTitle: "Sprachen", selectLanguage: "Sprache wählen",
+    loginTitle: "Anmelden", loginSubtitle: "Willkommen zurück! Melden Sie sich an.",
+    loginEmailPlaceholder: "sie@email.com", loginPassword: "Passwort",
+    loginBtn: "Anmelden", loginOr: "oder", loginCreateBtn: "Konto erstellen",
+    registerTitle: "Konto erstellen", registerSubtitle: "Treten Sie der FlexaMarket-Gemeinschaft bei.",
+    registerFullName: "Vollständiger Name", registerFullNamePlaceholder: "Hans Müller",
+    registerPasswordPlaceholder: "Mindestens 6 Zeichen",
+    registerCountry: "Land", registerBtn: "Konto erstellen",
+    errFillAll: "Bitte füllen Sie alle Pflichtfelder aus.",
+    errPassword6: "Das Passwort muss mindestens 6 Zeichen lang sein.",
+    errLoginFailed: "Anmeldung fehlgeschlagen", errRegisterFailed: "Registrierung fehlgeschlagen",
+    errConnection: "Verbindungsfehler", alreadyAccount: "Haben Sie bereits ein Konto?",
   },
 
   hi: {
@@ -487,6 +553,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "कोई परिणाम नहीं", searchHint: "दूसरा कीवर्ड आज़माएं।",
     chatOnline: "ऑनलाइन", notVerifiedKyc: "असत्यापित",
     languagesTitle: "भाषाएं", selectLanguage: "अपनी भाषा चुनें",
+    loginTitle: "साइन इन करें", loginSubtitle: "वापस स्वागत है! अपने खाते में प्रवेश करें।",
+    loginEmailPlaceholder: "aap@email.com", loginPassword: "पासवर्ड",
+    loginBtn: "साइन इन करें", loginOr: "या", loginCreateBtn: "खाता बनाएं",
+    registerTitle: "खाता बनाएं", registerSubtitle: "FlexaMarket समुदाय से जुड़ें।",
+    registerFullName: "पूरा नाम", registerFullNamePlaceholder: "राज शर्मा",
+    registerPasswordPlaceholder: "कम से कम 6 अक्षर",
+    registerCountry: "देश", registerBtn: "खाता बनाएं",
+    errFillAll: "कृपया सभी आवश्यक फ़ील्ड भरें।",
+    errPassword6: "पासवर्ड में कम से कम 6 अक्षर होने चाहिए।",
+    errLoginFailed: "साइन इन विफल", errRegisterFailed: "पंजीकरण विफल",
+    errConnection: "कनेक्शन त्रुटि", alreadyAccount: "पहले से खाता है?",
   },
 
   fil: {
@@ -554,6 +631,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Walang resulta", searchHint: "Subukan ang ibang keyword.",
     chatOnline: "Online", notVerifiedKyc: "Hindi na-verify",
     languagesTitle: "Mga Wika", selectLanguage: "Piliin ang iyong wika",
+    loginTitle: "Mag-sign in", loginSubtitle: "Maligayang pagbabalik! Pumasok sa iyong account.",
+    loginEmailPlaceholder: "ikaw@email.com", loginPassword: "Password",
+    loginBtn: "Mag-sign in", loginOr: "o", loginCreateBtn: "Gumawa ng account",
+    registerTitle: "Gumawa ng Account", registerSubtitle: "Sumali sa komunidad ng FlexaMarket.",
+    registerFullName: "Buong Pangalan", registerFullNamePlaceholder: "Juan dela Cruz",
+    registerPasswordPlaceholder: "Hindi bababa sa 6 na karakter",
+    registerCountry: "Bansa", registerBtn: "Gumawa ng Account",
+    errFillAll: "Pakipunan ang lahat ng kinakailangang field.",
+    errPassword6: "Ang password ay dapat may hindi bababa sa 6 na karakter.",
+    errLoginFailed: "Nabigo ang pag-sign in", errRegisterFailed: "Nabigo ang pagpaparehistro",
+    errConnection: "Error sa koneksyon", alreadyAccount: "Mayroon ka nang account?",
   },
 
   ha: {
@@ -621,6 +709,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Babu sakamako", searchHint: "Gwada wani kalma.",
     chatOnline: "Yana kan layi", notVerifiedKyc: "Ba a tabbatar ba",
     languagesTitle: "Harsunan", selectLanguage: "Zaɓi harsheka",
+    loginTitle: "Shiga", loginSubtitle: "Barka da dawowa! Shiga asusunka.",
+    loginEmailPlaceholder: "kai@email.com", loginPassword: "Kalmar sirri",
+    loginBtn: "Shiga", loginOr: "ko", loginCreateBtn: "Ƙirƙiri asusun",
+    registerTitle: "Ƙirƙiri Asusun", registerSubtitle: "Shiga cikin al'ummar FlexaMarket.",
+    registerFullName: "Cikakken suna", registerFullNamePlaceholder: "Aminu Musa",
+    registerPasswordPlaceholder: "Aƙalla harafi 6",
+    registerCountry: "Ƙasa", registerBtn: "Ƙirƙiri Asusun",
+    errFillAll: "Da fatan a cika duk filayen da ake buƙata.",
+    errPassword6: "Kalmar sirri dole ta kasance da aƙalla harafi 6.",
+    errLoginFailed: "Shiga ya kasa", errRegisterFailed: "Rijista ta kasa",
+    errConnection: "Kuskuren haɗi", alreadyAccount: "Kuna da asusun?",
   },
 
   zu: {
@@ -688,6 +787,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Awekho imiphumela", searchHint: "Zama igama elinye.",
     chatOnline: "Ku inthanethi", notVerifiedKyc: "Akufinyelele",
     languagesTitle: "Izilimi", selectLanguage: "Khetha ulimi lwakho",
+    loginTitle: "Ngena", loginSubtitle: "Wamukelekile futhi! Ngena ku-akhawunti yakho.",
+    loginEmailPlaceholder: "wena@email.com", loginPassword: "Iphasiwedi",
+    loginBtn: "Ngena", loginOr: "noma", loginCreateBtn: "Dala i-akhawunti",
+    registerTitle: "Dala I-akhawunti", registerSubtitle: "Joyina umphakathi we-FlexaMarket.",
+    registerFullName: "Igama eligcwele", registerFullNamePlaceholder: "Sipho Dlamini",
+    registerPasswordPlaceholder: "Okungenani izinhlamvu ezi-6",
+    registerCountry: "Izwe", registerBtn: "Dala I-akhawunti",
+    errFillAll: "Sicela ugcwalise wonke amasimu adingekayo.",
+    errPassword6: "Iphasiwedi kufanele ibe nezinhlamvu ezingekho ngaphansi kwe-6.",
+    errLoginFailed: "Ukungena kuhlulekile", errRegisterFailed: "Ukubhalisa kuhlulekile",
+    errConnection: "Iphutha lokuqhangaza", alreadyAccount: "Sewune i-akhawunti?",
   },
 
   af: {
@@ -755,6 +865,17 @@ const T: Record<Lang, Record<string, string>> = {
     searchNoResults: "Geen resultate", searchHint: "Probeer 'n ander sleutelwoord.",
     chatOnline: "Aanlyn", notVerifiedKyc: "Nie geverifieer",
     languagesTitle: "Tale", selectLanguage: "Kies jou taal",
+    loginTitle: "Meld aan", loginSubtitle: "Welkom terug! Meld aan by jou rekening.",
+    loginEmailPlaceholder: "jy@email.com", loginPassword: "Wagwoord",
+    loginBtn: "Meld aan", loginOr: "of", loginCreateBtn: "Skep 'n rekening",
+    registerTitle: "Skep Rekening", registerSubtitle: "Sluit aan by die FlexaMarket-gemeenskap.",
+    registerFullName: "Volle naam", registerFullNamePlaceholder: "Jan van der Merwe",
+    registerPasswordPlaceholder: "Minstens 6 karakters",
+    registerCountry: "Land", registerBtn: "Skep Rekening",
+    errFillAll: "Vul asseblief alle verpligte velde in.",
+    errPassword6: "Wagwoord moet minstens 6 karakters hê.",
+    errLoginFailed: "Aanmelding misluk", errRegisterFailed: "Registrasie misluk",
+    errConnection: "Verbindingsfout", alreadyAccount: "Het jy reeds 'n rekening?",
   },
 };
 
@@ -767,13 +888,13 @@ interface LanguageContextType {
 }
 
 const LanguageContext = createContext<LanguageContextType>({
-  lang: "ht",
+  lang: "en",
   setLang: async () => {},
   t: (key) => key,
 });
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Lang>("ht");
+  const [lang, setLangState] = useState<Lang>("en");
 
   useEffect(() => {
     AsyncStorage.getItem(LANG_KEY).then((v) => {

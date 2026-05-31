@@ -11,7 +11,7 @@ import {
   ShieldCheck, Clock, CheckCircle2, XCircle, DollarSign,
   User, MapPin, Loader2, KeyRound, RefreshCw, LogOut,
   Wifi, WifiOff, ImageIcon, Send, ChevronDown, ChevronUp,
-  CreditCard, Gift, Download, Copy, Package, Settings2,
+  Settings2,
 } from "lucide-react";
 
 function getToken() {
@@ -89,12 +89,6 @@ export default function AgentDashboard() {
   const [expandedScreenshot, setExpandedScreenshot] = useState<number | null>(null);
   const [doneTransferIds, setDoneTransferIds] = useState<Set<number>>(new Set());
 
-  // Kart Digital state
-  const [cardAmount, setCardAmount] = useState("5");
-  const [cardQty, setCardQty] = useState("5");
-  const [cardResult, setCardResult] = useState<{ codes: string[]; amountUsd: number; totalCost: number; batchId: string } | null>(null);
-  const [showCardHistory, setShowCardHistory] = useState(false);
-
   const [wholesaleRateInput, setWholesaleRateInput] = useState("");
   const [retailRateInput, setRetailRateInput] = useState("");
   const [rateDopInput, setRateDopInput] = useState("");
@@ -108,42 +102,6 @@ export default function AgentDashboard() {
     enabled: !!user && isAgent,
   });
 
-  // Wallet balance for card purchase
-  const { data: walletData } = useQuery<any>({
-    queryKey: ["/wallet/balance"],
-    queryFn: () => apiFetch("/wallet/balance"),
-    enabled: !!user && isAgent,
-  });
-
-  // Agent card purchase mutation
-  const purchaseCardMut = useMutation({
-    mutationFn: ({ amountUsd, quantity }: { amountUsd: number; quantity: number }) =>
-      apiFetch("/agents/cards/purchase", "POST", { amountUsd, quantity }),
-    onSuccess: (data) => {
-      setCardResult({ codes: data.codes, amountUsd: parseFloat(cardAmount), totalCost: data.totalCost, batchId: data.batchId });
-      qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
-      qc.invalidateQueries({ queryKey: ["/agents/cards"] });
-    },
-    onError: (e: Error) => toast({ title: "Erè", description: e.message, variant: "destructive" }),
-  });
-
-  // Agent card history
-  const { data: cardHistoryData, refetch: refetchCards } = useQuery<any>({
-    queryKey: ["/agents/cards"],
-    queryFn: () => apiFetch("/agents/cards"),
-    enabled: !!user && isAgent && showCardHistory,
-  });
-  const myCards: any[] = cardHistoryData?.cards ?? [];
-
-  function downloadAgentCSV(codes: string[], amountUsd: number, batchId: string) {
-    const rows = codes.map(c => `${c},${amountUsd},${batchId}`);
-    const csv = ["Code,Amount USD,Batch ID", ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url;
-    a.download = `FM-Kart-${batchId}.csv`; a.click();
-    URL.revokeObjectURL(url);
-  }
   useEffect(() => {
     if (myAgentData?.application) {
       const app = myAgentData.application;
@@ -708,157 +666,6 @@ export default function AgentDashboard() {
                   </div>
                 );
               })}
-            </div>
-          )}
-        </div>
-
-        {/* ── SECTION C — Kart Digital (Recharge Card Sales) ── */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4 text-orange-400" />
-              <h2 className="font-bold text-base">Kart Rechaj Digital</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                Balans: <span className="font-black text-green-400">${(walletData?.balance ?? 0).toFixed(2)}</span>
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4">
-            <p className="text-xs font-semibold text-orange-400 mb-2">🎁 Kòman sa travay:</p>
-            <ol className="space-y-1 text-xs text-orange-300/80">
-              <li>1. Chwazi valè kart ak kantite ou vle achte</li>
-              <li>2. Kòb la dedwi nan wallet FM ou enstantane</li>
-              <li>3. Ou jwenn kòd PIN yo — bay kliyan yo fizikman</li>
-              <li>4. Kliyan yo itilize kòd la sou app pou rechaje wallet yo</li>
-            </ol>
-          </div>
-
-          {/* Purchase form */}
-          <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Valè pa kart</label>
-                <select
-                  className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm"
-                  value={cardAmount}
-                  onChange={e => { setCardAmount(e.target.value); setCardResult(null); }}
-                >
-                  {[1, 2, 5, 10, 25, 50, 100].map(v => (
-                    <option key={v} value={v}>${v}.00</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Kantite (maks 50)</label>
-                <Input
-                  type="number" min={1} max={50}
-                  value={cardQty}
-                  onChange={e => { setCardQty(e.target.value); setCardResult(null); }}
-                  className="h-10 text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Cost preview */}
-            {cardAmount && cardQty && (
-              <div className="flex items-center justify-between bg-muted/30 rounded-xl px-3 py-2">
-                <span className="text-xs text-muted-foreground">{cardQty} × ${cardAmount} =</span>
-                <span className="font-black text-orange-400">${(parseFloat(cardAmount) * parseInt(cardQty || "0", 10)).toFixed(2)}</span>
-              </div>
-            )}
-
-            <Button
-              className="w-full h-11 font-bold bg-orange-600 hover:bg-orange-700 text-white border-0"
-              disabled={purchaseCardMut.isPending || !cardAmount || !cardQty}
-              onClick={() => {
-                const amt = parseFloat(cardAmount);
-                const qty = parseInt(cardQty, 10);
-                if (!amt || !qty || qty < 1) return;
-                setCardResult(null);
-                purchaseCardMut.mutate({ amountUsd: amt, quantity: qty });
-              }}
-            >
-              {purchaseCardMut.isPending
-                ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ap achte…</>
-                : <><Gift className="h-4 w-4 mr-2" />Achte {cardQty} Kart a ${cardAmount}</>
-              }
-            </Button>
-          </div>
-
-          {/* Purchase result */}
-          {cardResult && (
-            <div className="rounded-2xl border border-orange-300 bg-orange-50 dark:bg-orange-950/20 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-orange-500" />
-                  <p className="font-black text-orange-800 dark:text-orange-300">
-                    {cardResult.codes.length} kòd aktif ✓ — ${cardResult.totalCost.toFixed(2)} dedwi
-                  </p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => downloadAgentCSV(cardResult.codes, cardResult.amountUsd, cardResult.batchId)}>
-                  <Download className="h-3.5 w-3.5 mr-1.5" />CSV
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 gap-1 max-h-52 overflow-y-auto">
-                {cardResult.codes.map((c, i) => (
-                  <div key={c} className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-xl px-3 py-2 border border-orange-200 dark:border-orange-800">
-                    <span className="text-xs text-muted-foreground w-4 shrink-0">{i + 1}</span>
-                    <span className="font-mono text-sm font-black text-gray-900 dark:text-white flex-1 tracking-wider">{c}</span>
-                    <span className="text-xs font-bold text-orange-500 shrink-0">${cardResult.amountUsd}</span>
-                    <button
-                      onClick={() => { navigator.clipboard.writeText(c); toast({ title: "Kopye ✓" }); }}
-                      className="text-muted-foreground hover:text-foreground shrink-0"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Card history toggle */}
-          <button
-            className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl border border-border bg-card text-sm font-semibold hover:bg-muted/50 transition-colors"
-            onClick={() => { setShowCardHistory(h => !h); if (!showCardHistory) refetchCards(); }}
-          >
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-muted-foreground" />
-              <span>Istorik Kart Mwen</span>
-            </div>
-            {showCardHistory ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </button>
-
-          {showCardHistory && (
-            <div className="rounded-2xl border border-border bg-card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  {myCards.length} kòd total · {myCards.filter((c: any) => c.status === "active").length} aktif · {myCards.filter((c: any) => c.status === "redeemed").length} itilize
-                </span>
-                <button onClick={() => refetchCards()}><RefreshCw className="h-4 w-4 text-muted-foreground" /></button>
-              </div>
-              {myCards.length === 0 ? (
-                <div className="py-8 text-center text-sm text-muted-foreground">Okenn kòd ankò</div>
-              ) : (
-                <div className="divide-y divide-border max-h-72 overflow-y-auto">
-                  {myCards.map((c: any) => (
-                    <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
-                      <span className="font-mono text-xs font-bold flex-1">{c.code}</span>
-                      <span className="text-xs font-black text-orange-500">${c.amountUsd}</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                        c.status === "active"   ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                        c.status === "redeemed" ? "bg-gray-100 text-gray-500 dark:bg-gray-800" :
-                        "bg-red-100 text-red-600"
-                      }`}>
-                        {c.status === "active" ? "Aktif" : c.status === "redeemed" ? "Itilize" : c.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>

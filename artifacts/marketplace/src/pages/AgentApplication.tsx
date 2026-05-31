@@ -230,7 +230,8 @@ export default function AgentApplication() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Error");
-      setSubmitted(true);
+      toast({ title: t("wallet.agentApplySuccessTitle"), description: t("wallet.agentApplySuccessDesc") });
+      navigate("/wallet");
     } catch (err: any) {
       toast({ title: err.message ?? "Error. Try again.", variant: "destructive" });
     } finally {

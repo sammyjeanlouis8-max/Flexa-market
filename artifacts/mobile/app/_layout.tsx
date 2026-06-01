@@ -6,79 +6,25 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 SplashScreen.preventAutoHideAsync();
-
-// DEV: capture global JS errors and print them to Metro console
-if (__DEV__) {
-  const prevHandler = globalThis.ErrorUtils?.getGlobalHandler?.();
-  globalThis.ErrorUtils?.setGlobalHandler?.((error: Error, isFatal?: boolean) => {
-    console.error("[GLOBAL ERROR]", isFatal ? "FATAL" : "non-fatal", error?.message);
-    console.error("[STACK]", error?.stack ?? "(no stack)");
-    prevHandler?.(error, isFatal);
-  });
-}
 
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const { token, isLoading } = useAuth();
-  usePushNotifications();
-
-  useEffect(() => {
-    if (!isLoading) {
-      if (!token) {
-        router.replace("/auth/login");
-      }
-    }
-  }, [isLoading, token]);
-
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="auth" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="listing/[id]"
-        options={{
-          headerShown: false,
-          animation: "slide_from_right",
-        }}
-      />
-      <Stack.Screen
-        name="orders"
-        options={{ headerShown: false, animation: "slide_from_right" }}
-      />
-      <Stack.Screen
-        name="wallet"
-        options={{ headerShown: false, animation: "slide_from_right" }}
-      />
-      <Stack.Screen
-        name="settings"
-        options={{ headerShown: false, animation: "slide_from_right" }}
-      />
-      <Stack.Screen
-        name="kyc"
-        options={{ headerShown: false, animation: "slide_from_right" }}
-      />
-      <Stack.Screen
-        name="chat/[id]"
-        options={{ headerShown: false, animation: "slide_from_right" }}
-      />
-      <Stack.Screen
-        name="language-picker"
-        options={{ headerShown: false, animation: "slide_from_bottom" }}
-      />
     </Stack>
   );
 }

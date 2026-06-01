@@ -12,6 +12,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app"
       }
     },
     "production": {

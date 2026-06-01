@@ -19,6 +19,7 @@
       "bundleIdentifier": "com.flexamarket.mobile",
       "buildNumber": "1",
       "deploymentTarget": "15.1",
+      "entitlements": {},
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "FlexaMarket bezwen aksè kamera ou pou pran foto pou annons ou.",

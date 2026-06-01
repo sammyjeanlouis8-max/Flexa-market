@@ -23,6 +23,8 @@
     "web-push": "^3.6.7"
   },
   "pnpm": {
-    "overrides": {}
+    "overrides": {
+      "lru-cache@^11": "11.4.0"
+    }
   }
 }

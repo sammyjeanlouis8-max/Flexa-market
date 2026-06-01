@@ -17,13 +17,12 @@
   },
   "dependencies": {
     "@types/web-push": "^3.6.4",
+    "lru-cache": "5.1.1",
     "stripe": "^22.1.0",
     "stripe-replit-sync": "^1.0.0",
     "web-push": "^3.6.7"
   },
   "pnpm": {
-    "overrides": {
-      "@babel/helper-compilation-targets>lru-cache": "5.1.1"
-    }
+    "overrides": {}
   }
 }

@@ -17,14 +17,12 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "rgba(255,255,255,0.92)",
+          backgroundColor: "rgba(255,255,255,0.97)",
           borderTopWidth: 1,
-          borderTopColor: colors.border,
+          borderTopColor: "rgba(0,0,0,0.08)",
           elevation: 0,
           height: isWeb ? 84 : 60,
         },
@@ -36,10 +34,12 @@ export default function TabLayout() {
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "rgba(255,255,255,0.92)",
+              backgroundColor: "rgba(255,255,255,0.97)",
             }}
           />
         ),
+        tabBarActiveTintColor: "#F97316",
+        tabBarInactiveTintColor: "#64748B",
         tabBarLabelStyle: {
           fontFamily: "Inter_500Medium",
           fontSize: 11,

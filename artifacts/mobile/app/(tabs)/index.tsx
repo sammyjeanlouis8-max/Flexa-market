@@ -46,7 +46,24 @@ function EmbeddedHome({ colors, insets, token }: any) {
         localStorage.setItem('auth_token', ${JSON.stringify(token)});` : ""}
         localStorage.setItem('is_native_app', 'true');
         window.isNativeApp = true;
-        document.querySelectorAll('[data-app-banner],[class*="app-banner"]').forEach(el => el.style.display='none');
+
+        // Hide website bottom nav bar (we use native tab bar instead)
+        var style = document.createElement('style');
+        style.innerHTML = [
+          'nav[class*="bottom"], nav[class*="mobile-nav"], nav[class*="tab"], ',
+          'div[class*="bottom-nav"], div[class*="mobile-nav"], div[class*="tab-bar"], ',
+          'div[class*="bottomNav"], div[class*="mobileNav"], div[class*="tabBar"], ',
+          'footer nav, [data-testid*="bottom-tab"], [data-testid*="nav-bar"], ',
+          '[class*="app-banner"], [data-app-banner] { display: none !important; }',
+          'body { padding-bottom: 0 !important; margin-bottom: 0 !important; }'
+        ].join('');
+        document.head.appendChild(style);
+
+        // Re-apply after dynamic renders
+        var obs = new MutationObserver(function() {
+          document.querySelectorAll('[data-app-banner],[class*="app-banner"]').forEach(function(el){ el.style.display='none'; });
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
       } catch(e) {}
     })();
     true;

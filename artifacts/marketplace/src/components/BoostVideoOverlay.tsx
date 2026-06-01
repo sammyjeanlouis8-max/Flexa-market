@@ -293,7 +293,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         {/* Top row: sponsored badge + controls */}
         <div
           className="flex items-start justify-between px-4 gap-2"
-          style={{ paddingTop: "max(env(safe-area-inset-top, 16px), 48px)" }}
+          style={{ paddingTop: "max(env(safe-area-inset-top, 16px), 90px)" }}
         >
           {/* Sponsored badge */}
           <div className="flex items-center gap-2 pointer-events-auto">

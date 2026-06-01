@@ -38,8 +38,9 @@
   "submit": {
     "production": {
       "ios": {
+        "appleId": "samueljanlouis37@icloud.com",
         "appleTeamId": "D782MM56VY",
-        "ascAppId": "6774676236"
+        "ascAppId": "6754947270"
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-key.json",

@@ -143,6 +143,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     if (!vid) return;
     let cancelled = false;
 
+    // Native app WebView: always start with sound on
+    const isNativeApp = !!(typeof window !== "undefined" && (window as any).isNativeApp);
+
     const attemptPlay = async (withSound: boolean) => {
       vid.muted = !withSound;
       try {
@@ -150,7 +153,12 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         if (cancelled) return;
         setMuted(!withSound);
         setPlayState("playing");
-        if (!withSound) bindInteractionUnmute();
+        if (!withSound && !isNativeApp) bindInteractionUnmute();
+        // Native app: if we started muted (browser blocked), unmute immediately
+        if (!withSound && isNativeApp) {
+          vid.muted = false;
+          setMuted(false);
+        }
       } catch (err: any) {
         if (cancelled) return;
         if (withSound) {
@@ -163,7 +171,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     };
 
     const savedMute = getSavedMute();
-    attemptPlay(savedMute === true ? false : true);
+    // Native app ignores saved mute pref — always try sound first
+    attemptPlay(isNativeApp ? true : (savedMute === true ? false : true));
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -282,7 +291,10 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         aria-hidden="false"
       >
         {/* Top row: sponsored badge + controls */}
-        <div className="flex items-start justify-between px-4 pt-4 gap-2">
+        <div
+          className="flex items-start justify-between px-4 gap-2"
+          style={{ paddingTop: "max(env(safe-area-inset-top, 16px), 48px)" }}
+        >
           {/* Sponsored badge */}
           <div className="flex items-center gap-2 pointer-events-auto">
             <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">

@@ -18,6 +18,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.flexamarket.mobile",
       "buildNumber": "1",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,

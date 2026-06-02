@@ -138,7 +138,6 @@ export default function Chatbot() {
     if (!trimmed || sending) return;
     setError(null);
 
-    // If user is asking for a human agent, show the escalation banner and reply
     if (needsEscalation(trimmed)) {
       setShowEscalate(true);
     }
@@ -149,11 +148,49 @@ export default function Chatbot() {
     setSending(true);
 
     try {
-      const data = await apiFetch<{ reply: string }>("/api/chatbot/message", {
+      const apiBase = (window as any).__API_BASE__ ?? "";
+      const token = localStorage.getItem("flexamarket_token") ?? "";
+      const resp = await fetch(`${apiBase}/api/chatbot/message`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        credentials: "include",
         body: JSON.stringify({ messages: next }),
       });
-      setMessages(curr => [...curr, { role: "assistant" as const, content: data.reply || "…" }].slice(-MAX_HISTORY));
+
+      if (!resp.ok || !resp.body) {
+        const errBody = await resp.json().catch(() => ({}));
+        throw new Error(errBody?.error ?? `HTTP ${resp.status}`);
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split("\n")) {
+          const trimLine = line.trim();
+          if (!trimLine.startsWith("data:")) continue;
+          try {
+            const parsed = JSON.parse(trimLine.slice(5).trim());
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.content) accumulated += parsed.content;
+            if (parsed.done) break;
+          } catch (e: any) {
+            if (e.message && !e.message.includes("JSON")) throw e;
+          }
+        }
+      }
+
+      setMessages(curr => [
+        ...curr,
+        { role: "assistant" as const, content: accumulated || "…" },
+      ].slice(-MAX_HISTORY));
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
     } finally {

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "B7Ah3WKMXQl6cOn10SvzP"
+uri = "file://attached_assets/flexa_market_emails.csv"
+type = "table"
+title = "Flexa Market — Imel Itilizatè (20)"

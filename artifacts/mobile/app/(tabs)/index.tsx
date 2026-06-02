@@ -6,8 +6,6 @@ import {
   Pressable, StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuth } from "@/context/AuthContext";
-import { useColors } from "@/hooks/useColors";
 
 const WEBSITE = "https://flexamarket.com";
 
@@ -18,18 +16,14 @@ if (HAS_WEBVIEW) {
 }
 
 export default function HomeTab() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { token } = useAuth();
-
   if (!HAS_WEBVIEW) {
-    return <FallbackHome colors={colors} insets={insets} token={token} />;
+    return <FallbackHome insets={insets} />;
   }
-  return <EmbeddedHome colors={colors} insets={insets} token={token} />;
+  return <EmbeddedHome insets={insets} />;
 }
 
-// ─── Full embedded WebView (after native build) ───────────────────────────────
-function EmbeddedHome({ colors, insets, token }: any) {
+function EmbeddedHome({ insets }: any) {
   const webRef = useRef<any>(null);
   const [navState, setNavState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -37,18 +31,6 @@ function EmbeddedHome({ colors, insets, token }: any) {
   const [offline, setOffline] = useState(false);
 
   const canGoBack = navState?.canGoBack ?? false;
-
-  const injectedJS = `
-    (function() {
-      try {
-        ${token ? `localStorage.setItem('fm_token', ${JSON.stringify(token)});
-        localStorage.setItem('auth_token', ${JSON.stringify(token)});` : ""}
-        localStorage.setItem('is_native_app', 'true');
-        window.isNativeApp = true;
-      } catch(e) {}
-    })();
-    true;
-  `;
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -61,11 +43,11 @@ function EmbeddedHome({ colors, insets, token }: any) {
 
   if (offline) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.background }]}>
+      <View style={[styles.center, { backgroundColor: "#0F172A" }]}>
         <Text style={{ fontSize: 56 }}>📡</Text>
-        <Text style={[styles.offlineTitle, { color: colors.foreground }]}>Pa gen entènèt</Text>
-        <Text style={[styles.offlineSub, { color: colors.mutedForeground }]}>Verifye koneksyon ou epi eseye ankò.</Text>
-        <Pressable style={[styles.retryBtn, { backgroundColor: colors.primary }]}
+        <Text style={[styles.offlineTitle, { color: "#fff" }]}>Pa gen entènèt</Text>
+        <Text style={[styles.offlineSub, { color: "#94a3b8" }]}>Verifye koneksyon ou epi eseye ankò.</Text>
+        <Pressable style={[styles.retryBtn, { backgroundColor: "#F97316" }]}
           onPress={() => { setOffline(false); setLoading(true); webRef.current?.reload(); }}>
           <Feather name="refresh-cw" size={16} color="#fff" />
           <Text style={styles.retryText}>Eseye Ankò</Text>
@@ -77,15 +59,14 @@ function EmbeddedHome({ colors, insets, token }: any) {
   return (
     <View style={styles.container}>
       {loading && (
-        <View style={[styles.progressTrack, { backgroundColor: colors.border, top: insets.top }]}>
-          <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.round(progress * 100)}%` as any }]} />
+        <View style={[styles.progressTrack, { top: insets.top }]}>
+          <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
         </View>
       )}
       <WebView
         ref={webRef}
         source={{ uri: WEBSITE }}
         style={{ flex: 1 }}
-        injectedJavaScript={injectedJS}
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
@@ -106,12 +87,8 @@ function EmbeddedHome({ colors, insets, token }: any) {
   );
 }
 
-// ─── Fallback for Expo Go (no native webview) ─────────────────────────────────
-function FallbackHome({ colors, insets, token }: any) {
-  const [opened, setOpened] = useState(false);
-
+function FallbackHome({ insets }: any) {
   const openSite = useCallback(async () => {
-    setOpened(true);
     await WebBrowser.openBrowserAsync(WEBSITE, {
       toolbarColor: "#F97316",
       controlsColor: "#FFFFFF",
@@ -121,15 +98,14 @@ function FallbackHome({ colors, insets, token }: any) {
   }, []);
 
   return (
-    <View style={[styles.center, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+    <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top }]}>
       <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
         <Text style={styles.logoText}>FM</Text>
       </View>
-      <Text style={[styles.brandTitle, { color: colors.foreground }]}>FlexaMarket</Text>
-      <Text style={[styles.brandSub, { color: colors.mutedForeground }]}>
+      <Text style={[styles.brandTitle, { color: "#fff" }]}>FlexaMarket</Text>
+      <Text style={[styles.brandSub, { color: "#94a3b8" }]}>
         Caribbean & Latin America Marketplace
       </Text>
-
       <Pressable style={[styles.openBtn, { backgroundColor: "#F97316" }]} onPress={openSite}>
         <Feather name="globe" size={18} color="#fff" />
         <Text style={styles.openBtnText}>Ouvri FlexaMarket.com</Text>
@@ -141,16 +117,16 @@ function FallbackHome({ colors, insets, token }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
-  progressTrack: { position: "absolute", left: 0, right: 0, height: 3, zIndex: 10 },
-  progressFill: { height: 3 },
+  progressTrack: { position: "absolute", left: 0, right: 0, height: 3, zIndex: 10, backgroundColor: "#1e293b" },
+  progressFill: { height: 3, backgroundColor: "#F97316" },
   logoBox: { width: 80, height: 80, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  logoText: { color: "#fff", fontSize: 32, fontFamily: "Inter_700Bold" },
-  brandTitle: { fontSize: 26, fontFamily: "Inter_700Bold" },
-  brandSub: { fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center", marginTop: -8 },
+  logoText: { color: "#fff", fontSize: 32, fontWeight: "700" },
+  brandTitle: { fontSize: 26, fontWeight: "700" },
+  brandSub: { fontSize: 13, textAlign: "center", marginTop: -8 },
   openBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, width: "100%" },
-  openBtnText: { color: "#fff", fontSize: 16, fontFamily: "Inter_700Bold", flex: 1, textAlign: "center" },
-  offlineTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  offlineSub: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
+  openBtnText: { color: "#fff", fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
+  offlineTitle: { fontSize: 22, fontWeight: "700" },
+  offlineSub: { fontSize: 14, textAlign: "center" },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
-  retryText: { color: "#fff", fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
 });

@@ -6,6 +6,7 @@ import {
   Pressable, StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
 
@@ -29,6 +30,12 @@ function EmbeddedHome({ insets }: any) {
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [offline, setOffline] = useState(false);
+
+  const injectJs = useCallback((script: string) => {
+    webRef.current?.injectJavaScript(script);
+  }, []);
+
+  usePushNotifications(injectJs);
 
   const canGoBack = navState?.canGoBack ?? false;
 

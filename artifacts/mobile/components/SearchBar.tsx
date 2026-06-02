@@ -1,12 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import {
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useColors } from "@/hooks/useColors";
+import { StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
 
 interface SearchBarProps {
   value: string;
@@ -17,27 +11,24 @@ interface SearchBarProps {
 }
 
 export function SearchBar({ value, onChangeText, onSubmit, placeholder = "Chèche nan FlexaMarket…", autoFocus }: SearchBarProps) {
-  const colors = useColors();
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-      <Feather name="search" size={18} color={colors.mutedForeground} style={styles.icon} />
+    <View style={styles.container}>
+      <Feather name="search" size={18} color="#94a3b8" style={styles.icon} />
       <TextInput
-        style={[styles.input, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}
+        style={styles.input}
         value={value}
         onChangeText={onChangeText}
         onSubmitEditing={onSubmit}
         placeholder={placeholder}
-        placeholderTextColor={colors.mutedForeground}
+        placeholderTextColor="#94a3b8"
         returnKeyType="search"
         autoFocus={autoFocus}
         autoCorrect={false}
         autoCapitalize="none"
-        testID="search-input"
       />
       {value.length > 0 && (
         <TouchableOpacity onPress={() => onChangeText("")}>
-          <Feather name="x" size={16} color={colors.mutedForeground} />
+          <Feather name="x" size={16} color="#94a3b8" />
         </TouchableOpacity>
       )}
     </View>
@@ -45,19 +36,7 @@ export function SearchBar({ value, onChangeText, onSubmit, placeholder = "Chèch
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    height: 44,
-    gap: 8,
-  },
+  container: { flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: "#1e293b", backgroundColor: "#1e293b", paddingHorizontal: 12, height: 44, gap: 8 },
   icon: {},
-  input: {
-    flex: 1,
-    fontSize: 14,
-    height: "100%",
-  },
+  input: { flex: 1, fontSize: 14, height: "100%", color: "#F8FAFC" },
 });

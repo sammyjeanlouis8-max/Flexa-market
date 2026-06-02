@@ -1838,6 +1838,31 @@ export async function runStartupMigrations(): Promise<void> {
       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
   });
 
+  // Referral Ranking System
+  migrations.push({ name: "users.referral_points",   sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_points integer NOT NULL DEFAULT 0" });
+  migrations.push({ name: "users.referral_count",    sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_count integer NOT NULL DEFAULT 0" });
+  migrations.push({
+    name: "create_referrals_table",
+    sql: `CREATE TABLE IF NOT EXISTS referrals (
+      id serial PRIMARY KEY,
+      referrer_id integer NOT NULL,
+      referred_user_id integer NOT NULL,
+      status text NOT NULL DEFAULT 'verified',
+      points_awarded integer NOT NULL DEFAULT 10,
+      is_flagged boolean NOT NULL DEFAULT false,
+      flag_reason text,
+      admin_note text,
+      ip_address text,
+      device_id text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      reviewed_at timestamptz,
+      reviewed_by integer
+    )`,
+  });
+  migrations.push({ name: "referrals.idx_referrer",       sql: "CREATE INDEX IF NOT EXISTS referrals_referrer_idx ON referrals(referrer_id)" });
+  migrations.push({ name: "referrals.idx_referred",       sql: "CREATE INDEX IF NOT EXISTS referrals_referred_idx ON referrals(referred_user_id)" });
+  migrations.push({ name: "referrals.unique_referred",    sql: "CREATE UNIQUE INDEX IF NOT EXISTS referrals_referred_unique ON referrals(referred_user_id)" });
+
   let applied = 0;
   let failed = 0;
 

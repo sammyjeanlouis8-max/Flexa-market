@@ -1,0 +1,99 @@
+Build an automatic Merchant Referral Ranking System for my marketplace.
+
+IMPORTANT RULE:
+
+Boosted listings must ALWAYS stay above all non-boosted listings.
+
+Ranking Priority:
+
+Priority #1: Active Boosted Listings
+Priority #2: Referral Score
+Priority #3: Newest Listings
+
+No referral score, popularity score, or engagement score should ever allow a listing to outrank an active boosted listing.
+
+Features Required:
+
+1. Unique Referral Link
+- Every merchant receives a unique referral link.
+- Example:
+  https://mymarketplace.com/register?ref=MERCHANT_ID
+
+2. Referral Points
+- When a new merchant registers through a referral link and successfully verifies their account, the referring merchant earns points.
+- Award 10 points per verified merchant referral.
+- Count each referred merchant only once.
+
+3. Fraud Prevention
+- Prevent duplicate referrals.
+- Do not award points until email verification is completed.
+- Prevent self-referrals.
+- Detect suspicious activity such as multiple accounts from the same device or IP.
+- Allow administrators to review flagged referrals.
+
+4. Merchant Leaderboard
+- Create a leaderboard showing:
+  - Merchant Name
+  - Referral Points
+  - Total Referrals
+  - Ranking Position
+
+5. Merchant Dashboard
+Display:
+- Referral Link
+- Total Referral Points
+- Total Referrals
+- Current Leaderboard Position
+- Referral History
+- Referral Performance Statistics
+
+6. Automatic Listing Ranking
+
+Use the following ranking logic:
+
+ORDER BY
+is_boosted DESC,
+boost_expiration_date DESC,
+referral_points DESC,
+created_at DESC
+
+Explanation:
+- Active boosted listings always appear first.
+- Referral points only affect ranking among non-boosted listings.
+- Referral points can never push a listing above a boosted listing.
+- If two listings have the same score, newer listings appear first.
+
+7. Real-Time Updates
+- Automatically update rankings when referral points change.
+- Automatically update leaderboard positions.
+- Reflect changes instantly across marketplace pages.
+
+8. Admin Panel
+Allow administrators to:
+- View all referrals
+- View referral statistics
+- View suspicious referrals
+- Adjust referral points
+- Suspend abusive accounts
+- Monitor leaderboard activity
+
+Technology Stack:
+- Frontend: Next.js / React
+- Backend: Node.js + Express
+- Database: PostgreSQL
+- Authentication: Firebase Auth
+- Real-time updates: Socket.io or WebSockets
+
+Generate:
+- Database schema
+- API endpoints
+- Backend services
+- Ranking engine
+- Referral tracking system
+- Merchant dashboard UI
+- Leaderboard UI
+- Admin dashboard
+- Security protections
+- Production-ready scalable architecture
+
+The system must guarantee that active Boosted Listings always remain above every non-boosted listing regardless of referral points or ranking score.

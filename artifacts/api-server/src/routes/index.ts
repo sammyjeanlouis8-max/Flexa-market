@@ -58,6 +58,7 @@ import walletMonitorRouter from "./walletMonitor";
 import driverSelfieRouter from "./driverSelfie";
 import kycRouter from "./kyc";
 import sitemapRouter from "./sitemap";
+import referralsRouter from "./referrals";
 import fraudRouter from "./fraud";
 import shippingRouter from "./shipping";
 import { extractToken, verifyToken } from "../lib/auth";
@@ -226,5 +227,6 @@ router.use(kycRouter);
 router.use(sitemapRouter);
 router.use(fraudRouter);
 router.use(shippingRouter);
+router.use(referralsRouter);
 
 export default router;

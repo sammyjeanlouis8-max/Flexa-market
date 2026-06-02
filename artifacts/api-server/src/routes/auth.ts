@@ -1,5 +1,5 @@
 import { Router, Request } from "express";
-import { db, usersTable, loginLogsTable } from "@workspace/db";
+import { db, usersTable, loginLogsTable, referralsTable } from "@workspace/db";
 import { eq, and, count, gte, sql } from "drizzle-orm";
 import { RegisterBody, LoginBody, ChangeCountryBody } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, isLegacySha256Hash, generateToken, verifyPhoneToken } from "../lib/auth";
@@ -214,8 +214,48 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     .returning();
 
   await logAction(user.id, ip, ua, "register");
-  if (referredByUserId) {
-    logger.info({ newUserId: user.id, referredBy: referredByUserId, promoCode: rawPromoCode }, "User registered with promo code");
+
+  // ── Award referral points to the referring merchant ─────────────────────
+  if (referredByUserId && referredByUserId !== user.id) {
+    void (async () => {
+      try {
+        // Fraud detection: flag if same IP or same device as referrer
+        const [referrer] = await db
+          .select({ registrationIp: usersTable.registrationIp, deviceId: usersTable.deviceId })
+          .from(usersTable)
+          .where(eq(usersTable.id, referredByUserId));
+
+        const sameIp = referrer?.registrationIp && referrer.registrationIp === ip;
+        const sameDevice = referrer?.deviceId && deviceId && referrer.deviceId === deviceId;
+        const isSuspicious = Boolean(sameIp || sameDevice);
+        const suspiciousReason = [
+          sameIp ? "Same IP as referrer" : null,
+          sameDevice ? "Same device as referrer" : null,
+        ].filter(Boolean).join("; ");
+
+        await db.insert(referralsTable).values({
+          referrerId: referredByUserId,
+          referredUserId: user.id,
+          status: isSuspicious ? "flagged" : "verified",
+          pointsAwarded: isSuspicious ? 0 : 10,
+          isFlagged: isSuspicious,
+          flagReason: isSuspicious ? suspiciousReason : null,
+          ipAddress: ip ?? null,
+          deviceId: deviceId ?? null,
+        });
+
+        if (!isSuspicious) {
+          await db.update(usersTable).set({
+            referralPoints: sql`${usersTable.referralPoints} + 10`,
+            referralCount:  sql`${usersTable.referralCount} + 1`,
+          }).where(eq(usersTable.id, referredByUserId));
+        }
+
+        logger.info({ newUserId: user.id, referredBy: referredByUserId, suspicious: isSuspicious }, "Referral recorded");
+      } catch (err) {
+        logger.error({ err }, "Failed to record referral");
+      }
+    })();
   }
 
   // Fire-and-forget welcome email

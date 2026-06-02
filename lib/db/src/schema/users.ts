@@ -46,6 +46,8 @@ export const usersTable = pgTable("users", {
   referralCode: text("referral_code").unique(),
   referredByUserId: integer("referred_by_user_id"),
   referralBonusPaid: boolean("referral_bonus_paid").notNull().default(false),
+  referralPoints: integer("referral_points").notNull().default(0),
+  referralCount: integer("referral_count").notNull().default(0),
   // Vendor subscription plan (denormalized for fast listing-sort queries)
   subscriptionPlan: text("subscription_plan").notNull().default("basic"),
   subscriptionExpiresAt: timestamp("subscription_expires_at", { withTimezone: true }),

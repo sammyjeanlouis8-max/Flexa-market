@@ -3,6 +3,7 @@ import SupportAdminPanel from "@/components/SupportAdminPanel";
 import AdminDeliveryPanel from "@/components/AdminDeliveryPanel";
 import AdminOrdersPanel from "@/components/AdminOrdersPanel";
 import AdminAuditPanel from "@/pages/AdminAuditPanel";
+import AdminReferralPanel from "@/pages/AdminReferralPanel";
 import AdminApplicationsPanel from "@/pages/AdminApplicationsPanel";
 import AdminTranslationPanel from "@/pages/AdminTranslationPanel";
 import AdminLoanPanel from "@/pages/AdminLoanPanel";
@@ -16,7 +17,7 @@ import {
   Wifi, Monitor, Link2, ShieldAlert, ShieldCheck, LogIn, UserPlus, KeyRound, BadgeCheck, CreditCard, Copy,
   MessageSquare, Send, Briefcase, MapPin, Clock, Wallet, ArrowUpCircle, ArrowDownCircle, CheckCircle, XCircle, RefreshCw,
   Search, Check, Gift, Ticket, Timer, Download, Truck, ArrowRight, Bell, Landmark, ExternalLink, Loader2, Banknote, Phone, Navigation,
-  TrendingUp, BarChart3, Receipt, ArrowLeft,
+  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2677,6 +2678,7 @@ export default function Admin() {
               </TabsTrigger>
             )}
             <TabsTrigger value="returns" className="text-xs" onClick={() => loadReturns(returnsFilter)} data-testid="tab-returns"><RotateCcw className="h-3 w-3 mr-1" />Retou</TabsTrigger>
+            <TabsTrigger value="referrals" className="text-xs font-bold text-amber-600 dark:text-amber-400" data-testid="tab-referrals"><Trophy className="h-3 w-3 mr-1" />Referrals</TabsTrigger>
             {isSuperAdmin && (
               <TabsTrigger value="veye-kont" className="text-xs font-bold text-red-600 dark:text-red-400" data-testid="tab-veye-kont">
                 <ShieldAlert className="h-3 w-3 mr-1" />Veye Kont
@@ -7635,6 +7637,11 @@ export default function Admin() {
             <AdminOrdersPanel />
           </TabsContent>
         )}
+
+        {/* ══ Referral Ranking System ══ */}
+        <TabsContent value="referrals">
+          <AdminReferralPanel />
+        </TabsContent>
       </Tabs>
 
       {/* ── Security Dialog ── */}

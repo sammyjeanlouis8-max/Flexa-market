@@ -244,9 +244,11 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
         sql`${distanceSql} ASC NULLS LAST`,
         // 3. Text-based proximity for no-coords listings (city/state/country match)
         desc(proximitySql),
-        // 4. Subscription tier within the same distance bucket
+        // 4. Referral points (among same distance bucket, non-boosted listings rank higher)
+        desc(usersTable.referralPoints),
+        // 5. Subscription tier within the same distance bucket
         desc(subTierSql),
-        // 5. Freshness as final tie-break
+        // 6. Freshness as final tie-break
         desc(listingsTable.createdAt),
       )
       .limit(limitNum).offset(offset);

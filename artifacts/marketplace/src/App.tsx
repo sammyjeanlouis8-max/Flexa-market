@@ -97,6 +97,7 @@ const AdminLoanPanel                 = lazy(() => import("@/pages/AdminLoanPanel
 const AdminFraudPanel                = lazy(() => import("@/pages/AdminFraudPanel"));
 const CreditScorePage                = lazy(() => import("@/pages/CreditScorePage"));
 const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
+const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 
 // ── Query client ──────────────────────────────────────────────────────────────
 // Retry up to 3 times for server errors (502/503/504) which happen during
@@ -249,6 +250,7 @@ function LayoutRoutes() {
           <Route path="/agents/apply" component={AgentApplication} />
           <Route path="/admin/vehicles" component={AdminVehiclePanel} />
           <Route path="/admin/drivers/live" component={AdminDriversLiveMap} />
+          <Route path="/leaderboard" component={Leaderboard} />
           <Route component={RedirectHome} />
         </Switch>
       </Suspense>

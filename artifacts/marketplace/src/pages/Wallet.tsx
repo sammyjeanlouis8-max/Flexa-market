@@ -13,6 +13,7 @@ import {
   Send, Copy, Share2, QrCode, CreditCard, Phone, ArrowLeft,
   ArrowDownCircle, ArrowRightLeft, ChevronRight, User, Loader2, Eye, EyeOff, Gift, Users,
   Upload, ImageIcon, CheckCircle, MapPin, KeyRound, DollarSign, Zap, RefreshCw, ShieldCheck, Truck,
+  MessageCircle,
 } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -887,7 +888,16 @@ export default function WalletPage() {
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       qc.invalidateQueries({ queryKey: ["/cashout/my"] });
     },
-    onError: (e: Error) => toast({ title: "Erè", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
+  });
+
+  const startChatAgentMut = useMutation({
+    mutationFn: (agentUserId: number) => apiPost(`/agents/${agentUserId}/start-chat`, {}),
+    onSuccess: (data) => {
+      toast({ title: t("wallet.agentChatOpened"), description: t("wallet.agentChatOpenedDesc") });
+      setLocation(`/messages/${data.conversationId}`);
+    },
+    onError: (e: Error) => toast({ title: t("wallet.agentChatError"), description: e.message, variant: "destructive" }),
   });
 
   async function handleAgentScreenshotChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -2094,9 +2104,9 @@ export default function WalletPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Users className="h-6 w-6 text-green-500" />
-            <h1 className="text-2xl font-black">Voye Kòb nan Ajan</h1>
+            <h1 className="text-2xl font-black">{t("wallet.cashoutAgentTitle")}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Voye kòb ou nan nimewo FM ajan an epi voye screenshot</p>
+          <p className="text-sm text-muted-foreground">{t("wallet.cashoutAgentSubtitle")}</p>
         </div>
 
         {/* Agent card */}
@@ -2112,44 +2122,44 @@ export default function WalletPage() {
             </div>
             <div className="ml-auto flex flex-col items-end gap-1">
               <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full", selectedAgent.isOnline ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground")}>
-                {selectedAgent.isOnline ? "🟢 Online" : "⚫ Offline"}
+                {selectedAgent.isOnline ? `🟢 ${t("wallet.agentOnline")}` : `⚫ ${t("wallet.agentOffline")}`}
               </span>
             </div>
           </div>
           <div className="border-t border-green-200 dark:border-green-800/50 pt-3 space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Nimewo FM Ajan</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t("wallet.cashoutAgentFmLabel")}</p>
             <div className="flex items-center gap-2 bg-background rounded-xl p-3 border border-green-300 dark:border-green-700">
               <code className="text-base font-black text-green-700 dark:text-green-400 flex-1 tracking-widest">{fmNum}</code>
               <button
-                onClick={() => { navigator.clipboard.writeText(fmNum); toast({ title: "✅ Kopi!" }); }}
+                onClick={() => { navigator.clipboard.writeText(fmNum); toast({ title: t("wallet.cashoutAgentFmCopied") }); }}
                 className="p-1.5 rounded-lg hover:bg-muted transition-colors"
               >
                 <Copy className="h-4 w-4 text-muted-foreground" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">Voye kòb nan nimewo FM sa a epi fè screenshot</p>
+            <p className="text-xs text-muted-foreground">{t("wallet.cashoutAgentFmHint")}</p>
           </div>
         </div>
 
         {/* Summary */}
         <div className="rounded-xl border bg-card p-4 space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Ou ap retire</span>
+            <span className="text-muted-foreground">{t("wallet.cashoutAgentYouWithdraw")}</span>
             <span className="font-bold">${grossAmt.toFixed(2)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Frè platfòm (2%)</span>
+            <span className="text-muted-foreground">{t("wallet.cashoutAgentFee")}</span>
             <span className="text-red-500">−${feeAmt.toFixed(2)}</span>
           </div>
           <div className="flex justify-between border-t pt-2">
-            <span className="font-bold">Ajan ap livye ou</span>
+            <span className="font-bold">{t("wallet.cashoutAgentDelivers")}</span>
             <span className="font-black text-green-600">${netAmt.toFixed(2)}</span>
           </div>
         </div>
 
         {/* Payout methods agent supports */}
         <div className="space-y-1.5">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Metòd livrezon ajan</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t("wallet.cashoutAgentMethodsLabel")}</p>
           <div className="flex flex-wrap gap-1.5">
             {methods.map(m => (
               <span key={m} className="text-xs font-semibold bg-muted px-2.5 py-1 rounded-full border border-border">{m}</span>
@@ -2157,20 +2167,36 @@ export default function WalletPage() {
           </div>
         </div>
 
+        {/* Chat button */}
+        <Button
+          variant="outline"
+          className="w-full h-11 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 font-bold text-sm gap-2"
+          onClick={() => startChatAgentMut.mutate(selectedAgent.userId)}
+          disabled={startChatAgentMut.isPending}
+        >
+          {startChatAgentMut.isPending
+            ? <><Loader2 className="h-4 w-4 animate-spin" />{t("wallet.agentChatOpening")}</>
+            : <><MessageCircle className="h-5 w-5" />{t("wallet.cashoutAgentChatBtn")}</>}
+        </Button>
+
         {/* WhatsApp button */}
-        {selectedAgent.whatsappNumber && (
+        {selectedAgent.whatsappNumber ? (
           <a
-            href={`https://wa.me/${selectedAgent.whatsappNumber.replace(/\D/g, "")}?text=${encodeURIComponent(`Bonjou! M ap retire $${grossAmt.toFixed(2)} nan FM Wallet mwen. Nimewo référans: [...]`)}`}
+            href={`https://wa.me/${selectedAgent.whatsappNumber.replace(/\D/g, "")}?text=${encodeURIComponent(`Bonjou! M ap retire $${grossAmt.toFixed(2)} nan FM Wallet mwen. Nimewo ajan: ${fmNum}`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 w-full h-11 rounded-xl border-2 border-green-500 text-green-600 font-bold text-sm hover:bg-green-50 dark:hover:bg-green-950/20 transition-colors"
           >
-            <span className="text-lg">📱</span>WhatsApp — Kominike ak Ajan
+            <span className="text-lg">📱</span>{t("wallet.cashoutAgentWhatsappBtn")}
           </a>
+        ) : (
+          <div className="flex items-center justify-center gap-2 w-full h-11 rounded-xl border-2 border-muted text-muted-foreground text-sm">
+            <span className="text-lg">📱</span>{t("wallet.cashoutAgentNoWhatsapp")}
+          </div>
         )}
 
         <Button className="w-full h-12 font-bold bg-green-600 hover:bg-green-700" onClick={() => navigateTo("cashout_agent_proof")}>
-          Mwen voye kòb la — Kontinye ➜
+          {t("wallet.cashoutAgentContinueBtn")}
         </Button>
       </div>
     );
@@ -2188,9 +2214,9 @@ export default function WalletPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Upload className="h-6 w-6 text-green-500" />
-            <h1 className="text-2xl font-black">Voye Screenshot</h1>
+            <h1 className="text-2xl font-black">{t("wallet.cashoutAgentProofTitle")}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Pran yon screenshot prèv peman ou a epi soumèt demann lan</p>
+          <p className="text-sm text-muted-foreground">{t("wallet.cashoutAgentProofSubtitle")}</p>
         </div>
 
         {/* Upload zone */}
@@ -2213,12 +2239,12 @@ export default function WalletPage() {
               <img src={cashoutAgentScreenshotPreview} alt="Screenshot" className="w-full max-h-64 object-contain rounded-xl" />
               {cashoutAgentScreenshotUploading && (
                 <div className="flex items-center gap-2 justify-center mt-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />Ap upload…
+                  <Loader2 className="h-3 w-3 animate-spin" />{t("wallet.uploading")}
                 </div>
               )}
               {cashoutAgentScreenshotUrl && !cashoutAgentScreenshotUploading && (
                 <p className="text-xs text-green-600 text-center mt-2 flex items-center justify-center gap-1">
-                  <CheckCircle className="h-3 w-3" />Upload reyisi!
+                  <CheckCircle className="h-3 w-3" />{t("wallet.uploadSuccess")}
                 </p>
               )}
             </div>
@@ -2227,19 +2253,19 @@ export default function WalletPage() {
               <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center">
                 <ImageIcon className="h-7 w-7 text-muted-foreground" />
               </div>
-              <p className="text-sm font-semibold text-center">Klike pou chwazi screenshot</p>
-              <p className="text-xs text-muted-foreground text-center">PNG, JPG, WEBP · Maksimòm 10 MB</p>
+              <p className="text-sm font-semibold text-center">{t("wallet.cashoutAgentChooseScreenshot")}</p>
+              <p className="text-xs text-muted-foreground text-center">{t("wallet.cashoutAgentScreenshotFormats")}</p>
             </>
           )}
         </div>
 
         {/* Optional note */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Mesaj pou ajan (opsyonèl)</label>
+          <label className="text-sm font-semibold">{t("wallet.cashoutAgentNoteLabel")}</label>
           <textarea
             value={cashoutAgentNote}
             onChange={e => setCashoutAgentNote(e.target.value)}
-            placeholder="ex: Mwen voye peman via MonCash nimewo…"
+            placeholder={t("wallet.cashoutAgentNotePlaceholder")}
             rows={2}
             className="w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
           />
@@ -2247,9 +2273,9 @@ export default function WalletPage() {
 
         {/* Summary */}
         <div className="rounded-xl border bg-muted/30 p-3 text-xs space-y-1">
-          <div className="flex justify-between"><span className="text-muted-foreground">Ajan</span><span className="font-bold">{selectedAgent.fullName}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Montan brut</span><span className="font-bold">${parseFloat(cashoutAmount).toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Ou resevwa (nèt)</span><span className="font-bold text-green-600">${Math.round((parseFloat(cashoutAmount) * 0.98) * 100) / 100}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentProofAgentLabel")}</span><span className="font-bold">{selectedAgent.fullName}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentProofGross")}</span><span className="font-bold">${parseFloat(cashoutAmount).toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentProofNet")}</span><span className="font-bold text-green-600">${Math.round((parseFloat(cashoutAmount) * 0.98) * 100) / 100}</span></div>
         </div>
 
         <Button
@@ -2258,10 +2284,10 @@ export default function WalletPage() {
           onClick={() => cashoutAgentTransferMut.mutate()}
         >
           {cashoutAgentTransferMut.isPending
-            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ap soumèt…</>
-            : <><CheckCircle2 className="h-5 w-5 mr-2" />Soumèt Demann Retrait</>}
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("wallet.cashoutAgentSubmitting")}</>
+            : <><CheckCircle2 className="h-5 w-5 mr-2" />{t("wallet.cashoutAgentSubmitBtn")}</>}
         </Button>
-        <p className="text-center text-xs text-muted-foreground">Ajan an pral konfime livrezon an via metòd li chwazi</p>
+        <p className="text-center text-xs text-muted-foreground">{t("wallet.cashoutAgentSubmitHint")}</p>
       </div>
     );
   }
@@ -2276,26 +2302,37 @@ export default function WalletPage() {
           <CheckCircle2 className="h-10 w-10 text-green-500" />
         </div>
         <div>
-          <h1 className="text-2xl font-black text-green-600">Demann Soumèt! ✅</h1>
+          <h1 className="text-2xl font-black text-green-600">{t("wallet.cashoutAgentDoneTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-2">
-            Ajan <strong>{selectedAgent?.fullName}</strong> resevwa demann ou a. Yo ap livye cash ou via metòd yo chwazi.
+            {t("wallet.cashoutAgentDoneDesc", { name: selectedAgent?.fullName ?? "" })}
           </p>
         </div>
         <div className="rounded-2xl border bg-card p-4 space-y-2 text-sm text-left">
-          <div className="flex justify-between"><span className="text-muted-foreground">Demann #</span><span className="font-mono font-bold">{cashoutResult?.requestId}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Montan nèt</span><span className="font-bold text-green-600">${Math.round((parseFloat(cashoutAmount) * 0.98) * 100) / 100}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Statut</span><Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">⏳ Ap tann ajan</Badge></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentDoneRequest")}</span><span className="font-mono font-bold">{cashoutResult?.requestId}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentDoneNet")}</span><span className="font-bold text-green-600">${Math.round((parseFloat(cashoutAmount) * 0.98) * 100) / 100}</span></div>
+          <div className="flex justify-between"><span className="text-muted-foreground">{t("wallet.cashoutAgentDoneStatus")}</span><Badge variant="outline" className="text-amber-600 border-amber-300 text-[10px]">⏳ {t("wallet.cashoutAgentDoneStatusPending")}</Badge></div>
         </div>
         <div className="rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-800 dark:text-blue-400 text-left">
-          <p className="font-bold mb-1">📋 Pwochen etap</p>
+          <p className="font-bold mb-1">📋 {t("wallet.cashoutAgentDoneNextTitle")}</p>
           <ul className="space-y-1">
-            <li>• Ajan an ap kontakte ou via WhatsApp oswa chat</li>
-            <li>• Yo ap voye kòb via MonCash, Zelle, oswa cash</li>
-            <li>• Si pa gen nouvèl nan 2 zè, kontakte sipò nou</li>
+            <li>• {t("wallet.cashoutAgentDoneNext1")}</li>
+            <li>• {t("wallet.cashoutAgentDoneNext2")}</li>
+            <li>• {t("wallet.cashoutAgentDoneNext3")}</li>
           </ul>
         </div>
+        {selectedAgent && (
+          <Button
+            variant="outline"
+            className="w-full font-bold border-blue-500 text-blue-600 hover:bg-blue-50 gap-2"
+            onClick={() => startChatAgentMut.mutate(selectedAgent.userId)}
+            disabled={startChatAgentMut.isPending}
+          >
+            <MessageCircle className="h-4 w-4" />
+            {startChatAgentMut.isPending ? t("wallet.agentChatOpening") : t("wallet.cashoutAgentChatBtn")}
+          </Button>
+        )}
         <Button className="w-full font-bold" onClick={() => resetToHome()}>
-          Retounen nan Wallet
+          {t("wallet.cashoutAgentDoneBack")}
         </Button>
       </div>
     );

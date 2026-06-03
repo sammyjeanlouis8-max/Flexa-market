@@ -656,6 +656,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isVideoFeed = location === "/videos";
   // Inside a specific conversation: hide the mobile bottom nav (WhatsApp style)
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
+  // Listing detail — hide footer + bottom nav for a cleaner immersive view
+  const isListingDetail = /^\/listings\/[^/]+/.test(location);
 
   // Pages where the footer should NOT render (full-screen / chat-like UIs)
   const noFooter = [
@@ -669,6 +671,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/chatbot/,
     /^\/calculator/,
     /^\/delivery\/apply/,
+    /^\/listings\/[^/]+/,
   ].some(rx => rx.test(location));
 
   return (
@@ -739,7 +742,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <main className={
         isMessages || isVideoFeed
           ? `flex-1 overflow-clip flex flex-col min-h-0${isVideoFeed ? "" : " md:pl-56"}`
-          : "flex-1 pb-safe-nav md:pl-56"
+          : `flex-1 ${isListingDetail ? "" : "pb-safe-nav"} md:pl-56`
       }>
         {children}
         {!noFooter && <Footer />}
@@ -768,7 +771,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed ? "hidden" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail ? "hidden" : ""}`}
         aria-label="Main navigation"
       >
         {/* Nav expands to include the home-indicator safe area — icons stay

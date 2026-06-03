@@ -172,7 +172,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center"
+      className="fixed inset-0 z-[100] bg-black flex items-center justify-center"
       role="dialog"
       aria-modal="true"
       aria-label={t("boostAd.sponsored")}
@@ -191,7 +191,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         preload="auto"
         loop={false}
         onEnded={onClose}
-        className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-2xl"
+        className="w-full h-full object-cover"
         data-testid="video-boost-ad"
         style={{ willChange: "transform", pointerEvents: "none" }}
       />

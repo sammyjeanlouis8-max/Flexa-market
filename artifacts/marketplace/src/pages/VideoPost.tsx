@@ -167,6 +167,7 @@ export default function VideoPost() {
 
   // ── Video player state ──────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [playing, setPlaying] = useState(true);
   const [videoReady, setVideoReady] = useState(false);
   const [muted, setMuted] = useState(!isAudioUnlocked());
@@ -339,6 +340,20 @@ export default function VideoPost() {
     else { v.pause(); setPlaying(false); }
   }, []);
 
+  const handleVideoStall = useCallback(() => {
+    const el = videoRef.current;
+    if (!el || el.paused) return;
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v || v.paused || v.readyState >= 3) return;
+      const t = v.currentTime;
+      v.load();
+      v.currentTime = t;
+      v.play().catch(() => {});
+    }, 2500);
+  }, []);
+
   const handleMuteToggle = useCallback(() => {
     const nowUnlocked = muted;
     setAudioUnlocked(nowUnlocked);
@@ -501,8 +516,15 @@ export default function VideoPost() {
                   videoRef.current.muted = !isAudioUnlocked();
                 }
               }}
-              onPlay={() => setPlaying(true)}
+              onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
               onPause={() => setPlaying(false)}
+              onStalled={handleVideoStall}
+              onWaiting={handleVideoStall}
+              onError={() => {
+                const el = videoRef.current;
+                if (!el || el.paused) return;
+                setTimeout(() => { el.load(); el.play().catch(() => {}); }, 1500);
+              }}
             />
 
             {/* Click-to-play overlay */}

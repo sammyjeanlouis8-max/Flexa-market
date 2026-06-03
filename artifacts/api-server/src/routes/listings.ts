@@ -58,6 +58,13 @@ const router = Router();
 
 const subcategoriesTable = alias(categoriesTable, "subcategories");
 
+function toStreamingVideoUrl(url: string): string {
+  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
+    return url.replace("/video/upload/", "/video/upload/fl_faststart/");
+  }
+  return url;
+}
+
 /** Returns the full country-scope list for a scoped admin from JWT fields. */
 function getAdminScopeCountriesList(user: any): string[] {
   if (!user || user.isSuperAdmin) return [];
@@ -121,7 +128,7 @@ function formatListing(
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
     boostVideoUrl: listing.boostVideoUrl
-      ? (listing.boostVideoUrl.startsWith("http")
+      ? toStreamingVideoUrl(listing.boostVideoUrl.startsWith("http")
           ? listing.boostVideoUrl
           : `/api/storage/objects/${listing.boostVideoUrl.replace(/^\/objects\//, "")}`)
       : null,
@@ -138,7 +145,7 @@ function formatListing(
     stockQuantity: listing.stockQuantity ?? null,
     itemSize: listing.itemSize ?? null,
     listingVideoUrl: listing.listingVideoUrl
-      ? (listing.listingVideoUrl.startsWith("http")
+      ? toStreamingVideoUrl(listing.listingVideoUrl.startsWith("http")
           ? listing.listingVideoUrl
           : `/api/storage/objects/${listing.listingVideoUrl.replace(/^\/objects\//, "")}`)
       : null,

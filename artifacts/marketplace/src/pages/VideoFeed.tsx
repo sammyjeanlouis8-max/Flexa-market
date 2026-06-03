@@ -820,6 +820,7 @@ function VideoCard({
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPausedByHoldRef = useRef(false);
   const activatedAtRef = useRef<number>(0);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [muted, setMuted] = useState(false);
 
@@ -833,6 +834,20 @@ function VideoCard({
     window.addEventListener("flexa:audio-unlocked", handler);
     return () => window.removeEventListener("flexa:audio-unlocked", handler);
   }, []);
+
+  const handleVideoStall = useCallback(() => {
+    const el = videoRef.current;
+    if (!el || !isActive || el.paused) return;
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v || v.paused || v.readyState >= 3) return;
+      const t = v.currentTime;
+      v.load();
+      v.currentTime = t;
+      v.play().catch(() => {});
+    }, 2500);
+  }, [isActive]);
 
   const handleMuteToggle = useCallback(() => {
     const nowUnlocked = muted;
@@ -1025,12 +1040,19 @@ function VideoCard({
         poster={video.thumbnailUrl ?? undefined}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{ willChange: "transform", transform: "translateZ(0)" }}
-        onPlay={() => setPlaying(true)}
+        onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
         onPause={() => setPlaying(false)}
         loop
         onLoadedMetadata={e => {
           const v = e.currentTarget;
           setIsLandscape(v.videoWidth > v.videoHeight);
+        }}
+        onStalled={handleVideoStall}
+        onWaiting={handleVideoStall}
+        onError={() => {
+          const el = videoRef.current;
+          if (!el || !isActive) return;
+          setTimeout(() => { el.load(); el.play().catch(() => {}); }, 1500);
         }}
       />
 

@@ -116,7 +116,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     const tryUnmute = () => {
       const vid = videoRef.current;
       if (!vid) return;
-      if (getSavedMute() === true) return;
+      // Always unmute on first interaction — sound is mandatory for boost ads
       vid.muted = false;
       setMuted(false);
       removeListeners();
@@ -165,9 +165,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       }
     };
 
-    const savedMute = getSavedMute();
-    // Native app ignores saved mute pref — always try sound first
-    attemptPlay(isNativeApp ? true : (savedMute === true ? false : true));
+    // Always try with sound — boost ads must never start muted
+    attemptPlay(true);
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

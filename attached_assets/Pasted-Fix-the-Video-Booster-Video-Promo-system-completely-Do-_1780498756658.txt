@@ -1,0 +1,81 @@
+Fix the Video Booster / Video Promo system completely. Do NOT make partial changes. Analyze the entire implementation and resolve all related UI, autoplay, and audio issues without breaking any existing functionality.
+
+REQUIRED CHANGES
+
+1. Move the “Skip Ad” Button
+
+* Remove the current “Skip Ad” button from the top area.
+* Place the “Skip Ad” button directly below the video player.
+* The button must always remain visible while the ad is playing.
+* Ensure the button does not overlap the video, product cards, navigation, or other UI elements.
+* Keep responsive behavior on iPhone, Android, tablets, and web.
+
+2. Remove the Dark Overlay
+
+* Completely remove the black/dark transparent overlay covering the screen during Video Booster playback.
+* The video must display at full brightness and full visibility.
+* Users should clearly see the marketplace content behind or around the video.
+* No dimming effect, opacity layer, modal backdrop, or dark filter should remain.
+
+3. Force Audio ON
+
+* Video Booster advertisements must always start with sound enabled.
+* Remove mute-by-default behavior.
+* Remove any logic that starts videos muted.
+* Set volume to 100% when autoplay begins.
+* Speaker/audio should automatically be ON every time a Video Booster ad loads.
+
+4. Mandatory Video Playback
+
+* Video Booster ads must autoplay immediately when displayed.
+* Users should not need to press Play.
+* The video must begin automatically once loaded.
+* Ensure autoplay works reliably across all supported devices.
+* Fix any browser or mobile restrictions preventing autoplay with sound.
+* If necessary, implement the best supported autoplay strategy for Flutter/WebView/React Native/mobile browsers.
+
+5. Fix Existing Bugs
+
+* Investigate why previous attempts failed.
+* Search the entire Video Booster codebase for:
+    * autoplay settings
+    * mute settings
+    * audio session handling
+    * overlay widgets
+    * modal backgrounds
+    * skip button positioning
+    * video lifecycle events
+* Remove conflicting code.
+* Ensure there are no duplicate controllers or state conflicts.
+
+6. Preserve Existing Features
+
+DO NOT break:
+
+* Featured listings
+* Sponsored listings
+* Product cards
+* Category navigation
+* Search
+* Location filtering
+* Admin controls
+* Analytics
+* Boosted listing tracking
+* Impression counting
+* Click tracking
+* Existing ad rotation logic
+
+7. Final Validation
+
+Verify:
+
+* Video starts automatically.
+* Sound is ON automatically.
+* No dark overlay exists.
+* Skip button appears below the video.
+* Layout remains responsive.
+* No console errors.
+* No performance degradation.
+* No regressions elsewhere in the app.
+
+Implement a permanent fix, not a temporary workaround. Refactor any problematic code if necessary. Test all edge cases and ensure the Video Booster experience works exactly as specified.

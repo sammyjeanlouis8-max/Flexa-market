@@ -285,27 +285,17 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         {/* Middle spacer — no tap-to-pause, video plays uninterrupted */}
         <div className="flex-1" />
 
-        {/* Sound toggle — above CTA, left-aligned */}
-        <div className="flex items-center px-4 pb-2 pointer-events-auto">
-          <button
-            type="button"
-            onClick={toggleMute}
-            onTouchEnd={e => { e.preventDefault(); toggleMute(e); }}
-            className="bg-black/60 text-white rounded-full p-2 hover:bg-black/80 active:scale-95 transition-all"
-            aria-label={muted ? t("boostAd.unmute") : t("boostAd.mute")}
-            data-testid="button-boost-unmute"
-          >
-            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-          </button>
-        </div>
-
-        {/* CTA button */}
-        <div className="px-4 pb-3 pt-0 pointer-events-auto">
+        {/* ── Bottom bar: CTA + sound + skip — absolutely pinned to bottom ── */}
+        <div
+          className="pointer-events-auto px-4 pb-4"
+          style={{ paddingBottom: "max(env(safe-area-inset-bottom, 16px), 16px)" }}
+        >
+          {/* CTA button */}
           <button
             type="button"
             onClick={handleViewListing}
             onTouchEnd={e => { e.preventDefault(); handleViewListing(e); }}
-            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
+            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all mb-3"
             data-testid="button-boost-view-listing"
           >
             <div className="flex items-center gap-3 min-w-0">
@@ -332,42 +322,55 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
                   : <>{t("boostAd.viewListing")} →</>}
             </span>
           </button>
-        </div>
 
-        {/* Skip / countdown — at the very bottom, right-aligned */}
-        <div className="flex items-center justify-end px-4 pb-6 pointer-events-auto">
-          {skipReady ? (
+          {/* Sound + Skip in one row below CTA */}
+          <div className="flex items-center justify-between">
+            {/* Sound toggle */}
             <button
               type="button"
-              onClick={handleSkip}
-              onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
-              className="bg-white text-black rounded-full px-4 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1 transition-all"
-              data-testid="button-boost-skip"
+              onClick={toggleMute}
+              onTouchEnd={e => { e.preventDefault(); toggleMute(e); }}
+              className="bg-black/60 text-white rounded-full p-2 hover:bg-black/80 active:scale-95 transition-all"
+              aria-label={muted ? t("boostAd.unmute") : t("boostAd.mute")}
+              data-testid="button-boost-unmute"
             >
-              {t("boostAd.skip")} <X className="h-4 w-4" />
+              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
-          ) : (
-            <div
-              className="relative bg-black/60 rounded-full w-10 h-10 flex items-center justify-center"
-              data-testid="text-boost-skip-countdown"
-              aria-label={t("boostAd.skipIn", { seconds: countdown })}
-            >
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 40 40">
-                <circle cx="20" cy="20" r="17" fill="none" stroke="white" strokeOpacity="0.2" strokeWidth="2.5" />
-                <circle
-                  cx="20" cy="20" r="17"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeDasharray={`${2 * Math.PI * 17}`}
-                  strokeDashoffset={`${2 * Math.PI * 17 * (1 - countdown / SKIP_AFTER_SEC)}`}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dashoffset 1s linear" }}
-                />
-              </svg>
-              <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
-            </div>
-          )}
+
+            {/* Skip / countdown */}
+            {skipReady ? (
+              <button
+                type="button"
+                onClick={handleSkip}
+                onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
+                className="bg-white text-black rounded-full px-4 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1 transition-all"
+                data-testid="button-boost-skip"
+              >
+                {t("boostAd.skip")} <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <div
+                className="relative bg-black/60 rounded-full w-10 h-10 flex items-center justify-center"
+                data-testid="text-boost-skip-countdown"
+                aria-label={t("boostAd.skipIn", { seconds: countdown })}
+              >
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 40 40">
+                  <circle cx="20" cy="20" r="17" fill="none" stroke="white" strokeOpacity="0.2" strokeWidth="2.5" />
+                  <circle
+                    cx="20" cy="20" r="17"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2.5"
+                    strokeDasharray={`${2 * Math.PI * 17}`}
+                    strokeDashoffset={`${2 * Math.PI * 17 * (1 - countdown / SKIP_AFTER_SEC)}`}
+                    strokeLinecap="round"
+                    style={{ transition: "stroke-dashoffset 1s linear" }}
+                  />
+                </svg>
+                <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

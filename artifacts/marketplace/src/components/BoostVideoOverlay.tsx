@@ -290,13 +290,12 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         className="absolute inset-0 z-[110] pointer-events-none flex flex-col"
         aria-hidden="false"
       >
-        {/* Top row: sponsored badge + controls */}
+        {/* Top row: sponsored badge only — no interactive elements to avoid status-bar collision */}
         <div
-          className="flex items-start justify-between px-4 gap-2"
-          style={{ paddingTop: "max(env(safe-area-inset-top, 16px), 90px)" }}
+          className="flex items-start px-4 gap-2"
+          style={{ paddingTop: "max(env(safe-area-inset-top, 16px), 56px)" }}
         >
-          {/* Sponsored badge */}
-          <div className="flex items-center gap-2 pointer-events-auto">
+          <div className="flex items-center gap-2">
             <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
               {t("boostAd.sponsored")}
             </span>
@@ -307,53 +306,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               >
                 {t("boostAd.sponsoredBy", { name: listing.sellerName })}
               </span>
-            )}
-          </div>
-
-          {/* Sound + Skip */}
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <button
-              type="button"
-              onClick={toggleMute}
-              onTouchEnd={e => { e.preventDefault(); toggleMute(e); }}
-              className="bg-black/60 text-white rounded-full p-2 hover:bg-black/80 active:scale-95 transition-all"
-              aria-label={muted ? t("boostAd.unmute") : t("boostAd.mute")}
-              data-testid="button-boost-unmute"
-            >
-              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-            </button>
-
-            {skipReady ? (
-              <button
-                type="button"
-                onClick={handleSkip}
-                onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
-                className="bg-white text-black rounded-full px-4 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1 transition-all"
-                data-testid="button-boost-skip"
-              >
-                {t("boostAd.skip")} <X className="h-4 w-4" />
-              </button>
-            ) : (
-              <div
-                className="relative bg-black/60 rounded-full w-10 h-10 flex items-center justify-center"
-                data-testid="text-boost-skip-countdown"
-                aria-label={t("boostAd.skipIn", { seconds: countdown })}
-              >
-                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 40 40">
-                  <circle cx="20" cy="20" r="17" fill="none" stroke="white" strokeOpacity="0.2" strokeWidth="2.5" />
-                  <circle
-                    cx="20" cy="20" r="17"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="2.5"
-                    strokeDasharray={`${2 * Math.PI * 17}`}
-                    strokeDashoffset={`${2 * Math.PI * 17 * (1 - countdown / SKIP_AFTER_SEC)}`}
-                    strokeLinecap="round"
-                    style={{ transition: "stroke-dashoffset 1s linear" }}
-                  />
-                </svg>
-                <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
-              </div>
             )}
           </div>
         </div>
@@ -377,7 +329,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         {/* Muted auto-hint */}
         {playState === "playing" && muted && !getSavedMute() && (
           <div
-            className="mx-auto mb-20 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none animate-pulse"
+            className="mx-auto mb-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none animate-pulse"
             aria-live="polite"
           >
             <VolumeX className="h-3.5 w-3.5" />
@@ -385,8 +337,55 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           </div>
         )}
 
+        {/* Sound + Skip row — above the CTA, safely away from the status bar */}
+        <div className="flex items-center justify-between px-4 pb-2 pointer-events-auto">
+          <button
+            type="button"
+            onClick={toggleMute}
+            onTouchEnd={e => { e.preventDefault(); toggleMute(e); }}
+            className="bg-black/60 text-white rounded-full p-2 hover:bg-black/80 active:scale-95 transition-all"
+            aria-label={muted ? t("boostAd.unmute") : t("boostAd.mute")}
+            data-testid="button-boost-unmute"
+          >
+            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+
+          {skipReady ? (
+            <button
+              type="button"
+              onClick={handleSkip}
+              onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
+              className="bg-white text-black rounded-full px-4 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1 transition-all"
+              data-testid="button-boost-skip"
+            >
+              {t("boostAd.skip")} <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <div
+              className="relative bg-black/60 rounded-full w-10 h-10 flex items-center justify-center"
+              data-testid="text-boost-skip-countdown"
+              aria-label={t("boostAd.skipIn", { seconds: countdown })}
+            >
+              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 40 40">
+                <circle cx="20" cy="20" r="17" fill="none" stroke="white" strokeOpacity="0.2" strokeWidth="2.5" />
+                <circle
+                  cx="20" cy="20" r="17"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="2.5"
+                  strokeDasharray={`${2 * Math.PI * 17}`}
+                  strokeDashoffset={`${2 * Math.PI * 17 * (1 - countdown / SKIP_AFTER_SEC)}`}
+                  strokeLinecap="round"
+                  style={{ transition: "stroke-dashoffset 1s linear" }}
+                />
+              </svg>
+              <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
+            </div>
+          )}
+        </div>
+
         {/* Bottom: CTA button */}
-        <div className="px-4 pb-6 pt-2 pointer-events-auto">
+        <div className="px-4 pb-6 pt-0 pointer-events-auto">
           <button
             type="button"
             onClick={handleViewListing}

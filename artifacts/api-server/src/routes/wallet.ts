@@ -677,13 +677,15 @@ router.post("/wallet/transfer", requireAuth, async (req, res): Promise<void> => 
   const feeUsd = Math.round(parsedAmount * TRANSFER_FEE_PCT * 100) / 100;
   const netAmount = Math.round((parsedAmount - feeUsd) * 100) / 100;
 
-  // ── 9. Atomic debit sender — balanceUsd is SPENDABLE only, guard >= amount ──
+  // ── 9. Atomic debit sender — floor enforced in WHERE to prevent race conditions ──
+  // Including MIN_FLOOR in the SQL guard ensures that even under concurrent requests
+  // that both pass the pre-check, the balance can never drop below $1.50.
   await db.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsedAmount}`, updatedAt: new Date() })
     .where(
       and(
         eq(promoWalletTable.userId, req.userId!),
-        sql`${promoWalletTable.balanceUsd} >= ${parsedAmount - 0.0001}`,
+        sql`${promoWalletTable.balanceUsd} >= ${parsedAmount + MIN_FLOOR - 0.0001}`,
       ),
     );
 

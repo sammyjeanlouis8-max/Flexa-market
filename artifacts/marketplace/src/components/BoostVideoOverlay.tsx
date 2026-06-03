@@ -67,6 +67,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
+  const [soundLocked, setSoundLocked] = useState(false); // true = iOS forced muted start
 
   // ── Countdown — runs from mount, independent of play state ────────────────
   useEffect(() => {
@@ -86,9 +87,13 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     if (!vid) return;
     let cancelled = false;
 
-    // One-shot: unmute on first user gesture when browser forced muted start
+    // One-shot: unmute + hide the sound-hint badge on first user gesture
     const unlockAudio = () => {
       if (videoRef.current) videoRef.current.muted = false;
+      setSoundLocked(false);
+      // Clean up all listeners
+      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
+      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
     };
 
     const attemptPlay = async (withSound: boolean) => {
@@ -97,19 +102,23 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         await vid.play();
         if (cancelled) return;
         if (!withSound) {
-          // Browser blocked unmuted autoplay — unmute on first touch
+          // iOS forced muted start — show hint badge + listen for first touch
+          setSoundLocked(true);
           window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
           window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("scroll",      unlockAudio, { capture: true, once: true, passive: true });
         }
       } catch {
         if (cancelled) return;
-        if (withSound) await attemptPlay(false); // graceful fallback
+        if (withSound) await attemptPlay(false); // graceful fallback to muted
       }
     };
 
     attemptPlay(true); // always try unmuted first
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
+      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
+    };
   }, []);
 
   // ── Resume when scrolled back into view ───────────────────────────────────
@@ -199,6 +208,24 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               </span>
             )}
           </div>
+
+          {/* Sound-locked hint — center of video, disappears on first touch */}
+          {soundLocked && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-none"
+              aria-live="polite"
+            >
+              <div
+                className="flex items-center gap-2 bg-black/70 rounded-full px-4 py-2"
+                style={{ animation: "pulse 1.8s ease-in-out infinite" }}
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                </svg>
+                <span className="text-white text-sm font-semibold">Tape pou son</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

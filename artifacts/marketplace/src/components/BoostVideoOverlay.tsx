@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Volume2, VolumeX, X } from "lucide-react";
+import { X } from "lucide-react";
 
 /**
  * Sponsored-video overlay — production autoplay + smart-sound logic.
@@ -29,7 +29,6 @@ import { Volume2, VolumeX, X } from "lucide-react";
 const SKIP_AFTER_SEC  = 10;
 const AD_INTERVAL_MS  = 5 * 60_000;
 const STORAGE_KEY     = "flexamarket_boost_last_shown";
-const MUTE_PREF_KEY   = "flexamarket_boost_muted";
 
 // ─── Public helpers ──────────────────────────────────────────────────────────
 export function shouldShowBoostAd(): boolean {
@@ -51,18 +50,6 @@ function toFetchableUrl(stored: string): string {
     ? stored.slice("/objects/".length)
     : stored;
   return `/api/storage/objects/${trimmed}`;
-}
-
-// ─── Saved mute preference (session-scoped) ──────────────────────────────────
-function getSavedMute(): boolean | null {
-  try {
-    const v = sessionStorage.getItem(MUTE_PREF_KEY);
-    return v === null ? null : v === "1";
-  } catch { return null; }
-}
-
-function saveMutePref(muted: boolean): void {
-  try { sessionStorage.setItem(MUTE_PREF_KEY, muted ? "1" : "0"); } catch { /* ignore */ }
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,10 +76,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef  = useRef<HTMLVideoElement | null>(null);
-  const interactionBound = useRef(false);
 
-  // Always start with sound ON — ignore any previously saved mute preference
-  const [muted, setMuted]     = useState<boolean>(false);
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
 
@@ -108,67 +92,39 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     return () => window.clearInterval(id);
   }, []); // run once
 
-  // ── Unmute on first user interaction (when forced-muted by browser) ───────
-  const bindInteractionUnmute = useCallback(() => {
-    if (interactionBound.current) return;
-    interactionBound.current = true;
-
-    const tryUnmute = () => {
-      const vid = videoRef.current;
-      if (!vid) return;
-      // Always unmute on first interaction — sound is mandatory for boost ads
-      vid.muted = false;
-      setMuted(false);
-      removeListeners();
-    };
-
-    const removeListeners = () => {
-      window.removeEventListener("scroll",      tryUnmute, { capture: true });
-      window.removeEventListener("touchstart",  tryUnmute, { capture: true });
-      window.removeEventListener("pointerdown", tryUnmute, { capture: true });
-      window.removeEventListener("keydown",     tryUnmute, { capture: true });
-    };
-
-    window.addEventListener("scroll",      tryUnmute, { capture: true, once: true, passive: true });
-    window.addEventListener("touchstart",  tryUnmute, { capture: true, once: true, passive: true });
-    window.addEventListener("pointerdown", tryUnmute, { capture: true, once: true, passive: true });
-    window.addEventListener("keydown",     tryUnmute, { capture: true, once: true });
-  }, []);
-
-  // ── Smart autoplay on mount ───────────────────────────────────────────────
+  // ── Autoplay with sound locked ON ────────────────────────────────────────
+  // Sound is not user-controllable for boost ads.
+  // If browser blocks unmuted play, fall back to muted then unmute on first
+  // user interaction (browser policy requirement — cannot bypass).
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
     let cancelled = false;
 
-    // Native app WebView: always start with sound on
-    const isNativeApp = !!(typeof window !== "undefined" && (window as any).isNativeApp);
+    const tryUnmuteOnInteraction = () => {
+      if (!videoRef.current) return;
+      videoRef.current.muted = false;
+    };
 
     const attemptPlay = async (withSound: boolean) => {
       vid.muted = !withSound;
       try {
         await vid.play();
         if (cancelled) return;
-        setMuted(!withSound);
-        if (!withSound && !isNativeApp) bindInteractionUnmute();
-        // Native app: if we started muted (browser blocked), unmute immediately
-        if (!withSound && isNativeApp) {
-          vid.muted = false;
-          setMuted(false);
+        if (!withSound) {
+          // Bind one-time listeners so we unmute as soon as user touches anything
+          window.addEventListener("touchstart",  tryUnmuteOnInteraction, { capture: true, once: true, passive: true });
+          window.addEventListener("pointerdown", tryUnmuteOnInteraction, { capture: true, once: true, passive: true });
+          window.addEventListener("scroll",      tryUnmuteOnInteraction, { capture: true, once: true, passive: true });
         }
-      } catch (err: any) {
+      } catch {
         if (cancelled) return;
-        if (withSound) {
-          await attemptPlay(false);
-        }
-        // Muted autoplay also blocked — video stays paused (browser restriction)
+        if (withSound) await attemptPlay(false);
       }
     };
 
-    // Always try with sound — boost ads must never start muted
     attemptPlay(true);
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── IntersectionObserver: pause when hidden, resume when visible ──────────
@@ -185,18 +141,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     observer.observe(vid);
     return () => observer.disconnect();
   }, []);
-
-  // ── Manual mute toggle ────────────────────────────────────────────────────
-  const toggleMute = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    const vid = videoRef.current;
-    if (!vid) return;
-    const next = !muted;
-    vid.muted = next;
-    setMuted(next);
-    saveMutePref(next);
-  }, [muted]);
-
 
   // ── Skip ──────────────────────────────────────────────────────────────────
   const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -243,7 +187,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         ref={videoRef}
         src={toFetchableUrl(listing.boostVideoUrl)}
         autoPlay
-        muted={muted}
         playsInline
         preload="auto"
         loop={false}
@@ -323,20 +266,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             </span>
           </button>
 
-          {/* Sound + Skip in one row below CTA */}
-          <div className="flex items-center justify-between">
-            {/* Sound toggle */}
-            <button
-              type="button"
-              onClick={toggleMute}
-              onTouchEnd={e => { e.preventDefault(); toggleMute(e); }}
-              className="bg-black/60 text-white rounded-full p-2 hover:bg-black/80 active:scale-95 transition-all"
-              aria-label={muted ? t("boostAd.unmute") : t("boostAd.mute")}
-              data-testid="button-boost-unmute"
-            >
-              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-            </button>
-
+          {/* Skip / countdown — right-aligned below CTA */}
+          <div className="flex items-center justify-end">
             {/* Skip / countdown */}
             {skipReady ? (
               <button

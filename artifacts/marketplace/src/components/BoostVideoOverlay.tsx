@@ -151,59 +151,63 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   }, [listing, onClose, setLocation]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-  // Outer wrapper: fixed to top of screen, no background — page visible below.
+  // Split layout: video pinned to TOP, controls bar pinned to BOTTOM.
+  // Marketplace content stays visible in the middle.
   return (
-    <div
-      className="fixed top-0 left-0 right-0 z-[100]"
-      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t("boostAd.sponsored")}
-      data-testid="boost-video-overlay"
-    >
-      {/* ── Video player ────────────────────────────────────────────────────
-          Black background only behind the video itself (not full-screen).
-          object-contain keeps native aspect ratio; no cropping. */}
-      <div className="relative w-full bg-black" style={{ maxHeight: "60vh", overflow: "hidden" }}>
-        <video
-          ref={videoRef}
-          src={toFetchableUrl(listing.boostVideoUrl)}
-          autoPlay
-          playsInline
-          preload="auto"
-          loop={false}
-          onEnded={onClose}
-          className="w-full"
-          style={{
-            display: "block",
-            maxHeight: "60vh",
-            objectFit: "contain",
-            pointerEvents: "none",   // iOS: prevents native layer swallowing taps
-            willChange: "transform",
-          }}
-          data-testid="video-boost-ad"
-        />
+    <>
+      {/* ── VIDEO — fixed top of screen ─────────────────────────────────── */}
+      <div
+        className="fixed top-0 left-0 right-0 z-[100]"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("boostAd.sponsored")}
+        data-testid="boost-video-overlay"
+      >
+        <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
+          {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
+          <video
+            ref={videoRef}
+            src={toFetchableUrl(listing.boostVideoUrl)}
+            autoPlay
+            playsInline
+            preload="auto"
+            loop={false}
+            onEnded={onClose}
+            className="w-full"
+            style={{
+              display: "block",
+              maxHeight: "55vh",
+              objectFit: "contain",
+              pointerEvents: "none",
+              willChange: "transform",
+            }}
+            data-testid="video-boost-ad"
+          />
 
-        {/* SPONSORED badge — top-left corner of the video */}
-        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-          <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
-            {t("boostAd.sponsored")}
-          </span>
-          {listing.sellerName && (
-            <span
-              className="text-white text-xs font-medium"
-              style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
-            >
-              {t("boostAd.sponsoredBy", { name: listing.sellerName })}
+          {/* SPONSORED badge — overlaid top-left on the video */}
+          <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+            <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
+              {t("boostAd.sponsored")}
             </span>
-          )}
+            {listing.sellerName && (
+              <span
+                className="text-white text-xs font-medium"
+                style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+              >
+                {t("boostAd.sponsoredBy", { name: listing.sellerName })}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ── Controls bar — sits BELOW the video, not on top of it ──────────
-          Dark background only for this strip so text/buttons are readable. */}
-      <div className="bg-gray-900 px-4 pt-3 pb-4" style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)" }}>
-
+      {/* ── CONTROLS BAR — fixed bottom of screen ───────────────────────── */}
+      {/* CTA first, then Skip/countdown below — both pinned to bottom */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)" }}
+      >
         {/* CTA button */}
         <button
           type="button"
@@ -237,8 +241,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           </span>
         </button>
 
-        {/* Skip / countdown — right-aligned, always below CTA */}
-        <div className="flex items-center justify-end mt-3">
+        {/* Skip / countdown — right-aligned, below CTA */}
+        <div className="flex items-center justify-end mt-3 mb-1">
           {skipReady ? (
             <button
               type="button"
@@ -273,6 +277,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

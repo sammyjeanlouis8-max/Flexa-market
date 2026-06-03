@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Volume2, VolumeX, X, Play, Pause } from "lucide-react";
+import { Volume2, VolumeX, X } from "lucide-react";
 
 /**
  * Sponsored-video overlay — production autoplay + smart-sound logic.
@@ -84,8 +84,6 @@ interface Props {
   onClose: () => void;
 }
 
-type PlayState = "playing" | "paused" | "tap-to-play";
-
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const { t } = useTranslation();
@@ -94,8 +92,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const interactionBound = useRef(false);
 
   // Always start with sound ON — ignore any previously saved mute preference
-  const [muted, setMuted]         = useState<boolean>(false);
-  const [playState, setPlayState] = useState<PlayState>("paused");
+  const [muted, setMuted]     = useState<boolean>(false);
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
 
@@ -153,7 +150,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         await vid.play();
         if (cancelled) return;
         setMuted(!withSound);
-        setPlayState("playing");
         if (!withSound && !isNativeApp) bindInteractionUnmute();
         // Native app: if we started muted (browser blocked), unmute immediately
         if (!withSound && isNativeApp) {
@@ -164,10 +160,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         if (cancelled) return;
         if (withSound) {
           await attemptPlay(false);
-        } else {
-          // Muted autoplay also blocked — stay paused, no "tap-to-play" prompt
-          setPlayState("paused");
         }
+        // Muted autoplay also blocked — video stays paused (browser restriction)
       }
     };
 
@@ -204,26 +198,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     saveMutePref(next);
   }, [muted]);
 
-  // ── Video tap → toggle play/pause ─────────────────────────────────────────
-  const handleVideoTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    const vid = videoRef.current;
-    if (!vid) return;
-    if (vid.paused) {
-      // Try unmuted on tap; fall back to muted if browser still blocks
-      vid.muted = false;
-      vid.play()
-        .then(() => { setMuted(false); setPlayState("playing"); saveMutePref(false); })
-        .catch(() => {
-          vid.muted = true;
-          vid.play()
-            .then(() => { setMuted(true); setPlayState("playing"); })
-            .catch(() => {});
-        });
-    } else {
-      vid.pause();
-    }
-  }, []);
 
   // ── Skip ──────────────────────────────────────────────────────────────────
   const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent) => {
@@ -275,8 +249,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         preload="auto"
         loop={false}
         onEnded={onClose}
-        onPlay={() => setPlayState("playing")}
-        onPause={() => setPlayState(ps => ps === "tap-to-play" ? "tap-to-play" : "paused")}
         className="max-h-[80vh] max-w-[90vw] rounded-lg shadow-2xl"
         data-testid="video-boost-ad"
         style={{ willChange: "transform", pointerEvents: "none" }}
@@ -311,32 +283,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           </div>
         </div>
 
-        {/* Middle: transparent tap area for play/pause */}
-        <button
-          type="button"
-          onClick={handleVideoTap}
-          className="flex-1 w-full pointer-events-auto flex items-center justify-center"
-          aria-label={playState === "playing" ? "Pause" : "Play"}
-          data-testid="button-boost-tap-to-play"
-        >
-          {/* Paused indicator */}
-          {playState === "paused" && (
-            <div className="bg-white/20 border-2 border-white/60 rounded-full p-5 backdrop-blur-sm hover:bg-white/30 active:scale-95 transition-all">
-              <Play className="h-12 w-12 text-white fill-white" />
-            </div>
-          )}
-        </button>
-
-        {/* Muted auto-hint */}
-        {playState === "playing" && muted && !getSavedMute() && (
-          <div
-            className="mx-auto mb-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 pointer-events-none animate-pulse"
-            aria-live="polite"
-          >
-            <VolumeX className="h-3.5 w-3.5" />
-            <span>{t("boostAd.mutedHint", { defaultValue: "Tap the 🔇 to unmute" })}</span>
-          </div>
-        )}
+        {/* Middle spacer — no tap-to-pause, video plays uninterrupted */}
+        <div className="flex-1" />
 
         {/* Sound toggle — above CTA, left-aligned */}
         <div className="flex items-center px-4 pb-2 pointer-events-auto">

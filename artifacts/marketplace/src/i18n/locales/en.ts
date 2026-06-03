@@ -674,6 +674,8 @@ export default {
     lastSeenHours: "{{n}}h ago",
     lastSeenDays: "{{n}}d ago",
     startConversation: "Start conversation",
+    voiceUploadFailed: "Voice message upload failed. Please try again.",
+    micDenied: "Cannot access microphone. Please allow microphone access in your browser settings.",
   },
   saved: {
     title: "Saved Items",

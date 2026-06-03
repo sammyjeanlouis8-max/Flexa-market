@@ -54,10 +54,13 @@ export type AllowedMimeType =
   | "video/x-ms-wmv"
   | "video/x-flv"
   | "audio/webm"
+  | "audio/webm;codecs=opus"
   | "audio/mp4"
   | "audio/mpeg"
   | "audio/ogg"
-  | "audio/wav";
+  | "audio/wav"
+  | "audio/x-m4a"
+  | "audio/aac";
 
 const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AllowedMimeType>([
   "image/jpeg",
@@ -78,10 +81,13 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AllowedMimeType>([
   "video/x-ms-wmv",
   "video/x-flv",
   "audio/webm",
+  "audio/webm;codecs=opus",
   "audio/mp4",
   "audio/mpeg",
   "audio/ogg",
   "audio/wav",
+  "audio/x-m4a",
+  "audio/aac",
 ]);
 
 const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024;

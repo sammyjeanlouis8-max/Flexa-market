@@ -4,6 +4,7 @@ import { RestrictionBanner } from "@/components/RestrictionBanner";
 import { AdminBlockButton } from "@/components/AdminBlockModal";
 import { useRoute, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
+import { useToast } from "@/hooks/use-toast";
 import {
   Send, MessageCircle, ArrowLeft, Check, CheckCheck,
   Paperclip, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
@@ -981,6 +982,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const { isRestricted } = useRestriction();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1198,9 +1200,11 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         const tkn = localStorage.getItem("flexamarket_token") ?? "";
         setUploading(true);
         try {
-          const url = await uploadMedia(blob as unknown as File, mimeType, tkn);
+          // Normalize mimeType — strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
+          const uploadMime = mimeType.split(";")[0].trim();
+          const url = await uploadMedia(blob as unknown as File, uploadMime, tkn);
           doSend({ messageType: "audio", mediaUrl: url, content: "" });
-        } catch { alert("Upload mesaj vwa echwe. Eseye ankò."); }
+        } catch { toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" }); }
         finally { setUploading(false); }
       };
       mr.start(100);
@@ -1209,7 +1213,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       setRecordingSecs(0);
       recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
     } catch {
-      alert("Pa ka accede mikwofòn. Asire ou otorize mikwofòn nan navigatè ou.");
+      toast({ title: t("messages.micDenied"), variant: "destructive" });
     }
   };
 

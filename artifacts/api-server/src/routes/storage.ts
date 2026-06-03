@@ -89,7 +89,9 @@ const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
 
 router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Response) => {
   const token = String(req.params["token"]);
-  const contentType = (req.headers["content-type"] ?? "application/octet-stream") as string;
+  // Normalize: strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
+  const rawContentType = (req.headers["content-type"] ?? "application/octet-stream") as string;
+  const contentType = rawContentType.split(";")[0].trim() as string;
 
   try {
     validateMimeType(contentType);

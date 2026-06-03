@@ -33,7 +33,7 @@
       }
     },
     "android": {
-      "package": "com.flexamarket.mobile",
+      "package": "com.flexa.market",
       "versionCode": 1,
       "compileSdkVersion": 35,
       "targetSdkVersion": 35,

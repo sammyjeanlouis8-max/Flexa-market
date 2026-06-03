@@ -1,4 +1,6 @@
 import { Feather } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -24,12 +26,15 @@ export default function HomeTab() {
   return <EmbeddedHome insets={insets} />;
 }
 
+type PermStatus = "checking" | "granted" | "denied" | "undetermined";
+
 function EmbeddedHome({ insets }: any) {
   const webRef = useRef<any>(null);
   const [navState, setNavState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [offline, setOffline] = useState(false);
+  const [permStatus, setPermStatus] = useState<PermStatus>("checking");
 
   const injectJs = useCallback((script: string) => {
     webRef.current?.injectJavaScript(script);
@@ -40,6 +45,24 @@ function EmbeddedHome({ insets }: any) {
   const canGoBack = navState?.canGoBack ?? false;
 
   useEffect(() => {
+    checkAndRequestPermission();
+  }, []);
+
+  async function checkAndRequestPermission() {
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status === "granted") {
+      setPermStatus("granted");
+      return;
+    }
+    if (status === "undetermined") {
+      const { status: newStatus } = await Notifications.requestPermissionsAsync();
+      setPermStatus(newStatus === "granted" ? "granted" : "denied");
+    } else {
+      setPermStatus("denied");
+    }
+  }
+
+  useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (canGoBack) { webRef.current?.goBack(); return true; }
@@ -47,6 +70,65 @@ function EmbeddedHome({ insets }: any) {
     });
     return () => sub.remove();
   }, [canGoBack]);
+
+  if (permStatus === "checking") {
+    return (
+      <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#F97316" />
+      </View>
+    );
+  }
+
+  if (permStatus === "denied") {
+    return (
+      <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
+          <Text style={styles.logoText}>FM</Text>
+        </View>
+
+        <Text style={styles.gateTitle}>Aktive Notifikasyon</Text>
+
+        <Text style={styles.gateSub}>
+          FlexaMarket itilize notifikasyon pou voye mesaj, lòd, ak alèt enpòtan ba ou.{"\n\n"}
+          Notifikasyon yo obligatwa pou itilize app la.
+        </Text>
+
+        <View style={styles.iconRow}>
+          <View style={styles.iconItem}>
+            <Text style={styles.iconEmoji}>💬</Text>
+            <Text style={styles.iconLabel}>Mesaj</Text>
+          </View>
+          <View style={styles.iconItem}>
+            <Text style={styles.iconEmoji}>📦</Text>
+            <Text style={styles.iconLabel}>Lòd</Text>
+          </View>
+          <View style={styles.iconItem}>
+            <Text style={styles.iconEmoji}>💰</Text>
+            <Text style={styles.iconLabel}>Peman</Text>
+          </View>
+        </View>
+
+        <Pressable
+          style={[styles.settingsBtn, { backgroundColor: "#F97316" }]}
+          onPress={() => Linking.openSettings()}
+        >
+          <Feather name="settings" size={18} color="#fff" />
+          <Text style={styles.settingsBtnText}>Ouvri Paramèt</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.recheckBtn}
+          onPress={async () => {
+            setPermStatus("checking");
+            const { status } = await Notifications.getPermissionsAsync();
+            setPermStatus(status === "granted" ? "granted" : "denied");
+          }}
+        >
+          <Text style={styles.recheckText}>M aktive li — kontinye</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   if (offline) {
     return (
@@ -136,4 +218,14 @@ const styles = StyleSheet.create({
   offlineSub: { fontSize: 14, textAlign: "center" },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
   retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  gateTitle: { fontSize: 26, fontWeight: "800", color: "#fff", textAlign: "center" },
+  gateSub: { fontSize: 14, color: "#94a3b8", textAlign: "center", lineHeight: 22 },
+  iconRow: { flexDirection: "row", gap: 24, marginVertical: 8 },
+  iconItem: { alignItems: "center", gap: 4 },
+  iconEmoji: { fontSize: 32 },
+  iconLabel: { color: "#94a3b8", fontSize: 12, fontWeight: "600" },
+  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, width: "100%" },
+  settingsBtnText: { color: "#fff", fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
+  recheckBtn: { paddingVertical: 12 },
+  recheckText: { color: "#F97316", fontSize: 14, fontWeight: "600" },
 });

@@ -5,6 +5,13 @@ import { optionalAuth } from "../middlewares/auth";
 
 const router = Router();
 
+function toStreamingVideoUrl(url: string): string {
+  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
+    return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+  }
+  return url;
+}
+
 /**
  * GET /api/videos/feed?page=1&limit=10
  *
@@ -260,7 +267,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos: items.map(r => ({
         id:               r.id,
         videoUrl:         r.boostVideoUrl
-          ? (r.boostVideoUrl.startsWith("http")
+          ? toStreamingVideoUrl(r.boostVideoUrl.startsWith("http")
               ? r.boostVideoUrl
               : `/api/storage/objects/${r.boostVideoUrl.replace(/^\/api\/storage\/objects\//, "").replace(/^\/objects\//, "")}`)
           : null,

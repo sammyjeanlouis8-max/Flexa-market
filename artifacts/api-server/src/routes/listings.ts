@@ -60,7 +60,10 @@ const subcategoriesTable = alias(categoriesTable, "subcategories");
 
 function toStreamingVideoUrl(url: string): string {
   if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
-    return url.replace("/video/upload/", "/video/upload/fl_faststart/");
+    // fl_faststart  — move moov atom to front for instant streaming
+    // vc_h264       — transcode to H.264 (handles HEVC/MOV uploaded from iOS)
+    // f_mp4         — output as MP4 container (universally supported)
+    return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
   }
   return url;
 }

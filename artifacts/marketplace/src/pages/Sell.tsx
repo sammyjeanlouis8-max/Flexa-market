@@ -434,13 +434,12 @@ export default function Sell() {
     }
     try {
       const seconds = await probeVideoDuration(file);
-      if (!Number.isFinite(seconds) || seconds > MAX_VIDEO_SECONDS + 0.5) {
+      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
         toast({ title: t("sell.videoTooLong"), variant: "destructive" });
         return;
       }
     } catch {
-      toast({ title: t("sell.videoDecodeFailed"), variant: "destructive" });
-      return;
+      // Can't read duration (e.g. HEVC/MOV on iOS) — allow upload; server enforces size limit
     }
     setVideoUploading(true);
     try {

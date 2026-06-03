@@ -222,13 +222,15 @@ export default function BoostWizard({ open, onClose }: Props) {
   }, [step, categories.length]);
 
   // Video probe + upload
+  // Resolves with NaN when the browser can't decode metadata (e.g. HEVC/MOV on iOS).
+  // Callers must treat NaN as "unknown" and skip the duration check rather than blocking.
   const probeVideoDuration = (file: File) =>
-    new Promise<number>((resolve, reject) => {
+    new Promise<number>((resolve) => {
       const url = URL.createObjectURL(file);
       const v = document.createElement("video");
       v.preload = "metadata";
       v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode-failed")); };
+      v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
       v.src = url;
     });
 
@@ -338,7 +340,7 @@ export default function BoostWizard({ open, onClose }: Props) {
 
       if (file.size > CHUNK_THRESHOLD) {
         const [secs, finalPath] = await Promise.all([secsPromise, chunkedUpload(file)]);
-        if (!Number.isFinite(secs) || secs > MAX_VIDEO_SECONDS + 0.5) {
+        if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
           toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
           setVideoObjectUrl(null);
           URL.revokeObjectURL(localUrl);
@@ -350,7 +352,7 @@ export default function BoostWizard({ open, onClose }: Props) {
           secsPromise,
           requestPresignUrl(file),
         ]);
-        if (!Number.isFinite(secs) || secs > MAX_VIDEO_SECONDS + 0.5) {
+        if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
           toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
           setVideoObjectUrl(null);
           URL.revokeObjectURL(localUrl);

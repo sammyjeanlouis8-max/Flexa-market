@@ -93,7 +93,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const videoRef  = useRef<HTMLVideoElement | null>(null);
   const interactionBound = useRef(false);
 
-  const [muted, setMuted]         = useState<boolean>(() => getSavedMute() ?? false);
+  // Always start with sound ON — ignore any previously saved mute preference
+  const [muted, setMuted]         = useState<boolean>(false);
   const [playState, setPlayState] = useState<PlayState>("paused");
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
@@ -337,8 +338,8 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           </div>
         )}
 
-        {/* Sound + Skip row — above the CTA, safely away from the status bar */}
-        <div className="flex items-center justify-between px-4 pb-2 pointer-events-auto">
+        {/* Sound toggle — above CTA, left-aligned */}
+        <div className="flex items-center px-4 pb-2 pointer-events-auto">
           <button
             type="button"
             onClick={toggleMute}
@@ -349,7 +350,45 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           >
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
+        </div>
 
+        {/* CTA button */}
+        <div className="px-4 pb-3 pt-0 pointer-events-auto">
+          <button
+            type="button"
+            onClick={handleViewListing}
+            onTouchEnd={e => { e.preventDefault(); handleViewListing(e); }}
+            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
+            data-testid="button-boost-view-listing"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              {listing.thumbnail && (
+                <img
+                  src={listing.thumbnail}
+                  alt=""
+                  loading="eager"
+                  className="h-10 w-10 rounded object-cover flex-shrink-0"
+                />
+              )}
+              <div className="text-left min-w-0">
+                <div className="text-sm font-bold truncate">{listing.title}</div>
+                {listing.price > 0 && (
+                  <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
+                )}
+              </div>
+            </div>
+            <span className="text-sm whitespace-nowrap shrink-0">
+              {listing.boostCtaType === "link"
+                ? <>{t("boostAd.visitLink")} →</>
+                : listing.boostCtaType === "whatsapp"
+                  ? <>{t("boostAd.chatWhatsApp")} →</>
+                  : <>{t("boostAd.viewListing")} →</>}
+            </span>
+          </button>
+        </div>
+
+        {/* Skip / countdown — at the very bottom, right-aligned */}
+        <div className="flex items-center justify-end px-4 pb-6 pointer-events-auto">
           {skipReady ? (
             <button
               type="button"
@@ -382,41 +421,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
             </div>
           )}
-        </div>
-
-        {/* Bottom: CTA button */}
-        <div className="px-4 pb-6 pt-0 pointer-events-auto">
-          <button
-            type="button"
-            onClick={handleViewListing}
-            onTouchEnd={e => { e.preventDefault(); handleViewListing(e); }}
-            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
-            data-testid="button-boost-view-listing"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              {listing.thumbnail && (
-                <img
-                  src={listing.thumbnail}
-                  alt=""
-                  loading="eager"
-                  className="h-10 w-10 rounded object-cover flex-shrink-0"
-                />
-              )}
-              <div className="text-left min-w-0">
-                <div className="text-sm font-bold truncate">{listing.title}</div>
-                {listing.price > 0 && (
-                  <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
-                )}
-              </div>
-            </div>
-            <span className="text-sm whitespace-nowrap shrink-0">
-              {listing.boostCtaType === "link"
-                ? <>{t("boostAd.visitLink")} →</>
-                : listing.boostCtaType === "whatsapp"
-                  ? <>{t("boostAd.chatWhatsApp")} →</>
-                  : <>{t("boostAd.viewListing")} →</>}
-            </span>
-          </button>
         </div>
       </div>
     </div>

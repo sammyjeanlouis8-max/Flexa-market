@@ -175,6 +175,10 @@ export default {
     featured: "Utvald",
     boosted: "Sponsrad",
     deleted: "Annons raderad",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Köp nu",
@@ -301,6 +305,10 @@ export default {
     addComment: "Lägg till en kommentar…",
     signInToComment: "Logga in för att kommentera",
     deleted: "[raderad]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Laddar kommentarer…",
   },
   notifications: {

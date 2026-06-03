@@ -175,6 +175,10 @@ export default {
     featured: "Featured",
     boosted: "Binoosted",
     deleted: "Natanggal ang listing",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Bumili Ngayon",
@@ -301,6 +305,10 @@ export default {
     addComment: "Magdagdag ng komento…",
     signInToComment: "Mag-sign in para mag-komento",
     deleted: "[natanggal]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Naglo-load ng mga komento…",
   },
   notifications: {

@@ -175,6 +175,10 @@ export default {
     featured: "추천",
     boosted: "스폰서",
     deleted: "게시물 삭제됨",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "지금 구매",
@@ -301,6 +305,10 @@ export default {
     addComment: "댓글 추가…",
     signInToComment: "댓글을 달려면 로그인하세요",
     deleted: "[삭제됨]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "댓글 로딩 중…",
   },
   notifications: {

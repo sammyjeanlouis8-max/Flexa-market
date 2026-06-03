@@ -322,6 +322,10 @@ export default {
     confirmRemoveVideoMsg: "The promo video will be permanently removed from this listing.",
     videoRemoved: "Video removed successfully",
     deleted: "Listing deleted",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Buy Now",
@@ -362,6 +366,8 @@ export default {
     search: "Search",
     copy: "Copy",
     relist: "Re-list as available",
+    addStock: "+ Add",
+    saving: "Saving…",
   },
   home: {
     featured: "Featured",
@@ -1029,6 +1035,7 @@ export default {
     submitFailed: "Submission failed",
     slowConnection: "Slow connection — data may take a while to load",
     noInternet: "No internet — you're viewing cached data",
+    restock: "Restock error",
   },
   language: {
     en: "English",

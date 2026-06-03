@@ -175,6 +175,10 @@ export default {
     featured: "Fremhevet",
     boosted: "Sponset",
     deleted: "Annonse slettet",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Kjøp nå",
@@ -301,6 +305,10 @@ export default {
     addComment: "Legg til en kommentar…",
     signInToComment: "Logg inn for å kommentere",
     deleted: "[slettet]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Laster kommentarer…",
   },
   notifications: {

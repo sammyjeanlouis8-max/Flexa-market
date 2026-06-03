@@ -322,6 +322,10 @@ export default {
     confirmRemoveVideoMsg: "Videyo pwomo a pral retire pou toujou nan lis sa a.",
     videoRemoved: "Videyo retire avèk siksè",
     deleted: "Lis efase",
+    stockCurrent: "📦 Stock kounye a: {{count}}",
+    restockTitle: "Ogmante kantite stock la",
+    stockUpdated: "✅ Stock mete ajou: {{count}} disponib",
+    addToStock: "Ajoute {{count}} nan stock",
   },
   buttons: {
     buyNow: "Achte kounye a",
@@ -362,6 +366,8 @@ export default {
     search: "Chèche",
     copy: "Kopye",
     relist: "Remèt disponib",
+    addStock: "+ Ajoute",
+    saving: "Ap sovgade…",
   },
   home: {
     featured: "An Vedèt",
@@ -1029,6 +1035,7 @@ export default {
     submitFailed: "Soumisyon echwe",
     slowConnection: "Koneksyon lent — done ka pran tan pou chaje",
     noInternet: "Pa gen entènèt — w ap wè done yo te kache",
+    restock: "Erè restock",
   },
   language: {
     en: "English",

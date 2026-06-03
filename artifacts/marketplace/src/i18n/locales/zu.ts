@@ -175,6 +175,10 @@ export default {
     featured: "Ikhethiwe",
     boosted: "Iye phezulu",
     deleted: "Okulisthiwe kususiwe",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Thenga Manje",
@@ -301,6 +305,10 @@ export default {
     addComment: "Engeza ulungu…",
     signInToComment: "Ngena ngemvume ukuze uphawule",
     deleted: "[kususiwe]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Kuyalayisha amalunga…",
   },
   notifications: {

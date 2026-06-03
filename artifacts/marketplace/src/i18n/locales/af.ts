@@ -175,6 +175,10 @@ export default {
     featured: "Uitgelig",
     boosted: "Versterk",
     deleted: "Lysing uitgevee",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Koop Nou",
@@ -301,6 +305,10 @@ export default {
     addComment: "Voeg kommentaar by…",
     signInToComment: "Meld aan om kommentaar te lewer",
     deleted: "[uitgevee]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Kommentaar word gelaai…",
   },
   notifications: {

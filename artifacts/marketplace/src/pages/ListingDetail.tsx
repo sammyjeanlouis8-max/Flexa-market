@@ -1494,9 +1494,9 @@ export default function ListingDetail() {
                 data-testid="button-restock"
               >
                 <span className="text-orange-700 dark:text-orange-400 font-semibold">
-                  📦 Stock kounye a: <strong>{(listing as any).stockQuantity}</strong>
+                  {t("listing.stockCurrent", { count: (listing as any).stockQuantity })}
                 </span>
-                <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold">+ Ajoute</span>
+                <span className="text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full font-bold">{t("buttons.addStock")}</span>
               </button>
             )}
             {listing.status === "available" ? (
@@ -1666,12 +1666,12 @@ export default function ListingDetail() {
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              📦 Ogmante kantite stock la
+              {t("listing.restockTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="py-3 space-y-4">
             <p className="text-sm text-muted-foreground">
-              Stock kounye a: <strong>{(listing as any)?.stockQuantity ?? 0}</strong>
+              {t("listing.stockCurrent", { count: (listing as any)?.stockQuantity ?? 0 })}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -1703,7 +1703,7 @@ export default function ListingDetail() {
           </div>
           <DialogFooter className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={() => setRestockOpen(false)} disabled={restocking}>
-              Anile
+              {t("buttons.cancel")}
             </Button>
             <Button
               className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
@@ -1720,20 +1720,20 @@ export default function ListingDetail() {
                   });
                   if (!res.ok) throw new Error();
                   const data = await res.json();
-                  toast({ title: `✅ Stock mete ajou: ${data.stockQuantity} disponib` });
+                  toast({ title: t("listing.stockUpdated", { count: data.stockQuantity }) });
                   queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(id) });
                   queryClient.invalidateQueries({ queryKey: getGetListingsQueryKey() });
                   queryClient.invalidateQueries({ queryKey: getGetUserListingsQueryKey((listing as any).sellerId) });
                   setRestockOpen(false);
                 } catch {
-                  toast({ title: "Erè restock", variant: "destructive" });
+                  toast({ title: t("errors.restock"), variant: "destructive" });
                 } finally {
                   setRestocking(false);
                 }
               }}
               data-testid="button-restock-confirm"
             >
-              {restocking ? "Ap sovgade…" : `Ajoute ${restockQty} nan stock`}
+              {restocking ? t("buttons.saving") : t("listing.addToStock", { count: restockQty })}
             </Button>
           </DialogFooter>
         </DialogContent>

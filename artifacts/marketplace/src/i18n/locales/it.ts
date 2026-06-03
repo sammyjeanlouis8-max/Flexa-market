@@ -175,6 +175,10 @@ export default {
     featured: "In evidenza",
     boosted: "Sponsorizzato",
     deleted: "Annuncio eliminato",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Compra ora",
@@ -301,6 +305,10 @@ export default {
     addComment: "Aggiungi un commento…",
     signInToComment: "Accedi per commentare",
     deleted: "[eliminato]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Caricamento commenti…",
   },
   notifications: {

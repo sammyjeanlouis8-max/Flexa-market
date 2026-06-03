@@ -175,6 +175,10 @@ export default {
     featured: "Iliyoangaziwa",
     boosted: "Imepandishwa",
     deleted: "Tangazo limefutwa",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Nunua sasa",
@@ -301,6 +305,10 @@ export default {
     addComment: "Ongeza maoni…",
     signInToComment: "Ingia kutoa maoni",
     deleted: "[imefutwa]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Inapakia maoni…",
   },
   notifications: {

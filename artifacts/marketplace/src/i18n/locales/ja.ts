@@ -175,6 +175,10 @@ export default {
     featured: "注目",
     boosted: "スポンサー",
     deleted: "出品削除済み",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "今すぐ購入",
@@ -301,6 +305,10 @@ export default {
     addComment: "コメントを追加…",
     signInToComment: "コメントするにはログインしてください",
     deleted: "[削除済み]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "コメントを読み込み中…",
   },
   notifications: {

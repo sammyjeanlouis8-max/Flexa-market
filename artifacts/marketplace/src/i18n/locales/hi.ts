@@ -175,6 +175,10 @@ export default {
     featured: "फ़ीचर्ड",
     boosted: "बूस्टेड",
     deleted: "लिस्टिंग हटाई गई",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "अभी खरीदें",
@@ -301,6 +305,10 @@ export default {
     addComment: "टिप्पणी जोड़ें…",
     signInToComment: "टिप्पणी करने के लिए साइन इन करें",
     deleted: "[हटाया गया]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "टिप्पणियां लोड हो रही हैं…",
   },
   notifications: {

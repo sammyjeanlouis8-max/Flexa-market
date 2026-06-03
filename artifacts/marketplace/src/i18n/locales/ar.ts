@@ -175,6 +175,10 @@ export default {
     featured: "مميّز",
     boosted: "مدعوم",
     deleted: "تم حذف الإعلان",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "اشترِ الآن",
@@ -301,6 +305,10 @@ export default {
     addComment: "أضف تعليقاً…",
     signInToComment: "سجّل دخولك للتعليق",
     deleted: "[محذوف]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "جارٍ تحميل التعليقات…",
   },
   notifications: {

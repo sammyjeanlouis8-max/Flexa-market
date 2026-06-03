@@ -175,6 +175,10 @@ export default {
     featured: "An zaɓa",
     boosted: "An ƙara",
     deleted: "An goge jerin",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Saya Yanzu",
@@ -301,6 +305,10 @@ export default {
     addComment: "Ƙara sharhi…",
     signInToComment: "Shiga don yin sharhi",
     deleted: "[an goge]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Ana ɗora sharhi…",
   },
   notifications: {

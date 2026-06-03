@@ -175,6 +175,10 @@ export default {
     featured: "Uitgelicht",
     boosted: "Gesponsord",
     deleted: "Advertentie verwijderd",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
   },
   buttons: {
     buyNow: "Nu kopen",
@@ -301,6 +305,10 @@ export default {
     addComment: "Voeg een reactie toe…",
     signInToComment: "Log in om te reageren",
     deleted: "[verwijderd]",
+    stockCurrent: "📦 Current stock: {{count}}",
+    restockTitle: "Add stock",
+    stockUpdated: "✅ Stock updated: {{count}} available",
+    addToStock: "Add {{count}} to stock",
     loading: "Reacties laden…",
   },
   notifications: {

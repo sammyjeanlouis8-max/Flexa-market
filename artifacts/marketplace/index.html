@@ -2,12 +2,27 @@
 <html lang="fr" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <!-- viewport-fit=cover intentionally REMOVED: it made the iOS WebView render
-         edge-to-edge so content slid under the status bar / notch and top controls
-         (e.g. the chat back button) fell into the WebView top touch dead-zone. Without
-         it the WebView insets all content into the safe area automatically (normal,
-         non-full-bleed layout) on every page. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-visual" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
+    <!-- The native iOS app (TestFlight WKWebView) renders edge-to-edge but reports
+         env(safe-area-inset-*) = 0, so top controls (e.g. the chat back button) land
+         in the WebView top touch dead-zone and become untappable. We flag the in-app
+         webview here so CSS can apply a FIXED safe-area fallback (see --safe-top /
+         --safe-bottom in index.css). Mobile Safari keeps the "Safari/" UA token, so it
+         is NOT flagged and the normal web experience is left unchanged. -->
+    <script>
+      (function () {
+        try {
+          var ua = navigator.userAgent || "";
+          var isIOS = /iP(hone|od|ad)/.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+          var standalone = navigator.standalone === true;
+          var inAppWebView = isIOS && !/Safari\//.test(ua);
+          if (isIOS && (standalone || inAppWebView)) {
+            document.documentElement.classList.add("native-ios");
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- ═══════════════════════ SEO CORE ═══════════════════════ -->
     <title>FLEXA MARKET — Achte &amp; Vann ann Ayiti | Marketplace #1</title>

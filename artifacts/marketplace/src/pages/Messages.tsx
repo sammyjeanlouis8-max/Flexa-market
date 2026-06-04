@@ -1349,7 +1349,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           display: "flex", alignItems: "center", gap: 8,
           /* Top padding clears the iPhone status bar / notch so the header
              content never hides under it; the green fills the safe area. */
-          padding: "calc(env(safe-area-inset-top, 0px) + 8px) 10px 8px",
+          padding: "calc(var(--safe-top) + 8px) 10px 8px",
           borderBottom: `1px solid ${c.headerBorder}`,
           background: c.headerBg, flexShrink: 0, overflow: "hidden",
         }}>
@@ -1565,7 +1565,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         borderTop: `1px solid ${c.headerBorder}`,
         /* Bottom padding clears the iPhone home indicator (safe area) — set
            inline because the shorthand would otherwise override the class. */
-        padding: `8px 10px calc(env(safe-area-inset-bottom, 0px) + 8px)`,
+        padding: `8px 10px calc(var(--safe-bottom) + 8px)`,
         maxWidth: "100vw", overflow: "hidden",
       }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />

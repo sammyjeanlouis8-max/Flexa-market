@@ -5,6 +5,24 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ──────────────────────────────────────────────────────────────────────────
+   Safe-area tokens. In a real browser env(safe-area-inset-*) works, so we use
+   it directly. Inside the native iOS app (TestFlight WKWebView) the wrapper
+   reports env()=0 even though content renders under the status bar / home
+   indicator, so `html.native-ios` (set by the detection script in index.html)
+   forces a fixed minimum gap. This keeps top controls (e.g. the chat back
+   button) out of the iOS WebView top touch dead-zone on every page, while
+   leaving the normal web experience untouched.
+   ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+html.native-ios {
+  --safe-top: max(env(safe-area-inset-top, 0px), 50px);
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+
 html {
   height: 100%;
   margin: 0;
@@ -78,13 +96,13 @@ main {
     /* Keep scroll momentum inside the message list — never chain to the page */
     overscroll-behavior: contain;
     /* bottom padding = input bar height + safe area */
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
+    padding-bottom: calc(var(--safe-bottom) + 68px);
   }
 
   /* Input bar pinned at the very bottom, above the safe area */
   .chat-input-bar {
     flex-shrink: 0;
-    padding-bottom: env(safe-area-inset-bottom, 12px);
+    padding-bottom: var(--safe-bottom);
   }
 
   /* 44×44 minimum touch target — Apple HIG requirement */
@@ -427,7 +445,7 @@ main {
      Nav is 64 px tall; safe-area-inset-bottom covers the home bar (≈34 px
      on iPhone X/11/12/13/14/15 series, 0 on older models). */
   .pb-safe-nav {
-    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(64px + var(--safe-bottom));
   }
   @media (min-width: 768px) {
     .pb-safe-nav { padding-bottom: 0; }

@@ -678,11 +678,11 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className={`bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
-      {/* paddingTop adds the notch / Dynamic Island gap on iPhone X+ when the
-          WebView reports a non-zero safe-area-inset-top. viewport-fit=cover is
-          intentionally NOT set (see index.html), so the WebView already insets
-          content into the safe area and this env() value is usually 0 / harmless. */}
-      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      {/* paddingTop = var(--safe-top): the real notch/status-bar inset in a browser,
+          or a fixed fallback inside the native iOS app where env() reports 0
+          (see index.css + the detection script in index.html). Keeps the header
+          and its back button below the status bar / out of the touch dead-zone. */}
+      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "var(--safe-top)" }}>
         <div className="max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 
           {/* Mobile back button — visible only on sub-pages, hidden on desktop */}
@@ -762,7 +762,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               hover:from-orange-600 hover:to-amber-500
               active:scale-95 transition-all duration-150
               right-4 md:right-6
-              bottom-[calc(64px+env(safe-area-inset-bottom,0px)+14px)]
+              bottom-[calc(64px+var(--safe-bottom)+14px)]
               md:bottom-6
             `}
           >
@@ -778,7 +778,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
             in the upper 64 px, extra space is padding below them. */}
-        <div className="flex" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
+        <div className="flex" style={{ height: "calc(64px + var(--safe-bottom))", paddingBottom: "var(--safe-bottom)", alignItems: "flex-start", paddingTop: "0" }}>
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (

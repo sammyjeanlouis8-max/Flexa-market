@@ -253,6 +253,53 @@ export default function BoostPage() {
     v.src = url;
   });
 
+  // Big phone videos (1–3 min, often 100–300 MB) fail as a single PUT over mobile
+  // data — the request outlives the server's request timeout and dies. So for
+  // anything above the threshold we upload in small chunks (each its own short
+  // request), exactly like the Boost wizard does. Small clips keep the simple path.
+  const CHUNK_SIZE      = 8 * 1024 * 1024;
+  const CHUNK_THRESHOLD = 50 * 1024 * 1024;
+
+  const chunkedUploadVideo = async (file: File): Promise<string> => {
+    const storedToken = localStorage.getItem("flexamarket_token") ?? "";
+    const authHeaders: Record<string, string> = storedToken
+      ? { Authorization: `Bearer ${storedToken}` }
+      : {};
+
+    const initRes = await fetch("/api/storage/uploads/chunk-init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+    });
+    if (!initRes.ok) throw new Error(`chunk-init-failed-${initRes.status}`);
+    const { uploadId, objectPath } = await initRes.json() as {
+      uploadId: string; objectPath: string;
+    };
+
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const putRes = await fetch(`/api/storage/uploads/chunk/${uploadId}/${i}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type || "video/mp4",
+          "Content-Length": String(chunk.size),
+          ...authHeaders,
+        },
+        body: chunk,
+      });
+      if (!putRes.ok) throw new Error(`chunk-put-failed-${putRes.status}-idx-${i}`);
+    }
+
+    const finalRes = await fetch(`/api/storage/uploads/chunk-finalize/${uploadId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify({ totalChunks, contentType: file.type || "video/mp4" }),
+    });
+    if (!finalRes.ok) throw new Error(`chunk-finalize-failed-${finalRes.status}`);
+    const data = await finalRes.json() as { objectPath: string };
+    return data.objectPath ?? objectPath;
+  };
+
   const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -273,14 +320,23 @@ export default function BoostPage() {
     }
     setVideoUploading(true);
     try {
-      const result = await uploadVideoFile(file);
-      if (!result) {
+      let objectPath: string | null = null;
+      if (file.size > CHUNK_THRESHOLD) {
+        // Large video → resilient chunked upload (survives mobile networks).
+        objectPath = await chunkedUploadVideo(file);
+      } else {
+        const result = await uploadVideoFile(file);
+        objectPath = result?.objectPath ?? null;
+      }
+      if (!objectPath) {
         toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
         return;
       }
       // Persist the object-storage path; the backend rewrites it to a
       // signed-fetch URL when the visitor's overlay loads it.
-      setVideoUrl(result.objectPath);
+      setVideoUrl(objectPath);
+    } catch {
+      toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
     } finally {
       setVideoUploading(false);
     }

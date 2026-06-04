@@ -1482,6 +1482,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           backgroundRepeat: "repeat",
           backgroundSize: "150px 150px",
           WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
         } as React.CSSProperties}
       >
         {isLoading && (

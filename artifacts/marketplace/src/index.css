@@ -57,10 +57,15 @@ main {
     right: 0;
     bottom: 0;
     height: 100dvh;
-    z-index: 45;
+    /* Above the global app header (z-50) so the chat fully takes over the
+       screen — otherwise the site navbar bleeds over the conversation. */
+    z-index: 55;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* Lock the overlay itself so a drag can never rubber-band the whole page */
+    overscroll-behavior: none;
+    touch-action: pan-y;
     background: hsl(var(--background));
   }
 
@@ -70,6 +75,8 @@ main {
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
+    /* Keep scroll momentum inside the message list — never chain to the page */
+    overscroll-behavior: contain;
     /* bottom padding = input bar height + safe area */
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
   }

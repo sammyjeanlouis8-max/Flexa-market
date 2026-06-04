@@ -235,8 +235,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             )}
           </div>
 
-          {/* Skip / countdown — top-right, overlaid on the video (not at the bottom) */}
-          <div className="absolute top-3 right-3 z-10 pointer-events-auto">
+          {/* Skip / countdown — bottom-right of the video (mid-screen): low enough
+              to avoid the iOS WebView top touch dead-zone, but not in the bottom CTA bar */}
+          <div className="absolute bottom-3 right-3 z-10 pointer-events-auto">
             {skipReady ? (
               <button
                 type="button"

@@ -7,11 +7,11 @@ import { X } from "lucide-react";
  * Video Booster overlay — floating player, no dark background.
  *
  * Layout: fixed top-of-screen card (video + controls).
- *   - No full-screen dark overlay: page content visible below the player.
+ *   - No dark veil: transparent player background, page content stays visible.
  *   - Video plays at natural aspect ratio (object-contain).
  *   - Sound locked ON; browser-forced mute unmutes on first user interaction.
  *   - No pause: video plays uninterrupted until skip or end.
- *   - Skip/countdown always visible BELOW the video.
+ *   - Skip/countdown overlaid TOP-RIGHT of the video (never at the bottom).
  */
 
 const SKIP_AFTER_SEC = 10;
@@ -81,43 +81,69 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     return () => window.clearInterval(id);
   }, []); // run once on mount
 
-  // ── Autoplay with sound ON — unmute on first touch if browser blocks ───────
+  // ── Autoplay with sound ON — keep trying until sound is enabled ────────────
+  // Sound must be ON in every circumstance. We always try to play UNMUTED first.
+  // If the platform blocks unmuted autoplay we start muted (so the video is
+  // visible) and then unmute on the very first user interaction of any kind.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
     let cancelled = false;
 
-    // One-shot: unmute + hide the sound-hint badge on first user gesture
-    const unlockAudio = () => {
-      if (videoRef.current) videoRef.current.muted = false;
-      setSoundLocked(false);
-      // Clean up all listeners
-      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
-      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
+    const UNLOCK_EVENTS: Array<keyof WindowEventMap> = [
+      "touchstart", "pointerdown", "click", "keydown",
+    ];
+
+    const removeUnlockListeners = () => {
+      UNLOCK_EVENTS.forEach(ev =>
+        window.removeEventListener(ev, unlockAudio, { capture: true }),
+      );
     };
 
-    const attemptPlay = async (withSound: boolean) => {
+    // Force sound on at the first user gesture, then resume playback.
+    function unlockAudio(): void {
+      const v = videoRef.current;
+      if (v) {
+        v.muted = false;
+        void v.play().catch(() => {});
+      }
+      setSoundLocked(false);
+      removeUnlockListeners();
+    }
+
+    const armUnlockListeners = () => {
+      UNLOCK_EVENTS.forEach(ev =>
+        window.addEventListener(ev, unlockAudio, { capture: true, once: true, passive: true }),
+      );
+    };
+
+    const attemptPlay = async (withSound: boolean): Promise<void> => {
       vid.muted = !withSound;
       try {
         await vid.play();
         if (cancelled) return;
         if (!withSound) {
-          // iOS forced muted start — show hint badge + listen for first touch
+          // Platform forced a muted start — show hint + unmute on first gesture.
           setSoundLocked(true);
-          window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
+          armUnlockListeners();
         }
       } catch {
         if (cancelled) return;
-        if (withSound) await attemptPlay(false); // graceful fallback to muted
+        if (withSound) {
+          await attemptPlay(false); // fall back to muted, then unmute on touch
+        } else {
+          // Even muted autoplay was blocked — guarantee a first-gesture recovery
+          // so sound (and playback) always start on the user's first interaction.
+          setSoundLocked(true);
+          armUnlockListeners();
+        }
       }
     };
 
-    attemptPlay(true); // always try unmuted first
+    void attemptPlay(true); // always try unmuted first
     return () => {
       cancelled = true;
-      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
-      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
+      removeUnlockListeners();
     };
   }, []);
 
@@ -173,7 +199,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         aria-label={t("boostAd.sponsored")}
         data-testid="boost-video-overlay"
       >
-        <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
+        <div className="relative w-full bg-transparent" style={{ maxHeight: "55vh", overflow: "hidden" }}>
           {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
           <video
             ref={videoRef}
@@ -206,6 +232,42 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               >
                 {t("boostAd.sponsoredBy", { name: listing.sellerName })}
               </span>
+            )}
+          </div>
+
+          {/* Skip / countdown — top-right, overlaid on the video (not at the bottom) */}
+          <div className="absolute top-3 right-3 z-10 pointer-events-auto">
+            {skipReady ? (
+              <button
+                type="button"
+                onClick={handleSkip}
+                onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
+                className="bg-white text-black rounded-full px-4 py-1.5 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all shadow-lg"
+                data-testid="button-boost-skip"
+              >
+                {t("boostAd.skip")} <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <div
+                className="relative bg-black/50 rounded-full w-11 h-11 flex items-center justify-center shadow-lg"
+                data-testid="text-boost-skip-countdown"
+                aria-label={t("boostAd.skipIn", { seconds: countdown })}
+              >
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+                  <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" />
+                  <circle
+                    cx="22" cy="22" r="19"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="2.5"
+                    strokeDasharray={`${2 * Math.PI * 19}`}
+                    strokeDashoffset={`${2 * Math.PI * 19 * (1 - countdown / SKIP_AFTER_SEC)}`}
+                    strokeLinecap="round"
+                    style={{ transition: "stroke-dashoffset 1s linear" }}
+                  />
+                </svg>
+                <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
+              </div>
             )}
           </div>
 
@@ -267,42 +329,6 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
                 : <>{t("boostAd.viewListing")} →</>}
           </span>
         </button>
-
-        {/* Skip / countdown — right-aligned, below CTA */}
-        <div className="flex items-center justify-end mt-3 mb-1">
-          {skipReady ? (
-            <button
-              type="button"
-              onClick={handleSkip}
-              onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
-              className="bg-white text-black rounded-full px-5 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all"
-              data-testid="button-boost-skip"
-            >
-              {t("boostAd.skip")} <X className="h-4 w-4" />
-            </button>
-          ) : (
-            <div
-              className="relative bg-white/20 rounded-full w-11 h-11 flex items-center justify-center"
-              data-testid="text-boost-skip-countdown"
-              aria-label={t("boostAd.skipIn", { seconds: countdown })}
-            >
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" />
-                <circle
-                  cx="22" cy="22" r="19"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeDasharray={`${2 * Math.PI * 19}`}
-                  strokeDashoffset={`${2 * Math.PI * 19 * (1 - countdown / SKIP_AFTER_SEC)}`}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dashoffset 1s linear" }}
-                />
-              </svg>
-              <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
-            </div>
-          )}
-        </div>
       </div>
     </>
   );

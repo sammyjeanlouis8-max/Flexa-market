@@ -8,6 +8,7 @@ import {
   Pressable, StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { buildSafeAreaJs } from "@/components/SiteWebView";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
@@ -163,6 +164,9 @@ function EmbeddedHome({ insets }: any) {
         allowsBackForwardNavigationGestures
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+        injectedJavaScriptBeforeContentLoaded={buildSafeAreaJs(insets)}
         overScrollMode="never"
         onNavigationStateChange={setNavState}
         onLoadStart={() => { setLoading(true); setOffline(false); }}

@@ -1,10 +1,7 @@
+import SiteWebView from "@/components/SiteWebView";
 import React from "react";
-import { NativeModules, StyleSheet, View } from "react-native";
-const HAS_WEBVIEW = !!(NativeModules.RNCWebView);
-let WebView: any = null;
-if (HAS_WEBVIEW) { WebView = require("react-native-webview").default; }
+
 export default function MyListingsScreen() {
-  if (!HAS_WEBVIEW) return null;
-  return <View style={styles.c}><WebView source={{ uri: "https://flexamarket.com/my-listings" }} style={{ flex: 1 }} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled userAgent="FlexaMarket/1.0 (Mobile App)" /></View>;
+  const uri = "https://flexamarket.com/my-listings";
+  return <SiteWebView uri={uri} />;
 }
-const styles = StyleSheet.create({ c: { flex: 1 } });

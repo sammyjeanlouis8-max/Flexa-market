@@ -49,88 +49,121 @@ type ChatMessage = {
 type ChatTheme = "sunlight" | "night";
 const THEME_KEY = "flexamarket_chat_theme_v2";
 
+// WhatsApp-style doodle wallpaper — subtle line-art tiled over the chat area.
+// Stroke colour is passed in so light/dark themes get the right contrast.
+function chatDoodle(stroke: string): string {
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150' viewBox='0 0 150 150'>` +
+    `<g fill='none' stroke='${stroke}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>` +
+    `<path d='M18 30c0-6 5-11 11-11h16c6 0 11 5 11 11v7c0 6-5 11-11 11h-9l-9 7v-7h-9c-6 0-11-5-11-11z'/>` +
+    `<circle cx='120' cy='28' r='10'/><path d='M115 28l4 4 7-7'/>` +
+    `<path d='M24 108l6-13 5 8 6-16 6 21'/>` +
+    `<path d='M104 92c-7-7-18 0-11 9l11 11 11-11c7-9-4-16-11-9z'/>` +
+    `<path d='M74 128l2.5 6 6 .5-4.5 4.5 1.5 6-5-3.5-5 3.5 1.5-6-4.5-4.5 6-.5z'/>` +
+    `<path d='M126 116h16M134 108v16'/>` +
+    `<circle cx='34' cy='66' r='3'/><circle cx='96' cy='128' r='3'/>` +
+    `</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
 const T = {
   sunlight: {
     isDark: false,
-    pageBg: "#F0F2F5",
+    pageBg: "#EFEAE2",
     listBg: "#FFFFFF",
-    listItemHover: "#F3F4F6",
-    listItemActive: "#EBF4FF",
-    listBorder: "#E5E7EB",
-    headerBg: "#FFFFFF",
-    headerBorder: "#E5E7EB",
-    msgAreaBg: "#F0F2F5",
-    bubbleOut: "linear-gradient(135deg, #4f7cff, #3b82f6)",
+    listItemHover: "#F5F6F6",
+    listItemActive: "#F0F2F5",
+    listBorder: "#E9EDEF",
+    headerBg: "#008069",
+    headerBorder: "#017561",
+    headerText: "#FFFFFF",
+    headerSubText: "rgba(255,255,255,0.85)",
+    headerIcon: "#FFFFFF",
+    headerIconBg: "rgba(255,255,255,0.16)",
+    msgAreaBg: "#EFEAE2",
+    msgDoodle: chatDoodle("rgba(11,20,26,0.05)"),
+    bubbleOut: "#D9FDD3",
     bubbleIn: "#FFFFFF",
-    textOut: "#FFFFFF",
-    textIn: "#1F2937",
-    timeOut: "rgba(255,255,255,0.75)",
-    timeIn: "#9CA3AF",
-    seenColor: "#3B82F6",
-    inputWrapBg: "#FFFFFF",
-    inputBg: "#F3F4F6",
-    inputText: "#111827",
-    inputPlaceholder: "#9CA3AF",
-    iconColor: "#6B7280",
-    iconActiveBg: "#F3F4F6",
-    nameColor: "#111827",
-    presenceOn: "#22C55E",
-    presenceOff: "#9CA3AF",
+    textOut: "#111B21",
+    textIn: "#111B21",
+    timeOut: "#667781",
+    timeIn: "#8696A0",
+    seenColor: "#53BDEB",
+    inputWrapBg: "#F0F2F5",
+    inputBg: "#FFFFFF",
+    inputText: "#111B21",
+    inputPlaceholder: "#8696A0",
+    iconColor: "#54656F",
+    iconActiveBg: "#E9EDEF",
+    nameColor: "#111B21",
+    presenceOn: "#FFFFFF",
+    presenceOff: "rgba(255,255,255,0.85)",
     typingBg: "#FFFFFF",
-    typingDot: "#9CA3AF",
+    typingDot: "#8696A0",
     contextBg: "#FFFFFF",
-    contextBorder: "#E5E7EB",
-    contextText: "#1F2937",
+    contextBorder: "#E9EDEF",
+    contextText: "#111B21",
     contextDestructive: "#EF4444",
-    listName: "#111827",
-    listSub: "#6B7280",
-    listTime: "#9CA3AF",
-    emptyIcon: "#D1D5DB",
-    emptyText: "#9CA3AF",
-    toggleBg: "#F3F4F6",
-    toggleIcon: "#818CF8",
-    sendBg: "#2563EB",
+    listName: "#111B21",
+    listSub: "#667781",
+    listTime: "#667781",
+    emptyIcon: "#D1D7DB",
+    emptyText: "#8696A0",
+    toggleBg: "rgba(255,255,255,0.16)",
+    toggleIcon: "#FFFFFF",
+    sendBg: "#00A884",
+    accent: "#00A884",
+    unread: "#25D366",
+    avatarBg: "#8696A0",
   },
   night: {
     isDark: true,
-    pageBg: "#0F172A",
-    listBg: "#0F172A",
-    listItemHover: "#1E293B",
-    listItemActive: "#1E293B",
-    listBorder: "#1E293B",
-    headerBg: "#0F172A",
-    headerBorder: "#1E293B",
-    msgAreaBg: "#0F172A",
-    bubbleOut: "linear-gradient(135deg, #4f7cff, #3b82f6)",
-    bubbleIn: "rgba(255, 255, 255, 0.08)",
-    textOut: "#FFFFFF",
-    textIn: "#E5E7EB",
-    timeOut: "rgba(255,255,255,0.55)",
-    timeIn: "#94A3B8",
-    seenColor: "#A78BFA",
-    inputWrapBg: "#0F172A",
-    inputBg: "#1E293B",
-    inputText: "#F1F5F9",
-    inputPlaceholder: "#94A3B8",
-    iconColor: "#94A3B8",
-    iconActiveBg: "#1E293B",
-    nameColor: "#F1F5F9",
-    presenceOn: "#22C55E",
-    presenceOff: "#64748B",
-    typingBg: "#1E293B",
-    typingDot: "#475569",
-    contextBg: "#1E293B",
-    contextBorder: "#334155",
-    contextText: "#F1F5F9",
-    contextDestructive: "#EF4444",
-    listName: "#F1F5F9",
-    listSub: "#94A3B8",
-    listTime: "#64748B",
-    emptyIcon: "#334155",
-    emptyText: "#94A3B8",
-    toggleBg: "#1E293B",
-    toggleIcon: "#818CF8",
-    sendBg: "#7C3AED",
+    pageBg: "#0B141A",
+    listBg: "#111B21",
+    listItemHover: "#202C33",
+    listItemActive: "#2A3942",
+    listBorder: "#222D34",
+    headerBg: "#202C33",
+    headerBorder: "#222D34",
+    headerText: "#E9EDEF",
+    headerSubText: "#8696A0",
+    headerIcon: "#AEBAC1",
+    headerIconBg: "rgba(255,255,255,0.08)",
+    msgAreaBg: "#0B141A",
+    msgDoodle: chatDoodle("rgba(233,237,239,0.04)"),
+    bubbleOut: "#005C4B",
+    bubbleIn: "#202C33",
+    textOut: "#E9EDEF",
+    textIn: "#E9EDEF",
+    timeOut: "rgba(233,237,239,0.6)",
+    timeIn: "#8696A0",
+    seenColor: "#53BDEB",
+    inputWrapBg: "#111B21",
+    inputBg: "#2A3942",
+    inputText: "#E9EDEF",
+    inputPlaceholder: "#8696A0",
+    iconColor: "#8696A0",
+    iconActiveBg: "#202C33",
+    nameColor: "#E9EDEF",
+    presenceOn: "#8696A0",
+    presenceOff: "#8696A0",
+    typingBg: "#202C33",
+    typingDot: "#8696A0",
+    contextBg: "#233138",
+    contextBorder: "#2A3942",
+    contextText: "#E9EDEF",
+    contextDestructive: "#F15C6D",
+    listName: "#E9EDEF",
+    listSub: "#8696A0",
+    listTime: "#8696A0",
+    emptyIcon: "#2A3942",
+    emptyText: "#8696A0",
+    toggleBg: "rgba(255,255,255,0.08)",
+    toggleIcon: "#AEBAC1",
+    sendBg: "#00A884",
+    accent: "#00A884",
+    unread: "#25D366",
+    avatarBg: "#6A7B84",
   },
 } as const;
 
@@ -207,7 +240,7 @@ class ThreadBoundary extends Component<
     if (this.state.isRetrying) {
       return (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: this.props.pageBg }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #3b82f6", borderTopColor: "transparent", animation: "eb-spin 0.8s linear infinite" }} />
+          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #00A884", borderTopColor: "transparent", animation: "eb-spin 0.8s linear infinite" }} />
         </div>
       );
     }
@@ -219,14 +252,14 @@ class ThreadBoundary extends Component<
         justifyContent: "center", height: "100%", padding: 32,
         background: this.props.pageBg, textAlign: "center", gap: 14,
       }}>
-        <MessageCircle style={{ width: 44, height: 44, color: "#3b82f6", opacity: 0.7 }} />
+        <MessageCircle style={{ width: 44, height: 44, color: "#00A884", opacity: 0.7 }} />
         <p style={{ color: "#94a3b8", fontSize: 14, margin: 0, maxWidth: 240, lineHeight: 1.6 }}>
           Gen yon ti pwoblèm koneksyon. Eseye ankò.
         </p>
         <button
           onClick={() => this.setState({ hasError: false, retryCount: 0, isRetrying: false })}
           style={{
-            background: "linear-gradient(135deg, #4f7cff, #3b82f6)",
+            background: "#00A884",
             color: "#fff", border: "none", borderRadius: 10,
             padding: "10px 26px", fontSize: 14, fontWeight: 700, cursor: "pointer",
           }}
@@ -410,10 +443,10 @@ const AudioBubble = React.memo(function AudioBubble({
   const N = WAVE_BARS.length;
 
   // ── colours ──────────────────────────────────────────────────────────────
-  const PLAYED_COLOR = "#33AAFF";
-  const IDLE_COLOR   = isMe ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.18)";
-  const iconColor    = isMe ? "#fff" : theme.textIn;
-  const timeColor    = isMe ? "rgba(255,255,255,0.70)" : theme.timeIn;
+  const PLAYED_COLOR = "#00A884";
+  const IDLE_COLOR   = theme.isDark ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.22)";
+  const iconColor    = isMe ? theme.textOut : theme.textIn;
+  const timeColor    = isMe ? theme.timeOut : theme.timeIn;
 
   // ── direct-DOM waveform update at 60 fps ─────────────────────────────────
   const paintFrame = useCallback(() => {
@@ -547,7 +580,7 @@ const AudioBubble = React.memo(function AudioBubble({
           type="button" onClick={toggle}
           style={{
             flexShrink: 0, width: 36, height: 36, borderRadius: "50%",
-            background: isMe ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.10)",
+            background: theme.isDark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.08)",
             border: "none", cursor: "pointer", padding: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
             color: iconColor, transition: "background 0.15s",
@@ -603,7 +636,7 @@ const AudioBubble = React.memo(function AudioBubble({
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <Mic style={{
                 width: 11, height: 11, flexShrink: 0,
-                color: isMe ? (isListened ? PLAYED_COLOR : "rgba(255,255,255,0.50)") : "rgba(0,0,0,0.30)",
+                color: isMe ? (isListened ? PLAYED_COLOR : (theme.isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.4)")) : (theme.isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.3)"),
                 transition: "color 0.3s",
               }} />
               {/* rAF writes here directly; React only sets the initial value */}
@@ -717,6 +750,7 @@ function MsgBubble({
           width: isAudio ? bubbleMaxW : undefined,
           borderRadius: br,
           background: bubbleBg,
+          boxShadow: "0 1px 0.5px rgba(11,20,26,0.13)",
           overflow: isAudio ? "hidden" : "visible",
         }}
         onPointerDown={startLongPress}
@@ -928,7 +962,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
             >
               <Avatar className="h-12 w-12" style={{ cursor: "pointer" }}>
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
-                <AvatarFallback style={{ background: "#2563EB", color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                <AvatarFallback style={{ background: c.avatarBg, color: "#fff", fontWeight: 700, fontSize: 16 }}>
                   {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
@@ -936,7 +970,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
                 <span style={{
                   position: "absolute", top: -2, right: -2,
                   width: 16, height: 16, borderRadius: "50%",
-                  background: "#2563EB", border: `2px solid ${c.listBg}`,
+                  background: c.unread, border: `2px solid ${c.listBg}`,
                 }} />
               )}
             </div>
@@ -961,7 +995,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
                   {conv.lastMessage ?? conv.listingTitle}
                 </p>
                 {conv.unreadCount > 0 && (
-                  <Badge style={{ fontSize: 11, minWidth: 20, height: 20, padding: "0 6px", background: "#2563EB", flexShrink: 0 }}>
+                  <Badge style={{ fontSize: 11, minWidth: 20, height: 20, padding: "0 6px", background: c.unread, flexShrink: 0 }}>
                     {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
                   </Badge>
                 )}
@@ -1321,7 +1355,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             <button type="button" style={{
               width: 38, height: 38, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              color: c.iconColor, cursor: "pointer", flexShrink: 0,
+              color: c.headerIcon, cursor: "pointer", flexShrink: 0,
             }}>
               <ArrowLeft style={{ width: 22, height: 22 }} />
             </button>
@@ -1332,7 +1366,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             <div style={{ position: "relative", cursor: "pointer" }}>
               <Avatar className="h-10 w-10">
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
-                <AvatarFallback style={{ background: "#2563EB", color: "#fff", fontWeight: 700, fontSize: 15 }}>
+                <AvatarFallback style={{ background: c.avatarBg, color: "#fff", fontWeight: 700, fontSize: 15 }}>
                   {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
@@ -1348,7 +1382,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
           {/* Name + status */}
           <Link href={`/profile/${conv.otherUserId}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: c.nameColor, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: c.headerText, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {conv.otherUserName}
             </p>
             <p style={{ margin: 0, fontSize: 12, lineHeight: 1.3, color: otherOnline ? c.presenceOn : c.presenceOff }}>
@@ -1369,33 +1403,33 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               title={isDarkMode ? "Sunlight Mode" : "Night Mode"}
               style={{
                 width: 30, height: 30, borderRadius: "50%",
-                background: c.iconActiveBg, border: "none",
+                background: c.headerIconBg, border: "none",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", flexShrink: 0,
               }}
             >
               {isDarkMode
                 ? <Sun style={{ width: 15, height: 15, color: "#FCD34D" }} />
-                : <Moon style={{ width: 15, height: 15, color: "#818CF8" }} />}
+                : <Moon style={{ width: 15, height: 15, color: c.headerIcon }} />}
             </button>
 
             {/* Video call */}
             <button type="button" style={{
-              width: 30, height: 30, borderRadius: "50%", background: c.iconActiveBg,
+              width: 30, height: 30, borderRadius: "50%", background: c.headerIconBg,
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", flexShrink: 0,
             }}>
-              <Video style={{ width: 15, height: 15, color: c.iconColor }} />
+              <Video style={{ width: 15, height: 15, color: c.headerIcon }} />
             </button>
 
             {/* Profile */}
             <Link href={`/profile/${conv.otherUserId}`}>
               <button type="button" style={{
-                width: 30, height: 30, borderRadius: "50%", background: c.iconActiveBg,
+                width: 30, height: 30, borderRadius: "50%", background: c.headerIconBg,
                 border: "none", display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", flexShrink: 0,
               }}>
-                <Phone style={{ width: 15, height: 15, color: c.iconColor }} />
+                <Phone style={{ width: 15, height: 15, color: c.headerIcon }} />
               </button>
             </Link>
 
@@ -1443,7 +1477,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         ref={msgContainerRef}
         style={{
           flex: 1, overflowY: "auto", overflowX: "hidden",
-          background: c.msgAreaBg,
+          backgroundColor: c.msgAreaBg,
+          backgroundImage: c.msgDoodle,
+          backgroundRepeat: "repeat",
+          backgroundSize: "150px 150px",
           WebkitOverflowScrolling: "touch",
         } as React.CSSProperties}
       >
@@ -1562,8 +1599,8 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               }}
               style={{
                 flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
-                background: showEmojiPanel ? "rgba(249,115,22,0.18)" : "none",
-                border: showEmojiPanel ? "1.5px solid rgba(249,115,22,0.5)" : "none",
+                background: showEmojiPanel ? "rgba(0,168,132,0.14)" : "none",
+                border: showEmojiPanel ? "1.5px solid rgba(0,168,132,0.45)" : "none",
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                 color: c.iconColor, transition: "background 0.15s, border 0.15s",
               }}
@@ -1614,7 +1651,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 {/* Send */}
                 <button type="button" onClick={() => stopVoiceRecording(false)} style={{
                   flexShrink: 0, width: 46, height: 46, borderRadius: "50%",
-                  background: "#22C55E", border: "none", cursor: "pointer",
+                  background: "#00A884", border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
                 }}>
                   <Send style={{ width: 19, height: 19 }} />
@@ -1735,12 +1772,12 @@ export default function Messages() {
             <button type="button" style={{
               width: 36, height: 36, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              color: c.iconColor, cursor: "pointer", flexShrink: 0,
+              color: c.headerIcon, cursor: "pointer", flexShrink: 0,
             }}>
               <ArrowLeft style={{ width: 20, height: 20 }} />
             </button>
           </Link>
-          <h1 style={{ fontWeight: 700, color: c.nameColor, fontSize: 18, margin: 0, flex: 1 }}>
+          <h1 style={{ fontWeight: 700, color: c.headerText, fontSize: 18, margin: 0, flex: 1 }}>
             {t("messages.title")}
           </h1>
           {/* Theme toggle */}
@@ -1749,14 +1786,14 @@ export default function Messages() {
             onClick={toggleTheme}
             style={{
               width: 34, height: 34, borderRadius: "50%",
-              background: c.iconActiveBg, border: "none",
+              background: c.headerIconBg, border: "none",
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", flexShrink: 0,
             }}
           >
             {chatTheme === "night"
               ? <Sun style={{ width: 16, height: 16, color: "#FCD34D" }} />
-              : <Moon style={{ width: 16, height: 16, color: "#818CF8" }} />}
+              : <Moon style={{ width: 16, height: 16, color: c.headerIcon }} />}
           </button>
         </div>
         <ConvList convs={(convs as Conversation[]) ?? []} activeId={convId ?? undefined} theme={theme} />

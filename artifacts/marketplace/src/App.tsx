@@ -218,6 +218,7 @@ function LayoutRoutes() {
           <Route path="/about" component={About} />
           <Route path="/contact" component={Contact} />
           <Route path="/delete-account" component={DeleteAccount} />
+          <Route path="/account-deletion" component={DeleteAccount} />
           <Route path="/community-guidelines" component={CommunityGuidelines} />
           <Route path="/refund-policy" component={RefundPolicy} />
           <Route path="/seller-policy" component={SellerPolicy} />

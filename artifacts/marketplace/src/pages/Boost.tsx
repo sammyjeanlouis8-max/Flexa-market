@@ -3,9 +3,8 @@ import { useRoute, useLocation } from "wouter";
 import {
   Zap, Check, CreditCard, ArrowLeft, Clock, Eye,
   Copy, CheckCheck, AlertCircle, Shield, Info,
-  Video, X, Upload,
+  Video, X, Upload, Loader2, RefreshCw, Trash2, CheckCircle2, AlertTriangle,
 } from "lucide-react";
-import { useUpload } from "@workspace/object-storage-web";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -234,41 +233,117 @@ export default function BoostPage() {
   const [budget, setBudget]             = useState<number>(5.00);
   const [estimatedReach, setEstimatedReach] = useState<number | null>(null);
 
-  // Optional ≤30s promo video. Stored as the publicly-fetchable URL we'll
-  // pass to /boost/initiate. Validation happens client-side via a hidden
-  // <video> element that decodes metadata to read .duration.
-  const [videoUrl, setVideoUrl]         = useState<string | null>(null);
-  const [videoUploading, setVideoUploading] = useState(false);
-  const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
-  const { uploadFile: uploadVideoFile } = useUpload();
+  // ── Promo video upload (full state machine) ──────────────────────────────
+  // Real, resilient uploader with live byte-progress, validation, cancel, retry
+  // and a rich success card. Small clips upload via a presigned PUT (XHR, so we
+  // get onprogress); big phone videos (1–3 min, 100–300 MB) that would time out
+  // as one request are streamed in 8 MB chunks. Works inside the iOS WebView.
+  type VideoUploadState =
+    | "idle" | "validating" | "preparing" | "uploading"
+    | "processing" | "success" | "failed" | "cancelled";
+
+  const [videoUrl, setVideoUrl]               = useState<string | null>(null);
+  const [videoState, setVideoState]           = useState<VideoUploadState>("idle");
+  const [videoProgress, setVideoProgress]     = useState(0);   // 0–100
+  const [videoLoaded, setVideoLoaded]         = useState(0);   // bytes sent
+  const [videoError, setVideoError]           = useState<string | null>(null);
+  const [videoMeta, setVideoMeta]             = useState<{ name: string; size: number; duration: number | null } | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const videoFileRef      = useRef<File | null>(null);          // kept for retry
+  const videoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const xhrRef            = useRef<XMLHttpRequest | null>(null);
+  const chunkAbortRef     = useRef<AbortController | null>(null);
+  const cancelledRef      = useRef(false);
+  const videoPreviewRef   = useRef<string | null>(null);   // mirror for unmount revoke
+  const uploadSeqRef      = useRef(0);                       // invalidates stale attempts
+
   const MAX_VIDEO_SECONDS = 180;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024;
+  const CHUNK_SIZE        = 8 * 1024 * 1024;
+  const CHUNK_THRESHOLD   = 50 * 1024 * 1024;
 
-  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve, reject) => {
+  // Any in-flight phase — the rest of the form keys its disabled states off this.
+  const videoBusy = videoState === "validating" || videoState === "preparing"
+                 || videoState === "uploading"  || videoState === "processing";
+
+  const fmtBytes = (b: number) => {
+    if (b >= 1073741824) return `${(b / 1073741824).toFixed(1)} GB`;
+    if (b >= 1048576)    return `${(b / 1048576).toFixed(1)} MB`;
+    if (b >= 1024)       return `${Math.round(b / 1024)} KB`;
+    return `${b} B`;
+  };
+  const fmtDuration = (s: number | null) => {
+    if (s == null || !Number.isFinite(s)) return null;
+    const m = Math.floor(s / 60), sec = Math.round(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  // Resolve NaN (never reject) when the browser can't decode metadata — the iOS
+  // WebView frequently can't read HEVC/.mov duration, and that must NOT block the
+  // upload (treat unknown duration as allowed; the server re-encodes anyway).
+  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode-failed")); };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
     v.src = url;
   });
 
-  // Big phone videos (1–3 min, often 100–300 MB) fail as a single PUT over mobile
-  // data — the request outlives the server's request timeout and dies. So for
-  // anything above the threshold we upload in small chunks (each its own short
-  // request), exactly like the Boost wizard does. Small clips keep the simple path.
-  const CHUNK_SIZE      = 8 * 1024 * 1024;
-  const CHUNK_THRESHOLD = 50 * 1024 * 1024;
+  // Small files: presigned URL + XHR PUT (XHR is the only way to get real
+  // upload progress — fetch() has no upload progress events).
+  const requestPresignUrl = async (file: File): Promise<{ uploadURL: string; objectPath: string }> => {
+    const res = await fetch("/api/storage/uploads/request-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "video/mp4" }),
+    });
+    if (!res.ok) throw new Error(`presign-failed-${res.status}`);
+    return res.json();
+  };
 
+  const xhrPutWithProgress = (file: File, uploadURL: string): Promise<string | null> =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setVideoLoaded(e.loaded);
+          setVideoProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+      xhr.onload = () => {
+        xhrRef.current = null;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (typeof data?.url === "string" && data.url.startsWith("http")) { resolve(data.url); return; }
+          } catch { /* non-JSON (GCS path) */ }
+          resolve(null);
+        } else {
+          reject(new Error(`upload-failed-${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => { xhrRef.current = null; reject(new Error("network-error")); };
+      xhr.onabort = () => { xhrRef.current = null; reject(new Error("aborted")); };
+      xhr.open("PUT", uploadURL);
+      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+      xhr.send(file);
+    });
+
+  // Big files: chunked upload. Progress tracks completed chunks; fully abortable.
   const chunkedUploadVideo = async (file: File): Promise<string> => {
     const storedToken = localStorage.getItem("flexamarket_token") ?? "";
     const authHeaders: Record<string, string> = storedToken
       ? { Authorization: `Bearer ${storedToken}` }
       : {};
+    const controller = new AbortController();
+    chunkAbortRef.current = controller;
 
     const initRes = await fetch("/api/storage/uploads/chunk-init", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
+      signal: controller.signal,
     });
     if (!initRes.ok) throw new Error(`chunk-init-failed-${initRes.status}`);
     const { uploadId, objectPath } = await initRes.json() as {
@@ -277,6 +352,7 @@ export default function BoostPage() {
 
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     for (let i = 0; i < totalChunks; i++) {
+      if (cancelledRef.current) throw new Error("aborted");
       const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
       const putRes = await fetch(`/api/storage/uploads/chunk/${uploadId}/${i}`, {
         method: "PUT",
@@ -286,61 +362,137 @@ export default function BoostPage() {
           ...authHeaders,
         },
         body: chunk,
+        signal: controller.signal,
       });
       if (!putRes.ok) throw new Error(`chunk-put-failed-${putRes.status}-idx-${i}`);
+      const done = i + 1;
+      setVideoLoaded(Math.min(done * CHUNK_SIZE, file.size));
+      setVideoProgress(Math.round((done / totalChunks) * 100));
     }
 
     const finalRes = await fetch(`/api/storage/uploads/chunk-finalize/${uploadId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ totalChunks, contentType: file.type || "video/mp4" }),
+      signal: controller.signal,
     });
     if (!finalRes.ok) throw new Error(`chunk-finalize-failed-${finalRes.status}`);
     const data = await finalRes.json() as { objectPath: string };
+    chunkAbortRef.current = null;
     return data.objectPath ?? objectPath;
   };
 
-  const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const isAbortErr = (err: any) =>
+    cancelledRef.current || err?.name === "AbortError" || err?.message === "aborted";
+
+  const startVideoUpload = async (file: File) => {
+    // Each attempt gets a sequence number; a late async completion from an older
+    // attempt is ignored once a newer attempt (or remove) has bumped the counter.
+    const seq = ++uploadSeqRef.current;
+    const stale = () => uploadSeqRef.current !== seq;
+
+    cancelledRef.current = false;
+    videoFileRef.current = file;
+    setVideoError(null);
+    setVideoUrl(null);
+    setVideoProgress(0);
+    setVideoLoaded(0);
+
+    // Local preview for the success card (revoke any previous object URL first).
+    if (videoPreviewRef.current) URL.revokeObjectURL(videoPreviewRef.current);
+    const previewUrl = URL.createObjectURL(file);
+    videoPreviewRef.current = previewUrl;
+    setVideoPreviewUrl(previewUrl);
+
+    // 1) VALIDATING — size, then duration/decodability.
+    setVideoState("validating");
     if (file.size > MAX_VIDEO_BYTES) {
-      toast({ title: t("boost.videoTooBig"), variant: "destructive" });
+      setVideoError(t("boost.videoTooBig", { defaultValue: "Videyo a twò gwo (max 300 MB)." }));
+      setVideoState("failed");
       return;
     }
-    try {
-      const seconds = await probeVideoDuration(file);
-      if (!Number.isFinite(seconds) || seconds > MAX_VIDEO_SECONDS + 0.5) {
-        toast({ title: t("boost.videoTooLong"), variant: "destructive" });
-        return;
-      }
-    } catch {
-      toast({ title: t("boost.videoDecodeFailed"), variant: "destructive" });
+    const seconds = await probeVideoDuration(file);
+    if (stale()) return;
+    if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+      setVideoError(t("boost.videoTooLong", { defaultValue: "Videyo a twò long (max 3 minit)." }));
+      setVideoState("failed");
       return;
     }
-    setVideoUploading(true);
+    setVideoMeta({ name: file.name, size: file.size, duration: Number.isFinite(seconds) ? seconds : null });
+
+    // 2) PREPARING → UPLOADING → PROCESSING → SUCCESS.
     try {
-      let objectPath: string | null = null;
+      setVideoState("preparing");
+      let result: string | null;
       if (file.size > CHUNK_THRESHOLD) {
-        // Large video → resilient chunked upload (survives mobile networks).
-        objectPath = await chunkedUploadVideo(file);
+        setVideoState("uploading");
+        result = await chunkedUploadVideo(file);
       } else {
-        const result = await uploadVideoFile(file);
-        objectPath = result?.objectPath ?? null;
+        const { uploadURL, objectPath } = await requestPresignUrl(file);
+        if (cancelledRef.current || stale()) throw new Error("aborted");
+        setVideoState("uploading");
+        const url = await xhrPutWithProgress(file, uploadURL);
+        result = url ?? objectPath;
       }
-      if (!objectPath) {
-        toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
-        return;
-      }
-      // Persist the object-storage path; the backend rewrites it to a
+      if (cancelledRef.current || stale()) throw new Error("aborted");
+      if (!result) throw new Error("no-object-path");
+
+      setVideoState("processing");
+      setVideoProgress(100);
+      // Persist the object-storage path / CDN URL; the backend rewrites it to a
       // signed-fetch URL when the visitor's overlay loads it.
-      setVideoUrl(objectPath);
-    } catch {
-      toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
-    } finally {
-      setVideoUploading(false);
+      setVideoUrl(result);
+      setVideoState("success");
+    } catch (err: any) {
+      if (stale()) return;
+      if (isAbortErr(err)) {
+        setVideoState("cancelled");
+      } else {
+        setVideoError(t("boost.videoUploadFailed", { defaultValue: "Telechajman an echwe. Tanpri eseye ankò." }));
+        setVideoState("failed");
+      }
+      setVideoProgress(0);
     }
   };
+
+  const handleVideoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";                 // allow re-picking the same file
+    if (file) startVideoUpload(file);
+  };
+
+  const cancelVideoUpload = () => {
+    cancelledRef.current = true;
+    xhrRef.current?.abort();
+    chunkAbortRef.current?.abort();
+  };
+
+  const retryVideoUpload = () => {
+    const f = videoFileRef.current;
+    if (f) startVideoUpload(f);
+  };
+
+  const removeVideo = () => {
+    uploadSeqRef.current++;          // invalidate any in-flight attempt
+    cancelVideoUpload();
+    videoFileRef.current = null;
+    setVideoUrl(null);
+    setVideoMeta(null);
+    setVideoError(null);
+    setVideoProgress(0);
+    setVideoLoaded(0);
+    if (videoPreviewRef.current) URL.revokeObjectURL(videoPreviewRef.current);
+    videoPreviewRef.current = null;
+    setVideoPreviewUrl(null);
+    setVideoState("idle");
+  };
+
+  // Abort any in-flight upload and free the preview blob on unmount.
+  useEffect(() => () => {
+    xhrRef.current?.abort();
+    chunkAbortRef.current?.abort();
+    if (videoPreviewRef.current) URL.revokeObjectURL(videoPreviewRef.current);
+  }, []);
 
   // When the plan changes, reset the budget to that plan's price — UNLESS we're
   // restoring a saved draft (skip once so a custom saved budget isn't clobbered).
@@ -571,7 +723,7 @@ export default function BoostPage() {
   };
 
   const handleInitiate = async () => {
-    if (videoUploading) {
+    if (videoBusy) {
       toast({ title: t("boost.videoStillUploading", { defaultValue: "Videyo a ap telechaje toujou. Tann li fini avant ou kontinye." }), variant: "destructive" });
       return;
     }
@@ -1518,23 +1670,109 @@ export default function BoostPage() {
               <p className="text-xs text-muted-foreground mb-3">
                 {t("boost.videoHelp", { defaultValue: "Max 1 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
               </p>
-              {videoUrl ? (
-                <div className="flex items-center justify-between gap-3 bg-muted rounded-xl px-3 py-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Video className="h-4 w-4 text-primary flex-shrink-0" />
-                    <span className="text-sm font-medium truncate" data-testid="text-video-attached">
-                      {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
+              {(videoState === "success" || (videoUrl && videoState === "idle")) ? (
+                /* ── SUCCESS card ── */
+                <div className="rounded-xl border border-green-500/30 bg-green-50 dark:bg-green-900/15 p-3" data-testid="video-success-card">
+                  <div className="flex items-center gap-3">
+                    <div className="h-16 w-16 rounded-lg overflow-hidden bg-black/80 flex items-center justify-center flex-shrink-0">
+                      {videoPreviewUrl ? (
+                        <video src={videoPreviewUrl} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                      ) : (
+                        <Video className="h-6 w-6 text-white/80" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-green-700 dark:text-green-400 mb-0.5">
+                        <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
+                        <span className="text-sm font-semibold" data-testid="text-video-attached">
+                          {t("boost.videoUploaded", { defaultValue: "Videyo telechaje ✓" })}
+                        </span>
+                      </div>
+                      {videoMeta?.name && (
+                        <p className="text-xs text-muted-foreground truncate">{videoMeta.name}</p>
+                      )}
+                      {videoMeta && (
+                        <p className="text-[11px] text-muted-foreground">
+                          {[fmtDuration(videoMeta.duration), fmtBytes(videoMeta.size)].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <Button type="button" variant="outline" size="sm" className="flex-1" onClick={() => videoFileInputRef.current?.click()} data-testid="button-video-replace">
+                      <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                      {t("boost.videoReplace", { defaultValue: "Ranplase" })}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={removeVideo} data-testid="button-video-remove">
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                      {t("boost.videoRemove", { defaultValue: "Retire" })}
+                    </Button>
+                  </div>
+                </div>
+              ) : videoBusy ? (
+                /* ── IN-PROGRESS (validating / preparing / uploading / processing) ── */
+                <div className="rounded-xl border border-border bg-muted/50 p-3" data-testid="video-progress-card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Loader2 className="h-4 w-4 text-primary animate-spin flex-shrink-0" />
+                    <span className="text-sm font-medium text-foreground">
+                      {videoState === "validating" ? t("boost.videoValidating", { defaultValue: "Ap verifye videyo…" })
+                        : videoState === "preparing"  ? t("boost.videoPreparing",  { defaultValue: "Ap prepare telechajman…" })
+                        : videoState === "processing" ? t("boost.videoProcessing", { defaultValue: "Ap fini…" })
+                        : t("boost.videoUploadingState", { defaultValue: "Ap telechaje videyo…" })}
                     </span>
                   </div>
-                  <button type="button" onClick={() => setVideoUrl(null)} className="text-muted-foreground hover:text-destructive p-1" data-testid="button-video-remove">
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-600 transition-all duration-300"
+                      style={{ width: `${videoState === "uploading" ? videoProgress : videoState === "processing" ? 100 : 8}%` }}
+                      data-testid="video-progress-bar"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5">
+                    <span className="text-[11px] text-muted-foreground tabular-nums" data-testid="text-video-progress">
+                      {videoState === "uploading" && videoMeta
+                        ? `${fmtBytes(videoLoaded)} / ${fmtBytes(videoMeta.size)} · ${videoProgress}%`
+                        : videoState === "processing" ? "100%" : ""}
+                    </span>
+                    <button type="button" onClick={cancelVideoUpload} className="text-[11px] font-medium text-destructive hover:underline" data-testid="button-video-cancel">
+                      {t("boost.videoCancel", { defaultValue: "Anile" })}
+                    </button>
+                  </div>
+                </div>
+              ) : videoState === "failed" ? (
+                /* ── FAILED ── */
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3" data-testid="video-failed-card">
+                  <div className="flex items-start gap-2 mb-2.5">
+                    <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-destructive">
+                      {videoError ?? t("boost.videoUploadFailed", { defaultValue: "Telechajman an echwe. Tanpri eseye ankò." })}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {videoFileRef.current && (
+                      <Button type="button" variant="outline" size="sm" className="flex-1" onClick={retryVideoUpload} data-testid="button-video-retry">
+                        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                        {t("boost.videoRetry", { defaultValue: "Eseye ankò" })}
+                      </Button>
+                    )}
+                    <Button type="button" variant="ghost" size="sm" className="flex-1" onClick={() => videoFileInputRef.current?.click()} data-testid="button-video-pickother">
+                      {t("boost.videoPickOther", { defaultValue: "Chwazi yon lòt" })}
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <Button type="button" variant="outline" className="w-full" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading} data-testid="button-video-pick">
-                  <Upload className="h-4 w-4 mr-2" />
-                  {videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje…" }) : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
-                </Button>
+                /* ── IDLE / CANCELLED ── */
+                <>
+                  {videoState === "cancelled" && (
+                    <p className="text-xs text-muted-foreground mb-2" data-testid="text-video-cancelled">
+                      {t("boost.videoCancelled", { defaultValue: "Telechajman anile." })}
+                    </p>
+                  )}
+                  <Button type="button" variant="outline" className="w-full" onClick={() => videoFileInputRef.current?.click()} data-testid="button-video-pick">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
+                  </Button>
+                </>
               )}
             </div>
 
@@ -1948,10 +2186,10 @@ export default function BoostPage() {
                 <Button
                   className="w-full h-11 text-sm font-bold"
                   onClick={handleInitiate}
-                  disabled={loading || videoUploading}
+                  disabled={loading || videoBusy}
                   data-testid="button-proceed-to-pay"
                 >
-                  {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
+                  {loading ? t("boost.processing") : videoBusy ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
                 </Button>
               )}
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
@@ -1976,10 +2214,10 @@ export default function BoostPage() {
               <Button
                 className="w-full h-12 text-base font-bold"
                 onClick={handleInitiate}
-                disabled={loading || videoUploading}
+                disabled={loading || videoBusy}
                 data-testid="button-proceed-to-pay-mobile"
               >
-                {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
+                {loading ? t("boost.processing") : videoBusy ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
               </Button>
             )}
             <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-2">
@@ -2166,9 +2404,9 @@ export default function BoostPage() {
             <Button
               className="w-full h-13 font-bold text-base bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 border-0 text-white shadow-lg shadow-orange-500/25"
               onClick={handleInitiate}
-              disabled={loading || videoUploading}
+              disabled={loading || videoBusy}
             >
-              {loading ? "Ap tretman…" : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `⚡ Aktive Boost — $${budget.toFixed(2)}`}
+              {loading ? "Ap tretman…" : videoBusy ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `⚡ Aktive Boost — $${budget.toFixed(2)}`}
             </Button>
           ) : (
             <a

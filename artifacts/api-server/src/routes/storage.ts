@@ -62,6 +62,55 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
   });
 }
 
+/**
+ * Stream a (potentially large) video/audio file straight to Cloudinary's
+ * CHUNKED upload endpoint without ever buffering the whole file in our own
+ * server memory.
+ *
+ * Why this exists: the previous code buffered the entire upload (Buffer.concat)
+ * and used `upload_stream`, whose single-request upload caps video at 100 MB on
+ * standard plans. A typical 1–3 minute phone video (often 120–300 MB) blew past
+ * that limit, so the upload failed/stalled and the promo video silently never
+ * saved on a boost. `upload_chunked_stream` splits the upload into 20 MB chunks,
+ * so videos up to our 350 MB ceiling save reliably and memory usage stays flat.
+ *
+ * NOTE on the Cloudinary v2 signature: the `cloudinary.v2` namespace wrapper
+ * (what we import here) takes `(options, callback)` with a Node-style
+ * `(error, result)` callback — it internally adapts/reorders for the v1 impl.
+ * The callback fires once when all chunks finish, with the final upload result.
+ */
+function uploadVideoStreamToCloudinary(stream: Readable, contentType: string): Promise<string> {
+  const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
+  return new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      try { (cldStream as any)?.destroy?.(); } catch { /* noop */ }
+      reject(err instanceof Error ? err : new Error("Cloudinary upload failed"));
+    };
+    const cldStream = cloudinary.uploader.upload_chunked_stream(
+      {
+        resource_type: isVideo ? "video" : "image",
+        folder: "flexa-market",
+        chunk_size: 20 * 1024 * 1024,
+      },
+      (error, result) => {
+        if (settled) return;
+        if (error || !result?.secure_url) {
+          fail(error ?? new Error("Cloudinary upload failed"));
+        } else {
+          settled = true;
+          resolve(result.secure_url);
+        }
+      },
+    );
+    stream.on("error", fail);
+    cldStream.on("error", fail);
+    stream.pipe(cldStream);
+  });
+}
+
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
@@ -104,12 +153,20 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     }
 
     if (USE_CLOUDINARY) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(chunk as Buffer);
+      const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
+      let url: string;
+      if (isVideo) {
+        // Stream large videos directly to Cloudinary's chunked endpoint — never
+        // buffer the whole file (OOM risk) and never hit the 100 MB single-request
+        // video cap that previously caused promo videos to silently not save.
+        url = await uploadVideoStreamToCloudinary(req, contentType);
+      } else {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(chunk as Buffer);
+        }
+        url = await uploadBufferToCloudinary(Buffer.concat(chunks), contentType);
       }
-      const buffer = Buffer.concat(chunks);
-      const url = await uploadBufferToCloudinary(buffer, contentType);
       req.log.info({ token, url }, "Cloudinary upload complete");
       res.status(200).json({ url });
       return;
@@ -269,10 +326,19 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
 
   try {
     if (USE_CLOUDINARY) {
-      const chunks: Buffer[] = [];
-      for await (const buf of chunkGen()) chunks.push(buf);
-      const buffer = Buffer.concat(chunks);
-      const url = await uploadBufferToCloudinary(buffer, contentType ?? "video/mp4");
+      const ct = contentType ?? "video/mp4";
+      const isVideo = ct.startsWith("video/") || ct.startsWith("audio/");
+      let url: string;
+      if (isVideo) {
+        // Re-stream the assembled chunks straight to Cloudinary's chunked
+        // endpoint so large videos never get buffered in memory or rejected by
+        // the 100 MB single-request video cap.
+        url = await uploadVideoStreamToCloudinary(Readable.from(chunkGen()), ct);
+      } else {
+        const chunks: Buffer[] = [];
+        for await (const buf of chunkGen()) chunks.push(buf);
+        url = await uploadBufferToCloudinary(Buffer.concat(chunks), ct);
+      }
       req.log.info({ uploadId, url }, "Chunked Cloudinary upload finalized");
       res.json({ objectPath: url });
       return;

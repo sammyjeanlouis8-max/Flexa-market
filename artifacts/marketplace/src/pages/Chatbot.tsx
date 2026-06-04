@@ -317,7 +317,8 @@ export default function Chatbot() {
       )}
 
       <Card className="flex-1 overflow-hidden flex flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4" data-testid="chat-messages">
+          <div className={`flex flex-col gap-4 min-h-full ${messages.length > 0 ? "justify-end" : ""}`}>
           {messages.length === 0 && (
             <div className="flex flex-col items-center text-center gap-4 py-8">
               <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -384,6 +385,7 @@ export default function Chatbot() {
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 rounded-md p-2 text-center">{error}</div>
           )}
+          </div>
         </div>
 
         <div className="border-t p-3 bg-background">

@@ -383,7 +383,7 @@ function MediaModal({ url, type, onClose }: { url: string; type: "image" | "vide
       <button
         onClick={onClose}
         style={{
-          position: "absolute", top: 16, left: 16,
+          position: "absolute", top: "calc(var(--safe-top) + 16px)", left: 16,
           width: 44, height: 44, borderRadius: "50%",
           background: "rgba(255,255,255,0.12)", border: "none",
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",

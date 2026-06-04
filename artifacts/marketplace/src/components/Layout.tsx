@@ -678,8 +678,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className={`bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
-      {/* paddingTop covers the notch / Dynamic Island on iPhone X+ when
-          viewport-fit=cover is active (see index.html viewport meta). */}
+      {/* paddingTop adds the notch / Dynamic Island gap on iPhone X+ when the
+          WebView reports a non-zero safe-area-inset-top. viewport-fit=cover is
+          intentionally NOT set (see index.html), so the WebView already insets
+          content into the safe area and this env() value is usually 0 / harmless. */}
       {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 

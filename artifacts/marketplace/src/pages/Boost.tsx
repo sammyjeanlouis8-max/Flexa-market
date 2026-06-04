@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Zap, Check, CreditCard, ArrowLeft, Clock, Eye,
@@ -110,6 +110,7 @@ async function apiPost(path: string, body: unknown) {
 export default function BoostPage() {
   const [, params]    = useRoute("/boost/:listingId");
   const listingId     = parseInt(params?.listingId ?? "0", 10);
+  const draftKey      = `flexa_boost_draft_v1_${listingId}`;
   const [, setLocation] = useLocation();
   const { toast }     = useToast();
   const queryClient   = useQueryClient();
@@ -191,6 +192,8 @@ export default function BoostPage() {
   const [boostId, setBoostId]   = useState<number | null>(null);
   const [loading, setLoading]   = useState(false);
   const [copied, setCopied]     = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt]   = useState<Date | null>(null);
 
   // Super-admin: override audience country
   const [adminCountry, setAdminCountry]         = useState<string>("");
@@ -391,6 +394,72 @@ export default function BoostPage() {
     return () => ctrl.abort();
   }, [step, plan, budget, audience]);
 
+  // ── Draft auto-save (bouyon) ──────────────────────────────────────────────
+  // Keep an in-progress boost (audience, plan, budget, and the already-uploaded
+  // promo video) in localStorage so leaving mid-flow or a failed step never
+  // resets everything to zero. Keyed per listing; cleared once the boost is
+  // paid for / activated. Mirrors the Sell page draft system.
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveDraft = useCallback(() => {
+    if (!listingId) return;
+    // Only persist once the user has actually entered something — otherwise a
+    // fresh visit would write an empty draft and wrongly show the "restored" banner.
+    const hasContent =
+      !!videoUrl || !!audState || audCities.length > 0 || !!audNeighborhood.trim() ||
+      !!audienceName.trim() || audienceType !== "advantage_plus" || objective !== "auto" ||
+      gender !== "all" || ageMin !== 18 || ageMax !== 65 || plan !== "3day" || budget !== 5.00;
+    if (!hasContent) return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          plan, budget, videoUrl, objective, audienceType, audienceName,
+          ageMin, ageMax, gender, audState, audCities, audNeighborhood, audRadiusKm,
+          savedAt: new Date().toISOString(),
+        }));
+        setDraftSavedAt(new Date());
+      } catch { /* storage quota */ }
+    }, 1200);
+  }, [draftKey, listingId, plan, budget, videoUrl, objective, audienceType, audienceName, ageMin, ageMax, gender, audState, audCities, audNeighborhood, audRadiusKm]);
+
+  const clearDraft = useCallback(() => {
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+    setDraftSavedAt(null);
+    setDraftRestored(false);
+  }, [draftKey]);
+
+  // Restore any saved draft on mount (skip drafts older than 7 days).
+  useEffect(() => {
+    if (!listingId) return;
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (!d?.savedAt) return;
+      if (Date.now() - new Date(d.savedAt).getTime() > 7 * 24 * 3_600_000) {
+        localStorage.removeItem(draftKey); return;
+      }
+      if (d.plan) setPlan(d.plan);
+      if (typeof d.budget === "number") setBudget(d.budget);
+      if (d.videoUrl) setVideoUrl(d.videoUrl);
+      if (d.objective) setObjective(d.objective);
+      if (d.audienceType) setAudienceType(d.audienceType);
+      if (d.audienceName) setAudienceName(d.audienceName);
+      if (typeof d.ageMin === "number") setAgeMin(d.ageMin);
+      if (typeof d.ageMax === "number") setAgeMax(d.ageMax);
+      if (d.gender) setGender(d.gender);
+      if (d.audState) setAudState(d.audState);
+      if (Array.isArray(d.audCities)) setAudCities(d.audCities);
+      if (d.audNeighborhood) setAudNeighborhood(d.audNeighborhood);
+      if (d.audRadiusKm !== undefined) setAudRadiusKm(d.audRadiusKm);
+      setDraftRestored(true);
+    } catch { /* corrupt — ignore */ }
+  }, [draftKey, listingId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-save whenever a tracked field changes (debounced inside saveDraft).
+  useEffect(() => { saveDraft(); }, [saveDraft]);
+
   const selectedPlan = PLANS.find(p => p.id === plan)!;
 
   const getPlanLabel = (id: string) => {
@@ -457,6 +526,7 @@ export default function BoostPage() {
       setEstimatedReach(data.estimatedReach);
       // Wallet pay: backend already activated boost instantly — skip pay step
       if (data.activated) {
+        clearDraft();
         refetchWallet();
         queryClient.invalidateQueries({ queryKey: ["listings"] });
         setStep("activated");
@@ -517,6 +587,7 @@ export default function BoostPage() {
         boostId,
         paymentRef: txHash.trim(),
       });
+      clearDraft();
       setStep("success");
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
     } catch (e: any) {
@@ -538,6 +609,7 @@ export default function BoostPage() {
         boostId,
         paymentRef: `SEPA-${cleaned.slice(-4)}-${Date.now()}`,
       });
+      clearDraft();
       setStep("success");
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
     } catch (e: any) {
@@ -554,6 +626,7 @@ export default function BoostPage() {
         boostId,
         paymentRef: `APPLE-${Date.now()}`,
       });
+      clearDraft();
       setStep("success");
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
     } catch (e: any) {
@@ -597,6 +670,7 @@ export default function BoostPage() {
       if (!res.ok) throw data;
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
       refetchQuota();
+      clearDraft();
       setAdminFreeSuccess(true);
     } catch (e: any) {
       if (e?.used !== undefined && e?.limit !== undefined) {
@@ -943,6 +1017,28 @@ export default function BoostPage() {
       {/* ── Step 1: Audience targeting — Meta Ads style ─────────────────────── */}
       {step === "audience" && (
         <div className="md:grid md:grid-cols-3 md:gap-6 space-y-0">
+
+          {/* ── Draft restored / saved banner (bouyon) ── */}
+          {draftRestored ? (
+            <div className="md:col-span-3 flex items-center gap-2.5 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-3.5 py-2.5 mb-3">
+              <span className="text-lg leading-none">📋</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-bold text-blue-700 dark:text-blue-300">
+                  {t("boost.draftRestored", { defaultValue: "Nou retabli bouyon ou a" })}
+                </p>
+                <p className="text-[11px] text-blue-600 dark:text-blue-400">
+                  {t("boost.draftRestoredDesc", { defaultValue: "Nou kenbe pwogrè boost ou a (ak videyo a) pou ou pa rekòmanse a zero." })}
+                </p>
+              </div>
+              <button type="button" onClick={clearDraft} className="text-blue-400 hover:text-blue-600 p-1" aria-label="Fèmen">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : draftSavedAt ? (
+            <p className="md:col-span-3 text-[11px] text-muted-foreground mb-2">
+              💾 {t("boost.draftSaved", { defaultValue: "Bouyon sovgade otomatikman" })}
+            </p>
+          ) : null}
 
           {/* ── LEFT: Main form ── */}
           <div className="md:col-span-2 space-y-0 divide-y divide-border">

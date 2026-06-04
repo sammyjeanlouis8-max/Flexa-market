@@ -312,7 +312,8 @@ export default function CalculatorPage() {
 
       <Card className="flex-1 overflow-hidden flex flex-col">
         {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+          <div className={`flex flex-col gap-4 min-h-full ${messages.length > 0 ? "justify-end" : ""}`}>
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center text-center gap-4 pt-4 pb-2">
               <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-md">
@@ -360,6 +361,7 @@ export default function CalculatorPage() {
               {error}
             </div>
           )}
+          </div>
         </div>
 
         {/* Input bar */}

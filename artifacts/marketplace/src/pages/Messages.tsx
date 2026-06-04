@@ -66,6 +66,7 @@ function chatDoodle(stroke: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
+const WAVE_BAR_COUNT = 40;
 const T = {
   sunlight: {
     isDark: false,
@@ -1027,12 +1028,17 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [isNight, setIsNight] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
+  const [waveBars, setWaveBars] = useState<number[]>([]);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const waveRafRef = useRef<number | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1217,10 +1223,58 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
   };
 
+  // Live mic waveform (WhatsApp-style) that fills as you talk while recording.
+  const startWaveform = (stream: MediaStream) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      ctx.resume?.();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      audioCtxRef.current = ctx;
+      analyserRef.current = analyser;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      let last = 0;
+      const tick = (ts: number) => {
+        waveRafRef.current = requestAnimationFrame(tick);
+        if (ts - last < 75) return;
+        last = ts;
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; sum += v * v; }
+        const level = Math.min(1, Math.sqrt(sum / data.length) * 3.2);
+        setWaveBars(prev => {
+          const arr = prev.length >= WAVE_BAR_COUNT ? prev.slice(1) : prev.slice();
+          arr.push(level);
+          return arr;
+        });
+      };
+      waveRafRef.current = requestAnimationFrame(tick);
+    } catch { /* waveform is non-essential */ }
+  };
+
+  const stopWaveform = () => {
+    if (waveRafRef.current) { cancelAnimationFrame(waveRafRef.current); waveRafRef.current = null; }
+    if (audioCtxRef.current) { audioCtxRef.current.close().catch(() => {}); audioCtxRef.current = null; }
+    analyserRef.current = null;
+    setWaveBars([]);
+  };
+
+  const stopMicStream = () => {
+    if (recordingStreamRef.current) {
+      recordingStreamRef.current.getTracks().forEach(tr => tr.stop());
+      recordingStreamRef.current = null;
+    }
+  };
+
   const startVoiceRecording = async () => {
     if (isRestricted) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
@@ -1228,7 +1282,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       recordingChunksRef.current = [];
       mr.ondataavailable = e => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
       mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
+        stopMicStream();
         const blob = new Blob(recordingChunksRef.current, { type: mimeType });
         if (blob.size < 100) return;
         const tkn = localStorage.getItem("flexamarket_token") ?? "";
@@ -1245,24 +1299,29 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       mediaRecorderRef.current = mr;
       setIsRecording(true);
       setRecordingSecs(0);
+      setWaveBars([]);
+      startWaveform(stream);
       recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
     } catch {
+      stopMicStream();
       toast({ title: t("messages.micDenied"), variant: "destructive" });
     }
   };
 
   const stopVoiceRecording = (cancel = false) => {
     stopRecordingTimer();
+    stopWaveform();
     setIsRecording(false);
     setRecordingSecs(0);
     const mr = mediaRecorderRef.current;
-    if (!mr) return;
+    if (!mr) { stopMicStream(); return; }
     if (cancel) {
       recordingChunksRef.current = [];
       mr.onstop = () => {};
-      mr.stop();
+      try { mr.stop(); } catch {}
+      stopMicStream();
     } else {
-      mr.stop();
+      try { mr.stop(); } catch {}
     }
     mediaRecorderRef.current = null;
   };
@@ -1290,6 +1349,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   useEffect(() => () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     stopRecordingTimer();
+    stopWaveform();
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") { mr.onstop = () => {}; try { mr.stop(); } catch {} }
+    stopMicStream();
   }, []);
 
   const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
@@ -1576,6 +1639,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 
             {/* Attach */}
+            {!isRecording && (
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -1589,8 +1653,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             >
               <Paperclip style={{ width: 21, height: 21 }} />
             </button>
+            )}
 
             {/* Emoji */}
+            {!isRecording && (
             <button
               type="button"
               onClick={() => {
@@ -1614,8 +1680,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             >
               <span style={{ fontSize: 22, lineHeight: 1 }}>😊</span>
             </button>
+            )}
 
             {/* Text input */}
+            {!isRecording && (
             <div style={{ flex: "1 1 0%", minWidth: 0 }}>
               <Input
                 ref={chatInputRef}
@@ -1637,10 +1705,11 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 }}
               />
             </div>
+            )}
 
             {/* Recording UI / Send / Mic */}
             {isRecording ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                 {/* Cancel */}
                 <button type="button" onClick={() => stopVoiceRecording(true)} style={{
                   flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
@@ -1649,10 +1718,27 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 }}>
                   <X style={{ width: 18, height: 18 }} />
                 </button>
-                {/* Timer */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: c.inputBg, borderRadius: 20, padding: "0 12px", height: 40 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", display: "block", animation: "pulse 1s infinite" }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#EF4444", minWidth: 36 }}>{fmtRecSecs(recordingSecs)}</span>
+                {/* Live waveform track — fills as you talk (WhatsApp-style), light theme */}
+                <div style={{
+                  flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
+                  background: c.inputBg, borderRadius: 24, padding: "0 14px", height: 46,
+                }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#EF4444", flexShrink: 0, display: "block", animation: "pulse 1s infinite" }} />
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 2, height: 26, overflow: "hidden" }}>
+                    {Array.from({ length: WAVE_BAR_COUNT }).map((_, i) => {
+                      const offset = WAVE_BAR_COUNT - waveBars.length;
+                      const v = i >= offset ? waveBars[i - offset] : 0;
+                      const h = Math.max(3, Math.round(v * 26));
+                      return (
+                        <span key={i} style={{
+                          flex: 1, minWidth: 2, height: h, borderRadius: 2,
+                          background: c.accent, opacity: v > 0.02 ? 1 : 0.3,
+                          transition: "height 70ms linear",
+                        }} />
+                      );
+                    })}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: c.inputText, flexShrink: 0, minWidth: 38, textAlign: "right" }}>{fmtRecSecs(recordingSecs)}</span>
                 </div>
                 {/* Send */}
                 <button type="button" onClick={() => stopVoiceRecording(false)} style={{

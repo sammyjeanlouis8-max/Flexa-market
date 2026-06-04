@@ -1350,14 +1350,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           borderBottom: `1px solid ${c.headerBorder}`,
           background: c.headerBg, flexShrink: 0, overflow: "hidden",
         }}>
-          {/* Back button (mobile) */}
-          <Link href="/messages" className="md:hidden">
-            <button type="button" style={{
+          {/* Back button — always visible (WhatsApp-style), returns to the chat list */}
+          <Link href="/messages" aria-label="Back">
+            <button type="button" aria-label="Back" style={{
               width: 38, height: 38, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
               color: c.headerIcon, cursor: "pointer", flexShrink: 0,
             }}>
-              <ArrowLeft style={{ width: 22, height: 22 }} />
+              <ArrowLeft style={{ width: 24, height: 24 }} />
             </button>
           </Link>
 

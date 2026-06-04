@@ -286,7 +286,11 @@ export default function BoostPage() {
     }
   };
 
+  // When the plan changes, reset the budget to that plan's price — UNLESS we're
+  // restoring a saved draft (skip once so a custom saved budget isn't clobbered).
+  const skipBudgetSyncRef = useRef(false);
   useEffect(() => {
+    if (skipBudgetSyncRef.current) { skipBudgetSyncRef.current = false; return; }
     setBudget(PLANS.find(p => p.id === plan)?.price ?? 6.99);
   }, [plan]);
 
@@ -295,6 +299,7 @@ export default function BoostPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("boost_success") === "1") {
+      clearDraft();
       setStep("activated");
 
       const sessionId = params.get("session_id");
@@ -441,7 +446,12 @@ export default function BoostPage() {
         localStorage.removeItem(draftKey); return;
       }
       if (d.plan) setPlan(d.plan);
-      if (typeof d.budget === "number") setBudget(d.budget);
+      if (typeof d.budget === "number") {
+        // Restoring a non-default plan triggers the plan→budget effect; tell it
+        // to skip once so the saved custom budget survives.
+        if (d.plan && d.plan !== "3day") skipBudgetSyncRef.current = true;
+        setBudget(d.budget);
+      }
       if (d.videoUrl) setVideoUrl(d.videoUrl);
       if (d.objective) setObjective(d.objective);
       if (d.audienceType) setAudienceType(d.audienceType);

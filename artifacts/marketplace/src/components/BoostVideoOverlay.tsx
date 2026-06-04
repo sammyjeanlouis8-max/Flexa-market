@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
+import { toStreamingVideoUrl } from "@/lib/videoUrl";
 
 /**
  * Video Booster overlay — floating player, no dark background.
@@ -32,23 +33,8 @@ export function markBoostAdShown(): void {
 }
 
 // ─── URL helpers ─────────────────────────────────────────────────────────────
-// Cloudinary stores videos with the moov atom at the END of the file. Browsers
-// then have to download the WHOLE file before playback starts — a short 20s clip
-// finishes fast and plays, but a 1–2 minute clip never finishes buffering and
-// shows a black screen. Inserting `fl_faststart` re-muxes with the moov atom at
-// the FRONT (progressive/streaming playback), and `vc_h264,f_mp4` guarantees a
-// universally-supported codec/container. This mirrors the video feed exactly.
-function toStreamingVideoUrl(url: string): string {
-  if (
-    url.includes("res.cloudinary.com") &&
-    url.includes("/video/upload/") &&
-    !url.includes("fl_faststart")
-  ) {
-    return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
-  }
-  return url;
-}
-
+// `toStreamingVideoUrl` (the Cloudinary faststart transform) is shared in
+// "@/lib/videoUrl" so every boost/listing video player stays in lockstep.
 function toFetchableUrl(stored: string): string {
   if (/^https?:\/\//i.test(stored)) return toStreamingVideoUrl(stored);
   const trimmed = stored.startsWith("/objects/")

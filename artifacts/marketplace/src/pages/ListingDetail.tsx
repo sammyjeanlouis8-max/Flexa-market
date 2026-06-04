@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { toStreamingVideoUrl } from "@/lib/videoUrl";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -511,7 +512,7 @@ export default function ListingDetail() {
   // Unified media items: boost promo video first, then product photos
   type MediaItem = { type: "image" | "video"; url: string; isPromo?: boolean };
   const mediaItems: MediaItem[] = [
-    ...(boostVideoUrl ? [{ type: "video" as const, url: boostVideoUrl, isPromo: isBoostActive }] : []),
+    ...(boostVideoUrl ? [{ type: "video" as const, url: toStreamingVideoUrl(boostVideoUrl), isPromo: isBoostActive }] : []),
     ...images.map((url: string) => ({ type: "image" as const, url })),
   ];
   const totalMedia = mediaItems.length;
@@ -1174,7 +1175,7 @@ export default function ListingDetail() {
       {/* Listing video (non-boost) */}
       {listingVideoUrl && (
         <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-border bg-black relative" data-testid="listing-video">
-          <video src={listingVideoUrl} controls playsInline className="w-full max-h-56 object-contain" preload="metadata" />
+          <video src={toStreamingVideoUrl(listingVideoUrl)} controls playsInline className="w-full max-h-56 object-contain" preload="metadata" />
           {isOwner && (
             <button
               onClick={() => setRemoveVideoConfirmOpen(true)}

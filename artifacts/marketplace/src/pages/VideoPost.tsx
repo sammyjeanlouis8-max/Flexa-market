@@ -26,6 +26,7 @@ import { formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { toStreamingVideoUrl } from "@/lib/videoUrl";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -467,7 +468,9 @@ export default function VideoPost() {
   }
 
   // boostVideoUrl is the promo video; fall back to listingVideoUrl for non-boost video posts
-  const videoUrl: string | null = (listing as any).boostVideoUrl ?? (listing as any).listingVideoUrl ?? null;
+  const rawVideoUrl: string | null = (listing as any).boostVideoUrl ?? (listing as any).listingVideoUrl ?? null;
+  // Cloudinary needs the faststart transform or 1+ min videos render as a black screen.
+  const videoUrl: string | null = rawVideoUrl ? toStreamingVideoUrl(rawVideoUrl) : null;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
 
   // ── Render ──────────────────────────────────────────────────────────────────

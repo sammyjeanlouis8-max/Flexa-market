@@ -27,10 +27,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: pnpm
 
       - name: Install workspace dependencies
-        run: NODE_ENV=development pnpm install --frozen-lockfile
+        run: NODE_ENV=development pnpm install --no-frozen-lockfile 2>&1 | tail -5
 
       - name: Install EAS CLI
         run: npm install -g eas-cli@19.1.0

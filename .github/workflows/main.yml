@@ -34,6 +34,11 @@ jobs:
           sed -i 's|"zod": "catalog:"|"zod": "3.25.76"|g' package.json
           sed -i 's|"@workspace/mobile"|"flexa-market"|g' package.json
           npm install --legacy-peer-deps 2>&1 | tail -3
+          git init
+          git config user.email "build@ci.com"
+          git config user.name "CI"
+          git add -A
+          git commit -m "build"
       - run: npm install -g eas-cli@19.1.0
       - name: EAS build
         working-directory: /tmp/mb

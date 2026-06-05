@@ -32,14 +32,6 @@ jobs:
       - name: Install workspace dependencies
         run: NODE_ENV=development pnpm install --frozen-lockfile
 
-      - name: Patch catalog references
-        run: |
-          cd artifacts/mobile
-          sed -i 's|"@tanstack/react-query": "catalog:"|"@tanstack/react-query": "^5.90.21"|g' package.json
-          sed -i 's|"react": "catalog:"|"react": "19.1.0"|g' package.json
-          sed -i 's|"react-dom": "catalog:"|"react-dom": "19.1.0"|g' package.json
-          sed -i 's|"zod": "catalog:"|"zod": "3.25.76"|g' package.json
-
       - name: Install EAS CLI
         run: npm install -g eas-cli@19.1.0
 

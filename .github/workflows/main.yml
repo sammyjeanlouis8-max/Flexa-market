@@ -28,8 +28,20 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install workspace dependencies
-        run: NODE_ENV=development pnpm install --no-frozen-lockfile 2>&1 | tail -5
+      - name: Patch config for hoisted node_modules + add expo to root
+        run: |
+          echo "node-linker=hoisted" >> .npmrc
+          sed -i 's/  excludeLinksFromLockfile: false/  excludeLinksFromLockfile: false\n  nodeLinker: hoisted/' pnpm-lock.yaml
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.dependencies = pkg.dependencies || {};
+            pkg.dependencies['expo'] = '~54.0.35';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Install workspace dependencies (updates lockfile with expo at root)
+        run: NODE_ENV=development pnpm install --no-frozen-lockfile
 
       - name: Install EAS CLI
         run: npm install -g eas-cli@19.1.0

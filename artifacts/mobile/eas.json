@@ -30,7 +30,8 @@
       },
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app"
+        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app",
+        "EXPO_ROUTER_APP_ROOT": "app"
       }
     }
   },

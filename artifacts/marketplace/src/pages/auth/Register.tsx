@@ -30,8 +30,11 @@ function buildSchema(t: (key: string) => string) {
     confirmPassword: z.string().min(1, t("auth.confirmPasswordRequired")),
     phoneNumber: z
       .string()
-      .min(6, t("auth.phoneRequired"))
-      .regex(/^[0-9]{6,15}$/, t("auth.phoneDigitsOnly")),
+      .optional()
+      .refine(
+        (v) => !v || /^[0-9]{6,15}$/.test(v),
+        t("auth.phoneDigitsOnly")
+      ),
     country: z.string().min(1, t("auth.countryRequired")),
     location: z.string().optional(),
   }).refine(
@@ -92,14 +95,16 @@ export default function Register() {
 
   const onSubmit = (values: FormValues) => {
     const deviceId = getDeviceId();
-    const phone = `${selectedPhone.dialCode}${values.phoneNumber}`;
+    const phone = values.phoneNumber?.trim()
+      ? `${selectedPhone.dialCode}${values.phoneNumber.trim()}`
+      : undefined;
     register.mutate(
       {
         data: {
           name: values.name,
           email: values.email,
           password: values.password,
-          phone,
+          ...(phone ? { phone } : {}),
           country: values.country,
           location: values.location || undefined,
           deviceId,
@@ -234,7 +239,7 @@ export default function Register() {
                   <FormLabel>
                     {t("auth.phone")}
                     <span className="text-xs font-normal text-muted-foreground ml-1">
-                      {t("auth.phoneAntiDupe")}
+                      (Optional)
                     </span>
                   </FormLabel>
                   <div className="flex gap-2">

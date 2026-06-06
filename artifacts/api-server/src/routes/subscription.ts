@@ -162,7 +162,7 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
           recurring: { interval: "month" },
           product_data: {
             name: `FLEXA MARKET ${config.name} Plan`,
-            description: buildFeatureList(plan, config).join(" · "),
+            description: `$${config.priceUsd}/month · ${config.maxListings ? `Up to ${config.maxListings} listings` : "Unlimited listings"}${config.videoEnabled ? " · Video" : ""}`,
           },
         },
       }],
@@ -177,9 +177,14 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
     });
 
     res.json({ url: session.url });
-  } catch (err) {
-    logger.error({ err }, "POST /subscription/checkout error");
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err: any) {
+    const stripeCode = err?.code ?? err?.type ?? "unknown";
+    const stripeMsg = err?.message ?? "unknown";
+    logger.error({ err, stripeCode, stripeMsg }, "POST /subscription/checkout error");
+    if (stripeCode === "authentication_required" || stripeCode === "api_key_expired" || err?.message?.includes("No API key")) {
+      return res.status(503).json({ error: "Payment service not configured. Contact support." });
+    }
+    res.status(500).json({ error: `Checkout failed: ${stripeMsg}` });
   }
 });
 

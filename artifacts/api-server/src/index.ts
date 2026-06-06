@@ -13,9 +13,11 @@ import { runStartupMigrations } from "./lib/migrations";
 import { runHighRiskAutoBlock, runAiActivityMonitor } from "./lib/ai-guardian";
 import { registerProcessErrorHandlers } from "./lib/errorMonitor";
 import { validateEmailConfig } from "./lib/email";
+import { validateStripeCredentials } from "./lib/stripeClient";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
+validateStripeCredentials();
 
 const rawPort = process.env["PORT"];
 
@@ -33,24 +35,6 @@ if (Number.isNaN(port) || port <= 0) {
 
 const httpServer = createServer(app);
 initSocketServer(httpServer);
-
-// ── Handle listen errors cleanly ──────────────────────────────────────────────
-// Without this, a failure to bind the port (most commonly EADDRINUSE — the port
-// is still held by a previous instance during a redeploy) bubbles up as an
-// uncaughtException and shows the scary "Server Error Detected" crash page.
-// Instead we log a clear message and exit with code 1 so the hosting platform
-// restarts the instance cleanly once the port is free.
-httpServer.on("error", (err: NodeJS.ErrnoException) => {
-  if (err.code === "EADDRINUSE") {
-    logger.error(
-      { port },
-      `Port ${port} is already in use — a previous instance may still be shutting down. Exiting so the platform can restart cleanly.`,
-    );
-  } else {
-    logger.error({ err }, "HTTP server failed to start");
-  }
-  process.exit(1);
-});
 
 // ── Listen FIRST so Render marks the deploy as live immediately ───────────────
 // DB initialization (migrations, superadmins, categories) happens in the

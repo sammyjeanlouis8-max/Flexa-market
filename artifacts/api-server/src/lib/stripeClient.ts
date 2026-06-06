@@ -61,7 +61,22 @@ async function getCredentials() {
 
 export async function getStripeClient(): Promise<Stripe> {
   const { secretKey } = await getCredentials();
-  return new Stripe(secretKey, { apiVersion: "2025-08-27.basil" as any });
+  return new Stripe(secretKey, { apiVersion: "2024-06-20" as any });
+}
+
+/**
+ * Validates Stripe credentials by making a lightweight API call.
+ * Call this at startup to catch misconfigured keys early.
+ */
+export async function validateStripeCredentials(): Promise<void> {
+  try {
+    const stripe = await getStripeClient();
+    await stripe.customers.list({ limit: 1 });
+    console.log("[stripe] Credentials validated OK");
+  } catch (err: any) {
+    console.error("[stripe] Credential validation FAILED:", err?.message ?? err);
+    // Non-fatal at startup — log clearly so we can diagnose
+  }
 }
 
 export async function getStripePublishableKey(): Promise<string> {

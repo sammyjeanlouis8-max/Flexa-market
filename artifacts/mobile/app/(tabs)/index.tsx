@@ -362,9 +362,9 @@ export default function HomeTab() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === "ios" && { paddingTop: insets.top, backgroundColor: "#0F172A" }]}>
       {loading && (
-        <View style={[styles.progressTrack, { top: insets.top }]}>
+        <View style={[styles.progressTrack, { top: Platform.OS === "ios" ? insets.top : 0 }]}>
           <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
         </View>
       )}

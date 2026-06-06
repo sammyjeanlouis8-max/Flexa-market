@@ -99,9 +99,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   email = email.trim().toLowerCase();
   name = name.trim();
   password = password.trim();
-  // Normalise phone: strip spaces/dashes, ensure it starts with +
-  const rawPhone = phone.trim().replace(/[\s\-().]/g, "");
-  const normPhone = rawPhone.startsWith("+") ? rawPhone : `+${rawPhone}`;
+  // Normalise phone only if provided — phone is optional at registration
+  const normPhone: string | null = phone?.trim()
+    ? (() => {
+        const raw = phone.trim().replace(/[\s\-().]/g, "");
+        return raw.startsWith("+") ? raw : `+${raw}`;
+      })()
+    : null;
 
   const deviceId = (req.body.deviceId as string | undefined) ?? null;
   const rawPromoCode = typeof req.body.promoCode === "string" ? req.body.promoCode.trim().toUpperCase() : null;
@@ -118,9 +122,11 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   const [existingEmail] = await db.select({ id: usersTable.id }).from(usersTable).where(sql`lower(${usersTable.email}) = ${email}`);
   if (existingEmail) { res.status(409).json({ error: "An account with this email already exists.", field: "email" }); return; }
 
-  // ── Phone uniqueness — prevents duplicate accounts ──
-  const [existingPhone] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normPhone));
-  if (existingPhone) { res.status(409).json({ error: "An account with this phone number already exists.", field: "phone" }); return; }
+  // ── Phone uniqueness — only checked when phone is provided ──
+  if (normPhone) {
+    const [existingPhone] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.phone, normPhone));
+    if (existingPhone) { res.status(409).json({ error: "An account with this phone number already exists.", field: "phone" }); return; }
+  }
 
   // ── IP security checks ──
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -201,7 +207,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     .insert(usersTable)
     .values({
       name, email, passwordHash,
-      phone: normPhone,
+      ...(normPhone ? { phone: normPhone } : {}),
       country: country ?? null,
       isPhoneVerified: false, isVerified: true,
       location: location ?? null, bio: bio ?? null, avatar: avatar ?? null,

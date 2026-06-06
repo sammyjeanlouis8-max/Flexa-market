@@ -4,6 +4,10 @@ const path = require("path");
 const candidates = [
   path.resolve(__dirname, "../node_modules/expo-router/_ctx.android.js"),
   path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.android.js"),
+  path.resolve(__dirname, "../node_modules/expo-router/_ctx.ios.js"),
+  path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.ios.js"),
+  path.resolve(__dirname, "../node_modules/expo-router/_ctx.js"),
+  path.resolve(__dirname, "../../../node_modules/expo-router/_ctx.js"),
 ];
 
 for (const p of candidates) {

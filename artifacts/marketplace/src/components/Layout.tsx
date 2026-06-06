@@ -264,6 +264,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   const go = (href: string) => { onClose(); navigate(href); };
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
+  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
     {
@@ -292,7 +293,6 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           { icon: ShoppingBag, label: t("nav.orders"),        href: "/orders" },
           { icon: TrendingUp,  label: t("nav.sales"),         href: "/sales" },
           { icon: Wallet,      label: t("nav.wallet"),        href: "/wallet" },
-          { kind: "loan" as const, icon: Landmark, label: t("nav.loanApply"), subtitle: t("nav.loanSubtitle"), href: "/loans" },
           { icon: Crown,       label: t("nav.subscription"),  href: "/subscription" },
           { icon: Settings,    label: t("nav.settings"),      href: "/settings" },
         ] as DrawerItem[],
@@ -322,11 +322,11 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         })(),
       },
     ] : []),
-    ...(user ? [{
+    ...(canSeeLoan ? [{
       heading: "💼 Sipò Finansye",
       items: [
         { icon: TrendingUp, label: t("nav.creditScore"), href: "/credit-score" },
-        { icon: Landmark,   label: t("nav.loanApply"),   href: "/loans" },
+        { kind: "loan" as const, icon: Landmark, label: t("nav.loanApply"), subtitle: t("nav.loanSubtitle"), href: "/loans" },
       ] as DrawerItem[],
     }] : []),
     {
@@ -574,6 +574,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -626,7 +627,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         { href: "/delivery/apply",      icon: Truck, label: driverApplyLabel,            key: "driver-apply" },
       ],
     }] : []),
-    ...(user ? [{
+    ...(canSeeLoan ? [{
       heading: "💼 Sipò Finansye",
       items: [
         { href: "/credit-score", icon: TrendingUp, label: t("nav.creditScore"), key: "credit-score" } as any,
@@ -678,11 +679,9 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className={`bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
-      {/* paddingTop = var(--safe-top): the real notch/status-bar inset in a browser,
-          or a fixed fallback inside the native iOS app where env() reports 0
-          (see index.css + the detection script in index.html). Keeps the header
-          and its back button below the status bar / out of the touch dead-zone. */}
-      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "var(--safe-top)" }}>
+      {/* paddingTop covers the notch / Dynamic Island on iPhone X+ when
+          viewport-fit=cover is active (see index.html viewport meta). */}
+      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <div className="max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 
           {/* Mobile back button — visible only on sub-pages, hidden on desktop */}
@@ -762,7 +761,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               hover:from-orange-600 hover:to-amber-500
               active:scale-95 transition-all duration-150
               right-4 md:right-6
-              bottom-[calc(64px+var(--safe-bottom)+14px)]
+              bottom-[calc(64px+env(safe-area-inset-bottom,0px)+14px)]
               md:bottom-6
             `}
           >
@@ -778,7 +777,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
             in the upper 64 px, extra space is padding below them. */}
-        <div className="flex" style={{ height: "calc(64px + var(--safe-bottom))", paddingBottom: "var(--safe-bottom)", alignItems: "flex-start", paddingTop: "0" }}>
+        <div className="flex" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (

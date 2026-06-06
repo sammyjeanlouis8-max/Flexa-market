@@ -111,7 +111,7 @@ export default function UserMenu() {
 
         <DropdownMenuSeparator />
 
-        {user && (
+        {user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) && (
           <DropdownMenuItem asChild>
             <Link href="/loans">
               <span

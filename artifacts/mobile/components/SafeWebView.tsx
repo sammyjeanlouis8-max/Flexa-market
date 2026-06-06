@@ -1,9 +1,11 @@
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 
 const INTERNAL_HOSTS = [
@@ -34,9 +36,10 @@ interface SafeWebViewProps {
 export default function SafeWebView({ uri }: SafeWebViewProps) {
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === "ios" && { paddingTop: insets.top }]}>
       {loading && (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#F97316" />

@@ -271,47 +271,61 @@ function fixBrokenPlugins() {
   const fs = require("fs");
   const path = require("path");
 
-  const STUB = `const { createRunOncePlugin } = require("@expo/config-plugins");
+  const PLUGIN_STUB = `const { createRunOncePlugin } = require("@expo/config-plugins");
 const withPlugin = (c) => c;
 module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
 `;
+  const INDEX_STUB = `// stub — pnpm virtual store entry missing after Replit reset\nmodule.exports = {};\n`;
 
-  // Packages that need an app.plugin.js but whose pnpm virtual-store entries
-  // are empty after a Replit environment reset.
-  const pluginPackages = [
-    "expo-notifications",
-    "expo-image-picker",
-    "expo-location",
-    "expo-blur",
-    "expo-haptics",
-    "expo-linear-gradient",
-  ];
+  const nodeModulesDir = path.join(__dirname, "..", "node_modules");
 
-  // Resolve the real disk path through the symlink in artifacts/mobile/node_modules
-  for (const pkg of pluginPackages) {
+  // Read all deps from package.json and fix any that are broken in the virtual store
+  let allDeps = [];
+  try {
+    const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+    allDeps = Object.keys({ ...pkgJson.dependencies, ...pkgJson.devDependencies });
+  } catch (_) {}
+
+  let fixed = 0;
+  for (const pkg of allDeps) {
+    const symlinkPath = path.join(nodeModulesDir, pkg);
     try {
-      const symlinkPath = path.join(
-        __dirname,
-        "..",
-        "node_modules",
-        pkg
-      );
-      const realDir = fs.realpathSync(symlinkPath);
-      const pluginFile = path.join(realDir, "app.plugin.js");
-      const pkgJson = path.join(realDir, "package.json");
-
-      if (!fs.existsSync(pluginFile)) {
-        fs.mkdirSync(realDir, { recursive: true });
-        fs.writeFileSync(pluginFile, STUB);
-        console.log(`[dev-start] Created plugin stub: ${pkg}/app.plugin.js`);
+      // Case 1: symlink itself doesn't exist — create direct stub dir
+      if (!fs.existsSync(symlinkPath)) {
+        fs.mkdirSync(symlinkPath, { recursive: true });
+        fs.writeFileSync(path.join(symlinkPath, "package.json"), JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
+        fs.writeFileSync(path.join(symlinkPath, "index.js"), INDEX_STUB);
+        fixed++;
+        continue;
       }
-      if (!fs.existsSync(pkgJson)) {
-        fs.writeFileSync(pkgJson, JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
+
+      // Case 2: symlink exists — resolve real dir and check for missing files
+      let realDir;
+      try { realDir = fs.realpathSync(symlinkPath); } catch (_) { realDir = symlinkPath; }
+
+      const pkgJsonPath = path.join(realDir, "package.json");
+      const indexPath = path.join(realDir, "index.js");
+      const pluginPath = path.join(realDir, "app.plugin.js");
+
+      if (!fs.existsSync(pkgJsonPath)) {
+        fs.mkdirSync(realDir, { recursive: true });
+        fs.writeFileSync(pkgJsonPath, JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
+        fs.writeFileSync(indexPath, INDEX_STUB);
+        fixed++;
+      }
+      if (!fs.existsSync(indexPath)) {
+        fs.writeFileSync(indexPath, INDEX_STUB);
+      }
+      // Add app.plugin.js stub if missing (needed for Expo config plugin resolution)
+      if (!fs.existsSync(pluginPath) && pkg.startsWith("expo-")) {
+        fs.writeFileSync(pluginPath, PLUGIN_STUB);
       }
     } catch (err) {
-      console.warn(`[dev-start] Could not fix plugin for ${pkg}: ${err.message}`);
+      // non-fatal — Metro will report if the package is truly needed
     }
   }
+
+  if (fixed > 0) console.log(`[dev-start] Fixed ${fixed} broken package stubs in node_modules`);
 }
 
 // ---------------------------------------------------------------------------

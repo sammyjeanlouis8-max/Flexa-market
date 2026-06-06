@@ -714,9 +714,14 @@ export default function WalletPage() {
   };
   useEffect(() => { loadPlatformRev(); }, [isSuperAdmin]);
 
+  const [showReturnApp, setShowReturnApp] = useState(false);
+
   // ── Check for Stripe redirect ────────────────────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get("return_app") === "1") {
+      setShowReturnApp(true);
+    }
     if (params.get("card_success") === "1") {
       toast({ title: t("wallet.paymentReceived"), description: t("wallet.balanceUpdating") });
       window.history.replaceState({}, "", "/wallet");
@@ -2680,6 +2685,24 @@ export default function WalletPage() {
   // =========================================================================
   return (
     <div className="max-w-xl mx-auto px-3 py-4 pb-24 space-y-3">
+
+      {/* ── Return-to-app banner ──────────────────────────────────────────── */}
+      {showReturnApp && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-950/20 px-4 py-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg">📱</span>
+            <p className="text-sm font-medium text-orange-800 dark:text-orange-300 truncate">
+              Tap to return to Flexa Market app.
+            </p>
+          </div>
+          <button
+            className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 active:bg-orange-700 transition-colors"
+            onClick={() => { window.location.href = "flexamarket://"; }}
+          >
+            Open App
+          </button>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">

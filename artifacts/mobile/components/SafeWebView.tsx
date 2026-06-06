@@ -1,6 +1,7 @@
-import React from "react";
+import * as WebBrowser from "expo-web-browser";
+import React, { useState } from "react";
 import {
-  Linking,
+  ActivityIndicator,
   Platform,
   Pressable,
   StyleSheet,
@@ -9,9 +10,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-let WebView: any = null;
+let WebViewComponent: any = null;
 try {
-  WebView = require("react-native-webview").default;
+  WebViewComponent = require("react-native-webview").default;
 } catch (_) {}
 
 interface IOSRedirectProps {
@@ -29,15 +30,54 @@ interface SafeWebViewProps {
 }
 
 function IOSRedirectScreen({ icon, title, body, buttonText, url, note }: IOSRedirectProps) {
+  const [status, setStatus] = useState<"idle" | "opening" | "returned">("idle");
+
+  async function handleOpen() {
+    setStatus("opening");
+    await WebBrowser.openBrowserAsync(url, {
+      controlsColor: "#F97316",
+      dismissButtonStyle: "done",
+    });
+    setStatus("returned");
+  }
+
   return (
     <View style={styles.iosContainer}>
       <Text style={styles.iosIcon}>{icon}</Text>
       <Text style={styles.iosTitle}>{title}</Text>
-      <Text style={styles.iosBody}>{body}</Text>
-      <Pressable style={styles.iosButton} onPress={() => Linking.openURL(url)}>
-        <Text style={styles.iosButtonText}>{buttonText}</Text>
-      </Pressable>
-      {note ? <Text style={styles.iosNote}>{note}</Text> : null}
+
+      {status === "returned" ? (
+        <>
+          <View style={styles.successBadge}>
+            <Text style={styles.successText}>✓ Browser closed</Text>
+          </View>
+          <Text style={styles.iosBody}>
+            If you completed your payment, your account will be updated shortly.
+          </Text>
+          <Pressable style={styles.iosButton} onPress={handleOpen}>
+            <Text style={styles.iosButtonText}>Reopen to Check</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={styles.iosBody}>{body}</Text>
+          <Pressable
+            style={[styles.iosButton, status === "opening" && styles.iosButtonDisabled]}
+            onPress={handleOpen}
+            disabled={status === "opening"}
+          >
+            {status === "opening" ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.iosButtonText}>{buttonText}</Text>
+            )}
+          </Pressable>
+          {note ? <Text style={styles.iosNote}>{note}</Text> : null}
+          <Text style={styles.iosReturnNote}>
+            After paying, tap "Done" in the browser to return to the app.
+          </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -49,7 +89,7 @@ export default function SafeWebView({ uri, iosRedirect }: SafeWebViewProps) {
     return <IOSRedirectScreen {...iosRedirect} />;
   }
 
-  if (!WebView) return null;
+  if (!WebViewComponent) return null;
 
   return (
     <View
@@ -61,7 +101,7 @@ export default function SafeWebView({ uri, iosRedirect }: SafeWebViewProps) {
         },
       ]}
     >
-      <WebView
+      <WebViewComponent
         source={{ uri }}
         style={{ flex: 1 }}
         javaScriptEnabled
@@ -108,6 +148,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 12,
     marginBottom: 20,
+    minWidth: 220,
+    alignItems: "center",
+  },
+  iosButtonDisabled: {
+    opacity: 0.7,
   },
   iosButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   iosNote: {
@@ -115,5 +160,26 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
     textAlign: "center",
     lineHeight: 20,
+    marginBottom: 8,
+  },
+  iosReturnNote: {
+    fontSize: 12,
+    color: "#CBD5E1",
+    textAlign: "center",
+    lineHeight: 18,
+    fontStyle: "italic",
+    marginTop: 4,
+  },
+  successBadge: {
+    backgroundColor: "#DCFCE7",
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  successText: {
+    color: "#16A34A",
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

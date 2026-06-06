@@ -618,8 +618,8 @@ router.post("/listings/:id/boost/stripe-checkout", requireAuth, async (req, res)
           },
         },
       }],
-      success_url: `${BOOST_BASE_URL}/boost/${listingId}?boost_success=1&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${BOOST_BASE_URL}/boost/${listingId}`,
+      success_url: `${BOOST_BASE_URL}/boost/${listingId}?boost_success=1&session_id={CHECKOUT_SESSION_ID}&return_app=1`,
+      cancel_url:  `${BOOST_BASE_URL}/boost/${listingId}?return_app=1`,
       metadata: {
         type:        "boost",
         boostId:     String(boost.id),

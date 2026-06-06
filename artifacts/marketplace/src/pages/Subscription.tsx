@@ -130,6 +130,8 @@ export default function Subscription() {
 
   const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
   const successPlan = params.get("success") ? params.get("plan") : null;
+  const returnApp = params.get("return_app") === "1";
+  const [showReturnApp, setShowReturnApp] = useState(false);
 
   useEffect(() => {
     if (successPlan) {
@@ -137,6 +139,11 @@ export default function Subscription() {
         title: t("subscription.planActivated", { plan: successPlan }),
         description: t("subscription.planActivatedDesc"),
       });
+    }
+    if (returnApp) {
+      setShowReturnApp(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -406,6 +413,24 @@ export default function Subscription() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16 pt-6">
+
+      {/* ── Return-to-app banner (shown after mobile payment) ─────────────── */}
+      {showReturnApp && (
+        <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-950/20 px-4 py-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-lg">📱</span>
+            <p className="text-sm font-medium text-orange-800 dark:text-orange-300 truncate">
+              {successPlan ? "Payment complete! Tap to return to the app." : "Tap to return to Flexa Market app."}
+            </p>
+          </div>
+          <button
+            className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 active:bg-orange-700 transition-colors"
+            onClick={() => { window.location.href = "flexamarket://"; }}
+          >
+            Open App
+          </button>
+        </div>
+      )}
 
       {/* ── Checkout redirect overlay ──────────────────────────────────────── */}
       {subscribing && (

@@ -1156,8 +1156,8 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
       paymentRef,
       txId: String(tx.id),
     },
-    success_url: `${baseUrl}/wallet?card_success=1&ref=${encodeURIComponent(paymentRef)}&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/wallet?card_cancel=1`,
+    success_url: `${baseUrl}/wallet?card_success=1&ref=${encodeURIComponent(paymentRef)}&session_id={CHECKOUT_SESSION_ID}&return_app=1`,
+    cancel_url: `${baseUrl}/wallet?card_cancel=1&return_app=1`,
   });
 
   logger.info({ userId: req.userId, paymentRef, amountUsd, sessionId: session.id }, "Wallet card topup session created");

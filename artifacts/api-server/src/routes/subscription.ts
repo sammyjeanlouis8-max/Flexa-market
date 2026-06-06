@@ -172,8 +172,8 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
         plan,
         subscriptionRecordId: String(pending.id),
       },
-      success_url: `${BASE_URL}/subscription?success=1&plan=${plan}`,
-      cancel_url: `${BASE_URL}/subscription?cancelled=1`,
+      success_url: `${BASE_URL}/subscription?success=1&plan=${plan}&return_app=1`,
+      cancel_url: `${BASE_URL}/subscription?cancelled=1&return_app=1`,
     });
 
     res.json({ url: session.url });

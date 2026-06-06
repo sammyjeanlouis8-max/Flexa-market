@@ -2583,6 +2583,7 @@ export default {
     botCantResolve: "FlexaBot pa ka rezoud? Pale ak yon ajan reyèl.",
     clear: "Efase",
     signInRequired: "Tanpri konekte pou pale ak FlexaBot.",
+    placeholder: "Poze FlexaBot nenpòt kesyon…",
   },
   adminBanner: {
     title: "Demands an Atant — Aksyon Obligatwa",

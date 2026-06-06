@@ -1752,6 +1752,8 @@ export default {
     talkToAgent: "Hablar con un agente",
     botCantResolve: "¿FlexaBot no puede resolver? Habla con un agente real.",
     clear: "Limpiar",
+    signInRequired: "Inicia sesión para chatear con FlexaBot.",
+    placeholder: "Pregúntale algo a FlexaBot…",
   },
   referral: {
     leaderboardTitle: "Clasificación de Referencias",

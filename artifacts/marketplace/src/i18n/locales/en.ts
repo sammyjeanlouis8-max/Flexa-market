@@ -2575,6 +2575,7 @@ export default {
     botCantResolve: "FlexaBot can't resolve? Talk to a real agent.",
     clear: "Clear",
     signInRequired: "Please sign in to chat with FlexaBot.",
+    placeholder: "Ask FlexaBot anything…",
   },
   adminBanner: {
     title: "Pending Applications — Action Required",

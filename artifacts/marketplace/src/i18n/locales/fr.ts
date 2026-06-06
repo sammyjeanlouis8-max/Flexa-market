@@ -2580,6 +2580,7 @@ export default {
     botCantResolve: "FlexaBot ne peut pas résoudre ? Parlez à un vrai agent.",
     clear: "Effacer",
     signInRequired: "Veuillez vous connecter pour discuter avec FlexaBot.",
+    placeholder: "Posez une question à FlexaBot…",
   },
   adminBanner: {
     title: "Demandes en attente — Action requise",

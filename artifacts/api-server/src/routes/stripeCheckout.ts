@@ -18,7 +18,7 @@ const router = Router();
 const BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  return domain ? `https://${domain}` : "http://localhost:3000";
+  return domain ? `https://${domain}` : "https://flexamarket.com";
 })();
 
 function decrementStock(listing: typeof listingsTable.$inferSelect): Partial<typeof listingsTable.$inferInsert> {

@@ -9,9 +9,11 @@ import type { Request, Response } from "express";
 
 const router = Router();
 
-const BASE_URL = process.env["REPLIT_DEV_DOMAIN"]
-  ? `https://${process.env["REPLIT_DEV_DOMAIN"]}`
-  : "http://localhost:3000";
+const BASE_URL = (() => {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  return domain ? `https://${domain}` : "https://flexamarket.com";
+})();
 
 // ── BNPL Eligibility Scoring ───────────────────────────────────────────────────
 async function computeEligibility(userId: number): Promise<{

@@ -1133,7 +1133,7 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
   const baseUrl = process.env.FRONTEND_URL
     || (process.env.REPLIT_DOMAINS?.split(",")[0]
       ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
-      : "http://localhost");
+      : "https://flexamarket.com");
 
   const stripe = await getStripeClient();
   const session = await stripe.checkout.sessions.create({

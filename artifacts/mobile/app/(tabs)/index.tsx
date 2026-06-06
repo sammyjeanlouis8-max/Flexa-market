@@ -1,32 +1,36 @@
 import { Feather } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
-import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator, BackHandler, Platform,
   Pressable, StyleSheet, Text, View,
 } from "react-native";
+import WebView from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
 
-let WebView: any = null;
-try { WebView = require("react-native-webview").default; } catch (_) {}
-const HAS_WEBVIEW = !!WebView;
+const INTERNAL_HOSTS = [
+  "flexamarket.com",
+  "www.flexamarket.com",
+  "bonjour-tool.replit.app",
+];
 
-export default function HomeTab() {
-  const insets = useSafeAreaInsets();
-  if (!HAS_WEBVIEW) {
-    return <FallbackHome insets={insets} />;
+function isInternal(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+  } catch {
+    return true;
   }
-  return <EmbeddedHome insets={insets} />;
 }
 
 type PermStatus = "checking" | "granted" | "denied" | "undetermined";
 
-function EmbeddedHome({ insets }: any) {
+export default function HomeTab() {
+  const insets = useSafeAreaInsets();
   const webRef = useRef<any>(null);
   const [navState, setNavState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -48,10 +52,7 @@ function EmbeddedHome({ insets }: any) {
 
   async function checkAndRequestPermission() {
     const { status } = await Notifications.getPermissionsAsync();
-    if (status === "granted") {
-      setPermStatus("granted");
-      return;
-    }
+    if (status === "granted") { setPermStatus("granted"); return; }
     if (status === "undetermined") {
       const { status: newStatus } = await Notifications.requestPermissionsAsync();
       setPermStatus(newStatus === "granted" ? "granted" : "denied");
@@ -83,14 +84,11 @@ function EmbeddedHome({ insets }: any) {
         <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
           <Text style={styles.logoText}>FM</Text>
         </View>
-
         <Text style={styles.gateTitle}>Aktive Notifikasyon</Text>
-
         <Text style={styles.gateSub}>
           FlexaMarket itilize notifikasyon pou voye mesaj, lòd, ak alèt enpòtan ba ou.{"\n\n"}
           Notifikasyon yo obligatwa pou itilize app la.
         </Text>
-
         <View style={styles.iconRow}>
           <View style={styles.iconItem}>
             <Text style={styles.iconEmoji}>💬</Text>
@@ -105,7 +103,6 @@ function EmbeddedHome({ insets }: any) {
             <Text style={styles.iconLabel}>Peman</Text>
           </View>
         </View>
-
         <Pressable
           style={[styles.settingsBtn, { backgroundColor: "#F97316" }]}
           onPress={() => Linking.openSettings()}
@@ -113,7 +110,6 @@ function EmbeddedHome({ insets }: any) {
           <Feather name="settings" size={18} color="#fff" />
           <Text style={styles.settingsBtnText}>Ouvri Paramèt</Text>
         </Pressable>
-
         <Pressable
           style={styles.recheckBtn}
           onPress={async () => {
@@ -134,8 +130,10 @@ function EmbeddedHome({ insets }: any) {
         <Text style={{ fontSize: 56 }}>📡</Text>
         <Text style={[styles.offlineTitle, { color: "#fff" }]}>Pa gen entènèt</Text>
         <Text style={[styles.offlineSub, { color: "#94a3b8" }]}>Verifye koneksyon ou epi eseye ankò.</Text>
-        <Pressable style={[styles.retryBtn, { backgroundColor: "#F97316" }]}
-          onPress={() => { setOffline(false); setLoading(true); webRef.current?.reload(); }}>
+        <Pressable
+          style={[styles.retryBtn, { backgroundColor: "#F97316" }]}
+          onPress={() => { setOffline(false); setLoading(true); webRef.current?.reload(); }}
+        >
           <Feather name="refresh-cw" size={16} color="#fff" />
           <Text style={styles.retryText}>Eseye Ankò</Text>
         </Pressable>
@@ -169,31 +167,13 @@ function EmbeddedHome({ insets }: any) {
         onError={() => { setOffline(true); setLoading(false); }}
         onHttpError={({ nativeEvent }: any) => { if (nativeEvent.statusCode >= 500) setOffline(true); }}
         userAgent="FlexaMarket/1.0 (Mobile App)"
+        onShouldStartLoadWithRequest={(request) => {
+          const url = request.url;
+          if (isInternal(url)) return true;
+          Linking.openURL(url).catch(() => {});
+          return false;
+        }}
       />
-    </View>
-  );
-}
-
-function FallbackHome({ insets }: any) {
-  const openSite = useCallback(async () => {
-    await WebBrowser.openBrowserAsync(WEBSITE, {
-      toolbarColor: "#F97316",
-      controlsColor: "#FFFFFF",
-      enableBarCollapsing: true,
-      showTitle: false,
-    });
-  }, []);
-
-  useEffect(() => {
-    openSite();
-  }, [openSite]);
-
-  return (
-    <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top }]}>
-      <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
-        <Text style={styles.logoText}>FM</Text>
-      </View>
-      <ActivityIndicator size="large" color="#F97316" style={{ marginTop: 16 }} />
     </View>
   );
 }
@@ -205,10 +185,6 @@ const styles = StyleSheet.create({
   progressFill: { height: 3, backgroundColor: "#F97316" },
   logoBox: { width: 80, height: 80, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   logoText: { color: "#fff", fontSize: 32, fontWeight: "700" },
-  brandTitle: { fontSize: 26, fontWeight: "700" },
-  brandSub: { fontSize: 13, textAlign: "center", marginTop: -8 },
-  openBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, width: "100%" },
-  openBtnText: { color: "#fff", fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
   offlineTitle: { fontSize: 22, fontWeight: "700" },
   offlineSub: { fontSize: 14, textAlign: "center" },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },

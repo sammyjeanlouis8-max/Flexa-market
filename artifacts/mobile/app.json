@@ -32,12 +32,12 @@
       "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Flexa Market uses your camera to take photos for your listings.",
-        "NSPhotoLibraryUsageDescription": "Flexa Market uses your photo library to add images to your listings.",
-        "NSPhotoLibraryAddUsageDescription": "Flexa Market saves photos to your library.",
-        "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show nearby listings and set your listing location.",
-        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record videos for your listings.",
-        "NSFaceIDUsageDescription": "Use Face ID to sign in quickly and securely."
+        "NSCameraUsageDescription": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing.",
+        "NSPhotoLibraryUsageDescription": "Flexa Market uses your photo library so you can choose existing photos of items you want to sell and attach them to your listings.",
+        "NSPhotoLibraryAddUsageDescription": "Flexa Market saves photos to your library after you take them for your listings.",
+        "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show you nearby listings and to automatically set the location for items you are selling, helping local buyers find your products.",
+        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
+        "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password."
       }
     },
     "android": {
@@ -88,14 +88,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "FlexaMarket bezwen aksè galerif ou pou ajoute foto nan annons ou.",
-          "cameraPermission": "FlexaMarket bezwen aksè kamera ou pou pran foto pou annons ou."
+          "photosPermission": "Flexa Market uses your photo library so you can choose photos of items you want to sell and add them to your listings.",
+          "cameraPermission": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "FlexaMarket itilize GPS ou pou montre annons ki tou pre ou."
+          "locationAlwaysAndWhenInUsePermission": "Flexa Market uses your location to show you nearby listings and to set the location for items you are selling, helping local buyers find your products."
         }
       ]
     ],

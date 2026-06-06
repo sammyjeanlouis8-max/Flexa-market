@@ -14,6 +14,39 @@ const GRACE_PERIOD_DAYS = 5;
 
 const router = Router();
 
+// ── Helper: get or create Stripe customer, auto-clearing stale test-mode IDs ──
+async function getOrCreateStripeCustomer(
+  stripe: Stripe,
+  user: { id: number; email: string; name: string; stripeCustomerId: string | null }
+): Promise<string> {
+  if (user.stripeCustomerId) {
+    try {
+      await stripe.customers.retrieve(user.stripeCustomerId);
+      return user.stripeCustomerId;
+    } catch (err: any) {
+      const isStale =
+        err?.code === "resource_missing" ||
+        (err?.message ?? "").toLowerCase().includes("no such customer") ||
+        (err?.message ?? "").toLowerCase().includes("test mode");
+      if (!isStale) throw err;
+      // Stale test-mode ID — clear it and fall through to create a new one
+      await db.update(usersTable)
+        .set({ stripeCustomerId: null })
+        .where(eq(usersTable.id, user.id));
+      logger.warn({ userId: user.id, oldId: user.stripeCustomerId }, "Cleared stale Stripe customer ID (test/live mode mismatch)");
+    }
+  }
+  const customer = await stripe.customers.create({
+    email: user.email,
+    name: user.name,
+    metadata: { userId: String(user.id) },
+  });
+  await db.update(usersTable)
+    .set({ stripeCustomerId: customer.id })
+    .where(eq(usersTable.id, user.id));
+  return customer.id;
+}
+
 const BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
@@ -133,13 +166,8 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
 
     const stripe = await getStripeClient();
 
-    // Get or create Stripe customer
-    let customerId = user.stripeCustomerId ?? undefined;
-    if (!customerId) {
-      const customer = await stripe.customers.create({ email: user.email, name: user.name, metadata: { userId: String(user.id) } });
-      customerId = customer.id;
-      await db.update(usersTable).set({ stripeCustomerId: customerId }).where(eq(usersTable.id, user.id));
-    }
+    // Get or create Stripe customer (auto-clears stale test-mode IDs)
+    const customerId = await getOrCreateStripeCustomer(stripe, user);
 
     // Insert pending subscription record
     const [pending] = await db.insert(vendorSubscriptionsTable).values({
@@ -269,11 +297,10 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
 router.post("/subscription/portal", requireAuth, async (req: any, res: any) => {
   try {
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId));
-    if (!user?.stripeCustomerId) return res.status(400).json({ error: "No billing account found" });
-
     const stripe = await getStripeClient();
+    const customerId = await getOrCreateStripeCustomer(stripe, user);
     const session = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
+      customer: customerId,
       return_url: `${BASE_URL}/subscription`,
     });
     res.json({ url: session.url });

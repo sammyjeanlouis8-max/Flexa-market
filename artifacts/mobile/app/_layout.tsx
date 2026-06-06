@@ -64,6 +64,7 @@ export default function RootLayout() {
           <Stack.Screen name="admin" options={NO_HEADER} />
           <Stack.Screen name="auth/login" options={NO_HEADER} />
           <Stack.Screen name="auth/register" options={NO_HEADER} />
+          <Stack.Screen name="stripe-checkout" options={NO_HEADER} />
           <Stack.Screen name="+not-found" options={NO_HEADER} />
         </Stack>
       </GestureHandlerRootView>

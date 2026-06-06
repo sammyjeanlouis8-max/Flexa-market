@@ -3,6 +3,7 @@ import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
+import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionSheetIOS,
@@ -396,8 +397,24 @@ export default function HomeTab() {
         onMessage={handleMessage}
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
+          try {
+            const { hostname } = new URL(url);
+            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+              setTimeout(() => router.push(`/stripe-checkout?url=${encodeURIComponent(url)}`), 0);
+              return false;
+            }
+          } catch {}
           if (isInternal(url)) return true;
           return false;
+        }}
+        onOpenWindow={(syntheticEvent) => {
+          const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? "";
+          try {
+            const { hostname } = new URL(targetUrl);
+            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+              router.push(`/stripe-checkout?url=${encodeURIComponent(targetUrl)}`);
+            }
+          } catch {}
         }}
       />
     </SafeAreaView>

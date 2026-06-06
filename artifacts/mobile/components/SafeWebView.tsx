@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -42,6 +43,7 @@ const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
   Platform.OS === "ios" ? ["top"] : [];
 
 export default function SafeWebView({ uri }: SafeWebViewProps) {
+  const router = useRouter();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -68,8 +70,24 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         onLoadEnd={() => setLoading(false)}
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
+          try {
+            const { hostname } = new URL(url);
+            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+              setTimeout(() => router.push(`/stripe-checkout?url=${encodeURIComponent(url)}`), 0);
+              return false;
+            }
+          } catch {}
           if (isInternal(url)) return true;
           return false;
+        }}
+        onOpenWindow={(syntheticEvent) => {
+          const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? "";
+          try {
+            const { hostname } = new URL(targetUrl);
+            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+              router.push(`/stripe-checkout?url=${encodeURIComponent(targetUrl)}`);
+            }
+          } catch {}
         }}
       />
     </SafeAreaView>

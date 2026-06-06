@@ -54,9 +54,17 @@ const MAX_BRIDGE_BYTES = 40 * 1024 * 1024;
  *
  * On Android the WebView file picker works correctly, so we skip the intercept.
  */
+const BLOCK_CONTEXT_MENU_SCRIPT = `
+(function() {
+  if (window.__flexaCtxBlocked) return;
+  window.__flexaCtxBlocked = true;
+  document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; }, true);
+})();
+`;
+
 function buildVideoInterceptorScript(isIOS: boolean): string {
-  if (!isIOS) return "true;";
-  return `
+  if (!isIOS) return BLOCK_CONTEXT_MENU_SCRIPT + "\ntrue;";
+  return BLOCK_CONTEXT_MENU_SCRIPT + `
 (function() {
   if (window.__flexaVideoInterceptInit) return;
   window.__flexaVideoInterceptInit = true;

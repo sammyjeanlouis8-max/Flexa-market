@@ -21,7 +21,7 @@ export const RegisterBody = zod.object({
   name: zod.string(),
   email: zod.string(),
   password: zod.string(),
-  phone: zod.string().describe("Full E.164 phone number (e.g. +50934455823)"),
+  phone: zod.string().optional().describe("Full E.164 phone number (e.g. +50934455823). Optional at registration."),
   country: zod.string().describe("Country name (e.g. Haiti, USA)"),
   location: zod.string().optional(),
   bio: zod.string().optional(),

@@ -5,7 +5,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 
 const INTERNAL_HOSTS = [
@@ -33,13 +33,20 @@ interface SafeWebViewProps {
   uri: string;
 }
 
+// SafeAreaView edges:
+//   iOS   — "top" only: positions content below Dynamic Island / notch automatically.
+//            "bottom" is omitted so the web page's own CSS (env(safe-area-inset-bottom))
+//            handles the home-indicator gap — adding native bottom padding would double it.
+//   Android — no edges: the OS + web page manage the status bar independently.
+const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
+  Platform.OS === "ios" ? ["top"] : [];
+
 export default function SafeWebView({ uri }: SafeWebViewProps) {
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
-  const insets = useSafeAreaInsets();
 
   return (
-    <View style={[styles.container, Platform.OS === "ios" && { paddingTop: insets.top }]}>
+    <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
       {loading && (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#F97316" />
@@ -65,7 +72,7 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
           return false;
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -14,8 +14,8 @@ import {
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
@@ -140,8 +140,12 @@ function buildVideoInterceptorScript(isIOS: boolean): string {
 
 type PermStatus = "checking" | "granted" | "denied" | "undetermined";
 
+// SafeAreaView edges — iOS only (top = Dynamic Island / notch, bottom = home indicator).
+// Android manages its own status bar through the OS and web page layout.
+const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
+  Platform.OS === "ios" ? ["top", "bottom"] : [];
+
 export default function HomeTab() {
-  const insets = useSafeAreaInsets();
   const webRef = useRef<any>(null);
   const [navState, setNavState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -292,15 +296,15 @@ export default function HomeTab() {
 
   if (permStatus === "checking") {
     return (
-      <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top }]}>
+      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
         <ActivityIndicator size="large" color="#F97316" />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (permStatus === "denied") {
     return (
-      <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
         <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
           <Text style={styles.logoText}>FM</Text>
         </View>
@@ -340,13 +344,13 @@ export default function HomeTab() {
         >
           <Text style={styles.recheckText}>M aktive li — kontinye</Text>
         </Pressable>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (offline) {
     return (
-      <View style={[styles.center, { backgroundColor: "#0F172A" }]}>
+      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
         <Text style={{ fontSize: 56 }}>📡</Text>
         <Text style={[styles.offlineTitle, { color: "#fff" }]}>Pa gen entènèt</Text>
         <Text style={[styles.offlineSub, { color: "#94a3b8" }]}>Verifye koneksyon ou epi eseye ankò.</Text>
@@ -357,14 +361,14 @@ export default function HomeTab() {
           <Feather name="refresh-cw" size={16} color="#fff" />
           <Text style={styles.retryText}>Eseye Ankò</Text>
         </Pressable>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.container, Platform.OS === "ios" && { paddingTop: insets.top, backgroundColor: "#0F172A" }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
       {loading && (
-        <View style={[styles.progressTrack, { top: Platform.OS === "ios" ? insets.top : 0 }]}>
+        <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
         </View>
       )}
@@ -396,14 +400,14 @@ export default function HomeTab() {
           return false;
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
-  progressTrack: { position: "absolute", left: 0, right: 0, height: 3, zIndex: 10, backgroundColor: "#1e293b" },
+  progressTrack: { position: "absolute", top: 0, left: 0, right: 0, height: 3, zIndex: 10, backgroundColor: "#1e293b" },
   progressFill: { height: 3, backgroundColor: "#F97316" },
   logoBox: { width: 80, height: 80, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   logoText: { color: "#fff", fontSize: 32, fontWeight: "700" },

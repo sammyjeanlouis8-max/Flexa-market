@@ -9,6 +9,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 
+const BLOCK_CONTEXT_MENU_SCRIPT = `
+(function() {
+  if (window.__flexaCtxBlocked) return;
+  window.__flexaCtxBlocked = true;
+  document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; }, true);
+})();
+true;
+`;
+
 const INTERNAL_HOSTS = [
   "flexamarket.com",
   "www.flexamarket.com",
@@ -61,6 +70,8 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
+        injectedJavaScript={BLOCK_CONTEXT_MENU_SCRIPT}
+        injectedJavaScriptForMainFrameOnly
         thirdPartyCookiesEnabled
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}

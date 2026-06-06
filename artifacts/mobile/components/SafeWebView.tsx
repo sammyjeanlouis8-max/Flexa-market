@@ -1,4 +1,3 @@
-import * as Linking from "expo-linking";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -11,6 +10,12 @@ const INTERNAL_HOSTS = [
   "flexamarket.com",
   "www.flexamarket.com",
   "bonjour-tool.replit.app",
+  "stripe.com",
+  "checkout.stripe.com",
+  "js.stripe.com",
+  "hooks.stripe.com",
+  "m.stripe.com",
+  "m.stripe.network",
 ];
 
 function isInternal(url: string): boolean {
@@ -54,7 +59,6 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
           if (isInternal(url)) return true;
-          Linking.openURL(url).catch(() => {});
           return false;
         }}
       />

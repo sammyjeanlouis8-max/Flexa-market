@@ -275,11 +275,10 @@ function fixBrokenPlugins() {
 const withPlugin = (c) => c;
 module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
 `;
-  const INDEX_STUB = `// stub — pnpm virtual store entry missing after Replit reset\nmodule.exports = {};\n`;
+  const INDEX_STUB = "// stub — pnpm virtual store entry missing\nmodule.exports = {};\n";
 
   const nodeModulesDir = path.join(__dirname, "..", "node_modules");
 
-  // Read all deps from package.json and fix any that are broken in the virtual store
   let allDeps = [];
   try {
     const pkgJson = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
@@ -290,25 +289,37 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
   for (const pkg of allDeps) {
     const symlinkPath = path.join(nodeModulesDir, pkg);
     try {
-      // Case 1: symlink itself doesn't exist — create direct stub dir
-      if (!fs.existsSync(symlinkPath)) {
+      // Use lstatSync (doesn't follow symlinks) to detect existence of the path entry itself
+      let lstat = null;
+      try { lstat = fs.lstatSync(symlinkPath); } catch (_) {}
+
+      let realDir = null;
+
+      if (!lstat) {
+        // No entry at all — create a real directory as stub
         fs.mkdirSync(symlinkPath, { recursive: true });
-        fs.writeFileSync(path.join(symlinkPath, "package.json"), JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
-        fs.writeFileSync(path.join(symlinkPath, "index.js"), INDEX_STUB);
-        fixed++;
-        continue;
+        realDir = symlinkPath;
+      } else if (lstat.isSymbolicLink()) {
+        // Entry is a symlink — resolve to its target (may not exist)
+        try {
+          realDir = fs.realpathSync(symlinkPath);
+        } catch (_) {
+          // Broken symlink: target doesn't exist — read the link and create target manually
+          const linkTarget = fs.readlinkSync(symlinkPath);
+          realDir = path.resolve(nodeModulesDir, linkTarget);
+          fs.mkdirSync(realDir, { recursive: true });
+        }
+      } else if (lstat.isDirectory()) {
+        realDir = symlinkPath;
       }
 
-      // Case 2: symlink exists — resolve real dir and check for missing files
-      let realDir;
-      try { realDir = fs.realpathSync(symlinkPath); } catch (_) { realDir = symlinkPath; }
+      if (!realDir) continue;
 
       const pkgJsonPath = path.join(realDir, "package.json");
       const indexPath = path.join(realDir, "index.js");
       const pluginPath = path.join(realDir, "app.plugin.js");
 
       if (!fs.existsSync(pkgJsonPath)) {
-        fs.mkdirSync(realDir, { recursive: true });
         fs.writeFileSync(pkgJsonPath, JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
         fs.writeFileSync(indexPath, INDEX_STUB);
         fixed++;
@@ -316,16 +327,15 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
       if (!fs.existsSync(indexPath)) {
         fs.writeFileSync(indexPath, INDEX_STUB);
       }
-      // Add app.plugin.js stub if missing (needed for Expo config plugin resolution)
       if (!fs.existsSync(pluginPath) && pkg.startsWith("expo-")) {
         fs.writeFileSync(pluginPath, PLUGIN_STUB);
       }
     } catch (err) {
-      // non-fatal — Metro will report if the package is truly needed
+      // non-fatal
     }
   }
 
-  if (fixed > 0) console.log(`[dev-start] Fixed ${fixed} broken package stubs in node_modules`);
+  if (fixed > 0) console.log(`[dev-start] Fixed ${fixed} broken package stubs`);
 }
 
 // ---------------------------------------------------------------------------

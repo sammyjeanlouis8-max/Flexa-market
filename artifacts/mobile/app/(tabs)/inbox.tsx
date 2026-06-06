@@ -1,26 +1,6 @@
+import SafeWebView from "@/components/SafeWebView";
 import React from "react";
-import { NativeModules, StyleSheet, View } from "react-native";
-
-const WEBSITE = "https://flexamarket.com/messages";
-let WebView: any = null;
-try { WebView = require("react-native-webview").default; } catch (_) {}
-const HAS_WEBVIEW = !!WebView;
 
 export default function InboxTab() {
-  if (!HAS_WEBVIEW) return null;
-  return (
-    <View style={styles.container}>
-      <WebView
-        source={{ uri: WEBSITE }}
-        style={{ flex: 1 }}
-        javaScriptEnabled
-        domStorageEnabled
-        sharedCookiesEnabled
-        thirdPartyCookiesEnabled
-        userAgent="FlexaMarket/1.0 (Mobile App)"
-      />
-    </View>
-  );
+  return <SafeWebView uri="https://flexamarket.com/messages" />;
 }
-
-const styles = StyleSheet.create({ container: { flex: 1 } });

@@ -1,9 +1,8 @@
-import SiteWebView from "@/components/SiteWebView";
-import React from "react";
+import SafeWebView from "@/components/SafeWebView";
 import { useLocalSearchParams } from "expo-router";
+import React from "react";
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const uri = `https://flexamarket.com/chat/${id}`;
-  return <SiteWebView uri={uri} />;
+  return <SafeWebView uri={`https://flexamarket.com/chat/${id}`} />;
 }

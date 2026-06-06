@@ -1,10 +1,19 @@
+import SafeWebView from "@/components/SafeWebView";
 import React from "react";
-import { NativeModules, StyleSheet, View } from "react-native";
-let WebView: any = null;
-try { WebView = require("react-native-webview").default; } catch (_) {}
-const HAS_WEBVIEW = !!WebView;
+
 export default function WalletScreen() {
-  if (!HAS_WEBVIEW) return null;
-  return <View style={styles.c}><WebView source={{ uri: "https://flexamarket.com/wallet" }} style={{ flex: 1 }} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled userAgent="FlexaMarket/1.0 (Mobile App)" /></View>;
+  return (
+    <SafeWebView
+      uri="https://flexamarket.com/wallet"
+      iosRedirect={{
+        icon: "💳",
+        title: "FM Wallet",
+        body:
+          "To add funds or manage your FM Wallet balance, please visit our website. Your balance is linked to your account and available on all platforms.",
+        buttonText: "Manage Wallet on Website",
+        url: "https://flexamarket.com/wallet",
+        note: "Purchases made via the website are reflected instantly in your app.",
+      }}
+    />
+  );
 }
-const styles = StyleSheet.create({ c: { flex: 1 } });

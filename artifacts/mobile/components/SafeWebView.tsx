@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
@@ -8,12 +9,23 @@ import {
   Text,
   View,
 } from "react-native";
+import WebView from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-let WebViewComponent: any = null;
-try {
-  WebViewComponent = require("react-native-webview").default;
-} catch (_) {}
+const INTERNAL_HOSTS = [
+  "flexamarket.com",
+  "www.flexamarket.com",
+  "bonjour-tool.replit.app",
+];
+
+function isInternal(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+  } catch {
+    return true;
+  }
+}
 
 interface IOSRedirectProps {
   icon: string;
@@ -89,8 +101,6 @@ export default function SafeWebView({ uri, iosRedirect }: SafeWebViewProps) {
     return <IOSRedirectScreen {...iosRedirect} />;
   }
 
-  if (!WebViewComponent) return null;
-
   return (
     <View
       style={[
@@ -101,15 +111,23 @@ export default function SafeWebView({ uri, iosRedirect }: SafeWebViewProps) {
         },
       ]}
     >
-      <WebViewComponent
+      <WebView
         source={{ uri }}
         style={{ flex: 1 }}
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
         contentInsetAdjustmentBehavior="automatic"
         userAgent="FlexaMarket/1.0 (Mobile App)"
+        onShouldStartLoadWithRequest={(request) => {
+          const url = request.url;
+          if (isInternal(url)) return true;
+          Linking.openURL(url).catch(() => {});
+          return false;
+        }}
       />
     </View>
   );

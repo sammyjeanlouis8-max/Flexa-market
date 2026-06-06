@@ -263,6 +263,55 @@ function prewarmBundle() {
 }
 
 // ---------------------------------------------------------------------------
+// Fix broken pnpm virtual-store symlinks for Expo config plugins
+// Replit wipes node_modules content on restart; recreate minimal stubs so
+// Expo's plugin resolver does not crash before Metro even starts.
+// ---------------------------------------------------------------------------
+function fixBrokenPlugins() {
+  const fs = require("fs");
+  const path = require("path");
+
+  const STUB = `const { createRunOncePlugin } = require("@expo/config-plugins");
+const withPlugin = (c) => c;
+module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
+`;
+
+  // Packages that need an app.plugin.js but whose pnpm virtual-store entries
+  // are empty after a Replit environment reset.
+  const pluginPackages = [
+    "expo-notifications",
+    "expo-image-picker",
+    "expo-location",
+  ];
+
+  // Resolve the real disk path through the symlink in artifacts/mobile/node_modules
+  for (const pkg of pluginPackages) {
+    try {
+      const symlinkPath = path.join(
+        __dirname,
+        "..",
+        "node_modules",
+        pkg
+      );
+      const realDir = fs.realpathSync(symlinkPath);
+      const pluginFile = path.join(realDir, "app.plugin.js");
+      const pkgJson = path.join(realDir, "package.json");
+
+      if (!fs.existsSync(pluginFile)) {
+        fs.mkdirSync(realDir, { recursive: true });
+        fs.writeFileSync(pluginFile, STUB);
+        console.log(`[dev-start] Created plugin stub: ${pkg}/app.plugin.js`);
+      }
+      if (!fs.existsSync(pkgJson)) {
+        fs.writeFileSync(pkgJson, JSON.stringify({ name: pkg, version: "1.0.0", main: "index.js" }));
+      }
+    } catch (err) {
+      console.warn(`[dev-start] Could not fix plugin for ${pkg}: ${err.message}`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Launch Metro — with auto-restart on crash
 // ---------------------------------------------------------------------------
 function startMetro() {
@@ -340,5 +389,6 @@ function startMetro() {
 server.listen(PORT, () => {
   console.log(`[dev-start] Proxy ready on :${PORT} → Metro :${METRO_PORT}`);
   console.log(`[dev-start] Health check: /status → {"status":"packager-status:running"}`);
+  fixBrokenPlugins();
   startMetro();
 });

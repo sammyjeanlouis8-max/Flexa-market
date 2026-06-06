@@ -282,6 +282,9 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
     "expo-notifications",
     "expo-image-picker",
     "expo-location",
+    "expo-blur",
+    "expo-haptics",
+    "expo-linear-gradient",
   ];
 
   // Resolve the real disk path through the symlink in artifacts/mobile/node_modules

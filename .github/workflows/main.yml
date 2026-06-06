@@ -53,6 +53,8 @@ jobs:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           EXPO_ROUTER_APP_ROOT: app
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=2048m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+          JAVA_OPTS: "-Xmx2048m"
         run: |
           set -o pipefail
           eas build \

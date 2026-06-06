@@ -4,20 +4,17 @@ import * as Notifications from "expo-notifications";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, BackHandler, NativeModules, Platform,
+  ActivityIndicator, BackHandler, Platform,
   Pressable, StyleSheet, Text, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { buildSafeAreaJs } from "@/components/SiteWebView";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
 
-const HAS_WEBVIEW = !!(NativeModules.RNCWebView);
 let WebView: any = null;
-if (HAS_WEBVIEW) {
-  WebView = require("react-native-webview").default;
-}
+try { WebView = require("react-native-webview").default; } catch (_) {}
+const HAS_WEBVIEW = !!WebView;
 
 export default function HomeTab() {
   const insets = useSafeAreaInsets();
@@ -164,9 +161,6 @@ function EmbeddedHome({ insets }: any) {
         allowsBackForwardNavigationGestures
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        automaticallyAdjustContentInsets={false}
-        contentInsetAdjustmentBehavior="never"
-        injectedJavaScriptBeforeContentLoaded={buildSafeAreaJs(insets)}
         overScrollMode="never"
         onNavigationStateChange={setNavState}
         onLoadStart={() => { setLoading(true); setOffline(false); }}
@@ -186,23 +180,20 @@ function FallbackHome({ insets }: any) {
       toolbarColor: "#F97316",
       controlsColor: "#FFFFFF",
       enableBarCollapsing: true,
-      showTitle: true,
+      showTitle: false,
     });
   }, []);
+
+  useEffect(() => {
+    openSite();
+  }, [openSite]);
 
   return (
     <View style={[styles.center, { backgroundColor: "#0F172A", paddingTop: insets.top }]}>
       <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
         <Text style={styles.logoText}>FM</Text>
       </View>
-      <Text style={[styles.brandTitle, { color: "#fff" }]}>FlexaMarket</Text>
-      <Text style={[styles.brandSub, { color: "#94a3b8" }]}>
-        Caribbean & Latin America Marketplace
-      </Text>
-      <Pressable style={[styles.openBtn, { backgroundColor: "#F97316" }]} onPress={openSite}>
-        <Feather name="globe" size={18} color="#fff" />
-        <Text style={styles.openBtnText}>Ouvri FlexaMarket.com</Text>
-      </Pressable>
+      <ActivityIndicator size="large" color="#F97316" style={{ marginTop: 16 }} />
     </View>
   );
 }

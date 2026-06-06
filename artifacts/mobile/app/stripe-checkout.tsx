@@ -18,6 +18,21 @@ function isFlexa(url: string): boolean {
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
   Platform.OS === "ios" ? ["top"] : [];
 
+// Force correct mobile viewport on Stripe's hosted checkout page.
+// Without this, WKWebView on iOS may render at desktop scale.
+const VIEWPORT_FIX = `
+(function() {
+  var meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.name = 'viewport';
+    document.head.appendChild(meta);
+  }
+  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+  true;
+})();
+`.trim();
+
 export default function StripeCheckoutScreen() {
   const router = useRouter();
   const { url } = useLocalSearchParams<{ url: string }>();
@@ -49,6 +64,9 @@ export default function StripeCheckoutScreen() {
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         overScrollMode="never"
+        scalesPageToFit={false}
+        injectedJavaScript={VIEWPORT_FIX}
+        injectedJavaScriptForMainFrameOnly
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
         onShouldStartLoadWithRequest={(request) => {

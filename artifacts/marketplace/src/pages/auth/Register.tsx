@@ -203,7 +203,9 @@ export default function Register() {
                       data-testid="input-password"
                     />
                   </FormControl>
-                  <p className="text-xs text-muted-foreground">{t("auth.passwordMin")}</p>
+                  {!form.formState.errors.password && (
+                    <p className="text-xs text-muted-foreground">{t("auth.passwordMin")}</p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />

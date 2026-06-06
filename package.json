@@ -4,9 +4,9 @@
   "license": "MIT",
   "packageManager": "pnpm@10.26.1",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) [ -n \"$CI\" ] || [ -n \"$DIGITALOCEAN_APP_NAME\" ] || { echo \"Use pnpm instead\" >&2; exit 1; } ;; esac'",
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock'",
     "start": "node index.js",
-    "build": "pnpm -r --if-present run build",
+    "build": "sh -c 'which pnpm > /dev/null 2>&1 || npm install -g pnpm@10.26.1; pnpm -r --if-present run build'",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

@@ -24,7 +24,10 @@ const WEBSITE = "https://flexamarket.com";
 const INTERNAL_HOSTS = [
   "flexamarket.com",
   "www.flexamarket.com",
-  "bonjour-tool.replit.app",
+  // EAS-deployed API host (see eas.json env.EXPO_PUBLIC_DOMAIN). Kept in sync
+  // with components/SafeWebView.tsx — both lists must match or in-WebView
+  // navigation will be cancelled and external links won't open as intended.
+  "lionfish-app-feohg.ondigitalocean.app",
   "stripe.com",
   "checkout.stripe.com",
   "js.stripe.com",
@@ -175,12 +178,23 @@ export default function HomeTab() {
   }, []);
 
   async function checkAndRequestPermission() {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status === "granted") { setPermStatus("granted"); return; }
-    if (status === "undetermined") {
-      const { status: newStatus } = await Notifications.requestPermissionsAsync();
-      setPermStatus(newStatus === "granted" ? "granted" : "denied");
-    } else {
+    // Wrapped in try/catch because expo-notifications on Android 13+ can
+    // reject getPermissionsAsync / requestPermissionsAsync during the first
+    // cold-start render on certain OEM builds (One UI 6, MIUI 14) when
+    // Google Play Services is updating in the background. An unhandled
+    // promise rejection here was a confirmed Android startup-crash class.
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status === "granted") { setPermStatus("granted"); return; }
+      if (status === "undetermined") {
+        const { status: newStatus } = await Notifications.requestPermissionsAsync();
+        setPermStatus(newStatus === "granted" ? "granted" : "denied");
+      } else {
+        setPermStatus("denied");
+      }
+    } catch {
+      // Permission flow not available right now — treat as denied so the UI
+      // shows the "enable notifications" prompt rather than blocking startup.
       setPermStatus("denied");
     }
   }

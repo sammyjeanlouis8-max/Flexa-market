@@ -1,82 +1,47 @@
-import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
-import { useEffect, useRef } from "react";
-import { Platform } from "react-native";
+/**
+ * Thin backwards-compatibility shim around `lib/pushTokens.ts`.
+ *
+ * Previously this hook was the single entry point for push registration and
+ * had to be called from a screen that mounted a WebView (so it could
+ * inject the token via the `injectJs` callback). That created two bugs:
+ *
+ *   1. If the user never visited the home tab, no token was ever fetched.
+ *   2. The token was only stored in a per-mount ref, so navigating away and
+ *      back lost it, and OS-initiated token refreshes were never observed.
+ *
+ * The real implementation now lives in `lib/pushTokens.ts` and is
+ * initialised once from the root layout via `initPushNotifications()`.
+ * Screens that mount a WebView can still call this hook to receive the
+ * current token via `injectJs` whenever one is available — but the
+ * registration pipeline no longer depends on the hook running.
+ */
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+import { useEffect } from "react";
+import {
+  buildTokenInjectionScript,
+  getCachedPushToken,
+  initPushNotifications,
+  subscribePushToken,
+} from "../lib/pushTokens";
 
-const API_BASE = "https://bonjour-tool.replit.app";
-
-async function registerForPushNotifications(): Promise<string | null> {
-  if (!Device.isDevice) return null;
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") return null;
-
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "Flexa Market",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#F97316",
-      sound: "default",
-    });
-  }
-
-  try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
-    });
-    return tokenData.data;
-  } catch {
-    return null;
-  }
-}
-
-export function usePushNotifications(
-  injectJs?: (script: string) => void,
-) {
-  const tokenRef = useRef<string | null>(null);
-
+export function usePushNotifications(injectJs?: (script: string) => void) {
   useEffect(() => {
-    registerForPushNotifications().then((token) => {
-      if (!token) return;
-      tokenRef.current = token;
-      if (injectJs) {
-        injectJs(
-          `(function(){window.__expoPushToken=${JSON.stringify(token)};` +
-          `if(typeof window.__onExpoPushToken==='function')window.__onExpoPushToken(${JSON.stringify(token)});` +
-          `})();true;`
-        );
-      }
-    });
+    // Idempotent — safe to call from any number of screens.
+    initPushNotifications();
 
-    const sub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const url = response.notification.request.content.data?.url as string | undefined;
-        if (url && injectJs) {
-          injectJs(
-            `(function(){if(window.__handlePushUrl)window.__handlePushUrl(${JSON.stringify(url)});})();true;`
-          );
-        }
+    // Inject the current token (if any) immediately so the WebView's
+    // useExpoPushToken hook can register it with the API.
+    if (injectJs) {
+      const initial = getCachedPushToken();
+      if (initial) {
+        injectJs(buildTokenInjectionScript(initial));
       }
-    );
-
-    return () => sub.remove();
+      // Re-inject whenever the token changes (refresh, permission grant).
+      const unsubscribe = subscribePushToken((token) => {
+        if (token) injectJs(buildTokenInjectionScript(token));
+      });
+      return unsubscribe;
+    }
+    return undefined;
   }, []);
-
-  return tokenRef;
 }

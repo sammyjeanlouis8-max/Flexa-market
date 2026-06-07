@@ -237,7 +237,7 @@ export default function BoostPage() {
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
-  const { uploadFile: uploadVideoFile } = useUpload();
+  const { uploadFile: uploadVideoFile, progress: videoUploadProgress } = useUpload();
   const MAX_VIDEO_SECONDS = 180;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024;
 
@@ -1392,10 +1392,29 @@ export default function BoostPage() {
                   </button>
                 </div>
               ) : (
-                <Button type="button" variant="outline" className="w-full" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading} data-testid="button-video-pick">
-                  <Upload className="h-4 w-4 mr-2" />
-                  {videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje…" }) : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
-                </Button>
+                <div className="space-y-2">
+                  <Button type="button" variant="outline" className="w-full" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading} data-testid="button-video-pick">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {videoUploading
+                      ? `${t("boost.videoUploading", { defaultValue: "Ap telechaje…" })} ${videoUploadProgress}%`
+                      : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
+                  </Button>
+                  {videoUploading && (
+                    <div
+                      className="h-1.5 w-full bg-muted rounded-full overflow-hidden"
+                      role="progressbar"
+                      aria-valuenow={videoUploadProgress}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      data-testid="video-upload-progress"
+                    >
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-200"
+                        style={{ width: `${videoUploadProgress}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

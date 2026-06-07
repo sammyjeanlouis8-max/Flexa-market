@@ -1864,6 +1864,27 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "referrals.unique_referred",    sql: "CREATE UNIQUE INDEX IF NOT EXISTS referrals_referred_unique ON referrals(referred_user_id)" });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // App Store Guideline 1.2 (User-Generated Content) requires apps with UGC
+  // to provide a mechanism for users to block abusive users. The block list
+  // is consulted by listing visibility, messaging, comments, and the video
+  // feed (web side) to filter out content from blocked users.
+  // ─────────────────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "user_blocks.create_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_blocks (
+        id            SERIAL PRIMARY KEY,
+        blocker_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason        TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT user_blocks_distinct CHECK (blocker_id <> blocked_id)
+      )
+    `,
+  });
+  migrations.push({ name: "user_blocks.unique_pair",    sql: "CREATE UNIQUE INDEX IF NOT EXISTS user_blocks_pair_idx ON user_blocks(blocker_id, blocked_id)" });
+  migrations.push({ name: "user_blocks.idx_blocker",    sql: "CREATE INDEX IF NOT EXISTS user_blocks_blocker_idx ON user_blocks(blocker_id)" });
+  migrations.push({ name: "user_blocks.idx_blocked",    sql: "CREATE INDEX IF NOT EXISTS user_blocks_blocked_idx ON user_blocks(blocked_id)" });
   // Security: token-based password reset (CVE-class fix for /auth/forgot-password)
   //
   // The previous endpoint allowed any unauthenticated caller who knew an

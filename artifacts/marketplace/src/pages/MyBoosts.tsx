@@ -109,26 +109,46 @@ export default function MyBoosts() {
     const boost = pendingBoostRef.current;
     if (!file || !boost || !token) return;
 
+    // eslint-disable-next-line no-console
+    console.info("[myboosts:add-video] start", { boostId: boost.boostId, listingId: boost.listingId, fileName: file.name, fileSize: file.size });
     setUploadingBoostId(boost.boostId);
     try {
       const result = await uploadFile(file);
+      // eslint-disable-next-line no-console
+      console.info("[myboosts:add-video] uploadFile resolved", { result });
       if (!result) {
+        // eslint-disable-next-line no-console
+        console.error("[myboosts:add-video] uploadFile returned null — see [upload:*] logs above");
         toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
         return;
       }
+      // eslint-disable-next-line no-console
+      console.info("[myboosts:add-video] PATCH /api/boost/:id/video", { boostId: boost.boostId, videoUrl: result.objectPath });
       const res = await fetch(`/api/boost/${boost.boostId}/video`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ videoUrl: result.objectPath }),
       });
-      const data = await res.json();
+      const data = await res.json().catch((parseErr) => {
+        // eslint-disable-next-line no-console
+        console.error("[myboosts:add-video] PATCH response body parse failed", parseErr);
+        return {};
+      });
+      // eslint-disable-next-line no-console
+      console.info("[myboosts:add-video] PATCH response", { status: res.status, ok: res.ok, body: data });
       if (!res.ok) {
+        // eslint-disable-next-line no-console
+        console.error("[myboosts:add-video] backend rejected save", { status: res.status, error: data?.error });
         toast({ title: data.error ?? t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
         return;
       }
+      // eslint-disable-next-line no-console
+      console.info("[myboosts:add-video] SUCCESS — video saved to boost");
       toast({ title: t("myBoosts.videoAdded", { defaultValue: "Videyo ajoute ✓" }) });
       fetchBoosts();
-    } catch {
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[myboosts:add-video] EXCEPTION during save", err);
       toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
     } finally {
       setUploadingBoostId(null);

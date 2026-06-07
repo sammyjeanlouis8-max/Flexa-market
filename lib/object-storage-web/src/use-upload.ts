@@ -137,13 +137,22 @@ export function useUpload(options: UseUploadOptions = {}) {
       // The XHR drives the `progress` state set from 30 -> 99 during the
       // PUT itself; the wrapping uploadFile() handles the 0/10/30/100
       // sentinel transitions outside the network phase.
+      // eslint-disable-next-line no-console
+      console.info("[upload:put] start", { uploadURL: uploadURL.slice(0, 60) + "…", originalObjectPath, fileSize: file.size, fileType: file.type });
       return new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", uploadURL);
         xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
+        // Track upload completion separately so a late xhr.upload.onprogress
+        // event (which can fire AFTER xhr.onload on some browsers) cannot
+        // regress the displayed progress from 100 back to 99.
+        let bytesFullyUploaded = false;
+        let onloadFired = false;
+
         xhr.upload.onprogress = (e) => {
           if (!e.lengthComputable) return;
+          if (onloadFired) return; // ignore stale events after response received
           // Map 0–100% of bytes transferred onto the 30–99% slot of the
           // overall pipeline — the wrapping uploadFile() reserves 0–30 for
           // preflight (HEIC conversion, presign) and the final 99→100 jump
@@ -152,9 +161,25 @@ export function useUpload(options: UseUploadOptions = {}) {
           setProgress(pct);
         };
 
+        xhr.upload.onload = () => {
+          bytesFullyUploaded = true;
+          // eslint-disable-next-line no-console
+          console.info("[upload:put] bytes_fully_sent — awaiting server response");
+        };
+
         xhr.onload = () => {
+          onloadFired = true;
+          // eslint-disable-next-line no-console
+          console.info("[upload:put] response received", {
+            status: xhr.status,
+            bytesFullyUploaded,
+            responseLen: (xhr.responseText ?? "").length,
+            responsePreview: (xhr.responseText ?? "").slice(0, 200),
+          });
           if (xhr.status < 200 || xhr.status >= 300) {
-            reject(new Error("Failed to upload file to storage"));
+            // eslint-disable-next-line no-console
+            console.error("[upload:put] non-2xx status", xhr.status, xhr.statusText);
+            reject(new Error(`Storage rejected upload (HTTP ${xhr.status})`));
             return;
           }
           // If the PUT proxy returns a Cloudinary URL in the body, use it
@@ -164,17 +189,37 @@ export function useUpload(options: UseUploadOptions = {}) {
           try {
             const data = JSON.parse(xhr.responseText);
             if (typeof data?.url === "string" && data.url.startsWith("http")) {
+              // eslint-disable-next-line no-console
+              console.info("[upload:put] resolved with proxy-returned URL", data.url.slice(0, 80));
               resolve(data.url);
               return;
             }
+            // eslint-disable-next-line no-console
+            console.info("[upload:put] response JSON has no usable url field; falling back to objectPath");
           } catch {
-            /* non-JSON response — drop through to objectPath */
+            // eslint-disable-next-line no-console
+            console.info("[upload:put] response not JSON (likely raw GCS 200/204); falling back to objectPath");
           }
+          // eslint-disable-next-line no-console
+          console.info("[upload:put] resolved with originalObjectPath", originalObjectPath);
           resolve(originalObjectPath);
         };
 
-        xhr.onerror = () => reject(new Error("Failed to upload file to storage"));
-        xhr.onabort = () => reject(new Error("Upload aborted"));
+        xhr.onerror = () => {
+          // eslint-disable-next-line no-console
+          console.error("[upload:put] network error", { bytesFullyUploaded, readyState: xhr.readyState, status: xhr.status });
+          reject(new Error("Network error while uploading to storage"));
+        };
+        xhr.ontimeout = () => {
+          // eslint-disable-next-line no-console
+          console.error("[upload:put] timeout", { bytesFullyUploaded, readyState: xhr.readyState });
+          reject(new Error("Upload timed out"));
+        };
+        xhr.onabort = () => {
+          // eslint-disable-next-line no-console
+          console.warn("[upload:put] aborted");
+          reject(new Error("Upload aborted"));
+        };
 
         xhr.send(file);
       });
@@ -187,6 +232,8 @@ export function useUpload(options: UseUploadOptions = {}) {
       setIsUploading(true);
       setError(null);
       setProgress(0);
+      // eslint-disable-next-line no-console
+      console.info("[upload:file] start", { name: file.name, size: file.size, type: file.type });
 
       try {
         // Convert non-JPEG images (including HEIC from iPhone) to JPEG
@@ -194,7 +241,14 @@ export function useUpload(options: UseUploadOptions = {}) {
         const convertedFile = await convertImageToJpeg(file);
 
         setProgress(10);
+        // eslint-disable-next-line no-console
+        console.info("[upload:file] requesting presigned URL");
         const uploadResponse = await requestUploadUrl(convertedFile);
+        // eslint-disable-next-line no-console
+        console.info("[upload:file] got presigned URL", {
+          uploadURL: uploadResponse.uploadURL.slice(0, 60) + "…",
+          objectPath: uploadResponse.objectPath,
+        });
 
         setProgress(30);
         const resolvedPath = await uploadToPresignedUrl(
@@ -209,10 +263,14 @@ export function useUpload(options: UseUploadOptions = {}) {
         };
 
         setProgress(100);
+        // eslint-disable-next-line no-console
+        console.info("[upload:file] complete", { objectPath: finalResponse.objectPath });
         options.onSuccess?.(finalResponse);
         return finalResponse;
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Upload failed");
+        // eslint-disable-next-line no-console
+        console.error("[upload:file] FAILED", error.message, err);
         setError(error);
         options.onError?.(error);
         return null;

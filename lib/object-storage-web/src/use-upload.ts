@@ -129,29 +129,55 @@ export function useUpload(options: UseUploadOptions = {}) {
 
   const uploadToPresignedUrl = useCallback(
     async (file: File, uploadURL: string, originalObjectPath: string): Promise<string> => {
-      const response = await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-        },
+      // Use XMLHttpRequest (not fetch) so we receive real upload-progress
+      // events via xhr.upload.onprogress. fetch() has no upload-progress API
+      // which caused every consumer (Boost, Sell, BoostWizard, MyBoosts) to
+      // appear frozen at "Uploading..." for the entire transfer.
+      //
+      // The XHR drives the `progress` state set from 30 -> 99 during the
+      // PUT itself; the wrapping uploadFile() handles the 0/10/30/100
+      // sentinel transitions outside the network phase.
+      return new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadURL);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          // Map 0–100% of bytes transferred onto the 30–99% slot of the
+          // overall pipeline — the wrapping uploadFile() reserves 0–30 for
+          // preflight (HEIC conversion, presign) and the final 99→100 jump
+          // for the server's response acknowledgement.
+          const pct = 30 + Math.round((e.loaded / e.total) * 69);
+          setProgress(pct);
+        };
+
+        xhr.onload = () => {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            reject(new Error("Failed to upload file to storage"));
+            return;
+          }
+          // If the PUT proxy returns a Cloudinary URL in the body, use it
+          // directly so the stored URL is a real CDN URL (not a
+          // /objects/uploads/TOKEN path). Some proxies return raw 200 with
+          // no body for direct-to-GCS PUTs; fall back to objectPath then.
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (typeof data?.url === "string" && data.url.startsWith("http")) {
+              resolve(data.url);
+              return;
+            }
+          } catch {
+            /* non-JSON response — drop through to objectPath */
+          }
+          resolve(originalObjectPath);
+        };
+
+        xhr.onerror = () => reject(new Error("Failed to upload file to storage"));
+        xhr.onabort = () => reject(new Error("Upload aborted"));
+
+        xhr.send(file);
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to upload file to storage");
-      }
-
-      // If the PUT proxy returns a Cloudinary URL in the body, use it directly
-      // so the stored URL is a real CDN URL (not a /objects/uploads/TOKEN path).
-      try {
-        const data = await response.json();
-        if (typeof data?.url === "string" && data.url.startsWith("http")) {
-          return data.url;
-        }
-      } catch {
-        // Non-JSON response (e.g. raw GCS PUT) — fall back to objectPath
-      }
-      return originalObjectPath;
     },
     []
   );

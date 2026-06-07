@@ -400,7 +400,7 @@ export default function Sell() {
   }, [form]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Video upload ──────────────────────────────────────────────────────────
-  const { uploadFile: uploadVideoFile } = useUpload();
+  const { uploadFile: uploadVideoFile, progress: videoUploadProgress } = useUpload();
   const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -983,20 +983,37 @@ export default function Sell() {
                     </button>
                   </div>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => videoFileInputRef.current?.click()}
-                    disabled={videoUploading}
-                    data-testid="button-video-pick"
-                  >
-                    {videoUploading ? (
-                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("sell.videoUploading")}</>
-                    ) : (
-                      <><Video className="h-4 w-4 mr-2" />{t("sell.videoPick")}</>
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => videoFileInputRef.current?.click()}
+                      disabled={videoUploading}
+                      data-testid="button-video-pick"
+                    >
+                      {videoUploading ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("sell.videoUploading")} {videoUploadProgress}%</>
+                      ) : (
+                        <><Video className="h-4 w-4 mr-2" />{t("sell.videoPick")}</>
+                      )}
+                    </Button>
+                    {videoUploading && (
+                      <div
+                        className="h-1.5 w-full bg-muted rounded-full overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={videoUploadProgress}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        data-testid="video-upload-progress"
+                      >
+                        <div
+                          className="h-full bg-primary transition-all duration-200"
+                          style={{ width: `${videoUploadProgress}%` }}
+                        />
+                      </div>
                     )}
-                  </Button>
+                  </div>
                 )}
               </>
             ) : (

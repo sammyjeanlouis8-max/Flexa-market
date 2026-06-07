@@ -6,10 +6,27 @@ import { optionalAuth } from "../middlewares/auth";
 const router = Router();
 
 function toStreamingVideoUrl(url: string): string {
-  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
+  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/") && !url.includes("fl_faststart")) {
     return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
   }
   return url;
+}
+
+/**
+ * Build a Cloudinary "auto poster" thumbnail URL from a video URL — extracts
+ * a representative still frame and serves it as a 16:9 JPEG. Returning a
+ * poster derived from the video itself is what makes the user-visible
+ * thumbnail match the content; the previous behaviour of falling back to
+ * `images[0]` (the first listing photo) produced thumbnails that were
+ * unrelated to the video (or absent entirely for video-only boosts).
+ */
+function toVideoPosterUrl(url: string | null): string | null {
+  if (!url || !url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return null;
+  const m = url.match(/(.*\/video\/upload\/)([^/]+\/)?(.+)$/);
+  if (!m) return null;
+  const base = m[1];
+  const tail = m[3].replace(/\.(mp4|mov|webm|m4v|3gp|avi|mkv|hevc)$/i, "");
+  return `${base}so_auto,w_640,h_360,c_fill,g_center,q_auto,f_jpg/${tail}.jpg`;
 }
 
 /**
@@ -264,35 +281,44 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     res.json({
       // noCountry is permanently false — we always resolve a country (req #3)
       noCountry: false,
-      videos: items.map(r => ({
-        id:               r.id,
-        videoUrl:         r.boostVideoUrl
-          ? toStreamingVideoUrl(r.boostVideoUrl.startsWith("http")
-              ? r.boostVideoUrl
-              : `/api/storage/objects/${r.boostVideoUrl.replace(/^\/api\/storage\/objects\//, "").replace(/^\/objects\//, "")}`)
-          : null,
-        thumbnailUrl:     r.images?.[0] ?? null,
-        title:            r.title,
-        description:      r.description ?? "",
-        price:            r.price,
-        currency:         r.currency,
-        country:          r.country ?? null,
-        sellerId:         r.sellerId,
-        sellerName:       r.sellerName ?? "Unknown",
-        sellerAvatar:     r.sellerAvatar ?? null,
-        sellerIsVerified: r.sellerIsVerified ?? false,
-        sellerWhatsapp:   r.boostWhatsappNumber ?? null,
-        sellerPhone:      r.sellerPhone ?? null,
-        sellerIsFollowing: r.sellerId ? followedSellerIds.has(r.sellerId) : false,
-        viewCount:        r.viewCount,
-        likeCount:        r.favoriteCount,
-        sharesCount:      r.sharesCount,
-        commentCount:     r.commentCount ?? 0,
-        isBoosted:        true,                     // always true by construction
-        boostStartAt:     r.boostStartAt?.toISOString() ?? null,
-        boostEndAt:       r.boostExpiresAt?.toISOString() ?? null,
-        createdAt:        r.createdAt,
-      })),
+      videos: items.map(r => {
+        const streamingUrl = r.boostVideoUrl
+          ? toStreamingVideoUrl(
+              r.boostVideoUrl.startsWith("http")
+                ? r.boostVideoUrl
+                : `/api/storage/objects/${r.boostVideoUrl.replace(/^\/api\/storage\/objects\//, "").replace(/^\/objects\//, "")}`,
+            )
+          : null;
+        // Prefer a poster extracted from the actual video frame so the
+        // thumbnail matches the content. Fall back to the first listing image
+        // for non-Cloudinary uploads (which can't be transformed server-side).
+        const videoPoster = toVideoPosterUrl(streamingUrl);
+        return {
+          id:               r.id,
+          videoUrl:         streamingUrl,
+          thumbnailUrl:     videoPoster ?? r.images?.[0] ?? null,
+          title:            r.title,
+          description:      r.description ?? "",
+          price:            r.price,
+          currency:         r.currency,
+          country:          r.country ?? null,
+          sellerId:         r.sellerId,
+          sellerName:       r.sellerName ?? "Unknown",
+          sellerAvatar:     r.sellerAvatar ?? null,
+          sellerIsVerified: r.sellerIsVerified ?? false,
+          sellerWhatsapp:   r.boostWhatsappNumber ?? null,
+          sellerPhone:      r.sellerPhone ?? null,
+          sellerIsFollowing: r.sellerId ? followedSellerIds.has(r.sellerId) : false,
+          viewCount:        r.viewCount,
+          likeCount:        r.favoriteCount,
+          sharesCount:      r.sharesCount,
+          commentCount:     r.commentCount ?? 0,
+          isBoosted:        true,                     // always true by construction
+          boostStartAt:     r.boostStartAt?.toISOString() ?? null,
+          boostEndAt:       r.boostExpiresAt?.toISOString() ?? null,
+          createdAt:        r.createdAt,
+        };
+      }),
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
       viewingCountry: isSuperAdmin ? null : userCountry,

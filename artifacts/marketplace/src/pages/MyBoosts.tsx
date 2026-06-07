@@ -96,7 +96,7 @@ export default function MyBoosts() {
   const [uploadingBoostId, setUploadingBoostId] = useState<number | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const pendingBoostRef = useRef<ActiveBoost | null>(null);
-  const { uploadFile } = useUpload();
+  const { uploadFile, progress: videoUploadProgress } = useUpload();
 
   const handleAddVideo = (boost: ActiveBoost) => {
     pendingBoostRef.current = boost;
@@ -369,12 +369,34 @@ export default function MyBoosts() {
                           type="button"
                           onClick={() => handleAddVideo(boost)}
                           disabled={uploadingBoostId === boost.boostId}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-muted text-primary text-xs font-semibold hover:bg-accent transition-colors border border-primary/30 disabled:opacity-60"
+                          className="flex-1 flex flex-col items-stretch justify-center gap-1 py-2 px-2 rounded-xl bg-muted text-primary text-xs font-semibold hover:bg-accent transition-colors border border-primary/30 disabled:opacity-60"
                         >
-                          {uploadingBoostId === boost.boostId
-                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("myBoosts.videoUploading", { defaultValue: "Ap telechaje…" })}</>
-                            : <><Upload className="h-3.5 w-3.5" />{t("myBoosts.addVideo")}</>
-                          }
+                          {uploadingBoostId === boost.boostId ? (
+                            <>
+                              <span className="flex items-center justify-center gap-1.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                {t("myBoosts.videoUploading", { defaultValue: "Ap telechaje…" })} {videoUploadProgress}%
+                              </span>
+                              <span
+                                className="h-1 w-full bg-background/60 rounded-full overflow-hidden"
+                                role="progressbar"
+                                aria-valuenow={videoUploadProgress}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                data-testid="video-upload-progress"
+                              >
+                                <span
+                                  className="block h-full bg-primary transition-all duration-200"
+                                  style={{ width: `${videoUploadProgress}%` }}
+                                />
+                              </span>
+                            </>
+                          ) : (
+                            <span className="flex items-center justify-center gap-1.5">
+                              <Upload className="h-3.5 w-3.5" />
+                              {t("myBoosts.addVideo")}
+                            </span>
+                          )}
                         </button>
                       )}
                       <Link

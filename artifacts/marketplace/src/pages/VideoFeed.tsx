@@ -23,6 +23,7 @@ import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { toStreamingVideoUrl } from "@/lib/videoUrl";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -864,23 +865,42 @@ function VideoCard({
       activatedAtRef.current = Date.now();
 
       const tryPlay = () => {
-        // Respect current audio-unlock state — start muted if audio not yet unlocked.
-        // Never try unmuted first on iOS: autoplay without a gesture always requires muted.
-        const shouldMute = !isAudioUnlocked();
-        el.muted = shouldMute;
-        setMuted(shouldMute);
+        // Audio-on-by-default attempt sequence (boosted videos must autoplay
+        // with sound when the browser permits, per product spec):
+        //
+        //   1. If audio is already unlocked for this profile, start unmuted.
+        //   2. Otherwise, attempt unmuted play first — most desktop browsers,
+        //      installed-PWA contexts, and Android Chrome 78+ allow this on
+        //      pages where the user has already interacted somewhere. The
+        //      attempt is cheap: if the browser refuses (returns a rejected
+        //      promise), we immediately retry muted and the video still
+        //      plays, just silently — exactly the previous behaviour.
+        //   3. If unmuted succeeds, persist the unlock to localStorage so
+        //      every subsequent video on every subsequent visit starts with
+        //      sound.
+        //
+        // No mute icon is forced on by this code path — the icon state
+        // mirrors `muted` which mirrors el.muted, so the UI is always
+        // consistent with the actual audio state.
+        const wantUnmuted = true;
+        const alreadyUnlocked = isAudioUnlocked();
+        el.muted = alreadyUnlocked ? false : !wantUnmuted;
+        setMuted(el.muted);
+
+        const playMuted = () => {
+          el.muted = true;
+          setMuted(true);
+          el.play().catch(() => { /* swallow — feed will retry on next isActive */ });
+        };
 
         el.play()
           .then(() => {
             if (!el.muted) setAudioUnlocked(true);
           })
           .catch(() => {
-            // If unmuted play somehow fails, force muted and retry once
-            if (!el.muted) {
-              el.muted = true;
-              setMuted(true);
-              el.play().catch(() => {});
-            }
+            // Browser refused unmuted autoplay (typical iOS Safari first
+            // page-load case). Fall back to muted so the video still plays.
+            if (!el.muted) playMuted();
           });
       };
 
@@ -1034,10 +1054,15 @@ function VideoCard({
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
           if (el) el.muted = !isAudioUnlocked();
         }}
-        src={video.videoUrl ?? undefined}
+        // toStreamingVideoUrl is idempotent — the backend already transforms
+        // Cloudinary URLs, but defensive wrapping protects against any URL
+        // that bypassed the server-side transform (legacy rows, direct
+        // client navigation, cache invalidation lag).
+        src={video.videoUrl ? toStreamingVideoUrl(video.videoUrl) : undefined}
         playsInline
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? undefined}
+        crossOrigin="anonymous"
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{ willChange: "transform", transform: "translateZ(0)" }}
         onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}

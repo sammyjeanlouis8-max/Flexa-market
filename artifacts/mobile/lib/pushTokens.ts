@@ -1,21 +1,15 @@
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
 import { Platform } from "react-native";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Global push handler — must be installed exactly once at module load, BEFORE
-// any subscription listeners fire. Setting it from inside a hook's useEffect
-// (the previous implementation) created a race where a notification arriving
-// during cold-start could be processed with the default handler (sound off).
-// ─────────────────────────────────────────────────────────────────────────────
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// NOTE: do NOT import `router` from "expo-router" at the top of this module.
+// pushTokens.ts is reachable from the root layout's startup path; an eager
+// import of expo-router's imperative-api here triggers React-Navigation
+// internal evaluation before the root host is mounted, which on Android
+// produced the cold-start crash "FlexaMarket keeps stopping". `router` is
+// only used inside the notification-response listener (fires only when the
+// user taps a notification, long after mount) so it is safely require()'d
+// there on demand.
 
 const EXPO_PROJECT_ID = "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e";
 
@@ -155,6 +149,21 @@ export function initPushNotifications(): void {
   if (initialised) return;
   initialised = true;
 
+  // Install the global notification handler now (after layout mount) rather
+  // than at module load — see the import-block comment for the Android
+  // crash rationale.
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch {
+    /* native module not ready — push will fall back to OS defaults */
+  }
+
   // Permission + initial token (fire-and-forget; the function itself never
   // throws because all branches are caught).
   void (async () => {
@@ -167,37 +176,51 @@ export function initPushNotifications(): void {
   // Token refresh: republish whenever the OS issues a new token. We also
   // listen on the EAS-managed APNs/FCM channel; expo-notifications fires
   // this listener for both providers.
-  Notifications.addPushTokenListener((event) => {
-    if (event?.data && typeof event.data === "string") {
-      setToken(event.data);
-    }
-  });
+  try {
+    Notifications.addPushTokenListener((event) => {
+      if (event?.data && typeof event.data === "string") {
+        setToken(event.data);
+      }
+    });
+  } catch {
+    /* listener API not yet available — refresh will be lost this session */
+  }
 
   // Foreground notifications: handler already set above provides the alert;
   // this listener is here so the rest of the app can hook into receive
   // events in the future without changing this module.
-  Notifications.addNotificationReceivedListener(() => {
-    /* intentionally a no-op today */
-  });
+  try {
+    Notifications.addNotificationReceivedListener(() => {
+      /* intentionally a no-op today */
+    });
+  } catch {
+    /* listener API not yet available */
+  }
 
   // Notification taps: navigate to website tab with the deep-link URL.
   // Per product decision: all push-tap routing goes through the WebView.
-  Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response?.notification?.request?.content?.data as
-      | { url?: string }
-      | undefined;
-    const url = typeof data?.url === "string" ? data.url : null;
-    if (!url) return;
-    try {
-      // Push the website screen with the target URL; if the website screen
-      // is already on top, expo-router will replace its params and the
-      // SafeWebView will navigate via its onLoad-time token-injection path
-      // (the script is also re-injected on every load).
-      router.push(`/website?url=${encodeURIComponent(url)}`);
-    } catch {
-      /* router not ready */
-    }
-  });
+  try {
+    Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data as
+        | { url?: string }
+        | undefined;
+      const url = typeof data?.url === "string" ? data.url : null;
+      if (!url) return;
+      try {
+        // Lazy-require expo-router only when we actually need to navigate.
+        // Top-level import here triggered the Android startup crash; tap
+        // handlers fire only well after the layout is mounted so the
+        // require is always safe.
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { router } = require("expo-router");
+        router.push(`/website?url=${encodeURIComponent(url)}`);
+      } catch {
+        /* router not ready or expo-router shape changed — drop the tap */
+      }
+    });
+  } catch {
+    /* listener API not yet available */
+  }
 }
 
 export const __pushInternal = {

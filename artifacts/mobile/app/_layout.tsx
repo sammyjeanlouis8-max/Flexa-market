@@ -11,7 +11,17 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { initPushNotifications } from "../lib/pushTokens";
+
+// NOTE: lib/pushTokens is imported LAZILY inside a post-mount useEffect (see
+// below). Importing it at module top transitively evaluates expo-notifications,
+// expo-device, and expo-router/imperative-api during the root layout's own
+// module-evaluation phase — i.e. before React Navigation's root host has been
+// rendered. On Android this produced an immediate startup crash
+// ("FlexaMarket keeps stopping") because expo-router's imperative-api module
+// touches React-Navigation internals that are not yet initialised at that
+// point. Deferring the import to a useEffect that runs after the first frame
+// matches the previous working lifecycle on main (where the push module was
+// only loaded when the home tab mounted, well after the layout had rendered).
 
 // Prevent the splash from disappearing before the first frame can render.
 // Wrapped in try/catch because on some Android startups the splash module
@@ -58,17 +68,28 @@ export default function RootLayout() {
     SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
 
-  // Initialise the push pipeline once the JS context is healthy. Inside
-  // initPushNotifications() the permission prompt is deferred via a setTimeout
-  // microtask, so this never blocks first paint and never throws.
+  // Initialise the push pipeline lazily, AFTER the layout has rendered its
+  // first frame. The dynamic import keeps expo-notifications/expo-device/
+  // expo-router/imperative-api out of the root layout's module-evaluation
+  // critical path — that path used to crash on Android cold start because
+  // those modules touch native bridges that aren't ready until after the
+  // root host is mounted.
   useEffect(() => {
     if (!ready) return;
-    try {
-      initPushNotifications();
-    } catch {
-      // Defensive: an exception escaping initPushNotifications must never
-      // bring down the layout. Push will simply not work for this session.
-    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const mod = await import("../lib/pushTokens");
+        if (cancelled) return;
+        mod.initPushNotifications();
+      } catch {
+        // Defensive: any failure in push init must never bring down the
+        // layout. Push will simply not work for this session.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [ready]);
 
   if (!ready) return null;

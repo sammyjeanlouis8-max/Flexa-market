@@ -680,8 +680,11 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Top header ── */}
       {/* paddingTop covers the notch / Dynamic Island on iPhone X+ when
-          viewport-fit=cover is active (see index.html viewport meta). */}
-      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+          viewport-fit=cover is active (see index.html viewport meta).
+          Uses --safe-top (not raw env()) so WKWebView / Android WebView
+          fallback values from index.css apply when the host wrapper
+          reports env()=0. */}
+      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "var(--safe-top, env(safe-area-inset-top, 0px))" }}>
         <div className="max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 
           {/* Mobile back button — visible only on sub-pages, hidden on desktop */}

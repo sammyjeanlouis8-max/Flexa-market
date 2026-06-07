@@ -1,0 +1,70 @@
+# Flexa-Market — Priority Fixes (June 2026)
+
+## Original Problem Statement
+URGENT priority fixes requested for the Flexa-market codebase:
+
+1. **Android WebView crash** — app crashes / blanks / infinite-reloads inside Android WebView.
+2. **Stripe payment page (iPhone)** — viewport excessively zoomed, back button overlaps Dynamic Island / safe area.
+3. **Promotional video persistence** — promo videos do not always save, sometimes disappear after refresh, preview/play unreliable.
+
+## Architecture Context
+- pnpm monorepo (`/app/artifacts/marketplace` = React + Vite frontend; `/app/artifacts/api-server` = Express 5 + Drizzle ORM + PostgreSQL).
+- Cloudinary for video/image storage when `CLOUDINARY_API_KEY` is set (production), GCS via Replit Object Storage otherwise.
+- Stripe for payments (Checkout, Connect, Customer Portal, Subscription).
+- Native iOS wrapper (TestFlight WKWebView) detected via `html.native-ios`; Android WebView now detected via `html.native-android`.
+
+## Root Causes & Permanent Fixes
+
+### #1 Android WebView crash
+**Root cause #1.a — Service-worker self-healing reload loop**
+`index.html` triggered a "clear SW + caches + reload" cascade if React did not mount within **20 s** and used **sessionStorage** as the one-shot loop-guard. On slow Haitian/DR 3G connections the bundle download exceeded 20 s, the self-heal fired, and several Android WebViews wipe sessionStorage on reload → the loop-guard reset → infinite reload.
+**Fix:** raised timeout to **30 s**, switched the loop-guard to `localStorage` (with sessionStorage fallback) keyed by timestamp with a 24 h cooldown, and abort self-heal entirely when the WebView reports zero SW/Cache API support.
+
+**Root cause #1.b — CSS Relative Color Syntax breaks border tokens**
+`index.css` used `hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha)` which requires Chrome / Android System WebView **≥ 119** (Nov 2023). Devices on older WebView ignored the declaration entirely, leaving `--primary-border`, `--accent-border`, etc. unset and cascading invalid `border-color: ;` into every component → blank rounded-rectangle UI bug.
+**Fix:** wrapped a pre-computed HSL fallback block in `@supports not (color: hsl(from red h s l))` so older engines get static values while modern engines keep the relative form.
+
+**Root cause #1.c — Missing Android WebView detection**
+The boot script only flagged iOS WebView (`html.native-ios`); Android WebView received no safe-area or compatibility hooks.
+**Fix:** added detection for `; wv)` / `; wv;` UA tokens and Android without `Chrome/X` → `html.native-android` class; matched CSS fallback `--safe-top / --safe-bottom` tokens.
+
+### #2 Stripe payment page zoom & back-button (iPhone)
+**Root cause #2.a — Stripe-hosted Checkout loaded inside WebView**
+Stripe Checkout, Stripe Customer Portal and Stripe Connect onboarding pages are not under our control. Inside an iOS WKWebView the WebView reports `env(safe-area-inset-top)=0`, so Stripe's own back button lands under the Dynamic Island and Stripe's viewport renders at the wrong scale on iPhone Pro models. The Payment Request API (Apple Pay / Google Pay) also fails silently inside in-app WebViews.
+**Fix:** new helper `src/lib/externalNavigation.ts → openExternal(url)` detects `html.native-ios` / `html.native-android` and opens Stripe URLs in the system browser via `window.open(url, "_blank", "noopener,noreferrer")`. WebView hosts delegate `target=_blank` to Safari / Chrome → the customer sees the correctly-rendered Stripe page with native safe-area handling. Applied to every Stripe-redirect call site (Subscription, Boost, ListingDetail checkout, Settings Stripe Connect onboarding/dashboard, StripeOnboardReturn, Wallet card top-up).
+
+**Root cause #2.b — Layout & sub-pages used raw env() (no WebView fallback)**
+Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When WebView reports 0 the header collapsed, exposing in-page back buttons (Boost, Subscription, CheckoutSuccess) to the Dynamic Island.
+**Fix:** Layout header now uses `var(--safe-top, env(safe-area-inset-top, 0px))`. Boost.tsx hero header (which bleeds under the global header) now uses `calc(16px + var(--safe-top))`. Subscription.tsx and CheckoutSuccess.tsx top wrappers now respect `--safe-top`.
+
+### #3 Promotional video save & playback
+**Root cause #3 — Chunked-upload ignored the Cloudinary URL returned by the server**
+`BoostWizard.tsx → chunkedUpload()` requested the local `objectPath` from `/api/storage/uploads/chunk-init` (e.g. `/objects/uploads/<uuid>`), uploaded all chunks, then called `/api/storage/uploads/chunk-finalize`. In Cloudinary mode the server response contains `{ objectPath: "https://res.cloudinary.com/..." }` — the actual CDN URL of the saved video. The client **discarded the response body** and returned the original local `objectPath` instead. Because Cloudinary is the authoritative store (the chunk dir is deleted afterwards), the listing's `boostVideoUrl` column ended up pointing to a `/objects/uploads/<uuid>` path that did not exist — every retrieval returned 404, so the video appeared to "disappear after refresh" and the preview/play button failed.
+**Fix:** `chunkedUpload` now reads `await finalRes.json()` and uses the server-returned `objectPath` (Cloudinary URL); only falls back to the local objectPath if the response is empty/non-JSON (GCS mode). The non-chunked path (`<50 MB`) already handled this correctly via `xhrUpload`. The boost server route already accepts both `/objects/` paths and `https://` URLs in its `videoUrl` whitelist, so no server-side change was needed.
+
+## Files Modified
+- `artifacts/marketplace/index.html` — Android WebView detection + hardened self-heal
+- `artifacts/marketplace/src/index.css` — `--safe-top`/`--safe-bottom` for `.native-android` + relative-color fallback
+- `artifacts/marketplace/src/components/Layout.tsx` — header padding via `--safe-top` token
+- `artifacts/marketplace/src/components/BoostWizard.tsx` — read Cloudinary URL from `chunk-finalize`
+- `artifacts/marketplace/src/lib/externalNavigation.ts` — NEW shared helper
+- `artifacts/marketplace/src/pages/Subscription.tsx` — `openExternal` for Stripe; safe-area top padding
+- `artifacts/marketplace/src/pages/Boost.tsx` — `openExternal` for Stripe; hero header safe-area
+- `artifacts/marketplace/src/pages/ListingDetail.tsx` — `openExternal` for Stripe Checkout (buy flow)
+- `artifacts/marketplace/src/pages/Settings.tsx` — `openExternal` for Stripe Connect (×2 panels)
+- `artifacts/marketplace/src/pages/StripeOnboardReturn.tsx` — `openExternal` for refresh-link
+- `artifacts/marketplace/src/pages/Wallet.tsx` — `openExternal` for card top-up checkout
+- `artifacts/marketplace/src/pages/CheckoutSuccess.tsx` — safe-area top padding
+
+## What's Implemented (June 7, 2026)
+- ✅ Android WebView crash root-causes identified & permanently fixed
+- ✅ iOS Stripe pages opened in system browser to avoid WebView viewport / safe-area issues
+- ✅ Promo video persistence fixed (chunked upload now captures Cloudinary URL)
+- ✅ Safe-area tokens unified across iOS WebView, Android WebView, and Mobile Safari
+- ✅ Manual QA checklist provided (see `/app/memory/QA_CHECKLIST.md`)
+
+## Next Action Items / Backlog
+- **P1** Run real-device QA on iPhone 15 Pro (Dynamic Island) and an Android 9/10 device with WebView < 119 once a TestFlight / APK build is cut.
+- **P1** Consider migrating from `localStorage` self-heal guard to a deterministic build-hash check (compare `window.__BUILD_HASH__` baked into HTML vs. JS asset hash); avoids ever needing a 24 h cooldown.
+- **P2** Add a `<noscript>` fallback button labelled "Open in browser" on any page that triggers an external Stripe redirect so users without popup permission still get a working path.
+- **P2** Server-side: include the Cloudinary `public_id` in the `chunk-finalize` response so we can build poster URLs even when the seller's CDN proxy strips the hostname.

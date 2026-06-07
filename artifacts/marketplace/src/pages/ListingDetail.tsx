@@ -23,6 +23,7 @@ import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { toStreamingVideoUrl } from "@/lib/videoUrl";
+import { openExternal } from "@/lib/externalNavigation";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -888,7 +889,7 @@ export default function ListingDetail() {
         return;
       }
       if (data.url) {
-        window.location.href = data.url;
+        openExternal(data.url);
       } else {
         toast({ title: "Payment error", description: "No checkout URL received", variant: "destructive" });
       }

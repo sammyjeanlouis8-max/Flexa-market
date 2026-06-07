@@ -8,7 +8,12 @@
          in the WebView top touch dead-zone and become untappable. We flag the in-app
          webview here so CSS can apply a FIXED safe-area fallback (see --safe-top /
          --safe-bottom in index.css). Mobile Safari keeps the "Safari/" UA token, so it
-         is NOT flagged and the normal web experience is left unchanged. -->
+         is NOT flagged and the normal web experience is left unchanged.
+
+         Android WebView detection: WebView UA contains "; wv)" OR "Version/" without
+         "Chrome/" matching the actual app version. We flag `html.native-android` so
+         CSS can apply Android-specific compatibility shims (safe-area fallback for
+         devices with display cutouts/notches, disabled smooth-scroll, etc.). -->
     <script>
       (function () {
         try {
@@ -19,6 +24,17 @@
           var inAppWebView = isIOS && !/Safari\//.test(ua);
           if (isIOS && (standalone || inAppWebView)) {
             document.documentElement.classList.add("native-ios");
+          }
+          // Android WebView (wv) or Android Custom Tab without Chrome/X branding.
+          // We deliberately match BOTH "; wv)" (system WebView) and the
+          // "; wv;" variant that some OEM browsers use.
+          var isAndroid = /Android/.test(ua);
+          var isAndroidWebView = isAndroid && (/; wv\)|; wv;/.test(ua) || !/Chrome\/[.0-9]+/.test(ua));
+          if (isAndroidWebView) {
+            document.documentElement.classList.add("native-android");
+          }
+          if (isAndroid) {
+            document.documentElement.classList.add("is-android");
           }
         } catch (e) {}
       })();
@@ -400,42 +416,80 @@
       </a>
       <script>
         /* ── Stale-cache self-healing ──────────────────────────────────────
-         * If React hasn't mounted within 20 s, the user is most likely on a
+         * If React hasn't mounted within 30 s, the user is most likely on a
          * stale service-worker / browser cache referencing JS hashes that
          * no longer exist. Unregister every SW, blow away every Cache
-         * Storage entry, then reload ONCE (sessionStorage guards against
+         * Storage entry, then reload ONCE (persistent guards against
          * boot loops) so the next request fetches the fresh deployment.
-         * Silent — no popup, no scary message. ───────────────────────── */
+         * Silent — no popup, no scary message.
+         *
+         * Android WebView hardening:
+         *   • Timeout raised 20 s → 30 s to give slow mobile networks
+         *     (3G in Haiti / DR) enough time to fetch the JS bundle.
+         *   • Persistent loop-guard via localStorage (with sessionStorage
+         *     fallback). Some Android WebViews wipe sessionStorage on
+         *     reload, which previously caused an infinite self-heal loop —
+         *     localStorage survives, so we never self-heal more than once
+         *     per 24 h. After 24 h the user has likely cleared the issue
+         *     so we allow another attempt.
+         *   • Skip self-heal entirely when the user-agent reports zero
+         *     navigator.serviceWorker support and no caches API — there is
+         *     nothing to clear, so triggering a reload would just cause a
+         *     pointless boot loop. ───────────────────────────────────── */
         setTimeout(function () {
           if (!document.getElementById('app-skeleton')) return; /* React mounted */
-          if (sessionStorage.getItem('fm_self_heal_done')) {
-            /* Already self-healed once this session — show retry link only */
-            var link = document.getElementById('sk-retry');
-            if (link) link.style.display = 'block';
+          var SUPPORTS_SW = ('serviceWorker' in navigator);
+          var SUPPORTS_CACHES = ('caches' in window);
+          if (!SUPPORTS_SW && !SUPPORTS_CACHES) {
+            /* No SW / cache stack to invalidate — surface retry link only. */
+            var linkNoSw = document.getElementById('sk-retry');
+            if (linkNoSw) linkNoSw.style.display = 'block';
             return;
           }
-          sessionStorage.setItem('fm_self_heal_done', '1');
+          var ls = null;
+          try { ls = window.localStorage; } catch (_) { ls = null; }
+          var ss = null;
+          try { ss = window.sessionStorage; } catch (_) { ss = null; }
+          var nowMs = Date.now();
+          var lastHealRaw = null;
+          try {
+            lastHealRaw = (ls && ls.getItem('fm_self_heal_at')) ||
+                          (ss && ss.getItem('fm_self_heal_done')) || null;
+          } catch (_) { lastHealRaw = null; }
+          var lastHealMs = parseInt(lastHealRaw || '0', 10) || 0;
+          var HEAL_COOLDOWN_MS = 24 * 60 * 60 * 1000; /* 24 h */
+          /* If we already self-healed within the cooldown window, show the
+             retry link and abort — never reload again automatically. */
+          if (lastHealMs && (nowMs - lastHealMs) < HEAL_COOLDOWN_MS) {
+            var linkCooldown = document.getElementById('sk-retry');
+            if (linkCooldown) linkCooldown.style.display = 'block';
+            return;
+          }
+          try {
+            if (ls) ls.setItem('fm_self_heal_at', String(nowMs));
+            if (ss) ss.setItem('fm_self_heal_done', '1');
+          } catch (_) {}
           console.warn('[FLEXA] Self-healing: clearing SW + caches and reloading');
           Promise.all([
-            ('serviceWorker' in navigator)
+            SUPPORTS_SW
               ? navigator.serviceWorker.getRegistrations()
                   .then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); })
                   .catch(function () {})
               : Promise.resolve(),
-            ('caches' in window)
+            SUPPORTS_CACHES
               ? caches.keys()
                   .then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); })
                   .catch(function () {})
               : Promise.resolve(),
           ]).finally(function () { window.location.reload(); });
-        }, 20000);
+        }, 30000);
 
-        /* After 30 s, surface the discreet manual retry link as last resort. */
+        /* After 40 s, surface the discreet manual retry link as last resort. */
         setTimeout(function () {
           var sk = document.getElementById('app-skeleton');
           var link = document.getElementById('sk-retry');
           if (sk && link) link.style.display = 'block';
-        }, 30000);
+        }, 40000);
       </script>
 
       <div class="sk-grid">

@@ -316,6 +316,23 @@ export default function BoostWizard({ open, onClose }: Props) {
     });
     if (!finalRes.ok) throw new Error(`chunk-finalize-failed-${finalRes.status}`);
     setUploadPercent(100);
+
+    // CRITICAL: in Cloudinary mode, the server replaces our local objectPath
+    // with the actual CDN URL (https://res.cloudinary.com/...). Falling back
+    // to the local /objects/uploads/{uuid} path here previously caused promo
+    // videos to "disappear after refresh" — the file lived on Cloudinary but
+    // the listing.boostVideoUrl column pointed at a GCS path that did not
+    // exist, so the playback URL returned 404. We must read the server's
+    // response and use its `objectPath` (the Cloudinary secure_url) so the
+    // saved URL matches the file's real location.
+    try {
+      const data = await finalRes.json() as { objectPath?: string };
+      if (typeof data?.objectPath === "string" && data.objectPath.length > 0) {
+        return data.objectPath;
+      }
+    } catch {
+      // Non-JSON or empty body — fall back to the local objectPath below
+    }
     return objectPath;
   }, []);
 

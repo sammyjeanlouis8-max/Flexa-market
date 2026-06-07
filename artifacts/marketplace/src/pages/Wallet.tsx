@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { openExternal } from "@/lib/externalNavigation";
 import {
   Wallet, ArrowUpCircle, Clock, CheckCircle2, XCircle, AlertCircle,
   Send, Copy, Share2, QrCode, CreditCard, Phone, ArrowLeft,
@@ -808,7 +809,7 @@ export default function WalletPage() {
 
   const cardSessionMut = useMutation({
     mutationFn: (amountUsd: number) => apiPost("/wallet/topup/card/session", { amountUsd }),
-    onSuccess: (data) => { window.location.href = data.sessionUrl; },
+    onSuccess: (data) => { openExternal(data.sessionUrl); },
     onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
   });
 

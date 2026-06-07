@@ -13,14 +13,25 @@
    forces a fixed minimum gap. This keeps top controls (e.g. the chat back
    button) out of the iOS WebView top touch dead-zone on every page, while
    leaving the normal web experience untouched.
+
+   Native Android WebView equivalent (`html.native-android`): some Android
+   host wrappers also render edge-to-edge without exposing safe-area insets
+   to the WebView, which lands top controls under the status bar / display
+   cutout. The fallback below mirrors the iOS behaviour for Android.
    ────────────────────────────────────────────────────────────────────────── */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 html.native-ios {
   --safe-top: max(env(safe-area-inset-top, 0px), 50px);
   --safe-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+html.native-android {
+  --safe-top: max(env(safe-area-inset-top, 0px), 28px);
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
 }
 
 html {
@@ -265,6 +276,44 @@ main {
   --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Android WebView < 119 (and any other engine that does not yet support CSS
+   Relative Color Syntax — `hsl(from ... h s l / alpha)`) parses the
+   declarations above as INVALID and falls back to the property's initial
+   value. That leaves `--primary-border`, `--accent-border`, etc. completely
+   unset, which cascades into invalid `border-color: ;` declarations on every
+   component that consumes them — producing the "blank rounded-rectangles"
+   and crash-loop reports we saw on older Android phones.
+
+   The block below provides pre-computed HSL fallbacks BEFORE the modern
+   relative-color declarations cascade. In a supporting browser the relative
+   form wins (later rule, same specificity). In an unsupporting browser the
+   modern form is dropped and these fixed values remain, so every component
+   still has a usable border-color.
+   ────────────────────────────────────────────────────────────────────────── */
+@supports not (color: hsl(from red h s l)) {
+  :root {
+    /* Light theme: subtract ~8% lightness from each base colour */
+    --sidebar-primary-border: hsl(217 91% 52%);
+    --sidebar-accent-border:  hsl(214 32% 87%);
+    --primary-border:         hsl(217 91% 52%);
+    --secondary-border:       hsl(210 40% 88%);
+    --muted-border:           hsl(210 40% 90%);
+    --accent-border:          hsl(214 32% 86%);
+    --destructive-border:     hsl(0 84% 52%);
+  }
+  .dark {
+    /* Dark theme: add ~9% lightness so border is visible on dark surfaces */
+    --sidebar-primary-border: hsl(263 82% 67%);
+    --sidebar-accent-border:  hsl(215 28% 31%);
+    --primary-border:         hsl(263 82% 67%);
+    --secondary-border:       hsl(215 28% 26%);
+    --muted-border:           hsl(215 28% 26%);
+    --accent-border:          hsl(215 28% 31%);
+    --destructive-border:     hsl(0 72% 60%);
+  }
 }
 
 /* ── Force light-mode on a subtree regardless of html.dark ─────────────────

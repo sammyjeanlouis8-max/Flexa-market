@@ -4,6 +4,7 @@ import { CheckCircle2, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
+import { openExternal } from "@/lib/externalNavigation";
 
 type Phase = "loading" | "active" | "pending" | "error";
 
@@ -36,7 +37,7 @@ export default function StripeOnboardReturn() {
         headers: { Authorization: `Bearer ${tk}` },
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) openExternal(data.url);
       else setPhase("error");
     } catch {
       setPhase("error");

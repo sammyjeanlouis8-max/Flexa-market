@@ -152,7 +152,31 @@ export default function Subscription() {
   // In the Replit dev-preview the app runs inside an iframe; Stripe refuses
   // to load inside iframes (X-Frame-Options: DENY), which produces the blank
   // page. We break out to the top-level window when possible.
+  //
+  // iOS / Android WebView hardening: when the app is running inside the
+  // native wrapper (`html.native-ios` or `html.native-android`), we open
+  // Stripe Checkout in the SYSTEM browser instead of in the WebView itself.
+  // This avoids:
+  //   • Stripe's hosted Checkout page rendering with the wrong viewport
+  //     scale on iPhone (the "excessively zoomed" report).
+  //   • Stripe's back button landing under the Dynamic Island when the
+  //     WebView reports env(safe-area-inset-top)=0.
+  //   • CSP / iframe / payment-request API quirks that break Apple Pay
+  //     and Stripe Link inside in-app WebViews.
+  // Most WebView hosts (WKWebView, Custom Tabs) honour `target=_blank` by
+  // delegating to the system browser, so this is a pure web-side fix.
   const redirectToExternal = useCallback((url: string) => {
+    try {
+      const html = document.documentElement;
+      const inWebView =
+        html.classList.contains("native-ios") ||
+        html.classList.contains("native-android");
+      if (inWebView) {
+        const win = window.open(url, "_blank", "noopener,noreferrer");
+        if (win) return;
+        // popup blocked — fall through to top-level navigation
+      }
+    } catch { /* feature detection failed — fall through */ }
     try {
       if (window.top && window.top !== window) {
         window.top.location.href = url;
@@ -412,7 +436,10 @@ export default function Subscription() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 pb-16 pt-6">
+    <div
+      className="max-w-5xl mx-auto px-4 pb-16"
+      style={{ paddingTop: "calc(24px + var(--safe-top, env(safe-area-inset-top, 0px)) * 0.25)" }}
+    >
 
       {/* ── Return-to-app banner (shown after mobile payment) ─────────────── */}
       {showReturnApp && (

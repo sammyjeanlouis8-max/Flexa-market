@@ -103,7 +103,10 @@ export default function CheckoutSuccess() {
   }).format(result.amount);
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-16 space-y-6">
+    <div
+      className="max-w-lg mx-auto px-4 py-16 space-y-6"
+      style={{ paddingTop: "calc(64px + var(--safe-top, env(safe-area-inset-top, 0px)) * 0.25)" }}
+    >
       <div className="text-center space-y-3">
         <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
         <h1 className="text-3xl font-bold">{t("payment.paymentSuccessful")}</h1>

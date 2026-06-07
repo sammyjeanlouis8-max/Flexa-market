@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { formatHTG, formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
+import { openExternal } from "@/lib/externalNavigation";
 
 const PLANS = [
   {
@@ -503,8 +504,11 @@ export default function BoostPage() {
       });
       const data = await res.json();
       if (!res.ok) throw data;
-      // Redirect to Stripe's hosted checkout page
-      window.location.href = data.url;
+      // Redirect to Stripe's hosted checkout page. In an in-app WebView we
+      // escape to the system browser so Stripe Checkout renders with the
+      // correct viewport scale (avoids the "excessively zoomed" report on
+      // iPhone) and its back button respects the OS safe-area.
+      openExternal(data.url);
     } catch (e: any) {
       toast({ title: "Payment failed", description: e?.error ?? "Try again", variant: "destructive" });
     } finally {
@@ -786,9 +790,12 @@ export default function BoostPage() {
         </div>
       )}
       {/* ── Gradient Hero Header ── */}
+      {/* paddingTop respects --safe-top so the back button never lands
+          under the iPhone Dynamic Island / Android display cutout when
+          rendered inside a native WebView wrapper. */}
       <div className="-mx-4 -mt-6 mb-6 relative bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{backgroundImage:"radial-gradient(ellipse at 10% 60%, rgba(255,255,255,0.18) 0%, transparent 55%)"}} />
-        <div className="relative px-4 pt-4 pb-5">
+        <div className="relative px-4 pb-5" style={{ paddingTop: "calc(16px + var(--safe-top, env(safe-area-inset-top, 0px)))" }}>
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"

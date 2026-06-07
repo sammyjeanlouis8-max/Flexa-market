@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
+import { openExternal } from "@/lib/externalNavigation";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface PayoutAccount {
@@ -77,7 +78,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         headers: { Authorization: `Bearer ${tk()}` },
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) openExternal(data.url);
     } catch { /* noop */ }
     finally { setActionLoading(false); }
   };
@@ -90,7 +91,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         headers: { Authorization: `Bearer ${tk()}` },
       });
       const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
+      if (data.url) openExternal(data.url);
     } catch { /* noop */ }
     finally { setActionLoading(false); }
   };
@@ -429,7 +430,7 @@ function HaitiPayoutPanel() {
     try {
       const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${tk()}` } });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) openExternal(data.url);
     } catch { /* noop */ }
     finally { setActionLoading(false); }
   };
@@ -439,7 +440,7 @@ function HaitiPayoutPanel() {
     try {
       const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${tk()}` } });
       const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
+      if (data.url) openExternal(data.url);
     } catch { /* noop */ }
     finally { setActionLoading(false); }
   };

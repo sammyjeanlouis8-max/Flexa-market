@@ -51,3 +51,10 @@ Thumbs.db
 .cache/
 .local/
 push.sh
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

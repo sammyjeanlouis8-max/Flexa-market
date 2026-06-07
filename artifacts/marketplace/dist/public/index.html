@@ -1,8 +1,46 @@
 <!DOCTYPE html>
 <html lang="fr" dir="ltr">
   <head>
+    <meta name="build-id" content="06-07 22:13" />
+    <script>window.__HTML_BUILD_ID__="06-07 22:13";</script>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-visual" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
+    <!-- The native iOS app (TestFlight WKWebView) renders edge-to-edge but reports
+         env(safe-area-inset-*) = 0, so top controls (e.g. the chat back button) land
+         in the WebView top touch dead-zone and become untappable. We flag the in-app
+         webview here so CSS can apply a FIXED safe-area fallback (see --safe-top /
+         --safe-bottom in index.css). Mobile Safari keeps the "Safari/" UA token, so it
+         is NOT flagged and the normal web experience is left unchanged.
+
+         Android WebView detection: WebView UA contains "; wv)" OR "Version/" without
+         "Chrome/" matching the actual app version. We flag `html.native-android` so
+         CSS can apply Android-specific compatibility shims (safe-area fallback for
+         devices with display cutouts/notches, disabled smooth-scroll, etc.). -->
+    <script>
+      (function () {
+        try {
+          var ua = navigator.userAgent || "";
+          var isIOS = /iP(hone|od|ad)/.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+          var standalone = navigator.standalone === true;
+          var inAppWebView = isIOS && !/Safari\//.test(ua);
+          if (isIOS && (standalone || inAppWebView)) {
+            document.documentElement.classList.add("native-ios");
+          }
+          // Android WebView (wv) or Android Custom Tab without Chrome/X branding.
+          // We deliberately match BOTH "; wv)" (system WebView) and the
+          // "; wv;" variant that some OEM browsers use.
+          var isAndroid = /Android/.test(ua);
+          var isAndroidWebView = isAndroid && (/; wv\)|; wv;/.test(ua) || !/Chrome\/[.0-9]+/.test(ua));
+          if (isAndroidWebView) {
+            document.documentElement.classList.add("native-android");
+          }
+          if (isAndroid) {
+            document.documentElement.classList.add("is-android");
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <!-- ═══════════════════════ SEO CORE ═══════════════════════ -->
     <title>FLEXA MARKET — Achte &amp; Vann ann Ayiti | Marketplace #1</title>
@@ -268,11 +306,11 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DhxjzxYL.js"></script>
+    <script type="module" crossorigin src="/assets/index-BS4devAE.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-DCb_RsZr.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-Bd0LCVVY.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-DN2m8k9C.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-BGxBWBoV.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-feHcpg1V.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-Cs0UBZ4f.css">
   </head>
   <body>
     <!-- Skip navigation for accessibility / SEO -->
@@ -384,43 +422,122 @@
         Pa chaje? Touche pou rechaje
       </a>
       <script>
-        /* ── Stale-cache self-healing ──────────────────────────────────────
-         * If React hasn't mounted within 20 s, the user is most likely on a
-         * stale service-worker / browser cache referencing JS hashes that
-         * no longer exist. Unregister every SW, blow away every Cache
-         * Storage entry, then reload ONCE (sessionStorage guards against
-         * boot loops) so the next request fetches the fresh deployment.
-         * Silent — no popup, no scary message. ───────────────────────── */
-        setTimeout(function () {
-          if (!document.getElementById('app-skeleton')) return; /* React mounted */
-          if (sessionStorage.getItem('fm_self_heal_done')) {
-            /* Already self-healed once this session — show retry link only */
-            var link = document.getElementById('sk-retry');
-            if (link) link.style.display = 'block';
+        /* ── Build-hash self-healing ───────────────────────────────────────
+         * Two-tier deterministic recovery — replaces the previous purely
+         * timer-based scheme:
+         *
+         *   Tier 1 (5 s, deterministic): compare window.__HTML_BUILD_ID__
+         *   (baked into this HTML at build time) against window.__JS_BUILD_ID__
+         *   (set by /src/main.tsx during early boot).
+         *     • If __JS_BUILD_ID__ is missing → JS module never loaded
+         *       (404 / parse error / SW serving stale chunk).
+         *     • If both present but mismatched → stale cached HTML now
+         *       references a build that has been replaced.
+         *   In either case we clear SW + caches and reload ONCE (guarded by
+         *   localStorage with 24 h cooldown — sessionStorage is wiped on
+         *   reload by several Android WebViews, which is what previously
+         *   caused infinite reload loops).
+         *
+         *   Tier 2 (60 s, last-resort backstop): React still hasn't mounted
+         *   despite the JS bundle having loaded and matched. This is rare
+         *   (genuine runtime exception inside React render). The Tier 1
+         *   guard also covers this case via the cooldown, so we never loop.
+         *
+         * Skip entirely when SW/Cache APIs are unsupported (nothing to clear).
+         * ─────────────────────────────────────────────────────────────── */
+        (function () {
+          var SUPPORTS_SW = ('serviceWorker' in navigator);
+          var SUPPORTS_CACHES = ('caches' in window);
+          if (!SUPPORTS_SW && !SUPPORTS_CACHES) {
+            /* No SW / cache stack to invalidate — show retry link only. */
+            setTimeout(function () {
+              if (!document.getElementById('app-skeleton')) return;
+              var link = document.getElementById('sk-retry');
+              if (link) link.style.display = 'block';
+            }, 40000);
             return;
           }
-          sessionStorage.setItem('fm_self_heal_done', '1');
-          console.warn('[FLEXA] Self-healing: clearing SW + caches and reloading');
-          Promise.all([
-            ('serviceWorker' in navigator)
-              ? navigator.serviceWorker.getRegistrations()
-                  .then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); })
-                  .catch(function () {})
-              : Promise.resolve(),
-            ('caches' in window)
-              ? caches.keys()
-                  .then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); })
-                  .catch(function () {})
-              : Promise.resolve(),
-          ]).finally(function () { window.location.reload(); });
-        }, 20000);
 
-        /* After 30 s, surface the discreet manual retry link as last resort. */
-        setTimeout(function () {
-          var sk = document.getElementById('app-skeleton');
-          var link = document.getElementById('sk-retry');
-          if (sk && link) link.style.display = 'block';
-        }, 30000);
+          function getCooldownState() {
+            var ls = null;
+            try { ls = window.localStorage; } catch (_) { ls = null; }
+            var ss = null;
+            try { ss = window.sessionStorage; } catch (_) { ss = null; }
+            var nowMs = Date.now();
+            var lastHealRaw = null;
+            try {
+              lastHealRaw = (ls && ls.getItem('fm_self_heal_at')) ||
+                            (ss && ss.getItem('fm_self_heal_done')) || null;
+            } catch (_) { lastHealRaw = null; }
+            var lastHealMs = parseInt(lastHealRaw || '0', 10) || 0;
+            var HEAL_COOLDOWN_MS = 24 * 60 * 60 * 1000; /* 24 h */
+            return {
+              ls: ls, ss: ss, nowMs: nowMs,
+              inCooldown: !!(lastHealMs && (nowMs - lastHealMs) < HEAL_COOLDOWN_MS)
+            };
+          }
+
+          function showRetryLink() {
+            var link = document.getElementById('sk-retry');
+            if (link) link.style.display = 'block';
+          }
+
+          function performHeal(reason) {
+            var st = getCooldownState();
+            if (st.inCooldown) {
+              console.warn('[FLEXA] Self-heal already fired within 24h — showing retry link instead (reason=' + reason + ')');
+              showRetryLink();
+              return;
+            }
+            try {
+              if (st.ls) st.ls.setItem('fm_self_heal_at', String(st.nowMs));
+              if (st.ss) st.ss.setItem('fm_self_heal_done', '1');
+            } catch (_) {}
+            console.warn('[FLEXA] Self-healing: clearing SW + caches and reloading (reason=' + reason + ')');
+            Promise.all([
+              SUPPORTS_SW
+                ? navigator.serviceWorker.getRegistrations()
+                    .then(function (regs) { return Promise.all(regs.map(function (r) { return r.unregister(); })); })
+                    .catch(function () {})
+                : Promise.resolve(),
+              SUPPORTS_CACHES
+                ? caches.keys()
+                    .then(function (keys) { return Promise.all(keys.map(function (k) { return caches.delete(k); })); })
+                    .catch(function () {})
+                : Promise.resolve(),
+            ]).finally(function () { window.location.reload(); });
+          }
+
+          /* Tier 1 — build-hash mismatch check at 5 s.
+             By 5 s the JS module-graph has had ample time to download and
+             execute its synchronous prologue (main.tsx sets
+             window.__JS_BUILD_ID__ before any React work). */
+          setTimeout(function () {
+            if (!document.getElementById('app-skeleton')) return; /* React mounted */
+            var htmlId = window.__HTML_BUILD_ID__;
+            var jsId   = window.__JS_BUILD_ID__;
+            if (!jsId) {
+              performHeal('js-bundle-not-loaded');
+            } else if (htmlId && jsId && htmlId !== jsId) {
+              performHeal('build-id-mismatch htmlId=' + htmlId + ' jsId=' + jsId);
+            }
+          }, 5000);
+
+          /* Tier 2 — last-resort backstop at 60 s for the rare case where
+             both build IDs match but React still hasn't mounted (genuine
+             runtime exception inside render). The cooldown guard above
+             prevents looping. */
+          setTimeout(function () {
+            if (!document.getElementById('app-skeleton')) return; /* React mounted */
+            performHeal('react-mount-timeout-60s');
+          }, 60000);
+
+          /* After 65 s, surface the discreet manual retry link as last resort. */
+          setTimeout(function () {
+            var sk = document.getElementById('app-skeleton');
+            if (sk) showRetryLink();
+          }, 65000);
+        })();
       </script>
 
       <div class="sk-grid">

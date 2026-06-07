@@ -40,7 +40,7 @@ if (USE_CLOUDINARY) {
   });
 }
 
-async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Promise<string> {
+async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Promise<{ secure_url: string; public_id: string }> {
   if (!buffer || buffer.length === 0) {
     throw new Error("Empty file received — please select a valid image and try again.");
   }
@@ -50,12 +50,12 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
   // converted to a widely-supported format before storage.
   const uploadOptions: Record<string, unknown> = { resource_type: resourceType, folder: "flexa-market" };
   if (!isVideo) uploadOptions["format"] = "jpg";
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       uploadOptions,
       (error, result) => {
         if (error || !result) reject(error ?? new Error("Cloudinary upload failed"));
-        else resolve(result.secure_url);
+        else resolve({ secure_url: result.secure_url, public_id: result.public_id });
       }
     );
     stream.end(buffer);
@@ -79,9 +79,9 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
  * `(error, result)` callback — it internally adapts/reorders for the v1 impl.
  * The callback fires once when all chunks finish, with the final upload result.
  */
-function uploadVideoStreamToCloudinary(stream: Readable, contentType: string): Promise<string> {
+function uploadVideoStreamToCloudinary(stream: Readable, contentType: string): Promise<{ secure_url: string; public_id: string }> {
   const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
     let settled = false;
     const fail = (err: unknown) => {
       if (settled) return;
@@ -101,7 +101,7 @@ function uploadVideoStreamToCloudinary(stream: Readable, contentType: string): P
           fail(error ?? new Error("Cloudinary upload failed"));
         } else {
           settled = true;
-          resolve(result.secure_url);
+          resolve({ secure_url: result.secure_url, public_id: result.public_id });
         }
       },
     );
@@ -154,21 +154,25 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
 
     if (USE_CLOUDINARY) {
       const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
-      let url: string;
+      let result: { secure_url: string; public_id: string };
       if (isVideo) {
         // Stream large videos directly to Cloudinary's chunked endpoint — never
         // buffer the whole file (OOM risk) and never hit the 100 MB single-request
         // video cap that previously caused promo videos to silently not save.
-        url = await uploadVideoStreamToCloudinary(req, contentType);
+        result = await uploadVideoStreamToCloudinary(req, contentType);
       } else {
         const chunks: Buffer[] = [];
         for await (const chunk of req) {
           chunks.push(chunk as Buffer);
         }
-        url = await uploadBufferToCloudinary(Buffer.concat(chunks), contentType);
+        result = await uploadBufferToCloudinary(Buffer.concat(chunks), contentType);
       }
-      req.log.info({ token, url }, "Cloudinary upload complete");
-      res.status(200).json({ url });
+      req.log.info({ token, url: result.secure_url, publicId: result.public_id }, "Cloudinary upload complete");
+      // Expose `public_id` alongside `url` so the client can synthesise
+      // poster / transformation URLs even when a CDN proxy strips the
+      // hostname from `secure_url`. Backwards-compatible: existing clients
+      // continue to read `url`.
+      res.status(200).json({ url: result.secure_url, publicId: result.public_id });
       return;
     }
 
@@ -328,19 +332,25 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
     if (USE_CLOUDINARY) {
       const ct = contentType ?? "video/mp4";
       const isVideo = ct.startsWith("video/") || ct.startsWith("audio/");
-      let url: string;
+      let result: { secure_url: string; public_id: string };
       if (isVideo) {
         // Re-stream the assembled chunks straight to Cloudinary's chunked
         // endpoint so large videos never get buffered in memory or rejected by
         // the 100 MB single-request video cap.
-        url = await uploadVideoStreamToCloudinary(Readable.from(chunkGen()), ct);
+        result = await uploadVideoStreamToCloudinary(Readable.from(chunkGen()), ct);
       } else {
         const chunks: Buffer[] = [];
         for await (const buf of chunkGen()) chunks.push(buf);
-        url = await uploadBufferToCloudinary(Buffer.concat(chunks), ct);
+        result = await uploadBufferToCloudinary(Buffer.concat(chunks), ct);
       }
-      req.log.info({ uploadId, url }, "Chunked Cloudinary upload finalized");
-      res.json({ objectPath: url });
+      req.log.info({ uploadId, url: result.secure_url, publicId: result.public_id }, "Chunked Cloudinary upload finalized");
+      // Return both the full Cloudinary URL (as `objectPath` for legacy
+      // clients) and the `publicId` so clients can synthesise poster /
+      // transformation URLs without parsing the hostname out of the URL.
+      // This is required when a CDN proxy in front of Cloudinary strips
+      // the `res.cloudinary.com` hostname (e.g. when serving through a
+      // first-party CDN for cookie / referrer reasons).
+      res.json({ objectPath: result.secure_url, publicId: result.public_id });
       return;
     }
 

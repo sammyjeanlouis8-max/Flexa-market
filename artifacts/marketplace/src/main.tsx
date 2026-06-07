@@ -161,6 +161,12 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 
 declare const __BUILD_ID__: string;
 
+// Expose JS bundle's build ID on window as early as possible so the inline
+// boot script in index.html can compare it against window.__HTML_BUILD_ID__
+// and detect a stale-cache mismatch deterministically (rather than waiting
+// for the timer-based fallback).
+try { (window as any).__JS_BUILD_ID__ = __BUILD_ID__; } catch {}
+
 // ── Global scroll suppression ─────────────────────────────────────────────────
 // Ensures 100% user-controlled scrolling. No library, Radix primitive, or
 // React component may automatically scroll the page. Three layers of defence:

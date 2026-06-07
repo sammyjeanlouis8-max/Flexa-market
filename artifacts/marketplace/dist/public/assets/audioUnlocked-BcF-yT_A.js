@@ -1,1 +1,0 @@
-let e;try{e=sessionStorage.getItem("flexaAudioUnlocked")==="1"}catch{e=!1}function t(){return e}function n(o){e=o;try{o?sessionStorage.setItem("flexaAudioUnlocked","1"):sessionStorage.removeItem("flexaAudioUnlocked")}catch{}window.dispatchEvent(new CustomEvent("flexa:audio-unlocked",{detail:o}))}export{t as i,n as s};

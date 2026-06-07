@@ -20,6 +20,28 @@ const basePath = process.env.BASE_PATH ?? "/";
 
 const buildId = new Date().toISOString().slice(5, 16).replace("T", " ");
 
+/**
+ * Build-hash self-heal: at build time we bake `buildId` into BOTH the
+ * generated HTML (as `<meta name="build-id">` + `window.__HTML_BUILD_ID__`)
+ * and the JS entry bundle (as the `__BUILD_ID__` define). On boot the
+ * entry bundle compares the two — a mismatch means the user is hitting an
+ * old cached HTML page that references a JS hash from a previous deploy
+ * (or vice versa). When that happens we clear SW + caches and reload
+ * ONCE, deterministically, so the user lands on the matching pair.
+ *
+ * This makes the timer-based self-heal a pure last-resort backstop:
+ *   - build-hash mismatch  → reload immediately (most common stale-cache case)
+ *   - genuine network failure / JS parse error → 60 s timer eventually fires
+ */
+const buildHashHtmlPlugin = {
+  name: "build-hash-html",
+  transformIndexHtml(html: string) {
+    const meta = `<meta name="build-id" content="${buildId}" />`;
+    const inline = `<script>window.__HTML_BUILD_ID__=${JSON.stringify(buildId)};</script>`;
+    return html.replace("<head>", `<head>\n    ${meta}\n    ${inline}`);
+  },
+};
+
 export default defineConfig({
   base: basePath,
   define: {
@@ -28,6 +50,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    buildHashHtmlPlugin,
     // Expo Go proxy: forward Expo-specific requests to the Mobile dev server.
     // expo.picard.replit.dev routes to this Marketplace service (port 5173)
     // because Marketplace owns the root path "/". We detect Expo Go requests

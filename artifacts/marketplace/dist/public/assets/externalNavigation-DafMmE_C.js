@@ -1,0 +1,1 @@
+function t(){try{const n=document.documentElement;return n.classList.contains("native-ios")||n.classList.contains("native-android")}catch{return!1}}function i(n){if(n){if(t())try{if(window.open(n,"_blank","noopener,noreferrer"))return}catch{}try{if(window.top&&window.top!==window){window.top.location.href=n;return}}catch{}window.location.href=n}}export{i as o};

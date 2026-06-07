@@ -165,6 +165,7 @@ router.use("/auth/login", authLimiter);
 router.use("/auth/logout", authLimiter);
 router.use("/auth/me", authLimiter);
 router.use("/auth/forgot-password", passwordLimiter);
+router.use("/auth/reset-password", passwordLimiter);
 router.use("/auth/change-password", passwordLimiter);
 
 router.use(healthRouter);

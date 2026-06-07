@@ -2,12 +2,13 @@ import { Router, Request } from "express";
 import { db, usersTable, loginLogsTable, referralsTable } from "@workspace/db";
 import { eq, and, count, gte, sql } from "drizzle-orm";
 import { RegisterBody, LoginBody, ChangeCountryBody } from "@workspace/api-zod";
-import { hashPassword, verifyPassword, isLegacySha256Hash, generateToken, verifyPhoneToken } from "../lib/auth";
+import { hashPassword, verifyPassword, generateToken, verifyPhoneToken } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
 import { isOwnerEmail } from "../lib/superAdmins";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
-import { welcomeEmail } from "../lib/emailTemplates";
+import { welcomeEmail, passwordResetEmail } from "../lib/emailTemplates";
+import crypto from "crypto";
 
 // ── Referral code generator ───────────────────────────────────────────────────
 // Produces a unique 8-char uppercase alphanumeric code (e.g. "FX3KP9MZ").
@@ -392,18 +393,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     void assessLogin(user.id, ip, loginDeviceId);
   });
 
-  // Transparent bcrypt migration: if the stored hash is still SHA-256,
-  // re-hash with bcrypt now that we know the plaintext password is correct.
-  // We also set requiresPasswordUpgrade so the client can prompt the user to
-  // voluntarily choose a new password before any forced invalidation.
-  const hadLegacyHash = isLegacySha256Hash(user.passwordHash);
-  if (hadLegacyHash) {
-    const newHash = hashPassword(password);
-    await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
-  }
-
   const token = generateToken(user.id);
-  res.json({ user: formatUser(user), token, ...(hadLegacyHash ? { requiresPasswordUpgrade: true } : {}) });
+  res.json({ user: formatUser(user), token });
 });
 
 router.post("/auth/logout", (_req, res): void => {
@@ -487,26 +478,237 @@ router.post("/auth/set-new-password", requireAuth, async (req, res): Promise<voi
   res.json({ message: "Modpas mete ajou avèk siksè", user: formatUser(updated), token });
 });
 
-// Password reset via email: user enters their email and new password.
-// Requires knowing the account's email — for stronger security, an
-// email-link or admin-assisted flow should be added in the future.
+// ─── Password reset: secure two-step flow ────────────────────────────────────
+//
+// /auth/forgot-password  { email }                  → always 200, sends token email
+// /auth/reset-password   { token, password }        → verifies token, sets new bcrypt password
+//
+// We never accept a new password from an unauthenticated caller without proof
+// of email ownership. Tokens are 32 random bytes (base64url, 43 chars), are
+// stored only as sha256 digests in `password_reset_tokens`, expire in 30 min,
+// and are single-use.
+const RESET_TOKEN_TTL_MIN = 30;
+const RESET_TOKEN_BYTES = 32;
+
+function getResetBaseUrl(): string {
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, "");
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  if (domain) return `https://${domain}`;
+  return "https://flexamarket.com";
+}
+
+function sha256Hex(input: string): string {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+// Constant-time equality for token digests. Both sides are hex strings of
+// equal length under normal operation; if lengths differ we still return false
+// without short-circuiting on content.
+function constantTimeEqualHex(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "hex");
+  const bufB = Buffer.from(b, "hex");
+  if (bufA.length !== bufB.length || bufA.length === 0) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * POST /api/auth/forgot-password
+ * Body: { email: string }
+ *
+ * Always responds 200 with a generic message so the endpoint cannot be used
+ * as an account-existence oracle. If the email matches an active account, a
+ * one-time reset link is sent. The email is dispatched fire-and-forget so the
+ * response time does not leak hit/miss.
+ *
+ * NOTE: This replaces the previous handler, which set `password_hash` directly
+ * from request body without any proof of email ownership (CVE-class account
+ * takeover for anyone who knew a target email).
+ */
 router.post("/auth/forgot-password", async (req, res): Promise<void> => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : null;
-  const password = typeof req.body?.password === "string" ? req.body.password.trim() : null;
-  if (!email || !password) { res.status(400).json({ error: "email and password are required" }); return; }
-  if (password.length < 6) { res.status(400).json({ error: "Password must be at least 6 characters" }); return; }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "A valid email address is required" });
+    return;
+  }
 
-  const [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${email}`);
-  if (!user) { res.status(404).json({ error: "No account found with this email address" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support for help." }); return; }
+  const ip = getClientIp(req);
+  const ua = req.headers["user-agent"];
+
+  // Always respond identically so the caller cannot tell whether the email
+  // exists or whether the account is banned/suspended.
+  const genericResponse = { ok: true, message: "If an account exists for that email, a reset link has been sent." };
+
+  // Look up the user without leaking the result to the response.
+  const [user] = await db
+    .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name, isBanned: usersTable.isBanned })
+    .from(usersTable)
+    .where(sql`lower(${usersTable.email}) = ${email}`);
+
+  if (!user || user.isBanned) {
+    logger.info({ email, ip, exists: !!user, banned: user?.isBanned ?? false }, "Password reset requested for non-eligible account");
+    res.json(genericResponse);
+    return;
+  }
+
+  // Generate token: 32 random bytes → 43-char base64url plaintext shown only
+  // to the email recipient. Server stores sha256 digest only.
+  const tokenPlain = crypto.randomBytes(RESET_TOKEN_BYTES).toString("base64url");
+  const tokenHash = sha256Hex(tokenPlain);
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MIN * 60 * 1000);
+
+  try {
+    // Best-effort housekeeping: clear stale/expired/used tokens for this user
+    // before inserting the new one so the table stays bounded.
+    await db.execute(sql`
+      DELETE FROM password_reset_tokens
+       WHERE user_id = ${user.id}
+         AND (used_at IS NOT NULL OR expires_at < NOW())
+    `);
+
+    await db.execute(sql`
+      INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, request_ip, request_ua)
+      VALUES (${user.id}, ${tokenHash}, ${expiresAt.toISOString()}, ${ip}, ${ua ?? null})
+    `);
+  } catch (err) {
+    logger.error({ err, userId: user.id }, "Failed to persist password reset token");
+    // Still return the generic response — we do not leak storage errors.
+    res.json(genericResponse);
+    return;
+  }
+
+  await logAction(user.id, ip, ua, "password-reset-requested");
+
+  const resetUrl = `${getResetBaseUrl()}/auth/reset-password?token=${encodeURIComponent(tokenPlain)}`;
+  void (async () => {
+    try {
+      const tpl = passwordResetEmail({
+        name: user.name,
+        resetUrl,
+        expiresMinutes: RESET_TOKEN_TTL_MIN,
+      });
+      await sendEmail({ to: user.email, ...tpl });
+    } catch (err) {
+      logger.error({ err, userId: user.id }, "Failed to send password reset email");
+    }
+  })();
+
+  res.json(genericResponse);
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Body: { token: string, password: string }
+ *
+ * Verifies a reset token issued by /auth/forgot-password, sets the new
+ * bcrypt password, marks the token used, and invalidates all existing
+ * sessions for the account by advancing `tokenInvalidatedAt`. Clears
+ * `mustChangePassword` if it was set (covers SHA-256 legacy users).
+ */
+router.post("/auth/reset-password", async (req, res): Promise<void> => {
+  const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+
+  if (!token || token.length < 32 || token.length > 128) {
+    res.status(400).json({ error: "Invalid or missing token" });
+    return;
+  }
+  if (!password || password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const tokenHash = sha256Hex(token);
+
+  // Look up the candidate row. We still compare the digest in constant time
+  // even though the column is indexed/uniqued, so a row-found vs not-found
+  // distinction does not leak via timing of the comparison itself.
+  const rows = await db.execute(sql`
+    SELECT id, user_id, token_hash, expires_at, used_at
+      FROM password_reset_tokens
+     WHERE token_hash = ${tokenHash}
+     LIMIT 1
+  `);
+  const row = (rows.rows as Array<{
+    id: number;
+    user_id: number;
+    token_hash: string;
+    expires_at: string | Date;
+    used_at: string | Date | null;
+  }>)[0];
+
+  if (!row || !constantTimeEqualHex(row.token_hash, tokenHash)) {
+    res.status(400).json({ error: "Reset link is invalid or has already been used" });
+    return;
+  }
+  if (row.used_at) {
+    res.status(400).json({ error: "Reset link has already been used" });
+    return;
+  }
+  const expiresAt = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
+  if (expiresAt.getTime() < Date.now()) {
+    res.status(400).json({ error: "Reset link has expired. Please request a new one." });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, row.user_id));
+  if (!user || user.isBanned) {
+    res.status(400).json({ error: "Account is unavailable" });
+    return;
+  }
 
   const passwordHash = hashPassword(password);
-  await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, user.id));
-  await logAction(user.id, getClientIp(req), req.headers["user-agent"], "password-reset");
+  // Truncate to whole seconds so the new token (iat in whole seconds) still
+  // satisfies iat * 1000 >= tokenInvalidatedAt while previously-issued tokens
+  // are rejected.
+  const tokenInvalidatedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
 
-  const token = generateToken(user.id);
+  // Atomically mark token used and update the user. We do them in a single
+  // transaction so a crash between cannot leave the token consumed without
+  // the password change, or the password changed with the token still valid.
+  await db.transaction(async (tx) => {
+    // Single-use enforcement: only flip the token if it is still unused.
+    const upd = await tx.execute(sql`
+      UPDATE password_reset_tokens
+         SET used_at = NOW()
+       WHERE id = ${row.id}
+         AND used_at IS NULL
+       RETURNING id
+    `);
+    if ((upd.rows as unknown[]).length === 0) {
+      throw new Error("token-already-consumed");
+    }
+    await tx
+      .update(usersTable)
+      .set({ passwordHash, tokenInvalidatedAt, mustChangePassword: false } as any)
+      .where(eq(usersTable.id, user.id));
+  }).catch((err) => {
+    if (err?.message === "token-already-consumed") {
+      res.status(400).json({ error: "Reset link has already been used" });
+      return;
+    }
+    logger.error({ err, userId: user.id }, "Failed to reset password");
+    res.status(500).json({ error: "Failed to reset password" });
+  });
+
+  if (res.headersSent) return;
+
+  await logAction(user.id, getClientIp(req), req.headers["user-agent"], "password-reset-completed");
+
+  // Best-effort: revoke any other unused tokens for this user so a leaked
+  // older link cannot be redeemed after a successful reset.
+  await db.execute(sql`
+    UPDATE password_reset_tokens
+       SET used_at = NOW()
+     WHERE user_id = ${user.id}
+       AND used_at IS NULL
+  `).catch(() => {});
+
+  // Re-issue a session token so the user is logged in immediately on the
+  // device they performed the reset from. All prior tokens are invalidated
+  // via tokenInvalidatedAt above.
   const [refreshed] = await db.select().from(usersTable).where(eq(usersTable.id, user.id));
-  res.json({ user: formatUser(refreshed), token });
+  const newToken = generateToken(user.id);
+  res.json({ ok: true, user: formatUser(refreshed), token: newToken });
 });
 
 /**

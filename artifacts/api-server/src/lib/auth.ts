@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET environment variable must be set — refusing to start without it.");
@@ -9,14 +8,17 @@ if (!process.env.SESSION_SECRET) {
 const JWT_SECRET = process.env.SESSION_SECRET;
 const BCRYPT_WORK_FACTOR = 12;
 
+// Legacy SHA-256 (password + JWT_SECRET) hashes are detected so they can be
+// excluded from verification. The verifier no longer accepts them: any user
+// still on a SHA-256 hash has been flagged must_change_password=true by the
+// startup migration `users.flag_legacy_sha256_for_reset` and must use the
+// email-token /auth/forgot-password → /auth/reset-password flow to set a
+// new bcrypt password. This eliminates the GPU-crackable single-round
+// fallback and decouples session-secret leakage from password leakage.
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/i;
 
-function isSha256Hash(hash: string): boolean {
+export function isLegacySha256Hash(hash: string): boolean {
   return SHA256_HEX_RE.test(hash);
-}
-
-function sha256Hash(password: string): string {
-  return crypto.createHash("sha256").update(password + JWT_SECRET).digest("hex");
 }
 
 export function hashPassword(password: string): string {
@@ -27,14 +29,11 @@ export function verifyPassword(password: string, hash: string): boolean {
   if (!hash || hash === "PHONE_ONLY_NO_PASSWORD" || hash.startsWith("!deleted!")) {
     return false;
   }
-  if (isSha256Hash(hash)) {
-    return sha256Hash(password) === hash;
+  // Refuse legacy SHA-256 hashes. Users with such hashes must reset via email.
+  if (isLegacySha256Hash(hash)) {
+    return false;
   }
   return bcrypt.compareSync(password, hash);
-}
-
-export function isLegacySha256Hash(hash: string): boolean {
-  return isSha256Hash(hash);
 }
 
 export function generateToken(userId: number): string {

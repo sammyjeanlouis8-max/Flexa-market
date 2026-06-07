@@ -349,22 +349,35 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
 
   let event: Stripe.Event;
 
+  // Fail closed: refuse to process any webhook if the signing secret is not
+  // configured. The previous behaviour of parsing the raw body as a trusted
+  // event when the secret was missing allowed an unauthenticated attacker to
+  // POST forged `checkout.session.completed`, `wallet_recharge`, `boost`, and
+  // subscription events and trigger arbitrary side-effects (free purchases,
+  // wallet credits, boost activation, subscription upgrades).
+  let webhookSecret: string;
+  try {
+    webhookSecret = await getStripeWebhookSecret();
+  } catch (err: any) {
+    logger.error({ err: err?.message ?? err }, "Stripe webhook: failed to load webhook secret");
+    res.status(503).json({ error: "Webhook signing secret unavailable" });
+    return;
+  }
+  if (!webhookSecret) {
+    logger.error("Stripe webhook rejected: STRIPE_WEBHOOK_SECRET is not configured");
+    res.status(503).json({ error: "Webhook signing secret not configured" });
+    return;
+  }
+
   try {
     const stripe = await getStripeClient();
-    const webhookSecret = await getStripeWebhookSecret();
-
-    if (!webhookSecret) {
-      logger.warn("No Stripe webhook secret configured — skipping signature validation");
-      event = JSON.parse((req.body as Buffer).toString()) as Stripe.Event;
-    } else {
-      event = stripe.webhooks.constructEvent(
-        req.body as Buffer,
-        Array.isArray(sig) ? sig[0] : sig,
-        webhookSecret
-      );
-    }
+    event = stripe.webhooks.constructEvent(
+      req.body as Buffer,
+      Array.isArray(sig) ? sig[0] : sig,
+      webhookSecret,
+    );
   } catch (err: any) {
-    logger.error({ err }, "Stripe webhook signature validation failed");
+    logger.error({ err: err?.message ?? err }, "Stripe webhook signature validation failed");
     res.status(400).json({ error: `Webhook error: ${err.message}` });
     return;
   }

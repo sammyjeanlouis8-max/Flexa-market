@@ -2,7 +2,7 @@ import { Router, Request } from "express";
 import { db, usersTable, loginLogsTable, referralsTable } from "@workspace/db";
 import { eq, and, count, gte, sql } from "drizzle-orm";
 import { RegisterBody, LoginBody, ChangeCountryBody } from "@workspace/api-zod";
-import { hashPassword, verifyPassword, isLegacySha256Hash, generateToken, verifyPhoneToken } from "../lib/auth";
+import { hashPassword, verifyPassword, generateToken, verifyPhoneToken } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
 import { isOwnerEmail } from "../lib/superAdmins";
 import { logger } from "../lib/logger";
@@ -393,18 +393,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     void assessLogin(user.id, ip, loginDeviceId);
   });
 
-  // Transparent bcrypt migration: if the stored hash is still SHA-256,
-  // re-hash with bcrypt now that we know the plaintext password is correct.
-  // We also set requiresPasswordUpgrade so the client can prompt the user to
-  // voluntarily choose a new password before any forced invalidation.
-  const hadLegacyHash = isLegacySha256Hash(user.passwordHash);
-  if (hadLegacyHash) {
-    const newHash = hashPassword(password);
-    await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
-  }
-
   const token = generateToken(user.id);
-  res.json({ user: formatUser(user), token, ...(hadLegacyHash ? { requiresPasswordUpgrade: true } : {}) });
+  res.json({ user: formatUser(user), token });
 });
 
 router.post("/auth/logout", (_req, res): void => {

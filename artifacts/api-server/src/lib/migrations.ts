@@ -1885,6 +1885,54 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "user_blocks.unique_pair",    sql: "CREATE UNIQUE INDEX IF NOT EXISTS user_blocks_pair_idx ON user_blocks(blocker_id, blocked_id)" });
   migrations.push({ name: "user_blocks.idx_blocker",    sql: "CREATE INDEX IF NOT EXISTS user_blocks_blocker_idx ON user_blocks(blocker_id)" });
   migrations.push({ name: "user_blocks.idx_blocked",    sql: "CREATE INDEX IF NOT EXISTS user_blocks_blocked_idx ON user_blocks(blocked_id)" });
+  // Security: token-based password reset (CVE-class fix for /auth/forgot-password)
+  //
+  // The previous endpoint allowed any unauthenticated caller who knew an
+  // email address to set a new password. The replacement flow stores a
+  // one-time reset token, hashed with sha256, with a 30-minute TTL and a
+  // single-use guard. We never store the plaintext token; only the digest.
+  // ─────────────────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "password_reset_tokens.create_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id            SERIAL PRIMARY KEY,
+        user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash    TEXT    NOT NULL UNIQUE,
+        expires_at    TIMESTAMPTZ NOT NULL,
+        used_at       TIMESTAMPTZ,
+        request_ip    TEXT,
+        request_ua    TEXT,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+  });
+  migrations.push({ name: "password_reset_tokens.idx_user",    sql: "CREATE INDEX IF NOT EXISTS password_reset_tokens_user_idx ON password_reset_tokens(user_id)" });
+  migrations.push({ name: "password_reset_tokens.idx_expires", sql: "CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_idx ON password_reset_tokens(expires_at)" });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Security: force password reset for any user still on the legacy
+  // SHA-256(password + JWT_SECRET) hash. After this migration runs and the
+  // SHA-256 verification path is removed, these users can no longer log in
+  // with their old password and must use the secure /auth/forgot-password
+  // → /auth/reset-password email flow to set a new bcrypt password.
+  //
+  // SHA-256 hex hashes are exactly 64 lowercase hex chars. bcrypt hashes
+  // start with $2 and are ~60 chars. The marker hashes used by the account
+  // anonymisation flow ("!deleted!...") and the phone-only flow
+  // ("PHONE_ONLY_NO_PASSWORD") are excluded explicitly so they keep their
+  // current sentinel behaviour.
+  // ─────────────────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "users.flag_legacy_sha256_for_reset",
+    sql: `
+      UPDATE users
+         SET must_change_password = true
+       WHERE password_hash ~ '^[0-9a-f]{64}$'
+         AND password_hash <> 'PHONE_ONLY_NO_PASSWORD'
+         AND NOT must_change_password
+    `,
+  });
 
   let applied = 0;
   let failed = 0;

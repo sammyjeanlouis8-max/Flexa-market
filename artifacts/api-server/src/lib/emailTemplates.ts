@@ -370,3 +370,32 @@ export function kycStatusEmail(opts: {
     : `KYC refize: ${opts.rejectionReason ?? "Dokiman pa ase klè"}. Soumèt ankò sou https://flexamarket.com/kyc`;
   return { subject, html, text };
 }
+
+
+// ─── PASSWORD RESET ──────────────────────────────────────────────────────────
+
+export function passwordResetEmail(opts: {
+  name: string;
+  resetUrl: string;
+  expiresMinutes: number;
+}): { subject: string; html: string; text: string } {
+  const subject = "Reyajiste modpas FlexaMarket ou";
+  const html = base(subject, `
+    ${h1("Reyajiste modpas ou", PRIMARY)}
+    ${p(`Bonjou ${opts.name}, nou resevwa yon demand pou reyajiste modpas kont FlexaMarket ou.`)}
+    ${p(`Klike sou bouton an pi ba a pou chwazi yon nouvo modpas. Lyen sa a ap ekspire nan ${opts.expiresMinutes} minit.`)}
+    ${ctaButton("Reyajiste modpas mwen", opts.resetUrl)}
+    ${divider()}
+    ${p("Si ou pa t mande pou reyajiste modpas la, ou ka inyore email sa a — modpas ou pa pral chanje.", MUTED)}
+    ${p("Pou sekirite, lyen an se yon sèl-itilize. Si ou bezwen yon lòt, fè demand lan ankò sou paj koneksyon an.", MUTED)}
+  `);
+  const text = `Bonjou ${opts.name},
+
+Nou resevwa yon demand pou reyajiste modpas kont FlexaMarket ou.
+
+Klike sou lyen sa a pou chwazi yon nouvo modpas (li ekspire nan ${opts.expiresMinutes} minit):
+${opts.resetUrl}
+
+Si ou pa t mande sa, ou ka inyore email sa a — modpas ou pa pral chanje.`;
+  return { subject, html, text };
+}

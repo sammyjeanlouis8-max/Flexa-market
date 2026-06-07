@@ -677,74 +677,102 @@ router.post("/wallet/transfer", requireAuth, async (req, res): Promise<void> => 
   const feeUsd = Math.round(parsedAmount * TRANSFER_FEE_PCT * 100) / 100;
   const netAmount = Math.round((parsedAmount - feeUsd) * 100) / 100;
 
-  // ── 9. Atomic debit sender — floor enforced in WHERE to prevent race conditions ──
-  // Including MIN_FLOOR in the SQL guard ensures that even under concurrent requests
-  // that both pass the pre-check, the balance can never drop below $1.50.
-  await db.update(promoWalletTable)
-    .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsedAmount}`, updatedAt: new Date() })
-    .where(
-      and(
-        eq(promoWalletTable.userId, req.userId!),
-        sql`${promoWalletTable.balanceUsd} >= ${parsedAmount + MIN_FLOOR - 0.0001}`,
-      ),
-    );
+  // ── 9. Atomic debit + credit + audit inside a single DB transaction ──────
+  //
+  // Previously the sender debit, receiver credit, and audit-row inserts were
+  // independent statements. A crash, network blip, or Neon WebSocket reset
+  // between them could either lose funds (debit committed, credit never
+  // happened) or leave the ledger out of sync with balances (balances moved,
+  // walletTransactions rows never inserted). Wrapping all monetary writes in
+  // a single db.transaction() makes the transfer all-or-nothing.
+  //
+  // The MIN_FLOOR guard stays in the WHERE clause so concurrent transfers
+  // from the same sender cannot together drop the balance below the floor.
+  // We RETURN id from the sender UPDATE: zero rows back means the guard
+  // rejected the debit and we throw to roll the transaction back.
+  // 9. Atomic debit + credit + audit inside a single DB transaction.
+  // (MIN_FLOOR is defined above at step 5 — reused here for the SQL guard.)
+  const senderPaymentRef    = `TRF-${req.userId}-${Date.now()}`;
+  const receiverPaymentRef  = `TRF-${receiverWallet.userId}-${Date.now()}`;
 
-  // Re-verify debit went through (balance must not go negative)
-  const [afterDebit] = await db.select({ balanceUsd: promoWalletTable.balanceUsd })
-    .from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
-  if (!afterDebit || afterDebit.balanceUsd < -0.01) {
-    // Rollback: restore sender balance
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${parsedAmount}`, updatedAt: new Date() })
-      .where(eq(promoWalletTable.userId, req.userId!));
-    res.status(400).json({ error: "Echèk transfè — balans ensifizan" });
+  try {
+    await db.transaction(async (tx) => {
+      // 9a. Debit sender — atomic balance guard via the WHERE clause.
+      const debit = await tx
+        .update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsedAmount}`, updatedAt: new Date() })
+        .where(
+          and(
+            eq(promoWalletTable.userId, req.userId!),
+            sql`${promoWalletTable.balanceUsd} >= ${parsedAmount + MIN_FLOOR - 0.0001}`,
+          ),
+        )
+        .returning({ id: promoWalletTable.id });
+
+      if (debit.length === 0) {
+        // The guard rejected the debit (concurrent transfer / spent funds).
+        // Throwing rolls back the (otherwise empty) transaction.
+        throw new Error("insufficient-balance");
+      }
+
+      // 9b. Credit receiver.
+      await tx
+        .update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${netAmount}`, updatedAt: new Date() })
+        .where(eq(promoWalletTable.userId, receiverWallet.userId));
+
+      // 9c. Audit log — sender side
+      await tx.insert(walletTransactionsTable).values({
+        userId: req.userId!,
+        type: "transfer_sent",
+        amountUsd: -parsedAmount,
+        toUserId: receiverWallet.userId,
+        status: "completed",
+        note: `Voye ba ${receiverUser?.name ?? normalizedAcct} (${normalizedAcct}) — frè 2%: $${feeUsd.toFixed(2)}`,
+        paymentRef: senderPaymentRef,
+      });
+
+      // 9d. Audit log — receiver side
+      await tx.insert(walletTransactionsTable).values({
+        userId: receiverWallet.userId,
+        type: "transfer_received",
+        amountUsd: netAmount,
+        toUserId: req.userId!,
+        status: "completed",
+        note: `Resevwa depi ${senderWallet.accountNumber ?? "unknown"} (apre frè 2%)`,
+        paymentRef: receiverPaymentRef,
+      });
+
+      // 9e. Platform-revenue ledger row
+      await tx.insert(walletTransfersTable).values({
+        fromUserId: req.userId!,
+        toUserId: receiverWallet.userId,
+        amountUsd: parsedAmount,
+        feeUsd,
+        netAmountUsd: netAmount,
+        note: null,
+        status: "completed",
+        dailyFeeCharged: false,
+        dailyFeeDate: null,
+        fromCountry: null,
+        toCountry: null,
+        isInternational: false,
+        internationalFeeRate: null,
+        ipAddress: req.ip ?? null,
+      });
+    });
+  } catch (err: any) {
+    if (err?.message === "insufficient-balance") {
+      logger.warn({ userId: req.userId, parsedAmount }, "Wallet transfer aborted: insufficient balance");
+      res.status(400).json({ error: "Balans ou ensifizan pou transfè sa a." });
+      return;
+    }
+    logger.error({ err, senderId: req.userId, receiverId: receiverWallet.userId, parsedAmount }, "Wallet transfer transaction failed");
+    res.status(500).json({ error: "Echèk transfè — eseye ankò" });
     return;
   }
 
-  // Receiver gets net amount (gross minus 2% platform fee)
-  await db.update(promoWalletTable)
-    .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${netAmount}`, updatedAt: new Date() })
-    .where(eq(promoWalletTable.userId, receiverWallet.userId));
-
-  // ── 10. Audit log both sides ──────────────────────────────────────────────
-  await db.insert(walletTransactionsTable).values({
-    userId: req.userId!,
-    type: "transfer_sent",
-    amountUsd: -parsedAmount,
-    toUserId: receiverWallet.userId,
-    status: "completed",
-    note: `Voye ba ${receiverUser?.name ?? normalizedAcct} (${normalizedAcct}) — frè 2%: $${feeUsd.toFixed(2)}`,
-    paymentRef: `TRF-${req.userId}-${Date.now()}`,
-  });
-  await db.insert(walletTransactionsTable).values({
-    userId: receiverWallet.userId,
-    type: "transfer_received",
-    amountUsd: netAmount,
-    toUserId: req.userId!,
-    status: "completed",
-    note: `Resevwa depi ${senderWallet.accountNumber ?? "unknown"} (apre frè 2%)`,
-    paymentRef: `TRF-${receiverWallet.userId}-${Date.now()}`,
-  });
-
-  // ── 10b. Record transfer in walletTransfersTable so platform revenue tracks it ──
-  await db.insert(walletTransfersTable).values({
-    fromUserId: req.userId!,
-    toUserId: receiverWallet.userId,
-    amountUsd: parsedAmount,
-    feeUsd,
-    netAmountUsd: netAmount,
-    note: null,
-    status: "completed",
-    dailyFeeCharged: false,
-    dailyFeeDate: null,
-    fromCountry: null,
-    toCountry: null,
-    isInternational: false,
-    internationalFeeRate: null,
-    ipAddress: req.ip ?? null,
-  }).catch(() => {});
-
-  // ── 11. Notify receiver ───────────────────────────────────────────────────
+  // ── 10. Notify receiver (outside tx — best-effort, never blocks money move) ──
   await db.insert(notificationsTable).values({
     userId:  receiverWallet.userId,
     actorId: req.userId!,

@@ -19,6 +19,12 @@ android/
 *.key
 *.mobileprovision
 
+# Firebase / Google Services credentials — injected by EAS at build time,
+# never committed. If a developer needs a local copy, download it via
+# `eas credentials` and keep it out of the repo.
+google-services.json
+GoogleService-Info.plist
+
 # Metro
 .metro-health-check*
 

@@ -10,6 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
+import {
+  buildTokenInjectionScript,
+  getCachedPushToken,
+  subscribePushToken,
+} from "../lib/pushTokens";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Injected scripts
@@ -144,6 +149,17 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
     return () => sub.remove();
   }, []);
 
+  // ── Push token bridge: re-inject the cached Expo push token whenever it
+  //    changes so the web app's useExpoPushToken() hook can POST it to the
+  //    backend regardless of which WebView screen is currently mounted.
+  useEffect(() => {
+    return subscribePushToken((token) => {
+      if (!token || !webRef.current) return;
+      const script = buildTokenInjectionScript(token);
+      if (script) webRef.current.injectJavaScript(script);
+    });
+  }, []);
+
   // ── External-link handler. Returning false here cancels the WebView load;
   //    we explicitly hand the URL to the OS so it opens in Safari / Chrome.
   const handleExternal = useCallback((url: string) => {
@@ -188,7 +204,18 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         injectedJavaScriptForMainFrameOnly
         userAgent="FlexaMarket/1.0 (Mobile App)"
         onLoadStart={() => setLoading(true)}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          // After every page load (initial + in-WebView navigations) re-publish
+          // the cached push token so the web app's useExpoPushToken() hook can
+          // forward it to the backend. Without this, a token obtained AFTER
+          // the WebView mounted would never reach the server.
+          const token = getCachedPushToken();
+          if (token && webRef.current) {
+            const script = buildTokenInjectionScript(token);
+            if (script) webRef.current.injectJavaScript(script);
+          }
+        }}
         onNavigationStateChange={(state) => {
           canGoBackRef.current = !!state.canGoBack;
         }}

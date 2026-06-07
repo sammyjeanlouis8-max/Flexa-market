@@ -11,6 +11,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { initPushNotifications } from "../lib/pushTokens";
 
 // Prevent the splash from disappearing before the first frame can render.
 // Wrapped in try/catch because on some Android startups the splash module
@@ -55,6 +56,19 @@ export default function RootLayout() {
     // hideAsync rejects if the splash was already auto-dismissed by the OS;
     // swallowing the rejection keeps the JS context alive on Android.
     SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
+
+  // Initialise the push pipeline once the JS context is healthy. Inside
+  // initPushNotifications() the permission prompt is deferred via a setTimeout
+  // microtask, so this never blocks first paint and never throws.
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      initPushNotifications();
+    } catch {
+      // Defensive: an exception escaping initPushNotifications must never
+      // bring down the layout. Push will simply not work for this session.
+    }
   }, [ready]);
 
   if (!ready) return null;

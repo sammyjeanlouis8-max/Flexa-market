@@ -41,15 +41,23 @@ function buildSafeAreaScript(insets: {
   bottom: number;
   left: number;
   right: number;
-}): string {
+}, platform: "ios" | "android"): string {
   const t = Math.round(insets.top);
   const b = Math.round(insets.bottom);
   const l = Math.round(insets.left);
   const r = Math.round(insets.right);
+  // Forensic report §❸ config #2: previously this script unconditionally
+  // added `native-ios` on every platform, which made the web app's
+  // `html.native-android { ... }` CSS rules dead code on Android. The
+  // inline `--safe-*` setProperty calls below still take CSS precedence
+  // (so existing visual behaviour is preserved), but `openExternal()` and
+  // any other web-side feature that branches on the class now sees the
+  // correct platform.
+  const cls = platform === "ios" ? "native-ios" : "native-android";
   return `(function(){
     try {
       var d = document.documentElement;
-      d.classList.add('native-ios');
+      d.classList.add(${JSON.stringify(cls)});
       var s = d.style;
       s.setProperty('--safe-top', '${t}px');
       s.setProperty('--safe-bottom', '${b}px');
@@ -170,8 +178,13 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
   }, []);
 
   // ── Safe-area injection: recomputed when insets change (e.g. rotation or
-  //    Dynamic Island visibility changes).
-  const safeAreaScript = buildSafeAreaScript(insets);
+  //    Dynamic Island visibility changes). Platform is passed so the script
+  //    can set the correct `native-ios` / `native-android` class for the
+  //    web app's CSS branches (forensic report §❸ config #2).
+  const safeAreaScript = buildSafeAreaScript(
+    insets,
+    Platform.OS === "ios" ? "ios" : "android",
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
@@ -202,7 +215,34 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         injectedJavaScriptBeforeContentLoaded={safeAreaScript}
         injectedJavaScript={BLOCK_CONTEXT_MENU_SCRIPT}
         injectedJavaScriptForMainFrameOnly
-        userAgent="FlexaMarket/1.0 (Mobile App)"
+        // Forensic report §❸ config #2: the previous UA "FlexaMarket/1.0
+        // (Mobile App)" lacked any iPhone/Android/Mobile token, which made
+        // the web app's UA-based platform detection (in index.html) return
+        // false on every device. The web side still works because the
+        // safe-area script above injects the correct `native-{ios,android}`
+        // class manually, but downstream features that branch on the UA
+        // (analytics, server-side device-class metrics, viewport hints)
+        // were getting the wrong value. We append the platform token while
+        // preserving the leading "FlexaMarket/1.0" brand so existing
+        // server-side allowlists / route guards still match.
+        userAgent={
+          Platform.OS === "ios"
+            ? "FlexaMarket/1.0 (Mobile App; iPhone; iOS)"
+            : "FlexaMarket/1.0 (Mobile App; Android)"
+        }
+        // Forensic report §❸ config #5: without these handlers, a WebView
+        // content-process crash (out-of-memory on iOS, renderer kill on
+        // Android) leaves the user staring at a blank screen with no
+        // recovery path. Reloading the WebView is the documented react-
+        // native-webview recommendation and matches WKWebView's own
+        // recovery contract.
+        onContentProcessDidTerminate={() => {
+          try { webRef.current?.reload(); } catch { /* noop */ }
+        }}
+        onRenderProcessGone={() => {
+          try { webRef.current?.reload(); } catch { /* noop */ }
+          return true; // we handled it — do not let RN bubble the crash
+        }}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => {
           setLoading(false);

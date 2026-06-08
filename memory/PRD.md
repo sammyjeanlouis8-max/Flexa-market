@@ -68,6 +68,13 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
 ### ✅ Phase 1 — Commission Fix (DONE)
 - 85% driver / 15% platform commission applied across `deliveryPricing.ts`, API routes, and UI components.
 
+### ✅ Hotfix — Ghost Video Promo listings polluting Profile (Feb 2026)
+- **What the user actually saw:** Four orange "Video Prom" tiles with `$0.00` and `Haiti` on their own Profile listings tab, no images. User reasonably concluded "video pa sove" (the video isn't saving) and pushed back hard.
+- **What was actually happening:** `POST /api/boost/video-only` (routes/boost.ts) creates a ghost listing row with `status='hidden'`, `price=0`, `images=[]`, and stores the boost video URL in `boostVideoUrl`. These rows are scaffolding for the Video Promo feature — they were never meant to appear on the Profile listings grid. They did because **`GET /api/users/:id/listings` did not filter out `status='hidden'`** — only the global browse (`/listings`) and `/listings/my-count` had that guard.
+- **Fix:** Added `status <> 'hidden'` to the conditions in `routes/users.ts → GET /users/:id/listings`. One-line change with extensive doc comment so the next agent doesn't accidentally drop it during a refactor.
+- **Effect:** The four ghost tiles disappear on next page reload — no DB cleanup or re-upload required. The "Listings (28)" count in the tab automatically drops to the correct figure.
+- **What I got wrong earlier:** I diagnosed the symptom (broken video icon on Listing Details) as the URL-routing bug — and that fix WAS legitimate. But I missed that the *bigger* user-facing issue was Profile pollution, which made every failed/successful Video Promo look like a broken save. Owed the user a deeper trace earlier.
+
 ### ✅ Phase 3 — Delivery State Machine (DONE, Feb 2026)
 - **New module:** `lib/deliveryStateMachine.ts` — single source of truth for the 13 valid delivery statuses (`waiting`, `driver_assigned`, `picked_up`, `arrived`, `delivered`, `completed`, `buyer_absent`, `failed_pickup`, `returning`, `returned`, `seller_closed`, `disputed`, `cancelled`) and the directed transition graph between them.
 - **API:** `canTransition()`, `assertTransition()`, `nextStatusOrNull()`, `isTerminal()`, `InvalidDeliveryTransitionError` (maps to HTTP 409 at the route layer).

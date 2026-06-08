@@ -63,6 +63,26 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
 - ✅ Safe-area tokens unified across iOS WebView, Android WebView, and Mobile Safari
 - ✅ Manual QA checklist provided (see `/app/memory/QA_CHECKLIST.md`)
 
+## Delivery & Payment Ecosystem — 10-Phase Remediation (Feb 2026)
+
+### ✅ Phase 1 — Commission Fix (DONE)
+- 85% driver / 15% platform commission applied across `deliveryPricing.ts`, API routes, and UI components.
+
+### ✅ Phase 5 — Escrow & Lifecycle Auto-Release (DONE, Feb 2026)
+- **New job:** `artifacts/api-server/src/jobs/escrowReleaseJob.ts` — runs every 15 min with a 60 s warm-up. Wrapped in `pg_try_advisory_lock(54321)` so only one pod runs the pass at a time.
+- **Three sub-jobs (no schema changes):**
+  1. `autoConfirmDeliveredOrders` — `status=delivered + paymentHeldUntil < now + sellerPaymentReleased=false` → calls `releaseEscrow(txId, "buyer")` + flips `sellerPaymentReleased=true`. Safety net for failures in the synchronous delivery-confirmation path.
+  2. `autoExpireStalledWaiting` — `status=waiting + createdAt < now − 6h` → `status=cancelled` (CAS-guarded) + buyer refund via `releaseEscrow(txId, "buyer")`. Mark-then-refund order means a failed refund leaves an auditable `cancelled` row instead of an inconsistent `waiting`.
+  3. `autoCancelStuckAccepted` — `status=accepted + acceptedAt < now − 2h + pickedUpAt IS NULL` → recycles back to `status=waiting` (CAS-guarded) so the matching pool re-assigns the delivery. No driver penalty (deferred to Phase 6).
+- **Wiring:** Mounted in `src/index.ts` alongside the existing loan / AI-guardian cron pattern (`setInterval` + immediate `setTimeout` warm-up).
+- **Tests:** New `src/tests/escrowReleaseJob.test.ts` — 13 cases covering cutoff arithmetic, idempotency, boundary conditions, and TTL invariants.
+- **Verification:** `pnpm build` ✅, `pnpm typecheck` ✅ (0 errors in escrow files), full suite 69/69 green.
+
+### 🟡 Awaiting User Approval
+- **Phase 3** — Delivery State Machine (strict transition guard layer, no DB schema changes).
+- **Phase 4** — Dispute System.
+- **Phase 2 / 6 / 7 / 8** — Pricing, fraud, market fit, transparency.
+
 ## Next Action Items / Backlog
 - **P1** Run real-device QA on iPhone 15 Pro (Dynamic Island) and an Android 9/10 device with WebView < 119 once a TestFlight / APK build is cut.
 - **P1** Consider migrating from `localStorage` self-heal guard to a deterministic build-hash check (compare `window.__BUILD_HASH__` baked into HTML vs. JS asset hash); avoids ever needing a 24 h cooldown.

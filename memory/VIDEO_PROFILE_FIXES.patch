@@ -1,0 +1,20 @@
+diff --git a/artifacts/api-server/src/routes/users.ts b/artifacts/api-server/src/routes/users.ts
+index 237ec75..8d973e4 100644
+--- a/artifacts/api-server/src/routes/users.ts
++++ b/artifacts/api-server/src/routes/users.ts
+@@ -221,6 +221,15 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void>
+   const isOwner = req.userId === id;
+   const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+   const conditions = [eq(listingsTable.sellerId, id)];
++  // Always exclude ghost listings (status='hidden') from the public profile
++  // grid. These rows are scaffolding for the Video Promo boost feature
++  // (see routes/boost.ts → POST /boost/video-only) — they exist only to
++  // carry the boostVideoUrl + audience targeting metadata for a paid
++  // promotion. They have price=0, no images, no description, and were
++  // never meant to be browsable as for-sale items. Owners would otherwise
++  // see an orange "Video Prom" tile per promotion they ran, which looks
++  // like a bug and pollutes their listings tab.
++  conditions.push(sql`${listingsTable.status} <> 'hidden'`);
+   if (!isOwner && !isAdmin) {
+     conditions.push(eq(listingsTable.moderationStatus, "approved"));
+     // Mirror the detail-endpoint's country isolation: a logged-in user with a

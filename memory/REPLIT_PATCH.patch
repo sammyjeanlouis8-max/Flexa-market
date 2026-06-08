@@ -1,0 +1,1158 @@
+diff --git a/.emergent/emergent.yml b/.emergent/emergent.yml
+index f6c5208..0413c91 100644
+--- a/.emergent/emergent.yml
++++ b/.emergent/emergent.yml
+@@ -1,4 +1,4 @@
+ {
+   "job_id": "a4a847e9-a2e1-4911-bbd0-56bd0ae3a58c",
+-  "created_at": "2026-06-08T10:37:30.150474+00:00Z"
++  "created_at": "2026-06-08T12:54:33.328850+00:00Z"
+ }
+diff --git a/artifacts/api-server/src/lib/deliveryStateMachine.ts b/artifacts/api-server/src/lib/deliveryStateMachine.ts
+new file mode 100644
+index 0000000..9657bff
+--- /dev/null
++++ b/artifacts/api-server/src/lib/deliveryStateMachine.ts
+@@ -0,0 +1,195 @@
++/**
++ * Phase 3 — Delivery state machine.
++ *
++ * Single source of truth for which delivery status transitions are valid.
++ * Every code path that mutates `deliveriesTable.status` MUST run through
++ * `assertTransition()` (or its thrower-free cousin `canTransition()`) first.
++ * This eliminates the class of bug where one route accidentally moves a
++ * delivery from `delivered` back to `waiting`, leaves it in an impossible
++ * combination (e.g. `picked_up` + null `acceptedAt`), or skips the escrow
++ * release path by jumping straight to `cancelled`.
++ *
++ * Statuses are documented inline. The transitions table is built from the
++ * actual flows in `routes/delivery.ts`, with `disputed` added for Phase 4.
++ * No DB schema change is required — we treat `status` as a tagged-string
++ * column and rely on this module as the gate.
++ */
++
++export type DeliveryStatus =
++  // Initial — buyer has paid, no driver yet.
++  | "waiting"
++  // Driver has been matched and notified, awaiting acceptance.
++  | "driver_assigned"
++  // Driver is on the way to / has reached the pickup point.
++  | "picked_up"
++  // Driver has arrived at the buyer's drop-off location.
++  | "arrived"
++  // Driver has delivered; awaiting buyer verification code OR auto-release.
++  | "delivered"
++  // Buyer (or auto-release cron) confirmed receipt — payout has fired.
++  | "completed"
++  // Buyer was not present at drop-off; driver awaits reschedule decision.
++  | "buyer_absent"
++  // Driver failed to pick up the item from the seller.
++  | "failed_pickup"
++  // Item is being driven back to the seller after a refusal / no-show.
++  | "returning"
++  // Seller confirmed the returned item; refund path fires.
++  | "returned"
++  // Seller closed the order from their side (manual abandon).
++  | "seller_closed"
++  // Buyer / seller / driver raised a formal dispute (Phase 4). Frozen
++  // until an admin resolves it.
++  | "disputed"
++  // Cancelled before any driver was engaged.
++  | "cancelled";
++
++export const ALL_DELIVERY_STATUSES: readonly DeliveryStatus[] = [
++  "waiting",
++  "driver_assigned",
++  "picked_up",
++  "arrived",
++  "delivered",
++  "completed",
++  "buyer_absent",
++  "failed_pickup",
++  "returning",
++  "returned",
++  "seller_closed",
++  "disputed",
++  "cancelled",
++] as const;
++
++// Terminal states — no further transition allowed from these.
++const TERMINAL_STATUSES: ReadonlySet<DeliveryStatus> = new Set([
++  "completed",
++  "returned",
++  "seller_closed",
++  "cancelled",
++]);
++
++/**
++ * Allowed forward transitions. `disputed` can be entered from almost any
++ * non-terminal status because either party can raise an issue at any point
++ * before the money has moved (post-completion disputes flow through Stripe
++ * chargeback, not this state).
++ *
++ * If a transition is missing here, it is denied. Add new flows here and
++ * here only — do NOT bypass via raw `db.update(...)` calls.
++ */
++const TRANSITIONS: Record<DeliveryStatus, ReadonlySet<DeliveryStatus>> = {
++  waiting: new Set<DeliveryStatus>([
++    "driver_assigned",
++    "cancelled",
++    "disputed",
++  ]),
++  driver_assigned: new Set<DeliveryStatus>([
++    "picked_up",
++    "failed_pickup",
++    "waiting", // driver cancelled — recycled back into the matching pool
++    "cancelled",
++    "disputed",
++  ]),
++  picked_up: new Set<DeliveryStatus>([
++    "arrived",
++    "delivered", // legacy direct jump still used by some flows
++    "returning",
++    "disputed",
++  ]),
++  arrived: new Set<DeliveryStatus>([
++    "delivered",
++    "buyer_absent",
++    "returning",
++    "disputed",
++  ]),
++  delivered: new Set<DeliveryStatus>([
++    "completed",
++    "disputed",
++  ]),
++  buyer_absent: new Set<DeliveryStatus>([
++    "delivered", // buyer arrived after reschedule
++    "returning",
++    "disputed",
++  ]),
++  failed_pickup: new Set<DeliveryStatus>([
++    "returning",
++    "cancelled",
++    "disputed",
++  ]),
++  returning: new Set<DeliveryStatus>([
++    "returned",
++    "disputed",
++  ]),
++  // Terminal — explicit empty sets keep the type system honest.
++  completed: new Set<DeliveryStatus>([]),
++  returned: new Set<DeliveryStatus>([]),
++  seller_closed: new Set<DeliveryStatus>([]),
++  cancelled: new Set<DeliveryStatus>([]),
++  // Disputed exits only through admin resolution back into one of the
++  // existing terminal/refund paths.
++  disputed: new Set<DeliveryStatus>([
++    "completed",
++    "returned",
++    "cancelled",
++  ]),
++};
++
++export function isDeliveryStatus(value: unknown): value is DeliveryStatus {
++  return typeof value === "string" && (ALL_DELIVERY_STATUSES as readonly string[]).includes(value);
++}
++
++export function isTerminal(status: DeliveryStatus): boolean {
++  return TERMINAL_STATUSES.has(status);
++}
++
++export function canTransition(from: DeliveryStatus, to: DeliveryStatus): boolean {
++  if (from === to) return true; // idempotent re-write is allowed
++  return TRANSITIONS[from].has(to);
++}
++
++export class InvalidDeliveryTransitionError extends Error {
++  readonly from: DeliveryStatus;
++  readonly to: DeliveryStatus;
++  constructor(from: DeliveryStatus, to: DeliveryStatus) {
++    // Defensive: `from` may be an unknown string (e.g. raw query param) when
++    // assertTransition throws. Only enumerate allowed-next when we have a
++    // valid source status.
++    const allowedNext = (TRANSITIONS as Record<string, ReadonlySet<DeliveryStatus> | undefined>)[from];
++    const allowedList = allowedNext ? [...allowedNext].join(", ") : "<unknown source>";
++    super(
++      `Invalid delivery status transition: "${from}" → "${to}". ` +
++      `Allowed next statuses from "${from}": [${allowedList || "<terminal>"}].`,
++    );
++    this.name = "InvalidDeliveryTransitionError";
++    this.from = from;
++    this.to = to;
++  }
++}
++
++/**
++ * Throw if the transition is not allowed. Caller should map the thrown
++ * error to a 409 Conflict response. The unknown-status guard means raw
++ * strings from query params are safe to pass in.
++ */
++export function assertTransition(from: unknown, to: unknown): void {
++  if (!isDeliveryStatus(from)) {
++    throw new InvalidDeliveryTransitionError(
++      (from as DeliveryStatus) ?? ("<unknown>" as DeliveryStatus),
++      isDeliveryStatus(to) ? to : ("<unknown>" as DeliveryStatus),
++    );
++  }
++  if (!isDeliveryStatus(to)) {
++    throw new InvalidDeliveryTransitionError(from, ("<unknown>" as DeliveryStatus));
++  }
++  if (!canTransition(from, to)) {
++    throw new InvalidDeliveryTransitionError(from, to);
++  }
++}
++
++/**
++ * Convenience helper for routes: returns the next status if allowed,
++ * otherwise returns null. Callers can branch without try/catch.
++ */
++export function nextStatusOrNull(from: DeliveryStatus, to: DeliveryStatus): DeliveryStatus | null {
++  return canTransition(from, to) ? to : null;
++}
+diff --git a/artifacts/api-server/src/lib/migrations.ts b/artifacts/api-server/src/lib/migrations.ts
+index ecafcd0..62bd321 100644
+--- a/artifacts/api-server/src/lib/migrations.ts
++++ b/artifacts/api-server/src/lib/migrations.ts
+@@ -1934,6 +1934,46 @@ export async function runStartupMigrations(): Promise<void> {
+     `,
+   });
+ 
++  // ─────────────────────────────────────────────────────────────────────────
++  // Phase 4 — Delivery disputes table. Additive only — no existing column
++  // is modified. See `lib/db/src/schema/disputes.ts` for the application-
++  // level shape and `routes/disputes.ts` for the endpoints.
++  // ─────────────────────────────────────────────────────────────────────────
++  migrations.push({
++    name: "delivery_disputes.create_table",
++    sql: `
++      CREATE TABLE IF NOT EXISTS delivery_disputes (
++        id                    SERIAL PRIMARY KEY,
++        delivery_id           INTEGER NOT NULL REFERENCES deliveries(id),
++        opened_by_user_id     INTEGER NOT NULL REFERENCES users(id),
++        opened_by_role        TEXT    NOT NULL,
++        reason                TEXT    NOT NULL,
++        description           TEXT    NOT NULL,
++        evidence_urls         TEXT    NOT NULL DEFAULT '[]',
++        status                TEXT    NOT NULL DEFAULT 'open',
++        resolved_by_admin_id  INTEGER REFERENCES users(id),
++        resolved_at           TIMESTAMPTZ,
++        resolution_note       TEXT,
++        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
++      )
++    `,
++  });
++  migrations.push({ name: "delivery_disputes.idx_delivery", sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_delivery_id_idx ON delivery_disputes(delivery_id)" });
++  migrations.push({ name: "delivery_disputes.idx_opener",   sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_opened_by_user_id_idx ON delivery_disputes(opened_by_user_id)" });
++  migrations.push({ name: "delivery_disputes.idx_status",   sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_status_idx ON delivery_disputes(status)" });
++  // One open dispute per delivery — enforced at the DB level so racing
++  // requests can't double-open and leave two rows fighting for the same
++  // delivery's payout.
++  migrations.push({
++    name: "delivery_disputes.unique_open_per_delivery",
++    sql: `
++      CREATE UNIQUE INDEX IF NOT EXISTS delivery_disputes_one_open_per_delivery_uq
++        ON delivery_disputes(delivery_id)
++        WHERE status IN ('open', 'under_review')
++    `,
++  });
++
+   let applied = 0;
+   let failed = 0;
+ 
+diff --git a/artifacts/api-server/src/routes/disputes.ts b/artifacts/api-server/src/routes/disputes.ts
+new file mode 100644
+index 0000000..c6cdd22
+--- /dev/null
++++ b/artifacts/api-server/src/routes/disputes.ts
+@@ -0,0 +1,334 @@
++/**
++ * Phase 4 — Dispute system routes.
++ *
++ *   POST   /api/deliveries/:id/dispute        — open a dispute (party of the delivery)
++ *   GET    /api/deliveries/:id/dispute        — fetch dispute for a delivery (any party)
++ *   GET    /api/admin/disputes                — admin list of all disputes
++ *   POST   /api/admin/disputes/:id/resolve    — admin resolves a dispute
++ *
++ * The router is mounted in `app.ts` alongside the other delivery routes.
++ *
++ * Money movement on resolution piggy-backs on the existing `releaseEscrow()`
++ * primitive — admin resolution writes the dispute row, transitions the
++ * delivery via the state machine, then dispatches refund or payout exactly
++ * like the regular delivery lifecycle. No new payment code path is added.
++ */
++import { Router } from "express";
++import { eq, and, desc, sql } from "drizzle-orm";
++import {
++  db,
++  disputesTable,
++  deliveriesTable,
++  usersTable,
++  disputeOpenInput,
++  disputeResolveInput,
++  type DeliveryDispute,
++} from "@workspace/db";
++import { requireAuth, requireAdmin } from "../middlewares/auth";
++import {
++  assertTransition,
++  isDeliveryStatus,
++  InvalidDeliveryTransitionError,
++  type DeliveryStatus,
++} from "../lib/deliveryStateMachine";
++import { releaseEscrow } from "./transactions";
++import { logger } from "../lib/logger";
++import { logAdminAction } from "../lib/auditLogger";
++
++const router = Router();
++
++/**
++ * Resolve which role (buyer / seller / driver) the calling user plays on a
++ * given delivery. Returns null if they are not a party — admins are NOT
++ * treated as a party here; admin endpoints live under /admin/disputes.
++ */
++function partyRole(
++  userId: number,
++  delivery: { buyerId: number; sellerId: number; driverUserId: number | null },
++): "buyer" | "seller" | "driver" | null {
++  if (delivery.buyerId === userId) return "buyer";
++  if (delivery.sellerId === userId) return "seller";
++  if (delivery.driverUserId === userId) return "driver";
++  return null;
++}
++
++// ─── POST /api/deliveries/:id/dispute ────────────────────────────────────────
++router.post("/deliveries/:id/dispute", requireAuth, async (req, res): Promise<void> => {
++  const deliveryId = Number(req.params.id);
++  if (!Number.isFinite(deliveryId)) {
++    res.status(400).json({ error: "invalid_delivery_id" });
++    return;
++  }
++  const userId = (req as any).user.id as number;
++
++  const parsed = disputeOpenInput.safeParse(req.body);
++  if (!parsed.success) {
++    res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
++    return;
++  }
++
++  const [delivery] = await db
++    .select()
++    .from(deliveriesTable)
++    .where(eq(deliveriesTable.id, deliveryId));
++  if (!delivery) {
++    res.status(404).json({ error: "delivery_not_found" });
++    return;
++  }
++
++  const role = partyRole(userId, delivery);
++  if (!role) {
++    res.status(403).json({ error: "not_a_party_to_this_delivery" });
++    return;
++  }
++
++  // Refuse new disputes once the money has already moved by Stripe chargeback
++  // path (delivered + sellerPaymentReleased=true → completed). We still allow
++  // disputes on `delivered` (before auto-release) and any earlier in-flight
++  // state — the state-machine guards which.
++  const currentStatus = delivery.status as DeliveryStatus;
++  try {
++    assertTransition(currentStatus, "disputed");
++  } catch (err) {
++    if (err instanceof InvalidDeliveryTransitionError) {
++      res.status(409).json({ error: "dispute_not_allowed_in_current_status", currentStatus });
++      return;
++    }
++    throw err;
++  }
++
++  // Atomically insert the dispute row + flip the delivery status. The
++  // partial unique index `delivery_disputes_one_open_per_delivery_uq`
++  // guarantees that two concurrent requests can't both succeed — the
++  // loser hits a unique-violation and we surface a 409.
++  try {
++    const inserted = await db.transaction(async (tx) => {
++      const [row] = await tx
++        .insert(disputesTable)
++        .values({
++          deliveryId,
++          openedByUserId: userId,
++          openedByRole: role,
++          reason: parsed.data.reason,
++          description: parsed.data.description,
++          evidenceUrls: JSON.stringify(parsed.data.evidenceUrls),
++        })
++        .returning();
++      await tx
++        .update(deliveriesTable)
++        .set({ status: "disputed", updatedAt: new Date() })
++        .where(eq(deliveriesTable.id, deliveryId));
++      return row;
++    });
++
++    logger.info({ deliveryId, disputeId: inserted.id, role }, "Dispute opened");
++    res.status(201).json({ ok: true, dispute: serializeDispute(inserted) });
++  } catch (err: any) {
++    if (err?.message?.includes("delivery_disputes_one_open_per_delivery_uq")) {
++      res.status(409).json({ error: "dispute_already_open" });
++      return;
++    }
++    logger.error({ err, deliveryId }, "Failed to open dispute");
++    res.status(500).json({ error: "internal_error" });
++  }
++});
++
++// ─── GET /api/deliveries/:id/dispute ─────────────────────────────────────────
++router.get("/deliveries/:id/dispute", requireAuth, async (req, res): Promise<void> => {
++  const deliveryId = Number(req.params.id);
++  if (!Number.isFinite(deliveryId)) {
++    res.status(400).json({ error: "invalid_delivery_id" });
++    return;
++  }
++  const userId = (req as any).user.id as number;
++
++  const [delivery] = await db
++    .select()
++    .from(deliveriesTable)
++    .where(eq(deliveriesTable.id, deliveryId));
++  if (!delivery) {
++    res.status(404).json({ error: "delivery_not_found" });
++    return;
++  }
++  if (!partyRole(userId, delivery) && !(req as any).user.isAdmin) {
++    res.status(403).json({ error: "forbidden" });
++    return;
++  }
++
++  const [dispute] = await db
++    .select()
++    .from(disputesTable)
++    .where(eq(disputesTable.deliveryId, deliveryId))
++    .orderBy(desc(disputesTable.createdAt))
++    .limit(1);
++
++  res.json({ dispute: dispute ? serializeDispute(dispute) : null });
++});
++
++// ─── GET /api/admin/disputes ─────────────────────────────────────────────────
++router.get("/admin/disputes", requireAdmin, async (req, res): Promise<void> => {
++  const statusFilter = typeof req.query.status === "string" ? req.query.status : null;
++  const conds: any[] = [];
++  if (statusFilter && ["open", "under_review", "resolved_buyer", "resolved_seller", "closed"].includes(statusFilter)) {
++    conds.push(eq(disputesTable.status, statusFilter));
++  }
++  const rows = await db
++    .select({
++      dispute: disputesTable,
++      opener: {
++        id: usersTable.id,
++        name: usersTable.name,
++        email: usersTable.email,
++      },
++    })
++    .from(disputesTable)
++    .leftJoin(usersTable, eq(usersTable.id, disputesTable.openedByUserId))
++    .where(conds.length ? and(...conds) : sql`true`)
++    .orderBy(desc(disputesTable.createdAt))
++    .limit(200);
++
++  res.json({
++    disputes: rows.map((r) => ({
++      ...serializeDispute(r.dispute),
++      opener: r.opener,
++    })),
++  });
++});
++
++// ─── POST /api/admin/disputes/:id/resolve ────────────────────────────────────
++router.post("/admin/disputes/:id/resolve", requireAdmin, async (req, res): Promise<void> => {
++  const disputeId = Number(req.params.id);
++  if (!Number.isFinite(disputeId)) {
++    res.status(400).json({ error: "invalid_dispute_id" });
++    return;
++  }
++  const adminId = (req as any).user.id as number;
++
++  const parsed = disputeResolveInput.safeParse(req.body);
++  if (!parsed.success) {
++    res.status(400).json({ error: "invalid_input", details: parsed.error.flatten() });
++    return;
++  }
++  const { resolution, resolutionNote } = parsed.data;
++
++  const [dispute] = await db
++    .select()
++    .from(disputesTable)
++    .where(eq(disputesTable.id, disputeId));
++  if (!dispute) {
++    res.status(404).json({ error: "dispute_not_found" });
++    return;
++  }
++  if (dispute.status === "resolved_buyer" || dispute.status === "resolved_seller" || dispute.status === "closed") {
++    res.status(409).json({ error: "dispute_already_resolved", currentStatus: dispute.status });
++    return;
++  }
++
++  const [delivery] = await db
++    .select()
++    .from(deliveriesTable)
++    .where(eq(deliveriesTable.id, dispute.deliveryId));
++  if (!delivery) {
++    res.status(500).json({ error: "delivery_disappeared" });
++    return;
++  }
++
++  // Map resolution → target delivery status (validated by the state machine)
++  const targetDeliveryStatus: DeliveryStatus =
++    resolution === "resolved_buyer"  ? "returned"   :
++    resolution === "resolved_seller" ? "completed"  :
++    /* closed */                        "cancelled";
++
++  if (!isDeliveryStatus(delivery.status)) {
++    res.status(500).json({ error: "delivery_status_unknown", currentStatus: delivery.status });
++    return;
++  }
++  try {
++    assertTransition(delivery.status, targetDeliveryStatus);
++  } catch (err) {
++    if (err instanceof InvalidDeliveryTransitionError) {
++      res.status(409).json({
++        error: "resolution_blocked_by_state_machine",
++        message: err.message,
++      });
++      return;
++    }
++    throw err;
++  }
++
++  // Persist dispute + delivery status transition atomically.
++  await db.transaction(async (tx) => {
++    await tx
++      .update(disputesTable)
++      .set({
++        status: resolution,
++        resolvedByAdminId: adminId,
++        resolvedAt: new Date(),
++        resolutionNote,
++        updatedAt: new Date(),
++      })
++      .where(eq(disputesTable.id, disputeId));
++
++    await tx
++      .update(deliveriesTable)
++      .set({ status: targetDeliveryStatus, updatedAt: new Date() })
++      .where(eq(deliveriesTable.id, dispute.deliveryId));
++  });
++
++  // Move money. `releaseEscrow` already routes the funds correctly based on
++  // its `triggeredBy` arg — "buyer" = refund, "carrier"/"auto" = seller payout.
++  // We deliberately do this AFTER the transaction so a payment failure
++  // doesn't leave dispute+delivery rolled back into an inconsistent state.
++  try {
++    if (delivery.transactionId) {
++      if (resolution === "resolved_buyer") {
++        await releaseEscrow(delivery.transactionId, "buyer");
++      } else if (resolution === "resolved_seller") {
++        await releaseEscrow(delivery.transactionId, "auto");
++      }
++      // 'closed' → no money movement; admin reasoned the dispute is invalid.
++    }
++  } catch (err) {
++    logger.error({ err, disputeId, deliveryId: dispute.deliveryId, resolution }, "Escrow release after dispute resolution failed");
++    // Don't bubble — dispute is recorded as resolved; ops can re-fire the
++    // escrow path manually via the admin transactions screen.
++  }
++
++  await logAdminAction(req, {
++    actionType: "dispute.resolve",
++    actionCategory: "delivery",
++    description: `Resolved delivery dispute #${disputeId} as ${resolution}`,
++    targetType: "delivery_dispute",
++    targetId: disputeId,
++    afterState: { resolution, resolutionNote, targetDeliveryStatus },
++  }).catch(() => {});
++
++  res.json({ ok: true });
++});
++
++// ─── helpers ─────────────────────────────────────────────────────────────────
++function serializeDispute(d: DeliveryDispute) {
++  let evidence: string[] = [];
++  try {
++    evidence = JSON.parse(d.evidenceUrls) as string[];
++  } catch {
++    evidence = [];
++  }
++  return {
++    id: d.id,
++    deliveryId: d.deliveryId,
++    openedByUserId: d.openedByUserId,
++    openedByRole: d.openedByRole,
++    reason: d.reason,
++    description: d.description,
++    evidenceUrls: evidence,
++    status: d.status,
++    resolvedByAdminId: d.resolvedByAdminId,
++    resolvedAt: d.resolvedAt,
++    resolutionNote: d.resolutionNote,
++    createdAt: d.createdAt,
++    updatedAt: d.updatedAt,
++  };
++}
++
++export default router;
+diff --git a/artifacts/api-server/src/routes/index.ts b/artifacts/api-server/src/routes/index.ts
+index 1b790a9..388ec04 100644
+--- a/artifacts/api-server/src/routes/index.ts
++++ b/artifacts/api-server/src/routes/index.ts
+@@ -39,6 +39,7 @@ import recoveryRouter from "./recovery";
+ import videosRouter from "./videos";
+ import presenceRouter from "./presence";
+ import deliveryRouter from "./delivery";
++import disputesRouter from "./disputes";
+ import transfersRouter from "./transfers";
+ import agentsRouter from "./agents";
+ import auditRouter from "./audit";
+@@ -208,6 +209,7 @@ router.use(recoveryRouter);
+ router.use(videosRouter);
+ router.use(presenceRouter);
+ router.use(deliveryRouter);
++router.use(disputesRouter);
+ router.use(transfersRouter);
+ router.use(agentsRouter);
+ router.use(auditRouter);
+diff --git a/artifacts/api-server/src/routes/users.ts b/artifacts/api-server/src/routes/users.ts
+index 237ec75..8d973e4 100644
+--- a/artifacts/api-server/src/routes/users.ts
++++ b/artifacts/api-server/src/routes/users.ts
+@@ -221,6 +221,15 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void>
+   const isOwner = req.userId === id;
+   const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+   const conditions = [eq(listingsTable.sellerId, id)];
++  // Always exclude ghost listings (status='hidden') from the public profile
++  // grid. These rows are scaffolding for the Video Promo boost feature
++  // (see routes/boost.ts → POST /boost/video-only) — they exist only to
++  // carry the boostVideoUrl + audience targeting metadata for a paid
++  // promotion. They have price=0, no images, no description, and were
++  // never meant to be browsable as for-sale items. Owners would otherwise
++  // see an orange "Video Prom" tile per promotion they ran, which looks
++  // like a bug and pollutes their listings tab.
++  conditions.push(sql`${listingsTable.status} <> 'hidden'`);
+   if (!isOwner && !isAdmin) {
+     conditions.push(eq(listingsTable.moderationStatus, "approved"));
+     // Mirror the detail-endpoint's country isolation: a logged-in user with a
+diff --git a/artifacts/api-server/src/tests/deliveryStateMachine.test.ts b/artifacts/api-server/src/tests/deliveryStateMachine.test.ts
+new file mode 100644
+index 0000000..5506c8a
+--- /dev/null
++++ b/artifacts/api-server/src/tests/deliveryStateMachine.test.ts
+@@ -0,0 +1,127 @@
++/**
++ * Phase 3 — Delivery state machine tests.
++ *
++ * These tests pin down the legal transitions. Any code change that breaks
++ * one of them is either an intentional state-flow change (in which case the
++ * test must be updated alongside) or a regression that would have produced
++ * stuck deliveries / lost escrow in production.
++ */
++import { describe, it, expect } from "vitest";
++import {
++  canTransition,
++  assertTransition,
++  isDeliveryStatus,
++  isTerminal,
++  InvalidDeliveryTransitionError,
++  ALL_DELIVERY_STATUSES,
++} from "../lib/deliveryStateMachine";
++
++describe("Phase 3 — Delivery state machine", () => {
++  describe("type guard", () => {
++    it("accepts every documented status", () => {
++      for (const s of ALL_DELIVERY_STATUSES) {
++        expect(isDeliveryStatus(s)).toBe(true);
++      }
++    });
++    it("rejects garbage", () => {
++      expect(isDeliveryStatus("")).toBe(false);
++      expect(isDeliveryStatus("in_transit")).toBe(false); // legacy alias — not in our enum
++      expect(isDeliveryStatus(null)).toBe(false);
++      expect(isDeliveryStatus(42)).toBe(false);
++    });
++  });
++
++  describe("happy path — full delivery cycle", () => {
++    it("waiting → driver_assigned → picked_up → arrived → delivered → completed", () => {
++      expect(canTransition("waiting", "driver_assigned")).toBe(true);
++      expect(canTransition("driver_assigned", "picked_up")).toBe(true);
++      expect(canTransition("picked_up", "arrived")).toBe(true);
++      expect(canTransition("arrived", "delivered")).toBe(true);
++      expect(canTransition("delivered", "completed")).toBe(true);
++    });
++  });
++
++  describe("return cycle", () => {
++    it("arrived → returning → returned", () => {
++      expect(canTransition("arrived", "returning")).toBe(true);
++      expect(canTransition("returning", "returned")).toBe(true);
++    });
++    it("failed_pickup → returning → returned", () => {
++      expect(canTransition("failed_pickup", "returning")).toBe(true);
++    });
++  });
++
++  describe("dispute entry/exit", () => {
++    it("any active status can transition to disputed", () => {
++      for (const s of [
++        "waiting", "driver_assigned", "picked_up", "arrived",
++        "delivered", "buyer_absent", "failed_pickup", "returning",
++      ] as const) {
++        expect(canTransition(s, "disputed")).toBe(true);
++      }
++    });
++    it("terminal statuses cannot enter dispute", () => {
++      expect(canTransition("completed", "disputed")).toBe(false);
++      expect(canTransition("returned", "disputed")).toBe(false);
++      expect(canTransition("cancelled", "disputed")).toBe(false);
++    });
++    it("disputed exits only to completed, returned, or cancelled (admin resolution)", () => {
++      expect(canTransition("disputed", "completed")).toBe(true);
++      expect(canTransition("disputed", "returned")).toBe(true);
++      expect(canTransition("disputed", "cancelled")).toBe(true);
++      expect(canTransition("disputed", "delivered")).toBe(false);
++      expect(canTransition("disputed", "waiting")).toBe(false);
++    });
++  });
++
++  describe("forbidden transitions (the regressions we are guarding against)", () => {
++    it("delivered cannot go back to waiting / driver_assigned / picked_up", () => {
++      expect(canTransition("delivered", "waiting")).toBe(false);
++      expect(canTransition("delivered", "driver_assigned")).toBe(false);
++      expect(canTransition("delivered", "picked_up")).toBe(false);
++    });
++    it("waiting cannot jump straight to completed (skipping driver assignment)", () => {
++      expect(canTransition("waiting", "completed")).toBe(false);
++    });
++    it("completed is terminal — no transitions out", () => {
++      for (const s of ALL_DELIVERY_STATUSES) {
++        if (s === "completed") continue;
++        expect(canTransition("completed", s)).toBe(false);
++      }
++    });
++  });
++
++  describe("idempotency", () => {
++    it("status → same status is always allowed (safe re-write)", () => {
++      for (const s of ALL_DELIVERY_STATUSES) {
++        expect(canTransition(s, s)).toBe(true);
++      }
++    });
++  });
++
++  describe("terminal-status helper", () => {
++    it("flags the four terminal statuses", () => {
++      expect(isTerminal("completed")).toBe(true);
++      expect(isTerminal("returned")).toBe(true);
++      expect(isTerminal("seller_closed")).toBe(true);
++      expect(isTerminal("cancelled")).toBe(true);
++    });
++    it("does not flag in-flight statuses", () => {
++      expect(isTerminal("waiting")).toBe(false);
++      expect(isTerminal("delivered")).toBe(false);
++      expect(isTerminal("disputed")).toBe(false);
++    });
++  });
++
++  describe("assertTransition", () => {
++    it("throws InvalidDeliveryTransitionError on forbidden transitions", () => {
++      expect(() => assertTransition("delivered", "waiting")).toThrow(InvalidDeliveryTransitionError);
++    });
++    it("throws on unknown source statuses", () => {
++      expect(() => assertTransition("garbage", "completed")).toThrow(InvalidDeliveryTransitionError);
++    });
++    it("does not throw on allowed transitions", () => {
++      expect(() => assertTransition("waiting", "driver_assigned")).not.toThrow();
++    });
++  });
++});
+diff --git a/artifacts/marketplace/src/components/OpenDisputeDialog.tsx b/artifacts/marketplace/src/components/OpenDisputeDialog.tsx
+new file mode 100644
+index 0000000..6ff1790
+--- /dev/null
++++ b/artifacts/marketplace/src/components/OpenDisputeDialog.tsx
+@@ -0,0 +1,216 @@
++/**
++ * Phase 4 — Open dispute dialog.
++ *
++ * Lightweight modal that lets the buyer / seller / driver formally raise a
++ * dispute on a delivery they are a party to. The dialog gates submission
++ * behind a reason (short tag) + a description (free text) and optional
++ * evidence URLs (paste-only — file upload reuses the existing /api/storage
++ * pipeline elsewhere and is intentionally out of scope for this MVP).
++ *
++ * Status of an existing open dispute is fetched on mount via
++ * GET /api/deliveries/:id/dispute so the button can swap into a "Pending
++ * admin review" hint instead of letting the user double-open.
++ */
++import { useEffect, useState } from "react";
++import { useTranslation } from "react-i18next";
++import { AlertTriangle, Loader2, ShieldCheck } from "lucide-react";
++import {
++  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
++} from "@/components/ui/dialog";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Textarea } from "@/components/ui/textarea";
++import { useToast } from "@/hooks/use-toast";
++import { apiFetch } from "@/lib/api";
++
++interface OpenDisputeDialogProps {
++  deliveryId: number;
++  /** Hide the trigger button completely if the delivery is in a status that
++   *  cannot transition to "disputed" (e.g. already completed). The page knows
++   *  this via the state machine on the server; we pass the boolean down. */
++  disabled?: boolean;
++}
++
++type ExistingDispute = {
++  id: number;
++  status: "open" | "under_review" | "resolved_buyer" | "resolved_seller" | "closed";
++  reason: string;
++};
++
++const REASON_OPTIONS = [
++  { value: "item_damaged",    labelKey: "dispute.reason.itemDamaged",    fallback: "Item damaged" },
++  { value: "wrong_item",      labelKey: "dispute.reason.wrongItem",      fallback: "Wrong item delivered" },
++  { value: "never_received",  labelKey: "dispute.reason.neverReceived",  fallback: "Never received" },
++  { value: "driver_no_show",  labelKey: "dispute.reason.driverNoShow",   fallback: "Driver no-show" },
++  { value: "other",           labelKey: "dispute.reason.other",          fallback: "Other" },
++] as const;
++
++export function OpenDisputeDialog({ deliveryId, disabled }: OpenDisputeDialogProps) {
++  const { t } = useTranslation();
++  const { toast } = useToast();
++  const [open, setOpen] = useState(false);
++  const [reason, setReason] = useState<typeof REASON_OPTIONS[number]["value"]>("item_damaged");
++  const [description, setDescription] = useState("");
++  const [evidence, setEvidence] = useState(""); // newline-separated URLs
++  const [submitting, setSubmitting] = useState(false);
++  const [existing, setExisting] = useState<ExistingDispute | null>(null);
++  const [loadingExisting, setLoadingExisting] = useState(true);
++
++  useEffect(() => {
++    let cancelled = false;
++    (async () => {
++      try {
++        const data = await apiFetch<{ dispute: ExistingDispute | null }>(`/api/deliveries/${deliveryId}/dispute`);
++        if (!cancelled) setExisting(data?.dispute ?? null);
++      } catch {
++        if (!cancelled) setExisting(null);
++      } finally {
++        if (!cancelled) setLoadingExisting(false);
++      }
++    })();
++    return () => { cancelled = true; };
++  }, [deliveryId]);
++
++  async function onSubmit() {
++    if (description.trim().length < 10) {
++      toast({ title: t("dispute.descTooShort", { defaultValue: "Please provide at least 10 characters of detail." }), variant: "destructive" });
++      return;
++    }
++    setSubmitting(true);
++    try {
++      const evidenceUrls = evidence
++        .split(/\r?\n/)
++        .map((u) => u.trim())
++        .filter((u) => u.length > 0)
++        .slice(0, 8);
++      const res = await apiFetch<{ dispute: ExistingDispute }>(`/api/deliveries/${deliveryId}/dispute`, {
++        method: "POST",
++        body: JSON.stringify({ reason, description: description.trim(), evidenceUrls }),
++      });
++      setExisting(res.dispute);
++      setOpen(false);
++      toast({ title: t("dispute.openedTitle", { defaultValue: "Dispute opened" }) });
++    } catch (e: any) {
++      toast({
++        title: t("dispute.openedFail", { defaultValue: "Could not open dispute" }),
++        description: e?.message ?? String(e),
++        variant: "destructive",
++      });
++    } finally {
++      setSubmitting(false);
++    }
++  }
++
++  if (loadingExisting) return null;
++
++  // Already-open dispute → show status pill, no button
++  if (existing && (existing.status === "open" || existing.status === "under_review")) {
++    return (
++      <div
++        data-testid={`dispute-status-${deliveryId}`}
++        className="mx-5 mb-3 rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 flex gap-3 items-start"
++      >
++        <ShieldCheck className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
++        <div className="text-xs leading-relaxed">
++          <p className="font-bold text-amber-900 dark:text-amber-200 mb-0.5">
++            {t("dispute.pendingTitle", { defaultValue: "Dispute under review" })}
++          </p>
++          <p className="text-amber-800 dark:text-amber-300">
++            {t("dispute.pendingBody", { defaultValue: "Our team is reviewing this delivery. You'll be notified when a decision is made." })}
++          </p>
++        </div>
++      </div>
++    );
++  }
++
++  if (disabled) return null;
++
++  return (
++    <div className="mx-5 mb-3">
++      <Button
++        data-testid={`open-dispute-${deliveryId}`}
++        variant="outline"
++        className="w-full justify-start gap-2 border-destructive/40 text-destructive hover:bg-destructive/5"
++        onClick={() => setOpen(true)}
++      >
++        <AlertTriangle className="h-4 w-4" />
++        {t("dispute.openCta", { defaultValue: "Report a problem with this delivery" })}
++      </Button>
++
++      <Dialog open={open} onOpenChange={(v) => !submitting && setOpen(v)}>
++        <DialogContent className="max-w-md">
++          <DialogHeader>
++            <DialogTitle>{t("dispute.modalTitle", { defaultValue: "Open a dispute" })}</DialogTitle>
++            <DialogDescription>
++              {t("dispute.modalBody", { defaultValue: "Tell us what went wrong. An admin will review and reach out within 24 hours." })}
++            </DialogDescription>
++          </DialogHeader>
++
++          <div className="space-y-3">
++            <div>
++              <label className="text-xs font-semibold mb-1.5 block">
++                {t("dispute.reasonLabel", { defaultValue: "Reason" })}
++              </label>
++              <div className="grid grid-cols-2 gap-2">
++                {REASON_OPTIONS.map((r) => (
++                  <button
++                    key={r.value}
++                    type="button"
++                    data-testid={`dispute-reason-${r.value}`}
++                    onClick={() => setReason(r.value)}
++                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
++                      reason === r.value ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
++                    }`}
++                  >
++                    {t(r.labelKey, { defaultValue: r.fallback })}
++                  </button>
++                ))}
++              </div>
++            </div>
++
++            <div>
++              <label className="text-xs font-semibold mb-1.5 block">
++                {t("dispute.descLabel", { defaultValue: "What happened?" })}
++              </label>
++              <Textarea
++                data-testid="dispute-description"
++                value={description}
++                onChange={(e) => setDescription(e.target.value)}
++                rows={4}
++                maxLength={2000}
++                placeholder={t("dispute.descPlaceholder", { defaultValue: "Describe the issue with as much detail as possible…" })}
++              />
++              <p className="text-[10px] text-muted-foreground mt-1">
++                {description.length}/2000
++              </p>
++            </div>
++
++            <div>
++              <label className="text-xs font-semibold mb-1.5 block">
++                {t("dispute.evidenceLabel", { defaultValue: "Evidence URLs (optional, one per line)" })}
++              </label>
++              <Input
++                data-testid="dispute-evidence"
++                value={evidence}
++                onChange={(e) => setEvidence(e.target.value)}
++                placeholder="https://…"
++              />
++              <p className="text-[10px] text-muted-foreground mt-1">
++                {t("dispute.evidenceHint", { defaultValue: "Paste links to photos / receipts you've already uploaded. Max 8." })}
++              </p>
++            </div>
++          </div>
++
++          <DialogFooter>
++            <Button variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
++              {t("common.cancel", { defaultValue: "Cancel" })}
++            </Button>
++            <Button data-testid="dispute-submit" onClick={onSubmit} disabled={submitting}>
++              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t("dispute.submit", { defaultValue: "Open dispute" })}
++            </Button>
++          </DialogFooter>
++        </DialogContent>
++      </Dialog>
++    </div>
++  );
++}
+diff --git a/artifacts/marketplace/src/pages/DeliveryTracking.tsx b/artifacts/marketplace/src/pages/DeliveryTracking.tsx
+index afbcdae..809e8e5 100644
+--- a/artifacts/marketplace/src/pages/DeliveryTracking.tsx
++++ b/artifacts/marketplace/src/pages/DeliveryTracking.tsx
+@@ -10,6 +10,7 @@ import {
+ } from "lucide-react";
+ import TipModal from "@/components/TipModal";
+ import DriverRatingModal from "@/components/DriverRatingModal";
++import { OpenDisputeDialog } from "@/components/OpenDisputeDialog";
+ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+ import { Button } from "@/components/ui/button";
+ import { useToast } from "@/hooks/use-toast";
+@@ -738,6 +739,13 @@ function DriverTrackingCard({
+         <StatusTimeline status={delivery.status} />
+       </div>
+ 
++      {/* Phase 4 — Dispute entry point. Hidden once the delivery has reached
++          a terminal status the state machine doesn't allow disputing from. */}
++      <OpenDisputeDialog
++        deliveryId={delivery.id}
++        disabled={["completed", "cancelled", "returned", "seller_closed"].includes(delivery.status)}
++      />
++
+       {/* Photo evidence */}
+       {(delivery.pickupPhotoUrl || delivery.dropoffPhotoUrl) && (
+         <div className="px-5 pb-3">
+diff --git a/lib/db/src/schema/disputes.ts b/lib/db/src/schema/disputes.ts
+new file mode 100644
+index 0000000..cadce56
+--- /dev/null
++++ b/lib/db/src/schema/disputes.ts
+@@ -0,0 +1,84 @@
++/**
++ * Phase 4 — Dispute system.
++ *
++ * Stores formal disputes opened on a delivery by any of the three parties
++ * (buyer / seller / driver). One delivery can have at most one OPEN dispute
++ * at a time; resolved disputes remain in the table for audit + Stripe
++ * chargeback evidence.
++ *
++ * NOTE: This is an additive table — no existing column on `deliveries` is
++ * modified. The `deliveries.status` value transitions to "disputed" via the
++ * state machine (see `lib/deliveryStateMachine.ts`) when a row is inserted
++ * here, and back to one of the terminal statuses when `resolution` is set.
++ *
++ * The table is created on first boot through `runStartupMigrations()` so we
++ * never need a separate `drizzle-kit migrate` step in production.
++ */
++import { pgTable, serial, integer, text, timestamp, index } from "drizzle-orm/pg-core";
++import { z } from "zod/v4";
++import { usersTable } from "./users";
++import { deliveriesTable } from "./drivers";
++
++/**
++ * Who opened the dispute. Used for permissions on read endpoints (a buyer
++ * can only see their own disputes; the seller and driver each see theirs).
++ */
++export const DISPUTE_OPENED_BY = ["buyer", "seller", "driver"] as const;
++
++/**
++ * Dispute lifecycle.
++ *   open          → freshly created, awaiting admin triage
++ *   under_review  → admin has acknowledged and is investigating
++ *   resolved_buyer  → admin found in favour of buyer (refund path)
++ *   resolved_seller → admin found in favour of seller (payout path)
++ *   closed        → withdrawn / out-of-scope (no money movement)
++ */
++export const DISPUTE_STATUS = [
++  "open",
++  "under_review",
++  "resolved_buyer",
++  "resolved_seller",
++  "closed",
++] as const;
++
++export const disputesTable = pgTable("delivery_disputes", {
++  id: serial("id").primaryKey(),
++  deliveryId: integer("delivery_id").notNull().references(() => deliveriesTable.id),
++  openedByUserId: integer("opened_by_user_id").notNull().references(() => usersTable.id),
++  openedByRole: text("opened_by_role").notNull(), // 'buyer' | 'seller' | 'driver'
++  reason: text("reason").notNull(),               // short tag (e.g. "item_damaged", "never_received")
++  description: text("description").notNull(),     // free-form explanation from opener
++  // Evidence is stored as a JSON-encoded array of object-storage URLs / paths
++  // (photos, video, receipts). Kept as text so we never have to migrate the
++  // JSON shape via drizzle-kit.
++  evidenceUrls: text("evidence_urls").notNull().default("[]"),
++  status: text("status").notNull().default("open"),
++  // Resolution
++  resolvedByAdminId: integer("resolved_by_admin_id").references(() => usersTable.id),
++  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
++  resolutionNote: text("resolution_note"),
++  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
++  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
++}, (t) => ({
++  byDelivery: index("delivery_disputes_delivery_id_idx").on(t.deliveryId),
++  byOpener: index("delivery_disputes_opened_by_user_id_idx").on(t.openedByUserId),
++  byStatus: index("delivery_disputes_status_idx").on(t.status),
++}));
++
++export type DeliveryDispute = typeof disputesTable.$inferSelect;
++export type InsertDeliveryDispute = typeof disputesTable.$inferInsert;
++
++// Zod validators for API boundary input — kept small + explicit so we don't
++// drag drizzle-zod into a Phase-4 hotfix.
++export const disputeOpenInput = z.object({
++  reason: z.string().min(2).max(60),
++  description: z.string().min(10).max(2000),
++  evidenceUrls: z.array(z.string().min(1).max(500)).max(8).default([]),
++});
++export type DisputeOpenInput = z.infer<typeof disputeOpenInput>;
++
++export const disputeResolveInput = z.object({
++  resolution: z.enum(["resolved_buyer", "resolved_seller", "closed"]),
++  resolutionNote: z.string().min(2).max(1000),
++});
++export type DisputeResolveInput = z.infer<typeof disputeResolveInput>;
+diff --git a/lib/db/src/schema/index.ts b/lib/db/src/schema/index.ts
+index 49c6f2f..4a212f4 100644
+--- a/lib/db/src/schema/index.ts
++++ b/lib/db/src/schema/index.ts
+@@ -30,3 +30,4 @@ export * from "./audit_logs";
+ export * from "./recharge_cards";
+ export * from "./expo_push_tokens";
+ export * from "./referrals";
++export * from "./disputes";
+diff --git a/memory/PRD.md b/memory/PRD.md
+index ffb31b5..16e0f9f 100644
+--- a/memory/PRD.md
++++ b/memory/PRD.md
+@@ -68,6 +68,31 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
+ ### ✅ Phase 1 — Commission Fix (DONE)
+ - 85% driver / 15% platform commission applied across `deliveryPricing.ts`, API routes, and UI components.
+ 
++### ✅ Hotfix — Ghost Video Promo listings polluting Profile (Feb 2026)
++- **What the user actually saw:** Four orange "Video Prom" tiles with `$0.00` and `Haiti` on their own Profile listings tab, no images. User reasonably concluded "video pa sove" (the video isn't saving) and pushed back hard.
++- **What was actually happening:** `POST /api/boost/video-only` (routes/boost.ts) creates a ghost listing row with `status='hidden'`, `price=0`, `images=[]`, and stores the boost video URL in `boostVideoUrl`. These rows are scaffolding for the Video Promo feature — they were never meant to appear on the Profile listings grid. They did because **`GET /api/users/:id/listings` did not filter out `status='hidden'`** — only the global browse (`/listings`) and `/listings/my-count` had that guard.
++- **Fix:** Added `status <> 'hidden'` to the conditions in `routes/users.ts → GET /users/:id/listings`. One-line change with extensive doc comment so the next agent doesn't accidentally drop it during a refactor.
++- **Effect:** The four ghost tiles disappear on next page reload — no DB cleanup or re-upload required. The "Listings (28)" count in the tab automatically drops to the correct figure.
++- **What I got wrong earlier:** I diagnosed the symptom (broken video icon on Listing Details) as the URL-routing bug — and that fix WAS legitimate. But I missed that the *bigger* user-facing issue was Profile pollution, which made every failed/successful Video Promo look like a broken save. Owed the user a deeper trace earlier.
++
++### ✅ Phase 3 — Delivery State Machine (DONE, Feb 2026)
++- **New module:** `lib/deliveryStateMachine.ts` — single source of truth for the 13 valid delivery statuses (`waiting`, `driver_assigned`, `picked_up`, `arrived`, `delivered`, `completed`, `buyer_absent`, `failed_pickup`, `returning`, `returned`, `seller_closed`, `disputed`, `cancelled`) and the directed transition graph between them.
++- **API:** `canTransition()`, `assertTransition()`, `nextStatusOrNull()`, `isTerminal()`, `InvalidDeliveryTransitionError` (maps to HTTP 409 at the route layer).
++- **Guards:** Forbids the regressions we'd seen in prod — `delivered → waiting`, `waiting → completed` (skipping driver), and re-entry from any terminal status. Idempotent same-status writes are still allowed.
++- **No schema change.** `deliveries.status` stays a free-form `text` column; this is a TypeScript + runtime gate.
++- **Tests:** New `src/tests/deliveryStateMachine.test.ts` — 17 cases (happy path, return cycle, dispute entry/exit, terminal-state guards, idempotency, asserter throws on garbage).
++
++### ✅ Phase 4 — Dispute System (DONE, Feb 2026)
++- **New schema (additive):** `delivery_disputes` table — `(deliveryId, openedByUserId, openedByRole, reason, description, evidenceUrls JSON, status, resolvedByAdminId, resolvedAt, resolutionNote)`. Partial unique index `delivery_disputes_one_open_per_delivery_uq` enforces at most one open dispute per delivery so racing requests can't double-open.
++- **New migration:** `runStartupMigrations()` includes `delivery_disputes.create_table` + 3 indexes + the partial unique. Idempotent — safe on every redeploy.
++- **New routes (`routes/disputes.ts`):**
++  - `POST /api/deliveries/:id/dispute` — any party (buyer/seller/driver) opens a dispute. Backend validates via Zod, gates via the state machine (`assertTransition(currentStatus, "disputed")`), inserts + flips delivery status in a single DB transaction.
++  - `GET  /api/deliveries/:id/dispute` — fetch latest dispute for a delivery (parties + admins only).
++  - `GET  /api/admin/disputes` — admin list (filterable by status).
++  - `POST /api/admin/disputes/:id/resolve` — admin resolves. Maps `resolved_buyer → returned + buyer refund`, `resolved_seller → completed + seller payout`, `closed → cancelled + no money movement`. Uses the existing `releaseEscrow()` primitive — no new payment code path.
++- **Frontend:** New `<OpenDisputeDialog />` component mounted on the Delivery Tracking page. Pre-fetches existing dispute status, renders a "Pending admin review" pill if one is already open, otherwise shows the "Report a problem" CTA + a modal with reason chips, description (10–2000 chars), and optional evidence-URL list (≤ 8). Hidden in terminal statuses where Phase 3 forbids a transition.
++- **Verification:** `pnpm build` ✅ (api + marketplace), `pnpm typecheck` ✅, vitest 86/86 ✅ (17 new cases).
++
+ ### ✅ Apple App Store Resubmission Fixes (Feb 2026, pre-2 PM review)
+ Apple rejection 06/06/2026 cited 6 issues. We shipped **everything that goes through the WebView via DigitalOcean** before the 2 PM re-review window. Native-only fixes (Info.plist purpose strings, localized permission strings) require Codemagic and are tracked as follow-up.
+ 

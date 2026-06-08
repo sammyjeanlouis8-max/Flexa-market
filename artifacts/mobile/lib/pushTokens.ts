@@ -92,9 +92,22 @@ function buildDeepLinkScript(url: string): string {
 async function ensurePermissionAndChannel(): Promise<boolean> {
   if (!Device.isDevice) return false;
 
+  // PUSH-AUDIT defect #5 (iOS permission options).
+  // Calling requestPermissionsAsync() with no options on iOS grants the
+  // OS-default "provisional" permission, which delivers notifications
+  // silently to the Notification Center but never shows the alert banner.
+  // Users report this as "I'm not getting notifications". We explicitly
+  // request alert + badge + sound so the user sees the standard prompt
+  // and the granted permission level matches expectations.
   let { status } = await Notifications.getPermissionsAsync();
   if (status !== "granted") {
-    const req = await Notifications.requestPermissionsAsync();
+    const req = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
     status = req.status;
   }
   if (status !== "granted") return false;
@@ -152,10 +165,22 @@ export function initPushNotifications(): void {
   // Install the global notification handler now (after layout mount) rather
   // than at module load — see the import-block comment for the Android
   // crash rationale.
+  //
+  // PUSH-AUDIT defect #6 (deprecated handler API).
+  // expo-notifications ≥ 0.27 split `shouldShowAlert` into the more
+  // specific `shouldShowBanner` (full alert) and `shouldShowList` (entry
+  // in the Notification Center). On iOS 14+, supplying ONLY the legacy
+  // `shouldShowAlert` results in no banner being shown when the app is
+  // in the foreground — users reported "notifications never appear while
+  // the app is open". We supply both the modern keys AND the legacy one
+  // so the handler works across every expo-notifications version we
+  // might be bundled against.
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
       }),

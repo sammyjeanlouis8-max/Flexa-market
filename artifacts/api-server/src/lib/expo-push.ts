@@ -112,29 +112,39 @@ export async function upsertExpoPushToken(opts: {
 }): Promise<void> {
   if (!isExpoPushToken(opts.token)) return;
 
-  const existing = await db
-    .select()
-    .from(expoPushTokensTable)
-    .where(eq(expoPushTokensTable.token, opts.token));
-
-  if (existing.length > 0) {
-    await db
-      .update(expoPushTokensTable)
-      .set({
-        userId: opts.userId,
-        deviceId: opts.deviceId ?? null,
-        platform: opts.platform ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(expoPushTokensTable.token, opts.token));
-  } else {
-    await db.insert(expoPushTokensTable).values({
+  // PUSH-AUDIT defect #4 (race condition).
+  // Previous implementation used check-then-act:
+  //   const existing = await db.select()…
+  //   if (existing.length > 0) update else insert
+  // The expo_push_tokens table has a unique index on `token` (see
+  // lib/db/src/schema/expo_push_tokens.ts:13), so two concurrent
+  // registrations of the same token (which happens routinely on cold start
+  // when the WebView mounts AND the native push pipeline re-publishes
+  // through the bridge) would both see existing.length===0 and both
+  // attempt to INSERT. The second insert throws a uniqueness violation
+  // which propagated out to the route handler as a 500, surfacing to the
+  // client as "registration failed".
+  //
+  // Drizzle's onConflictDoUpdate maps to Postgres' atomic
+  // INSERT … ON CONFLICT (token) DO UPDATE SET …, which eliminates the
+  // race entirely and keeps the same single-row outcome.
+  await db
+    .insert(expoPushTokensTable)
+    .values({
       userId: opts.userId,
       token: opts.token,
       deviceId: opts.deviceId ?? null,
       platform: opts.platform ?? null,
+    })
+    .onConflictDoUpdate({
+      target: expoPushTokensTable.token,
+      set: {
+        userId: opts.userId,
+        deviceId: opts.deviceId ?? null,
+        platform: opts.platform ?? null,
+        updatedAt: new Date(),
+      },
     });
-  }
 }
 
 export async function deleteExpoPushToken(

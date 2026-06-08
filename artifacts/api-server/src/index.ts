@@ -11,6 +11,7 @@ import { runBoostExpiryJob } from "./routes/boost";
 
 import { runStartupMigrations } from "./lib/migrations";
 import { runHighRiskAutoBlock, runAiActivityMonitor } from "./lib/ai-guardian";
+import { runEscrowReleaseJob } from "./jobs/escrowReleaseJob";
 import { registerProcessErrorHandlers } from "./lib/errorMonitor";
 import { validateEmailConfig } from "./lib/email";
 import { validateStripeCredentials } from "./lib/stripeClient";
@@ -80,6 +81,12 @@ httpServer.listen(port, () => {
     // AI Guardian — Claude activity monitor every 2 hours
     setInterval(() => { runAiActivityMonitor().catch(() => {}); }, 2 * 60 * 60 * 1000);
     runAiActivityMonitor().catch(() => {});
+    // PHASE 5 — Escrow & lifecycle auto-release every 15 min.
+    // Handles: delivered+held>72h → confirm, waiting>6h → expire+refund,
+    // accepted-without-pickup>2h → recycle to waiting. pg_advisory_lock
+    // ensures only one pod runs the pass at a time (multi-pod safe).
+    setInterval(() => { runEscrowReleaseJob().catch(() => {}); }, 15 * 60 * 1000);
+    setTimeout(() => { runEscrowReleaseJob().catch(() => {}); }, 60_000);
     logger.info("API server ready");
 
     // ── Graceful shutdown ──────────────────────────────────────────────────

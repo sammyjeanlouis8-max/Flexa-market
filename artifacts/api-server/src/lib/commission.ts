@@ -108,7 +108,7 @@ export type CommissionBreakdown = {
   // Buyer fee fields (card payments only)
   buyerFeeRate: number;
   buyerFeeAmount: number;
-  // Delivery fee — charged to buyer, paid out to driver (80%) + platform (20%)
+  // Delivery fee — charged to buyer, paid out to driver (85%) + platform (15%)
   deliveryFeeUsd: number;
   buyerTotal: number;
 };

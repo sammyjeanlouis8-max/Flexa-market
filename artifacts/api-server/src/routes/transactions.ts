@@ -1473,11 +1473,11 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
       ))
       .then(r => r[0]),
 
-    // Delivery platform commission: 20% of each completed delivery fee
+    // Delivery platform commission: 15% of each completed delivery fee (PHASE 1 fix — was 20%)
     db.execute(
       since
-        ? sql`SELECT coalesce(sum(fee_usd * 0.20),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL AND created_at >= ${since}`
-        : sql`SELECT coalesce(sum(fee_usd * 0.20),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL`,
+        ? sql`SELECT coalesce(sum(fee_usd * 0.15),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL AND created_at >= ${since}`
+        : sql`SELECT coalesce(sum(fee_usd * 0.15),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL`,
     ).then(r => ({ total: Number((r.rows[0] as any)?.total ?? 0), count: Number((r.rows[0] as any)?.count ?? 0) })),
   ]);
 
@@ -1618,9 +1618,9 @@ router.get("/admin/platform-revenue/monthly", requireSuperAdmin, async (req, res
       GROUP BY mo ORDER BY mo
     `).then(r => r.rows as { mo: string; total: number }[]),
 
-    // Delivery platform commission (20%)
+    // Delivery platform commission (15% — PHASE 1 fix, was 20%)
     db.execute(sql`
-      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(fee_usd * 0.20),0)::float AS total
+      SELECT TO_CHAR(created_at, 'YYYY-MM') AS mo, coalesce(sum(fee_usd * 0.15),0)::float AS total
       FROM deliveries
       WHERE status = 'completed' AND fee_usd IS NOT NULL
         AND EXTRACT(YEAR FROM created_at) = ${year}

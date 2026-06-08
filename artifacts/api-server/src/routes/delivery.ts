@@ -8,7 +8,7 @@ import { emitDriverLocation, emitAdminDriverUpdate, emitDeliveryStatus } from ".
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendSms } from "../lib/twilio";
-import { calculateDeliveryPrice, getAvailableCities, haversineKm, lookupCity, getOsrmDistanceKm, DRIVER_COMMISSION_PCT } from "../lib/deliveryPricing";
+import { calculateDeliveryPrice, getAvailableCities, haversineKm, lookupCity, getOsrmDistanceKm, DRIVER_COMMISSION_PCT, PLATFORM_COMMISSION_PCT } from "../lib/deliveryPricing";
 import { getExchangeRate } from "../lib/exchange-rate";
 
 const router = Router();
@@ -1089,11 +1089,11 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
     });
   }
 
-  // ── 2. Credit driver FM wallet immediately (80% fee + 100% tip) ────────────
-  // Split: 80% of delivery fee → driver, 20% → platform.
+  // ── 2. Credit driver FM wallet immediately (DRIVER_COMMISSION_PCT × fee + 100% tip) ────────────
+  // Split: DRIVER_COMMISSION_PCT (85%) of delivery fee → driver, PLATFORM_COMMISSION_PCT (15%) → platform.
   const baseFeeEarnings =
     delivery.driverEarnings ??
-    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
+    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * DRIVER_COMMISSION_PCT * 100) / 100 : 0);
   const tipEarnings = delivery.tipUsd != null && delivery.tipUsd > 0 ? delivery.tipUsd : 0;
   const driverEarningsUsd = Math.round((baseFeeEarnings + tipEarnings) * 100) / 100;
 
@@ -1494,9 +1494,9 @@ router.post("/delivery/:id/confirm-buyer-return", requireAuth, async (req, res):
 
   const now = new Date();
   const driverFeePerTrip = delivery.driverEarnings ??
-    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
+    (delivery.feeUsd != null ? Math.round(delivery.feeUsd * DRIVER_COMMISSION_PCT * 100) / 100 : 0);
   const driverTotal = Math.round(driverFeePerTrip * 2 * 100) / 100;
-  const feeUsd = delivery.feeUsd ?? (driverFeePerTrip > 0 ? Math.round(driverFeePerTrip / 0.80 * 100) / 100 : 0);
+  const feeUsd = delivery.feeUsd ?? (driverFeePerTrip > 0 ? Math.round(driverFeePerTrip / DRIVER_COMMISSION_PCT * 100) / 100 : 0);
 
   // Mark delivery returned + record confirmation time
   await db.update(deliveriesTable)
@@ -1798,7 +1798,7 @@ router.post("/delivery/:id/confirm-return", requireAuth, async (req, res): Promi
     .set({ status: "returned", returnConfirmedAt: now, updatedAt: now })
     .where(eq(deliveriesTable.id, deliveryId));
 
-  // Credit driver with 80% of return fee
+  // Credit driver with DRIVER_COMMISSION_PCT (85%) of return fee
   if (driverReturnEarnings > 0) {
     const [driverWallet] = await db
       .select({ id: promoWalletTable.id })

@@ -218,12 +218,12 @@ export default function DeliveryFeeCard({
                 </div>
               )}
 
-              {/* Driver earnings (80%) */}
+              {/* Driver earnings (85%) */}
               {price.feeUsd > 0 && (
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0" />
-                    Chauffè resevwa (80%)
+                    Chauffè resevwa (85%)
                   </span>
                   <span className="font-semibold text-foreground">
                     ${price.driverEarningsUsd.toFixed(2)}
@@ -236,12 +236,12 @@ export default function DeliveryFeeCard({
                 </div>
               )}
 
-              {/* Platform fee (20%) */}
+              {/* Platform fee (15%) */}
               {price.feeUsd > 0 && (
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-orange-400 inline-block shrink-0" />
-                    Platfòm Flexa (20%)
+                    Platfòm Flexa (15%)
                   </span>
                   <span className="text-muted-foreground">
                     ${price.platformFeeUsd.toFixed(2)}
@@ -359,7 +359,7 @@ export function DeliveryPriceEstimator({ sellerCity, country }: PriceEstimatorPr
             </span>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Chauffè resevwa (80%)</span>
+            <span>Chauffè resevwa (85%)</span>
             <span className="font-semibold text-emerald-600">${price.driverEarningsUsd.toFixed(2)}</span>
           </div>
           {price.usedRoadDistance && (

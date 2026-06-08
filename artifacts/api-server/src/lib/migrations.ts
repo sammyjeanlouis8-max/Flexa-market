@@ -1826,7 +1826,7 @@ export async function runStartupMigrations(): Promise<void> {
       ON CONFLICT DO NOTHING`,
   });
 
-  // ── Commission rate: 7% merchant sales, 20% delivery (platform cut) ─────────
+  // ── Commission rate: 7% merchant sales, 15% delivery (platform cut) ─────────
   migrations.push({
     name: "platform.commission_rates_7pct_merchant_v1",
     sql: `INSERT INTO platform_settings (key, value, updated_at)

@@ -223,11 +223,11 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
   const [expanded, setExpanded] = useState(false);
 
   const isMoto = delivery.deliveryMethod === "motorcycle";
-  const earnings = delivery.driverEarnings ?? (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
+  const earnings = delivery.driverEarnings ?? (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.85 * 100) / 100 : 0);
   const hasTip = (delivery.tipUsd ?? 0) > 0;
   const totalWithTip = earnings + (delivery.tipUsd ?? 0);
   const displayEarnings = hasTip ? totalWithTip : earnings;
-  const localEarnings = delivery.feeLocal != null ? Math.round(delivery.feeLocal * 0.80) : null;
+  const localEarnings = delivery.feeLocal != null ? Math.round(delivery.feeLocal * 0.85) : null;
   const localCurrency = delivery.country === "Haiti" ? "HTG"
     : delivery.country === "Dominican Republic" ? "DOP"
     : delivery.currency !== "USD" ? delivery.currency
@@ -859,8 +859,8 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
   const isReturning     = delivery.status === "returning";
   const isSellerClosed  = delivery.status === "seller_closed";
 
-  const earningsUsd   = delivery.driverEarnings ?? (delivery.feeUsd   != null ? Math.round(delivery.feeUsd   * 0.80 * 100) / 100 : null);
-  const earningsLocal = delivery.feeLocal != null ? Math.round(delivery.feeLocal * 0.80) : null;
+  const earningsUsd   = delivery.driverEarnings ?? (delivery.feeUsd   != null ? Math.round(delivery.feeUsd   * 0.85 * 100) / 100 : null);
+  const earningsLocal = delivery.feeLocal != null ? Math.round(delivery.feeLocal * 0.85) : null;
 
   return (
     <div className="bg-white dark:bg-gray-950 border border-border rounded-3xl overflow-hidden shadow-lg">
@@ -1033,7 +1033,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
               <p className="text-xs text-red-600 dark:text-red-400">Machann nan pa t prezan. Antre kòd retou machann nan ba ou.</p>
               {delivery.returnFeeUsd != null && delivery.returnFeeUsd > 0 && (
                 <p className="text-xs font-bold text-red-700 dark:text-red-300 mt-1">
-                  💰 Ou ap touche ${Math.round(delivery.returnFeeUsd * 0.80 * 100) / 100} pou retou a
+                  💰 Ou ap touche ${Math.round(delivery.returnFeeUsd * 0.85 * 100) / 100} pou retou a
                 </p>
               )}
             </div>

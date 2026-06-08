@@ -141,7 +141,7 @@ export default function AdminDeliveryPanel() {
   const active     = deliveries.filter(d => !["delivered", "cancelled"].includes(d.status)).length;
   const totalRevenue = deliveries
     .filter(d => d.status === "delivered" && d.feeUsd)
-    .reduce((acc, d) => acc + (d.feeUsd ?? 0) * 0.20, 0);
+    .reduce((acc, d) => acc + (d.feeUsd ?? 0) * 0.15, 0);  // PHASE 1: 15% platform (was 20%)
 
   return (
     <div className="space-y-6">
@@ -459,7 +459,7 @@ export default function AdminDeliveryPanel() {
         <StatCard icon={Truck}       label="Total"          value={String(total)}                bg="bg-blue-50 dark:bg-blue-950/30"    color="text-blue-600" />
         <StatCard icon={CheckCircle} label="Livre"          value={String(delivered)}            bg="bg-emerald-50 dark:bg-emerald-950/30" color="text-emerald-600" />
         <StatCard icon={Clock}       label="En cours"       value={String(active)}               bg="bg-orange-50 dark:bg-orange-950/30" color="text-orange-600" />
-        <StatCard icon={DollarSign}  label="Revni Platfòm"  value={`$${totalRevenue.toFixed(2)}`} sub="20% frè livrezon" bg="bg-primary/5" color="text-primary" />
+        <StatCard icon={DollarSign}  label="Revni Platfòm"  value={`$${totalRevenue.toFixed(2)}`} sub="15% frè livrezon" bg="bg-primary/5" color="text-primary" />
       </div>
 
       {/* ── Filters ────────────────────────────────────────────────────── */}
@@ -516,7 +516,7 @@ export default function AdminDeliveryPanel() {
           {deliveries.map(d => {
             const MethodIcon = d.deliveryMethod === "car" ? Car : Bike;
             const SIcon = STATUS_ICON[d.status] ?? Truck;
-            const platformFee = d.feeUsd ? d.feeUsd * 0.20 : 0;
+            const platformFee = d.feeUsd ? d.feeUsd * 0.15 : 0;  // PHASE 1: 15% (was 20%)
             return (
               <div key={d.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                 {/* Colored top bar by status */}

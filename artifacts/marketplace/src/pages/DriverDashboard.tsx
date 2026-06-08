@@ -294,7 +294,7 @@ export default function DriverDashboard() {
         />
         <StatCard
           icon={DollarSign}
-          label="Revni total (80%)"
+          label="Revni total (85%)"
           value={`$${totalEarningsUsd.toFixed(2)}`}
           sub={`${driver.deliveryCount} livrezon total`}
           color="text-emerald-600"
@@ -302,7 +302,7 @@ export default function DriverDashboard() {
         />
         <StatCard
           icon={TrendingUp}
-          label="Frè platfòm (20%)"
+          label="Frè platfòm (15%)"
           value={`$${platformDeductions.toFixed(2)}`}
           sub="Dedui otomatikman"
           color="text-orange-600"
@@ -561,14 +561,14 @@ export default function DriverDashboard() {
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-emerald-500 shrink-0" />
-              <span className="text-foreground font-semibold">Ou resevwa (80%)</span>
+              <span className="text-foreground font-semibold">Ou resevwa (85%)</span>
             </div>
             <span className="font-black text-emerald-600">$0.457 / km</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-orange-400 shrink-0" />
-              <span className="text-muted-foreground">Platfòm Flexa (20%)</span>
+              <span className="text-muted-foreground">Platfòm Flexa (15%)</span>
             </div>
             <span className="font-semibold text-orange-600">$0.114 / km</span>
           </div>
@@ -673,7 +673,7 @@ function fmtDt(iso: string | null) {
 function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
   const [expanded, setExpanded] = useState(false);
   const MethodIcon = d.deliveryMethod === "car" ? Car : Bike;
-  const platformFee = d.feeUsd ? d.feeUsd * 0.20 : null;
+  const platformFee = d.feeUsd ? d.feeUsd * 0.15 : null;
 
   const timeline = [
     { key: "accepted",  label: "Aksepte",  icon: CircleDot,    ts: d.acceptedAt,  loc: null },
@@ -726,7 +726,7 @@ function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
           {d.driverEarnings != null && d.driverEarnings > 0 ? (
             <>
               <p className="font-black text-base text-emerald-600">+${d.driverEarnings.toFixed(2)}</p>
-              <p className="text-[10px] text-muted-foreground">ou (80%)</p>
+              <p className="text-[10px] text-muted-foreground">ou (85%)</p>
               {platformFee != null && (
                 <p className="text-[10px] text-orange-500">-${platformFee.toFixed(2)} platfòm</p>
               )}

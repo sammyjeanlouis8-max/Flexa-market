@@ -24,8 +24,15 @@
 export const PRICE_PER_7KM_USD       = 2;
 export const KM_RATE_USD             = PRICE_PER_7KM_USD / 7;  // ≈ $0.2857 / km
 export const MIN_FEE_USD             = 10.00;  // ⚠️ LOCKED $10 minimum
-export const DRIVER_COMMISSION_PCT   = 0.80;   // ⚠️ LOCKED 80% driver
-export const PLATFORM_COMMISSION_PCT = 0.20;   // ⚠️ LOCKED 20% platform
+// PHASE 1 COMMISSION FIX: source-of-truth constants raised 80→85% / 20→15%.
+// This aligns the runtime split with: (a) marketing copy in en/fr/ht locales
+// ("Earn 85% on every delivery", "15% commission"), (b) the LOCKED banner
+// above (lines 11, 22), and (c) the CommissionBreakdown.tsx UI which has
+// always displayed 85/15. Every other consumer in the codebase that was
+// hardcoding 0.80/0.20 has been migrated to import these constants — see
+// the audit grep in commit message for the full list.
+export const DRIVER_COMMISSION_PCT   = 0.85;   // ⚠️ LOCKED 85% driver
+export const PLATFORM_COMMISSION_PCT = 0.15;   // ⚠️ LOCKED 15% platform
 const DEFAULT_DISTANCE_KM            = 8;
 
 /** Distance threshold (km) below which we treat pickup & delivery as the same commune */
@@ -288,7 +295,7 @@ export function calculateDeliveryPrice(
   // Convert to local currency
   const feeLocal = Math.round(feeUsd * exchangeRate);
 
-  // Commission split: 80% driver / 20% platform
+  // Commission split: 85% driver / 15% platform (PHASE 1 fix — was 80/20)
   const driverEarningsUsd   = parseFloat((feeUsd * DRIVER_COMMISSION_PCT).toFixed(2));
   const platformFeeUsd      = parseFloat((feeUsd - driverEarningsUsd).toFixed(2));
   const driverEarningsLocal = Math.round(driverEarningsUsd * exchangeRate);

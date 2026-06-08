@@ -1934,6 +1934,46 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Phase 4 — Delivery disputes table. Additive only — no existing column
+  // is modified. See `lib/db/src/schema/disputes.ts` for the application-
+  // level shape and `routes/disputes.ts` for the endpoints.
+  // ─────────────────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "delivery_disputes.create_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS delivery_disputes (
+        id                    SERIAL PRIMARY KEY,
+        delivery_id           INTEGER NOT NULL REFERENCES deliveries(id),
+        opened_by_user_id     INTEGER NOT NULL REFERENCES users(id),
+        opened_by_role        TEXT    NOT NULL,
+        reason                TEXT    NOT NULL,
+        description           TEXT    NOT NULL,
+        evidence_urls         TEXT    NOT NULL DEFAULT '[]',
+        status                TEXT    NOT NULL DEFAULT 'open',
+        resolved_by_admin_id  INTEGER REFERENCES users(id),
+        resolved_at           TIMESTAMPTZ,
+        resolution_note       TEXT,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+  });
+  migrations.push({ name: "delivery_disputes.idx_delivery", sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_delivery_id_idx ON delivery_disputes(delivery_id)" });
+  migrations.push({ name: "delivery_disputes.idx_opener",   sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_opened_by_user_id_idx ON delivery_disputes(opened_by_user_id)" });
+  migrations.push({ name: "delivery_disputes.idx_status",   sql: "CREATE INDEX IF NOT EXISTS delivery_disputes_status_idx ON delivery_disputes(status)" });
+  // One open dispute per delivery — enforced at the DB level so racing
+  // requests can't double-open and leave two rows fighting for the same
+  // delivery's payout.
+  migrations.push({
+    name: "delivery_disputes.unique_open_per_delivery",
+    sql: `
+      CREATE UNIQUE INDEX IF NOT EXISTS delivery_disputes_one_open_per_delivery_uq
+        ON delivery_disputes(delivery_id)
+        WHERE status IN ('open', 'under_review')
+    `,
+  });
+
   let applied = 0;
   let failed = 0;
 

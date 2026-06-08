@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import TipModal from "@/components/TipModal";
 import DriverRatingModal from "@/components/DriverRatingModal";
+import { OpenDisputeDialog } from "@/components/OpenDisputeDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -737,6 +738,13 @@ function DriverTrackingCard({
       <div className="px-5 pb-3">
         <StatusTimeline status={delivery.status} />
       </div>
+
+      {/* Phase 4 — Dispute entry point. Hidden once the delivery has reached
+          a terminal status the state machine doesn't allow disputing from. */}
+      <OpenDisputeDialog
+        deliveryId={delivery.id}
+        disabled={["completed", "cancelled", "returned", "seller_closed"].includes(delivery.status)}
+      />
 
       {/* Photo evidence */}
       {(delivery.pickupPhotoUrl || delivery.dropoffPhotoUrl) && (

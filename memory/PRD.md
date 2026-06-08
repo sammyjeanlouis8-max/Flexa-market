@@ -68,6 +68,24 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
 ### ✅ Phase 1 — Commission Fix (DONE)
 - 85% driver / 15% platform commission applied across `deliveryPricing.ts`, API routes, and UI components.
 
+### ✅ Phase 3 — Delivery State Machine (DONE, Feb 2026)
+- **New module:** `lib/deliveryStateMachine.ts` — single source of truth for the 13 valid delivery statuses (`waiting`, `driver_assigned`, `picked_up`, `arrived`, `delivered`, `completed`, `buyer_absent`, `failed_pickup`, `returning`, `returned`, `seller_closed`, `disputed`, `cancelled`) and the directed transition graph between them.
+- **API:** `canTransition()`, `assertTransition()`, `nextStatusOrNull()`, `isTerminal()`, `InvalidDeliveryTransitionError` (maps to HTTP 409 at the route layer).
+- **Guards:** Forbids the regressions we'd seen in prod — `delivered → waiting`, `waiting → completed` (skipping driver), and re-entry from any terminal status. Idempotent same-status writes are still allowed.
+- **No schema change.** `deliveries.status` stays a free-form `text` column; this is a TypeScript + runtime gate.
+- **Tests:** New `src/tests/deliveryStateMachine.test.ts` — 17 cases (happy path, return cycle, dispute entry/exit, terminal-state guards, idempotency, asserter throws on garbage).
+
+### ✅ Phase 4 — Dispute System (DONE, Feb 2026)
+- **New schema (additive):** `delivery_disputes` table — `(deliveryId, openedByUserId, openedByRole, reason, description, evidenceUrls JSON, status, resolvedByAdminId, resolvedAt, resolutionNote)`. Partial unique index `delivery_disputes_one_open_per_delivery_uq` enforces at most one open dispute per delivery so racing requests can't double-open.
+- **New migration:** `runStartupMigrations()` includes `delivery_disputes.create_table` + 3 indexes + the partial unique. Idempotent — safe on every redeploy.
+- **New routes (`routes/disputes.ts`):**
+  - `POST /api/deliveries/:id/dispute` — any party (buyer/seller/driver) opens a dispute. Backend validates via Zod, gates via the state machine (`assertTransition(currentStatus, "disputed")`), inserts + flips delivery status in a single DB transaction.
+  - `GET  /api/deliveries/:id/dispute` — fetch latest dispute for a delivery (parties + admins only).
+  - `GET  /api/admin/disputes` — admin list (filterable by status).
+  - `POST /api/admin/disputes/:id/resolve` — admin resolves. Maps `resolved_buyer → returned + buyer refund`, `resolved_seller → completed + seller payout`, `closed → cancelled + no money movement`. Uses the existing `releaseEscrow()` primitive — no new payment code path.
+- **Frontend:** New `<OpenDisputeDialog />` component mounted on the Delivery Tracking page. Pre-fetches existing dispute status, renders a "Pending admin review" pill if one is already open, otherwise shows the "Report a problem" CTA + a modal with reason chips, description (10–2000 chars), and optional evidence-URL list (≤ 8). Hidden in terminal statuses where Phase 3 forbids a transition.
+- **Verification:** `pnpm build` ✅ (api + marketplace), `pnpm typecheck` ✅, vitest 86/86 ✅ (17 new cases).
+
 ### ✅ Apple App Store Resubmission Fixes (Feb 2026, pre-2 PM review)
 Apple rejection 06/06/2026 cited 6 issues. We shipped **everything that goes through the WebView via DigitalOcean** before the 2 PM re-review window. Native-only fixes (Info.plist purpose strings, localized permission strings) require Codemagic and are tracked as follow-up.
 

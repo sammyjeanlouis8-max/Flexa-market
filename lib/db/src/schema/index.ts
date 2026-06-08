@@ -30,3 +30,4 @@ export * from "./audit_logs";
 export * from "./recharge_cards";
 export * from "./expo_push_tokens";
 export * from "./referrals";
+export * from "./disputes";

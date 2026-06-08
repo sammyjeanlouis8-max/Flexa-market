@@ -68,6 +68,24 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
 ### ✅ Phase 1 — Commission Fix (DONE)
 - 85% driver / 15% platform commission applied across `deliveryPricing.ts`, API routes, and UI components.
 
+### ✅ Apple App Store Resubmission Fixes (Feb 2026, pre-2 PM review)
+Apple rejection 06/06/2026 cited 6 issues. We shipped **everything that goes through the WebView via DigitalOcean** before the 2 PM re-review window. Native-only fixes (Info.plist purpose strings, localized permission strings) require Codemagic and are tracked as follow-up.
+
+- **5.1.1(v) — Phone optional:** Already optional in `RegisterBody` Zod schema and in `Register.tsx` UI ("Optional" label). Verified, no change needed.
+- **3.1.1 — In-App Purchase for subscriptions:** Added `isIosNative()` helper to `lib/externalNavigation.ts`. In `Subscription.tsx`, every per-plan "Subscribe/Upgrade/Change plan" CTA is replaced on iOS with a card that reads *"Manage your subscription at flexamarket.com — Subscriptions are not available inside the iOS app."* A top-of-page banner explains the limitation. Wallet & cancel still work — Apple permits cancellation inside the app. No Stripe/MonCash purchase flow can be triggered from the iOS WebView.
+- **2.1(a) — Demo account:** New `lib/appleReviewerSeed.ts` runs at backend boot:
+  1. Upserts `apple.reviewer@flexamarket.com` (password `FlexaReview2026!`).
+  2. Idempotently inserts 3 sample listings (Haiti iPhone, DR Honda, US MacBook).
+  3. Idempotently inserts 1 conversation with two messages so the reviewer can see messaging UI content.
+  - Wired into `index.ts` boot chain after `syncCategories`. Failures are non-fatal.
+  - Credentials documented in `/app/memory/test_credentials.md` for the owner to paste into App Store Connect → App Review Information.
+
+- **Still requires Codemagic rebuild (owner action):**
+  - 5.1.1(ii) — Camera purpose string in `app.config.ts`
+  - Guideline 4 — Localized permission strings (Haitian Creole / French / Spanish)
+- **Still requires owner action:**
+  - 2.1 — Record demo video on a physical iOS device showing the region-restricted loan flow.
+
 ### ✅ Phase 5 — Escrow & Lifecycle Auto-Release (DONE, Feb 2026)
 - **New job:** `artifacts/api-server/src/jobs/escrowReleaseJob.ts` — runs every 15 min with a 60 s warm-up. Wrapped in `pg_try_advisory_lock(54321)` so only one pod runs the pass at a time.
 - **Three sub-jobs (no schema changes):**

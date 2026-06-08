@@ -33,6 +33,27 @@ export function isInAppWebView(): boolean {
   }
 }
 
+/**
+ * Detect iOS-only native WebView wrapper (TestFlight / App Store build).
+ *
+ * Apple Guideline 3.1.1 forbids selling digital subscriptions inside iOS apps
+ * through any payment mechanism other than StoreKit (In-App Purchase). Since
+ * the Flexa marketplace today sells subscriptions through Stripe + the FM
+ * Wallet (paid via Stripe/MonCash/cards), every Subscribe / Upgrade entry
+ * point must be hidden when the marketplace runs inside the iOS WebView.
+ *
+ * Android does NOT have this restriction (Google Play allows alternative
+ * billing), so we explicitly check for `native-ios` rather than reusing
+ * the generic `isInAppWebView()` helper.
+ */
+export function isIosNative(): boolean {
+  try {
+    return document.documentElement.classList.contains("native-ios");
+  } catch {
+    return false;
+  }
+}
+
 export function openExternal(url: string): void {
   if (!url) return;
 

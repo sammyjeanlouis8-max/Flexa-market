@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
+import { isIosNative } from "@/lib/externalNavigation";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -120,6 +121,13 @@ export default function Subscription() {
   const checkoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [walletRetryLoading, setWalletRetryLoading] = useState(false);
+
+  // Apple Guideline 3.1.1 — subscriptions cannot be sold inside the iOS
+  // native app through any payment method other than StoreKit. Until we ship
+  // Apple IAP via Expo, every Subscribe / Upgrade entry point is hidden when
+  // the marketplace runs inside the iOS WebView wrapper. Users still see
+  // their current plan and can cancel (which Apple explicitly permits).
+  const iosNative = isIosNative();
 
   // Payment method picker
   const [payMethodOpen, setPayMethodOpen] = useState(false);
@@ -504,6 +512,26 @@ export default function Subscription() {
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">{t("subscription.subtitle")}</p>
       </div>
 
+      {/* ── iOS native notice (Apple Guideline 3.1.1) ─────────────────────── */}
+      {iosNative && (
+        <div
+          data-testid="ios-subscription-notice"
+          className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-3 flex gap-3 items-start"
+        >
+          <ShieldCheck className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <div className="text-xs leading-relaxed text-foreground">
+            <p className="font-semibold mb-1">
+              {t("subscription.iosNoticeTitle", { defaultValue: "Subscriptions on iOS" })}
+            </p>
+            <p className="text-muted-foreground">
+              {t("subscription.iosNoticeBody", {
+                defaultValue: "To start, upgrade, or change a paid plan, please visit flexamarket.com in your browser. You can keep using all your existing features here in the app.",
+              })}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Active subscription status bar ────────────────────────────────── */}
       {user && mySub && mySub.plan !== "basic" && (
         <div className={`mb-6 rounded-xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 ${
@@ -782,6 +810,18 @@ export default function Subscription() {
                           {t("subscription.accessUntilExpiry", { date: fmtDate(mySub.expiresAt, lang) })}
                         </p>
                       )}
+                    </div>
+                  ) : iosNative ? (
+                    <div
+                      data-testid={`ios-subscribe-disabled-${plan.id}`}
+                      className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-center"
+                    >
+                      <p className="text-[10px] font-semibold text-foreground leading-snug">
+                        {t("subscription.manageOnWeb", { defaultValue: "Manage your subscription at flexamarket.com" })}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                        {t("subscription.iosNotice", { defaultValue: "Subscriptions are not available inside the iOS app." })}
+                      </p>
                     </div>
                   ) : (
                     <div>

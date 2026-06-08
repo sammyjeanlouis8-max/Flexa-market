@@ -12,6 +12,7 @@ import { runBoostExpiryJob } from "./routes/boost";
 import { runStartupMigrations } from "./lib/migrations";
 import { runHighRiskAutoBlock, runAiActivityMonitor } from "./lib/ai-guardian";
 import { runEscrowReleaseJob } from "./jobs/escrowReleaseJob";
+import { seedAppleReviewerAccount } from "./lib/appleReviewerSeed";
 import { registerProcessErrorHandlers } from "./lib/errorMonitor";
 import { validateEmailConfig } from "./lib/email";
 import { validateStripeCredentials } from "./lib/stripeClient";
@@ -57,6 +58,10 @@ httpServer.listen(port, () => {
     .then(() => syncCategories())
     .catch((err) => {
       logger.error({ err }, "seedCategories failed (server already running)");
+    })
+    .then(() => seedAppleReviewerAccount())
+    .catch((err) => {
+      logger.warn({ err }, "appleReviewerSeed failed (non-fatal)");
     })
     .then(() => {
       logger.info("DB initialisation complete — API server fully ready");

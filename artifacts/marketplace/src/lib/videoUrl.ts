@@ -24,6 +24,36 @@ export function toStreamingVideoUrl(url: string): string {
 }
 
 /**
+ * Convert any stored video URL into one that an HTML `<video>` element can
+ * actually fetch from the current origin.
+ *
+ *   • Absolute http(s) URL  → run through `toStreamingVideoUrl` (Cloudinary
+ *     faststart transform if applicable, otherwise unchanged).
+ *   • `/objects/...` path   → re-route to `/api/storage/objects/...` (the
+ *     actual express route that streams from GCS / object storage). Without
+ *     this prefix the `<video>` element 404s and iOS Safari shows the
+ *     "broken play" icon — which is the exact symptom that made promo
+ *     videos look like they had never been saved.
+ *   • `/api/storage/...`    → returned as-is (already routable).
+ *   • Anything else         → returned as-is (let the browser try and fail
+ *     gracefully).
+ *
+ * Centralising this lets every player (BoostVideoOverlay, ListingDetail
+ * gallery, ListingDetail non-boost video, VideoFeed, VideoPost) stay in
+ * lockstep so a legacy DB row with a `/objects/uploads/<uuid>` path keeps
+ * playing even after we switched the upload pipeline to Cloudinary.
+ */
+export function toFetchableVideoUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return toStreamingVideoUrl(url);
+  if (url.startsWith("/api/storage/")) return url;
+  const trimmed = url.startsWith("/objects/")
+    ? url.slice("/objects/".length)
+    : url.replace(/^\/+/, "");
+  return `/api/storage/objects/${trimmed}`;
+}
+
+/**
  * Given a Cloudinary video URL, return a JPG poster (thumbnail) URL extracted
  * from a representative frame of the video itself.
  *

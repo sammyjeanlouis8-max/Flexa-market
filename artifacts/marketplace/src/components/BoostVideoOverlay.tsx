@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { toStreamingVideoUrl } from "@/lib/videoUrl";
+import { toFetchableVideoUrl } from "@/lib/videoUrl";
 
 /**
  * Video Booster overlay — floating player, no dark background.
@@ -33,15 +33,10 @@ export function markBoostAdShown(): void {
 }
 
 // ─── URL helpers ─────────────────────────────────────────────────────────────
-// `toStreamingVideoUrl` (the Cloudinary faststart transform) is shared in
-// "@/lib/videoUrl" so every boost/listing video player stays in lockstep.
-function toFetchableUrl(stored: string): string {
-  if (/^https?:\/\//i.test(stored)) return toStreamingVideoUrl(stored);
-  const trimmed = stored.startsWith("/objects/")
-    ? stored.slice("/objects/".length)
-    : stored;
-  return `/api/storage/objects/${trimmed}`;
-}
+// `toFetchableVideoUrl` (in "@/lib/videoUrl") normalises both Cloudinary URLs
+// (adds the streaming/faststart transform) and legacy `/objects/...` paths
+// (re-routes to /api/storage/objects/...). Every boost/listing video player
+// MUST go through it so legacy DB rows keep playing after the storage swap.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface BoostListing {
@@ -206,7 +201,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
           <video
             ref={videoRef}
-            src={toFetchableUrl(listing.boostVideoUrl)}
+            src={toFetchableVideoUrl(listing.boostVideoUrl)}
             autoPlay
             playsInline
             preload="auto"

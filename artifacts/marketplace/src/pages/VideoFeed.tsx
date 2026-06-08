@@ -23,7 +23,7 @@ import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
-import { toStreamingVideoUrl } from "@/lib/videoUrl";
+import { toFetchableVideoUrl } from "@/lib/videoUrl";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -1054,11 +1054,12 @@ function VideoCard({
           (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
           if (el) el.muted = !isAudioUnlocked();
         }}
-        // toStreamingVideoUrl is idempotent — the backend already transforms
-        // Cloudinary URLs, but defensive wrapping protects against any URL
-        // that bypassed the server-side transform (legacy rows, direct
-        // client navigation, cache invalidation lag).
-        src={video.videoUrl ? toStreamingVideoUrl(video.videoUrl) : undefined}
+        // toFetchableVideoUrl handles BOTH Cloudinary URLs (faststart
+        // transform) and legacy `/objects/...` paths (re-routes through
+        // /api/storage/objects). The backend already normalises new uploads,
+        // but defensive wrapping protects rows that pre-date the storage
+        // swap or any cache-invalidation lag in the feed query.
+        src={video.videoUrl ? toFetchableVideoUrl(video.videoUrl) : undefined}
         playsInline
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? undefined}

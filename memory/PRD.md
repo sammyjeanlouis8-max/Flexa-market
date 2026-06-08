@@ -78,6 +78,17 @@ Top header padding referenced `env(safe-area-inset-top, 0px)` directly. When Web
 - **Tests:** New `src/tests/escrowReleaseJob.test.ts` — 13 cases covering cutoff arithmetic, idempotency, boundary conditions, and TTL invariants.
 - **Verification:** `pnpm build` ✅, `pnpm typecheck` ✅ (0 errors in escrow files), full suite 69/69 green.
 
+### ✅ Hotfix — Promo Video Playback (Feb 2026)
+- **Symptom:** "Video Promo" boosts saved successfully (red play-button placeholder in MyBoosts) but the Listing Details page showed a **black screen with a crossed-out play icon**. Users believed videos were never saved.
+- **Root cause:** `ListingDetail.tsx`, `VideoFeed.tsx`, and `VideoPost.tsx` rendered the saved `boostVideoUrl` through `toStreamingVideoUrl()`, which only applies the Cloudinary `fl_faststart` transform and returns non-Cloudinary URLs unchanged. Legacy rows (and any uploads that fell back to the local path) stored values like `/objects/uploads/<uuid>`; the `<video>` element then resolved to `https://flexamarket.com/objects/uploads/<uuid>` — a path the Express router does NOT serve (only `/api/storage/objects/...` does). Result: 404 → "broken video" icon on iOS Safari.
+- **Fix:** Added `toFetchableVideoUrl()` to `lib/videoUrl.ts` that normalises all three storage shapes:
+  - `https://...` → Cloudinary faststart transform (unchanged behaviour)
+  - `/objects/...` → re-routed to `/api/storage/objects/...`
+  - `/api/storage/...` → returned as-is
+- Switched every video player in the marketplace (`ListingDetail` hero + non-boost listing video, `BoostVideoOverlay`, `VideoFeed`, `VideoPost`) to use the new helper. Removed the duplicate local `toFetchableUrl` in `BoostVideoOverlay.tsx`.
+- **Verification:** `pnpm build` ✅ (16.83s), `pnpm typecheck` ✅ (0 errors).
+- **Effect:** Existing broken "Video Promo" rows in the user's account now play instantly on next page load — no DB migration, no re-upload needed.
+
 ### 🟡 Awaiting User Approval
 - **Phase 3** — Delivery State Machine (strict transition guard layer, no DB schema changes).
 - **Phase 4** — Dispute System.

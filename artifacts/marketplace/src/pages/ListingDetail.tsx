@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { toFetchableVideoUrl } from "@/lib/videoUrl";
+import { toFetchableVideoUrl, toVideoPosterUrl } from "@/lib/videoUrl";
 import { openExternal } from "@/lib/externalNavigation";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
@@ -1025,8 +1025,10 @@ export default function ListingDetail() {
               src={currentMedia.url}
               autoPlay
               muted={videoMuted}
+              ref={(el) => { if (el) { el.muted = videoMuted; } }}
               loop
               playsInline
+              poster={toVideoPosterUrl(currentMedia.url) ?? undefined}
               className="w-full h-full object-contain"
               preload="auto"
               style={{

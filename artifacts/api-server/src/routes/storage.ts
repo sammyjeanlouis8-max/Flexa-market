@@ -111,6 +111,46 @@ function uploadVideoStreamToCloudinary(stream: Readable, contentType: string): P
   });
 }
 
+/**
+ * Apply fl_faststart,vc_h264,f_mp4 to a Cloudinary video URL and pre-warm the
+ * CDN cache server-side before returning it to the client.
+ *
+ * WHY THIS MATTERS:
+ * Cloudinary stores uploaded videos with the moov atom at the END of the file.
+ * Browsers must download the ENTIRE file before playback can start. For a
+ * 1–3 minute iPhone video that can be 100–300 MB — the browser gives up and
+ * shows a BLACK SCREEN. The fl_faststart transform moves the moov atom to the
+ * FRONT, enabling progressive/streaming playback from the first byte.
+ *
+ * The transform is LAZY — Cloudinary processes it on the first HTTP request to
+ * the transformed URL. If a viewer is the first to request it, they wait 5–30 s
+ * for processing and see a black screen. Pre-warming here (server-side, before
+ * we return the upload response) means Cloudinary has already cached the result
+ * by the time the client stores the URL and any viewer plays the video.
+ *
+ * Returns the streaming URL regardless of whether the pre-warm succeeded.
+ */
+async function prewarmCloudinaryVideo(
+  rawUrl: string,
+  log: { info: (...a: any[]) => void; warn: (...a: any[]) => void },
+  context: Record<string, unknown>,
+): Promise<string> {
+  if (!rawUrl.includes("res.cloudinary.com") || !rawUrl.includes("/video/upload/")) {
+    return rawUrl;
+  }
+  const streamingUrl = rawUrl.replace(
+    "/video/upload/",
+    "/video/upload/fl_faststart,vc_h264,f_mp4/",
+  );
+  try {
+    await fetch(streamingUrl, { method: "HEAD", signal: AbortSignal.timeout(20_000) });
+    log.info({ ...context, streamingUrl }, "Cloudinary video transformation pre-warmed");
+  } catch (warmErr) {
+    log.warn({ ...context, streamingUrl, err: warmErr }, "Cloudinary pre-warm timed out — client will still use streaming URL");
+  }
+  return streamingUrl;
+}
+
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
@@ -168,11 +208,18 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
         result = await uploadBufferToCloudinary(Buffer.concat(chunks), contentType);
       }
       req.log.info({ token, url: result.secure_url, publicId: result.public_id }, "Cloudinary upload complete");
+
+      // For videos: pre-warm the fl_faststart streaming transformation so the
+      // first viewer never hits a black screen while Cloudinary processes it.
+      // See `prewarmCloudinaryVideo` for the full explanation.
+      const finalUrl = isVideo
+        ? await prewarmCloudinaryVideo(result.secure_url, req.log, { token })
+        : result.secure_url;
+
       // Expose `public_id` alongside `url` so the client can synthesise
-      // poster / transformation URLs even when a CDN proxy strips the
-      // hostname from `secure_url`. Backwards-compatible: existing clients
+      // poster / transformation URLs. Backwards-compatible: existing clients
       // continue to read `url`.
-      res.status(200).json({ url: result.secure_url, publicId: result.public_id });
+      res.status(200).json({ url: finalUrl, publicId: result.public_id });
       return;
     }
 
@@ -344,13 +391,20 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
         result = await uploadBufferToCloudinary(Buffer.concat(chunks), ct);
       }
       req.log.info({ uploadId, url: result.secure_url, publicId: result.public_id }, "Chunked Cloudinary upload finalized");
-      // Return both the full Cloudinary URL (as `objectPath` for legacy
+
+      // For videos: pre-warm the fl_faststart streaming transformation so the
+      // first viewer never hits a black screen. See `prewarmCloudinaryVideo`.
+      const finalUrl = isVideo
+        ? await prewarmCloudinaryVideo(result.secure_url, req.log, { uploadId })
+        : result.secure_url;
+
+      // Return both the pre-warmed streaming URL (as `objectPath` for legacy
       // clients) and the `publicId` so clients can synthesise poster /
       // transformation URLs without parsing the hostname out of the URL.
       // This is required when a CDN proxy in front of Cloudinary strips
       // the `res.cloudinary.com` hostname (e.g. when serving through a
       // first-party CDN for cookie / referrer reasons).
-      res.json({ objectPath: result.secure_url, publicId: result.public_id });
+      res.json({ objectPath: finalUrl, publicId: result.public_id });
       return;
     }
 

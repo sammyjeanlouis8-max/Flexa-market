@@ -244,7 +244,7 @@ export default {
     photos: "写真",
     camera: "カメラ",
     gallery: "ギャラリー",
-    addPhotosHint: "写真を最大5枚追加できます。最初の写真がメイン画像になります。",
+    addPhotosHint: "最低2枚・最大5枚。1枚目の写真がカバーになります。",
     publishListing: "出品を公開",
     publishing: "公開中...",
     successTitle: "出品しました！",

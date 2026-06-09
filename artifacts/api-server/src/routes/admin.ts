@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable } from "@workspace/db";
-import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
+import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
@@ -2355,5 +2355,78 @@ router.post("/admin/orders/:id/cancel", requireSuperAdmin, async (req, res): Pro
   await log(req.userId!, "cancel_order", "transaction", id, `Super admin anile kòmand #${id}`);
   res.json({ ok: true });
 });
+
+/**
+ * POST /api/admin/migrate-video-urls
+ *
+ * One-time migration: find every boost video URL stored in the DB that
+ * lacks the fl_faststart,vc_h264,f_mp4 Cloudinary transformation, update
+ * the stored URL in-place, and pre-warm the CDN cache so the first real
+ * viewer never hits a black screen.
+ *
+ * Safe to run multiple times — only touches rows that still have raw
+ * (non-streaming) Cloudinary video URLs.
+ *
+ * Access: Super Admin only.
+ */
+router.post("/admin/migrate-video-urls", requireSuperAdmin, async (req, res): Promise<void> => {
+  const rows = await db
+    .select({ id: listingsTable.id, boostVideoUrl: listingsTable.boostVideoUrl })
+    .from(listingsTable)
+    .where(
+      and(
+        isNotNull(listingsTable.boostVideoUrl),
+        sql`${listingsTable.boostVideoUrl} LIKE '%res.cloudinary.com%'`,
+        sql`${listingsTable.boostVideoUrl} LIKE '%/video/upload/%'`,
+        sql`${listingsTable.boostVideoUrl} NOT LIKE '%fl_faststart%'`,
+      ),
+    );
+
+  req.log?.info({ count: rows.length }, "migrate-video-urls: found rows to migrate");
+
+  const results: Array<{ id: number; oldUrl: string; newUrl: string; warmed: boolean }> = [];
+
+  for (const row of rows) {
+    const oldUrl = row.boostVideoUrl!;
+    const newUrl = oldUrl.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+
+    await db
+      .update(listingsTable)
+      .set({ boostVideoUrl: newUrl })
+      .where(eq(listingsTable.id, row.id));
+
+    let warmed = false;
+    try {
+      const response = await fetch(newUrl, { method: "HEAD", signal: AbortSignal.timeout(25_000) });
+      warmed = response.ok || response.status === 200;
+    } catch {
+      // Timeout or network error — URL is updated in DB, first viewer triggers
+      // Cloudinary processing (fast now that moov atom is at front of file)
+    }
+
+    results.push({ id: row.id, oldUrl, newUrl, warmed });
+    req.log?.info({ listingId: row.id, warmed }, "migrate-video-urls: migrated listing");
+  }
+
+  const warmedCount  = results.filter(r => r.warmed).length;
+  const updatedCount = results.length;
+
+  await log(
+    req.userId!,
+    "migrate_video_urls",
+    "listing",
+    0,
+    `Migrated ${updatedCount} boost video URLs to fl_faststart streaming format (${warmedCount} pre-warmed)`,
+  );
+
+  res.json({
+    ok: true,
+    updated: updatedCount,
+    preWarmed: warmedCount,
+    skipped: updatedCount - warmedCount,
+    results,
+  });
+});
+
 
 export default router;

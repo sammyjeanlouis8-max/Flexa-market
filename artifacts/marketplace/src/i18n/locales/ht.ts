@@ -436,7 +436,7 @@ export default {
     camera: "Kamera",
     gallery: "Galri",
     coverPhoto: "Kouvèti",
-    addPhotosHint: "Ajoute jiska 5 foto. Premye foto a se foto kouvèti.",
+    addPhotosHint: "Minimòm 2 foto, maksimòm 5. Premye foto a se foto kouvèti.",
     photoTipsTitle: "📸 Konsèy pou foto pwofesyonèl",
     photoTip1: "Itilize limyè natirèl — bò fenèt se pi bon",
     photoTip2: "Fon pwòp ak senp (mi blan oswa tab)",

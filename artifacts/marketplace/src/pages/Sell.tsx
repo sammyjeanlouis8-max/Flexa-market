@@ -314,6 +314,10 @@ export default function Sell() {
     if (isRestricted) { showRestrictionToast(); return; }
     setSubmitError(null);
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
+    if (!isEditMode && imageUrls.length < 2) {
+      toast({ title: "Ou bezwen omwen 2 foto pou pibliye yon anonn.", variant: "destructive" });
+      return;
+    }
     const isLocalDelivery = ["Haiti", "Dominican Republic"].includes(values.country ?? "");
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery && intlShippingCost ? Number(intlShippingCost) : undefined, shippingCarriers: !isLocalDelivery && intlCarriers.length > 0 ? intlCarriers : undefined, deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : undefined, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
@@ -1602,7 +1606,7 @@ export default function Sell() {
           <Button
             type="submit"
             className="w-full font-bold"
-            disabled={isPending || videoUploading || (!isEditMode && paymentReady === false)}
+            disabled={isPending || videoUploading || uploadingSlot !== null || (!isEditMode && uploadedImages.length < 2) || (!isEditMode && paymentReady === false)}
             data-testid="button-submit-listing"
           >
             {isPending

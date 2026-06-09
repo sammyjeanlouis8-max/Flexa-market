@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import {
   Heart, MessageCircle, Share2, Eye,
-  Play, Pause, ArrowLeft, MapPin, BadgeCheck, SendHorizontal,
+  Play, ArrowLeft, MapPin, BadgeCheck, SendHorizontal,
   Loader2, Reply, Trash2, MoreVertical, Zap, Crown, Copy, Check,
-  Facebook, VolumeX, Volume2,
+  Facebook,
 } from "lucide-react";
+import VideoPlayer from "@/components/VideoPlayer";
 import { useGetListing, useAddFavorite, useRemoveFavorite, getGetFavoritesQueryKey, getGetListingQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth";
@@ -25,8 +26,6 @@ import { EmojiPickerButton, insertEmojiAtCursor } from "@/components/EmojiPicker
 import { formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
-import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
-import { toFetchableVideoUrl } from "@/lib/videoUrl";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -165,13 +164,6 @@ export default function VideoPost() {
   const queryClient = useQueryClient();
   const socket = useSocket();
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
-
-  // ── Video player state ──────────────────────────────────────────────────────
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [playing, setPlaying] = useState(true);
-  const [videoReady, setVideoReady] = useState(false);
-  const [muted, setMuted] = useState(!isAudioUnlocked());
 
   // ── Engagement state ────────────────────────────────────────────────────────
   const liked = isFavorited(id);
@@ -333,47 +325,6 @@ export default function VideoPost() {
     trackShare();
   }, [shareUrl, trackShare]);
 
-  // ── Video controls ──────────────────────────────────────────────────────────
-  const togglePlay = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
-  }, []);
-
-  const handleVideoStall = useCallback(() => {
-    const el = videoRef.current;
-    if (!el || el.paused) return;
-    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
-    stallTimerRef.current = setTimeout(() => {
-      const v = videoRef.current;
-      if (!v || v.paused || v.readyState >= 3) return;
-      const t = v.currentTime;
-      v.load();
-      v.currentTime = t;
-      v.play().catch(() => {});
-    }, 2500);
-  }, []);
-
-  const handleMuteToggle = useCallback(() => {
-    const nowUnlocked = muted;
-    setAudioUnlocked(nowUnlocked);
-    setMuted(!nowUnlocked);
-    if (videoRef.current) videoRef.current.muted = !nowUnlocked;
-  }, [muted]);
-
-  // Sync with other pages that may unlock audio
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const unlocked = (e as CustomEvent<boolean>).detail;
-      setMuted(!unlocked);
-      if (videoRef.current) videoRef.current.muted = !unlocked;
-    };
-    window.addEventListener("flexa:audio-unlocked", handler);
-    return () => window.removeEventListener("flexa:audio-unlocked", handler);
-  }, []);
-
-
   // ── Comments ────────────────────────────────────────────────────────────────
   const handleReply = useCallback((commentId: number, userName: string) => {
     setReplyTo({ id: commentId, name: userName });
@@ -467,12 +418,9 @@ export default function VideoPost() {
     );
   }
 
-  // boostVideoUrl is the promo video; fall back to listingVideoUrl for non-boost video posts
+  // boostVideoUrl is the promo video; fall back to listingVideoUrl for non-boost video posts.
+  // VideoPlayer calls toFetchableVideoUrl internally, so pass the raw stored URL.
   const rawVideoUrl: string | null = (listing as any).boostVideoUrl ?? (listing as any).listingVideoUrl ?? null;
-  // Cloudinary needs the faststart transform or 1+ min videos render as a
-  // black screen; legacy /objects/... paths need re-routing to /api/storage.
-  // `toFetchableVideoUrl` handles both, so even legacy DB rows play.
-  const videoUrl: string | null = rawVideoUrl ? toFetchableVideoUrl(rawVideoUrl) : null;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -504,59 +452,15 @@ export default function VideoPost() {
 
       {/* ── Video player ── */}
       <div className="relative bg-black overflow-hidden" style={{ aspectRatio: "16/9" }}>
-        {videoUrl ? (
-          <>
-            <video
-              ref={videoRef}
-              src={videoUrl}
-              autoPlay
-              muted
-              playsInline
-              loop
-              preload="auto"
-              className="w-full h-full object-contain"
-              onCanPlay={() => {
-                setVideoReady(true);
-                if (videoRef.current) {
-                  videoRef.current.muted = !isAudioUnlocked();
-                }
-              }}
-              onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
-              onPause={() => setPlaying(false)}
-              onStalled={handleVideoStall}
-              onWaiting={handleVideoStall}
-              onError={() => {
-                const el = videoRef.current;
-                if (!el || el.paused) return;
-                setTimeout(() => { el.load(); el.play().catch(() => {}); }, 1500);
-              }}
-            />
-
-            {/* Click-to-play overlay */}
-            <button
-              className="absolute inset-0 w-full h-full focus:outline-none"
-              onClick={togglePlay}
-              aria-label={playing ? "Pause" : "Play"}
-            >
-              {!playing && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-black/50 rounded-full p-4">
-                    <Play className="h-8 w-8 text-white fill-white" />
-                  </div>
-                </div>
-              )}
-            </button>
-
-            {/* Mute / unmute toggle */}
-            <button
-              className="absolute top-3 right-3 z-10 bg-black/40 backdrop-blur-sm rounded-full p-2 text-white"
-              onClick={e => { e.stopPropagation(); handleMuteToggle(); }}
-              aria-label={muted ? "Unmute" : "Mute"}
-            >
-              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-            </button>
-
-          </>
+        {rawVideoUrl ? (
+          <VideoPlayer
+            src={rawVideoUrl}
+            autoPlay
+            loop
+            controls
+            preload="auto"
+            className="w-full h-full"
+          />
         ) : (
           // No video — show listing images as fallback
           <div className="w-full h-full flex items-center justify-center bg-muted">

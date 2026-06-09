@@ -312,7 +312,7 @@ export default {
     camera: "Cámara",
     gallery: "Galería",
     coverPhoto: "Portada",
-    addPhotosHint: "Agrega hasta 5 fotos. La primera será la foto de portada.",
+    addPhotosHint: "Mínimo 2 fotos, máximo 5. La primera foto será la portada.",
     publishListing: "Publicar anuncio",
     moderation: {
       approvedTitle: "¡Anuncio publicado!",

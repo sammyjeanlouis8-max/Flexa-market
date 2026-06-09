@@ -436,7 +436,7 @@ export default {
     camera: "Caméra",
     gallery: "Galerie",
     coverPhoto: "Couverture",
-    addPhotosHint: "Ajoutez jusqu'à 5 photos. La première sera la photo de couverture.",
+    addPhotosHint: "Minimum 2 photos, maximum 5. La première photo sera la couverture.",
     photoTipsTitle: "📸 Conseils pour des photos professionnelles",
     photoTip1: "Utilisez la lumière naturelle — près d'une fenêtre c'est idéal",
     photoTip2: "Fond neutre et propre (mur blanc ou table)",

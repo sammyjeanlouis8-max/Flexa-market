@@ -244,7 +244,7 @@ export default {
     photos: "Mga Larawan",
     camera: "Camera",
     gallery: "Gallery",
-    addPhotosHint: "Magdagdag ng hanggang 5 larawan. Ang unang larawan ang magiging cover.",
+    addPhotosHint: "Minimum 2 larawan, maximum 5. Ang unang larawan ang magiging cover.",
     publishListing: "I-publish ang Listing",
     publishing: "Nag-po-publish...",
     successTitle: "Na-publish ang Listing!",

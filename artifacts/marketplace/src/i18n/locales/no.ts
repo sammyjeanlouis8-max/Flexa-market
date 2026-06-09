@@ -244,7 +244,7 @@ export default {
     photos: "Bilder",
     camera: "Kamera",
     gallery: "Galleri",
-    addPhotosHint: "Legg til opptil 5 bilder. Det første blir hovedbildet.",
+    addPhotosHint: "Minimum 2 bilder, maksimum 5. Det første bildet blir forsiden.",
     publishListing: "Publiser annonse",
     publishing: "Publiserer...",
     successTitle: "Annonse publisert!",

@@ -1602,7 +1602,7 @@ export default function Sell() {
           <Button
             type="submit"
             className="w-full font-bold"
-            disabled={isPending || (!isEditMode && paymentReady === false)}
+            disabled={isPending || videoUploading || (!isEditMode && paymentReady === false)}
             data-testid="button-submit-listing"
           >
             {isPending

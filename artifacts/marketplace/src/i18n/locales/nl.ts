@@ -244,7 +244,7 @@ export default {
     photos: "Foto's",
     camera: "Camera",
     gallery: "Galerij",
-    addPhotosHint: "Voeg tot 5 foto's toe. De eerste wordt de hoofdafbeelding.",
+    addPhotosHint: "Minimaal 2 foto's, maximaal 5. De eerste foto wordt de omslag.",
     publishListing: "Advertentie publiceren",
     publishing: "Bezig met publiceren...",
     successTitle: "Advertentie gepubliceerd!",

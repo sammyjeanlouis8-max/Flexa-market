@@ -244,7 +244,7 @@ export default {
     photos: "Fotos",
     camera: "Kamera",
     gallery: "Galerie",
-    addPhotosHint: "Bis zu 5 Fotos hinzufügen. Das erste Foto wird das Titelbild.",
+    addPhotosHint: "Mindestens 2 Fotos, maximal 5. Das erste Foto wird das Titelbild.",
     publishListing: "Anzeige veröffentlichen",
     publishing: "Wird veröffentlicht...",
     successTitle: "Anzeige veröffentlicht!",

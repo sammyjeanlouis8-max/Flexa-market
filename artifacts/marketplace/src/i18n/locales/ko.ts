@@ -244,7 +244,7 @@ export default {
     photos: "사진",
     camera: "카메라",
     gallery: "갤러리",
-    addPhotosHint: "사진을 최대 5장 추가할 수 있습니다. 첫 번째 사진이 메인 이미지가 됩니다.",
+    addPhotosHint: "최소 2장, 최대 5장. 첫 번째 사진이 커버가 됩니다.",
     publishListing: "게시물 등록",
     publishing: "게시 중...",
     successTitle: "게시물이 등록되었습니다!",

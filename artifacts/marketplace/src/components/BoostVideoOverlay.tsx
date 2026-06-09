@@ -62,6 +62,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
@@ -157,6 +158,26 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     return () => obs.disconnect();
   }, []);
 
+  // ── Cleanup stall timer on unmount ────────────────────────────────────────
+  useEffect(() => {
+    return () => { if (stallTimerRef.current) clearTimeout(stallTimerRef.current); };
+  }, []);
+
+  // ── Stall recovery ────────────────────────────────────────────────────────
+  const handleStall = useCallback(() => {
+    const el = videoRef.current;
+    if (!el || el.paused) return;
+    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = setTimeout(() => {
+      const v = videoRef.current;
+      if (!v || v.paused || v.readyState >= 3) return;
+      const t = v.currentTime;
+      v.load();
+      v.currentTime = t;
+      v.play().catch(() => {});
+    }, 3000);
+  }, []);
+
   // ── Skip ──────────────────────────────────────────────────────────────────
   const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
@@ -207,6 +228,14 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             preload="auto"
             loop={false}
             onEnded={onClose}
+            onStalled={handleStall}
+            onWaiting={handleStall}
+            onPlay={() => { if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
+            onError={() => {
+              const el = videoRef.current;
+              if (!el) return;
+              setTimeout(() => { el.load(); el.play().catch(() => {}); }, 1500);
+            }}
             className="w-full"
             style={{
               display: "block",

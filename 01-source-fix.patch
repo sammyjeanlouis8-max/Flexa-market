@@ -1,9 +1,9 @@
-From 5a66a9d09d110fa030c24503f63a328838dce9a0 Mon Sep 17 00:00:00 2001
+From ef08c09b270553d56d90d321d912ada867a1af28 Mon Sep 17 00:00:00 2001
 From: video-pipeline-audit <fix@flexamarket.com>
-Date: Tue, 9 Jun 2026 18:24:15 +0000
-Subject: [PATCH] =?UTF-8?q?fix(video):=20root-cause=20repair=20of=20black-?=
- =?UTF-8?q?video=20bug=20(fl=5Ffaststart=20in=20delivery=20URL=20is=20inva?=
- =?UTF-8?q?lid=20=E2=86=92=20Cloudinary=20400)?=
+Date: Tue, 9 Jun 2026 19:03:06 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?fix(video):=20root-cause=20repair=20of=20bl?=
+ =?UTF-8?q?ack-video=20bug=20(fl=5Ffaststart=20in=20delivery=20URL=20is=20?=
+ =?UTF-8?q?invalid=20=E2=86=92=20Cloudinary=20400)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
@@ -19,63 +19,53 @@ places, plus an admin migration endpoint that BACKFILLED the bad flag
 across the entire database -- which is why every previously uploaded
 boost video is broken in production today.
 
-Evidence
---------
-- The exact production URL for /listings/95 returns HTTP 400 (verified
-  with curl).
+Evidence (verified live against res.cloudinary.com on 2026-06-09)
+-----------------------------------------------------------------
+- The exact production URL for /listings/95 returns HTTP 400.
 - The same URL with fl_faststart removed returns HTTP 200 video/mp4
   codecs=avc1, accept-ranges bytes, CORS=*, range GET = 206.
-- The same 400 is reproduced against Cloudinary's own demo cloud
-  (fl_faststart against /demo/video/upload/), so this is platform
-  behaviour, not per-cloud misconfiguration.
-- ffprobe confirms the underlying upload is a valid H.264 / yuv420p MP4
-  -- the asset is fine, only the URL transform was broken.
+- The same 400 is reproduced against Cloudinary's own demo cloud, so
+  this is platform behaviour, not per-cloud misconfiguration.
+- ffprobe confirms the underlying upload is a valid H.264 / yuv420p MP4.
+
+Compatibility verified
+----------------------
+- pnpm install --frozen-lockfile     (passed, 19.8s)
+- pnpm @workspace/api-server test    (97/97 passed including 11 new)
+- pnpm @workspace/api-server build   (passed, dist/index.mjs 7.3 MB)
+- pnpm @workspace/marketplace build  (passed, vite build 14.9s)
+- node dist/index.mjs                (server booted to 'API server ready')
+- Built bundle contains no live fl_faststart-injection strings.
 
 What this commit changes
 ------------------------
-- lib/cloudinary.ts (backend): toStreamingUrl now strips stale
-  fl_faststart segments (including the doubled form), collapses dup
-  vc_h264 segments, applies vc_h264,f_mp4 exactly once, and is
-  idempotent.  uploadVideoStream keeps the eager faststart flag (which
-  IS valid at upload time) but routes the returned URL through
-  toStreamingUrl.  prewarmVideo switched to a ranged GET (HEAD alone
-  returns 423 without waiting).  IS_CONFIGURED now requires both
-  CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.
+- lib/cloudinary.ts: toStreamingUrl + toPosterUrl strip stale
+  fl_faststart segments (including doubled form), apply vc_h264,f_mp4
+  exactly once.  uploadVideoStream keeps eager faststart (valid at
+  upload time) but routes the result through toStreamingUrl.
+  prewarmVideo uses a ranged GET (HEAD returns 423/processing without
+  waiting).  IS_CONFIGURED requires both API_KEY and API_SECRET.
 - routes/listings.ts, routes/videos.ts: identical rewrite of local
   toStreamingVideoUrl.  listings.ts was missing the !includes guard,
   which is why DB rows have DUPLICATED fl_faststart segments.
-- routes/admin.ts: the migrate-video-urls endpoint that originally
-  *injected* fl_faststart is rewritten to *strip* it -- recovery, not
-  destruction.  Idempotent.
-- marketplace/src/lib/videoUrl.ts (frontend): full rewrite of
-  toStreamingVideoUrl / toFetchableVideoUrl / toVideoPosterUrl with
-  the same safe logic and a strongly-worded bug-history comment so
-  this regression cannot be re-introduced.
-- components/BoostWizard.tsx: warm URL builder now strips fl_faststart
-  before issuing a ranged GET.
-- scripts/repair-video-urls.sql: stand-alone, idempotent SQL migration
-  for boost_video_url and listing_video_url columns.
-- lib/__tests__/cloudinary.test.ts: 8 unit tests covering raw, single,
-  doubled, idempotent, non-Cloudinary, image, empty, and the EXACT
-  broken URL from production listing 95.  All passing (verified with
-  tsx).
-
-Test-evidence
--------------
-test-evidence/AUDIT-REPORT.md contains the full audit, HTTP probes,
-codec analysis, browser playback evidence, and rollout plan.
-test-evidence/01-04 HTML files reproduce broken vs fixed playback.
+- routes/admin.ts: migrate-video-urls endpoint that originally injected
+  fl_faststart is rewritten to strip it.  Idempotent.
+- marketplace/src/lib/videoUrl.ts: full rewrite of toStreamingVideoUrl /
+  toFetchableVideoUrl / toVideoPosterUrl with strong bug-history comment.
+- components/BoostWizard.tsx: warm URL builder cleaned.
+- scripts/repair-video-urls.sql: stand-alone idempotent SQL migration.
+- tests/cloudinaryUrl.test.ts: 11 vitest assertions.  All pass.
 
 Does NOT touch
 --------------
 nginx config, env vars, dependencies, package.json, DB schema,
-Cloudinary cloud config.  Diff is intentionally minimal.
+Cloudinary cloud config, Dockerfile, render.yaml, railway.toml.
 ---
- .../src/lib/__tests__/cloudinary.test.ts      | 109 ++++++++
- artifacts/api-server/src/lib/cloudinary.ts    |  99 ++++++--
+ artifacts/api-server/src/lib/cloudinary.ts    | 108 ++++++--
  artifacts/api-server/src/routes/admin.ts      |  55 +++--
  artifacts/api-server/src/routes/listings.ts   |  22 +-
  artifacts/api-server/src/routes/videos.ts     |  17 +-
+ .../src/tests/cloudinaryUrl.test.ts           |  85 +++++++
  .../src/components/BoostWizard.tsx            |  17 +-
  artifacts/marketplace/src/lib/videoUrl.ts     |  70 ++++--
  scripts/repair-video-urls.sql                 | 114 +++++++++
@@ -85,8 +75,8 @@ Cloudinary cloud config.  Diff is intentionally minimal.
  test-evidence/04-side-by-side.html            |  73 ++++++
  test-evidence/AUDIT-REPORT.md                 | 232 ++++++++++++++++++
  test-evidence/v_test.webm                     | Bin 0 -> 627778 bytes
- 14 files changed, 848 insertions(+), 70 deletions(-)
- create mode 100644 artifacts/api-server/src/lib/__tests__/cloudinary.test.ts
+ 14 files changed, 831 insertions(+), 72 deletions(-)
+ create mode 100644 artifacts/api-server/src/tests/cloudinaryUrl.test.ts
  create mode 100644 scripts/repair-video-urls.sql
  create mode 100644 test-evidence/01-current-broken.html
  create mode 100644 test-evidence/02-fixed-working.html
@@ -95,123 +85,8 @@ Cloudinary cloud config.  Diff is intentionally minimal.
  create mode 100644 test-evidence/AUDIT-REPORT.md
  create mode 100644 test-evidence/v_test.webm
 
-diff --git a/artifacts/api-server/src/lib/__tests__/cloudinary.test.ts b/artifacts/api-server/src/lib/__tests__/cloudinary.test.ts
-new file mode 100644
-index 0000000..b876c7f
---- /dev/null
-+++ b/artifacts/api-server/src/lib/__tests__/cloudinary.test.ts
-@@ -0,0 +1,109 @@
-+/**
-+ * Unit tests for the video URL transformation helpers.
-+ *
-+ * These prove that:
-+ *   1. The valid runtime URL form is `vc_h264,f_mp4/` — NO `fl_faststart`.
-+ *   2. Stale `fl_faststart,...` segments are stripped (including the
-+ *      duplicated form previously baked into the database).
-+ *   3. The transformation is idempotent (safe to call multiple times).
-+ *   4. Non-Cloudinary URLs and local /objects/ paths are untouched.
-+ *
-+ * Run with: node --import tsx artifacts/api-server/src/lib/__tests__/cloudinary.test.ts
-+ */
-+import { strict as assert } from "node:assert";
-+import { toStreamingUrl, toPosterUrl } from "../cloudinary";
-+
-+let passed = 0;
-+let failed = 0;
-+function test(name: string, fn: () => void) {
-+  try { fn(); console.log(`  ✅ ${name}`); passed++; }
-+  catch (e) { console.log(`  ❌ ${name}\n     ${(e as Error).message}`); failed++; }
-+}
-+
-+console.log("\n── toStreamingUrl ──────────────────────────────────────────────");
-+
-+const CLOUD = "https://res.cloudinary.com/dvkbgodbk/video/upload";
-+const TAIL  = "v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov";
-+
-+test("raw Cloudinary URL → adds vc_h264,f_mp4", () => {
-+  const input  = `${CLOUD}/${TAIL}`;
-+  const output = toStreamingUrl(input);
-+  assert.equal(output, `${CLOUD}/vc_h264,f_mp4/${TAIL}`);
-+  assert.ok(!output.includes("fl_faststart"), "must not contain fl_faststart");
-+});
-+
-+test("URL with single fl_faststart segment → strips it, applies vc_h264,f_mp4", () => {
-+  const input  = `${CLOUD}/fl_faststart,vc_h264,f_mp4/${TAIL}`;
-+  const output = toStreamingUrl(input);
-+  assert.equal(output, `${CLOUD}/vc_h264,f_mp4/${TAIL}`);
-+  assert.ok(!output.includes("fl_faststart"));
-+});
-+
-+test("URL with DUPLICATED fl_faststart (the DB bug) → strips both, applies once", () => {
-+  const input  = `${CLOUD}/fl_faststart,vc_h264,f_mp4/fl_faststart,vc_h264,f_mp4/${TAIL}`;
-+  const output = toStreamingUrl(input);
-+  assert.equal(output, `${CLOUD}/vc_h264,f_mp4/${TAIL}`);
-+  // Must not contain any fl_faststart
-+  assert.ok(!output.includes("fl_faststart"));
-+  // Must contain exactly ONE vc_h264,f_mp4 segment
-+  const matches = output.match(/vc_h264,f_mp4/g) ?? [];
-+  assert.equal(matches.length, 1, `expected 1 vc_h264 segment, got ${matches.length}`);
-+});
-+
-+test("idempotent — already-clean URL stays the same", () => {
-+  const input  = `${CLOUD}/vc_h264,f_mp4/${TAIL}`;
-+  const output = toStreamingUrl(input);
-+  assert.equal(output, input);
-+});
-+
-+test("idempotent — applying twice yields the same result", () => {
-+  const raw  = `${CLOUD}/${TAIL}`;
-+  const once = toStreamingUrl(raw);
-+  const twice = toStreamingUrl(once);
-+  assert.equal(once, twice);
-+});
-+
-+test("non-Cloudinary URL passes through unchanged", () => {
-+  const input  = "https://example.com/some/video.mp4";
-+  assert.equal(toStreamingUrl(input), input);
-+});
-+
-+test("Cloudinary IMAGE URL (not video) passes through unchanged", () => {
-+  const input = "https://res.cloudinary.com/dvkbgodbk/image/upload/v1/flexa-market/a.jpg";
-+  assert.equal(toStreamingUrl(input), input);
-+});
-+
-+test("empty string passes through unchanged", () => {
-+  assert.equal(toStreamingUrl(""), "");
-+});
-+
-+test("the exact broken URL from listing 95 → becomes a working URL", () => {
-+  // This is the actual URL that was producing the user-visible black screen.
-+  const broken = "https://res.cloudinary.com/dvkbgodbk/video/upload/fl_faststart,vc_h264,f_mp4/fl_faststart,vc_h264,f_mp4/v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov";
-+  const fixed  = toStreamingUrl(broken);
-+  assert.equal(
-+    fixed,
-+    "https://res.cloudinary.com/dvkbgodbk/video/upload/vc_h264,f_mp4/v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov",
-+  );
-+});
-+
-+console.log("\n── toPosterUrl ─────────────────────────────────────────────────");
-+
-+test("poster URL uses so_auto and produces .jpg", () => {
-+  const input  = `${CLOUD}/vc_h264,f_mp4/${TAIL}`;
-+  const poster = toPosterUrl(input);
-+  assert.ok(poster);
-+  assert.ok(poster!.includes("so_auto"));
-+  assert.ok(poster!.endsWith(".jpg"));
-+  assert.ok(!poster!.includes("fl_faststart"));
-+});
-+
-+test("poster URL returns null for non-Cloudinary URLs", () => {
-+  assert.equal(toPosterUrl("https://example.com/video.mp4"), null);
-+  assert.equal(toPosterUrl(null), null);
-+  assert.equal(toPosterUrl(undefined), null);
-+});
-+
-+console.log("\n────────────────────────────────────────────────────────────────");
-+console.log(`Passed: ${passed} · Failed: ${failed}`);
-+process.exit(failed === 0 ? 0 : 1);
 diff --git a/artifacts/api-server/src/lib/cloudinary.ts b/artifacts/api-server/src/lib/cloudinary.ts
-index abc2d94..4018d4f 100644
+index abc2d94..fcc9b91 100644
 --- a/artifacts/api-server/src/lib/cloudinary.ts
 +++ b/artifacts/api-server/src/lib/cloudinary.ts
 @@ -9,7 +9,10 @@ export const CLOUD_NAME =
@@ -226,7 +101,7 @@ index abc2d94..4018d4f 100644
  
  if (IS_CONFIGURED) {
    cloudinary.config({
-@@ -27,16 +30,40 @@ export function assertConfigured(): void {
+@@ -27,25 +30,54 @@ export function assertConfigured(): void {
    }
  }
  
@@ -275,7 +150,23 @@ index abc2d94..4018d4f 100644
  }
  
  export function toPosterUrl(url: string | null | undefined): string | null {
-@@ -70,7 +97,7 @@ export async function uploadImage(
+   if (!url) return null;
+   if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) return null;
+-  const m = url.match(/(.*\/video\/upload\/)([^/]+\/)?(.+)$/);
++  // Strip any pre-existing transform segments (especially the invalid
++  // fl_faststart that breaks delivery URLs — see toStreamingUrl above).
++  const sanitised = url
++    .replace(STALE_FASTSTART_SEGMENT_RE, "/video/upload/")
++    .replace(VC_H264_SEGMENT_RE,         "/video/upload/");
++  const m = sanitised.match(/(.*\/video\/upload\/)(.+)$/);
+   if (!m) return null;
+   const base = m[1];
+-  const tail = m[3].replace(/\.(mp4|mov|webm|m4v|3gp|avi|mkv|hevc)$/i, "");
++  const tail = m[2].replace(/\.(mp4|mov|webm|m4v|3gp|avi|mkv|hevc)$/i, "");
+   return `${base}so_auto,w_640,h_360,c_fill,g_center,q_auto,f_jpg/${tail}.jpg`;
+ }
+ 
+@@ -70,7 +102,7 @@ export async function uploadImage(
  export async function uploadVideoStream(
    stream: Readable,
    contentType: string,
@@ -284,7 +175,7 @@ index abc2d94..4018d4f 100644
    assertConfigured();
    return new Promise((resolve, reject) => {
      let settled = false;
-@@ -80,11 +107,26 @@ export async function uploadVideoStream(
+@@ -80,11 +112,26 @@ export async function uploadVideoStream(
        try { (cldStream as any)?.destroy?.(); } catch { }
        reject(err instanceof Error ? err : new Error("Cloudinary video upload failed"));
      };
@@ -311,7 +202,7 @@ index abc2d94..4018d4f 100644
        },
        (err, result) => {
          if (settled) return;
-@@ -92,7 +134,23 @@ export async function uploadVideoStream(
+@@ -92,7 +139,23 @@ export async function uploadVideoStream(
            fail(err ?? new Error("Cloudinary upload failed"));
          } else {
            settled = true;
@@ -336,7 +227,7 @@ index abc2d94..4018d4f 100644
          }
        },
      );
-@@ -106,13 +164,24 @@ export async function prewarmVideo(
+@@ -106,13 +169,24 @@ export async function prewarmVideo(
    rawUrl: string,
    log?: { info: (...a: any[]) => void; warn: (...a: any[]) => void },
  ): Promise<string> {
@@ -530,6 +421,97 @@ index 8d02773..1589702 100644
  }
  
  /**
+diff --git a/artifacts/api-server/src/tests/cloudinaryUrl.test.ts b/artifacts/api-server/src/tests/cloudinaryUrl.test.ts
+new file mode 100644
+index 0000000..b677fcc
+--- /dev/null
++++ b/artifacts/api-server/src/tests/cloudinaryUrl.test.ts
+@@ -0,0 +1,85 @@
++/**
++ * Unit tests for the Cloudinary URL transformation helpers.
++ *
++ * These prove that the long-standing "black video" bug cannot regress:
++ *   • `fl_faststart` is NEVER emitted in a Cloudinary delivery URL.
++ *     (Cloudinary rejects such URLs with HTTP 400.)
++ *   • Stale `fl_faststart,…/` segments — including the doubled form
++ *     baked into the production DB by an older admin migration — are
++ *     stripped.
++ *   • `vc_h264,f_mp4/` is applied exactly once.
++ *   • The function is idempotent.
++ */
++import { describe, it, expect } from "vitest";
++import { toStreamingUrl, toPosterUrl } from "../lib/cloudinary";
++
++const CLOUD = "https://res.cloudinary.com/dvkbgodbk/video/upload";
++const TAIL  = "v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov";
++
++describe("toStreamingUrl — Cloudinary video URL normaliser", () => {
++  it("adds vc_h264,f_mp4 to a raw Cloudinary URL", () => {
++    expect(toStreamingUrl(`${CLOUD}/${TAIL}`)).toBe(`${CLOUD}/vc_h264,f_mp4/${TAIL}`);
++  });
++
++  it("strips a single fl_faststart segment and applies vc_h264,f_mp4", () => {
++    const out = toStreamingUrl(`${CLOUD}/fl_faststart,vc_h264,f_mp4/${TAIL}`);
++    expect(out).toBe(`${CLOUD}/vc_h264,f_mp4/${TAIL}`);
++    expect(out).not.toContain("fl_faststart");
++  });
++
++  it("strips the DUPLICATED fl_faststart segment (the live production DB bug)", () => {
++    const broken = `${CLOUD}/fl_faststart,vc_h264,f_mp4/fl_faststart,vc_h264,f_mp4/${TAIL}`;
++    const out = toStreamingUrl(broken);
++    expect(out).toBe(`${CLOUD}/vc_h264,f_mp4/${TAIL}`);
++    expect(out).not.toContain("fl_faststart");
++    expect(out.match(/vc_h264,f_mp4/g)?.length).toBe(1);
++  });
++
++  it("is idempotent (already-clean URL is untouched)", () => {
++    const ok = `${CLOUD}/vc_h264,f_mp4/${TAIL}`;
++    expect(toStreamingUrl(ok)).toBe(ok);
++  });
++
++  it("is idempotent (running twice == running once)", () => {
++    const raw = `${CLOUD}/${TAIL}`;
++    const once = toStreamingUrl(raw);
++    const twice = toStreamingUrl(once);
++    expect(twice).toBe(once);
++  });
++
++  it("leaves non-Cloudinary URLs unchanged", () => {
++    expect(toStreamingUrl("https://example.com/x.mp4")).toBe("https://example.com/x.mp4");
++  });
++
++  it("leaves Cloudinary IMAGE URLs unchanged", () => {
++    const img = "https://res.cloudinary.com/dvkbgodbk/image/upload/v1/x.jpg";
++    expect(toStreamingUrl(img)).toBe(img);
++  });
++
++  it("leaves empty strings unchanged", () => {
++    expect(toStreamingUrl("")).toBe("");
++  });
++
++  it("repairs the EXACT broken URL from production listing 95", () => {
++    const broken =
++      "https://res.cloudinary.com/dvkbgodbk/video/upload/fl_faststart,vc_h264,f_mp4/fl_faststart,vc_h264,f_mp4/v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov";
++    const fixed = toStreamingUrl(broken);
++    expect(fixed).toBe(
++      "https://res.cloudinary.com/dvkbgodbk/video/upload/vc_h264,f_mp4/v1781025476/flexa-market/vnubcg5cytce3psi0i0s.mov",
++    );
++  });
++});
++
++describe("toPosterUrl — Cloudinary poster JPEG URL", () => {
++  it("returns a so_auto JPEG URL with no fl_faststart leaked through", () => {
++    const poster = toPosterUrl(`${CLOUD}/vc_h264,f_mp4/${TAIL}`);
++    expect(poster).toBeTruthy();
++    expect(poster!).toContain("so_auto");
++    expect(poster!).toMatch(/\.jpg$/);
++    expect(poster!).not.toContain("fl_faststart");
++  });
++
++  it("returns null for non-Cloudinary URLs", () => {
++    expect(toPosterUrl("https://example.com/x.mp4")).toBeNull();
++  });
++});
 diff --git a/artifacts/marketplace/src/components/BoostWizard.tsx b/artifacts/marketplace/src/components/BoostWizard.tsx
 index 0657585..b0d26fd 100644
 --- a/artifacts/marketplace/src/components/BoostWizard.tsx

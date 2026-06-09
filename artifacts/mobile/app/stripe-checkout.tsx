@@ -22,19 +22,56 @@ function isFlexa(url: string): boolean {
   }
 }
 
-// Set proper mobile viewport so Stripe's responsive layout matches the rest of the app.
-// Do NOT set user-scalable=no — it breaks keyboard-triggered zoom on input fields.
-const VIEWPORT_FIX = `
-(function() {
-  var meta = document.querySelector('meta[name="viewport"]');
-  if (!meta) {
-    meta = document.createElement('meta');
-    meta.name = 'viewport';
-    document.head.appendChild(meta);
+// ─── Viewport fix ─────────────────────────────────────────────────────────────
+// Applied at TWO injection points:
+//
+//   1. injectedJavaScriptBeforeContentLoaded  — fires in the WKUserScript
+//      pre-navigation phase, before Stripe's HTML has been parsed. At this
+//      point document.head may not yet exist, so we wait for DOMContentLoaded
+//      while also attempting an immediate call (harmless if head is absent).
+//
+//   2. injectedJavaScript  — fires after the page's load event. Stripe's boot
+//      JS sometimes rewrites the viewport meta after DOMContentLoaded, so a
+//      second pass ensures our settings always win.
+//
+// WHY maximum-scale=1.0:
+//   iOS Safari (WKWebView) auto-zooms the viewport when any focusable input
+//   (email, card number, CVC …) has a computed font-size < 16 px. Stripe's
+//   hosted Checkout page uses ~14–15 px labels. Without maximum-scale the
+//   entire WebView enlarges on first tap and never resets — producing the
+//   "excessive zoom" symptom reported by users.
+//
+// WHY viewport-fit=cover:
+//   Without it, env(safe-area-inset-*) resolves to 0 inside WKWebView on
+//   devices with a Dynamic Island / notch, causing Stripe's sticky footer
+//   to hide behind the home indicator.
+const VIEWPORT_FIX_SCRIPT = `
+(function () {
+  function applyViewport() {
+    var m = document.querySelector('meta[name="viewport"]');
+    if (!m) {
+      m = document.createElement('meta');
+      m.setAttribute('name', 'viewport');
+      var target = document.head || document.documentElement;
+      if (target) target.appendChild(m);
+    }
+    if (m) {
+      m.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover'
+      );
+    }
   }
-  meta.content = 'width=device-width, initial-scale=1.0';
-  true;
+  // Immediate attempt — succeeds after DOMContentLoaded or if head already exists.
+  applyViewport();
+  // Guard for very early injection (before <head> is parsed).
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyViewport, { once: true });
+  }
+  // Final pass after all scripts run — in case Stripe's boot JS resets the meta.
+  window.addEventListener('load', applyViewport, { once: true });
 })();
+true;
 `.trim();
 
 export default function StripeCheckoutScreen() {
@@ -51,18 +88,29 @@ export default function StripeCheckoutScreen() {
     return null;
   }
 
-  // Top inset: Dynamic Island / notch height.
-  // Bottom inset: home indicator height.
-  const topInset = insets.top;
+  // Derive safe-area dimensions.
+  // Top  → Dynamic Island / notch height.
+  // Bottom → home indicator height (iOS only; Android handles this via system UI).
+  const topInset    = insets.top;
   const bottomInset = Platform.OS === "ios" ? insets.bottom : 0;
 
   return (
-    <View style={[styles.root, { backgroundColor: "#ffffff" }]}>
-      {/* Native status-bar background so Dynamic Island area stays white */}
-      <View style={[styles.statusBarFill, { height: topInset, backgroundColor: "#ffffff" }]} />
+    <View style={styles.root}>
+      {/* ── Status bar background ──────────────────────────────────────────────
+          Fills the Dynamic Island / notch area with white so the WebView
+          content never bleeds behind the camera cutout.
+          Position: absolute so it does not affect the flex layout below. */}
+      <View
+        style={[
+          styles.statusBarFill,
+          { height: topInset, backgroundColor: "#ffffff" },
+        ]}
+      />
 
-      {/* Native close button — lives in the native layer, always touchable,
-          clearly below Dynamic Island / notch, above the WebView content */}
+      {/* ── Native close button ────────────────────────────────────────────────
+          Lives in the native layer, always touchable regardless of WebView
+          state. marginTop pushes it below the notch / Dynamic Island.
+          zIndex: 20 keeps it above the absolute statusBarFill (z:10). */}
       <View style={[styles.closeRow, { marginTop: topInset }]}>
         <Pressable
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
@@ -75,7 +123,17 @@ export default function StripeCheckoutScreen() {
         </Pressable>
       </View>
 
-      {/* Stripe checkout WebView */}
+      {/* ── Stripe Checkout WebView ────────────────────────────────────────────
+          Key viewport / zoom props:
+            scalesPageToFit={false}   — disables WKWebView's built-in
+                                        "shrink to fit" scaling pass that
+                                        can double-scale with our viewport fix.
+            injectedJavaScriptBeforeContentLoaded
+                                      — applies the viewport meta before
+                                        Stripe's HTML is parsed; prevents the
+                                        initial-render zoom flash.
+            injectedJavaScript        — second-pass after load event in case
+                                        Stripe's boot JS resets the meta. */}
       <View style={styles.webviewContainer}>
         {loading && (
           <View style={styles.loader}>
@@ -94,7 +152,10 @@ export default function StripeCheckoutScreen() {
           mediaPlaybackRequiresUserAction={false}
           overScrollMode="never"
           scalesPageToFit={false}
-          injectedJavaScript={VIEWPORT_FIX}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
+          injectedJavaScriptBeforeContentLoaded={VIEWPORT_FIX_SCRIPT}
+          injectedJavaScript={VIEWPORT_FIX_SCRIPT}
           injectedJavaScriptForMainFrameOnly
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
@@ -110,10 +171,15 @@ export default function StripeCheckoutScreen() {
               router.back();
             }
           }}
+          onContentProcessDidTerminate={() => {
+            try { webRef.current?.reload(); } catch { /* noop */ }
+          }}
         />
       </View>
 
-      {/* Home indicator spacer so Stripe content never hides behind it */}
+      {/* ── Home indicator spacer ─────────────────────────────────────────────
+          Prevents Stripe's "Subscribe" button from being hidden behind the
+          iOS home indicator gesture bar. */}
       {bottomInset > 0 && (
         <View style={{ height: bottomInset, backgroundColor: "#ffffff" }} />
       )}
@@ -124,6 +190,7 @@ export default function StripeCheckoutScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: "#ffffff",
   },
   statusBarFill: {
     position: "absolute",

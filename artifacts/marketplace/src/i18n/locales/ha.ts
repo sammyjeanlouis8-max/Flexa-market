@@ -244,7 +244,7 @@ export default {
     photos: "Hotuna",
     camera: "Kyamara",
     gallery: "Gallery",
-    addPhotosHint: "Ƙara hotuna har 5. Hoto na farko zai zama murfi.",
+    addPhotosHint: "Mafi ƙarancin hoto 2, mafi yawan 5. Hoto na farko zai zama murfin.",
     publishListing: "Buga Jerin",
     publishing: "Ana bugawa...",
     successTitle: "An buga jerin!",

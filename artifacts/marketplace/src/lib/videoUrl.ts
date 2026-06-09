@@ -18,7 +18,10 @@ export function toStreamingVideoUrl(url: string): string {
     url.includes("/video/upload/") &&
     !url.includes("fl_faststart")
   ) {
-    return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+    let transformed = url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+    // Force .mp4 extension — Cloudinary returns 400 if .mov/.hevc/etc conflicts with f_mp4 output
+    transformed = transformed.replace(/\.(mov|hevc|m4v|3gp|avi|mkv|webm)(\?|#|$)/i, '.mp4$2');
+    return transformed;
   }
   return url;
 }

@@ -25,7 +25,7 @@ interface UserListing { id: number; title: string; price: number; images: string
 interface Category { id: number; name: string; }
 interface Props { open: boolean; onClose: () => void; }
 
-const MAX_VIDEO_SECONDS = 180;
+const MAX_VIDEO_SECONDS = 60;
 const MAX_VIDEO_BYTES = 350 * 1024 * 1024; // 350 MB — matches server cap
 const MIN_BUDGET = 5;
 const MAX_BUDGET = 100;

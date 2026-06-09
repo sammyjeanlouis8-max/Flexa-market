@@ -246,6 +246,19 @@ router.post(
 // New uploads go directly to Cloudinary and return absolute https:// URLs.
 // Old rows in the DB still have /objects/uploads/<uuid> paths; this serves them.
 
+// ── GCS availability (Replit sidecar only exists in Replit, not Digital Ocean) ──
+let _gcsAvailable: boolean | null = null;
+async function isGcsAvailable(): Promise<boolean> {
+  if (_gcsAvailable !== null) return _gcsAvailable;
+  try {
+    await fetch("http://127.0.0.1:1106/credential", { signal: AbortSignal.timeout(1500) });
+    _gcsAvailable = true;
+  } catch {
+    _gcsAvailable = false;
+  }
+  return _gcsAvailable;
+}
+
 router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   const raw = req.params.path;
   const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
@@ -253,6 +266,13 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
   // Absolute URL stored in DB — redirect to it (Cloudinary CDN handles delivery)
   if (wildcardPath.startsWith("https://") || wildcardPath.startsWith("http://")) {
     res.redirect(302, wildcardPath);
+    return;
+  }
+
+  // GCS sidecar not reachable (Digital Ocean / non-Replit env) — fail fast
+  if (!(await isGcsAvailable())) {
+    req.log.warn({ path: wildcardPath }, "GCS sidecar unavailable — legacy object cannot be served on this host");
+    res.status(410).json({ error: "Legacy GCS video unavailable. Re-upload the video to migrate it to Cloudinary." });
     return;
   }
 

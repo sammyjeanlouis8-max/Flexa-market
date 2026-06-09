@@ -244,7 +244,7 @@ export default {
     photos: "Foton",
     camera: "Kamera",
     gallery: "Galleri",
-    addPhotosHint: "Lägg till upp till 5 foton. Det första blir huvudbilden.",
+    addPhotosHint: "Minst 2 foton, max 5. Det första fotot blir omslaget.",
     publishListing: "Publicera annons",
     publishing: "Publicerar...",
     successTitle: "Annons publicerad!",

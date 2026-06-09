@@ -1157,7 +1157,7 @@ export default function ListingDetail() {
             >
               {item.type === "video" ? (
                 <>
-                  <video src={item.url} preload="metadata" playsInline muted className="w-full h-full object-cover pointer-events-none" />
+                  <video src={toFetchableVideoUrl(item.url)} preload="metadata" playsInline muted className="w-full h-full object-cover pointer-events-none" />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                     <Play className="h-3 w-3 text-white fill-white" />
                   </div>

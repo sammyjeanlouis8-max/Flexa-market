@@ -655,7 +655,7 @@ export default function Sell() {
                 </>
               )}
             </div>
-            {uploadedImages.length === 0 && (
+            {uploadedImages.length < 2 && (
               <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
             )}
 

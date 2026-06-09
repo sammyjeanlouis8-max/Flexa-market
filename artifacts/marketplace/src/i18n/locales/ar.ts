@@ -244,7 +244,7 @@ export default {
     photos: "الصور",
     camera: "الكاميرا",
     gallery: "المعرض",
-    addPhotosHint: "أضف حتى 5 صور. الأولى ستكون الصورة الرئيسية.",
+    addPhotosHint: "الحد الأدنى صورتان، الحد الأقصى 5. الصورة الأولى ستكون الغلاف.",
     publishListing: "نشر الإعلان",
     publishing: "جارٍ النشر...",
     successTitle: "تم نشر الإعلان!",

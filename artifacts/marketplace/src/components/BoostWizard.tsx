@@ -1524,7 +1524,7 @@ export default function BoostWizard({ open, onClose }: Props) {
               <Button
                 className="w-full h-11 font-bold bg-[#F97316] hover:bg-[#F97316]/90 text-white"
                 onClick={handleConfirm}
-                disabled={confirming}
+                disabled={confirming || videoUploading || !videoUrl}
               >
                 {confirming
                   ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boostWizard.confirmBtnLoading")}</>

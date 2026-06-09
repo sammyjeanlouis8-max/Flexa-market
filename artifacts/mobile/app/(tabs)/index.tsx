@@ -1,8 +1,5 @@
-import { Feather } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import * as Linking from "expo-linking";
-import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -10,9 +7,7 @@ import {
   ActivityIndicator,
   BackHandler,
   Platform,
-  Pressable,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -150,8 +145,6 @@ function buildVideoInterceptorScript(isIOS: boolean): string {
   `.trim();
 }
 
-type PermStatus = "checking" | "granted" | "denied" | "undetermined";
-
 // SafeAreaView edges — iOS only (top = Dynamic Island / notch, bottom = home indicator).
 // Android manages its own status bar through the OS and web page layout.
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
@@ -163,41 +156,19 @@ export default function HomeTab() {
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [offline, setOffline] = useState(false);
-  const [permStatus, setPermStatus] = useState<PermStatus>("checking");
 
   const injectJs = useCallback((script: string) => {
     webRef.current?.injectJavaScript(script);
   }, []);
 
+  // Push token bridge: injects the Expo push token into the WebView whenever
+  // it is available so the web app's useExpoPushToken() hook can POST it to
+  // the backend. Registration no longer gates the WebView from rendering —
+  // the permission prompt is handled in the background by initPushNotifications()
+  // in the root layout (_layout.tsx).
   usePushNotifications(injectJs);
 
   const canGoBack = navState?.canGoBack ?? false;
-
-  useEffect(() => {
-    checkAndRequestPermission();
-  }, []);
-
-  async function checkAndRequestPermission() {
-    // Wrapped in try/catch because expo-notifications on Android 13+ can
-    // reject getPermissionsAsync / requestPermissionsAsync during the first
-    // cold-start render on certain OEM builds (One UI 6, MIUI 14) when
-    // Google Play Services is updating in the background. An unhandled
-    // promise rejection here was a confirmed Android startup-crash class.
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status === "granted") { setPermStatus("granted"); return; }
-      if (status === "undetermined") {
-        const { status: newStatus } = await Notifications.requestPermissionsAsync();
-        setPermStatus(newStatus === "granted" ? "granted" : "denied");
-      } else {
-        setPermStatus("denied");
-      }
-    } catch {
-      // Permission flow not available right now — treat as denied so the UI
-      // shows the "enable notifications" prompt rather than blocking startup.
-      setPermStatus("denied");
-    }
-  }
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -317,73 +288,10 @@ export default function HomeTab() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (permStatus === "checking") {
-    return (
-      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <ActivityIndicator size="large" color="#F97316" />
-      </SafeAreaView>
-    );
-  }
-
-  if (permStatus === "denied") {
-    return (
-      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
-          <Text style={styles.logoText}>FM</Text>
-        </View>
-        <Text style={styles.gateTitle}>Aktive Notifikasyon</Text>
-        <Text style={styles.gateSub}>
-          FlexaMarket itilize notifikasyon pou voye mesaj, lòd, ak alèt enpòtan ba ou.{"\n\n"}
-          Notifikasyon yo obligatwa pou itilize app la.
-        </Text>
-        <View style={styles.iconRow}>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>💬</Text>
-            <Text style={styles.iconLabel}>Mesaj</Text>
-          </View>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>📦</Text>
-            <Text style={styles.iconLabel}>Lòd</Text>
-          </View>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>💰</Text>
-            <Text style={styles.iconLabel}>Peman</Text>
-          </View>
-        </View>
-        <Pressable
-          style={[styles.settingsBtn, { backgroundColor: "#F97316" }]}
-          onPress={() => Linking.openSettings()}
-        >
-          <Feather name="settings" size={18} color="#fff" />
-          <Text style={styles.settingsBtnText}>Ouvri Paramèt</Text>
-        </Pressable>
-        <Pressable
-          style={styles.recheckBtn}
-          onPress={async () => {
-            setPermStatus("checking");
-            const { status } = await Notifications.getPermissionsAsync();
-            setPermStatus(status === "granted" ? "granted" : "denied");
-          }}
-        >
-          <Text style={styles.recheckText}>M aktive li — kontinye</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
-
   if (offline) {
     return (
       <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <Text style={{ fontSize: 56 }}>📡</Text>
-        <Text style={[styles.offlineTitle, { color: "#fff" }]}>Pa gen entènèt</Text>
-        <Text style={[styles.offlineSub, { color: "#94a3b8" }]}>Verifye koneksyon ou epi eseye ankò.</Text>
-        <Pressable
-          style={[styles.retryBtn, { backgroundColor: "#F97316" }]}
-          onPress={() => { setOffline(false); setLoading(true); webRef.current?.reload(); }}
-        >
-          <Feather name="refresh-cw" size={16} color="#fff" />
-          <Text style={styles.retryText}>Eseye Ankò</Text>
-        </Pressable>
+        <ActivityIndicator size="large" color="#F97316" />
       </SafeAreaView>
     );
   }
@@ -413,7 +321,11 @@ export default function HomeTab() {
         onLoadProgress={({ nativeEvent }: any) => setProgress(nativeEvent.progress)}
         onError={() => { setOffline(true); setLoading(false); }}
         onHttpError={({ nativeEvent }: any) => { if (nativeEvent.statusCode >= 500) setOffline(true); }}
-        userAgent="FlexaMarket/1.0 (Mobile App)"
+        userAgent={
+          Platform.OS === "ios"
+            ? "FlexaMarket/1.0 (Mobile App; iPhone; iOS)"
+            : "FlexaMarket/1.0 (Mobile App; Android)"
+        }
         injectedJavaScript={buildVideoInterceptorScript(Platform.OS === "ios")}
         injectedJavaScriptForMainFrameOnly
         onMessage={handleMessage}
@@ -448,20 +360,4 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
   progressTrack: { position: "absolute", top: 0, left: 0, right: 0, height: 3, zIndex: 10, backgroundColor: "#1e293b" },
   progressFill: { height: 3, backgroundColor: "#F97316" },
-  logoBox: { width: 80, height: 80, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  logoText: { color: "#fff", fontSize: 32, fontWeight: "700" },
-  offlineTitle: { fontSize: 22, fontWeight: "700" },
-  offlineSub: { fontSize: 14, textAlign: "center" },
-  retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
-  retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
-  gateTitle: { fontSize: 26, fontWeight: "800", color: "#fff", textAlign: "center" },
-  gateSub: { fontSize: 14, color: "#94a3b8", textAlign: "center", lineHeight: 22 },
-  iconRow: { flexDirection: "row", gap: 24, marginVertical: 8 },
-  iconItem: { alignItems: "center", gap: 4 },
-  iconEmoji: { fontSize: 32 },
-  iconLabel: { color: "#94a3b8", fontSize: 12, fontWeight: "600" },
-  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, width: "100%" },
-  settingsBtnText: { color: "#fff", fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
-  recheckBtn: { paddingVertical: 12 },
-  recheckText: { color: "#F97316", fontSize: 14, fontWeight: "600" },
 });

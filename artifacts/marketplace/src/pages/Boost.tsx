@@ -239,15 +239,15 @@ export default function BoostPage() {
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
   const { uploadFile: uploadVideoFile, progress: videoUploadProgress } = useUpload();
-  const MAX_VIDEO_SECONDS = 180;
+  const MAX_VIDEO_SECONDS = 60;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024;
 
-  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve, reject) => {
+  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode-failed")); };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
     v.src = url;
   });
 
@@ -261,7 +261,7 @@ export default function BoostPage() {
     }
     try {
       const seconds = await probeVideoDuration(file);
-      if (!Number.isFinite(seconds) || seconds > MAX_VIDEO_SECONDS + 0.5) {
+      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
         toast({ title: t("boost.videoTooLong"), variant: "destructive" });
         return;
       }
@@ -1466,7 +1466,7 @@ export default function BoostPage() {
           <input
             ref={videoFileInputRef}
             type="file"
-            accept="video/mp4,video/webm,video/quicktime"
+            accept="video/*"
             className="hidden"
             onChange={handleVideoSelected}
             data-testid="input-video-file"

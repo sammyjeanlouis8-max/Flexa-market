@@ -244,7 +244,7 @@ export default {
     photos: "Picha",
     camera: "Kamera",
     gallery: "Picha nyingi",
-    addPhotosHint: "Ongeza picha hadi 5. Ya kwanza itakuwa picha kuu.",
+    addPhotosHint: "Picha 2 kwa kiwango cha chini, 5 kwa kiwango cha juu. Picha ya kwanza itakuwa jalada.",
     publishListing: "Chapisha tangazo",
     publishing: "Inachapisha...",
     successTitle: "Tangazo limechapishwa!",

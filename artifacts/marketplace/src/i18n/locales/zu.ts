@@ -244,7 +244,7 @@ export default {
     photos: "Izithombe",
     camera: "Ikhamera",
     gallery: "Igalari",
-    addPhotosHint: "Engeza izithombe ezifika ku-5. Isithombe sokuqala sizoba isembozo.",
+    addPhotosHint: "Okungenani izithombe ezingu-2, okuningi ezi-5. Isithombe sokuqala kuzoba yisembozo.",
     publishListing: "Shicilela Okulisthiwe",
     publishing: "Kuyashicilelwa...",
     successTitle: "Okulisthiwe kushicilelwe!",

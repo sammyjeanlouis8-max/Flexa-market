@@ -244,7 +244,7 @@ export default {
     photos: "Foto's",
     camera: "Kamera",
     gallery: "Galery",
-    addPhotosHint: "Voeg tot 5 foto's by. Eerste foto sal die omslag wees.",
+    addPhotosHint: "Minimum 2 foto's, maksimum 5. Die eerste foto word die voorblad.",
     publishListing: "Publiseer Lysing",
     publishing: "Word gepubliseer...",
     successTitle: "Lysing gepubliseer!",

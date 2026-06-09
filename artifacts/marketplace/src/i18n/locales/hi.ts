@@ -244,7 +244,7 @@ export default {
     photos: "तस्वीरें",
     camera: "कैमरा",
     gallery: "गैलरी",
-    addPhotosHint: "5 तक तस्वीरें जोड़ें। पहली तस्वीर कवर होगी।",
+    addPhotosHint: "न्यूनतम 2 फ़ोटो, अधिकतम 5. पहली फ़ोटो कवर होगी।",
     publishListing: "लिस्टिंग प्रकाशित करें",
     publishing: "प्रकाशित हो रहा है...",
     successTitle: "लिस्टिंग प्रकाशित!",

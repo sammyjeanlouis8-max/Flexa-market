@@ -67,7 +67,10 @@ function toStreamingVideoUrl(url: string): string {
     // fl_faststart  — move moov atom to front for instant streaming
     // vc_h264       — transcode to H.264 (handles HEVC/MOV uploaded from iOS)
     // f_mp4         — output as MP4 container (universally supported)
-    return url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+    let transformed = url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+    // Force .mp4 extension — Cloudinary returns 400 if .mov/.hevc/etc conflicts with f_mp4 output
+    transformed = transformed.replace(/\.(mov|hevc|m4v|3gp|avi|mkv|webm)(\?|#|$)/i, '.mp4$2');
+    return transformed;
   }
   return url;
 }

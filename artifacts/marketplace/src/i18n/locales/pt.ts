@@ -312,7 +312,7 @@ export default {
     camera: "Câmera",
     gallery: "Galeria",
     coverPhoto: "Capa",
-    addPhotosHint: "Adicione até 5 fotos. A primeira será a foto de capa.",
+    addPhotosHint: "Mínimo 2 fotos, máximo 5. A primeira foto será a capa.",
     publishListing: "Publicar anúncio",
     moderation: {
       approvedTitle: "Anúncio publicado!",

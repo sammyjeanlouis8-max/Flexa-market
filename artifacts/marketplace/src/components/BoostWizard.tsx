@@ -380,6 +380,14 @@ export default function BoostWizard({ open, onClose }: Props) {
       }
 
       setVideoUrl(objectPathResult);
+      // Pre-warm the Cloudinary streaming transformation so the first viewer
+      // doesn't hit a black screen while Cloudinary processes fl_faststart.
+      if (typeof objectPathResult === "string" && objectPathResult.includes("res.cloudinary.com")) {
+        const warmUrl = objectPathResult.includes("fl_faststart")
+          ? objectPathResult
+          : objectPathResult.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+        fetch(warmUrl, { method: "HEAD" }).catch(() => {});
+      }
     } catch (err: any) {
       if (err?.message !== "abort") {
         const msg = t("boostWizard.errorGeneric");

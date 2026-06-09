@@ -244,7 +244,7 @@ export default {
     photos: "Foto",
     camera: "Fotocamera",
     gallery: "Galleria",
-    addPhotosHint: "Aggiungi fino a 5 foto. La prima sarà l'immagine principale.",
+    addPhotosHint: "Minimo 2 foto, massimo 5. La prima foto sarà la copertina.",
     publishListing: "Pubblica annuncio",
     publishing: "Pubblicazione in corso...",
     successTitle: "Annuncio pubblicato!",

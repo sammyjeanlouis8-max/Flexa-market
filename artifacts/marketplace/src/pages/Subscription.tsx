@@ -164,16 +164,19 @@ export default function Subscription() {
   // iOS / Android WebView hardening: when the app is running inside the
   // native wrapper (`html.native-ios` or `html.native-android`), we open
   // Stripe Checkout in the SYSTEM browser instead of in the WebView itself.
-  // This avoids:
-  //   • Stripe's hosted Checkout page rendering with the wrong viewport
-  //     scale on iPhone (the "excessively zoomed" report).
-  //   • Stripe's back button landing under the Dynamic Island when the
-  //     WebView reports env(safe-area-inset-top)=0.
-  //   • CSP / iframe / payment-request API quirks that break Apple Pay
-  //     and Stripe Link inside in-app WebViews.
-  // Most WebView hosts (WKWebView, Custom Tabs) honour `target=_blank` by
-  // delegating to the system browser, so this is a pure web-side fix.
+  //
+  // iOS Safari hardening: on iPhone/iPad outside a WebView we also open in a
+  // NEW TAB (`_blank`) instead of navigating the current tab. This eliminates
+  // the Dynamic Island "← back" conflict that occurs when Stripe's hosted
+  // Checkout page loads in the same Safari tab:
+  //   • iOS 16+ shows the previous-page back button ("← Flexa M") inside the
+  //     status-bar strip that runs alongside the Dynamic Island pill.
+  //   • That touch target sits in the Dynamic Island exclusion zone (~44 px
+  //     from the top) and is nearly impossible to tap reliably.
+  //   • Opening in a new tab gives the user Safari's native "Done" / tab-close
+  //     button at the bottom of the screen — always reachable, always works.
   const redirectToExternal = useCallback((url: string) => {
+    // ── 1. Native WebView (Expo app) ──────────────────────────────────────
     try {
       const html = document.documentElement;
       const inWebView =
@@ -182,17 +185,33 @@ export default function Subscription() {
       if (inWebView) {
         const win = window.open(url, "_blank", "noopener,noreferrer");
         if (win) return;
-        // popup blocked — fall through to top-level navigation
+        // popup blocked — fall through
       }
-    } catch { /* feature detection failed — fall through */ }
+    } catch { /* feature detection failed */ }
+
+    // ── 2. iOS Safari (non-WebView) — open new tab to avoid Dynamic Island ──
+    // Stripe checkout redirects back to success_url when done, so the user
+    // closes the Stripe tab and lands back on the subscription page cleanly.
+    try {
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        const win = window.open(url, "_blank", "noopener,noreferrer");
+        if (win) return;
+        // popup blocked — fall through to same-tab navigation
+      }
+    } catch { /* UA detection failed */ }
+
+    // ── 3. Cross-origin iframe (dev preview / embedded) ──────────────────
     try {
       if (window.top && window.top !== window) {
         window.top.location.href = url;
         return;
       }
     } catch {
-      // Cross-origin iframe — can't access top, fall through
+      // Cannot access window.top (cross-origin) — fall through
     }
+
+    // ── 4. Desktop / fallback ─────────────────────────────────────────────
     window.location.href = url;
   }, []);
 

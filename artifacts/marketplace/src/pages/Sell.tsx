@@ -518,14 +518,10 @@ export default function Sell() {
           0%,100% { background:#fee2e2; color:#dc2626; border-color:#f87171; }
           50%     { background:#fecaca; color:#991b1b; border-color:#ef4444; }
         }
-        @keyframes flexa-pulse-green {
-          0%,100% { background:#dcfce7; color:#16a34a; border-color:#86efac; }
-          50%     { background:#bbf7d0; color:#15803d; border-color:#4ade80; }
-        }
-        .flexa-badge-red   { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;animation:flexa-pulse-red   0.9s ease-in-out infinite; }
-        .flexa-badge-green { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;animation:flexa-pulse-green 0.9s ease-in-out infinite; }
-        .flexa-dot-red     { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#dc2626;border:1px solid #f87171;margin-left:5px;vertical-align:middle;animation:flexa-pulse-red   0.9s ease-in-out infinite; }
-        .flexa-dot-green   { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#16a34a;border:1px solid #86efac;margin-left:5px;vertical-align:middle;animation:flexa-pulse-green 0.9s ease-in-out infinite; }
+        .flexa-badge-red   { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;animation:flexa-pulse-red 0.9s ease-in-out infinite; }
+        .flexa-badge-green { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;background:#dcfce7;color:#16a34a;border-color:#86efac; }
+        .flexa-dot-red     { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#dc2626;border:1px solid #f87171;margin-left:5px;vertical-align:middle;animation:flexa-pulse-red 0.9s ease-in-out infinite; }
+        .flexa-dot-green   { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#16a34a;border:1px solid #86efac;margin-left:5px;vertical-align:middle; }
       ` }} />
       <h1 className="text-2xl font-extrabold text-foreground mb-2">
         {isEditMode ? t("sell.editTitle") : t("sell.pageTitle")}

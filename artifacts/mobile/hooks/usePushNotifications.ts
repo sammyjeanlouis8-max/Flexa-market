@@ -1,47 +1,58 @@
 /**
- * Thin backwards-compatibility shim around `lib/pushTokens.ts`.
- *
- * Previously this hook was the single entry point for push registration and
- * had to be called from a screen that mounted a WebView (so it could
- * inject the token via the `injectJs` callback). That created two bugs:
- *
- *   1. If the user never visited the home tab, no token was ever fetched.
- *   2. The token was only stored in a per-mount ref, so navigating away and
- *      back lost it, and OS-initiated token refreshes were never observed.
- *
- * The real implementation now lives in `lib/pushTokens.ts` and is
- * initialised once from the root layout via `initPushNotifications()`.
- * Screens that mount a WebView can still call this hook to receive the
- * current token via `injectJs` whenever one is available — but the
- * registration pipeline no longer depends on the hook running.
- */
+   * Thin backwards-compatibility shim around `lib/pushTokens.ts`.
+   *
+   * IMPORTANT: `lib/pushTokens.ts` MUST be loaded lazily (dynamic import)
+   * inside a useEffect, never at module top.  A static import here would be
+   * pulled in when index.tsx is evaluated, which happens before the root layout
+   * has rendered — on Android that causes an immediate startup crash
+   * ("FlexaMarket keeps stopping") because expo-notifications and expo-device
+   * initialise native bridges that are not yet ready at that point.
+   * This is the same reason _layout.tsx uses a dynamic import for pushTokens.
+   */
 
-import { useEffect } from "react";
-import {
-  buildTokenInjectionScript,
-  getCachedPushToken,
-  initPushNotifications,
-  subscribePushToken,
-} from "../lib/pushTokens";
+  import { useEffect } from "react";
 
-export function usePushNotifications(injectJs?: (script: string) => void) {
-  useEffect(() => {
-    // Idempotent — safe to call from any number of screens.
-    initPushNotifications();
+  export function usePushNotifications(injectJs?: (script: string) => void) {
+    useEffect(() => {
+      let cleanup: (() => void) | undefined;
+      let mounted = true;
 
-    // Inject the current token (if any) immediately so the WebView's
-    // useExpoPushToken hook can register it with the API.
-    if (injectJs) {
-      const initial = getCachedPushToken();
-      if (initial) {
-        injectJs(buildTokenInjectionScript(initial));
-      }
-      // Re-inject whenever the token changes (refresh, permission grant).
-      const unsubscribe = subscribePushToken((token) => {
-        if (token) injectJs(buildTokenInjectionScript(token));
-      });
-      return unsubscribe;
-    }
-    return undefined;
-  }, []);
-}
+      void (async () => {
+        try {
+          const {
+            buildTokenInjectionScript,
+            getCachedPushToken,
+            initPushNotifications,
+            subscribePushToken,
+          } = await import("../lib/pushTokens");
+
+          if (!mounted) return;
+
+          // Idempotent — safe to call from any number of screens.
+          initPushNotifications();
+
+          if (injectJs) {
+            // Inject current token immediately so the WebView can register it.
+            const initial = getCachedPushToken();
+            if (initial) {
+              injectJs(buildTokenInjectionScript(initial));
+            }
+            // Re-inject whenever the token changes (refresh, permission grant).
+            cleanup = subscribePushToken((token) => {
+              if (token && mounted) injectJs(buildTokenInjectionScript(token));
+            });
+          }
+        } catch {
+          // Any failure in push init must never crash the screen.
+          // Push will simply not work for this session.
+        }
+      })();
+
+      return () => {
+        mounted = false;
+        cleanup?.();
+      };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+  }
+  

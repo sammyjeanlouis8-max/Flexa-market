@@ -15,7 +15,12 @@ import { useTranslation } from "react-i18next";
 import PushNotificationsBanner from "@/components/PushNotificationsBanner";
 import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
 import OfflineBar from "@/components/OfflineBar";
-import BoostVideoOverlay, { shouldShowBoostAd, markBoostAdShown } from "@/components/BoostVideoOverlay";
+import BoostVideoOverlay from "@/components/BoostVideoOverlay";
+import {
+  getSession, trackListingViewed, trackSearch,
+  trackAdShown, trackAdSkipped, trackAdCompleted,
+  pingActive, canShowAd, isBlockedPath, MAX_ADS_PER_SESSION,
+} from "@/lib/adSession";
 import Footer from "@/components/Footer";
 import NotificationsDropdown from "@/components/NotificationsDropdown";
 import UserMenu from "@/components/UserMenu";
@@ -73,19 +78,14 @@ function CartIconButton() {
   );
 }
 
-// ─── Sponsored video trigger ──────────────────────────────────────────────────
-// Timer fires 10 s after the user FIRST enters any browsing route.
-// Navigating between browsing routes does NOT reset the countdown — only
-// leaving all browsing routes (e.g. going to /messages) cancels the pending
-// timer.  This prevents the common case where clicking on listings repeatedly
-// keeps resetting the 10-s window so the ad never fires.
-const BOOST_AD_DELAY_MS = 10_000;
-const BROWSING_ROUTES: RegExp[] = [
-  /^\/$/,
-  /^\/search/,
-  /^\/listings\/[^/]+$/,
-  /^\/saved$/,
-];
+// ─── Sponsored video ad — session-based frequency rules ─────────────────────
+// Rule 1: Show 15 s after session start (if user is active).
+// Rule 2: Show only after ≥10 unique listings viewed OR ≥15 active minutes.
+// Rule 3: Show only after ≥20 unique listings viewed.
+// Maximum 3 ads per session; never interrupt checkout / messaging / sell.
+
+const FIRST_AD_DELAY_MS = 15_000;  // 15 s
+const AD_POLL_MS        = 30_000;  // check for ads 2 & 3 every 30 s
 
 interface BoostAdListing {
   id: number;
@@ -100,61 +100,97 @@ interface BoostAdListing {
   boostCtaText: string | null;
 }
 
-function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => void } {
+function useBoostAdTrigger(): {
+  listing: BoostAdListing | null;
+  dismiss: () => void;
+  complete: () => void;
+} {
   const [location] = useLocation();
   const [listing, setListing] = useState<BoostAdListing | null>(null);
-  const timerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef  = useRef(false); // true while the timer is armed
 
-  const cancelTimer = useCallback(() => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-    pendingRef.current = false;
-  }, []);
+  // Always-current ref so async callbacks see the latest path
+  const locationRef = useRef(location);
+  useEffect(() => { locationRef.current = location; }, [location]);
 
-  const armTimer = useCallback(() => {
-    if (pendingRef.current) return;           // already armed — keep existing countdown
-    if (!shouldShowBoostAd()) return;         // still within cooldown window
-    pendingRef.current = true;
-    timerRef.current = setTimeout(async () => {
-      timerRef.current  = null;
-      pendingRef.current = false;
-      if (!shouldShowBoostAd()) return;
-      try {
-        const tk = localStorage.getItem("flexamarket_token");
-        const res = await fetch("/api/boost/random-video", {
-          headers: tk ? { Authorization: `Bearer ${tk}` } : {},
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data?.listing || !shouldShowBoostAd()) return;
-        markBoostAdShown();
-        setListing(data.listing as BoostAdListing);
-      } catch { /* non-critical */ }
-    }, BOOST_AD_DELAY_MS);
-  }, []);
+  // Pending flag: an ad was ready but blocked — show it once path clears
+  const pendingRef = useRef(false);
 
-  // Unmount cleanup
-  useEffect(() => () => cancelTimer(), [cancelTimer]);
-
+  // ── Active-time accumulator ──────────────────────────────────────────────
   useEffect(() => {
-    const isBrowsing = BROWSING_ROUTES.some(rx => rx.test(location));
-    if (!isBrowsing) {
-      // Left all browsing routes — cancel any pending timer
-      cancelTimer();
+    const events = ["mousemove", "scroll", "click", "touchstart", "keydown"] as const;
+    const handler = () => pingActive();
+    events.forEach(ev => window.addEventListener(ev, handler as EventListener, { passive: true }));
+    return () => events.forEach(ev => window.removeEventListener(ev, handler as EventListener));
+  }, []);
+
+  // ── Track listing views and searches ────────────────────────────────────
+  useEffect(() => {
+    const m = location.match(/^\/listings\/(\d+)/);
+    if (m) trackListingViewed(m[1]);
+    if (location.startsWith("/search")) trackSearch();
+  }, [location]);
+
+  // ── Core: fetch and display next eligible ad ─────────────────────────────
+  const tryShowAd = useCallback(async () => {
+    const s = getSession();
+    if (s.adsShown >= MAX_ADS_PER_SESSION) return;
+    const next = (s.adsShown + 1) as 1 | 2 | 3;
+    if (!canShowAd(next)) return;
+
+    // Check for user activity on first ad (must have interacted at least once)
+    if (next === 1 && s.activeMs === 0) return;
+
+    if (isBlockedPath(locationRef.current)) {
+      pendingRef.current = true;   // queue — will retry when path clears
       return;
     }
-    // Entered (or moved between) browsing routes — arm once; do not reset if already armed
-    armTimer();
-  }, [location, armTimer, cancelTimer]);
+    pendingRef.current = false;
 
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const res = await fetch("/api/boost/random-video", {
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data?.listing) return;
+      trackAdShown();
+      setListing(data.listing as BoostAdListing);
+    } catch { /* non-critical */ }
+  }, []);
+
+  // ── Rule 1: fire once, 15 s after mount ─────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(tryShowAd, FIRST_AD_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [tryShowAd]);
+
+  // ── Rules 2 & 3: poll every 30 s ────────────────────────────────────────
+  useEffect(() => {
+    const iv = setInterval(tryShowAd, AD_POLL_MS);
+    return () => clearInterval(iv);
+  }, [tryShowAd]);
+
+  // ── Unblock: retry when user leaves a blocked path ───────────────────────
+  useEffect(() => {
+    if (!pendingRef.current) return;
+    if (isBlockedPath(location)) return;
+    tryShowAd();
+  }, [location, tryShowAd]);
+
+  // ── Dismiss (skip) ───────────────────────────────────────────────────────
   const dismiss = useCallback(() => {
+    trackAdSkipped();
     setListing(null);
-    // Re-arm for next session after cooldown clears (armTimer will no-op if
-    // shouldShowBoostAd is still false, which is correct)
-    armTimer();
-  }, [armTimer]);
+  }, []);
 
-  return { listing, dismiss };
+  // ── Complete (video ended or CTA clicked) ────────────────────────────────
+  const complete = useCallback(() => {
+    trackAdCompleted();
+    setListing(null);
+  }, []);
+
+  return { listing, dismiss, complete };
 }
 
 // ─── Top search bar ───────────────────────────────────────────────────────────
@@ -940,7 +976,11 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* Sponsored video overlay */}
       {boostAd.listing && (
-        <BoostVideoOverlay listing={boostAd.listing} onClose={boostAd.dismiss} />
+        <BoostVideoOverlay
+          listing={boostAd.listing}
+          onClose={boostAd.dismiss}
+          onCompleted={boostAd.complete}
+        />
       )}
 
       {/* First-login language picker modal */}

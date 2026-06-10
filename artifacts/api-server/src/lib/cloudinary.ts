@@ -28,17 +28,12 @@ export function assertConfigured(): void {
 }
 
 export function toStreamingUrl(url: string): string {
-  if (
-    url &&
-    url.includes("res.cloudinary.com") &&
-    url.includes("/video/upload/") &&
-    !url.includes("fl_faststart")
-  ) {
-    // Add fl_faststart only if not already present (idempotent)
+  if (url && url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
+    // Add streaming transforms only if not already present (idempotent)
     if (!url.includes("fl_faststart")) {
       url = url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
     }
-    // ALWAYS fix extension: .mov/.hevc/etc → .mp4 when f_mp4 is in the URL.
+    // ALWAYS fix extension: .mov/.hevc/etc → .mp4 when f_mp4 is present.
     // Pre-warmed URLs already have fl_faststart,vc_h264,f_mp4 but still end in .mov —
     // Cloudinary returns 400 if the URL extension conflicts with the f_mp4 transform.
     if (url.includes("f_mp4")) {

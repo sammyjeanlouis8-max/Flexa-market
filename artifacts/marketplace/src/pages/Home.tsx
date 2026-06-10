@@ -285,7 +285,7 @@ function VideoPromoSection() {
         {videos.map(v => (
           <Link
             key={v.id}
-            href="/videos"
+            href={`/videos?start=${v.id}`}
             className="flex-shrink-0 w-36 rounded-xl overflow-hidden relative bg-black shadow-md active:scale-95 transition-transform block"
             style={{ height: "200px", textDecoration: "none" }}
             data-testid={`button-promo-video-${v.id}`}

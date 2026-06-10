@@ -14,6 +14,7 @@
  *   - Proper aspect ratio (portrait=cover, landscape=contain)
  *   - Mute/unmute with session persistence
  *   - Responsive (fills container)
+ *   - Exclusive playback: starting one player automatically pauses all others
  */
 import { useRef, useState, useEffect, useCallback, forwardRef } from "react";
 import { Play, Pause, Volume2, VolumeX, AlertCircle, Loader2 } from "lucide-react";
@@ -32,6 +33,18 @@ function setAudioUnlocked(v: boolean): void {
     localStorage.setItem(AUDIO_KEY, v ? "1" : "0");
     window.dispatchEvent(new CustomEvent("flexa:audio-unlocked", { detail: v }));
   } catch { }
+}
+
+// ── Exclusive-playback event ───────────────────────────────────────────────────
+//
+// When any VideoPlayer starts playing it fires "flexa:video-playing" carrying
+// its own unique id.  Every OTHER mounted VideoPlayer hears the event and
+// pauses itself.  This guarantees at most one video plays at a time without
+// any shared global state or prop drilling.
+
+let _playerSeq = 0;
+function nextPlayerId(): string {
+  return `flexa-vp-${++_playerSeq}`;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -88,6 +101,8 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
     const internalRef = useRef<HTMLVideoElement | null>(null);
     const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const retryCountRef = useRef(0);
+    // Stable unique id for this player instance — never changes after mount.
+    const playerIdRef = useRef<string>(nextPlayerId());
     const MAX_RETRIES = 3;
 
     const [playing, setPlaying] = useState(false);
@@ -113,6 +128,21 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
       };
       window.addEventListener("flexa:audio-unlocked", handler);
       return () => window.removeEventListener("flexa:audio-unlocked", handler);
+    }, []);
+
+    // Exclusive playback: pause THIS player when another one starts playing.
+    useEffect(() => {
+      const myId = playerIdRef.current;
+      const handler = (e: Event) => {
+        const activeId = (e as CustomEvent<string>).detail;
+        if (activeId === myId) return; // I fired this event — ignore
+        const el = internalRef.current;
+        if (el && !el.paused) {
+          el.pause();
+        }
+      };
+      window.addEventListener("flexa:video-playing", handler);
+      return () => window.removeEventListener("flexa:video-playing", handler);
     }, []);
 
     // Auto-play when isActive changes (feed use case)
@@ -229,7 +259,14 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
             setLoading(false);
           }}
           onCanPlay={() => setLoading(false)}
-          onPlay={() => { setPlaying(true); onPlay?.(); }}
+          onPlay={() => {
+            setPlaying(true);
+            // Notify all other mounted players to pause themselves.
+            window.dispatchEvent(
+              new CustomEvent("flexa:video-playing", { detail: playerIdRef.current }),
+            );
+            onPlay?.();
+          }}
           onPause={() => { setPlaying(false); onPause?.(); }}
           onEnded={() => { setPlaying(false); onEnded?.(); }}
           onStalled={handleStall}

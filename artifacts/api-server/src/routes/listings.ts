@@ -59,21 +59,10 @@ const router = Router();
 const subcategoriesTable = alias(categoriesTable, "subcategories");
 
 function toStreamingVideoUrl(url: string): string {
-  if (
-    url.includes("res.cloudinary.com") &&
-    url.includes("/video/upload/") &&
-    !url.includes("fl_faststart")  // idempotent — never double-apply
-  ) {
-    // fl_faststart  — move moov atom to front for instant streaming
-    // vc_h264       — transcode to H.264 (handles HEVC/MOV uploaded from iOS)
-    // f_mp4         — output as MP4 container (universally supported)
-    // Add fl_faststart only if not already present (idempotent)
+  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
     if (!url.includes("fl_faststart")) {
       url = url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
     }
-    // ALWAYS fix extension: .mov/.hevc/etc → .mp4 when f_mp4 is in the URL.
-    // Pre-warmed URLs already have fl_faststart,vc_h264,f_mp4 but still end in .mov —
-    // Cloudinary returns 400 if the URL extension conflicts with the f_mp4 transform.
     if (url.includes("f_mp4")) {
       url = url.replace(/\.(mov|hevc|m4v|3gp|avi|mkv|webm)(\?|#|$)/i, '.mp4$2');
     }

@@ -147,7 +147,7 @@ router.post("/offers", requireAuth, async (req, res): Promise<void> => {
   void sendExpoPushToUser(listing.sellerId, {
     title: "Nouvo òf resevwa 💰",
     body: `Yon moun fè yon òf $${amount} sou "${listing.title}"`,
-    data: { screen: "offers" },
+    data: { url: "https://flexamarket.com/offers", screen: "offers" },
   });
 
   // SSE: notify seller in real-time
@@ -180,7 +180,7 @@ router.post("/offers/:id/accept", requireAuth, async (req, res): Promise<void> =
   void sendExpoPushToUser(offer.buyerId, {
     title: "Òf ou aksepte! ✅",
     body: `Mèt machandiz lan aksepte òf $${offer.amount} ou a.`,
-    data: { screen: "offers" },
+    data: { url: "https://flexamarket.com/offers", screen: "offers" },
   });
 
   notifyUser(offer.buyerId, "offer_updated", formatted);
@@ -213,7 +213,7 @@ router.post("/offers/:id/reject", requireAuth, async (req, res): Promise<void> =
   void sendExpoPushToUser(offer.buyerId, {
     title: "Òf ou refize ❌",
     body: `Òf $${offer.amount} ou a pa aksepte.`,
-    data: { screen: "offers" },
+    data: { url: "https://flexamarket.com/offers", screen: "offers" },
   });
 
   notifyUser(offer.buyerId, "offer_updated", formatted);

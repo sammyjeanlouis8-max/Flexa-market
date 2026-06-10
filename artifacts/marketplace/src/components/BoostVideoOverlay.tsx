@@ -55,10 +55,12 @@ interface BoostListing {
 interface Props {
   listing: BoostListing;
   onClose: () => void;
+  /** Called when video plays to completion or user clicks the CTA (ad was "completed"). */
+  onCompleted?: () => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
-export default function BoostVideoOverlay({ listing, onClose }: Props) {
+export default function BoostVideoOverlay({ listing, onClose, onCompleted }: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -194,13 +196,13 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     const type = listing.boostCtaType;
     if (type === "link" && listing.boostExternalLink) {
       window.open(listing.boostExternalLink, "_blank", "noopener,noreferrer");
-      onClose();
+      onCompleted ? onCompleted() : onClose();
     } else if (type === "whatsapp" && listing.boostWhatsappNumber) {
       window.open(`https://wa.me/${listing.boostWhatsappNumber.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
-      onClose();
+      onCompleted ? onCompleted() : onClose();
     } else {
       setLocation(`/listings/${listing.id}?buy=1`);
-      onClose();
+      onCompleted ? onCompleted() : onClose();
     }
   }, [listing, onClose, setLocation]);
 
@@ -227,7 +229,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             playsInline
             preload="auto"
             loop={false}
-            onEnded={onClose}
+            onEnded={() => { onCompleted ? onCompleted() : onClose(); }}
             onStalled={handleStall}
             onWaiting={handleStall}
             onPlay={() => { if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}

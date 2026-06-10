@@ -822,6 +822,8 @@ function VideoCard({
   const isPausedByHoldRef = useRef(false);
   const activatedAtRef = useRef<number>(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable unique id — never changes after mount. Used for exclusive playback.
+  const playerIdRef = useRef<string>(`flexa-vf-${Math.random().toString(36).slice(2)}`);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [muted, setMuted] = useState(false);
 
@@ -834,6 +836,19 @@ function VideoCard({
     };
     window.addEventListener("flexa:audio-unlocked", handler);
     return () => window.removeEventListener("flexa:audio-unlocked", handler);
+  }, []);
+
+  // Exclusive playback: pause this card when any other player starts.
+  useEffect(() => {
+    const myId = playerIdRef.current;
+    const handler = (e: Event) => {
+      const activeId = (e as CustomEvent<string>).detail;
+      if (activeId === myId) return;
+      const el = videoRef.current;
+      if (el && !el.paused) el.pause();
+    };
+    window.addEventListener("flexa:video-playing", handler);
+    return () => window.removeEventListener("flexa:video-playing", handler);
   }, []);
 
   const handleVideoStall = useCallback(() => {
@@ -1066,7 +1081,12 @@ function VideoCard({
         crossOrigin="anonymous"
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{ willChange: "transform", transform: "translateZ(0)" }}
-        onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
+        onPlay={() => {
+          setPlaying(true);
+          if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
+          // Pause every other mounted video player (VideoCard + VideoPlayer).
+          window.dispatchEvent(new CustomEvent("flexa:video-playing", { detail: playerIdRef.current }));
+        }}
         onPause={() => setPlaying(false)}
         loop
         onLoadedMetadata={e => {
@@ -1395,6 +1415,12 @@ export default function VideoFeed() {
   //              returns a different ordering each time the app is opened.
   const seenIdsRef = useRef<Set<number>>(new Set());
   const sessionSeedRef = useRef<number>(Math.floor(Math.random() * 1_000_000) + 1);
+  // Deep-link: read ?start=ID from URL once at mount so home-page thumbnail
+  // taps open the VideoFeed scrolled to the exact video the user clicked.
+  const startIdRef = useRef<number | null>(
+    (() => { try { const p = new URLSearchParams(window.location.search); const v = p.get('start'); return v ? Number(v) : null; } catch { return null; } })()
+  );
+  const startScrolledRef = useRef(false);
 
   const buildFeedUrl = useCallback((p: number, replaceAll = false) => {
     const seed = sessionSeedRef.current;
@@ -1433,6 +1459,23 @@ export default function VideoFeed() {
   }, [token, buildFeedUrl]);
 
   useEffect(() => { fetchPage(1, true); }, [fetchPage]);
+
+  // Jump to the video specified in ?start=ID once initial videos have loaded.
+  // Runs whenever `videos` or `loadingInitial` change; fires once thanks to
+  // startScrolledRef. Uses scrollIntoView({ behavior:'instant' }) so the
+  // user lands directly on the right card without an animated scroll.
+  useEffect(() => {
+    if (!startIdRef.current || startScrolledRef.current || loadingInitial || videos.length === 0) return;
+    const idx = videos.findIndex(v => v.id === startIdRef.current);
+    if (idx < 0) return; // video not in this page — fall back to index 0
+    startScrolledRef.current = true;
+    setActiveIdx(idx);
+    // Small delay so React has rendered the card DOM nodes before we scroll.
+    setTimeout(() => {
+      const el = cardRefs.current[idx];
+      el?.scrollIntoView({ behavior: 'instant', block: 'start' });
+    }, 80);
+  }, [videos, loadingInitial]);
 
   // Fetch sidebar listings for desktop view
   useEffect(() => {

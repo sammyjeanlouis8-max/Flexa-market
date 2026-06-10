@@ -224,13 +224,44 @@ export function initPushNotifications(): void {
 
   // Notification taps: navigate to website tab with the deep-link URL.
   // Per product decision: all push-tap routing goes through the WebView.
+  //
+  // Supports two data formats sent by the API server:
+  //   { url: "https://flexamarket.com/messages/123" }  ← preferred, direct
+  //   { screen: "messages", params: { conversationId: "123" } }  ← legacy
+  // Both resolve to a WebView navigation so the web app handles the route.
   try {
     Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response?.notification?.request?.content?.data as
-        | { url?: string }
-        | undefined;
-      const url = typeof data?.url === "string" ? data.url : null;
-      if (!url) return;
+        Record<string, any> | undefined;
+
+      let deepUrl: string | null = null;
+
+      if (typeof data?.url === "string" && data.url.length > 0) {
+        // Preferred: server sent a full URL or path
+        deepUrl = data.url.startsWith("http")
+          ? data.url
+          : `https://flexamarket.com${data.url}`;
+      } else if (typeof data?.screen === "string") {
+        // Legacy: server sent screen + optional params
+        const base = "https://flexamarket.com";
+        const screen = data.screen as string;
+        const params = (data.params ?? {}) as Record<string, string>;
+        const screenMap: Record<string, string> = {
+          messages: params.conversationId
+            ? `${base}/messages/${params.conversationId}`
+            : `${base}/messages`,
+          offers:         `${base}/offers`,
+          orders:         `${base}/orders`,
+          notifications:  `${base}/notifications`,
+          listings:       params.listingId
+            ? `${base}/listing/${params.listingId}`
+            : `${base}`,
+        };
+        deepUrl = screenMap[screen] ?? base;
+      }
+
+      if (!deepUrl) return;
+
       try {
         // Lazy-require expo-router only when we actually need to navigate.
         // Top-level import here triggered the Android startup crash; tap
@@ -238,7 +269,7 @@ export function initPushNotifications(): void {
         // require is always safe.
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { router } = require("expo-router");
-        router.push(`/website?url=${encodeURIComponent(url)}`);
+        router.push(`/website?url=${encodeURIComponent(deepUrl)}`);
       } catch {
         /* router not ready or expo-router shape changed — drop the tap */
       }

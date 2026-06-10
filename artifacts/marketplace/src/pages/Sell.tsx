@@ -376,6 +376,14 @@ export default function Sell() {
   // Country is watched from the form so it reacts to user selection
   const selectedCountry = form.watch("country") ?? "";
   const countryFlag = selectedCountry ? COUNTRY_FLAGS[selectedCountry] : null;
+  // Required-field watchers — drive the flash-red/flash-green badges
+  const watchTitle       = (form.watch("title")       ?? "") as string;
+  const watchDescription = (form.watch("description") ?? "") as string;
+  const watchPrice       = form.watch("price");
+  const watchCategory    = form.watch("categoryId");
+  const watchCondition   = (form.watch("condition")   ?? "") as string;
+  const watchCity        = (form.watch("city")        ?? "") as string;
+  const watchLocation    = (form.watch("location")    ?? "") as string;
   const cityOptions = useMemo(() => citiesFor(selectedCountry), [selectedCountry]);
   const stateOptions = useMemo(() => statesFor(selectedCountry), [selectedCountry]);
 
@@ -504,6 +512,21 @@ export default function Sell() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
+      {/* Flash-badge animations for required fields */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes flexa-pulse-red {
+          0%,100% { background:#fee2e2; color:#dc2626; border-color:#f87171; }
+          50%     { background:#fecaca; color:#991b1b; border-color:#ef4444; }
+        }
+        @keyframes flexa-pulse-green {
+          0%,100% { background:#dcfce7; color:#16a34a; border-color:#86efac; }
+          50%     { background:#bbf7d0; color:#15803d; border-color:#4ade80; }
+        }
+        .flexa-badge-red   { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;animation:flexa-pulse-red   0.9s ease-in-out infinite; }
+        .flexa-badge-green { display:inline-flex;align-items:center;border-radius:9999px;border:1px solid;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;animation:flexa-pulse-green 0.9s ease-in-out infinite; }
+        .flexa-dot-red     { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#dc2626;border:1px solid #f87171;margin-left:5px;vertical-align:middle;animation:flexa-pulse-red   0.9s ease-in-out infinite; }
+        .flexa-dot-green   { display:inline-block;width:8px;height:8px;border-radius:9999px;background:#16a34a;border:1px solid #86efac;margin-left:5px;vertical-align:middle;animation:flexa-pulse-green 0.9s ease-in-out infinite; }
+      ` }} />
       <h1 className="text-2xl font-extrabold text-foreground mb-2">
         {isEditMode ? t("sell.editTitle") : t("sell.pageTitle")}
       </h1>
@@ -575,7 +598,10 @@ export default function Sell() {
           {/* Image upload section */}
           <div>
             <label className="text-sm font-medium text-foreground block mb-2">
-              {t("sell.photos")} <span className="text-muted-foreground font-normal">({uploadedImages.length}/{MAX_IMAGES})</span>
+              {t("sell.photos")}
+              <span className={uploadedImages.length < 2 ? "flexa-badge-red" : "flexa-badge-green"}>
+                {uploadedImages.length}/{MAX_IMAGES}
+              </span>
             </label>
             <div className="grid grid-cols-3 gap-2">
               {uploadedImages.map((img, i) => (
@@ -655,9 +681,7 @@ export default function Sell() {
                 </>
               )}
             </div>
-            {uploadedImages.length < 2 && (
-              <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
-            )}
+            {/* hint shown as flashing badge on the Photos label above */}
 
             {/* ── Professional photo tips card ── */}
             <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
@@ -682,7 +706,10 @@ export default function Sell() {
 
           <FormField control={form.control} name="title" render={({ field }) => (
             <FormItem>
-              <FormLabel>{t("sell.listingTitle")}</FormLabel>
+              <FormLabel>
+                {t("sell.listingTitle")}
+                <span className={watchTitle.length >= 3 ? "flexa-dot-green" : "flexa-dot-red"} />
+              </FormLabel>
               <FormControl><Input placeholder={t("sell.titlePlaceholder")} {...field} data-testid="input-title" /></FormControl>
               <FormMessage />
             </FormItem>
@@ -690,7 +717,10 @@ export default function Sell() {
 
           <FormField control={form.control} name="description" render={({ field }) => (
             <FormItem>
-              <FormLabel>{t("sell.description")}</FormLabel>
+              <FormLabel>
+                {t("sell.description")}
+                <span className={watchDescription.length >= 10 ? "flexa-dot-green" : "flexa-dot-red"} />
+              </FormLabel>
               <FormControl><Textarea placeholder={t("sell.descriptionPlaceholder")} rows={4} {...field} data-testid="input-description" /></FormControl>
               <FormMessage />
             </FormItem>
@@ -699,7 +729,10 @@ export default function Sell() {
           <FormField control={form.control} name="price" render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between mb-1.5">
-                <FormLabel className="mb-0">{t("sell.price")}</FormLabel>
+                <FormLabel className="mb-0">
+                  {t("sell.price")}
+                  <span className={watchPrice !== undefined && watchPrice !== "" && watchPrice !== null && !isNaN(Number(watchPrice)) && Number(watchPrice) > 0 ? "flexa-dot-green" : "flexa-dot-red"} />
+                </FormLabel>
                 {/* Country-aware currency selector */}
                 {(() => {
                   const options = MULTI_CURRENCY_COUNTRIES[selectedCountry] ?? [{ code: "USD", symbol: "$", label: "$ USD" }];
@@ -795,7 +828,10 @@ export default function Sell() {
 
             return (
               <FormItem>
-                <FormLabel>{t("sell.category")}</FormLabel>
+                <FormLabel>
+                  {t("sell.category")}
+                  <span className={watchCategory ? "flexa-dot-green" : "flexa-dot-red"} />
+                </FormLabel>
 
                 {/* Trigger row */}
                 <button
@@ -1043,7 +1079,10 @@ export default function Sell() {
 
           <FormField control={form.control} name="condition" render={({ field }) => (
             <FormItem>
-              <FormLabel>{t("sell.condition")}</FormLabel>
+              <FormLabel>
+                {t("sell.condition")}
+                <span className={watchCondition ? "flexa-dot-green" : "flexa-dot-red"} />
+              </FormLabel>
               <FormControl>
                 <select
                   value={field.value}
@@ -1100,6 +1139,7 @@ export default function Sell() {
                 {isAdmin && (
                   <span className="ml-1 text-[10px] font-bold tracking-widest text-cyan-500 font-mono">ADM</span>
                 )}
+                <span className={selectedCountry ? "flexa-dot-green" : "flexa-dot-red"} />
               </FormLabel>
               {isAdmin ? (
                 <select
@@ -1175,6 +1215,7 @@ export default function Sell() {
                       {countryFlag} {selectedCountry}
                     </span>
                   )}
+                  <span className={watchCity.length >= 1 ? "flexa-dot-green" : "flexa-dot-red"} />
                 </FormLabel>
                 {cityOptions.length > 0 ? (
                   <>
@@ -1231,7 +1272,10 @@ export default function Sell() {
 
             <FormField control={form.control} name="location" render={({ field }) => (
               <FormItem>
-                <FormLabel>{t("sell.location")}</FormLabel>
+                <FormLabel>
+                {t("sell.location")}
+                <span className={watchLocation.length >= 2 ? "flexa-dot-green" : "flexa-dot-red"} />
+              </FormLabel>
                 <FormControl><Input placeholder={t("sell.locationPlaceholder")} {...field} data-testid="input-location" /></FormControl>
                 <FormMessage />
               </FormItem>

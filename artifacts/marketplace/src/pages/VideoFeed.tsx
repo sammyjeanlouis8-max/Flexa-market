@@ -822,6 +822,8 @@ function VideoCard({
   const isPausedByHoldRef = useRef(false);
   const activatedAtRef = useRef<number>(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stable unique id — never changes after mount. Used for exclusive playback.
+  const playerIdRef = useRef<string>(`flexa-vf-${Math.random().toString(36).slice(2)}`);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [muted, setMuted] = useState(false);
 
@@ -834,6 +836,19 @@ function VideoCard({
     };
     window.addEventListener("flexa:audio-unlocked", handler);
     return () => window.removeEventListener("flexa:audio-unlocked", handler);
+  }, []);
+
+  // Exclusive playback: pause this card when any other player starts.
+  useEffect(() => {
+    const myId = playerIdRef.current;
+    const handler = (e: Event) => {
+      const activeId = (e as CustomEvent<string>).detail;
+      if (activeId === myId) return;
+      const el = videoRef.current;
+      if (el && !el.paused) el.pause();
+    };
+    window.addEventListener("flexa:video-playing", handler);
+    return () => window.removeEventListener("flexa:video-playing", handler);
   }, []);
 
   const handleVideoStall = useCallback(() => {
@@ -1066,7 +1081,12 @@ function VideoCard({
         crossOrigin="anonymous"
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
         style={{ willChange: "transform", transform: "translateZ(0)" }}
-        onPlay={() => { setPlaying(true); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
+        onPlay={() => {
+          setPlaying(true);
+          if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; }
+          // Pause every other mounted video player (VideoCard + VideoPlayer).
+          window.dispatchEvent(new CustomEvent("flexa:video-playing", { detail: playerIdRef.current }));
+        }}
         onPause={() => setPlaying(false)}
         loop
         onLoadedMetadata={e => {

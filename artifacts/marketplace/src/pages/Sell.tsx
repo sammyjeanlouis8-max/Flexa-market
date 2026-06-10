@@ -677,7 +677,8 @@ export default function Sell() {
                 </>
               )}
             </div>
-            {/* hint shown as flashing badge on the Photos label above */}
+            {/* Minimum / maximum photo hint */}
+            <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
 
             {/* ── Professional photo tips card ── */}
             <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">

@@ -59,12 +59,17 @@ const router = Router();
 const subcategoriesTable = alias(categoriesTable, "subcategories");
 
 function toStreamingVideoUrl(url: string): string {
-  if (url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
-    if (!url.includes("fl_faststart")) {
-      url = url.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/");
+  if (url && url.includes("res.cloudinary.com") && url.includes("/video/upload/")) {
+    // Remove fl_faststart — it returns HTTP 400 on this Cloudinary account
+    url = url.replace(/fl_faststart,?/g, "").replace(/,?fl_faststart/g, "");
+    url = url.replace(/,,+/g, ",").replace(/\/,/g, "/").replace(/,\//g, "/");
+    // Add vc_h264,f_mp4 transforms if not already present (idempotent)
+    if (!url.includes("vc_h264") && !url.includes("f_mp4")) {
+      url = url.replace("/video/upload/", "/video/upload/vc_h264,f_mp4/");
     }
+    // Always fix extension: .mov/.hevc/etc → .mp4 when f_mp4 is in the URL
     if (url.includes("f_mp4")) {
-      url = url.replace(/\.(mov|hevc|m4v|3gp|avi|mkv|webm)(\?|#|$)/i, '.mp4$2');
+      url = url.replace(/\.(mov|hevc|m4v|3gp|avi|mkv|webm)(\?|#|$)/i, ".mp4$2");
     }
     return url;
   }

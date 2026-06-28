@@ -1,3 +1,4 @@
 - [Flexa Market deploy & debug](flexa-market.md) — Creole-only marketplace, edited via GitHub Contents API, DO auto-deploy; Replit screenshot tool shows a false spinner, use Nix chromium+puppeteer for ground truth.
 - [Flexa delivery escrow & auto-completion](flexa-delivery-escrow.md) — FM-pool (delivery_method motorcycle/car) escrow releases only on real driver delivery, never the autoReleaseAt timer; timer was the auto-complete-without-driver bug.
+- [Flexa money-flow concurrency](flexa-money-concurrency.md) — wallet/debt read+mutate must run in db.transaction with .for("update") (lock debt then wallet); atomic WHERE guard alone loses money on partial payments.
 - [Flexa delivery status-enum drift](flexa-status-enum-drift.md) — new delivery status must be added to ALL status-enum lists (backend inArray x2, driver UI maps + screen selector, buyer STEPS/code-visibility, i18n) or UI/GPS silently breaks.

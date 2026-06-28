@@ -1,0 +1,1 @@
+- [Flexa Market deploy & debug](flexa-market.md) — Creole-only marketplace, edited via GitHub Contents API, DO auto-deploy; Replit screenshot tool shows a false spinner, use Nix chromium+puppeteer for ground truth.

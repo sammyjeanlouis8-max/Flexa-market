@@ -1,0 +1,358 @@
+# PRO MAX PROMPT — Rebuild the Entire Delivery System (Do NOT Patch)
+
+The current delivery workflow is fundamentally broken and must be rebuilt from the ground up. Do NOT apply temporary fixes, patches, or workarounds. Analyze the entire codebase, identify the root causes, and redesign the delivery workflow using a secure, production-grade architecture.
+
+## Critical Issue
+
+Orders are automatically completing even when no driver has accepted them.
+
+This must NEVER happen.
+
+---
+
+## Rebuild the Delivery State Machine
+
+Implement a strict delivery lifecycle with the following statuses:
+
+1. Pending
+2. Waiting for Driver
+3. Driver Accepted
+4. Driver Arrived at Pickup
+5. Picked Up
+6. On the Way
+7. Delivered
+8. Cancelled
+
+No status may be skipped.
+
+Every transition must be triggered only by the correct actor.
+
+---
+
+## Driver Acceptance Logic
+
+When a customer places an order:
+
+• The order must immediately appear in the Available Deliveries list.
+• Every eligible driver must see it in real time.
+• The order must NEVER disappear automatically.
+• The order must NEVER auto-assign.
+• The order must NEVER auto-complete.
+• The order must NEVER expire by itself.
+• The order must remain visible until:
+  - A driver accepts it, OR
+  - The buyer cancels it before acceptance.
+
+Nothing else should remove the order.
+
+---
+
+## Remove All Automatic Status Changes
+
+Search the ENTIRE project for any code that automatically changes delivery status.
+
+Inspect:
+
+- Backend APIs
+- Database triggers
+- Firebase listeners
+- Supabase realtime
+- Cron jobs
+- Background workers
+- Scheduled tasks
+- Timers
+- setTimeout
+- setInterval
+- React useEffect hooks
+- Event listeners
+- Lifecycle methods
+- Queue processors
+- Cloud Functions
+- Edge Functions
+- WebSocket events
+
+Remove or rewrite every piece of logic that automatically marks deliveries as:
+
+- Accepted
+- Picked Up
+- Delivered
+- Completed
+- Closed
+- Finished
+- Archived
+- Expired
+
+Only real user actions may change delivery status.
+
+---
+
+## Driver Home Screen
+
+Completely redesign the Available Deliveries screen.
+
+Each delivery card must display:
+
+• Large product image
+• Product name
+• Product quantity
+• Merchant/store name
+• Pickup address
+• Drop-off address
+• Pickup city
+• Drop-off city
+• Estimated distance
+• Estimated drive time
+• Delivery fee
+• Total payout
+• Customer notes
+• Order number
+
+The product image must be large and highly visible.
+
+Pickup and drop-off locations must stand out visually.
+
+Drivers should immediately understand:
+
+- What they are picking up
+- Where they are picking it up
+- Where they are delivering it
+- How much they will earn
+
+---
+
+## Delivery Details Screen
+
+When a driver opens an order, display:
+
+Large product gallery
+
+Product description
+
+Pickup map
+
+Drop-off map
+
+Merchant information
+
+Customer information (if allowed)
+
+Pickup instructions
+
+Delivery instructions
+
+Estimated route
+
+Estimated driving time
+
+Estimated payout
+
+Everything should have a premium modern design similar to DoorDash Driver, Uber Eats Driver, Spark Driver, and Instacart Shopper.
+
+---
+
+## Driver Workflow
+
+The only valid buttons are:
+
+Accept Delivery
+
+↓
+
+Arrived at Pickup
+
+↓
+
+Picked Up
+
+↓
+
+Start Delivery
+
+↓
+
+Delivered
+
+Each button advances ONLY one status.
+
+Never skip any step.
+
+---
+
+## Order Locking
+
+When a driver presses "Accept Delivery":
+
+Immediately:
+
+- Lock the order
+- Assign the driver
+- Remove the order from every other driver's screen
+- Broadcast updates in real time
+- Prevent duplicate acceptance
+
+No two drivers can ever accept the same order.
+
+---
+
+## Cancellation Rules
+
+Buyer may cancel ONLY before a driver accepts.
+
+After acceptance:
+
+Buyer cannot cancel.
+
+Only Admin or Support may cancel after acceptance.
+
+---
+
+## Real-Time Synchronization
+
+Buyer
+
+Driver
+
+Merchant
+
+Admin
+
+must all receive instant updates.
+
+No page refresh.
+
+No duplicate orders.
+
+No ghost deliveries.
+
+No stale data.
+
+---
+
+## Push Notifications
+
+Trigger notifications ONLY for legitimate events:
+
+New delivery available
+
+Driver accepted
+
+Driver arrived
+
+Order picked up
+
+Driver on the way
+
+Order delivered
+
+Order cancelled
+
+Never send duplicate notifications.
+
+---
+
+## Translation System
+
+Every page of the app must support multilingual translation.
+
+Remove all hardcoded text.
+
+Use the localization system everywhere.
+
+Translate:
+
+- Driver pages
+- Customer pages
+- Merchant pages
+- Admin dashboard
+- Buttons
+- Forms
+- Menus
+- Errors
+- Alerts
+- Notifications
+- Delivery statuses
+- Checkout
+- Order history
+- Profile
+- Settings
+- Search
+- Filters
+- Everything
+
+Supported languages:
+
+English
+
+French
+
+Haitian Creole
+
+Every new screen and every future component must automatically support translations.
+
+---
+
+## Backend Validation
+
+Validate every delivery status change on the server.
+
+Never trust the client.
+
+Reject invalid transitions.
+
+Prevent race conditions.
+
+Prevent duplicate requests.
+
+Prevent concurrent acceptance.
+
+Use database transactions where appropriate.
+
+---
+
+## Logging
+
+Log every delivery event:
+
+Order created
+
+Driver accepted
+
+Driver arrived
+
+Picked up
+
+Started delivery
+
+Delivered
+
+Cancelled
+
+Store timestamps for every event.
+
+---
+
+## Testing Requirements
+
+Create multiple test deliveries.
+
+Verify:
+
+✅ Orders stay available until accepted or cancelled.
+✅ Orders never complete automatically.
+✅ Only one driver can accept an order.
+✅ Product images always display correctly.
+✅ Pickup location is clearly visible.
+✅ Drop-off location is clearly visible.
+✅ Real-time updates work perfectly.
+✅ Push notifications fire correctly.
+✅ Every screen supports English, French, and Haitian Creole.
+✅ Every status transition is valid.
+✅ No automatic status changes exist anywhere.
+
+---
+
+## Final Objective
+
+Rebuild the delivery system to production quality, matching the reliability and user experience of Uber Eats Driver, DoorDash Driver, Spark Driver, and Instacart Shopper.
+
+The final system must be secure, scalable, fault-tolerant, fully real-time, multilingual, and completely eliminate automatic order completion unless explicitly triggered by the correct user action.

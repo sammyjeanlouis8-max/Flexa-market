@@ -1,0 +1,145 @@
+====================================================
+ENHANCED FLEX CARD DEBT RESTRICTION SYSTEM
+====================================================
+
+Administrators must be able to block a user's Flex Card for legitimate reasons, including:
+
+• Outstanding debt
+• Merchant complaint
+• Chargeback
+• Fraud investigation
+• Policy violation
+• Manual review
+• Any other valid administrative reason
+
+Blocking the Flex Card must NOT suspend the entire account.
+
+The user account should remain active.
+
+====================================================
+USER ACCESS AFTER CARD BLOCK
+====================================================
+
+When a Flex Card is blocked because of an unpaid debt or administrative action:
+
+The user MUST still be allowed to:
+
+• Log into the application
+• View their profile
+• Browse the marketplace
+• Sell products
+• Receive payments
+• Receive transfers
+• Receive refunds
+• Receive wallet deposits
+• View transaction history
+• Contact support
+
+The user MUST NOT be allowed to:
+
+• Spend wallet funds
+• Use the Flex Card
+• Make purchases
+• Transfer money to others
+• Withdraw money
+• Pay bills
+• Send money
+• Use NFC payments
+• Use online card payments
+• Create virtual cards
+• Perform any outgoing financial transaction
+
+Only incoming money is allowed.
+
+All outgoing transactions must be blocked until the debt is fully paid.
+
+====================================================
+DEBT NOTIFICATION
+====================================================
+
+Whenever the blocked user logs in,
+
+display a permanent notification explaining:
+
+• Why the Flex Card is blocked.
+• The administrative reason.
+• The outstanding debt amount.
+• The total balance due.
+• The payment deadline (if applicable).
+• Instructions for repayment.
+
+The notification must remain visible until the debt is fully paid.
+
+====================================================
+REPAYMENT SCREEN
+====================================================
+
+Create a dedicated debt repayment page.
+
+Display:
+
+Outstanding balance
+
+Minimum payment
+
+Full payment amount
+
+Reference number
+
+Official Flex repayment account number
+
+Official Flex repayment card number (if applicable)
+
+Payment instructions
+
+Upload payment receipt (if manual verification is required)
+
+Payment history
+
+Support contact
+
+The repayment information must be easy to understand.
+
+====================================================
+AUTOMATIC DEBT VERIFICATION
+====================================================
+
+After the repayment is confirmed by the system,
+
+automatically:
+
+• Set outstanding balance to zero.
+• Remove all debt restrictions.
+• Unblock the Flex Card.
+• Restore purchases.
+• Restore transfers.
+• Restore withdrawals.
+• Restore all outgoing financial features.
+
+No administrator should need to manually unblock the account after the debt has been verified.
+
+====================================================
+AUDIT LOG
+====================================================
+
+Record every action.
+
+Store:
+
+Admin ID
+
+User ID
+
+Reason for block
+
+Outstanding balance
+
+Payment confirmation
+
+Block date
+
+Unblock date
+
+Administrator notes
+
+Every action must be permanently logged for security and compliance.

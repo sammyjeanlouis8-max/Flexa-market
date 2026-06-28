@@ -2,3 +2,4 @@
 - [Flexa delivery escrow & auto-completion](flexa-delivery-escrow.md) — FM-pool (delivery_method motorcycle/car) escrow releases only on real driver delivery, never the autoReleaseAt timer; timer was the auto-complete-without-driver bug.
 - [Flexa money-flow concurrency](flexa-money-concurrency.md) — wallet/debt read+mutate must run in db.transaction with .for("update") (lock debt then wallet); atomic WHERE guard alone loses money on partial payments.
 - [Flexa delivery status-enum drift](flexa-status-enum-drift.md) — new delivery status must be added to ALL status-enum lists (backend inArray x2, driver UI maps + screen selector, buyer STEPS/code-visibility, i18n) or UI/GPS silently breaks.
+- [Flexa promo video feed](flexa-video-feed.md) — playback gotchas: first tap unmutes (autoplay forces mute), back uses history.back fallback, NEVER load() on every stall + hard-reload once-per-activation (reset only on activate, not onPlay).

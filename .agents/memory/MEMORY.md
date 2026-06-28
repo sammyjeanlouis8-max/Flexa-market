@@ -1,1 +1,2 @@
 - [Flexa Market deploy & debug](flexa-market.md) — Creole-only marketplace, edited via GitHub Contents API, DO auto-deploy; Replit screenshot tool shows a false spinner, use Nix chromium+puppeteer for ground truth.
+- [Flexa delivery escrow & auto-completion](flexa-delivery-escrow.md) — FM-pool (delivery_method motorcycle/car) escrow releases only on real driver delivery, never the autoReleaseAt timer; timer was the auto-complete-without-driver bug.

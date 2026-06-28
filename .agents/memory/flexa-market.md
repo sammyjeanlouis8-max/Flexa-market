@@ -17,3 +17,9 @@ description: How the Flexa Market marketplace is edited, deployed, and reliably 
 ## Build characteristics
 - Build is `vite build` with **no typecheck**, so broken TS still builds and ships. Validate edits compile locally first with the repo's esbuild binary (pass the `.tsx` directly + `--jsx=automatic`).
 - `__BUILD_ID__` cache-buster + chunk-error auto-reload live in `main.tsx`. **Never call `window.location.reload()` during React render** — it caused an infinite reload loop; do reloads inside `useEffect`/event handlers instead.
+
+## Video feed (TikTok-style player)
+- `/api/videos/feed` returns `{videos:[]}` when called **without a logged-in user token** (geo "Haiti" from server IP). **You cannot reproduce the feed via curl/puppeteer without a real user token** — the carousel on Home and the fullscreen `/videos` both use this same endpoint. Don't waste time probing it anonymously.
+- **Why:** wasted a session assuming the feed was broken when it was just auth/geo-gated.
+- Black-screen-on-play root cause is the **video file failing to render frames** (load failure / likely iPhone HEVC, no server-side transcoding exists — backend has `sharp` for images only, no ffmpeg). The player's autoplay logic (muted-first `play()` on `isActive`) is sound; don't rewrite it.
+- **How to apply:** mitigated in `VideoFeed.tsx` VideoCard with a persistent thumbnail `<img>` fallback behind `<video>` + a capped retry (`errorCountRef`, stop after 3 errors → `loadFailed` → tap-to-retry overlay) instead of the old infinite 1.5s silent reload loop. A real fix for HEVC requires server-side transcoding.

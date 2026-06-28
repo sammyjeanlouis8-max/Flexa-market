@@ -23,3 +23,8 @@ description: How the Flexa Market marketplace is edited, deployed, and reliably 
 - **Why:** wasted a session assuming the feed was broken when it was just auth/geo-gated.
 - Black-screen-on-play root cause is the **video file failing to render frames** (load failure / likely iPhone HEVC, no server-side transcoding exists — backend has `sharp` for images only, no ffmpeg). The player's autoplay logic (muted-first `play()` on `isActive`) is sound; don't rewrite it.
 - **How to apply:** mitigated in `VideoFeed.tsx` VideoCard with a persistent thumbnail `<img>` fallback behind `<video>` + a capped retry (`errorCountRef`, stop after 3 errors → `loadFailed` → tap-to-retry overlay) instead of the old infinite 1.5s silent reload loop. A real fix for HEVC requires server-side transcoding.
+
+## Autoplay audio unlock (shared session flag)
+- Browsers block unmuted autoplay until the first user gesture. Both VideoFeed.tsx and BoostVideoOverlay.tsx (sponsored ad) must share the SAME unlock state via `@/lib/audioUnlocked` (sessionStorage key `flexaAudioUnlocked`, dispatches `flexa:audio-unlocked` event).
+- Pattern: on mount try `play()` unmuted; on success call `setAudioUnlocked(true)`. On muted fallback, only show the "Tape pou son" hint if `!isAudioUnlocked()`, and arm a one-shot window gesture listener (touchstart/pointerdown/click, capture) that unmutes + `setAudioUnlocked(true)`. Also listen for `flexa:audio-unlocked` to unmute if unlocked elsewhere.
+- Why: once unlocked once per session, every later ad/video must come up with sound and NEVER re-show the tap-for-sound prompt. The "Tape pou son" string lives in BoostVideoOverlay.tsx (hardcoded) — NOT VideoFeed.tsx.

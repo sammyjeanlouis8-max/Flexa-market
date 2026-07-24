@@ -5,3 +5,4 @@
 - [Flexa promo video feed](flexa-video-feed.md) — playback gotchas: first tap unmutes (autoplay forces mute), back uses history.back fallback, NEVER load() on every stall + hard-reload once-per-activation (reset only on activate, not onPlay).
 - [Flexa Market i18n](flexa-i18n.md) — translations in src/i18n/locales/*.ts; only en/fr/ht maintained (others fall back); recurring bug is hardcoded Creole literals bypassing t().
 - [Flexa delivery listing lookup](flexa-delivery-listing-lookup.md) — many delivery rows have null listingId; product photo/title must join listings via COALESCE(delivery.listingId, transaction.listingId).
+- [Flexa Stripe recharge fallback](flexa-stripe-recharge-fallback.md) — mobile WebView blocks the Stripe success redirect, so wallet credit can't rely on webhook alone; public idempotent /stripe/checkout/activate is the safety net.

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer, Monitor } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer, Monitor, Repeat2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -417,7 +417,8 @@ export default function AdminTV() {
   const [goingLive, setGoingLive] = useState<number | null>(null);
   const [broadcastState, setBroadcastState] = useState<"playing"|"paused"|"stopped">("stopped");
   const [viewerCount, setViewerCount] = useState(0);
-  const bs = useBroadcast(); // for startedAt (broadcast timer)
+  const [loopProgramId, setLoopProgramId] = useState<number | null>(null);
+  const bs = useBroadcast(); // for startedAt + programId (broadcast timer)
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -494,6 +495,25 @@ export default function AdminTV() {
       .then(d => { setViewerCount(d.viewerCount ?? 0); if (d.state) setBroadcastState(d.state); })
       .catch(() => {});
   }, []);
+
+  // Auto-restart when broadcast stops and loop is enabled
+  const prevBroadcastState = useRef(broadcastState);
+  useEffect(() => {
+    if (
+      prevBroadcastState.current !== "stopped" &&
+      broadcastState === "stopped" &&
+      loopProgramId !== null
+    ) {
+      // Small delay so the stop is fully processed before we restart
+      const t = setTimeout(() => {
+        broadcastPlay.mutate(loopProgramId);
+        toast({ title: `🔁 ${t("tv.loopOn")} — rekomanse otomatik` });
+      }, 2000);
+      prevBroadcastState.current = broadcastState;
+      return () => clearTimeout(t);
+    }
+    prevBroadcastState.current = broadcastState;
+  }, [broadcastState]); // eslint-disable-line
 
   function getAdminEmbedUrl(p: TvProgram): string | null {
     if (p.videoUrl) {
@@ -754,7 +774,7 @@ export default function AdminTV() {
                       <span className="flex items-center gap-1"><Eye size={10} /> {p.viewCount}</span>
                     </div>
                     {/* Quick action buttons */}
-                    <div className="flex gap-2 mt-1.5">
+                    <div className="flex gap-2 mt-1.5 flex-wrap">
                       <button
                         onClick={() => setPreviewProgram(prev => prev?.id === p.id ? null : p)}
                         className={cn(
@@ -765,6 +785,20 @@ export default function AdminTV() {
                         )}
                       >
                         <Play size={9} /> {previewProgram?.id === p.id ? "Fèmen" : "Preview"}
+                      </button>
+                      {/* 🔁 Loop/Repeat toggle */}
+                      <button
+                        onClick={() => setLoopProgramId(prev => prev === p.id ? null : p.id)}
+                        title={t("tv.loopTooltip")}
+                        className={cn(
+                          "flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors",
+                          loopProgramId === p.id
+                            ? "bg-green-500 text-white"
+                            : "bg-muted text-muted-foreground hover:bg-green-100 hover:text-green-700"
+                        )}
+                      >
+                        <Repeat2 size={9} />
+                        {loopProgramId === p.id ? t("tv.loopOn") : t("tv.loopOff")}
                       </button>
                       {p.type === "live" ? (
                         <button

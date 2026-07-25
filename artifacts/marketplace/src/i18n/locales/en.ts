@@ -3772,5 +3772,8 @@ export default {
     streamGuideStep3: "3. Copy the YouTube Live URL (e.g. youtube.com/live/ID)",
     streamGuideStep4: "4. Add a program here: type = 🔴 Live, paste the URL, click Save",
     streamGuideStep5: "5. Your stream appears live on Flexa TV for everyone instantly",
+    loopOff: "Repeat",
+    loopOn: "🔁 Repeating",
+    loopTooltip: "Auto-restarts when finished",
   },
 } as const;

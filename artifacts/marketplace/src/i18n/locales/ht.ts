@@ -3813,5 +3813,8 @@ export default {
     streamGuideStep3: "3. Kopye URL YouTube Live la (ex: youtube.com/live/ID)",
     streamGuideStep4: "4. Ajoute yon pwogram isit: kalite = 🔴 Live, kole URL a, klike Anrejistre",
     streamGuideStep5: "5. Transmisyon ou parèt Live sou Flexa TV pou tout moun imedyatman",
+    loopOff: "Repete",
+    loopOn: "🔁 Ap repete",
+    loopTooltip: "Rekomanse otomatik lè li fini",
   },
 } as const;

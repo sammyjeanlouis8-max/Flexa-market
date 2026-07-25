@@ -3810,5 +3810,8 @@ export default {
     streamGuideStep3: "3. Copiez l'URL du direct YouTube (ex : youtube.com/live/ID)",
     streamGuideStep4: "4. Ajoutez un programme ici : type = 🔴 Direct, collez l'URL, cliquez Enregistrer",
     streamGuideStep5: "5. Votre diffusion apparaît en direct sur Flexa TV pour tout le monde instantanément",
+    loopOff: "Répéter",
+    loopOn: "🔁 En boucle",
+    loopTooltip: "Redémarre automatiquement à la fin",
   },
 } as const;

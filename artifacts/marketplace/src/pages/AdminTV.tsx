@@ -763,19 +763,53 @@ export default function AdminTV() {
     }
   }
 
-  async function searchYTS(e?: FormEvent) {
+  async function searchYTS(e?: FormEvent, overrideGenre?: string, overrideQuality?: string) {
     e?.preventDefault();
     setYtsLoading(true);
     setYtsResults([]);
     setYtsTotal(null);
     try {
-      const q = ytsQuery.trim() || "";
-      const params = new URLSearchParams({ quality: ytsQuality });
-      if (q)       params.set("q", q);
-      if (ytsGenre) params.set("genre", ytsGenre);
-      const data = await apiAuth(`/api/admin/tv/import/yts?${params}`).then(r => r.json());
-      setYtsResults(data.results ?? []);
-      setYtsTotal(data.numFound ?? 0);
+      const q       = ytsQuery.trim() || "";
+      const genre   = overrideGenre   !== undefined ? overrideGenre   : ytsGenre;
+      const quality = overrideQuality !== undefined ? overrideQuality : ytsQuality;
+
+      // Call YTS directly from the browser — avoids server-side geo/IP block.
+      // yts.mx supports CORS for public API requests.
+      const params = new URLSearchParams({
+        limit    : "24",
+        sort_by  : "year",
+        order_by : "desc",
+      });
+      if (q)       params.set("query_term", q);
+      if (genre)   params.set("genre", genre);
+      if (quality && quality !== "all") params.set("quality", quality);
+
+      const resp = await fetch(`https://yts.mx/api/v2/list_movies.json?${params.toString()}`);
+      if (!resp.ok) throw new Error("YTS unreachable");
+      const data = await resp.json() as {
+        data?: { movie_count?: number; movies?: Array<Record<string, unknown>> };
+      };
+      const movies = data?.data?.movies ?? [];
+      const results = movies.map((m) => {
+        const imdbCode = String(m.imdb_code ?? "");
+        const genres   = Array.isArray(m.genres) ? (m.genres as string[]) : [];
+        return {
+          identifier      : `yts-${imdbCode || m.id}`,
+          title           : String(m.title_long ?? m.title ?? ""),
+          description     : String(m.summary ?? m.description_intro ?? "").replace(/<[^>]+>/g, "").slice(0, 500),
+          year            : m.year ? Number(m.year) : null,
+          creator         : null as string | null,
+          subjects        : genres,
+          durationMinutes : m.runtime ? Number(m.runtime) : null,
+          thumbnailUrl    : String(m.large_cover_image ?? m.medium_cover_image ?? ""),
+          videoUrl        : imdbCode
+            ? `https://vidsrc.me/embed/movie?imdb=${imdbCode}`
+            : `https://vidsrc.me/embed/movie?tmdb=${m.id}`,
+          downloads       : m.download_count ? Number(m.download_count) : 0,
+        };
+      });
+      setYtsResults(results);
+      setYtsTotal(data?.data?.movie_count ?? results.length);
     } catch {
       toast({ title: "Erè rechèch YTS", variant: "destructive" });
     } finally {
@@ -1563,7 +1597,7 @@ export default function AdminTV() {
             <div className="flex gap-1.5 mb-1.5">
               {(["720p","1080p","2160p"] as const).map(q => (
                 <button key={q}
-                  onClick={() => { setYtsQuality(q); setTimeout(() => searchYTS(), 0); }}
+                  onClick={() => { setYtsQuality(q); searchYTS(undefined, ytsGenre, q); }}
                   className={cn("text-[10px] px-2.5 py-1 rounded-full border font-bold transition-colors",
                     ytsQuality === q
                       ? "bg-green-600 text-white border-green-600"
@@ -1596,7 +1630,7 @@ export default function AdminTV() {
             {/* Genre quick-filters */}
             <div className="flex gap-1.5 flex-wrap">
               <button
-                onClick={() => { setYtsGenre(""); setTimeout(() => searchYTS(), 0); }}
+                onClick={() => { setYtsGenre(""); searchYTS(undefined, "", ytsQuality); }}
                 className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
                   ytsGenre === ""
                     ? "bg-green-600 text-white border-green-600"
@@ -1606,7 +1640,7 @@ export default function AdminTV() {
               </button>
               {YTS_GENRES.map(g => (
                 <button key={g.value}
-                  onClick={() => { setYtsGenre(g.value); setYtsQuery(""); setTimeout(() => searchYTS(), 0); }}
+                  onClick={() => { setYtsGenre(g.value); setYtsQuery(""); searchYTS(undefined, g.value, ytsQuality); }}
                   className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
                     ytsGenre === g.value
                       ? "bg-green-600 text-white border-green-600"

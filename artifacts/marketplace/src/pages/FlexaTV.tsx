@@ -410,6 +410,100 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
   );
 }
 
+/** Netflix-style hero card for the first/top live stream — full-width landscape. */
+function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative w-full overflow-hidden rounded-2xl text-left focus:outline-none mb-2"
+      style={{ paddingBottom: "52%" }}
+    >
+      <div className="absolute inset-0">
+        {program.thumbnailUrl ? (
+          <img
+            src={program.thumbnailUrl}
+            alt={program.title}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className={cn("w-full h-full bg-gradient-to-br", titleGradient(program.title))} />
+        )}
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+        {/* Live badge */}
+        <div className="absolute top-3 left-3 flex items-center gap-1 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse shadow-lg">
+          <Radio size={8} /> LIVE
+        </div>
+        {/* Views */}
+        {program.viewCount > 0 && (
+          <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/60 text-white text-[9px] px-2 py-0.5 rounded-full">
+            <Eye size={8} /> {program.viewCount.toLocaleString()}
+          </div>
+        )}
+        {/* Bottom info */}
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-4">
+          <p className="text-white font-bold text-base line-clamp-2 drop-shadow mb-2">{program.title}</p>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 bg-white text-black text-xs font-bold px-4 py-1.5 rounded-full shadow-lg group-hover:bg-white/90 transition-colors">
+              <Play size={12} className="fill-black" /> Gade Kounye a
+            </span>
+          </div>
+        </div>
+        {/* Hover vignette */}
+        <div className="absolute inset-0 ring-2 ring-inset ring-white/0 group-hover:ring-white/20 rounded-2xl transition-all" />
+      </div>
+    </button>
+  );
+}
+
+/** Netflix-style compact landscape card — used in the 2-col live grid. */
+function LiveGridCard({ program, onClick }: { program: TvProgram; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative w-full overflow-hidden rounded-xl text-left focus:outline-none"
+    >
+      <div className="relative w-full overflow-hidden rounded-xl bg-[#141414]" style={{ paddingBottom: "56.25%" }}>
+        <div className="absolute inset-0">
+          {program.thumbnailUrl ? (
+            <img
+              src={program.thumbnailUrl}
+              alt={program.title}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div className={cn("w-full h-full bg-gradient-to-br", titleGradient(program.title))}>
+              <span className="text-white font-bold text-lg drop-shadow m-auto">
+                {program.title[0]?.toUpperCase() ?? "📺"}
+              </span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+          {/* LIVE badge */}
+          <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+            <Radio size={6} /> LIVE
+          </div>
+          {/* Views */}
+          {program.viewCount > 0 && (
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/60 text-white text-[8px] px-1.5 py-0.5 rounded-full">
+              <Eye size={7} /> {program.viewCount.toLocaleString()}
+            </div>
+          )}
+          {/* Play overlay */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+            <div className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow">
+              <Play size={13} className="text-black fill-black ml-0.5" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <p className="mt-1.5 text-[11px] font-semibold leading-tight line-clamp-2 text-foreground px-0.5">
+        {program.title}
+      </p>
+    </button>
+  );
+}
+
 /** Netflix-style vertical poster card — used in the Films grid. */
 function PosterCard({ program, onClick, minLabel }: {
   program: TvProgram; onClick: () => void; minLabel?: string;
@@ -746,17 +840,39 @@ export default function FlexaTV() {
           ))}
         </div>
 
-        {/* ── Live Tab ── */}
+        {/* ── Live Tab — Netflix-style ── */}
         {activeTab === "live" && (
-          <div className="space-y-2">
+          <div>
             {livePrograms.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Radio size={40} className="mx-auto mb-3 opacity-30" />
                 <p>{t("tv.noLive")}</p>
               </div>
-            ) : livePrograms.map(p => (
-              <ProgramCard key={p.id} program={p} onClick={() => play(p)} typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />
-            ))}
+            ) : (
+              <>
+                {/* Hero — first (most-viewed) live */}
+                <LiveHeroCard program={livePrograms[0]} onClick={() => play(livePrograms[0])} />
+
+                {/* 2-column grid for remaining live streams + inline ads every 4 cards */}
+                {livePrograms.length > 1 && (() => {
+                  const rest = livePrograms.slice(1);
+                  const rows: React.ReactNode[] = [];
+                  for (let i = 0; i < rest.length; i += 2) {
+                    rows.push(
+                      <div key={rest[i].id} className="grid grid-cols-2 gap-2 mb-2">
+                        <LiveGridCard program={rest[i]} onClick={() => play(rest[i])} />
+                        {rest[i + 1] && <LiveGridCard program={rest[i + 1]} onClick={() => play(rest[i + 1])} />}
+                      </div>
+                    );
+                    // Repeat Flexa Market ad every 4 cards (after user dismissed the first)
+                    if ((i + 2) % 4 === 0 && adListing) {
+                      rows.push(<AdBanner key={`ad-${i}`} listing={adListing} onDone={() => {}} />);
+                    }
+                  }
+                  return rows;
+                })()}
+              </>
+            )}
           </div>
         )}
 

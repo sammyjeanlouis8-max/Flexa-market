@@ -410,6 +410,67 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
   );
 }
 
+/** Netflix-style vertical poster card — used in the Films grid. */
+function PosterCard({ program, onClick, minLabel }: {
+  program: TvProgram; onClick: () => void; minLabel?: string;
+}) {
+  const isLive = program.type === "live";
+  return (
+    <button
+      onClick={onClick}
+      className="group relative flex flex-col text-left w-full focus:outline-none"
+    >
+      {/* Poster — 2:3 portrait ratio */}
+      <div className="relative w-full overflow-hidden rounded-lg bg-[#141414]" style={{ paddingBottom: "150%" }}>
+        <div className="absolute inset-0">
+          {program.thumbnailUrl ? (
+            <img
+              src={program.thumbnailUrl}
+              alt={program.title}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          ) : (
+            <div className={cn("w-full h-full bg-gradient-to-br flex items-center justify-center", titleGradient(program.title))}>
+              <span className="text-white font-bold text-2xl drop-shadow">
+                {program.title[0]?.toUpperCase() ?? "🎬"}
+              </span>
+            </div>
+          )}
+
+          {/* Dark vignette at bottom for text legibility */}
+          <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+
+          {/* LIVE badge */}
+          {isLive && (
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-0.5 bg-red-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded animate-pulse">
+              <Radio size={6} /> LIVE
+            </div>
+          )}
+
+          {/* Duration badge */}
+          {program.durationMinutes && !isLive && (
+            <div className="absolute bottom-1.5 left-1.5 text-[9px] text-white/80 font-medium bg-black/60 rounded px-1 py-0.5">
+              {program.durationMinutes}{minLabel ?? "min"}
+            </div>
+          )}
+
+          {/* Play overlay on hover */}
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-black/30">
+            <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+              <Play size={16} className="text-black fill-black ml-0.5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Title below poster */}
+      <p className="mt-1.5 text-[11px] font-semibold leading-tight line-clamp-2 text-foreground px-0.5">
+        {program.title}
+      </p>
+    </button>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FlexaTV() {
   const { t } = useTranslation();
@@ -733,18 +794,20 @@ export default function FlexaTV() {
           </div>
         )}
 
-        {/* ── Films Tab ── */}
+        {/* ── Films Tab — Netflix-style 3-column poster grid ── */}
         {activeTab === "films" && (
-          <div className="space-y-2">
-            {films.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Film size={40} className="mx-auto mb-3 opacity-30" />
-                <p>{t("tv.noFilms")}</p>
-              </div>
-            ) : films.map(p => (
-              <ProgramCard key={p.id} program={p} onClick={() => play(p)} typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />
-            ))}
-          </div>
+          films.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Film size={40} className="mx-auto mb-3 opacity-30" />
+              <p>{t("tv.noFilms")}</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {films.map(p => (
+                <PosterCard key={p.id} program={p} onClick={() => play(p)} minLabel={t("tv.min")} />
+              ))}
+            </div>
+          )
         )}
 
         {/* ── Series Tab ── */}

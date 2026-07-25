@@ -528,7 +528,9 @@ export default function AdminTV() {
         }),
       }).then(r => r.json()),
     onSuccess: (_d, item) => {
+      // Invalidate both admin list AND public viewer list so FlexaTV shows new film immediately
       qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] });
+      qc.invalidateQueries({ queryKey: ["/tv/programs"] });
       setImportedIds(prev => new Set([...prev, item.identifier]));
       toast({ title: `🎬 ${item.title} — ${t("tv.importAdded")}` });
     },

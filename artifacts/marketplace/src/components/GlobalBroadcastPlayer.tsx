@@ -11,14 +11,15 @@
  *   /admin/tv  → hidden (AdminTV has its own preview player).
  *   elsewhere  → floating mini-player (bottom-right, above bottom nav).
  */
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { X, Maximize2, Pause, Radio } from "lucide-react";
+import { X, Maximize2, Pause, Radio, Play } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
 // controls=1 required on iOS Safari — controls=0 causes black-screen rendering bug
-const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1";
+// enablejsapi=1 lets us send postMessage to trigger play after mount (iOS autoplay workaround)
+const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" + encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://flexamarket.com");
 
 function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url: string; isDirect: boolean } | null {
   if (videoUrl) {
@@ -45,6 +46,16 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
   return null;
 }
 
+// Send YouTube IFrame API command to force-play (works after enablejsapi=1)
+function ytPostPlay(iframeEl: HTMLIFrameElement | null) {
+  if (!iframeEl?.contentWindow) return;
+  try {
+    iframeEl.contentWindow.postMessage(
+      JSON.stringify({ event: "command", func: "playVideo", args: "" }), "*"
+    );
+  } catch { /* cross-origin — silently ignored */ }
+}
+
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
   // dismissed / setDismissed now live in BroadcastContext so FlexaTV's
@@ -53,6 +64,9 @@ export default function GlobalBroadcastPlayer() {
   const [location, navigate] = useLocation();
   // Bounding rect of the #broadcast-player-slot div (updated on scroll/resize)
   const [slotRect, setSlotRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  // Tap-to-play overlay: shown when YouTube autoplay is blocked (iOS)
+  const [needsTap, setNeedsTap] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const isOnViewerTV = location === "/tv";
   const isOnAdminTV  = location === "/admin/tv";
@@ -94,6 +108,19 @@ export default function GlobalBroadcastPlayer() {
 
   const goToTV = useCallback(() => navigate("/tv"), [navigate]);
 
+  // ── Auto-play via postMessage after iframe mounts (iOS autoplay workaround) ──
+  // Try immediately + retry at 800 ms and 2 s in case the iframe isn't ready yet.
+  useEffect(() => {
+    if (!isActive) return;
+    setNeedsTap(false); // reset on new broadcast
+    const t1 = setTimeout(() => ytPostPlay(iframeRef.current), 300);
+    const t2 = setTimeout(() => ytPostPlay(iframeRef.current), 800);
+    const t3 = setTimeout(() => ytPostPlay(iframeRef.current), 2000);
+    // Show tap-to-play hint after 3 s if still not playing (autoplay blocked)
+    const t4 = setTimeout(() => setNeedsTap(true), 3000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [isActive, bs.videoUrl, bs.videoKey]); // eslint-disable-line
+
   // ── Early exits ──────────────────────────────────────────────────────────────
   if (!isActive || dismissed) return null;
 
@@ -122,14 +149,33 @@ export default function GlobalBroadcastPlayer() {
         style={{ borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
       />
     ) : (
-      <iframe
-        src={embed.url}
-        className="w-full h-full"
-        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-        allowFullScreen
-        title={bs.programTitle ?? "Flexa TV"}
-        style={{ border: "none", borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
-      />
+      <>
+        <iframe
+          ref={iframeRef}
+          src={embed.url}
+          className="w-full h-full"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowFullScreen
+          title={bs.programTitle ?? "Flexa TV"}
+          style={{ border: "none", borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
+        />
+        {/* Tap-to-play overlay — shown when iOS autoplay is blocked */}
+        {needsTap && (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 cursor-pointer"
+            style={{ background: "rgba(0,0,0,0.45)", borderRadius: "12px" }}
+            onClick={() => {
+              ytPostPlay(iframeRef.current);
+              setNeedsTap(false);
+            }}
+          >
+            <div className="bg-red-600 rounded-full p-4 shadow-xl">
+              <Play size={28} className="text-white fill-white" />
+            </div>
+            <p className="text-white text-xs font-semibold drop-shadow">Tape pou gade</p>
+          </div>
+        )}
+      </>
     )
   ) : (
     <div className="w-full h-full flex items-center justify-center">

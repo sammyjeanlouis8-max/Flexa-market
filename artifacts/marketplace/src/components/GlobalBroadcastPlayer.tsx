@@ -11,7 +11,7 @@
  *   /admin/tv  → hidden (AdminTV has its own preview player).
  *   elsewhere  → floating mini-player (bottom-right, above bottom nav).
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { X, Maximize2, Pause, Radio } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
@@ -45,21 +45,16 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
+  // dismissed / setDismissed now live in BroadcastContext so FlexaTV's
+  // on/off button and this component share the same toggle state.
+  const { dismissed, setDismissed } = bs;
   const [location, navigate] = useLocation();
-  const [dismissed, setDismissed] = useState(false);
-  const [prevBsState, setPrevBsState] = useState(bs.state);
   // Bounding rect of the #broadcast-player-slot div (updated on scroll/resize)
   const [slotRect, setSlotRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
   const isOnViewerTV = location === "/tv";
   const isOnAdminTV  = location === "/admin/tv";
   const isActive = bs.state === "playing" || bs.state === "paused";
-
-  // Reset dismissed state whenever a new broadcast starts
-  useEffect(() => {
-    if (prevBsState === "stopped" && isActive) setDismissed(false);
-    setPrevBsState(bs.state);
-  }, [bs.state]); // eslint-disable-line
 
   // ── Slot tracking: keep the fixed overlay aligned with the placeholder div ──
   useEffect(() => {

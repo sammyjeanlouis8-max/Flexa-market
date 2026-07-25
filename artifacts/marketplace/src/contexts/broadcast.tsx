@@ -1,11 +1,11 @@
 /**
  * Global Broadcast Context
  * - Polls /api/tv/broadcast every 5s (shared across the entire app)
- * - Sends viewer heartbeat every 30s
- * - Single source of truth for broadcast state so GlobalBroadcastPlayer
- *   can persist the iframe across route changes.
+ * - Sends viewer heartbeat every 15s
+ * - Exposes `dismissed` / `setDismissed` so FlexaTV's on/off button and
+ *   GlobalBroadcastPlayer share the same toggle state.
  */
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 
 export type PlaybackState = "playing" | "paused" | "stopped";
 
@@ -16,12 +16,16 @@ export interface BroadcastInfo {
   videoUrl: string | null;
   videoKey: string | null;
   viewerCount: number;
-  startedAt: string | null; // ISO string from server, null when stopped
+  startedAt: string | null;
+  // Player on/off toggle (viewer preference, session-scoped)
+  dismissed: boolean;
+  setDismissed: (v: boolean) => void;
 }
 
 const EMPTY: BroadcastInfo = {
   state: "stopped", programId: null, programTitle: null,
   videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
+  dismissed: false, setDismissed: () => {},
 };
 
 const BroadcastContext = createContext<BroadcastInfo>(EMPTY);
@@ -33,7 +37,20 @@ function getViewerId() {
 }
 
 export function BroadcastProvider({ children }: { children: ReactNode }) {
-  const [bs, setBs] = useState<BroadcastInfo>(EMPTY);
+  const [bs, setBs] = useState<Omit<BroadcastInfo, "dismissed" | "setDismissed">>({
+    state: "stopped", programId: null, programTitle: null,
+    videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
+  });
+  const [dismissed, setDismissedRaw] = useState(false);
+
+  // Auto-un-dismiss when a new broadcast starts (state goes stopped → playing)
+  const prevState = useState(bs.state);
+  useEffect(() => {
+    if (bs.state === "playing" && prevState[0] === "stopped") setDismissedRaw(false);
+    prevState[1](bs.state); // eslint-disable-line
+  }, [bs.state]); // eslint-disable-line
+
+  const setDismissed = useCallback((v: boolean) => setDismissedRaw(v), []);
 
   // Poll every 5s
   useEffect(() => {
@@ -47,7 +64,7 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(t);
   }, []);
 
-  // Heartbeat every 30s
+  // Heartbeat every 15s
   useEffect(() => {
     const viewerId = getViewerId();
     const hb = () =>
@@ -57,11 +74,15 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ viewerId }),
       }).catch(() => {});
     hb();
-    const t = setInterval(hb, 15_000); // 15s for more accurate viewer count
+    const t = setInterval(hb, 15_000);
     return () => clearInterval(t);
   }, []);
 
-  return <BroadcastContext.Provider value={bs}>{children}</BroadcastContext.Provider>;
+  return (
+    <BroadcastContext.Provider value={{ ...bs, dismissed, setDismissed }}>
+      {children}
+    </BroadcastContext.Provider>
+  );
 }
 
 export function useBroadcast() {

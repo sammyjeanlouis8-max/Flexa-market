@@ -618,27 +618,6 @@ export default function FlexaTV() {
                 <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
               </div>
             </>
-          ) : playing ? (
-            /* ── ON-DEMAND MODE: normal viewing ── */
-            <>
-              <VideoPlayer program={playing} onClose={() => setPlaying(null)} noVideoLabel={t("tv.noFilms")} />
-              <div className="mt-2 px-1 flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="font-semibold text-base">{playing.title}</h2>
-                    {playing.type === "live" && (
-                      <span className="inline-flex items-center gap-1 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
-                        <Radio size={8} /> LIVE
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {tlabel(playing.type)}{playing.durationMinutes && playing.type !== "live" ? ` · ${playing.durationMinutes} ${t("tv.min")}` : ""}
-                  </p>
-                  {playing.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{playing.description}</p>}
-                </div>
-              </div>
-            </>
           ) : (
             <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">
               {/* Animated glow background */}

@@ -1,45 +1,62 @@
-# [Project name]
+# Flexa Market — Dev Environment
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Klon lokal GitHub repo `sammyjeanlouis8-max/Flexa-market` pou teste chanjman anvan voye sou sit live.
 
-## Run & Operate
+## Sèvis ki ap kouri
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+| Sèvis | Pò | URL lokal |
+|---|---|---|
+| Marketplace (React/Vite) | 5173 | `/` — preview pane |
+| API Server (Express) | 8080 | `/api/...` |
+
+## Kòmand itil
+
+```bash
+# Voye schema DB lokal
+pnpm --filter @workspace/db run push
+
+# Typecheck tout pakèt
+pnpm run typecheck
+
+# Build API server (si nesesè)
+pnpm --filter @workspace/api-server run build
+```
+
+## Kijan travay la mache
+
+1. **Fè chanjman** nan `artifacts/marketplace/src/` oswa `artifacts/api-server/src/`
+2. Marketplace **rechaje otomatikman** (Vite HMR) — pa bezwen restart
+3. API server **bezwen restart** apre chanjman — klike "Restart" sou workflow `artifacts/api-server: API Server`
+4. **Teste lokalment** nan preview pane
+5. **Push sou GitHub** lè w satisfè — `git add . && git commit -m "..." && git push github main`
+6. GitHub Actions **deploy otomatikman** sou DigitalOcean
+
+## Sekrè ki manke (fonksyon ki pa disponib lokal)
+
+| Sekrè | Efè si manke |
+|---|---|
+| `STRIPE_SECRET_KEY` | Rechaj kat pa travay |
+| `STRIPE_PUBLISHABLE_KEY` | Paj checkout pa chaje |
+| `RESEND_API_KEY` | Imèl OTP pa voye |
+
+Sekrè ki **deja konfigire**: `SESSION_SECRET`, `GITHUB_TOKEN`, `DATABASE_URL` (Replit PostgreSQL)
+
+## Push sou GitHub
+
+```bash
+git add artifacts/ lib/ scripts/
+git commit -m "feat: deskripsyon chanjman"
+git push github main
+```
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
-
-## Where things live
-
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
-
-## Architecture decisions
-
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- pnpm workspaces, Node.js 24, TypeScript
+- Frontend: React + Vite + Tailwind CSS
+- Backend: Express 5 + Drizzle ORM + PostgreSQL
+- Deploy: GitHub Actions → DigitalOcean App Platform
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Travay an Kreyòl ayisyen
+- Teste lokal anvan push sou production

@@ -10,6 +10,94 @@ const router = Router();
 const objectStorage = new ObjectStorageService();
 const uploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 * 1024 } });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// BROADCAST STATE (in-memory — ephemeral, resets on restart)
+// ══════════════════════════════════════════════════════════════════════════════
+type PlaybackState = "playing" | "paused" | "stopped";
+interface BroadcastState {
+  programId: number | null;
+  programTitle: string | null;
+  videoUrl: string | null;
+  videoKey: string | null;
+  state: PlaybackState;
+  startedAt: Date | null;
+  updatedAt: Date;
+}
+const broadcast: BroadcastState = {
+  programId: null, programTitle: null, videoUrl: null, videoKey: null,
+  state: "stopped", startedAt: null, updatedAt: new Date(),
+};
+
+// Viewer heartbeats: viewerId → last ping timestamp (ms)
+const viewerHeartbeats = new Map<string, number>();
+setInterval(() => {
+  const cutoff = Date.now() - 120_000;
+  for (const [id, ts] of viewerHeartbeats) if (ts < cutoff) viewerHeartbeats.delete(id);
+}, 60_000);
+function activeViewers() {
+  const cutoff = Date.now() - 45_000;
+  let n = 0;
+  for (const ts of viewerHeartbeats.values()) if (ts >= cutoff) n++;
+  return n;
+}
+
+// ── GET /api/tv/broadcast ── public — viewers poll this ───────────────────────
+router.get("/tv/broadcast", (_req, res): void => {
+  res.json({ broadcast: { ...broadcast, viewerCount: activeViewers() } });
+});
+
+// ── POST /api/tv/broadcast/heartbeat ── viewers send every 30s ────────────────
+router.post("/tv/broadcast/heartbeat", (req, res): void => {
+  const { viewerId } = req.body as { viewerId?: string };
+  if (viewerId && typeof viewerId === "string" && viewerId.length < 64) {
+    viewerHeartbeats.set(viewerId, Date.now());
+  }
+  res.json({ ok: true, state: broadcast.state, viewerCount: activeViewers() });
+});
+
+// ── POST /api/admin/tv/broadcast/play ─────────────────────────────────────────
+router.post("/admin/tv/broadcast/play", requireAdmin, async (req, res): Promise<void> => {
+  const { programId } = req.body as { programId?: number };
+  if (programId) {
+    try {
+      const [p] = await db.select({
+        title: tvProgramsTable.title, videoUrl: tvProgramsTable.videoUrl, videoKey: tvProgramsTable.videoKey,
+      }).from(tvProgramsTable).where(eq(tvProgramsTable.id, programId)).limit(1);
+      if (p) {
+        broadcast.programId = programId;
+        broadcast.programTitle = p.title;
+        broadcast.videoUrl = p.videoUrl;
+        broadcast.videoKey = p.videoKey;
+      }
+    } catch { /* ignore DB error, use existing */ }
+  }
+  broadcast.state = "playing";
+  if (!broadcast.startedAt) broadcast.startedAt = new Date();
+  broadcast.updatedAt = new Date();
+  res.json({ ok: true, broadcast: { ...broadcast, viewerCount: activeViewers() } });
+});
+
+// ── POST /api/admin/tv/broadcast/pause ────────────────────────────────────────
+router.post("/admin/tv/broadcast/pause", requireAdmin, (_req, res): void => {
+  broadcast.state = "paused";
+  broadcast.updatedAt = new Date();
+  res.json({ ok: true, broadcast: { ...broadcast, viewerCount: activeViewers() } });
+});
+
+// ── POST /api/admin/tv/broadcast/stop ─────────────────────────────────────────
+router.post("/admin/tv/broadcast/stop", requireAdmin, (_req, res): void => {
+  broadcast.state = "stopped";
+  broadcast.startedAt = null;
+  broadcast.updatedAt = new Date();
+  viewerHeartbeats.clear();
+  res.json({ ok: true, broadcast: { ...broadcast, viewerCount: 0 } });
+});
+
+// ── GET /api/admin/tv/broadcast/viewers ── admin only ─────────────────────────
+router.get("/admin/tv/broadcast/viewers", requireAdmin, (_req, res): void => {
+  res.json({ viewerCount: activeViewers(), state: broadcast.state });
+});
+
 // ── POST /api/admin/tv/upload-video ── direct video upload ────────────────────
 router.post("/admin/tv/upload-video", requireAdmin, uploadMiddleware.single("video"), async (req: any, res): Promise<void> => {
   try {

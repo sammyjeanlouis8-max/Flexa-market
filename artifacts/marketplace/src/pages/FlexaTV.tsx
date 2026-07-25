@@ -7,6 +7,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
+// Stable viewer ID for this session
+function getViewerId() {
+  let id = sessionStorage.getItem("fxtv_viewer_id");
+  if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); sessionStorage.setItem("fxtv_viewer_id", id); }
+  return id;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TvProgram = {
   id: number;
@@ -154,7 +161,92 @@ function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () =>
   );
 }
 
-// ── Video Player with Fullscreen ──────────────────────────────────────────────
+// ── Broadcast Video Player (viewer-locked, no controls) ──────────────────────
+function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
+  videoUrl: string | null; videoKey: string | null; title: string | null; isPaused: boolean;
+}) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const h = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", h);
+    document.addEventListener("webkitfullscreenchange", h);
+    return () => { document.removeEventListener("fullscreenchange", h); document.removeEventListener("webkitfullscreenchange", h); };
+  }, []);
+
+  const toggleFS = useCallback(async () => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) await (el.requestFullscreen?.() ?? (el as any).webkitRequestFullscreen?.());
+      else await (document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.());
+    } catch { /* ignore */ }
+  }, []);
+
+  let embedUrl: string | null = null;
+  let isDirect = false;
+  if (videoUrl) {
+    const ytId = (() => {
+      try {
+        const u = new URL(videoUrl);
+        if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("?")[0];
+        if (u.hostname.includes("youtube.com")) {
+          const live = u.pathname.match(/\/live\/([^/?]+)/); if (live) return live[1];
+          const v = u.searchParams.get("v"); if (v) return v;
+        }
+      } catch { return null; }
+      return null;
+    })();
+    if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    else { embedUrl = videoUrl; isDirect = true; }
+  } else if (videoKey) { embedUrl = `/api/storage/objects/${videoKey}`; isDirect = true; }
+
+  return (
+    <div
+      ref={wrapperRef}
+      className={cn("relative w-full bg-black rounded-xl overflow-hidden", isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "")}
+      style={isFullscreen ? undefined : { paddingBottom: "56.25%" }}
+    >
+      {/* Live badge */}
+      <div className="absolute top-3 left-3 z-30 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
+        <Radio size={10} /> LIVE
+      </div>
+      {/* Fullscreen button */}
+      <button onClick={toggleFS} className="absolute top-2 right-2 z-30 bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">
+        {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+      </button>
+
+      {/* Paused overlay */}
+      {isPaused && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 gap-4">
+          <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-24 h-24 object-contain opacity-80" />
+          <div className="flex items-center gap-2 text-white">
+            <Pause size={20} className="text-red-400" />
+            <p className="text-sm font-semibold">Transmisyon an sispann…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Viewer interaction blocker — covers entire player */}
+      <div className="absolute inset-0 z-10" style={{ background: "transparent" }} />
+
+      {embedUrl ? (
+        isDirect ? (
+          <video src={embedUrl} autoPlay playsInline className="absolute inset-0 w-full h-full object-contain" />
+        ) : (
+          <iframe src={embedUrl} className="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen title={title ?? ""} style={{ border: "none" }} />
+        )
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-28 h-28 object-contain opacity-60" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Video Player with Fullscreen (for regular on-demand viewing) ──────────────
 function VideoPlayer({ program, onClose, noVideoLabel }: {
   program: TvProgram; onClose?: () => void; noVideoLabel?: string;
 }) {
@@ -165,7 +257,6 @@ function VideoPlayer({ program, onClose, noVideoLabel }: {
   const [isMuted, setIsMuted] = useState(false);
 
   const embed = getEmbedInfo(program);
-  // Linear = direct upload or explicit live type — no seek bar
   const isLinear = program.type === "live" || (embed?.isDirect ?? false);
   const isLive = program.type === "live" || (program.videoUrl ? isYouTubeLive(program.videoUrl) : false);
 
@@ -173,22 +264,16 @@ function VideoPlayer({ program, onClose, noVideoLabel }: {
     const handler = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handler);
     document.addEventListener("webkitfullscreenchange", handler);
-    return () => {
-      document.removeEventListener("fullscreenchange", handler);
-      document.removeEventListener("webkitfullscreenchange", handler);
-    };
+    return () => { document.removeEventListener("fullscreenchange", handler); document.removeEventListener("webkitfullscreenchange", handler); };
   }, []);
 
   const toggleFullscreen = useCallback(async () => {
     const el = wrapperRef.current;
     if (!el) return;
     try {
-      if (!document.fullscreenElement) {
-        await (el.requestFullscreen?.() ?? (el as any).webkitRequestFullscreen?.());
-      } else {
-        await (document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.());
-      }
-    } catch { /* Safari may throw */ }
+      if (!document.fullscreenElement) await (el.requestFullscreen?.() ?? (el as any).webkitRequestFullscreen?.());
+      else await (document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.());
+    } catch { /* Safari */ }
   }, []);
 
   const togglePlay = useCallback(() => {
@@ -206,78 +291,29 @@ function VideoPlayer({ program, onClose, noVideoLabel }: {
   return (
     <div
       ref={wrapperRef}
-      className={cn(
-        "relative w-full bg-black rounded-xl overflow-hidden group",
-        isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : ""
-      )}
+      className={cn("relative w-full bg-black rounded-xl overflow-hidden group", isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "")}
       style={isFullscreen ? undefined : { paddingBottom: "56.25%" }}
     >
-      {/* Live badge */}
-      {isLive && (
-        <div className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
-          <Radio size={10} /> LIVE
-        </div>
-      )}
-
-      {/* Controls overlay */}
-      <div className={cn(
-        "absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity",
-        isFullscreen && "opacity-100"
-      )}>
+      {isLive && <div className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none"><Radio size={10} /> LIVE</div>}
+      <div className={cn("absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity", isFullscreen && "opacity-100")}>
         {embed?.isDirect && (
           <>
-            <button onClick={toggleMute} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">
-              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            </button>
-            <button onClick={togglePlay} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">
-              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-            </button>
+            <button onClick={toggleMute} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
+            <button onClick={togglePlay} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isPlaying ? <Pause size={14} /> : <Play size={14} />}</button>
           </>
         )}
-        <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80" title="Fullscreen">
-          {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-        </button>
-        {onClose && !isFullscreen && (
-          <button onClick={onClose} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">
-            <X size={14} />
-          </button>
-        )}
-        {isFullscreen && (
-          <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">
-            <X size={14} />
-          </button>
-        )}
+        <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}</button>
+        {onClose && !isFullscreen && <button onClick={onClose} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80"><X size={14} /></button>}
+        {isFullscreen && <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80"><X size={14} /></button>}
       </div>
-
-      {/* Player */}
       {embed ? (
         embed.isIframe ? (
-          <iframe
-            src={embed.url}
-            className="absolute inset-0 w-full h-full"
-            allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-            allowFullScreen
-            title={program.title}
-            style={{ border: "none" }}
-          />
+          <iframe src={embed.url} className="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen title={program.title} style={{ border: "none" }} />
         ) : (
-          <video
-            ref={videoRef}
-            src={embed.url}
-            autoPlay
-            playsInline
-            // Linear mode: no controls (no seek bar) — pure TV experience
-            controls={!isLinear}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            className="absolute inset-0 w-full h-full object-contain"
-          />
+          <video ref={videoRef} src={embed.url} autoPlay playsInline controls={!isLinear} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} className="absolute inset-0 w-full h-full object-contain" />
         )
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-3">
-          <Tv size={56} />
-          <p className="text-sm">{noVideoLabel ?? "—"}</p>
-        </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-3"><Tv size={56} /><p className="text-sm">{noVideoLabel ?? "—"}</p></div>
       )}
     </div>
   );
@@ -349,6 +385,29 @@ export default function FlexaTV() {
     film: t("tv.typeFilm"), series: t("tv.typeSeries"),
     program: t("tv.typeProgram"), news: t("tv.typeNews"), live: "🔴 LIVE",
   }[type] ?? type);
+
+  // ── Broadcast state (poll every 5s) ──
+  const { data: broadcastData } = useQuery({
+    queryKey: ["/tv/broadcast"],
+    queryFn: () => fetch("/api/tv/broadcast").then(r => r.json()),
+    refetchInterval: 5_000,
+  });
+  const bs = (broadcastData as any)?.broadcast;
+  const broadcastActive = bs?.state === "playing" || bs?.state === "paused";
+
+  // ── Viewer heartbeat (every 30s while page is open) ──
+  useEffect(() => {
+    const viewerId = getViewerId();
+    const sendHeartbeat = () =>
+      fetch("/api/tv/broadcast/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ viewerId }),
+      }).catch(() => {});
+    sendHeartbeat();
+    const timer = setInterval(sendHeartbeat, 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Update clock
   useEffect(() => {
@@ -473,7 +532,24 @@ export default function FlexaTV() {
 
         {/* ── Player ── */}
         <div className="mb-3">
-          {playing ? (
+          {broadcastActive ? (
+            /* ── BROADCAST MODE: admin controls play/pause, viewers locked ── */
+            <>
+              <BroadcastPlayer
+                videoUrl={bs.videoUrl}
+                videoKey={bs.videoKey}
+                title={bs.programTitle}
+                isPaused={bs.state === "paused"}
+              />
+              <div className="mt-2 px-1 flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                  <Radio size={8} /> LIVE
+                </span>
+                <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
+              </div>
+            </>
+          ) : playing ? (
+            /* ── ON-DEMAND MODE: normal viewing ── */
             <>
               <VideoPlayer program={playing} onClose={() => setPlaying(null)} noVideoLabel={t("tv.noFilms")} />
               <div className="mt-2 px-1 flex items-start gap-2">

@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Square } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -394,6 +394,8 @@ export default function AdminTV() {
   const [editSeries, setEditSeries] = useState<TvSeries | null | "new">(null);
   const [previewProgram, setPreviewProgram] = useState<TvProgram | null>(null);
   const [goingLive, setGoingLive] = useState<number | null>(null);
+  const [broadcastState, setBroadcastState] = useState<"playing"|"paused"|"stopped">("stopped");
+  const [viewerCount, setViewerCount] = useState(0);
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -433,6 +435,43 @@ export default function AdminTV() {
       toast({ title: vars.makeLive ? "🔴 Transmisyon Live kòmanse ✅" : "⏹ Live kanpe" });
     },
   });
+
+  // Broadcast control mutations
+  const broadcastPlay = useMutation({
+    mutationFn: (programId: number) =>
+      apiAuth("/api/admin/tv/broadcast/play", { method: "POST", body: JSON.stringify({ programId }) })
+        .then(r => r.json()),
+    onSuccess: (d) => { setBroadcastState("playing"); setViewerCount(d.broadcast?.viewerCount ?? 0); toast({ title: "▶ Transmisyon kòmanse — tout moun wè!" }); },
+  });
+
+  const broadcastPause = useMutation({
+    mutationFn: () => apiAuth("/api/admin/tv/broadcast/pause", { method: "POST" }).then(r => r.json()),
+    onSuccess: (d) => { setBroadcastState("paused"); setViewerCount(d.broadcast?.viewerCount ?? 0); toast({ title: "⏸ Transmisyon sispann" }); },
+  });
+
+  const broadcastStop = useMutation({
+    mutationFn: () => apiAuth("/api/admin/tv/broadcast/stop", { method: "POST" }).then(r => r.json()),
+    onSuccess: () => { setBroadcastState("stopped"); setViewerCount(0); setPreviewProgram(null); toast({ title: "⏹ Transmisyon kanpe" }); },
+  });
+
+  // Poll viewer count every 10s when broadcasting
+  useEffect(() => {
+    if (broadcastState === "stopped") return;
+    const poll = () =>
+      apiAuth("/api/admin/tv/broadcast/viewers").then(r => r.json())
+        .then(d => { setViewerCount(d.viewerCount ?? 0); setBroadcastState(d.state ?? broadcastState); })
+        .catch(() => {});
+    poll();
+    const timer = setInterval(poll, 10_000);
+    return () => clearInterval(timer);
+  }, [broadcastState]); // eslint-disable-line
+
+  // Sync initial broadcast state on mount
+  useEffect(() => {
+    apiAuth("/api/admin/tv/broadcast/viewers").then(r => r.json())
+      .then(d => { setViewerCount(d.viewerCount ?? 0); if (d.state) setBroadcastState(d.state); })
+      .catch(() => {});
+  }, []);
 
   function getAdminEmbedUrl(p: TvProgram): string | null {
     if (p.videoUrl) {
@@ -489,31 +528,60 @@ export default function AdminTV() {
                 </div>
               )}
             </div>
-            {/* Go Live from preview */}
-            <div className="px-3 py-2 bg-black flex items-center justify-between gap-3">
-              <p className="text-xs text-white/60">
-                {previewProgram.type === "live"
-                  ? "🔴 Kounye a ap difize LIVE sou Flexa TV"
-                  : "Preme Go Live pou tout moun wè videyo sa a"}
-              </p>
-              {previewProgram.type === "live" ? (
-                <button
-                  onClick={() => { toggleLive.mutate({ id: previewProgram.id, makeLive: false }); setPreviewProgram(null); }}
-                  className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
-                >
-                  <Square size={10} /> Kanpe Live
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setGoingLive(previewProgram.id);
-                    toggleLive.mutate({ id: previewProgram.id, makeLive: true });
-                  }}
-                  disabled={toggleLive.isPending}
-                  className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors animate-pulse disabled:opacity-60"
-                >
-                  <Radio size={10} /> 🔴 Go Live
-                </button>
+            {/* Broadcast Controls */}
+            <div className="px-3 py-2.5 bg-black border-t border-white/10">
+              {/* Viewer count */}
+              {broadcastState !== "stopped" && (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1 text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                    <Radio size={8} /> {broadcastState === "paused" ? "PAUSE" : "LIVE"}
+                  </span>
+                  <span className="text-xs text-white/70 flex items-center gap-1">
+                    <Eye size={11} /> <strong className="text-white">{viewerCount}</strong> moun k'ap gade
+                  </span>
+                </div>
+              )}
+              {/* Play / Pause / Stop row */}
+              <div className="flex items-center gap-2">
+                {broadcastState === "stopped" ? (
+                  <button
+                    onClick={() => broadcastPlay.mutate(previewProgram.id)}
+                    disabled={broadcastPlay.isPending}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-xl transition-colors disabled:opacity-60"
+                  >
+                    <Radio size={11} /> 🔴 Go Live — tout moun wè
+                  </button>
+                ) : (
+                  <>
+                    {broadcastState === "paused" ? (
+                      <button
+                        onClick={() => broadcastPlay.mutate(previewProgram.id)}
+                        disabled={broadcastPlay.isPending}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 rounded-xl transition-colors"
+                      >
+                        <Play size={11} /> Reprann
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => broadcastPause.mutate()}
+                        disabled={broadcastPause.isPending}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-yellow-500 hover:bg-yellow-600 text-black text-xs font-bold py-2 rounded-xl transition-colors"
+                      >
+                        <Pause size={11} /> Poz
+                      </button>
+                    )}
+                    <button
+                      onClick={() => broadcastStop.mutate()}
+                      disabled={broadcastStop.isPending}
+                      className="flex items-center justify-center gap-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
+                    >
+                      <Square size={11} /> Kanpe
+                    </button>
+                  </>
+                )}
+              </div>
+              {broadcastState === "stopped" && (
+                <p className="text-[10px] text-white/40 mt-1.5 text-center">Viewers pa ka poz ni rewind — se ou ki kontwole tout</p>
               )}
             </div>
           </div>

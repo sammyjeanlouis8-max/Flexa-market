@@ -16,19 +16,21 @@ import { X, Maximize2, Pause, Play, Radio } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
+const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1";
+
 function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url: string; isDirect: boolean } | null {
   if (videoUrl) {
     try {
       const u = new URL(videoUrl);
       if (u.hostname.includes("youtu.be")) {
         const id = u.pathname.slice(1).split("?")[0];
-        return { url: `https://www.youtube.com/embed/${id}?autoplay=1&rel=0&modestbranding=1&playsinline=1`, isDirect: false };
+        return { url: `https://www.youtube.com/embed/${id}?${YT_PARAMS}`, isDirect: false };
       }
       if (u.hostname.includes("youtube.com")) {
         const live = u.pathname.match(/\/live\/([^/?]+)/);
-        if (live) return { url: `https://www.youtube.com/embed/${live[1]}?autoplay=1&rel=0&playsinline=1`, isDirect: false };
+        if (live) return { url: `https://www.youtube.com/embed/${live[1]}?${YT_PARAMS}`, isDirect: false };
         const v = u.searchParams.get("v");
-        if (v) return { url: `https://www.youtube.com/embed/${v}?autoplay=1&rel=0&modestbranding=1&playsinline=1`, isDirect: false };
+        if (v) return { url: `https://www.youtube.com/embed/${v}?${YT_PARAMS}`, isDirect: false };
       }
       const vm = videoUrl.match(/vimeo\.com\/(\d+)/);
       if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1&background=1`, isDirect: false };
@@ -47,7 +49,8 @@ export default function GlobalBroadcastPlayer() {
   const [dismissed, setDismissed] = useState(false);
   const [prevBsState, setPrevBsState] = useState(bs.state);
 
-  const isOnTVPage = location === "/tv";
+  // Hide on both viewer /tv and admin /admin/tv — those pages have their own full player
+  const isOnTVPage = location === "/tv" || location === "/admin/tv";
   const isActive = bs.state === "playing" || bs.state === "paused";
 
   // Reset dismissed when a new broadcast starts

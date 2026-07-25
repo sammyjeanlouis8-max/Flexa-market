@@ -2,23 +2,23 @@
  * GlobalBroadcastPlayer
  *
  * ONE iframe instance that never unmounts while a broadcast is active.
- * This prevents video restarts when viewers navigate away and return.
+ * Prevents video restarts when viewers navigate away and return.
  *
  * Behaviour by route:
- *   /tv        → positioned as a fixed overlay exactly covering the
- *               #broadcast-player-slot placeholder div in FlexaTV.
- *               Tracks scroll + resize so it stays in sync.
- *   /admin/tv  → hidden (AdminTV has its own preview player).
+ *   /tv        → fixed overlay exactly covering #broadcast-player-slot.
+ *               Tracks position via setInterval(80ms). Includes all UI
+ *               (LIVE badge, power button, 🔊 son, ⛶ fullscreen, paused overlay).
+ *   /admin/tv  → hidden 1×1 px so the broadcast doesn't restart.
  *   elsewhere  → floating mini-player (bottom-right, above bottom nav).
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { X, Maximize2, Pause, Radio, Play } from "lucide-react";
+import { X, Maximize2, Pause, Radio, Play, Volume2 } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
 // controls=1 required on iOS Safari — controls=0 causes black-screen rendering bug
-// enablejsapi=1 lets us send postMessage to trigger play after mount (iOS autoplay workaround)
+// enablejsapi=1 lets us send postMessage to trigger play after mount
 const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" + encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://flexamarket.com");
 
 function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url: string; isDirect: boolean } | null {
@@ -37,8 +37,14 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
       }
       const vm = videoUrl.match(/vimeo\.com\/(\d+)/);
       if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1&background=1`, isDirect: false };
-      // Archive.org embed pages are iframes, not direct video files
-      if (videoUrl.includes("archive.org/embed/")) return { url: videoUrl, isDirect: false };
+      if (videoUrl.includes("archive.org/embed/")) {
+        const sep = videoUrl.includes("?") ? "&" : "?";
+        return { url: `${videoUrl}${sep}autoplay=1&start=0`, isDirect: false };
+      }
+      if (videoUrl.includes("dailymotion.com/embed/")) {
+        const sep = videoUrl.includes("?") ? "&" : "?";
+        return { url: videoUrl.includes("autoplay=1") ? videoUrl : `${videoUrl}${sep}autoplay=1`, isDirect: false };
+      }
     } catch { /* fall through */ }
     return { url: videoUrl, isDirect: true };
   }
@@ -46,57 +52,81 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
   return null;
 }
 
-// Send YouTube IFrame API command to force-play (works after enablejsapi=1)
-function ytPostPlay(iframeEl: HTMLIFrameElement | null) {
+// Unmute + set full volume + play — call only inside a user-gesture handler
+function ytUnmuteAndPlay(iframeEl: HTMLIFrameElement | null) {
   if (!iframeEl?.contentWindow) return;
-  try {
-    iframeEl.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func: "playVideo", args: "" }), "*"
-    );
-  } catch { /* cross-origin — silently ignored */ }
+  const send = (func: string, args: unknown = "") => {
+    try { iframeEl.contentWindow!.postMessage(JSON.stringify({ event: "command", func, args }), "*"); } catch { /* cross-origin */ }
+  };
+  send("unMute");
+  send("setVolume", [100]);
+  send("playVideo");
 }
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
-  // dismissed / setDismissed now live in BroadcastContext so FlexaTV's
-  // on/off button and this component share the same toggle state.
   const { dismissed, setDismissed } = bs;
   const [location, navigate] = useLocation();
-  // Bounding rect of the #broadcast-player-slot div (updated on scroll/resize)
   const [slotRect, setSlotRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
-  // Tap-to-play overlay: shown when YouTube autoplay is blocked (iOS)
-  const [needsTap, setNeedsTap] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  // embedKey: incrementing it forces React to remount the iframe (auto-reload)
+  const [embedKey, setEmbedKey] = useState(0);
+  const iframeRef  = useRef<HTMLIFrameElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const isOnViewerTV = location === "/tv";
-  const isOnAdminTV  = location === "/admin/tv";
+  // startsWith covers /admin/tv, /admin/tv/programs/new, /admin/tv/programs/:id/edit, etc.
+  const isOnAdminTV  = location.startsWith("/admin/tv") || location.startsWith("/admin");
   const isActive = bs.state === "playing" || bs.state === "paused";
 
-  // ── Slot tracking: keep the fixed overlay aligned with the placeholder div ──
+  // ── Slot tracking: poll every 80 ms — catches React DOM changes immediately ──
   useEffect(() => {
     if (!isOnViewerTV || !isActive) { setSlotRect(null); return; }
-
+    let lastKey = "";
     const measure = () => {
       const slot = document.getElementById("broadcast-player-slot");
-      if (!slot) { setSlotRect(null); return; }
+      if (!slot) {
+        if (lastKey !== "null") { lastKey = "null"; setSlotRect(null); }
+        return;
+      }
       const r = slot.getBoundingClientRect();
-      setSlotRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      const key = `${r.top.toFixed(1)},${r.left.toFixed(1)},${r.width.toFixed(1)},${r.height.toFixed(1)}`;
+      if (key !== lastKey) { lastKey = key; setSlotRect({ top: r.top, left: r.left, width: r.width, height: r.height }); }
     };
-
     measure();
-    const ro = new ResizeObserver(measure);
-    const slot = document.getElementById("broadcast-player-slot");
-    if (slot) ro.observe(slot);
-    window.addEventListener("scroll", measure, { passive: true });
-    window.addEventListener("resize", measure, { passive: true });
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("scroll", measure);
-      window.removeEventListener("resize", measure);
-    };
+    const id = setInterval(measure, 80);
+    return () => clearInterval(id);
   }, [isOnViewerTV, isActive]);
 
-  // Media Session API — iOS lock screen controls
+  // ── Fullscreen listener ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const h = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", h);
+    document.addEventListener("webkitfullscreenchange", h);
+    return () => { document.removeEventListener("fullscreenchange", h); document.removeEventListener("webkitfullscreenchange", h); };
+  }, []);
+
+  // ── Auto-reload: if YouTube shows "Encodage en cours" (unstarted) after 10 s,
+  // remount the iframe by bumping embedKey. Retries until the video plays. ──────
+  useEffect(() => {
+    if (!isActive) return;
+    let playing = false;
+    const onMsg = (e: MessageEvent) => {
+      try {
+        const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        // YouTube IFrame API v3 state 1 = playing
+        if (d?.event === "onStateChange"  && d?.info === 1) playing = true;
+        if (d?.event === "infoDelivery"   && d?.info?.playerState === 1) playing = true;
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("message", onMsg);
+    const timer = setTimeout(() => {
+      if (!playing) setEmbedKey(k => k + 1); // remount iframe → reload stream
+    }, 10_000);
+    return () => { window.removeEventListener("message", onMsg); clearTimeout(timer); };
+  }, [isActive, bs.videoUrl, bs.videoKey, embedKey]); // embedKey in deps → retry loop
+
+  // ── Media Session API — iOS lock-screen controls ──────────────────────────────
   useEffect(() => {
     if (!isActive || !("mediaSession" in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -108,26 +138,27 @@ export default function GlobalBroadcastPlayer() {
 
   const goToTV = useCallback(() => navigate("/tv"), [navigate]);
 
-  // ── Auto-play via postMessage after iframe mounts (iOS autoplay workaround) ──
-  // Try immediately + retry at 800 ms and 2 s in case the iframe isn't ready yet.
-  useEffect(() => {
-    if (!isActive) return;
-    setNeedsTap(false); // reset on new broadcast
-    const t1 = setTimeout(() => ytPostPlay(iframeRef.current), 300);
-    const t2 = setTimeout(() => ytPostPlay(iframeRef.current), 800);
-    const t3 = setTimeout(() => ytPostPlay(iframeRef.current), 2000);
-    // Show tap-to-play hint after 3 s if still not playing (autoplay blocked)
-    const t4 = setTimeout(() => setNeedsTap(true), 3000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
-  }, [isActive, bs.videoUrl, bs.videoKey]); // eslint-disable-line
+  // ── Fullscreen handler ────────────────────────────────────────────────────────
+  const goFullscreen = useCallback(async () => {
+    if (isFullscreen) {
+      try { await (document.exitFullscreen?.() ?? (document as any).webkitExitFullscreen?.()); } catch { /* ignore */ }
+      return;
+    }
+    // Try wrapper first, then iframe
+    const el = wrapperRef.current ?? iframeRef.current;
+    if (!el) return;
+    try {
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if ((el as any).webkitRequestFullscreen) await (el as any).webkitRequestFullscreen();
+    } catch { /* ignore */ }
+  }, [isFullscreen]);
 
-  // ── Early exits ──────────────────────────────────────────────────────────────
+  // ── Early exits ───────────────────────────────────────────────────────────────
   if (!isActive || dismissed) return null;
 
   const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
 
-  // On /admin/tv: keep the iframe MOUNTED but invisible so it doesn't restart
-  // when admin navigates to another page. Admin has their own preview player.
+  // Admin: keep the iframe alive but invisible
   if (isOnAdminTV) {
     return (
       <div style={{ position: "fixed", left: "-9999px", top: 0, width: "1px", height: "1px", opacity: 0, pointerEvents: "none", zIndex: -1 }}>
@@ -139,43 +170,27 @@ export default function GlobalBroadcastPlayer() {
     );
   }
 
-  const videoContent = embed ? (
+  // ── The raw video element ─────────────────────────────────────────────────────
+  const videoEl = embed ? (
     embed.isDirect ? (
       <video
         src={embed.url}
         autoPlay
         playsInline
         className="w-full h-full object-contain"
-        style={{ borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
+        style={{ borderRadius: "12px" } as React.CSSProperties}
       />
     ) : (
-      <>
-        <iframe
-          ref={iframeRef}
-          src={embed.url}
-          className="w-full h-full"
-          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-          allowFullScreen
-          title={bs.programTitle ?? "Flexa TV"}
-          style={{ border: "none", borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
-        />
-        {/* Tap-to-play overlay — shown when iOS autoplay is blocked */}
-        {needsTap && (
-          <div
-            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 cursor-pointer"
-            style={{ background: "rgba(0,0,0,0.45)", borderRadius: "12px" }}
-            onClick={() => {
-              ytPostPlay(iframeRef.current);
-              setNeedsTap(false);
-            }}
-          >
-            <div className="bg-red-600 rounded-full p-4 shadow-xl">
-              <Play size={28} className="text-white fill-white" />
-            </div>
-            <p className="text-white text-xs font-semibold drop-shadow">Tape pou gade</p>
-          </div>
-        )}
-      </>
+      <iframe
+        key={embedKey}
+        ref={iframeRef}
+        src={embed.url}
+        className="w-full h-full"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+        allowFullScreen
+        title={bs.programTitle ?? "Flexa TV"}
+        style={{ border: "none", borderRadius: "12px" } as React.CSSProperties}
+      />
     )
   ) : (
     <div className="w-full h-full flex items-center justify-center">
@@ -183,17 +198,74 @@ export default function GlobalBroadcastPlayer() {
     </div>
   );
 
-  // ── Slot mode: fixed overlay exactly covering the placeholder in /tv ─────────
+  // ── Full player UI (video + all overlays) ─────────────────────────────────────
+  const fullPlayerUI = (mini = false) => (
+    <div ref={wrapperRef} className="relative w-full h-full">
+      {videoEl}
+
+      {/* Paused overlay */}
+      {bs.state === "paused" && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 gap-4" style={{ borderRadius: "12px" }}>
+          <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-20 h-20 object-contain opacity-80" />
+          <div className="flex items-center gap-2 text-white">
+            <Pause size={18} className="text-red-400" />
+            <p className="text-sm font-semibold">Transmisyon an sispann…</p>
+          </div>
+        </div>
+      )}
+
+      {/* Top bar — LIVE badge + power button */}
+      <div className="absolute top-0 inset-x-0 z-30 flex items-start justify-between px-2 pt-2 pointer-events-none">
+        <span className="inline-flex items-center gap-1 text-[10px] bg-red-600 text-white px-2 py-1 rounded-full font-bold animate-pulse shadow-lg">
+          <Radio size={9} /> LIVE
+        </span>
+        {!mini && (
+          <button
+            className="pointer-events-auto w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+            title="Étein TV"
+            onClick={() => setDismissed(true)}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <path d="M12 3v6" /><path d="M6.3 5.7A8 8 0 1 0 17.7 5.7" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Bottom control bar — 🔊 Son + ⛶ Fullscreen */}
+      {!mini && (
+        <div
+          className="absolute bottom-0 inset-x-0 z-30 flex items-center justify-end gap-2 px-2 pb-2"
+          style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 100%)", borderRadius: "0 0 12px 12px" }}
+        >
+          {/* Unmute / Sound button — always visible, user taps to unmute on iOS */}
+          <button
+            onClick={() => ytUnmuteAndPlay(iframeRef.current)}
+            className="flex items-center gap-1 bg-black/70 hover:bg-black/90 active:bg-red-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors shadow-lg"
+            title="Aktive son"
+          >
+            <Volume2 size={12} /> Son
+          </button>
+          {/* Fullscreen button */}
+          <button
+            onClick={goFullscreen}
+            className="bg-black/70 hover:bg-black/90 active:bg-violet-700 text-white p-1.5 rounded-full transition-colors shadow-lg"
+            title={isFullscreen ? "Soti fullscreen" : "Plein écran"}
+          >
+            <Maximize2 size={13} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Slot mode: fixed overlay exactly covering the placeholder in /tv ──────────
   if (isOnViewerTV && slotRect) {
-    // Check if the slot is actually visible in the viewport.
-    // If slot scrolled OFF-SCREEN → switch to mini-player so the iframe
-    // stays visible and YouTube never pauses/restarts the video.
     const slotVisible =
       slotRect.top >= -10 &&
       slotRect.top + slotRect.height <= window.innerHeight + 10;
 
     if (slotVisible) {
-      // Full-size overlay exactly over the slot
       return (
         <div
           style={{
@@ -202,46 +274,33 @@ export default function GlobalBroadcastPlayer() {
             left:   slotRect.left   + "px",
             width:  slotRect.width  + "px",
             height: slotRect.height + "px",
-            zIndex: 8000,
+            zIndex: 9000,
             background: "black",
+            borderRadius: "12px",
+            overflow: "hidden",
           }}
         >
-          {videoContent}
+          {fullPlayerUI(false)}
         </div>
       );
     }
-    // Fall through to mini-player when slot is off-screen ↓
   }
 
-  // ── Mini-player: shown when slot is off-screen (scroll) OR on other pages ───
-  // Keeps the iframe in the viewport so YouTube never pauses the stream.
-
-  // ── Mini-player mode: floating bottom-right on all other pages ───────────────
+  // ── Mini-player: floating bottom-right on scroll / other pages ────────────────
   return (
     <div
       className={cn(
-        "fixed z-[8000] shadow-2xl rounded-2xl overflow-hidden border border-violet-500/60",
-        "bg-black",
+        "fixed z-[9000] shadow-2xl rounded-2xl overflow-hidden border border-violet-500/60 bg-black",
         "bottom-[76px] right-3 w-[220px]",
       )}
       style={{ aspectRatio: "16/9" }}
     >
-      {/* Paused overlay */}
-      {bs.state === "paused" && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 gap-1">
-          <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-12 h-12 object-contain opacity-70" />
-          <div className="flex items-center gap-1 text-white text-[10px]">
-            <Pause size={10} className="text-red-400" /> Sispann…
-          </div>
-        </div>
-      )}
-
       {/* Click anywhere → go to /tv */}
       <div className="absolute inset-0 z-10 cursor-pointer" onClick={goToTV} />
 
-      {videoContent}
+      {fullPlayerUI(true)}
 
-      {/* Top bar: title + buttons */}
+      {/* Mini top bar override (shows title + close) */}
       <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
         <div className="flex items-center gap-1">
           <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse">
@@ -252,18 +311,10 @@ export default function GlobalBroadcastPlayer() {
           </p>
         </div>
         <div className="flex gap-1 pointer-events-auto">
-          <button
-            onClick={goToTV}
-            className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
-            title="Ouvri Flexa TV"
-          >
+          <button onClick={goToTV} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90" title="Ouvri Flexa TV">
             <Maximize2 size={10} />
           </button>
-          <button
-            onClick={() => setDismissed(true)}
-            className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
-            title="Fèmen"
-          >
+          <button onClick={() => setDismissed(true)} className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90" title="Fèmen">
             <X size={10} />
           </button>
         </div>

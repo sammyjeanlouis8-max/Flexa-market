@@ -88,8 +88,17 @@ function getEmbedInfo(program: TvProgram): EmbedInfo | null {
     }
     const vm = program.videoUrl.match(/vimeo\.com\/(\d+)/);
     if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1`, isIframe: true, isDirect: false };
-    // Archive.org embed pages must be rendered in an iframe, not a <video> tag
-    if (program.videoUrl.includes("archive.org/embed/")) return { url: program.videoUrl, isIframe: true, isDirect: false };
+    // Archive.org — iframe with autoplay=1 so film starts immediately
+    if (program.videoUrl.includes("archive.org/embed/")) {
+      const sep = program.videoUrl.includes("?") ? "&" : "?";
+      return { url: `${program.videoUrl}${sep}autoplay=1&start=0`, isIframe: true, isDirect: false };
+    }
+    // Dailymotion — ensure autoplay param
+    if (program.videoUrl.includes("dailymotion.com/embed/")) {
+      const sep = program.videoUrl.includes("?") ? "&" : "?";
+      const url = program.videoUrl.includes("autoplay=1") ? program.videoUrl : `${program.videoUrl}${sep}autoplay=1`;
+      return { url, isIframe: true, isDirect: false };
+    }
     return { url: program.videoUrl, isIframe: false, isDirect: true };
   }
   if (program.videoKey) return { url: `/api/storage/objects/${program.videoKey}`, isIframe: false, isDirect: true };
@@ -548,9 +557,8 @@ export default function FlexaTV() {
           {broadcastActive ? (
             /* ── BROADCAST MODE ──────────────────────────────────────────────
                GlobalBroadcastPlayer (persistent iframe, never unmounts) tracks
-               this placeholder div via getBoundingClientRect + ResizeObserver
+               this placeholder div via getBoundingClientRect + setInterval(100ms)
                and positions itself exactly over it as a fixed overlay (z-8000).
-               The overlays here (LIVE badge, paused screen) sit above it at z-8500.
             ── */
             <>
               {/* ── Player slot OR "TV off" placeholder ── */}
@@ -574,41 +582,13 @@ export default function FlexaTV() {
                   </div>
                 </div>
               ) : (
-                /* Normal — GlobalBroadcastPlayer (z-8000) renders over this transparent slot */
+                /* Spacing placeholder only — GlobalBroadcastPlayer (z-9000) renders
+                   all UI (LIVE badge, power button, controls) as a fixed overlay. */
                 <div
                   id="broadcast-player-slot"
-                  className="relative w-full rounded-xl"
-                  style={{ paddingBottom: "56.25%", zIndex: 8500, position: "relative" }}
-                >
-                  {/* LIVE badge */}
-                  <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
-                    <Radio size={10} /> LIVE
-                  </div>
-
-                  {/* Power OFF button — top right */}
-                  <button
-                    onClick={() => bs.setDismissed(true)}
-                    className="absolute top-2 right-2 z-20 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-                    title="Étein TV"
-                  >
-                    {/* ⏻ power symbol */}
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-                      <path d="M12 3v6" />
-                      <path d="M6.3 5.7A8 8 0 1 0 17.7 5.7" />
-                    </svg>
-                  </button>
-
-                  {/* Paused overlay */}
-                  {bs.state === "paused" && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80 gap-4">
-                      <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-24 h-24 object-contain opacity-80" />
-                      <div className="flex items-center gap-2 text-white">
-                        <Pause size={20} className="text-red-400" />
-                        <p className="text-sm font-semibold">Transmisyon an sispann…</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  className="w-full rounded-xl bg-black"
+                  style={{ paddingBottom: "56.25%" }}
+                />
               )}
 
               <div className="mt-2 px-1 flex items-center gap-2">
@@ -618,6 +598,13 @@ export default function FlexaTV() {
                 <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
               </div>
             </>
+          ) : playing ? (
+            /* No broadcast — user can freely choose from the library */
+            <VideoPlayer
+              program={playing}
+              onClose={() => setPlaying(null)}
+              noVideoLabel={t("tv.noVideo")}
+            />
           ) : (
             <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">
               {/* Animated glow background */}

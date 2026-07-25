@@ -595,6 +595,81 @@ router.get("/admin/tv/import/archive", requireAdmin, async (req, res): Promise<v
   }
 });
 
+// ── GET /api/admin/tv/import/tvmaze — proxy to TVMaze API (no key needed) ────
+router.get("/admin/tv/import/tvmaze", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q = String(req.query.q ?? "").trim() || "popular";
+    const url = `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(q)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return void res.status(502).json({ error: "TVMaze unreachable" });
+
+    const data = await resp.json() as Array<{ score: number; show: Record<string, unknown> }>;
+
+    const stripHtml = (s: unknown) =>
+      s ? String(s).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").trim() : null;
+
+    const results = data.map(({ show: s }) => ({
+      identifier : `tvmaze-${s.id}`,
+      title      : String(s.name ?? ""),
+      description: stripHtml(s.summary),
+      thumbnailUrl: ((s.image as Record<string, string> | null)?.original ?? (s.image as Record<string, string> | null)?.medium ?? "") as string,
+      genres     : (s.genres as string[] | undefined) ?? [],
+      network    : ((s.network as Record<string, string> | null)?.name ?? (s.webChannel as Record<string, string> | null)?.name ?? null) as string | null,
+      year       : s.premiered ? String(s.premiered).slice(0, 4) : null,
+      status     : s.status as string | null,
+    }));
+
+    return void res.json({ results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search TVMaze", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/dailymotion — proxy to Dailymotion public API ───
+router.get("/admin/tv/import/dailymotion", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q        = String(req.query.q        ?? "").trim() || "full movie";
+    const category = String(req.query.category ?? "").trim();
+
+    const params = new URLSearchParams({
+      search : category ? `${q} ${category}` : q,
+      fields : "id,title,thumbnail_url,duration,description",
+      limit  : "24",
+      sort   : "recent",
+    });
+
+    const resp = await fetch(`https://api.dailymotion.com/videos?${params.toString()}`);
+    if (!resp.ok) return void res.status(502).json({ error: "Dailymotion unreachable" });
+
+    const data = await resp.json() as {
+      list: Array<Record<string, unknown>>;
+      total: number;
+    };
+
+    const results = (data?.list ?? []).map((v) => {
+      const id        = String(v.id ?? "");
+      const durSec    = v.duration ? Number(v.duration) : null;
+      const rawDesc   = v.description ? String(v.description) : null;
+      return {
+        identifier    : `dm-${id}`,
+        title         : String(v.title ?? id),
+        description   : rawDesc ? rawDesc.replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year          : null as number | null,
+        creator       : null as string | null,
+        subjects      : [] as string[],
+        durationMinutes: durSec ? Math.round(durSec / 60) : null,
+        thumbnailUrl  : String(v.thumbnail_url ?? ""),
+        videoUrl      : `https://www.dailymotion.com/embed/video/${id}?autoplay=1&queue-enable=false`,
+        downloads     : 0,
+      };
+    });
+
+    return void res.json({ numFound: data?.total ?? results.length, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search Dailymotion", detail: String(err) });
+  }
+});
+
 // ── DELETE /api/admin/tv/series/:id ──────────────────────────────────────────
 router.delete("/admin/tv/series/:id", requireAdmin, async (req, res): Promise<void> => {
   try {

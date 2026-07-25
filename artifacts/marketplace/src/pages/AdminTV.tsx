@@ -110,6 +110,103 @@ const ARCHIVE_GENRES = [
   { label: "🤠 Western",         value: "Western films" },
 ];
 
+const DM_CATEGORIES = [
+  { label: "🎬 Action",      value: "action movie" },
+  { label: "😂 Comedy",      value: "comedy movie" },
+  { label: "💔 Drama",       value: "drama movie" },
+  { label: "📚 Documentary", value: "documentary" },
+  { label: "🎭 Romance",     value: "romance movie" },
+  { label: "👻 Horror",      value: "horror movie" },
+  { label: "🚀 Sci-Fi",      value: "sci-fi movie" },
+  { label: "🕵️ Thriller",    value: "thriller movie" },
+  { label: "🧒 Fanmi",       value: "family movie" },
+];
+
+// ── Shared import UI helpers ──────────────────────────────────────────────────
+function ImportSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="rounded-xl border border-border overflow-hidden animate-pulse">
+          <div className="aspect-video bg-muted" />
+          <div className="p-2 space-y-1.5">
+            <div className="h-3 bg-muted rounded w-3/4" />
+            <div className="h-2.5 bg-muted rounded w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ImportEmpty({ label }: { label: string }) {
+  return (
+    <div className="text-center py-12 text-muted-foreground">
+      <Film size={40} className="mx-auto mb-2 opacity-30" />
+      <p className="text-sm">{label}</p>
+    </div>
+  );
+}
+
+function ImportGrid({ items, importedIds, isPending, pendingId, onAdd, addLabel, addedLabel }: {
+  items: ArchiveResult[];
+  importedIds: Set<string>;
+  isPending: boolean;
+  pendingId: string | undefined;
+  onAdd: (item: ArchiveResult) => void;
+  addLabel: string;
+  addedLabel: string;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {items.map(item => {
+        const isImported  = importedIds.has(item.identifier);
+        const isImporting = isPending && pendingId === item.identifier;
+        return (
+          <div key={item.identifier} className="rounded-xl border border-border bg-card overflow-hidden hover:border-violet-500/40 transition-colors">
+            <div className="relative aspect-video bg-muted">
+              <img
+                src={item.thumbnailUrl}
+                alt={item.title}
+                className="w-full h-full object-cover"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+              />
+              {item.year && (
+                <span className="absolute top-1.5 left-1.5 text-[10px] bg-black/70 text-white px-1.5 py-0.5 rounded font-semibold">{item.year}</span>
+              )}
+              {item.durationMinutes && (
+                <span className="absolute top-1.5 right-1.5 text-[10px] bg-black/70 text-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <Clock size={8} /> {item.durationMinutes}min
+                </span>
+              )}
+            </div>
+            <div className="p-2">
+              <p className="text-xs font-semibold line-clamp-2 mb-1 leading-tight">{item.title}</p>
+              {item.creator && <p className="text-[10px] text-muted-foreground truncate mb-1.5">{item.creator}</p>}
+              <button
+                onClick={() => !isImported && onAdd(item)}
+                disabled={isImported || isImporting}
+                className={cn(
+                  "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                  isImported
+                    ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                    : "bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60"
+                )}
+              >
+                {isImported ? (
+                  <><Check size={10} /> {addedLabel}</>
+                ) : isImporting ? "…" : (
+                  <><Download size={10} /> {addLabel}</>
+                )}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function apiAuth(path: string, opts: RequestInit = {}) {
   const tk = localStorage.getItem("flexamarket_token");
@@ -260,7 +357,7 @@ function ProgramModal({
           </Field>
           <Field label={t("tv.fieldType")}>
             <select className={inputCls} value={form.type} onChange={e => set("type", e.target.value)}>
-              <option value="live">🔴 Live (transmisyon dirèk)</option>
+              <option value="live">{t("tv.typeLiveOption")}</option>
               <option value="film">{t("tv.typeFilm")}</option>
               <option value="series">{t("tv.typeSeries")}</option>
               <option value="program">{t("tv.typeProgram")}</option>
@@ -283,11 +380,11 @@ function ProgramModal({
 
           {/* Direct video upload */}
           <div className="rounded-xl border border-dashed border-violet-400 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 p-3">
-            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 mb-2">📁 Oswa Telechaje Videyo Dirèk</p>
+            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 mb-2">{t("tv.videoUploadSection")}</p>
             {form.videoKey ? (
               <div className="flex items-center gap-2">
-                <div className="flex-1 text-xs text-green-600 dark:text-green-400 font-medium truncate">✅ Videyo telechaje</div>
-                <button type="button" onClick={() => { set("videoKey", ""); set("videoUrl", ""); }} className="text-xs text-red-500 hover:underline">Retire</button>
+                <div className="flex-1 text-xs text-green-600 dark:text-green-400 font-medium truncate">{t("tv.videoUploaded")}</div>
+                <button type="button" onClick={() => { set("videoKey", ""); set("videoUrl", ""); }} className="text-xs text-red-500 hover:underline">{t("tv.removeVideo")}</button>
               </div>
             ) : uploading ? (
               <div className="space-y-1">
@@ -302,7 +399,7 @@ function ProgramModal({
                 onClick={() => fileInputRef.current?.click()}
                 className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-colors"
               >
-                📤 Chwazi Fichye Videyo (.mp4, .mov...)
+                {t("tv.chooseVideoFile")}
               </button>
             )}
             <input
@@ -312,7 +409,7 @@ function ProgramModal({
               className="hidden"
               onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); e.target.value = ""; }}
             />
-            <p className="text-[10px] text-muted-foreground mt-1.5">Videyo telechaje joue san kontwòl (moun pa ka rewind) — pafè pou transmisyon linèyè</p>
+            <p className="text-[10px] text-muted-foreground mt-1.5">{t("tv.linearHint")}</p>
           </div>
           <Field label={t("tv.fieldThumbnail")}>
             <input className={inputCls} value={form.thumbnailUrl} onChange={e => set("thumbnailUrl", e.target.value)} placeholder="https://..." />
@@ -447,12 +544,25 @@ export default function AdminTV() {
   const bs = useBroadcast(); // for startedAt + programId (broadcast timer)
 
   // ── Archive.org import state ──────────────────────────────────────────────
+  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze">("archive");
   const [archiveQuery, setArchiveQuery]     = useState("");
   const [archiveGenre, setArchiveGenre]     = useState("");
   const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
   const [archiveTotal, setArchiveTotal]     = useState<number | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [importedIds, setImportedIds]       = useState<Set<string>>(new Set());
+  // ── Dailymotion import state ───────────────────────────────────────────────
+  const [dmQuery, setDmQuery]         = useState("");
+  const [dmCategory, setDmCategory]   = useState("");
+  const [dmResults, setDmResults]     = useState<ArchiveResult[]>([]);
+  const [dmTotal, setDmTotal]         = useState<number | null>(null);
+  const [dmLoading, setDmLoading]     = useState(false);
+  // ── TVMaze series import state ─────────────────────────────────────────────
+  type TVMazeResult = { identifier: string; title: string; description: string | null; thumbnailUrl: string; genres: string[]; network: string | null; year: string | null; status: string | null };
+  const [tmQuery, setTmQuery]           = useState("");
+  const [tmResults, setTmResults]       = useState<TVMazeResult[]>([]);
+  const [tmLoading, setTmLoading]       = useState(false);
+  const [importedSeriesIds, setImportedSeriesIds] = useState<Set<string>>(new Set());
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -498,7 +608,7 @@ export default function AdminTV() {
     mutationFn: (programId: number) =>
       apiAuth("/api/admin/tv/broadcast/play", { method: "POST", body: JSON.stringify({ programId }) })
         .then(r => r.json()),
-    onSuccess: (d) => { setBroadcastState("playing"); setViewerCount(d.broadcast?.viewerCount ?? 0); toast({ title: "▶ Transmisyon kòmanse — tout moun wè!" }); },
+    onSuccess: (d) => { setBroadcastState("playing"); setViewerCount(d.broadcast?.viewerCount ?? 0); toast({ title: `▶ ${t("tv.broadcastGoLive")}` }); },
   });
 
   const broadcastPause = useMutation({
@@ -556,6 +666,62 @@ export default function AdminTV() {
     }
   }
 
+  // ── Import a TV series from TVMaze into the series list ────────────────────
+  type TVMazeResult = { identifier: string; title: string; description: string | null; thumbnailUrl: string; genres: string[]; network: string | null; year: string | null; status: string | null };
+  const importSeries = useMutation({
+    mutationFn: (item: TVMazeResult) =>
+      apiAuth("/api/admin/tv/series", {
+        method: "POST",
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description ?? null,
+          thumbnailUrl: item.thumbnailUrl || null,
+          isActive: true,
+        }),
+      }).then(r => r.json()),
+    onSuccess: (_d, item) => {
+      qc.invalidateQueries({ queryKey: ["/admin/tv/series"] });
+      qc.invalidateQueries({ queryKey: ["/tv/series"] });
+      setImportedSeriesIds(prev => new Set([...prev, item.identifier]));
+      toast({ title: `📺 ${item.title} — ${t("tv.tmImportedSeries")}` });
+    },
+    onError: () => toast({ title: t("tv.tmSeriesImportError"), variant: "destructive" }),
+  });
+
+  async function searchTVMaze(e?: FormEvent) {
+    e?.preventDefault();
+    setTmLoading(true);
+    setTmResults([]);
+    try {
+      const q = tmQuery.trim() || "popular";
+      const data = await apiAuth(`/api/admin/tv/import/tvmaze?q=${encodeURIComponent(q)}`).then(r => r.json());
+      setTmResults(data.results ?? []);
+    } catch {
+      toast({ title: t("tv.tmSeriesImportError"), variant: "destructive" });
+    } finally {
+      setTmLoading(false);
+    }
+  }
+
+  async function searchDailymotion(e?: FormEvent) {
+    e?.preventDefault();
+    setDmLoading(true);
+    setDmResults([]);
+    setDmTotal(null);
+    try {
+      const q = dmQuery.trim() || "full movie";
+      const params = new URLSearchParams({ q });
+      if (dmCategory) params.set("category", dmCategory);
+      const data = await apiAuth(`/api/admin/tv/import/dailymotion?${params}`).then(r => r.json());
+      setDmResults(data.results ?? []);
+      setDmTotal(data.numFound ?? 0);
+    } catch {
+      toast({ title: t("tv.importError"), variant: "destructive" });
+    } finally {
+      setDmLoading(false);
+    }
+  }
+
   // Poll viewer count every 10s when broadcasting
   useEffect(() => {
     if (broadcastState === "stopped") return;
@@ -595,25 +761,30 @@ export default function AdminTV() {
     prevBroadcastState.current = broadcastState;
   }, [broadcastState]); // eslint-disable-line
 
-  function getAdminEmbedUrl(p: TvProgram): string | null {
+  // Returns { url, isIframe } so the preview player knows whether to render
+  // <iframe> or <video>. Archive.org and Dailymotion are iframe sources.
+  function getAdminEmbedInfo(p: TvProgram): { url: string; isIframe: boolean } | null {
     if (p.videoUrl) {
       try {
         const u = new URL(p.videoUrl);
-        // controls=0 + modestbranding=1 hides YouTube logo and player buttons
         const ytParams = "autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1";
-        if (u.hostname.includes("youtu.be")) return `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?${ytParams}`;
+        if (u.hostname.includes("youtu.be"))
+          return { url: `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?${ytParams}`, isIframe: true };
         if (u.hostname.includes("youtube.com")) {
           const live = u.pathname.match(/\/live\/([^/?]+)/);
-          if (live) return `https://www.youtube.com/embed/${live[1]}?${ytParams}`;
+          if (live) return { url: `https://www.youtube.com/embed/${live[1]}?${ytParams}`, isIframe: true };
           const v = u.searchParams.get("v");
-          if (v) return `https://www.youtube.com/embed/${v}?${ytParams}`;
+          if (v) return { url: `https://www.youtube.com/embed/${v}?${ytParams}`, isIframe: true };
         }
         const vm = p.videoUrl.match(/vimeo\.com\/(\d+)/);
-        if (vm) return `https://player.vimeo.com/video/${vm[1]}?autoplay=1`;
-        return p.videoUrl; // direct
-      } catch { return p.videoUrl; }
+        if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1`, isIframe: true };
+        // iframe-only embed pages — must NOT render as <video>
+        if (p.videoUrl.includes("archive.org/embed/"))     return { url: p.videoUrl, isIframe: true };
+        if (p.videoUrl.includes("dailymotion.com/embed/")) return { url: p.videoUrl, isIframe: true };
+        return { url: p.videoUrl, isIframe: false }; // direct mp4 / mov
+      } catch { return { url: p.videoUrl, isIframe: false }; }
     }
-    if (p.videoKey) return `/api/storage/objects/${p.videoKey}`;
+    if (p.videoKey) return { url: `/api/storage/objects/${p.videoKey}`, isIframe: false };
     return null;
   }
 
@@ -626,8 +797,7 @@ export default function AdminTV() {
 
       {/* ── Admin Preview Player ── */}
       {previewProgram && (() => {
-        const embedUrl = getAdminEmbedUrl(previewProgram);
-        const isDirect = embedUrl && !embedUrl.includes("youtube") && !embedUrl.includes("vimeo");
+        const embedInfo = getAdminEmbedInfo(previewProgram);
         return (
           <div className="mb-5 rounded-2xl overflow-hidden border-2 border-violet-500 shadow-xl shadow-violet-500/20 bg-black">
             <div className="flex items-center justify-between px-3 py-2 bg-violet-700 text-white">
@@ -635,27 +805,26 @@ export default function AdminTV() {
               <button onClick={() => setPreviewProgram(null)} className="p-1 rounded-lg hover:bg-white/20"><X size={16} /></button>
             </div>
             <div className="relative" style={{ paddingBottom: "56.25%" }}>
-              {embedUrl ? isDirect ? (
-                <video src={embedUrl} autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
-              ) : (
+              {embedInfo ? embedInfo.isIframe ? (
                 <iframe
-                  src={embedUrl}
+                  src={embedInfo.url}
                   className="absolute inset-0 w-full h-full"
-                  allow="autoplay; fullscreen; picture-in-picture"
+                  allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                   allowFullScreen
                   title={previewProgram.title}
                   style={{ border: "none" }}
                 />
               ) : (
+                <video src={embedInfo.url} autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
+              ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-white/40">
-                  <p className="text-sm">Pa gen videyo pou pwogram sa a</p>
+                  <p className="text-sm">{t("tv.noVideo")}</p>
                 </div>
               )}
-              {/* When LIVE: block all interaction with the YouTube player (admin uses broadcast controls only) */}
+              {/* When LIVE: block all interaction (admin uses broadcast controls only) */}
               {broadcastState !== "stopped" && (
                 <>
                   <div className="absolute inset-0 z-10" style={{ background: "transparent" }} />
-                  {/* Cover YouTube watermark corner */}
                   <div className="absolute top-0 right-0 w-28 h-10 z-20 bg-black pointer-events-none" />
                   <div className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
                     <Radio size={10} /> {broadcastState === "paused" ? "PAUSE" : "LIVE"}
@@ -665,16 +834,14 @@ export default function AdminTV() {
             </div>
             {/* Broadcast Controls */}
             <div className="px-3 py-2.5 bg-black border-t border-white/10">
-              {/* Viewer count */}
               {broadcastState !== "stopped" && (
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="inline-flex items-center gap-1 text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
                     <Radio size={8} /> {broadcastState === "paused" ? "PAUSE" : "LIVE"}
                   </span>
                   <span className="text-xs text-white/70 flex items-center gap-1">
-                    <Eye size={11} /> <strong className="text-white">{viewerCount}</strong> moun
+                    <Eye size={11} /> <strong className="text-white">{viewerCount}</strong> {t("tv.viewers")}
                   </span>
-                  {/* Live broadcast duration timer */}
                   {bs.startedAt && (
                     <span className="flex items-center gap-1 text-white/60 text-[10px]">
                       <Timer size={9} /> <BroadcastTimer startedAt={bs.startedAt} />
@@ -682,7 +849,6 @@ export default function AdminTV() {
                   )}
                 </div>
               )}
-              {/* Play / Pause / Stop row */}
               <div className="flex items-center gap-2">
                 {broadcastState === "stopped" ? (
                   <button
@@ -690,7 +856,7 @@ export default function AdminTV() {
                     disabled={broadcastPlay.isPending}
                     className="flex-1 flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-xl transition-colors disabled:opacity-60"
                   >
-                    <Radio size={11} /> 🔴 Go Live — tout moun wè
+                    <Radio size={11} /> {t("tv.broadcastGoLive")}
                   </button>
                 ) : (
                   <>
@@ -700,7 +866,7 @@ export default function AdminTV() {
                         disabled={broadcastPlay.isPending}
                         className="flex-1 flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 rounded-xl transition-colors"
                       >
-                        <Play size={11} /> Reprann
+                        <Play size={11} /> {t("tv.broadcastResume")}
                       </button>
                     ) : (
                       <button
@@ -708,7 +874,7 @@ export default function AdminTV() {
                         disabled={broadcastPause.isPending}
                         className="flex-1 flex items-center justify-center gap-1.5 bg-yellow-500 hover:bg-yellow-600 text-black text-xs font-bold py-2 rounded-xl transition-colors"
                       >
-                        <Pause size={11} /> Poz
+                        <Pause size={11} /> {t("tv.broadcastPause")}
                       </button>
                     )}
                     <button
@@ -716,36 +882,35 @@ export default function AdminTV() {
                       disabled={broadcastStop.isPending}
                       className="flex items-center justify-center gap-1 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors"
                     >
-                      <Square size={11} /> Kanpe
+                      <Square size={11} /> {t("tv.broadcastStop")}
                     </button>
                   </>
                 )}
               </div>
               {broadcastState === "stopped" && (
-                <p className="text-[10px] text-white/40 mt-1.5 text-center">Viewers pa ka poz ni rewind — se ou ki kontwole tout</p>
+                <p className="text-[10px] text-white/40 mt-1.5 text-center">{t("tv.broadcastHint")}</p>
               )}
             </div>
 
-            {/* ── Vue Spectateur: iframe of /tv so admin sees exactly what viewers see ── */}
+            {/* ── Viewer Preview ── */}
             {broadcastState !== "stopped" && (
               <div className="border-t border-white/10">
                 <div className="flex items-center gap-2 px-3 py-2 bg-black/80">
                   <Monitor size={13} className="text-violet-400" />
-                  <p className="text-xs font-semibold text-white/80">Vue Spectateur</p>
-                  <span className="text-[10px] text-white/40 ml-1">— egzakteman sa moun yo wè</span>
+                  <p className="text-xs font-semibold text-white/80">{t("tv.viewerPreview")}</p>
+                  <span className="text-[10px] text-white/40 ml-1">{t("tv.viewerPreviewSub")}</span>
                 </div>
                 <div className="relative bg-black overflow-hidden" style={{ paddingBottom: "56.25%" }}>
                   <iframe
                     src="/tv"
                     className="absolute inset-0 w-full h-full"
-                    title="Viewer Preview"
+                    title={t("tv.viewerPreview")}
                     style={{ border: "none", transform: "scale(1)", transformOrigin: "top left" }}
                     scrolling="no"
                   />
-                  {/* Read-only badge — prevent any click interaction */}
                   <div className="absolute inset-0 z-10" style={{ pointerEvents: "none" }} />
                   <div className="absolute top-2 right-2 z-20 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded-full pointer-events-none">
-                    👁 Viewer mode
+                    👁 {t("tv.viewerPreview")}
                   </div>
                 </div>
               </div>
@@ -809,7 +974,7 @@ export default function AdminTV() {
       {tab === "programs" && (
         <>
           <div className="flex justify-between items-center mb-3">
-            <p className="text-sm text-muted-foreground">{programs?.length ?? 0} pwogram</p>
+            <p className="text-sm text-muted-foreground">{programs?.length ?? 0} {t("tv.programCount")}</p>
             <button
               onClick={() => setLocation("/admin/tv/programs/new")}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
@@ -887,7 +1052,7 @@ export default function AdminTV() {
                           disabled={toggleLive.isPending && goingLive === p.id}
                           className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors"
                         >
-                          <Square size={9} /> Kanpe Live
+                          <Square size={9} /> {t("tv.stopLive")}
                         </button>
                       ) : (
                         <button
@@ -895,7 +1060,7 @@ export default function AdminTV() {
                           disabled={toggleLive.isPending && goingLive === p.id}
                           className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60"
                         >
-                          <Radio size={9} /> Go Live
+                          <Radio size={9} /> {t("tv.goLive")}
                         </button>
                       )}
                     </div>
@@ -977,153 +1142,301 @@ export default function AdminTV() {
       {/* ── Import Tab (Archive.org) ───────────────────────────────────── */}
       {tab === "import" && (
         <div className="space-y-3">
-          {/* Header */}
-          <div className="flex items-center gap-2 mb-1">
+          {/* ── Import header + source sub-tabs ── */}
+          <div className="flex items-center gap-2 mb-2">
             <Globe size={16} className="text-violet-500" />
-            <p className="text-sm font-semibold">{t("tv.importTitle")}</p>
-            <span className="ml-auto text-[10px] text-muted-foreground bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
-              {t("tv.importFree")}
-            </span>
+            <p className="text-sm font-semibold">{t("tv.importTitle2")}</p>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5 mb-3">
+            <button
+              onClick={() => { setImportSubTab("archive"); if (archiveResults.length === 0) searchArchive(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "archive"
+                  ? "bg-violet-600 text-white border-violet-600"
+                  : "border-border text-muted-foreground hover:border-violet-400")}
+            >
+              🗄 Archive.org
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "archive" ? "text-white/70" : "text-muted-foreground")}>
+                {t("tv.importFree")}
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("dailymotion"); if (dmResults.length === 0) searchDailymotion(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "dailymotion"
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "border-border text-muted-foreground hover:border-blue-400")}
+            >
+              📺 Dailymotion
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "dailymotion" ? "text-white/70" : "text-muted-foreground")}>
+                {t("tv.dmFree")}
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("tvmaze"); if (tmResults.length === 0) searchTVMaze(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "tvmaze"
+                  ? "bg-orange-500 text-white border-orange-500"
+                  : "border-border text-muted-foreground hover:border-orange-400")}
+            >
+              📡 TVMaze
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "tvmaze" ? "text-white/70" : "text-muted-foreground")}>
+                {t("tv.tmFree")}
+              </span>
+            </button>
           </div>
 
-          {/* Search form */}
-          <form onSubmit={searchArchive} className="flex gap-2">
-            <div className="flex-1 relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={archiveQuery}
-                onChange={e => setArchiveQuery(e.target.value)}
-                placeholder={t("tv.importSearchPlaceholder")}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={archiveLoading}
-              className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
-            >
-              {archiveLoading ? "…" : t("tv.importSearch")}
-            </button>
-          </form>
-
-          {/* Genre quick-filters */}
-          <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => { setArchiveGenre(""); setArchiveQuery(""); }}
-              className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
-                archiveGenre === "" && archiveQuery === ""
-                  ? "bg-violet-600 text-white border-violet-600"
-                  : "border-border text-muted-foreground hover:border-violet-500")}
-            >
-              🌐 {t("tv.importAll")}
-            </button>
-            {ARCHIVE_GENRES.map(g => (
+          {/* ════ ARCHIVE.ORG PANEL ════ */}
+          {importSubTab === "archive" && (<>
+            {/* Search form */}
+            <form onSubmit={searchArchive} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={archiveQuery}
+                  onChange={e => setArchiveQuery(e.target.value)}
+                  placeholder={t("tv.importSearchPlaceholder")}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                />
+              </div>
               <button
-                key={g.value}
-                onClick={() => { setArchiveGenre(g.value); setArchiveQuery(""); setTimeout(() => searchArchive(), 0); }}
+                type="submit"
+                disabled={archiveLoading}
+                className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {archiveLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {/* Genre quick-filters */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => { setArchiveGenre(""); setArchiveQuery(""); }}
                 className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
-                  archiveGenre === g.value
+                  archiveGenre === "" && archiveQuery === ""
                     ? "bg-violet-600 text-white border-violet-600"
                     : "border-border text-muted-foreground hover:border-violet-500")}
               >
-                {g.label}
+                🌐 {t("tv.importAll")}
               </button>
-            ))}
-          </div>
-
-          {/* Results count */}
-          {archiveTotal !== null && !archiveLoading && (
-            <p className="text-xs text-muted-foreground">
-              {archiveTotal.toLocaleString()} {t("tv.importResults")} — {t("tv.importShowing")} {archiveResults.length}
-            </p>
-          )}
-
-          {/* Loading skeleton */}
-          {archiveLoading && (
-            <div className="grid grid-cols-2 gap-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="rounded-xl border border-border overflow-hidden animate-pulse">
-                  <div className="aspect-video bg-muted" />
-                  <div className="p-2 space-y-1.5">
-                    <div className="h-3 bg-muted rounded w-3/4" />
-                    <div className="h-2.5 bg-muted rounded w-1/2" />
-                  </div>
-                </div>
+              {ARCHIVE_GENRES.map(g => (
+                <button
+                  key={g.value}
+                  onClick={() => { setArchiveGenre(g.value); setArchiveQuery(""); setTimeout(() => searchArchive(), 0); }}
+                  className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                    archiveGenre === g.value
+                      ? "bg-violet-600 text-white border-violet-600"
+                      : "border-border text-muted-foreground hover:border-violet-500")}
+                >
+                  {g.label}
+                </button>
               ))}
             </div>
-          )}
 
-          {/* No results */}
-          {!archiveLoading && archiveResults.length === 0 && archiveTotal === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
-              <Film size={40} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">{t("tv.importNoResults")}</p>
+            {archiveTotal !== null && !archiveLoading && (
+              <p className="text-xs text-muted-foreground">
+                {archiveTotal.toLocaleString()} {t("tv.importResults")} — {t("tv.importShowing")} {archiveResults.length}
+              </p>
+            )}
+            {archiveLoading && <ImportSkeleton />}
+            {!archiveLoading && archiveResults.length === 0 && archiveTotal === 0 && <ImportEmpty label={t("tv.importNoResults")} />}
+            {!archiveLoading && archiveResults.length > 0 && (
+              <ImportGrid items={archiveResults} importedIds={importedIds} isPending={importProgram.isPending}
+                pendingId={(importProgram.variables as ArchiveResult | undefined)?.identifier}
+                onAdd={item => importProgram.mutate(item)}
+                addLabel={t("tv.importAdd")} addedLabel={t("tv.importAdded")} />
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://archive.org" target="_blank" rel="noopener" className="underline hover:text-foreground">Internet Archive</a> — Public Domain</span>
             </div>
-          )}
+          </>)}
 
-          {/* Results grid */}
-          {!archiveLoading && archiveResults.length > 0 && (
-            <div className="grid grid-cols-2 gap-3">
-              {archiveResults.map(item => {
-                const isImported = importedIds.has(item.identifier);
-                const isImporting = importProgram.isPending && (importProgram.variables as ArchiveResult | undefined)?.identifier === item.identifier;
-                return (
-                  <div key={item.identifier} className="rounded-xl border border-border bg-card overflow-hidden hover:border-violet-500/40 transition-colors">
-                    {/* Thumbnail */}
-                    <div className="relative aspect-video bg-muted">
-                      <img
-                        src={item.thumbnailUrl}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                      />
-                      {item.year && (
-                        <span className="absolute top-1.5 left-1.5 text-[10px] bg-black/70 text-white px-1.5 py-0.5 rounded font-semibold">
-                          {item.year}
-                        </span>
-                      )}
-                      {item.durationMinutes && (
-                        <span className="absolute top-1.5 right-1.5 text-[10px] bg-black/70 text-white px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                          <Clock size={8} /> {item.durationMinutes}min
-                        </span>
-                      )}
-                    </div>
-                    {/* Info */}
-                    <div className="p-2">
-                      <p className="text-xs font-semibold line-clamp-2 mb-1 leading-tight">{item.title}</p>
-                      {item.creator && <p className="text-[10px] text-muted-foreground truncate mb-1.5">{item.creator}</p>}
-                      {/* Add button */}
-                      <button
-                        onClick={() => !isImported && importProgram.mutate(item)}
-                        disabled={isImported || isImporting}
-                        className={cn(
-                          "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
-                          isImported
-                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                            : "bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60"
-                        )}
-                      >
-                        {isImported ? (
-                          <><Check size={10} /> {t("tv.importAdded")}</>
-                        ) : isImporting ? (
-                          "…"
-                        ) : (
-                          <><Download size={10} /> {t("tv.importAdd")}</>
-                        )}
-                      </button>
+          {/* ════ DAILYMOTION PANEL ════ */}
+          {importSubTab === "dailymotion" && (<>
+            <form onSubmit={searchDailymotion} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={dmQuery}
+                  onChange={e => setDmQuery(e.target.value)}
+                  placeholder={t("tv.dmSearchPlaceholder")}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={dmLoading}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {dmLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {/* Category quick-filters */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => { setDmCategory(""); setDmQuery(""); }}
+                className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                  dmCategory === "" && dmQuery === ""
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "border-border text-muted-foreground hover:border-blue-500")}
+              >
+                🌐 {t("tv.importAll")}
+              </button>
+              {DM_CATEGORIES.map(g => (
+                <button
+                  key={g.value}
+                  onClick={() => { setDmCategory(g.value); setDmQuery(""); setTimeout(() => searchDailymotion(), 0); }}
+                  className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                    dmCategory === g.value
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "border-border text-muted-foreground hover:border-blue-500")}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
+            {dmTotal !== null && !dmLoading && (
+              <p className="text-xs text-muted-foreground">
+                {dmTotal.toLocaleString()} {t("tv.importResults")} — {t("tv.importShowing")} {dmResults.length}
+              </p>
+            )}
+            {dmLoading && <ImportSkeleton />}
+            {!dmLoading && dmResults.length === 0 && dmTotal === 0 && <ImportEmpty label={t("tv.importNoResults")} />}
+            {!dmLoading && dmResults.length > 0 && (
+              <ImportGrid items={dmResults} importedIds={importedIds} isPending={importProgram.isPending}
+                pendingId={(importProgram.variables as ArchiveResult | undefined)?.identifier}
+                onAdd={item => importProgram.mutate(item)}
+                addLabel={t("tv.importAdd")} addedLabel={t("tv.importAdded")} />
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://www.dailymotion.com" target="_blank" rel="noopener" className="underline hover:text-foreground">Dailymotion</a> — {t("tv.dmFree")}</span>
+            </div>
+          </>)}
+
+          {/* ════ TVMAZE PANEL — import TV series metadata ════ */}
+          {importSubTab === "tvmaze" && (<>
+            {/* Info banner */}
+            <div className="rounded-xl bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">📡</span>
+              <div>
+                <p className="text-xs font-semibold text-orange-800 dark:text-orange-300">{t("tv.tmFree")}</p>
+                <p className="text-[11px] text-orange-700 dark:text-orange-400 mt-0.5">
+                  {t("tv.tmSearchPlaceholder").replace("…", "")} → {t("tv.tmImportSeries")} → lye episòd ak videyo ou vle
+                </p>
+              </div>
+            </div>
+
+            {/* Search form */}
+            <form onSubmit={searchTVMaze} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={tmQuery}
+                  onChange={e => setTmQuery(e.target.value)}
+                  placeholder={t("tv.tmSearchPlaceholder")}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={tmLoading}
+                className="px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {tmLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {/* Loading skeleton */}
+            {tmLoading && (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3 rounded-xl border border-border p-3 animate-pulse">
+                    <div className="w-14 h-20 bg-muted rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                      <div className="h-2.5 bg-muted rounded w-2/3" />
+                      <div className="h-7 bg-muted rounded-lg w-full mt-3" />
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          {/* Archive.org credit */}
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
-            <Globe size={10} />
-            <span>Powered by <a href="https://archive.org" target="_blank" rel="noopener" className="underline hover:text-foreground">Internet Archive</a> — Public Domain</span>
-          </div>
+            {/* No results */}
+            {!tmLoading && tmResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Tv size={40} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{t("tv.importNoResults")}</p>
+              </div>
+            )}
+
+            {/* Results list */}
+            {!tmLoading && tmResults.length > 0 && (
+              <div className="space-y-3">
+                {tmResults.map(item => {
+                  const isImported  = importedSeriesIds.has(item.identifier);
+                  const isImporting = importSeries.isPending && (importSeries.variables as TVMazeResult | undefined)?.identifier === item.identifier;
+                  return (
+                    <div key={item.identifier} className="flex gap-3 rounded-xl border border-border bg-card hover:border-orange-400/40 transition-colors p-3">
+                      {/* Poster */}
+                      <div className="w-14 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
+                        {item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Tv size={20} className="text-muted-foreground" /></div>
+                        )}
+                      </div>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="font-semibold text-sm truncate">{item.title}</p>
+                          {item.year && <span className="text-[10px] text-muted-foreground flex-shrink-0">{item.year}</span>}
+                          {item.status && item.status !== "Ended" && (
+                            <span className="text-[9px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{item.status}</span>
+                          )}
+                        </div>
+                        {item.network && <p className="text-[10px] text-muted-foreground mb-1">{t("tv.tmNetwork")}: {item.network}</p>}
+                        {item.genres.length > 0 && <p className="text-[10px] text-muted-foreground mb-1.5">{item.genres.slice(0,3).join(" · ")}</p>}
+                        {item.description && <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
+                        <button
+                          onClick={() => !isImported && importSeries.mutate(item)}
+                          disabled={isImported || isImporting}
+                          className={cn(
+                            "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                            isImported
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-60"
+                          )}
+                        >
+                          {isImported ? (
+                            <><Check size={10} /> {t("tv.tmImportedSeries")}</>
+                          ) : isImporting ? "…" : (
+                            <><Download size={10} /> {t("tv.tmImportSeries")}</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://www.tvmaze.com" target="_blank" rel="noopener" className="underline hover:text-foreground">TVMaze</a> — Free TV metadata</span>
+            </div>
+          </>)}
         </div>
       )}
 

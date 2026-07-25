@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer, Monitor } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -500,7 +500,7 @@ export default function AdminTV() {
       try {
         const u = new URL(p.videoUrl);
         // controls=0 + modestbranding=1 hides YouTube logo and player buttons
-        const ytParams = "autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1";
+        const ytParams = "autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1";
         if (u.hostname.includes("youtu.be")) return `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?${ytParams}`;
         if (u.hostname.includes("youtube.com")) {
           const live = u.pathname.match(/\/live\/([^/?]+)/);
@@ -625,6 +625,31 @@ export default function AdminTV() {
                 <p className="text-[10px] text-white/40 mt-1.5 text-center">Viewers pa ka poz ni rewind — se ou ki kontwole tout</p>
               )}
             </div>
+
+            {/* ── Vue Spectateur: iframe of /tv so admin sees exactly what viewers see ── */}
+            {broadcastState !== "stopped" && (
+              <div className="border-t border-white/10">
+                <div className="flex items-center gap-2 px-3 py-2 bg-black/80">
+                  <Monitor size={13} className="text-violet-400" />
+                  <p className="text-xs font-semibold text-white/80">Vue Spectateur</p>
+                  <span className="text-[10px] text-white/40 ml-1">— egzakteman sa moun yo wè</span>
+                </div>
+                <div className="relative bg-black overflow-hidden" style={{ paddingBottom: "56.25%" }}>
+                  <iframe
+                    src="/tv"
+                    className="absolute inset-0 w-full h-full"
+                    title="Viewer Preview"
+                    style={{ border: "none", transform: "scale(1)", transformOrigin: "top left" }}
+                    scrolling="no"
+                  />
+                  {/* Read-only badge — prevent any click interaction */}
+                  <div className="absolute inset-0 z-10" style={{ pointerEvents: "none" }} />
+                  <div className="absolute top-2 right-2 z-20 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded-full pointer-events-none">
+                    👁 Viewer mode
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}

@@ -224,7 +224,7 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
       } catch { return null; }
       return null;
     })();
-    if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1`;
+    if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1`;
     else { embedUrl = videoUrl; isDirect = true; }
   } else if (videoKey) { embedUrl = `/api/storage/objects/${videoKey}`; isDirect = true; }
 
@@ -557,7 +557,7 @@ export default function FlexaTV() {
             <>
               <div
                 id="broadcast-player-slot"
-                className="relative w-full bg-black rounded-xl overflow-hidden"
+                className="relative w-full bg-black rounded-xl"
                 style={{ paddingBottom: "56.25%", zIndex: 8500, position: "relative" }}
               >
                 {/* LIVE badge — above GlobalBroadcastPlayer */}

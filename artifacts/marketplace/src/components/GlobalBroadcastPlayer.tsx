@@ -17,7 +17,8 @@ import { X, Maximize2, Pause, Radio } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
-const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1";
+// controls=1 required on iOS Safari — controls=0 causes black-screen rendering bug
+const YT_PARAMS = "autoplay=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1";
 
 function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url: string; isDirect: boolean } | null {
   if (videoUrl) {
@@ -98,9 +99,21 @@ export default function GlobalBroadcastPlayer() {
 
   // ── Early exits ──────────────────────────────────────────────────────────────
   if (!isActive || dismissed) return null;
-  if (isOnAdminTV) return null; // admin has its own preview player
 
   const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
+
+  // On /admin/tv: keep the iframe MOUNTED but invisible so it doesn't restart
+  // when admin navigates to another page. Admin has their own preview player.
+  if (isOnAdminTV) {
+    return (
+      <div style={{ position: "fixed", left: "-9999px", top: 0, width: "1px", height: "1px", opacity: 0, pointerEvents: "none", zIndex: -1 }}>
+        {embed ? embed.isDirect
+          ? <video src={embed.url} autoPlay playsInline muted style={{ width: 1, height: 1 }} />
+          : <iframe src={embed.url} allow="autoplay; fullscreen; picture-in-picture" title="bg-admin" style={{ border: "none", width: 1, height: 1 }} />
+        : null}
+      </div>
+    );
+  }
 
   const videoContent = embed ? (
     embed.isDirect ? (
@@ -109,15 +122,16 @@ export default function GlobalBroadcastPlayer() {
         autoPlay
         playsInline
         className="w-full h-full object-contain"
+        style={{ borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
       />
     ) : (
       <iframe
         src={embed.url}
         className="w-full h-full"
-        allow="autoplay; fullscreen; picture-in-picture"
+        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
         allowFullScreen
         title={bs.programTitle ?? "Flexa TV"}
-        style={{ border: "none" }}
+        style={{ border: "none", borderRadius: "12px", WebkitTransform: "translateZ(0)", transform: "translateZ(0)" } as any}
       />
     )
   ) : (
@@ -139,8 +153,9 @@ export default function GlobalBroadcastPlayer() {
           height: slotRect.height + "px",
           zIndex: 8000,
           background: "black",
-          borderRadius: "12px",
-          overflow: "hidden",
+          // No overflow:hidden or borderRadius here — causes iOS Safari
+          // black-screen bug on fixed elements containing video iframes.
+          // Border-radius is applied on the iframe/video elements instead.
         }}
       >
         {videoContent}

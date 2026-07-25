@@ -9,7 +9,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useLocation, useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Youtube, Save, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +74,7 @@ export default function AdminTVProgramForm() {
   const programId = params.id ? Number(params.id) : null;
   const isEditing = programId !== null;
 
+  const qc = useQueryClient();
   const [form, setForm] = useState<ProgramForm>(EMPTY);
   const [loading, setLoading] = useState(isEditing);
   const [saving, setSaving] = useState(false);
@@ -178,6 +179,8 @@ export default function AdminTVProgramForm() {
       const r = await apiAuth(url, { method, body: JSON.stringify(body) });
       if (r.ok) {
         toast({ title: t("tv.savedProgram") });
+        // Force-refresh the programs list even though staleTime=3min
+        await qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] });
         setLocation("/admin/tv");
       } else {
         const d = await r.json().catch(() => ({}));

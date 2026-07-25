@@ -2,8 +2,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Tv, Play, Clock, Calendar, Eye, Radio, Film, List, X,
-  Maximize, Minimize, Volume2, VolumeX, Pause, ShoppingBag,
+  Maximize, Minimize, Volume2, VolumeX, Pause, ShoppingBag, Search,
 } from "lucide-react";
+
+// Auto-gradient thumbnail fallback — unique colour per title
+function titleGradient(title: string): string {
+  const gs = [
+    "from-violet-600 to-purple-700",
+    "from-blue-600 to-cyan-700",
+    "from-red-600 to-orange-700",
+    "from-green-600 to-emerald-700",
+    "from-pink-600 to-rose-700",
+    "from-amber-600 to-yellow-700",
+    "from-teal-600 to-cyan-700",
+    "from-indigo-600 to-violet-700",
+  ];
+  const hash = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  return gs[hash % gs.length];
+}
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useBroadcast } from "@/contexts/broadcast";
@@ -208,7 +224,7 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
       } catch { return null; }
       return null;
     })();
-    if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1`;
     else { embedUrl = videoUrl; isDirect = true; }
   } else if (videoKey) { embedUrl = `/api/storage/objects/${videoKey}`; isDirect = true; }
 
@@ -238,8 +254,12 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
         </div>
       )}
 
-      {/* Viewer interaction blocker — covers entire player */}
+      {/* Viewer interaction blocker — covers entire player + hides any YouTube UI */}
       <div className="absolute inset-0 z-10" style={{ background: "transparent" }} />
+      {/* YouTube watermark cover — top-right corner */}
+      {!isDirect && embedUrl && (
+        <div className="absolute top-0 right-0 w-28 h-10 z-20 bg-black pointer-events-none" />
+      )}
 
       {embedUrl ? (
         isDirect ? (
@@ -348,8 +368,10 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
         {program.thumbnailUrl ? (
           <img src={program.thumbnailUrl} alt={program.title} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            <Film size={compact ? 14 : 20} />
+          <div className={cn("w-full h-full bg-gradient-to-br flex items-center justify-center", titleGradient(program.title))}>
+            <span className="text-white font-bold drop-shadow" style={{ fontSize: compact ? 14 : 20 }}>
+              {program.title[0]?.toUpperCase() ?? "📺"}
+            </span>
           </div>
         )}
         {isLive && (
@@ -389,6 +411,7 @@ export default function FlexaTV() {
   const [now, setNow] = useState(new Date());
   const [adListing, setAdListing] = useState<BoostedListing | null>(null);
   const [adDone, setAdDone] = useState(false);
+  const [search, setSearch] = useState("");
   const viewedRef = useRef<Set<number>>(new Set());
 
   const tlabel = (type: string) => ({
@@ -475,11 +498,15 @@ export default function FlexaTV() {
     }
   }, [nowPlaying, programs]); // eslint-disable-line
 
-  const livePrograms = programs?.filter(p => p.type === "live") ?? [];
-  const films = programs?.filter(p => p.type === "film") ?? [];
-  const episodeList = programs?.filter(p => p.type === "series") ?? [];
-  const programList = programs?.filter(p => p.type === "program" || p.type === "news") ?? [];
-  const upcoming = schedule?.filter(p => p.scheduledAt && new Date(p.scheduledAt) > now).slice(0, 10) ?? [];
+  const sq = search.toLowerCase().trim();
+  const matchSearch = (p: TvProgram) => !sq || p.title.toLowerCase().includes(sq) || (p.description ?? "").toLowerCase().includes(sq);
+  const matchSearchSched = (p: TvProgram) => !sq || p.title.toLowerCase().includes(sq);
+
+  const livePrograms = (programs?.filter(p => p.type === "live") ?? []).filter(matchSearch);
+  const films = (programs?.filter(p => p.type === "film") ?? []).filter(matchSearch);
+  const episodeList = (programs?.filter(p => p.type === "series") ?? []).filter(matchSearch);
+  const programList = (programs?.filter(p => p.type === "program" || p.type === "news") ?? []).filter(matchSearch);
+  const upcoming = (schedule?.filter(p => p.scheduledAt && new Date(p.scheduledAt) > now) ?? []).filter(matchSearchSched).slice(0, 10);
 
   const currentAiring = schedule?.find(p => {
     if (!p.scheduledAt) return false;
@@ -592,10 +619,29 @@ export default function FlexaTV() {
           </button>
         )}
 
-        {/* ── Cast tip ── */}
-        <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-xl px-3 py-2 border border-border">
-          <Tv size={14} className="shrink-0 text-violet-500" />
-          <p>💡 <strong>Smart TV / Chromecast / AirPlay:</strong> {t("tv.castTip")}</p>
+        {/* ── Cast tip — only when something is playing ── */}
+        {(broadcastActive || !!playing) && (
+          <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-xl px-3 py-2 border border-border">
+            <Tv size={14} className="shrink-0 text-violet-500" />
+            <p>💡 <strong>Smart TV / Chromecast / AirPlay:</strong> {t("tv.castTip")}</p>
+          </div>
+        )}
+
+        {/* ── Search bar ── */}
+        <div className="relative mb-3">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechèche pwogram, fim, seri…"
+            className="w-full pl-8 pr-8 py-2 text-sm bg-muted/60 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500/40 transition-all"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         {/* ── Tabs ── */}

@@ -56,7 +56,7 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ viewerId }),
       }).catch(() => {});
     hb();
-    const t = setInterval(hb, 30_000);
+    const t = setInterval(hb, 15_000); // 15s for more accurate viewer count
     return () => clearInterval(t);
   }, []);
 

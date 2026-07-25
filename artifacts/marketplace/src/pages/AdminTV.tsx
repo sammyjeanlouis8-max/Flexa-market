@@ -477,12 +477,14 @@ export default function AdminTV() {
     if (p.videoUrl) {
       try {
         const u = new URL(p.videoUrl);
-        if (u.hostname.includes("youtu.be")) return `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?autoplay=1&rel=0`;
+        // controls=0 + modestbranding=1 hides YouTube logo and player buttons
+        const ytParams = "autoplay=1&rel=0&modestbranding=1&controls=0&disablekb=1&playsinline=1";
+        if (u.hostname.includes("youtu.be")) return `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?${ytParams}`;
         if (u.hostname.includes("youtube.com")) {
           const live = u.pathname.match(/\/live\/([^/?]+)/);
-          if (live) return `https://www.youtube.com/embed/${live[1]}?autoplay=1&rel=0`;
+          if (live) return `https://www.youtube.com/embed/${live[1]}?${ytParams}`;
           const v = u.searchParams.get("v");
-          if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&rel=0`;
+          if (v) return `https://www.youtube.com/embed/${v}?${ytParams}`;
         }
         const vm = p.videoUrl.match(/vimeo\.com\/(\d+)/);
         if (vm) return `https://player.vimeo.com/video/${vm[1]}?autoplay=1`;
@@ -512,7 +514,7 @@ export default function AdminTV() {
             </div>
             <div className="relative" style={{ paddingBottom: "56.25%" }}>
               {embedUrl ? isDirect ? (
-                <video src={embedUrl} controls autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
+                <video src={embedUrl} autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
               ) : (
                 <iframe
                   src={embedUrl}
@@ -526,6 +528,17 @@ export default function AdminTV() {
                 <div className="absolute inset-0 flex items-center justify-center text-white/40">
                   <p className="text-sm">Pa gen videyo pou pwogram sa a</p>
                 </div>
+              )}
+              {/* When LIVE: block all interaction with the YouTube player (admin uses broadcast controls only) */}
+              {broadcastState !== "stopped" && (
+                <>
+                  <div className="absolute inset-0 z-10" style={{ background: "transparent" }} />
+                  {/* Cover YouTube watermark corner */}
+                  <div className="absolute top-0 right-0 w-28 h-10 z-20 bg-black pointer-events-none" />
+                  <div className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
+                    <Radio size={10} /> {broadcastState === "paused" ? "PAUSE" : "LIVE"}
+                  </div>
+                </>
               )}
             </div>
             {/* Broadcast Controls */}

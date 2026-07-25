@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import {
   Loader2, CreditCard, User, ShieldCheck, AlertTriangle, Clock, CheckCircle,
-  Wallet, Pencil, RefreshCw,
+  Wallet, Pencil, RefreshCw, Search, Banknote,
 } from "lucide-react";
 
 interface DebtRow {
@@ -80,6 +80,12 @@ export default function AdminFlexCardPanel() {
   const [adjustValue, setAdjustValue] = useState("");
   const [adjustNotes, setAdjustNotes] = useState("");
   const [acting, setActing] = useState(false);
+  // Search
+  const [search, setSearch] = useState("");
+  // Cash repayment form
+  const [cashAmt, setCashAmt] = useState("");
+  const [cashMethod, setCashMethod] = useState("cash");
+  const [cashNotes, setCashNotes] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +165,25 @@ export default function AdminFlexCardPanel() {
     }
   };
 
+  const handleCashRepay = async () => {
+    if (!selected) return;
+    const amt = parseFloat(cashAmt);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast({ title: "Antre yon montan ki valab.", variant: "destructive" }); return;
+    }
+    setActing(true);
+    try {
+      await apiPost("/api/admin/flex-card/record-repayment", {
+        userId: selected.userId, amountUsd: amt, method: cashMethod, notes: cashNotes || null,
+      });
+      toast({ title: `✅ Peman ${cashMethod} $${amt.toFixed(2)} anrejistre.` });
+      setCashAmt(""); setCashNotes("");
+      setSelected(null); load();
+    } catch (e: any) {
+      toast({ title: e.message ?? "Erè: pa kapab anrejistre peman.", variant: "destructive" });
+    } finally { setActing(false); }
+  };
+
   const handleUnblock = async () => {
     if (!selected) return;
     setActing(true);
@@ -212,6 +237,17 @@ export default function AdminFlexCardPanel() {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          placeholder="Rechèche pa non, imèl, referans…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -222,7 +258,11 @@ export default function AdminFlexCardPanel() {
         </div>
       ) : (
         <div className="space-y-3">
-          {rows.map((row) => {
+          {rows.filter(r => {
+            if (!search.trim()) return true;
+            const s = search.toLowerCase();
+            return r.userName.toLowerCase().includes(s) || r.userEmail.toLowerCase().includes(s) || r.referenceCode.toLowerCase().includes(s) || (r.userPhone ?? "").includes(s);
+          }).map((row) => {
             const overdue = isOverdue(row.deadline, row.status);
             const pct = row.originalAmountUsd > 0
               ? Math.min(100, Math.round((row.repaidUsd / row.originalAmountUsd) * 100))
@@ -339,6 +379,45 @@ export default function AdminFlexCardPanel() {
                   </div>
                 )}
               </div>
+
+              {/* ── Cash / off-platform repayment — only for active debts ── */}
+              {selected.status === "active" && (
+                <div>
+                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1">
+                    <Banknote className="h-3.5 w-3.5" /> Anrejistre Peman Kach / Lòt
+                  </h4>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Montan (USD)</label>
+                        <Input type="number" min="0.01" step="0.01" value={cashAmt} onChange={e => setCashAmt(e.target.value)} placeholder="0.00" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground mb-1 block">Metòd</label>
+                        <Select value={cashMethod} onValueChange={setCashMethod}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">💵 Kach</SelectItem>
+                            <SelectItem value="moncash">📱 MonCash</SelectItem>
+                            <SelectItem value="natcash">📱 NatCash</SelectItem>
+                            <SelectItem value="bank_transfer">🏦 Virement</SelectItem>
+                            <SelectItem value="zelle">💸 Zelle</SelectItem>
+                            <SelectItem value="other">➕ Lòt</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Nòt (opsyonèl)</label>
+                      <Input value={cashNotes} onChange={e => setCashNotes(e.target.value)} placeholder="Nimewo tranzaksyon, non ki peye…" />
+                    </div>
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCashRepay} disabled={acting}>
+                      {acting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Banknote className="h-4 w-4 mr-1" />}
+                      Anrejistre Peman
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Adjust / unblock actions — only for active debts */}
               {selected.status === "active" && (

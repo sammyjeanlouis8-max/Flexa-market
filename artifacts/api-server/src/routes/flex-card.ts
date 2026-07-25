@@ -442,4 +442,78 @@ router.post("/flex-card/repay", requireAuth, async (req, res): Promise<void> => 
   res.json({ ok: true, amountPaid: outcome.pay, outstandingUsd: outcome.cleared ? 0 : outcome.outstandingAfter, cleared: outcome.cleared });
 });
 
+// ── Task #7: Admin records a cash / off-platform repayment ───────────────────
+// No wallet deduction — admin confirms the payment was received outside FM.
+router.post("/admin/flex-card/record-repayment", requireFinanceAdmin, async (req, res): Promise<void> => {
+  const userId   = Number(req.body?.userId);
+  const amountUsd = Number(req.body?.amountUsd);
+  const method   = req.body?.method ? String(req.body.method) : "cash";
+  const notes    = req.body?.notes  ? String(req.body.notes)  : null;
+
+  if (!Number.isFinite(userId) || userId <= 0)      { res.status(400).json({ error: "userId required" }); return; }
+  if (!Number.isFinite(amountUsd) || amountUsd <= 0) { res.status(400).json({ error: "amountUsd must be > 0" }); return; }
+
+  const outcome = await db.transaction(async (tx) => {
+    const [debt] = await tx
+      .select()
+      .from(flexCardDebtsTable)
+      .where(and(eq(flexCardDebtsTable.userId, userId), eq(flexCardDebtsTable.status, "active")))
+      .for("update");
+    if (!debt) return { code: "NO_ACTIVE_DEBT" as const };
+
+    const pay = Math.round(Math.min(amountUsd, debt.outstandingUsd) * 100) / 100;
+    const outstandingAfter = Math.round((debt.outstandingUsd - pay) * 100) / 100;
+    const cleared = outstandingAfter <= 0.001;
+
+    await tx.insert(flexCardRepaymentsTable).values({
+      debtId: debt.id,
+      userId,
+      amountUsd: pay,
+      outstandingAfterUsd: cleared ? 0 : outstandingAfter,
+      source: method, // "cash", "moncash", "bank_transfer", etc.
+    });
+
+    if (cleared) {
+      await tx.update(flexCardDebtsTable)
+        .set({ outstandingUsd: 0, status: "cleared", clearedAt: new Date(), notes: notes ?? debt.notes })
+        .where(eq(flexCardDebtsTable.id, debt.id));
+      await tx.update(usersTable)
+        .set({ flexCardBlocked: false, flexCardDebtUsd: 0 })
+        .where(eq(usersTable.id, userId));
+    } else {
+      await tx.update(flexCardDebtsTable)
+        .set({ outstandingUsd: outstandingAfter, notes: notes ?? debt.notes })
+        .where(eq(flexCardDebtsTable.id, debt.id));
+      await tx.update(usersTable)
+        .set({ flexCardDebtUsd: outstandingAfter })
+        .where(eq(usersTable.id, userId));
+    }
+    return { code: "OK" as const, debt, pay, outstandingAfter, cleared };
+  });
+
+  if (outcome.code === "NO_ACTIVE_DEBT") { res.status(404).json({ error: "No active Flex Card debt" }); return; }
+
+  if (outcome.cleared) {
+    await notify(userId, req.userId!, "flex_card_cleared",
+      `Bon nouvèl! Peman ${method} $${outcome.pay.toFixed(2)} resevwa. Flex Card ou debloke — ou ka depanse ankò.`);
+  } else {
+    await notify(userId, req.userId!, "flex_card_payment",
+      `Admin anrejistre yon peman ${method} $${outcome.pay.toFixed(2)}. Rete: $${outcome.outstandingAfter.toFixed(2)}.`);
+  }
+
+  await logAdminAction(req, {
+    actionType: "flex_card_cash_repayment",
+    actionCategory: "wallet",
+    description: `Admin recorded ${method} repayment $${outcome.pay.toFixed(2)} for user #${userId} (${outcome.debt.referenceCode})`,
+    targetType: "user",
+    targetId: userId,
+    beforeState: { outstandingUsd: outcome.debt.outstandingUsd },
+    afterState:  { outstandingUsd: outcome.cleared ? 0 : outcome.outstandingAfter },
+    metadata: { method, notes },
+    riskLevel: "high",
+  });
+
+  res.json({ ok: true, amountPaid: outcome.pay, outstandingUsd: outcome.cleared ? 0 : outcome.outstandingAfter, cleared: outcome.cleared });
+});
+
 export default router;

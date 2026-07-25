@@ -1,17 +1,18 @@
 import { Router } from "express";
-import { db, tvSeriesTable, tvProgramsTable } from "@workspace/db";
+import { db, tvSeriesTable, tvProgramsTable, platformSettingsTable, expoPushTokensTable } from "@workspace/db";
 import { eq, and, lte, gte, gt, desc, asc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { sendExpoPushToUser } from "../lib/expo-push";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
 const uploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 * 1024 } });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BROADCAST STATE (in-memory — ephemeral, resets on restart)
+// BROADCAST STATE — in-memory + persisted to platform_settings for crash recovery
 // ══════════════════════════════════════════════════════════════════════════════
 type PlaybackState = "playing" | "paused" | "stopped";
 interface BroadcastState {
@@ -27,6 +28,52 @@ const broadcast: BroadcastState = {
   programId: null, programTitle: null, videoUrl: null, videoKey: null,
   state: "stopped", startedAt: null, updatedAt: new Date(),
 };
+
+// Persist state to platform_settings (non-blocking, best-effort)
+async function saveBroadcastState() {
+  try {
+    const value = JSON.stringify(broadcast);
+    await db.insert(platformSettingsTable)
+      .values({ key: "tv_broadcast_state", value })
+      .onConflictDoUpdate({ target: platformSettingsTable.key, set: { value, updatedAt: new Date() } });
+  } catch { /* non-fatal */ }
+}
+
+// Restore state on server startup
+(async () => {
+  try {
+    const [row] = await db.select().from(platformSettingsTable)
+      .where(eq(platformSettingsTable.key, "tv_broadcast_state"));
+    if (row) {
+      const saved = JSON.parse(row.value) as Partial<BroadcastState>;
+      if (saved.state === "playing" || saved.state === "paused") {
+        Object.assign(broadcast, {
+          ...saved,
+          startedAt: saved.startedAt ? new Date(saved.startedAt) : null,
+          updatedAt: new Date(),
+        });
+      }
+    }
+  } catch { /* ignore — defaults to stopped */ }
+})();
+
+// Send push notification to all users with tokens (non-blocking, fire-and-forget)
+async function pushBroadcastStarted(title: string | null) {
+  try {
+    const rows = await db
+      .selectDistinct({ userId: expoPushTokensTable.userId })
+      .from(expoPushTokensTable);
+    for (const { userId } of rows) {
+      sendExpoPushToUser(userId, {
+        title: "🔴 Flexa TV — LIVE kounye a!",
+        body: title ? `${title} k'ap difize kounye a. Peze pou gade!` : "Flexa TV k'ap difize LIVE. Peze pou gade!",
+        data: { screen: "tv" },
+        sound: "default",
+        channelId: "flexa-tv",
+      }).catch(() => {});
+    }
+  } catch { /* non-fatal */ }
+}
 
 // Viewer heartbeats: viewerId → last ping timestamp (ms)
 const viewerHeartbeats = new Map<string, number>();
@@ -71,25 +118,30 @@ router.post("/admin/tv/broadcast/play", requireAdmin, async (req, res): Promise<
       }
     } catch { /* ignore DB error, use existing */ }
   }
+  const isFirstPlay = !broadcast.startedAt;
   broadcast.state = "playing";
   if (!broadcast.startedAt) broadcast.startedAt = new Date();
   broadcast.updatedAt = new Date();
+  void saveBroadcastState();
+  if (isFirstPlay) void pushBroadcastStarted(broadcast.programTitle); // notify only on first go-live
   res.json({ ok: true, broadcast: { ...broadcast, viewerCount: activeViewers() } });
 });
 
 // ── POST /api/admin/tv/broadcast/pause ────────────────────────────────────────
-router.post("/admin/tv/broadcast/pause", requireAdmin, (_req, res): void => {
+router.post("/admin/tv/broadcast/pause", requireAdmin, async (_req, res): Promise<void> => {
   broadcast.state = "paused";
   broadcast.updatedAt = new Date();
+  void saveBroadcastState();
   res.json({ ok: true, broadcast: { ...broadcast, viewerCount: activeViewers() } });
 });
 
 // ── POST /api/admin/tv/broadcast/stop ─────────────────────────────────────────
-router.post("/admin/tv/broadcast/stop", requireAdmin, (_req, res): void => {
+router.post("/admin/tv/broadcast/stop", requireAdmin, async (_req, res): Promise<void> => {
   broadcast.state = "stopped";
   broadcast.startedAt = null;
   broadcast.updatedAt = new Date();
   viewerHeartbeats.clear();
+  void saveBroadcastState();
   res.json({ ok: true, broadcast: { ...broadcast, viewerCount: 0 } });
 });
 

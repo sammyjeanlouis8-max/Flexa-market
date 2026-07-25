@@ -494,9 +494,16 @@ export default function FlexaTV() {
               </div>
             </>
           ) : (
-            <div className="aspect-video bg-muted rounded-xl flex flex-col items-center justify-center gap-3 border border-border">
-              <Tv size={48} className="text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">{t("tv.clickToWatch")}</p>
+            <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">
+              {/* Animated glow background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-900/30 via-transparent to-blue-900/30 animate-pulse" />
+              <img
+                src="/flexa-tv-logo.png"
+                alt="Flexa TV"
+                className="w-36 h-36 object-contain relative z-10 drop-shadow-2xl"
+                style={{ filter: "drop-shadow(0 0 24px rgba(139,92,246,0.6))" }}
+              />
+              <p className="text-sm text-white/50 relative z-10">{t("tv.clickToWatch")}</p>
             </div>
           )}
         </div>

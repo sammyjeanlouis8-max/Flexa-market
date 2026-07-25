@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "349131066560",
+    "project_id": "flexa-market-8873a",
+    "storage_bucket": "flexa-market-8873a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:349131066560:android:40f15b3849702253b3b125",
+        "android_client_info": {
+          "package_name": "com.flexa.market"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB947HT_mE0NTZT9lZiHmJXyNkcO3WLDz4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

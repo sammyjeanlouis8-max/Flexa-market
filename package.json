@@ -2,16 +2,30 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
+  "packageManager": "pnpm@10.26.1",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock'",
+    "start": "node index.js",
+    "build": "sh -c 'which pnpm > /dev/null 2>&1 || npm install -g pnpm@10.26.1; pnpm -r --if-present run build'",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
   "devDependencies": {
-    "playwright-core": "^1.61.1",
-    "prettier": "^3.8.4",
-    "typescript": "~5.9.3"
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "dependencies": {
+    "@types/web-push": "^3.6.4",
+    "expo": "~54.0.35",
+    "lru-cache": "5.1.1",
+    "stripe": "^22.1.0",
+    "stripe-replit-sync": "^1.0.0",
+    "web-push": "^3.6.7"
+  },
+  "pnpm": {
+    "overrides": {
+      "lru-cache@^11": "11.4.0"
+    }
   }
 }

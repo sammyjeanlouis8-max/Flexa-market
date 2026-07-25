@@ -1,0 +1,119 @@
+{
+  "expo": {
+    "name": "Flexa Market",
+    "slug": "mobile",
+    "owner": "muelsa89",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "flexamarket",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.flexamarket.mobile",
+      "buildNumber": "1",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "deploymentTarget": "15.1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing.",
+        "NSPhotoLibraryUsageDescription": "Flexa Market uses your photo library so you can choose existing photos of items you want to sell and attach them to your listings.",
+        "NSPhotoLibraryAddUsageDescription": "Flexa Market saves photos to your library after you take them for your listings.",
+        "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show you nearby listings and to automatically set the location for items you are selling, helping local buyers find your products.",
+        "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
+        "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password."
+      }
+    },
+    "android": {
+      "package": "com.flexa.market",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1,
+      "compileSdkVersion": 35,
+      "targetSdkVersion": 35,
+      "minSdkVersion": 24,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://flexamarket.com"
+        }
+      ],
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#F97316",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Flexa Market uses your photo library so you can choose photos of items you want to sell and add them to your listings.",
+          "cameraPermission": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Flexa Market uses your location to show you nearby listings and to set the location for items you are selling, helping local buyers find your products."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
+      "checkOnLaunch": "ALWAYS",
+      "fallbackToCacheTimeout": 10000
+    }
+  }
+}

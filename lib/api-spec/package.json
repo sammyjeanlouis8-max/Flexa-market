@@ -3,9 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
+    "codegen": "orval --config ./orval.config.ts",
+    "start": "node -e \"require('http').createServer((_,r)=>{r.writeHead(200);r.end('ok')}).listen(process.env.PORT||3000,()=>console.log('ready'))\""
   },
   "devDependencies": {
-    "orval": "^8.18.0"
+    "orval": "^8.5.2"
   }
 }

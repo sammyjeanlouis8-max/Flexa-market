@@ -1,20 +1,33 @@
-// Export your models here. Add one export per file
-// export * from "./posts";
-//
-// Each model/table should ideally be split into different files.
-// Each model/table should define a Drizzle table, insert schema, and types:
-//
-//   import { pgTable, text, serial } from "drizzle-orm/pg-core";
-//   import { createInsertSchema } from "drizzle-zod";
-//   import { z } from "zod/v4";
-//
-//   export const postsTable = pgTable("posts", {
-//     id: serial("id").primaryKey(),
-//     title: text("title").notNull(),
-//   });
-//
-//   export const insertPostSchema = createInsertSchema(postsTable).omit({ id: true });
-//   export type InsertPost = z.infer<typeof insertPostSchema>;
-//   export type Post = typeof postsTable.$inferSelect;
-
-export {}
+export * from "./users";
+export * from "./categories";
+export * from "./listings";
+export * from "./messages";
+export * from "./offers";
+export * from "./reviews";
+export * from "./reports";
+export * from "./otp";
+export * from "./admin_logs";
+export * from "./comments";
+export * from "./notifications";
+export * from "./transactions";
+export * from "./login_logs";
+export * from "./platform_settings";
+export * from "./promo_wallet";
+export * from "./push_subscriptions";
+export * from "./jobs";
+export * from "./support";
+export * from "./fintech";
+export * from "./cashout";
+export * from "./phone_otp";
+export * from "./seller_payouts";
+export * from "./promo_codes";
+export * from "./vendor_subscriptions";
+export * from "./recovery";
+export * from "./user_restrictions";
+export * from "./drivers";
+export * from "./financial";
+export * from "./audit_logs";
+export * from "./recharge_cards";
+export * from "./expo_push_tokens";
+export * from "./referrals";
+export * from "./flex_card_debt";

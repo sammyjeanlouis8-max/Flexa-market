@@ -1,5 +1,8 @@
-import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
+import ws from "ws";
+import { drizzle as drizzleNodePg } from "drizzle-orm/node-postgres";
+import { drizzle as drizzleNeon, type NeonDatabase } from "drizzle-orm/neon-serverless";
+import { Pool as NeonPool, neonConfig } from "@neondatabase/serverless";
 import * as schema from "./schema";
 
 const { Pool } = pg;
@@ -10,7 +13,39 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+const DATABASE_URL = process.env.DATABASE_URL;
+const isNeon =
+  DATABASE_URL.includes("neon.tech") ||
+  DATABASE_URL.includes(".neon.") ||
+  DATABASE_URL.includes("neondb");
+
+let _pool: InstanceType<typeof Pool> | NeonPool | null = null;
+
+function createDb() {
+  if (isNeon) {
+    // Use @neondatabase/serverless WebSocket pool — supports transactions
+    // and handles connection drops automatically without pgBouncer issues.
+    neonConfig.webSocketConstructor = ws;
+    const pool = new NeonPool({ connectionString: DATABASE_URL });
+    _pool = pool;
+    return drizzleNeon(pool, { schema });
+  } else {
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      keepAlive: true,
+      idleTimeoutMillis: 0,
+      connectionTimeoutMillis: 10000,
+      max: 10,
+    });
+    pool.on("error", (_err) => {
+      // Prevent crash on idle client errors; pool reconnects automatically
+    });
+    _pool = pool;
+    return drizzleNodePg(pool, { schema });
+  }
+}
+
+export const db = createDb();
+export const pool = _pool;
 
 export * from "./schema";

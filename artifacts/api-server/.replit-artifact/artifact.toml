@@ -21,7 +21,9 @@ args = ["pnpm", "--filter", "@workspace/api-server", "run", "build"]
 NODE_ENV = "production"
 
 [services.production.run]
-# we don't run through pnpm to make startup faster in production
+# Use the DATABASE_URL secret directly — NEON_DATABASE_URL does not exist in production
+# and the sh-c override was silently clearing DATABASE_URL, preventing the server from
+# binding to its port before the 60-second startup timeout expired.
 args = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [services.production.run.env]

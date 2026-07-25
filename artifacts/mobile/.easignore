@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Logs & maps
+*.log
+*.map
+
+# Dev artifacts
+node_modules
+.cache
+dist
+coverage
+.expo
+
+# Workspace root & other packages — exclude everything outside mobile/
+../../node_modules
+../../artifacts/marketplace
+../../artifacts/api-server
+../../artifacts/mockup-sandbox
+../../lib
+../../scripts
+../../.local
+../../attached_assets
+../../.git
+../../dist
+../../coverage
+../.cache
+
+# Docs
+*.md
+README*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+__tests__
+*.test.*
+*.spec.*

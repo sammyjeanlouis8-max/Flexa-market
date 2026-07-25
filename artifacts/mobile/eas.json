@@ -1,0 +1,50 @@
+{
+  "cli": {
+    "version": ">= 19.1.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle",
+        "credentialsSource": "remote"
+      },
+      "ios": {
+        "credentialsSource": "remote",
+        "image": "macos-sequoia-15.6-xcode-26.2"
+      },
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app",
+        "EXPO_ROUTER_APP_ROOT": "app"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "samueljeanlouis37@icloud.com",
+        "ascAppId": "6754947270"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-key.json",
+        "track": "internal"
+      }
+    }
+  }
+}

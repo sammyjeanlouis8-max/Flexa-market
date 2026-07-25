@@ -1,22 +1,50 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Marketplace API specification
 servers:
   - url: /api
     description: Base API path
 tags:
+  - name: Storage
+    description: Object storage upload and serving endpoints.
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: otp
+    description: Phone OTP verification
+  - name: users
+    description: User management
+  - name: listings
+    description: Product listings
+  - name: categories
+    description: Categories
+  - name: messages
+    description: Chat messages
+  - name: conversations
+    description: Conversations
+  - name: favorites
+    description: Saved/favorited listings
+  - name: offers
+    description: Buyer offers
+  - name: reviews
+    description: Seller reviews
+  - name: boosts
+    description: Listing boosts
+  - name: reports
+    description: Reports
+  - name: admin
+    description: Admin operations
+  - name: stats
+    description: Stats and analytics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +52,1262 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/login-phone:
+    post:
+      operationId: loginPhone
+      tags: [auth]
+      summary: Login using a verified phone token (no password)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginPhoneBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/send-otp:
+    post:
+      operationId: sendOtp
+      tags: [otp]
+      summary: Send OTP to phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendOtpBody"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtpSentResponse"
+
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [otp]
+      summary: Verify OTP code and get phone token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpBody"
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyOtpResponse"
+
+  /auth/change-country:
+    post:
+      operationId: changeCountry
+      tags: [otp]
+      summary: Change user country (requires phone verification)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeCountryBody"
+      responses:
+        "200":
+          description: Country updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get user profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    put:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}/listings:
+    get:
+      operationId: getUserListings
+      tags: [users]
+      summary: Get listings by user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /users/{id}/reviews:
+    get:
+      operationId: getUserReviews
+      tags: [users]
+      summary: Get reviews for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Review"
+
+  /users/{id}/follow:
+    post:
+      operationId: followUser
+      tags: [users]
+      summary: Follow a seller
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: unfollowUser
+      tags: [users]
+      summary: Unfollow a seller
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /categories:
+    get:
+      operationId: getCategories
+      tags: [categories]
+      summary: Get all categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+
+  /listings:
+    get:
+      operationId: getListings
+      tags: [listings]
+      summary: Get listings with filters
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: subcategory
+          in: query
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: condition
+          in: query
+          schema:
+            type: string
+        - name: location
+          in: query
+          schema:
+            type: string
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: boosted
+          in: query
+          schema:
+            type: boolean
+        - name: scope
+          in: query
+          description: Geographic ranking scope - nearby, city, or country
+          schema:
+            type: string
+            enum: [nearby, city, country]
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingsResponse"
+    post:
+      operationId: createListing
+      tags: [listings]
+      summary: Create a listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListingBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Listing"
+
+  /me/location:
+    patch:
+      operationId: updateMyLocation
+      tags: [users]
+      summary: Update current user's location (lat/lng/state/neighborhood)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                state:
+                  type: string
+                neighborhood:
+                  type: string
+                location:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /listings/trending:
+    get:
+      operationId: getTrendingListings
+      tags: [listings]
+      summary: Get trending listings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /listings/featured:
+    get:
+      operationId: getFeaturedListings
+      tags: [listings]
+      summary: Get featured/boosted listings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /listings/{id}:
+    get:
+      operationId: getListing
+      tags: [listings]
+      summary: Get a listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListingDetail"
+    put:
+      operationId: updateListing
+      tags: [listings]
+      summary: Update a listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateListingBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Listing"
+    delete:
+      operationId: deleteListing
+      tags: [listings]
+      summary: Delete a listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /listings/{id}/boost:
+    post:
+      operationId: boostListing
+      tags: [boosts]
+      summary: Boost a listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BoostBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Boost"
+
+  /listings/{id}/mark-sold:
+    post:
+      operationId: markListingSold
+      tags: [listings]
+      summary: Mark listing as sold
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Listing"
+
+  /favorites:
+    get:
+      operationId: getFavorites
+      tags: [favorites]
+      summary: Get my favorites
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /favorites/{listingId}:
+    post:
+      operationId: addFavorite
+      tags: [favorites]
+      summary: Save a listing
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+    delete:
+      operationId: removeFavorite
+      tags: [favorites]
+      summary: Remove a saved listing
+      parameters:
+        - name: listingId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /conversations:
+    get:
+      operationId: getConversations
+      tags: [conversations]
+      summary: Get my conversations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+    post:
+      operationId: createConversation
+      tags: [conversations]
+      summary: Start or get conversation about a listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}/messages:
+    get:
+      operationId: getMessages
+      tags: [messages]
+      summary: Get messages in a conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /offers:
+    get:
+      operationId: getMyOffers
+      tags: [offers]
+      summary: Get my offers (sent and received)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OffersResponse"
+    post:
+      operationId: createOffer
+      tags: [offers]
+      summary: Make an offer on a listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOfferBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{id}/accept:
+    post:
+      operationId: acceptOffer
+      tags: [offers]
+      summary: Accept an offer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{id}/reject:
+    post:
+      operationId: rejectOffer
+      tags: [offers]
+      summary: Reject an offer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{id}/counter:
+    post:
+      operationId: counterOffer
+      tags: [offers]
+      summary: Seller sends a counter offer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CounterOfferBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /offers/{id}/accept-counter:
+    post:
+      operationId: acceptCounter
+      tags: [offers]
+      summary: Buyer accepts a counter offer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Offer"
+
+  /reviews:
+    post:
+      operationId: createReview
+      tags: [reviews]
+      summary: Leave a review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
+  /reports:
+    post:
+      operationId: createReport
+      tags: [reports]
+      summary: Report a listing or user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReportBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /stats/home:
+    get:
+      operationId: getHomeStats
+      tags: [stats]
+      summary: Get homepage stats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeStats"
+
+  /admin/users:
+    get:
+      operationId: adminGetUsers
+      tags: [admin]
+      summary: Admin - list users
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /admin/users/{id}/ban:
+    post:
+      operationId: adminBanUser
+      tags: [admin]
+      summary: Admin - ban user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/listings:
+    get:
+      operationId: adminGetListings
+      tags: [admin]
+      summary: Admin - list all listings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Listing"
+
+  /admin/listings/{id}/remove:
+    post:
+      operationId: adminRemoveListing
+      tags: [admin]
+      summary: Admin - remove a listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/moderation:
+    get:
+      operationId: adminGetModeration
+      tags: [admin]
+      summary: Admin - moderation queue
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, rejected, approved]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModerationItem"
+
+  /admin/moderation/{id}/approve:
+    post:
+      operationId: adminApproveModeration
+      tags: [admin]
+      summary: Admin - approve flagged listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/moderation/{id}/reject:
+    post:
+      operationId: adminRejectModeration
+      tags: [admin]
+      summary: Admin - reject flagged listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /admin/reports:
+    get:
+      operationId: adminGetReports
+      tags: [admin]
+      summary: Admin - list reports
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Report"
+
+  /admin/stats:
+    get:
+      operationId: adminGetStats
+      tags: [admin]
+      summary: Admin - dashboard stats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Failed to generate upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve an object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Object not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # ─── Fintech Market paths ──────────────────────────────────────────────────
+
+  /fintech/vendor/me:
+    get:
+      operationId: getFintechVendorMe
+      tags: [fintech]
+      summary: Get my vendor profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechVendorProfile" }
+    put:
+      operationId: updateFintechVendorMe
+      tags: [fintech]
+      summary: Update MonCash number
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateFintechVendorBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechVendorProfile" }
+
+  /fintech/vendor/stats:
+    get:
+      operationId: getFintechVendorStats
+      tags: [fintech]
+      summary: Get vendor stats
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechVendorStats" }
+
+  /fintech/vendor/orders:
+    get:
+      operationId: getFintechVendorOrders
+      tags: [fintech]
+      summary: List orders for my vendor account
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechOrder" }
+
+  /fintech/vendor/payouts:
+    get:
+      operationId: getFintechVendorPayouts
+      tags: [fintech]
+      summary: List my payouts
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechPayout" }
+
+  /fintech/orders:
+    get:
+      operationId: getFintechMyOrders
+      tags: [fintech]
+      summary: List my orders (customer)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechOrder" }
+    post:
+      operationId: createFintechOrder
+      tags: [fintech]
+      summary: Place an order
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateFintechOrderBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechOrder" }
+
+  /fintech/orders/{id}/complete:
+    post:
+      operationId: completeFintechOrder
+      tags: [fintech]
+      summary: Mark order as completed (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechOrder" }
+
+  /fintech/admin/stats:
+    get:
+      operationId: getFintechAdminStats
+      tags: [fintech]
+      summary: Admin dashboard stats
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechAdminStats" }
+
+  /fintech/admin/vendors:
+    get:
+      operationId: getFintechAdminVendors
+      tags: [fintech]
+      summary: List all vendors with balances
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechVendorProfile" }
+
+  /fintech/admin/vendors/{id}/pay:
+    post:
+      operationId: payFintechVendor
+      tags: [fintech]
+      summary: Mark vendor payout as paid
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FintechPayout" }
+
+  /fintech/admin/orders:
+    get:
+      operationId: getFintechAdminOrders
+      tags: [fintech]
+      summary: List all orders (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechOrder" }
+
+  /fintech/admin/payouts:
+    get:
+      operationId: getFintechAdminPayouts
+      tags: [fintech]
+      summary: List all payouts (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechPayout" }
+
+  /fintech/vendors:
+    get:
+      operationId: getFintechVendors
+      tags: [fintech]
+      summary: List all vendors (public, for customer order form)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FintechVendorProfile" }
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +1315,865 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    RegisterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        phone:
+          type: string
+          description: Full E.164 phone number (e.g. +50934455823)
+        country:
+          type: string
+          description: Country name (e.g. Haiti, USA)
+        location:
+          type: string
+        bio:
+          type: string
+        avatar:
+          type: string
+        deviceId:
+          type: string
+        promoCode:
+          type: string
+      required: [name, email, password, phone, country]
+
+    LoginPhoneBody:
+      type: object
+      properties:
+        phoneToken:
+          type: string
+      required: [phoneToken]
+
+    SendOtpBody:
+      type: object
+      properties:
+        phone:
+          type: string
+        country:
+          type: string
+      required: [phone, country]
+
+    OtpSentResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        devCode:
+          type: string
+          nullable: true
+      required: [message]
+
+    VerifyOtpBody:
+      type: object
+      properties:
+        phone:
+          type: string
+        country:
+          type: string
+        code:
+          type: string
+      required: [phone, country, code]
+
+    VerifyOtpResponse:
+      type: object
+      properties:
+        phoneToken:
+          type: string
+        phone:
+          type: string
+        country:
+          type: string
+      required: [phoneToken, phone, country]
+
+    ChangeCountryBody:
+      type: object
+      properties:
+        phoneToken:
+          type: string
+      required: [phoneToken]
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required: [user, token]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        isPhoneVerified:
+          type: boolean
+        avatar:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        rating:
+          type: number
+        reviewCount:
+          type: integer
+        isVerified:
+          type: boolean
+        isAdmin:
+          type: boolean
+        isSuperAdmin:
+          type: boolean
+        role:
+          type: string
+        isBanned:
+          type: boolean
+        followerCount:
+          type: integer
+        followingCount:
+          type: integer
+        listingCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, name, email, isPhoneVerified, rating, reviewCount, isVerified, isAdmin, isSuperAdmin, role, isBanned, followerCount, followingCount, listingCount, createdAt]
+
+    UserProfile:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            isFollowing:
+              type: boolean
+          required: [isFollowing]
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        location:
+          type: string
+        bio:
+          type: string
+        avatar:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        icon:
+          type: string
+        listingCount:
+          type: integer
+        parentId:
+          type: integer
+          nullable: true
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Category'
+      required: [id, name, slug, icon, listingCount]
+
+    Listing:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        currency:
+          type: string
+          enum: [USD, HTG, DOP]
+        category:
+          type: string
+        categorySlug:
+          type: string
+        categoryIcon:
+          type: string
+          nullable: true
+        subcategory:
+          type: string
+          nullable: true
+        subcategorySlug:
+          type: string
+          nullable: true
+        condition:
+          type: string
+        location:
+          type: string
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        neighborhood:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        distanceKm:
+          type: number
+          nullable: true
+        proximityLevel:
+          type: string
+          enum: [neighborhood, city, state, country, unknown]
+          nullable: true
+        nearYou:
+          type: boolean
+        images:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [available, sold, removed]
+        isBoosted:
+          type: boolean
+        boostExpiresAt:
+          type: string
+          nullable: true
+        boostVideoUrl:
+          type: string
+          nullable: true
+          description: Promo video URL attached to this boost. Visible on the listing detail page.
+        viewCount:
+          type: integer
+        favoriteCount:
+          type: integer
+        sellerId:
+          type: integer
+        sellerName:
+          type: string
+        sellerAvatar:
+          type: string
+          nullable: true
+        sellerRating:
+          type: number
+        sellerIsVerified:
+          type: boolean
+        createdAt:
+          type: string
+        moderationStatus:
+          type: string
+          enum: [approved, pending, rejected]
+        moderationRiskLevel:
+          type: string
+          enum: [low, medium, high]
+          nullable: true
+        moderationReason:
+          type: string
+          nullable: true
+        moderationFlags:
+          type: array
+          items:
+            type: string
+      required: [id, title, description, price, category, categorySlug, condition, location, images, status, isBoosted, viewCount, favoriteCount, sellerId, sellerName, sellerRating, sellerIsVerified, createdAt, moderationStatus, moderationFlags]
+
+    ModerationItem:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        price: { type: number }
+        category: { type: string }
+        images: { type: array, items: { type: string } }
+        location: { type: string }
+        country: { type: string, nullable: true }
+        moderationStatus: { type: string, enum: [approved, pending, rejected] }
+        moderationRiskLevel: { type: string, nullable: true }
+        moderationReason: { type: string, nullable: true }
+        moderationConfidence: { type: number, nullable: true }
+        moderationFlags: { type: array, items: { type: string } }
+        moderationSource: { type: string, nullable: true }
+        moderatedAt: { type: string, nullable: true }
+        sellerId: { type: integer }
+        sellerName: { type: string }
+        sellerAvatar: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, title, description, price, category, images, location, moderationStatus, moderationFlags, sellerId, sellerName, createdAt]
+
+    ListingDetail:
+      allOf:
+        - $ref: "#/components/schemas/Listing"
+        - type: object
+          properties:
+            isFavorited:
+              type: boolean
+            isOwner:
+              type: boolean
+          required: [isFavorited, isOwner]
+
+    ListingsResponse:
+      type: object
+      properties:
+        listings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Listing"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required: [listings, total, page, totalPages]
+
+    CreateListingBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        currency:
+          type: string
+          enum: [USD, HTG, DOP]
+        categoryId:
+          type: integer
+        subcategoryId:
+          type: integer
+          nullable: true
+        condition:
+          type: string
+          enum: [new, like_new, good, fair, poor]
+        location:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+          description: State, department, or province of the listing.
+        country:
+          type: string
+        stockQuantity:
+          type: integer
+          nullable: true
+          description: Number of items in stock. Null means unlimited (single-item listing).
+        itemSize:
+          type: string
+          nullable: true
+          description: Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.
+        listingVideoUrl:
+          type: string
+          nullable: true
+          description: Optional listing video (standard/premium/vip plans only). Object-storage path.
+        images:
+          type: array
+          items:
+            type: string
+      required: [title, description, price, categoryId, condition, location, images]
+
+    UpdateListingBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        currency:
+          type: string
+          enum: [USD, HTG, DOP]
+        condition:
+          type: string
+        location:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+          description: State, department, or province of the listing.
+        country:
+          type: string
+        images:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        stockQuantity:
+          type: integer
+          nullable: true
+        itemSize:
+          type: string
+          nullable: true
+          description: Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.
+        listingVideoUrl:
+          type: string
+          nullable: true
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        listingId:
+          type: integer
+        listingTitle:
+          type: string
+        listingImage:
+          type: string
+          nullable: true
+        listingPrice:
+          type: number
+        otherUserId:
+          type: integer
+        otherUserName:
+          type: string
+        otherUserAvatar:
+          type: string
+          nullable: true
+        lastMessage:
+          type: string
+          nullable: true
+        lastMessageAt:
+          type: string
+          nullable: true
+        unreadCount:
+          type: integer
+      required: [id, listingId, listingTitle, listingPrice, otherUserId, otherUserName, unreadCount]
+
+    CreateConversationBody:
+      type: object
+      properties:
+        listingId:
+          type: integer
+        sellerId:
+          type: integer
+      required: [listingId, sellerId]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        senderId:
+          type: integer
+        senderName:
+          type: string
+        senderAvatar:
+          type: string
+          nullable: true
+        content:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, conversationId, senderId, senderName, content, isRead, createdAt]
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        imageUrl:
+          type: string
+      required: [content]
+
+    Offer:
+      type: object
+      properties:
+        id:
+          type: integer
+        listingId:
+          type: integer
+        listingTitle:
+          type: string
+        listingImage:
+          type: string
+          nullable: true
+        listingPrice:
+          type: number
+          nullable: true
+        buyerId:
+          type: integer
+        buyerName:
+          type: string
+        buyerAvatar:
+          type: string
+          nullable: true
+        sellerId:
+          type: integer
+        sellerName:
+          type: string
+          nullable: true
+        sellerAvatar:
+          type: string
+          nullable: true
+        amount:
+          type: number
+        counterAmount:
+          type: number
+          nullable: true
+        counterMessage:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, accepted, rejected, counter]
+        message:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+          nullable: true
+      required: [id, listingId, listingTitle, buyerId, buyerName, sellerId, amount, status, createdAt]
+
+    OffersResponse:
+      type: object
+      properties:
+        sent:
+          type: array
+          items:
+            $ref: "#/components/schemas/Offer"
+        received:
+          type: array
+          items:
+            $ref: "#/components/schemas/Offer"
+      required: [sent, received]
+
+    CreateOfferBody:
+      type: object
+      properties:
+        listingId:
+          type: integer
+        amount:
+          type: number
+        message:
+          type: string
+      required: [listingId, amount]
+
+    CounterOfferBody:
+      type: object
+      properties:
+        counterAmount:
+          type: number
+        counterMessage:
+          type: string
+      required: [counterAmount]
+
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+        reviewerId:
+          type: integer
+        reviewerName:
+          type: string
+        reviewerAvatar:
+          type: string
+          nullable: true
+        sellerId:
+          type: integer
+        listingId:
+          type: integer
+          nullable: true
+        rating:
+          type: integer
+        comment:
+          type: string
+        createdAt:
+          type: string
+      required: [id, reviewerId, reviewerName, sellerId, rating, comment, createdAt]
+
+    CreateReviewBody:
+      type: object
+      properties:
+        sellerId:
+          type: integer
+        listingId:
+          type: integer
+        rating:
+          type: integer
+        comment:
+          type: string
+      required: [sellerId, rating, comment]
+
+    Boost:
+      type: object
+      properties:
+        id:
+          type: integer
+        listingId:
+          type: integer
+        plan:
+          type: string
+          enum: [1day, 3day, 7day]
+        price:
+          type: number
+        expiresAt:
+          type: string
+        createdAt:
+          type: string
+      required: [id, listingId, plan, price, expiresAt, createdAt]
+
+    BoostBody:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [1day, 3day, 7day]
+        paymentMethod:
+          type: string
+          enum: [card, usdt]
+      required: [plan, paymentMethod]
+
+    Report:
+      type: object
+      properties:
+        id:
+          type: integer
+        reporterId:
+          type: integer
+        reporterName:
+          type: string
+        targetType:
+          type: string
+          enum: [listing, user]
+        targetId:
+          type: integer
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [pending, reviewed, dismissed]
+        createdAt:
+          type: string
+      required: [id, reporterId, reporterName, targetType, targetId, reason, status, createdAt]
+
+    CreateReportBody:
+      type: object
+      properties:
+        targetType:
+          type: string
+          enum: [listing, user]
+        targetId:
+          type: integer
+        reason:
+          type: string
+      required: [targetType, targetId, reason]
+
+    HomeStats:
+      type: object
+      properties:
+        totalListings:
+          type: integer
+        totalUsers:
+          type: integer
+        categoryCounts:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+            required: [category, count]
+        recentListings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Listing"
+        featuredListings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Listing"
+      required: [totalListings, totalUsers, categoryCounts, recentListings, featuredListings]
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalListings:
+          type: integer
+        activeListings:
+          type: integer
+        totalBoosts:
+          type: integer
+        pendingReports:
+          type: integer
+        totalRevenue:
+          type: number
+      required: [totalUsers, totalListings, activeListings, totalBoosts, pendingReports, totalRevenue]
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Original file name.
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes.
+        contentType:
+          type: string
+          minLength: 1
+          description: MIME type of the file (e.g. image/jpeg).
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          description: "PUT URL for upload — either a full URL (Cloudinary CDN) or a same-origin proxy path (/api/storage/uploads/put-proxy/:token)."
+        objectPath:
+          type: string
+          description: Normalized object path (e.g. /objects/uploads/uuid). Store this in your database.
+        metadata:
+          $ref: '#/components/schemas/UploadUrlRequest'
+    # ─── Fintech Market schemas ────────────────────────────────────────────────
+    FintechVendorProfile:
+      type: object
+      required: [id, userId, balance]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        moncashNumber: { type: string, nullable: true }
+        moncashConfirmed: { type: boolean }
+        balance: { type: number }
+        name: { type: string }
+        email: { type: string }
+    UpdateFintechVendorBody:
+      type: object
+      properties:
+        moncashNumber: { type: string }
+    FintechOrder:
+      type: object
+      required: [id, vendorId, customerId, amount, status, createdAt]
+      properties:
+        id: { type: integer }
+        vendorId: { type: integer }
+        vendorName: { type: string }
+        customerId: { type: integer }
+        customerName: { type: string }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [pending, completed, cancelled] }
+        adminCommission: { type: number }
+        vendorEarnings: { type: number }
+        createdAt: { type: string, format: date-time }
+    CreateFintechOrderBody:
+      type: object
+      required: [vendorId, amount]
+      properties:
+        vendorId: { type: integer }
+        amount: { type: number }
+        description: { type: string }
+    FintechPayout:
+      type: object
+      required: [id, vendorId, amount, status, createdAt]
+      properties:
+        id: { type: integer }
+        vendorId: { type: integer }
+        vendorName: { type: string }
+        moncashNumber: { type: string, nullable: true }
+        amount: { type: number }
+        status: { type: string, enum: [pending, paid] }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time, nullable: true }
+    FintechAdminStats:
+      type: object
+      required: [totalVendors, totalOrders, totalRevenue, totalCommission, pendingPayouts, paidPayouts]
+      properties:
+        totalVendors: { type: integer }
+        totalOrders: { type: integer }
+        totalRevenue: { type: number }
+        totalCommission: { type: number }
+        pendingPayouts: { type: number }
+        paidPayouts: { type: number }
+    FintechVendorStats:
+      type: object
+      required: [totalEarnings, pendingBalance, paidOut, totalOrders]
+      properties:
+        totalEarnings: { type: number }
+        pendingBalance: { type: number }
+        paidOut: { type: number }
+        totalOrders: { type: integer }
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

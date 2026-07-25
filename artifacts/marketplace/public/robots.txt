@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Disallow admin and private areas from indexing
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /auth/
+Disallow: /settings
+Disallow: /wallet
+Disallow: /wallet/*
+Disallow: /messages
+Disallow: /messages/*
+Disallow: /notifications
+Disallow: /fintech/
+Disallow: /fintech/*
+
+Sitemap: https://flexamarket.com/sitemap.xml

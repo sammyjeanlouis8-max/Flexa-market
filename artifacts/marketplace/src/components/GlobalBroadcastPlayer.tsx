@@ -136,27 +136,37 @@ export default function GlobalBroadcastPlayer() {
   );
 
   // ── Slot mode: fixed overlay exactly covering the placeholder in /tv ─────────
-  if (isOnViewerTV) {
-    if (!slotRect) return null; // not measured yet — FlexaTV shows black placeholder
-    return (
-      <div
-        style={{
-          position: "fixed",
-          top:    slotRect.top    + "px",
-          left:   slotRect.left   + "px",
-          width:  slotRect.width  + "px",
-          height: slotRect.height + "px",
-          zIndex: 8000,
-          background: "black",
-          // No overflow:hidden or borderRadius here — causes iOS Safari
-          // black-screen bug on fixed elements containing video iframes.
-          // Border-radius is applied on the iframe/video elements instead.
-        }}
-      >
-        {videoContent}
-      </div>
-    );
+  if (isOnViewerTV && slotRect) {
+    // Check if the slot is actually visible in the viewport.
+    // If slot scrolled OFF-SCREEN → switch to mini-player so the iframe
+    // stays visible and YouTube never pauses/restarts the video.
+    const slotVisible =
+      slotRect.top >= -10 &&
+      slotRect.top + slotRect.height <= window.innerHeight + 10;
+
+    if (slotVisible) {
+      // Full-size overlay exactly over the slot
+      return (
+        <div
+          style={{
+            position: "fixed",
+            top:    slotRect.top    + "px",
+            left:   slotRect.left   + "px",
+            width:  slotRect.width  + "px",
+            height: slotRect.height + "px",
+            zIndex: 8000,
+            background: "black",
+          }}
+        >
+          {videoContent}
+        </div>
+      );
+    }
+    // Fall through to mini-player when slot is off-screen ↓
   }
+
+  // ── Mini-player: shown when slot is off-screen (scroll) OR on other pages ───
+  // Keeps the iframe in the viewport so YouTube never pauses the stream.
 
   // ── Mini-player mode: floating bottom-right on all other pages ───────────────
   return (

@@ -36,6 +36,8 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
       }
       const vm = videoUrl.match(/vimeo\.com\/(\d+)/);
       if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1&background=1`, isDirect: false };
+      // Archive.org embed pages are iframes, not direct video files
+      if (videoUrl.includes("archive.org/embed/")) return { url: videoUrl, isDirect: false };
     } catch { /* fall through */ }
     return { url: videoUrl, isDirect: true };
   }

@@ -88,6 +88,8 @@ function getEmbedInfo(program: TvProgram): EmbedInfo | null {
     }
     const vm = program.videoUrl.match(/vimeo\.com\/(\d+)/);
     if (vm) return { url: `https://player.vimeo.com/video/${vm[1]}?autoplay=1`, isIframe: true, isDirect: false };
+    // Archive.org embed pages must be rendered in an iframe, not a <video> tag
+    if (program.videoUrl.includes("archive.org/embed/")) return { url: program.videoUrl, isIframe: true, isDirect: false };
     return { url: program.videoUrl, isIframe: false, isDirect: true };
   }
   if (program.videoKey) return { url: `/api/storage/objects/${program.videoKey}`, isIframe: false, isDirect: true };
@@ -225,6 +227,7 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
       return null;
     })();
     if (ytId) embedUrl = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&controls=1&playsinline=1`;
+    else if (videoUrl.includes("archive.org/embed/")) { embedUrl = videoUrl; isDirect = false; }
     else { embedUrl = videoUrl; isDirect = true; }
   } else if (videoKey) { embedUrl = `/api/storage/objects/${videoKey}`; isDirect = true; }
 

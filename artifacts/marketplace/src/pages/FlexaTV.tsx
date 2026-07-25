@@ -6,13 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
-
-// Stable viewer ID for this session
-function getViewerId() {
-  let id = sessionStorage.getItem("fxtv_viewer_id");
-  if (!id) { id = Math.random().toString(36).slice(2) + Date.now().toString(36); sessionStorage.setItem("fxtv_viewer_id", id); }
-  return id;
-}
+import { useBroadcast } from "@/contexts/broadcast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TvProgram = {
@@ -89,6 +83,38 @@ function formatTime(iso: string) {
 }
 
 // ── Pre-roll Ad Overlay ───────────────────────────────────────────────────────
+// ── Sponsored banner (inline, below player) ───────────────────────────────────
+function AdBanner({ listing, onDone }: { listing: BoostedListing; onDone: () => void }) {
+  const img = listing.images?.[0] ?? listing.thumbnailUrl ?? null;
+  return (
+    <div className="flex items-center gap-3 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/40 dark:to-amber-950/40 border border-yellow-200 dark:border-yellow-800/50 rounded-xl px-3 py-2.5 mb-3">
+      {img && (
+        <img src={img} alt={listing.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-yellow-200 dark:border-yellow-800/50" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 mb-0.5">
+          <ShoppingBag size={10} className="text-yellow-600 dark:text-yellow-400" />
+          <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-semibold uppercase tracking-wide">Sponsore</span>
+        </div>
+        <p className="font-semibold text-sm text-foreground truncate">{listing.title}</p>
+        {listing.price > 0 && (
+          <p className="text-xs text-yellow-700 dark:text-yellow-300 font-bold">
+            {listing.currency} {listing.price.toFixed(2)}
+          </p>
+        )}
+      </div>
+      <button
+        onClick={onDone}
+        className="flex-shrink-0 text-muted-foreground hover:text-foreground p-1 rounded-full hover:bg-black/10 transition-colors"
+        aria-label="Fèmen"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
+// kept for backward compatibility — no longer used as fullscreen overlay
 function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () => void }) {
   const [countdown, setCountdown] = useState(5);
   const img = listing.images?.[0] ?? listing.thumbnailUrl ?? null;
@@ -105,29 +131,17 @@ function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () =>
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-black">
-      {/* Ad label */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1.5 bg-black/70 rounded-full px-3 py-1">
         <ShoppingBag size={11} className="text-yellow-400" />
         <span className="text-[11px] text-white font-semibold">Piblisite · Flexa Market</span>
       </div>
-
-      {/* Skip button */}
       <div className="absolute top-3 right-3 z-10">
         {countdown > 0 ? (
-          <div className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full font-medium">
-            Skip nan {countdown}s
-          </div>
+          <div className="bg-black/70 text-white text-xs px-3 py-1.5 rounded-full font-medium">Skip nan {countdown}s</div>
         ) : (
-          <button
-            onClick={onDone}
-            className="bg-white text-black text-xs px-4 py-1.5 rounded-full font-bold hover:bg-gray-100"
-          >
-            Skip →
-          </button>
+          <button onClick={onDone} className="bg-white text-black text-xs px-4 py-1.5 rounded-full font-bold hover:bg-gray-100">Skip →</button>
         )}
       </div>
-
-      {/* Ad image */}
       <div className="flex-1 relative">
         {img ? (
           <img src={img} alt={listing.title} className="absolute inset-0 w-full h-full object-cover" />
@@ -136,11 +150,8 @@ function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () =>
             <ShoppingBag size={80} className="text-white/30" />
           </div>
         )}
-        {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
       </div>
-
-      {/* Product info */}
       <div className="absolute bottom-6 left-0 right-0 px-5">
         <p className="text-white font-bold text-xl drop-shadow-lg">{listing.title}</p>
         {listing.price > 0 && (
@@ -149,7 +160,6 @@ function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () =>
           </p>
         )}
         <p className="text-white/70 text-xs mt-1">Disponib sou Flexa Market</p>
-        {/* Progress bar */}
         <div className="mt-3 w-full bg-white/20 rounded-full h-1">
           <div
             className="bg-yellow-400 h-1 rounded-full transition-all duration-1000"
@@ -386,28 +396,9 @@ export default function FlexaTV() {
     program: t("tv.typeProgram"), news: t("tv.typeNews"), live: "🔴 LIVE",
   }[type] ?? type);
 
-  // ── Broadcast state (poll every 5s) ──
-  const { data: broadcastData } = useQuery({
-    queryKey: ["/tv/broadcast"],
-    queryFn: () => fetch("/api/tv/broadcast").then(r => r.json()),
-    refetchInterval: 5_000,
-  });
-  const bs = (broadcastData as any)?.broadcast;
-  const broadcastActive = bs?.state === "playing" || bs?.state === "paused";
-
-  // ── Viewer heartbeat (every 30s while page is open) ──
-  useEffect(() => {
-    const viewerId = getViewerId();
-    const sendHeartbeat = () =>
-      fetch("/api/tv/broadcast/heartbeat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ viewerId }),
-      }).catch(() => {});
-    sendHeartbeat();
-    const timer = setInterval(sendHeartbeat, 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  // ── Broadcast state — shared from global BroadcastContext (no extra polling) ──
+  const bs = useBroadcast();
+  const broadcastActive = bs.state === "playing" || bs.state === "paused";
 
   // Update clock
   useEffect(() => {
@@ -510,9 +501,6 @@ export default function FlexaTV() {
 
   return (
     <>
-      {/* Pre-roll ad — shows ONLY when there's an active booster */}
-      {showAd && <AdOverlay listing={adListing!} onDone={() => setAdDone(true)} />}
-
       <div className="max-w-5xl mx-auto px-3 py-4 pb-24">
         {/* ── Header ── */}
         <div className="flex items-center gap-3 mb-4">
@@ -583,6 +571,9 @@ export default function FlexaTV() {
             </div>
           )}
         </div>
+
+        {/* ── Sponsored product banner (inline, below player) ── */}
+        {showAd && <AdBanner listing={adListing!} onDone={() => setAdDone(true)} />}
 
         {/* ── Now-on-air banner ── */}
         {currentAiring && currentAiring.id !== playing?.id && (

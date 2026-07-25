@@ -676,6 +676,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/calculator/,
     /^\/delivery\/apply/,
     /^\/listings\/[^/]+/,
+    /^\/tv(\/|$)/,
+    /^\/admin\/tv(\/|$)/,
   ].some(rx => rx.test(location));
 
   return (

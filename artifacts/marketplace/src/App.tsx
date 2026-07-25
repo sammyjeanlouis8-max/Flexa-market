@@ -7,9 +7,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { FavoritesProvider } from "@/contexts/favorites";
 import { CartProvider } from "@/contexts/cart";
+import { BroadcastProvider } from "@/contexts/broadcast";
 import Layout from "@/components/Layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
+import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -318,9 +320,12 @@ function App() {
           <AuthProvider>
             <CartProvider>
             <FavoritesProvider>
-              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                <Router />
-              </WouterRouter>
+              <BroadcastProvider>
+                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                  <Router />
+                  <GlobalBroadcastPlayer />
+                </WouterRouter>
+              </BroadcastProvider>
               <Toaster />
             </FavoritesProvider>
             </CartProvider>

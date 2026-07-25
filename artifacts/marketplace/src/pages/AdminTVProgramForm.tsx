@@ -199,7 +199,7 @@ export default function AdminTVProgramForm() {
   }
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-4 pb-44">
+    <div className="max-w-lg mx-auto px-4 py-4 pb-6">
       {/* ── Header ── */}
       <div className="flex items-center gap-3 mb-6">
         <button
@@ -413,8 +413,8 @@ export default function AdminTVProgramForm() {
         </div>
       </div>
 
-      {/* ── Sticky footer with Save button ── */}
-      <div className="fixed bottom-16 left-0 right-0 bg-background/95 backdrop-blur border-t border-border px-4 py-4 flex gap-3">
+      {/* ── Save / Cancel — inline at bottom of form ── */}
+      <div className="flex gap-3 mt-8 mb-6">
         <button
           onClick={() => setLocation("/admin/tv")}
           className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors"

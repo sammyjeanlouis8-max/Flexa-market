@@ -525,6 +525,76 @@ router.put("/admin/tv/series/:id", requireAdmin, async (req, res): Promise<void>
   }
 });
 
+// ── GET /api/admin/tv/import/archive ── search Internet Archive for free films ─
+//    Queries archive.org's public search API (no key required).
+//    Returns up to `rows` results with embed URL + metadata.
+router.get("/admin/tv/import/archive", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q      = String(req.query.q ?? "feature film");
+    const rows   = Math.min(Number(req.query.rows ?? 20), 50);
+    const start  = Number(req.query.start ?? 0);
+    const subject = String(req.query.subject ?? "");
+
+    // Build query — always restrict to video mediatype
+    let fullQ = `mediatype:movies AND (${q})`;
+    if (subject) fullQ += ` AND subject:"${subject}"`;
+
+    const fields = ["identifier","title","description","year","subject","creator","runtime","downloads"].join(",");
+    const params = new URLSearchParams({
+      q: fullQ, fl: fields,
+      rows: String(rows), start: String(start),
+      output: "json", sort: "downloads desc",
+    });
+
+    const url = `https://archive.org/advancedsearch.php?${params}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!resp.ok) return void res.status(502).json({ error: "Archive.org unreachable" });
+
+    const data = await resp.json() as {
+      response: { numFound: number; docs: Array<Record<string, unknown>> };
+    };
+    const docs = data?.response?.docs ?? [];
+
+    const results = docs.map((d) => {
+      const id = String(d.identifier ?? "");
+      // Archive.org thumbnail
+      const thumbnailUrl = `https://archive.org/services/img/${id}`;
+      // Embed URL (works in iframe)
+      const videoUrl = `https://archive.org/embed/${id}`;
+      // Duration: "HH:MM:SS" or "MM:SS" or plain number (minutes)
+      let durationMinutes: number | null = null;
+      if (d.runtime) {
+        const rt = String(d.runtime);
+        const parts = rt.split(":").map(Number);
+        if (parts.length === 3) durationMinutes = Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
+        else if (parts.length === 2) durationMinutes = Math.round(parts[0] + parts[1] / 60);
+        else if (!isNaN(Number(rt))) durationMinutes = Math.round(Number(rt));
+      }
+      const subjects = Array.isArray(d.subject) ? d.subject : (d.subject ? [d.subject] : []);
+      return {
+        identifier: id,
+        title: String(d.title ?? id),
+        description: d.description ? String(d.description).replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year: d.year ? Number(d.year) : null,
+        creator: d.creator ? String(d.creator) : null,
+        subjects,
+        durationMinutes,
+        thumbnailUrl,
+        videoUrl,
+        downloads: Number(d.downloads ?? 0),
+      };
+    });
+
+    return void res.json({
+      numFound: data?.response?.numFound ?? 0,
+      start,
+      results,
+    });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search Archive.org", detail: String(err) });
+  }
+});
+
 // ── DELETE /api/admin/tv/series/:id ──────────────────────────────────────────
 router.delete("/admin/tv/series/:id", requireAdmin, async (req, res): Promise<void> => {
   try {

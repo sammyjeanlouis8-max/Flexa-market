@@ -74,6 +74,8 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         injectedJavaScriptForMainFrameOnly
         thirdPartyCookiesEnabled
         allowsInlineMediaPlayback
+        allowsFullscreenVideo
+        allowsBackgroundMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         overScrollMode="never"
         userAgent="FlexaMarket/1.0 (Mobile App)"

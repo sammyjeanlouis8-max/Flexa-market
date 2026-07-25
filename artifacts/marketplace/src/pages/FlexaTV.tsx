@@ -83,7 +83,7 @@ function getEmbedInfo(program: TvProgram): EmbedInfo | null {
   if (program.videoUrl) {
     const ytId = getYouTubeId(program.videoUrl);
     if (ytId) {
-      const params = new URLSearchParams({ autoplay: "1", rel: "0", modestbranding: "1", playsinline: "1" });
+      const params = new URLSearchParams({ autoplay: "1", rel: "0", modestbranding: "1", controls: "1", playsinline: "1" });
       return { url: `https://www.youtube.com/embed/${ytId}?${params}`, isIframe: true, isDirect: false };
     }
     const vm = program.videoUrl.match(/vimeo\.com\/(\d+)/);
@@ -254,12 +254,7 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
         </div>
       )}
 
-      {/* Viewer interaction blocker — covers entire player + hides any YouTube UI */}
-      <div className="absolute inset-0 z-10" style={{ background: "transparent" }} />
-      {/* YouTube watermark cover — top-right corner */}
-      {!isDirect && embedUrl && (
-        <div className="absolute top-0 right-0 w-28 h-10 z-20 bg-black pointer-events-none" />
-      )}
+      {/* Controls are now enabled — users can play/pause/seek freely */}
 
       {embedUrl ? (
         isDirect ? (

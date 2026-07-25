@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -174,12 +174,23 @@ function ProgramModal({
           </Field>
           <Field label={t("tv.fieldType")}>
             <select className={inputCls} value={form.type} onChange={e => set("type", e.target.value)}>
+              <option value="live">🔴 Live (transmisyon dirèk)</option>
               <option value="film">{t("tv.typeFilm")}</option>
               <option value="series">{t("tv.typeSeries")}</option>
               <option value="program">{t("tv.typeProgram")}</option>
               <option value="news">{t("tv.typeNews")}</option>
             </select>
           </Field>
+          {form.type === "live" && (
+            <div className="rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-4 space-y-2">
+              <p className="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                <Youtube size={16} /> {t("tv.streamGuideTitle")}
+              </p>
+              {["streamGuideStep1","streamGuideStep2","streamGuideStep3","streamGuideStep4","streamGuideStep5"].map(k => (
+                <p key={k} className="text-xs text-red-600 dark:text-red-400">{t(`tv.${k}`)}</p>
+              ))}
+            </div>
+          )}
           <Field label={t("tv.fieldVideoUrl")}>
             <input className={inputCls} value={form.videoUrl} onChange={e => set("videoUrl", e.target.value)} placeholder="https://youtu.be/..." />
           </Field>

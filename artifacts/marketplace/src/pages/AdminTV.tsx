@@ -110,6 +110,34 @@ const ARCHIVE_GENRES = [
   { label: "🤠 Western",         value: "Western films" },
 ];
 
+const YTS_GENRES = [
+  { label: "🎬 Action",      value: "Action" },
+  { label: "😂 Comedy",      value: "Comedy" },
+  { label: "💔 Drama",       value: "Drama" },
+  { label: "🚀 Sci-Fi",      value: "Sci-Fi" },
+  { label: "👻 Horror",      value: "Horror" },
+  { label: "🕵️ Thriller",    value: "Thriller" },
+  { label: "🎭 Romance",     value: "Romance" },
+  { label: "🔮 Fantasy",     value: "Fantasy" },
+  { label: "📚 Documentary", value: "Documentary" },
+  { label: "🦸 Animation",   value: "Animation" },
+  { label: "🕵️ Crime",       value: "Crime" },
+  { label: "🧒 Fanmi",       value: "Family" },
+];
+
+const FR_GENRES = [
+  { label: "😂 Comédie",      value: "comédie" },
+  { label: "💔 Romance",      value: "romance" },
+  { label: "🎬 Action",       value: "action" },
+  { label: "💔 Drame",        value: "drame" },
+  { label: "🕵️ Policier",     value: "policier" },
+  { label: "👻 Horreur",      value: "horreur" },
+  { label: "🚀 SF",           value: "science fiction" },
+  { label: "📚 Documentaire", value: "documentaire" },
+  { label: "🏛 Historique",   value: "historique" },
+  { label: "🧒 Fanmi",        value: "famille" },
+];
+
 const DM_CATEGORIES = [
   { label: "🎬 Action",      value: "action movie" },
   { label: "😂 Comedy",      value: "comedy movie" },
@@ -544,7 +572,7 @@ export default function AdminTV() {
   const bs = useBroadcast(); // for startedAt + programId (broadcast timer)
 
   // ── Archive.org import state ──────────────────────────────────────────────
-  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze">("archive");
+  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze" | "yts" | "cinemafr">("archive");
   const [archiveQuery, setArchiveQuery]     = useState("");
   const [archiveGenre, setArchiveGenre]     = useState("");
   const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
@@ -557,6 +585,19 @@ export default function AdminTV() {
   const [dmResults, setDmResults]     = useState<ArchiveResult[]>([]);
   const [dmTotal, setDmTotal]         = useState<number | null>(null);
   const [dmLoading, setDmLoading]     = useState(false);
+  // ── Ciné FR (French films) import state ──────────────────────────────────
+  const [frQuery, setFrQuery]     = useState("");
+  const [frGenre, setFrGenre]     = useState("");
+  const [frResults, setFrResults] = useState<ArchiveResult[]>([]);
+  const [frTotal, setFrTotal]     = useState<number | null>(null);
+  const [frLoading, setFrLoading] = useState(false);
+  // ── YTS (HD movies) import state ──────────────────────────────────────────
+  const [ytsQuery, setYtsQuery]       = useState("");
+  const [ytsGenre, setYtsGenre]       = useState("");
+  const [ytsQuality, setYtsQuality]   = useState("1080p");
+  const [ytsResults, setYtsResults]   = useState<ArchiveResult[]>([]);
+  const [ytsTotal, setYtsTotal]       = useState<number | null>(null);
+  const [ytsLoading, setYtsLoading]   = useState(false);
   // ── TVMaze series import state ─────────────────────────────────────────────
   type TVMazeResult = { identifier: string; title: string; description: string | null; thumbnailUrl: string; genres: string[]; network: string | null; year: string | null; status: string | null };
   const [tmQuery, setTmQuery]           = useState("");
@@ -703,6 +744,45 @@ export default function AdminTV() {
     }
   }
 
+  async function searchCinemaFR(e?: FormEvent) {
+    e?.preventDefault();
+    setFrLoading(true);
+    setFrResults([]);
+    setFrTotal(null);
+    try {
+      const params = new URLSearchParams();
+      if (frQuery.trim()) params.set("q", frQuery.trim());
+      if (frGenre)        params.set("genre", frGenre);
+      const data = await apiAuth(`/api/admin/tv/import/cinemafr?${params}`).then(r => r.json());
+      setFrResults(data.results ?? []);
+      setFrTotal(data.numFound ?? 0);
+    } catch {
+      toast({ title: "Erè rechèch Ciné FR", variant: "destructive" });
+    } finally {
+      setFrLoading(false);
+    }
+  }
+
+  async function searchYTS(e?: FormEvent) {
+    e?.preventDefault();
+    setYtsLoading(true);
+    setYtsResults([]);
+    setYtsTotal(null);
+    try {
+      const q = ytsQuery.trim() || "";
+      const params = new URLSearchParams({ quality: ytsQuality });
+      if (q)       params.set("q", q);
+      if (ytsGenre) params.set("genre", ytsGenre);
+      const data = await apiAuth(`/api/admin/tv/import/yts?${params}`).then(r => r.json());
+      setYtsResults(data.results ?? []);
+      setYtsTotal(data.numFound ?? 0);
+    } catch {
+      toast({ title: "Erè rechèch YTS", variant: "destructive" });
+    } finally {
+      setYtsLoading(false);
+    }
+  }
+
   async function searchDailymotion(e?: FormEvent) {
     e?.preventDefault();
     setDmLoading(true);
@@ -781,6 +861,8 @@ export default function AdminTV() {
         // iframe-only embed pages — must NOT render as <video>
         if (p.videoUrl.includes("archive.org/embed/"))     return { url: p.videoUrl, isIframe: true };
         if (p.videoUrl.includes("dailymotion.com/embed/")) return { url: p.videoUrl, isIframe: true };
+        if (p.videoUrl.includes("vidsrc.me/embed/"))       return { url: p.videoUrl, isIframe: true };
+        if (p.videoUrl.includes("vidsrc.to/embed/"))       return { url: p.videoUrl, isIframe: true };
         return { url: p.videoUrl, isIframe: false }; // direct mp4 / mov
       } catch { return { url: p.videoUrl, isIframe: false }; }
     }
@@ -1147,7 +1229,7 @@ export default function AdminTV() {
             <Globe size={16} className="text-violet-500" />
             <p className="text-sm font-semibold">{t("tv.importTitle2")}</p>
           </div>
-          <div className="grid grid-cols-3 gap-1.5 mb-3">
+          <div className="grid grid-cols-2 gap-1.5 mb-3">
             <button
               onClick={() => { setImportSubTab("archive"); if (archiveResults.length === 0) searchArchive(); }}
               className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
@@ -1185,6 +1267,32 @@ export default function AdminTV() {
               <span className={cn("text-[9px] font-medium",
                 importSubTab === "tvmaze" ? "text-white/70" : "text-muted-foreground")}>
                 {t("tv.tmFree")}
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("yts"); if (ytsResults.length === 0) searchYTS(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "yts"
+                  ? "bg-green-600 text-white border-green-600"
+                  : "border-border text-muted-foreground hover:border-green-400")}
+            >
+              🎬 YTS · HD Films
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "yts" ? "text-white/70" : "text-muted-foreground")}>
+                720p · 1080p · 4K
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("cinemafr"); if (frResults.length === 0) searchCinemaFR(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "cinemafr"
+                  ? "bg-blue-700 text-white border-blue-700"
+                  : "border-border text-muted-foreground hover:border-blue-500")}
+            >
+              🇫🇷 Ciné FR
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "cinemafr" ? "text-white/70" : "text-muted-foreground")}>
+                Films Français
               </span>
             </button>
           </div>
@@ -1435,6 +1543,181 @@ export default function AdminTV() {
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
               <Globe size={10} />
               <span>Powered by <a href="https://www.tvmaze.com" target="_blank" rel="noopener" className="underline hover:text-foreground">TVMaze</a> — Free TV metadata</span>
+            </div>
+          </>)}
+
+          {/* ════ YTS HD FILMS PANEL ════ */}
+          {importSubTab === "yts" && (<>
+            {/* Info banner */}
+            <div className="rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">🎬</span>
+              <div>
+                <p className="text-xs font-semibold text-green-800 dark:text-green-300">YTS · 40 000+ fim HD — Gratis</p>
+                <p className="text-[11px] text-green-700 dark:text-green-400 mt-0.5">
+                  Rechèche fim → chwazi kalite (720p / 1080p / 4K) → enpòte nan pwogram Flexa TV
+                </p>
+              </div>
+            </div>
+
+            {/* Quality + search form */}
+            <div className="flex gap-1.5 mb-1.5">
+              {(["720p","1080p","2160p"] as const).map(q => (
+                <button key={q}
+                  onClick={() => { setYtsQuality(q); setTimeout(() => searchYTS(), 0); }}
+                  className={cn("text-[10px] px-2.5 py-1 rounded-full border font-bold transition-colors",
+                    ytsQuality === q
+                      ? "bg-green-600 text-white border-green-600"
+                      : "border-border text-muted-foreground hover:border-green-500")}
+                >
+                  {q === "2160p" ? "4K" : q}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={searchYTS} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={ytsQuery}
+                  onChange={e => setYtsQuery(e.target.value)}
+                  placeholder="Rechèche fim… ex: Avengers, 2024"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={ytsLoading}
+                className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {ytsLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {/* Genre quick-filters */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => { setYtsGenre(""); setTimeout(() => searchYTS(), 0); }}
+                className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                  ytsGenre === ""
+                    ? "bg-green-600 text-white border-green-600"
+                    : "border-border text-muted-foreground hover:border-green-500")}
+              >
+                🌐 {t("tv.importAll")}
+              </button>
+              {YTS_GENRES.map(g => (
+                <button key={g.value}
+                  onClick={() => { setYtsGenre(g.value); setYtsQuery(""); setTimeout(() => searchYTS(), 0); }}
+                  className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                    ytsGenre === g.value
+                      ? "bg-green-600 text-white border-green-600"
+                      : "border-border text-muted-foreground hover:border-green-500")}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
+            {ytsTotal !== null && !ytsLoading && (
+              <p className="text-xs text-muted-foreground">
+                {ytsTotal.toLocaleString()} fim — {t("tv.importShowing")} {ytsResults.length}
+              </p>
+            )}
+            {ytsLoading && <ImportSkeleton />}
+            {!ytsLoading && ytsResults.length === 0 && ytsTotal === 0 && <ImportEmpty label={t("tv.importNoResults")} />}
+            {!ytsLoading && ytsResults.length > 0 && (
+              <ImportGrid
+                items={ytsResults}
+                importedIds={importedIds}
+                isPending={importProgram.isPending}
+                pendingId={(importProgram.variables as ArchiveResult | undefined)?.identifier}
+                onAdd={item => importProgram.mutate(item)}
+                addLabel={t("tv.importAdd")}
+                addedLabel={t("tv.importAdded")}
+              />
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://yts.mx" target="_blank" rel="noopener" className="underline hover:text-foreground">YTS.mx</a> · Streaming via <a href="https://vidsrc.me" target="_blank" rel="noopener" className="underline hover:text-foreground">vidsrc.me</a> — Free HD</span>
+            </div>
+          </>)}
+
+          {/* ════ CINÉ FR — Films Français via Dailymotion (language=fr) ════ */}
+          {importSubTab === "cinemafr" && (<>
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">🇫🇷</span>
+              <div>
+                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300">Films Français — Gratis · Modèn</p>
+                <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5">
+                  Rechèche nan fim fransè resan — filtre pa jener epi enpòte dirèkteman nan Flexa TV
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={searchCinemaFR} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={frQuery}
+                  onChange={e => setFrQuery(e.target.value)}
+                  placeholder="Rechèche… ex: comédie 2024, romance français"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={frLoading}
+                className="px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {frLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {/* Genre quick-filters */}
+            <div className="flex gap-1.5 flex-wrap">
+              <button
+                onClick={() => { setFrGenre(""); setTimeout(() => searchCinemaFR(), 0); }}
+                className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                  frGenre === ""
+                    ? "bg-blue-700 text-white border-blue-700"
+                    : "border-border text-muted-foreground hover:border-blue-500")}
+              >
+                🌐 {t("tv.importAll")}
+              </button>
+              {FR_GENRES.map(g => (
+                <button key={g.value}
+                  onClick={() => { setFrGenre(g.value); setFrQuery(""); setTimeout(() => searchCinemaFR(), 0); }}
+                  className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                    frGenre === g.value
+                      ? "bg-blue-700 text-white border-blue-700"
+                      : "border-border text-muted-foreground hover:border-blue-500")}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
+            {frTotal !== null && !frLoading && (
+              <p className="text-xs text-muted-foreground">
+                {frTotal.toLocaleString()} rezilta — {t("tv.importShowing")} {frResults.length}
+              </p>
+            )}
+            {frLoading && <ImportSkeleton />}
+            {!frLoading && frResults.length === 0 && frTotal === 0 && <ImportEmpty label={t("tv.importNoResults")} />}
+            {!frLoading && frResults.length > 0 && (
+              <ImportGrid
+                items={frResults}
+                importedIds={importedIds}
+                isPending={importProgram.isPending}
+                pendingId={(importProgram.variables as ArchiveResult | undefined)?.identifier}
+                onAdd={item => importProgram.mutate(item)}
+                addLabel={t("tv.importAdd")}
+                addedLabel={t("tv.importAdded")}
+              />
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://www.dailymotion.com" target="_blank" rel="noopener" className="underline hover:text-foreground">Dailymotion</a> · language=fr — Gratis</span>
             </div>
           </>)}
         </div>

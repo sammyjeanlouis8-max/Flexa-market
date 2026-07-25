@@ -17,21 +17,15 @@ import { X, Maximize2, Pause, Radio, Volume2 } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
-// ── Platform detection ───────────────────────────────────────────────────────
-const IS_IOS =
-  typeof navigator !== "undefined" &&
-  /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-  !(window as any).MSStream;
-
 // YouTube embed params
-// dvr=1      → enables DVR seek bar so viewers can scrub back in the live buffer
-// iOS skips autoplay=1 — YouTube shows native ▶ so first tap starts with full sound
-const YT_PARAMS_BASE =
-  "dvr=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" +
+// autoplay=1 — autoplays on all devices. iOS forces mute=1 for autoplay but the
+// video still starts immediately. A tap-to-unmute overlay handles iOS audio policy.
+// dvr=1      — enables DVR seek bar so viewers can scrub back in the live buffer.
+const YT_PARAMS =
+  "autoplay=1&dvr=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" +
   encodeURIComponent(
     typeof window !== "undefined" ? window.location.origin : "https://flexamarket.com"
   );
-const YT_PARAMS = IS_IOS ? YT_PARAMS_BASE : `autoplay=1&${YT_PARAMS_BASE}`;
 
 function buildEmbedUrl(
   videoUrl: string | null,
@@ -98,8 +92,8 @@ export default function GlobalBroadcastPlayer() {
 
   const [slotRect, setSlotRect] = useState<SlotRect | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // embedKey: bump to force YouTube reload (auto-reload when stream shows "Encodage en cours")
-  const [embedKey, setEmbedKey] = useState(0);
+  // isMuted: true until user taps 🔊 overlay (iOS forces mute on autoplay)
+  const [isMuted, setIsMuted] = useState(true);
 
   const iframeRef  = useRef<HTMLIFrameElement>(null);
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -136,24 +130,11 @@ export default function GlobalBroadcastPlayer() {
     };
   }, []);
 
-  // ── Auto-reload: if YouTube not playing after 10 s, reload iframe ────────────
-  // Skip if tab is hidden (user navigated away) to avoid spurious restarts.
-  useEffect(() => {
-    if (!isActive) return;
-    let playing = false;
-    const onMsg = (e: MessageEvent) => {
-      try {
-        const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (d?.event === "onStateChange"  && d?.info === 1) playing = true;
-        if (d?.event === "infoDelivery"   && d?.info?.playerState === 1) playing = true;
-      } catch { /* ignore */ }
-    };
-    window.addEventListener("message", onMsg);
-    const timer = setTimeout(() => {
-      if (!playing && !document.hidden) setEmbedKey(k => k + 1);
-    }, 10_000);
-    return () => { window.removeEventListener("message", onMsg); clearTimeout(timer); };
-  }, [isActive, bs.videoUrl, bs.videoKey, embedKey]);
+  // Reset muted overlay whenever broadcast changes (new video = needs new unmute tap)
+  useEffect(() => { setIsMuted(true); }, [bs.videoUrl, bs.videoKey]);
+
+  // Auto-reload removed — it caused infinite restart loops because embedKey was
+  // in the dependency array and YouTube live streams don't reliably send playerState=1.
 
   // ── Media Session API (iOS lock-screen) ──────────────────────────────────────
   useEffect(() => {
@@ -239,7 +220,6 @@ export default function GlobalBroadcastPlayer() {
             />
           ) : (
             <iframe
-              key={embedKey}
               ref={iframeRef}
               src={embed.url}
               className="w-full h-full"
@@ -284,21 +264,12 @@ export default function GlobalBroadcastPlayer() {
             borderRadius: "12px",
           }}
         >
-          {/* Top bar: LIVE badge | 🔊 Son (iOS unmute) | ⛶ fullscreen | power off
-               Bottom of the player is left FULLY FREE for native seek bar. */}
+          {/* Top bar: LIVE badge | ⛶ fullscreen | power off */}
           <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 pt-2 pointer-events-none">
             <span className="inline-flex items-center gap-1 text-[10px] bg-red-600 text-white px-2 py-1 rounded-full font-bold animate-pulse shadow-lg">
               <Radio size={9} /> LIVE
             </span>
             <div className="flex items-center gap-1 pointer-events-auto">
-              {/* 🔊 Son — unmutes iOS/muted autoplay */}
-              <button
-                className="flex items-center gap-1 bg-black/70 hover:bg-black/90 active:bg-red-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-full transition-colors shadow-lg"
-                title="Aktive son"
-                onClick={() => ytUnmuteAndPlay(iframeRef.current)}
-              >
-                <Volume2 size={11} /> Son
-              </button>
               {/* ⛶ Fullscreen */}
               <button
                 className="bg-black/70 hover:bg-black/90 active:bg-violet-700 text-white p-1.5 rounded-full transition-colors shadow-lg"
@@ -319,7 +290,35 @@ export default function GlobalBroadcastPlayer() {
               </button>
             </div>
           </div>
-          {/* ↓ Bottom intentionally empty — native Dailymotion/YouTube seek bar lives here */}
+
+          {/* 🔊 Tap-to-unmute overlay — centered, pulsing, disappears after first tap.
+               iOS forces mute on autoplay; this is the ONE required user gesture. */}
+          {isMuted && (
+            <div
+              className="absolute inset-0 flex items-center justify-center pointer-events-auto"
+              style={{ zIndex: 20, background: "rgba(0,0,0,0.35)" }}
+            >
+              <button
+                onClick={() => {
+                  ytUnmuteAndPlay(iframeRef.current);
+                  setIsMuted(false);
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                  background: "rgba(255,255,255,0.15)", backdropFilter: "blur(6px)",
+                  border: "2px solid rgba(255,255,255,0.5)", borderRadius: 20,
+                  padding: "18px 28px", cursor: "pointer",
+                  animation: "pulse 1.8s ease-in-out infinite",
+                }}
+              >
+                <Volume2 size={36} color="white" strokeWidth={1.8} />
+                <span style={{ color: "white", fontWeight: 800, fontSize: 15, letterSpacing: 0.5 }}>
+                  Tap pou son 🔊
+                </span>
+              </button>
+            </div>
+          )}
+          {/* ↓ Bottom intentionally empty — native seek bar lives here */}
         </div>
       )}
 

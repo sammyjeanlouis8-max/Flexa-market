@@ -670,6 +670,115 @@ router.get("/admin/tv/import/dailymotion", requireAdmin, async (req, res): Promi
   }
 });
 
+// ── GET /api/admin/tv/import/cinemafr — Dailymotion filtered to French content ─
+// language=fr + country=fr returns modern French films, no API key required.
+router.get("/admin/tv/import/cinemafr", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q       = String(req.query.q       ?? "").trim();
+    const genre   = String(req.query.genre   ?? "").trim();
+
+    // Build search term: genre + query, always in French context
+    const searchTerm = [genre, q, "film complet"].filter(Boolean).join(" ");
+
+    const params = new URLSearchParams({
+      search   : searchTerm,
+      language : "fr",
+      fields   : "id,title,thumbnail_url,duration,description,language,country",
+      limit    : "24",
+      sort     : "recent",
+    });
+
+    const resp = await fetch(`https://api.dailymotion.com/videos?${params.toString()}`);
+    if (!resp.ok) return void res.status(502).json({ error: "Dailymotion unreachable" });
+
+    const data = await resp.json() as {
+      list: Array<Record<string, unknown>>;
+      total: number;
+    };
+
+    const results = (data?.list ?? []).map((v) => {
+      const id     = String(v.id ?? "");
+      const durSec = v.duration ? Number(v.duration) : null;
+      const rawDesc = v.description ? String(v.description) : null;
+      return {
+        identifier      : `dmfr-${id}`,
+        title           : String(v.title ?? id),
+        description     : rawDesc ? rawDesc.replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year            : null as number | null,
+        creator         : null as string | null,
+        subjects        : [] as string[],
+        durationMinutes : durSec ? Math.round(durSec / 60) : null,
+        thumbnailUrl    : String(v.thumbnail_url ?? ""),
+        videoUrl        : `https://www.dailymotion.com/embed/video/${id}?autoplay=1&queue-enable=false`,
+        downloads       : 0,
+      };
+    });
+
+    return void res.json({ numFound: data?.total ?? results.length, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search Ciné FR", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/yts — proxy to YTS public API (no key needed) ───
+// YTS has 40,000+ HD films (720p / 1080p / 4K). Embed via vidsrc.me using IMDb ID.
+router.get("/admin/tv/import/yts", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q       = String(req.query.q       ?? "").trim();
+    const genre   = String(req.query.genre   ?? "").trim();
+    const quality = String(req.query.quality ?? "").trim() || "1080p";
+
+    const params = new URLSearchParams({
+      limit    : "24",
+      sort_by  : "year",
+      order_by : "desc",
+    });
+    if (q)       params.set("query_term", q);
+    if (genre)   params.set("genre", genre);
+    if (quality && quality !== "all") params.set("quality", quality);
+
+    const resp = await fetch(`https://yts.mx/api/v2/list_movies.json?${params.toString()}`, {
+      headers: { "User-Agent": "FlexaMarket/1.0" },
+    });
+    if (!resp.ok) return void res.status(502).json({ error: "YTS unreachable" });
+
+    const data = await resp.json() as {
+      data?: {
+        movie_count?: number;
+        movies?: Array<Record<string, unknown>>;
+      };
+    };
+
+    const movies = data?.data?.movies ?? [];
+
+    const results = movies.map((m) => {
+      const imdbCode = String(m.imdb_code ?? "");
+      const runtime  = m.runtime ? Number(m.runtime) : null;
+      const genres   = Array.isArray(m.genres) ? (m.genres as string[]) : [];
+      return {
+        identifier      : `yts-${imdbCode || m.id}`,
+        title           : String(m.title_long ?? m.title ?? ""),
+        description     : String(m.summary ?? m.description_intro ?? "").replace(/<[^>]+>/g, "").slice(0, 500),
+        year            : m.year ? Number(m.year) : null,
+        creator         : null as string | null,
+        subjects        : genres,
+        durationMinutes : runtime,
+        thumbnailUrl    : String(m.large_cover_image ?? m.medium_cover_image ?? ""),
+        videoUrl        : imdbCode
+          ? `https://vidsrc.me/embed/movie?imdb=${imdbCode}`
+          : `https://vidsrc.me/embed/movie?tmdb=${m.id}`,
+        downloads       : m.download_count ? Number(m.download_count) : 0,
+        rating          : m.rating ? Number(m.rating) : null,
+        quality         : String(m.torrents ? ((m.torrents as any[])[0]?.quality ?? "") : ""),
+      };
+    });
+
+    return void res.json({ numFound: data?.data?.movie_count ?? results.length, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search YTS", detail: String(err) });
+  }
+});
+
 // ── DELETE /api/admin/tv/series/:id ──────────────────────────────────────────
 router.delete("/admin/tv/series/:id", requireAdmin, async (req, res): Promise<void> => {
   try {

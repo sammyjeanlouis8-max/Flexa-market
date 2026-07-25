@@ -554,7 +554,14 @@ export default function FlexaTV() {
 
         {/* ── Player ── */}
         <div className="mb-3">
-          {broadcastActive ? (
+          {playing ? (
+            /* ── USER SELECTED A FILM — play it; broadcast becomes mini-player ── */
+            <VideoPlayer
+              program={playing}
+              onClose={() => setPlaying(null)}
+              noVideoLabel={t("tv.noVideo")}
+            />
+          ) : broadcastActive ? (
             /* ── BROADCAST MODE ──────────────────────────────────────────────
                GlobalBroadcastPlayer (persistent iframe, never unmounts) tracks
                this placeholder div via getBoundingClientRect + setInterval(100ms)
@@ -598,13 +605,6 @@ export default function FlexaTV() {
                 <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
               </div>
             </>
-          ) : playing ? (
-            /* No broadcast — user can freely choose from the library */
-            <VideoPlayer
-              program={playing}
-              onClose={() => setPlaying(null)}
-              noVideoLabel={t("tv.noVideo")}
-            />
           ) : (
             <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">
               {/* Animated glow background */}

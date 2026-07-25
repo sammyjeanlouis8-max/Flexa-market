@@ -199,12 +199,12 @@ function ProgramModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2 sm:p-4">
-      <div className="bg-background rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style={{ height: "92dvh", maxHeight: "92dvh" }}>
+      <div className="bg-background rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style={{ height: "88vh", maxHeight: "88vh" }}>
         <div className="flex-shrink-0 bg-background border-b border-border px-5 py-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="font-bold text-base">{program ? t("tv.editProgram") : t("tv.addProgram")}</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted"><X size={18} /></button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ WebkitOverflowScrolling: "touch" } as any}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4" style={{ WebkitOverflowScrolling: "touch" } as any}>
           <Field label={t("tv.fieldTitle")}>
             <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder={t("tv.fieldTitle")} />
           </Field>

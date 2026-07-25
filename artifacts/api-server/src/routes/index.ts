@@ -62,6 +62,7 @@ import referralsRouter from "./referrals";
 import fraudRouter from "./fraud";
 import shippingRouter from "./shipping";
 import flexCardRouter from "./flex-card";
+import tvRouter from "./tv";
 import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -230,5 +231,6 @@ router.use(fraudRouter);
 router.use(shippingRouter);
 router.use(flexCardRouter);
 router.use(referralsRouter);
+router.use(tvRouter);
 
 export default router;

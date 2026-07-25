@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles,
+  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
@@ -273,6 +273,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
       highlight: true,
       items: [
         { icon: Film, label: `🔥 ${t("nav.videos")}`, href: "/videos" },
+        { icon: Tv,   label: "📺 Flexa TV",            href: "/tv" },
         ...(user ? [{ icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem] : []),
       ] as DrawerItem[],
     },
@@ -601,6 +602,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       highlight: true,
       items: [
         { href: "/videos",    icon: Film, label: `🔥 ${t("nav.videos")}`,   key: "videos" },
+        { href: "/tv",        icon: Tv,   label: "📺 Flexa TV",              key: "flexa-tv" },
         ...(user ? [{ href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" }] : []),
       ],
     },

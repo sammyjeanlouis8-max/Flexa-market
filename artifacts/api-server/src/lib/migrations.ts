@@ -1906,6 +1906,46 @@ export async function runStartupMigrations(): Promise<void> {
   // ── Driver zone preference (department-level delivery visibility) ────────────
   migrations.push({ name: "drivers.department", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS department text" });
 
+  // ── Flexa TV ─────────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "tv_series.create",
+    sql: `CREATE TABLE IF NOT EXISTS tv_series (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      thumbnail_url TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "tv_programs.create",
+    sql: `CREATE TABLE IF NOT EXISTS tv_programs (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      type TEXT NOT NULL DEFAULT 'program',
+      video_url TEXT,
+      video_key TEXT,
+      thumbnail_url TEXT,
+      duration_minutes INTEGER,
+      scheduled_at TIMESTAMPTZ,
+      ends_at TIMESTAMPTZ,
+      series_id INTEGER REFERENCES tv_series(id) ON DELETE SET NULL,
+      episode_number INTEGER,
+      season_number INTEGER DEFAULT 1,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      is_featured BOOLEAN NOT NULL DEFAULT false,
+      created_by INTEGER,
+      view_count INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({ name: "tv_programs.sched_idx", sql: "CREATE INDEX IF NOT EXISTS tv_programs_scheduled_at_idx ON tv_programs(scheduled_at)" });
+  migrations.push({ name: "tv_programs.series_idx", sql: "CREATE INDEX IF NOT EXISTS tv_programs_series_id_idx ON tv_programs(series_id)" });
+
   let applied = 0;
   let failed = 0;
 

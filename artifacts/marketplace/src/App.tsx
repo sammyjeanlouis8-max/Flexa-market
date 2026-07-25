@@ -100,6 +100,8 @@ const AdminDeliveriesPage            = lazy(() => import("@/pages/AdminDeliverie
 const CreditScorePage                = lazy(() => import("@/pages/CreditScorePage"));
 const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
+const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
+const AdminTV                        = lazy(() => import("@/pages/AdminTV"));
 
 // ── Query client ──────────────────────────────────────────────────────────────
 // Retry up to 3 times for server errors (502/503/504) which happen during
@@ -255,6 +257,8 @@ function LayoutRoutes() {
           <Route path="/admin/vehicles" component={AdminVehiclePanel} />
           <Route path="/admin/drivers/live" component={AdminDriversLiveMap} />
           <Route path="/leaderboard" component={Leaderboard} />
+          <Route path="/tv" component={FlexaTV} />
+          <Route path="/admin/tv" component={AdminTV} />
           <Route component={RedirectHome} />
         </Switch>
       </Suspense>

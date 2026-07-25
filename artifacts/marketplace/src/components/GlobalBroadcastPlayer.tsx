@@ -115,7 +115,9 @@ export default function GlobalBroadcastPlayer() {
       if (key !== lastKey) { lastKey = key; setSlotRect({ top: r.top, left: r.left, width: r.width, height: r.height }); }
     };
     measure();
-    const id = setInterval(measure, 80);
+    // 200ms is fast enough for smooth repositioning while being 2.5× lighter
+    // than 80ms — reduces iOS Safari memory pressure from 750 to 300 updates/min.
+    const id = setInterval(measure, 200);
     return () => clearInterval(id);
   }, [isOnViewerTV, isActive]);
 

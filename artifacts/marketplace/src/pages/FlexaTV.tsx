@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Tv, Play, Clock, Calendar, Eye, Radio, Film, List, X,
   Maximize, Minimize, Volume2, VolumeX, Pause, ShoppingBag, Search,
+  Share2, Monitor, Copy, Check, Airplay,
 } from "lucide-react";
 
 // Auto-gradient thumbnail fallback — unique colour per title
@@ -195,6 +196,125 @@ function AdOverlay({ listing, onDone }: { listing: BoostedListing; onDone: () =>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Smart TV / Share Action Bar ───────────────────────────────────────────────
+function PlayerActions({ title, videoUrl }: { title: string; videoUrl?: string | null }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const shareUrl = "https://flexamarket.com/tv";
+  const qrUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(shareUrl)}&color=7c3aed&bgcolor=ffffff`;
+
+  async function handleShare() {
+    const data = { title, text: `${title} — Flexa TV`, url: shareUrl };
+    try {
+      if (navigator.share && navigator.canShare?.(data)) {
+        await navigator.share(data);
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch { /* user cancelled */ }
+  }
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <>
+      {/* ── Action bar ── */}
+      <div className="flex items-center gap-2 mt-2 mb-3">
+        {/* Share button */}
+        <button
+          onClick={handleShare}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-muted/60 hover:bg-muted text-sm font-semibold transition-colors"
+        >
+          <Share2 size={14} className="text-violet-500" />
+          {t("tv.shareBtn")}
+        </button>
+
+        {/* Smart TV button */}
+        <button
+          onClick={() => setShowModal(true)}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border border-border bg-muted/60 hover:bg-muted text-sm font-semibold transition-colors"
+        >
+          <Monitor size={14} className="text-violet-500" />
+          {t("tv.smartTvBtn")}
+        </button>
+      </div>
+
+      {/* ── Smart TV Modal ── */}
+      {showModal && (
+        <div
+          className="fixed inset-0 z-[99999] flex items-end justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-background rounded-t-3xl p-6 pb-10 space-y-4 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Monitor size={18} className="text-violet-500" />
+                <h3 className="font-bold text-base">{t("tv.watchOnTv")}</h3>
+              </div>
+              <button onClick={() => setShowModal(false)} className="text-muted-foreground hover:text-foreground">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* QR code */}
+            <div className="flex flex-col items-center gap-2 py-2">
+              <img
+                src={qrUrl}
+                alt="QR flexamarket.com/tv"
+                className="w-40 h-40 rounded-xl border border-border shadow"
+              />
+              <p className="text-xs text-muted-foreground text-center">{t("tv.qrScanTip")}</p>
+              <code className="text-xs font-mono bg-muted px-3 py-1 rounded-lg text-violet-600 dark:text-violet-400 select-all">
+                flexamarket.com/tv
+              </code>
+            </div>
+
+            {/* Copy link */}
+            <button
+              onClick={handleCopy}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-sm transition-colors",
+                copied
+                  ? "bg-green-500 text-white"
+                  : "bg-violet-600 hover:bg-violet-700 text-white"
+              )}
+            >
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? t("tv.linkCopied") : t("tv.copyLink")}
+            </button>
+
+            {/* Platform tips */}
+            <div className="space-y-2.5 pt-1">
+              {[
+                { icon: <Airplay size={14} className="text-blue-500" />,   text: t("tv.airplayTip") },
+                { icon: <Monitor size={14} className="text-red-500" />,  text: t("tv.chromecastTip") },
+                { icon: <Tv size={14} className="text-violet-500" />,    text: t("tv.smartTvOpenTip") },
+              ].map((row, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <span className="flex-shrink-0 mt-0.5">{row.icon}</span>
+                  <span>{row.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -445,7 +565,7 @@ function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () =>
           <p className="text-white font-bold text-base line-clamp-2 drop-shadow mb-2">{program.title}</p>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 bg-white text-black text-xs font-bold px-4 py-1.5 rounded-full shadow-lg group-hover:bg-white/90 transition-colors">
-              <Play size={12} className="fill-black" /> Gade Kounye a
+              <Play size={12} className="fill-black" /> {t("tv.watchNow")}
             </span>
           </div>
         </div>
@@ -565,11 +685,114 @@ function PosterCard({ program, onClick, minLabel }: {
   );
 }
 
+// ── Series Tab — Netflix-style 3-col poster grid ──────────────────────────────
+function SeriesGrid({
+  series,
+  episodeList,
+  selectedSeriesId,
+  setSelectedSeriesId,
+  play,
+  tlabel,
+}: {
+  series: TvSeries[];
+  episodeList: TvProgram[];
+  selectedSeriesId: number | null;
+  setSelectedSeriesId: (id: number | null) => void;
+  play: (p: TvProgram) => void;
+  tlabel: (type: string) => string;
+}) {
+  const { t } = useTranslation();
+  const selectedSeries = series.find(s => s.id === selectedSeriesId) ?? null;
+  const selectedEps = selectedSeries
+    ? episodeList.filter(p => p.seriesId === selectedSeries.id).sort((a, b) => (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0))
+    : [];
+
+  if (series.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <List size={40} className="mx-auto mb-3 opacity-30" />
+        <p>{t("tv.noSeries")}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* 3-column poster grid */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {series.map(s => {
+          const isSelected = s.id === selectedSeriesId;
+          return (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSeriesId(isSelected ? null : s.id)}
+              className="group relative flex flex-col text-left w-full focus:outline-none"
+            >
+              <div className="relative w-full overflow-hidden rounded-lg bg-[#141414]" style={{ paddingBottom: "150%" }}>
+                <div className="absolute inset-0">
+                  {s.thumbnailUrl ? (
+                    <img
+                      src={s.thumbnailUrl}
+                      alt={s.title}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className={cn("w-full h-full bg-gradient-to-br flex items-center justify-center", titleGradient(s.title))}>
+                      <span className="text-white font-bold text-xl drop-shadow">{s.title[0]?.toUpperCase() ?? "📺"}</span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                  {isSelected && <div className="absolute inset-0 ring-2 ring-violet-500 rounded-lg" />}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                    <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                      <Play size={16} className="text-black fill-black ml-0.5" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] font-semibold leading-tight line-clamp-2 text-foreground px-0.5">{s.title}</p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Episode list for selected series */}
+      {selectedSeries && (
+        <div className="bg-muted/40 rounded-2xl p-3 border border-border mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            {selectedSeries.thumbnailUrl && (
+              <img src={selectedSeries.thumbnailUrl} alt={selectedSeries.title} className="w-10 h-14 rounded-lg object-cover flex-shrink-0" />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm">{selectedSeries.title}</p>
+              {selectedSeries.description && (
+                <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{selectedSeries.description}</p>
+              )}
+            </div>
+            <button onClick={() => setSelectedSeriesId(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {selectedEps.map(ep => (
+              <ProgramCard key={ep.id} program={ep} onClick={() => play(ep)} compact typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />
+            ))}
+            {selectedEps.length === 0 && (
+              <p className="text-xs text-muted-foreground py-2 text-center">{t("tv.noEpisodes")}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FlexaTV() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"live" | "schedule" | "films" | "series" | "programs">("live");
   const [playing, setPlaying] = useState<TvProgram | null>(null);
+  const [selectedSeriesId, setSelectedSeriesId] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [adListing, setAdListing] = useState<BoostedListing | null>(null);
   const [adDone, setAdDone] = useState(false);
@@ -649,15 +872,16 @@ export default function FlexaTV() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Auto-play on first load
+  // Auto-play on first load only (run once when data first arrives)
+  // Store a ref so we never re-trigger once the user has made a choice.
+  const autoPlayedRef = useRef(false);
   useEffect(() => {
-    if (!playing) {
-      const liveProg = programs?.find(p => p.type === "live");
-      if (liveProg) { play(liveProg); return; }
-      if (nowPlaying) { play(nowPlaying); return; }
-      const featured = programs?.find(p => p.isFeatured);
-      if (featured) play(featured);
-    }
+    if (autoPlayedRef.current || playing) return;
+    const liveProg = programs?.find(p => p.type === "live");
+    if (liveProg) { autoPlayedRef.current = true; play(liveProg); return; }
+    if (nowPlaying) { autoPlayedRef.current = true; play(nowPlaying); return; }
+    const featured = programs?.find(p => p.isFeatured);
+    if (featured) { autoPlayedRef.current = true; play(featured); }
   }, [nowPlaying, programs]); // eslint-disable-line
 
   const sq = search.toLowerCase().trim();
@@ -711,11 +935,14 @@ export default function FlexaTV() {
         <div className="mb-3">
           {playing ? (
             /* ── USER SELECTED A FILM — play it; broadcast becomes mini-player ── */
-            <VideoPlayer
-              program={playing}
-              onClose={() => setPlaying(null)}
-              noVideoLabel={t("tv.noVideo")}
-            />
+            <>
+              <VideoPlayer
+                program={playing}
+                onClose={() => setPlaying(null)}
+                noVideoLabel={t("tv.noVideo")}
+              />
+              <PlayerActions title={playing.title} videoUrl={playing.videoUrl} />
+            </>
           ) : broadcastActive ? (
             /* ── BROADCAST MODE ──────────────────────────────────────────────
                GlobalBroadcastPlayer (persistent iframe, never unmounts) tracks
@@ -734,12 +961,12 @@ export default function FlexaTV() {
                     <div className="w-16 h-16 rounded-full bg-black/60 border border-white/10 flex items-center justify-center">
                       <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-10 h-10 object-contain opacity-40" />
                     </div>
-                    <p className="text-white/40 text-xs">TV éteinte</p>
+                    <p className="text-white/40 text-xs">{t("tv.tvOff")}</p>
                     <button
                       onClick={() => bs.setDismissed(false)}
                       className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors"
                     >
-                      <Radio size={12} /> Rallimen TV
+                      <Radio size={12} /> {t("tv.turnOnTv")}
                     </button>
                   </div>
                 </div>
@@ -759,6 +986,7 @@ export default function FlexaTV() {
                 </span>
                 <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
               </div>
+              <PlayerActions title={bs.programTitle ?? "Flexa TV Live"} />
             </>
           ) : (
             <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">
@@ -795,13 +1023,7 @@ export default function FlexaTV() {
           </button>
         )}
 
-        {/* ── Cast tip — only when something is playing ── */}
-        {(broadcastActive || !!playing) && (
-          <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/60 rounded-xl px-3 py-2 border border-border">
-            <Tv size={14} className="shrink-0 text-violet-500" />
-            <p>💡 <strong>Smart TV / Chromecast / AirPlay:</strong> {t("tv.castTip")}</p>
-          </div>
-        )}
+        {/* Cast tip removed — replaced by Share + Smart TV action buttons in PlayerActions */}
 
         {/* ── Search bar ── */}
         <div className="relative mb-3">
@@ -926,33 +1148,16 @@ export default function FlexaTV() {
           )
         )}
 
-        {/* ── Series Tab ── */}
+        {/* ── Series Tab — Netflix-style poster grid ── */}
         {activeTab === "series" && (
-          <div className="space-y-4">
-            {(series ?? []).length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <List size={40} className="mx-auto mb-3 opacity-30" />
-                <p>{t("tv.noSeries")}</p>
-              </div>
-            ) : (series ?? []).map(s => {
-              const eps = episodeList.filter(p => p.seriesId === s.id).sort((a, b) => (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0));
-              return (
-                <div key={s.id}>
-                  <div className="flex items-center gap-2 mb-2">
-                    {s.thumbnailUrl && <img src={s.thumbnailUrl} alt={s.title} className="w-8 h-8 rounded-lg object-cover" />}
-                    <div>
-                      <p className="font-bold text-sm">{s.title}</p>
-                      {s.description && <p className="text-xs text-muted-foreground">{s.description}</p>}
-                    </div>
-                  </div>
-                  <div className="space-y-1 pl-2 border-l-2 border-violet-500/30">
-                    {eps.map(ep => <ProgramCard key={ep.id} program={ep} onClick={() => play(ep)} compact typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />)}
-                    {eps.length === 0 && <p className="text-xs text-muted-foreground py-2">{t("tv.noEpisodes")}</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <SeriesGrid
+            series={series ?? []}
+            episodeList={episodeList}
+            selectedSeriesId={selectedSeriesId}
+            setSelectedSeriesId={setSelectedSeriesId}
+            play={play}
+            tlabel={tlabel}
+          />
         )}
 
         {/* ── Programs Tab ── */}

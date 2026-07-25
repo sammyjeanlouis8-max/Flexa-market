@@ -572,7 +572,7 @@ export default function AdminTV() {
   const bs = useBroadcast(); // for startedAt + programId (broadcast timer)
 
   // ── Archive.org import state ──────────────────────────────────────────────
-  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze" | "yts" | "cinemafr">("archive");
+  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze" | "yts" | "cinemafr" | "archivefr" | "seriesfr">("archive");
   const [archiveQuery, setArchiveQuery]     = useState("");
   const [archiveGenre, setArchiveGenre]     = useState("");
   const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
@@ -591,6 +591,13 @@ export default function AdminTV() {
   const [frResults, setFrResults] = useState<ArchiveResult[]>([]);
   const [frTotal, setFrTotal]     = useState<number | null>(null);
   const [frLoading, setFrLoading] = useState(false);
+  // ── Archive.org French Classics state ─────────────────────────────────────
+  const [afrQuery, setAfrQuery]   = useState("");
+  const [afrYear, setAfrYear]     = useState("2000-2025");
+  const [afrSort, setAfrSort]     = useState("downloads desc");
+  const [afrResults, setAfrResults] = useState<ArchiveResult[]>([]);
+  const [afrTotal, setAfrTotal]   = useState<number | null>(null);
+  const [afrLoading, setAfrLoading] = useState(false);
   // ── YTS (HD movies) import state ──────────────────────────────────────────
   const [ytsQuery, setYtsQuery]       = useState("");
   const [ytsGenre, setYtsGenre]       = useState("");
@@ -604,6 +611,16 @@ export default function AdminTV() {
   const [tmResults, setTmResults]       = useState<TVMazeResult[]>([]);
   const [tmLoading, setTmLoading]       = useState(false);
   const [importedSeriesIds, setImportedSeriesIds] = useState<Set<string>>(new Set());
+  // ── Séries FR (TVMaze French) state ───────────────────────────────────────
+  const [srfrQuery, setSrfrQuery]       = useState("");
+  const [srfrResults, setSrfrResults]   = useState<TVMazeResult[]>([]);
+  const [srfrLoading, setSrfrLoading]   = useState(false);
+
+  // ── Episode import panel (per-series inline DM search) ────────────────────
+  const [epImportSeriesId, setEpImportSeriesId] = useState<number | null>(null);
+  const [epResults, setEpResults]               = useState<ArchiveResult[]>([]);
+  const [epLoading, setEpLoading]               = useState(false);
+  const [epImportedIds, setEpImportedIds]       = useState<Set<string>>(new Set());
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -661,6 +678,47 @@ export default function AdminTV() {
     mutationFn: () => apiAuth("/api/admin/tv/broadcast/stop", { method: "POST" }).then(r => r.json()),
     onSuccess: () => { setBroadcastState("stopped"); setViewerCount(0); setPreviewProgram(null); toast({ title: "⏹ Transmisyon kanpe" }); },
   });
+
+  // ── Import an episode from Dailymotion into a series ─────────────────────
+  const importEpisode = useMutation({
+    mutationFn: ({ item, seriesId, episodeNumber }: { item: ArchiveResult; seriesId: number; episodeNumber: number }) =>
+      apiAuth("/api/admin/tv/programs", {
+        method: "POST",
+        body: JSON.stringify({
+          title          : item.title,
+          description    : item.description ?? null,
+          type           : "series",
+          videoUrl       : item.videoUrl,
+          thumbnailUrl   : item.thumbnailUrl,
+          durationMinutes: item.durationMinutes ?? null,
+          seriesId,
+          episodeNumber,
+          isActive       : true,
+          isFeatured     : false,
+        }),
+      }).then(r => r.json()),
+    onSuccess: (_d, { item }) => {
+      qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] });
+      qc.invalidateQueries({ queryKey: ["/tv/programs"] });
+      setEpImportedIds(prev => new Set([...prev, item.identifier]));
+      toast({ title: `✅ ${item.title} — episòd ajoute` });
+    },
+    onError: () => toast({ title: t("tv.importError"), variant: "destructive" }),
+  });
+
+  async function searchEpisodes(seriesTitle: string, seriesId: number) {
+    setEpImportSeriesId(seriesId);
+    setEpResults([]);
+    setEpLoading(true);
+    try {
+      const data = await apiAuth(`/api/admin/tv/import/seriesepisodes?title=${encodeURIComponent(seriesTitle)}`).then(r => r.json());
+      setEpResults(data.results ?? []);
+    } catch {
+      toast({ title: "Erè rechèch episòd", variant: "destructive" });
+    } finally {
+      setEpLoading(false);
+    }
+  }
 
   // ── Import a film from Archive.org into the TV program list ──────────────
   const importProgram = useMutation({
@@ -729,6 +787,22 @@ export default function AdminTV() {
     onError: () => toast({ title: t("tv.tmSeriesImportError"), variant: "destructive" }),
   });
 
+  async function searchSeriesFR(e?: FormEvent) {
+    e?.preventDefault();
+    setSrfrLoading(true);
+    setSrfrResults([]);
+    try {
+      const params = new URLSearchParams();
+      if (srfrQuery.trim()) params.set("q", srfrQuery.trim());
+      const data = await apiAuth(`/api/admin/tv/import/seriesfr?${params}`).then(r => r.json());
+      setSrfrResults(data.results ?? []);
+    } catch {
+      toast({ title: "Erè rechèch Séries FR", variant: "destructive" });
+    } finally {
+      setSrfrLoading(false);
+    }
+  }
+
   async function searchTVMaze(e?: FormEvent) {
     e?.preventDefault();
     setTmLoading(true);
@@ -741,6 +815,28 @@ export default function AdminTV() {
       toast({ title: t("tv.tmSeriesImportError"), variant: "destructive" });
     } finally {
       setTmLoading(false);
+    }
+  }
+
+  async function searchArchiveFR(e?: FormEvent, overrideYear?: string, overrideSort?: string) {
+    e?.preventDefault();
+    setAfrLoading(true);
+    setAfrResults([]);
+    setAfrTotal(null);
+    try {
+      const params = new URLSearchParams();
+      if (afrQuery.trim()) params.set("q", afrQuery.trim());
+      const yr = overrideYear !== undefined ? overrideYear : afrYear;
+      const st = overrideSort !== undefined ? overrideSort : afrSort;
+      if (yr) params.set("year", yr);
+      if (st) params.set("sort", st);
+      const data = await apiAuth(`/api/admin/tv/import/archivefr?${params}`).then(r => r.json());
+      setAfrResults(data.results ?? []);
+      setAfrTotal(data.numFound ?? 0);
+    } catch {
+      toast({ title: "Erè rechèch Classiques FR", variant: "destructive" });
+    } finally {
+      setAfrLoading(false);
     }
   }
 
@@ -1226,27 +1322,128 @@ export default function AdminTV() {
             <div className="space-y-2">
               {series.map(s => {
                 const eps = programs?.filter(p => p.seriesId === s.id).length ?? 0;
+                const epOpen = epImportSeriesId === s.id;
+                // Next episode number = current count + 1
+                const nextEpNum = eps + 1;
                 return (
-                  <div key={s.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:border-violet-500/30 transition-colors">
-                    {s.thumbnailUrl ? (
-                      <img src={s.thumbnailUrl} alt={s.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                        <List size={18} className="text-muted-foreground" />
+                  <div key={s.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                    {/* Series row */}
+                    <div className="flex items-center gap-3 p-3 hover:border-violet-500/30 transition-colors">
+                      {s.thumbnailUrl ? (
+                        <img src={s.thumbnailUrl} alt={s.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                          <List size={18} className="text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">{s.title}</p>
+                        <p className="text-xs text-muted-foreground">{eps} {t("tv.episodes")}{!s.isActive ? ` · ${t("tv.hidden")}` : ""}</p>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {/* 📥 Import episodes button */}
+                        <button
+                          onClick={() => {
+                            if (epOpen) { setEpImportSeriesId(null); setEpResults([]); }
+                            else searchEpisodes(s.title, s.id);
+                          }}
+                          title="Importe episòd"
+                          className={cn(
+                            "p-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1",
+                            epOpen
+                              ? "bg-violet-600 text-white"
+                              : "hover:bg-violet-500/10 text-violet-500 hover:text-violet-600"
+                          )}
+                        >
+                          <Download size={14} />
+                        </button>
+                        <button onClick={() => setEditSeries(s)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground">
+                          <Pencil size={15} />
+                        </button>
+                        <button onClick={() => confirmDelete(s.title, () => deleteSeries.mutate(s.id))} className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ── Inline episode import panel ── */}
+                    {epOpen && (
+                      <div className="border-t border-border bg-violet-50/50 dark:bg-violet-950/10 p-3 space-y-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Download size={12} className="text-violet-500" />
+                          <p className="text-[11px] font-bold text-violet-700 dark:text-violet-300">
+                            Importe episòd pou "{s.title}"
+                          </p>
+                          <span className="ml-auto text-[10px] text-muted-foreground">Dailymotion · &gt;10 min</span>
+                        </div>
+
+                        {epLoading && (
+                          <div className="space-y-2">
+                            {[...Array(3)].map((_, i) => (
+                              <div key={i} className="flex gap-2 rounded-lg border border-border p-2 animate-pulse">
+                                <div className="w-16 h-10 bg-muted rounded flex-shrink-0" />
+                                <div className="flex-1 space-y-1.5 py-0.5">
+                                  <div className="h-2.5 bg-muted rounded w-3/4" />
+                                  <div className="h-5 bg-muted rounded w-full" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {!epLoading && epResults.length === 0 && (
+                          <div className="text-center py-4 text-muted-foreground">
+                            <p className="text-xs">Pa jwenn episòd. Eseye edite tit seri a.</p>
+                          </div>
+                        )}
+
+                        {!epLoading && epResults.length > 0 && (
+                          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                            {epResults.map((item, idx) => {
+                              const isImported  = epImportedIds.has(item.identifier);
+                              const isImporting = importEpisode.isPending &&
+                                (importEpisode.variables as { item: ArchiveResult } | undefined)?.item?.identifier === item.identifier;
+                              const epNum = nextEpNum + idx;
+                              return (
+                                <div key={item.identifier} className="flex gap-2 rounded-lg border border-border bg-card p-2">
+                                  {/* Thumbnail */}
+                                  <div className="w-20 h-12 flex-shrink-0 rounded overflow-hidden bg-muted relative">
+                                    {item.thumbnailUrl ? (
+                                      <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center"><Play size={14} className="text-muted-foreground" /></div>
+                                    )}
+                                    {item.durationMinutes && (
+                                      <span className="absolute bottom-0.5 right-0.5 text-[8px] bg-black/80 text-white px-1 rounded">{item.durationMinutes}m</span>
+                                    )}
+                                  </div>
+                                  {/* Info + button */}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-semibold line-clamp-2 leading-tight mb-1">{item.title}</p>
+                                    <button
+                                      onClick={() => !isImported && importEpisode.mutate({ item, seriesId: s.id, episodeNumber: epNum })}
+                                      disabled={isImported || isImporting}
+                                      className={cn(
+                                        "w-full flex items-center justify-center gap-1 text-[10px] font-bold py-1 rounded transition-colors",
+                                        isImported
+                                          ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                                          : "bg-violet-600 hover:bg-violet-700 text-white disabled:opacity-60"
+                                      )}
+                                    >
+                                      {isImported ? (
+                                        <><Check size={9} /> Ep {epNum} ajoute</>
+                                      ) : isImporting ? "…" : (
+                                        <><Download size={9} /> Ajoute kòm Ep {epNum}</>
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm">{s.title}</p>
-                      <p className="text-xs text-muted-foreground">{eps} {t("tv.episodes")}{!s.isActive ? ` · ${t("tv.hidden")}` : ""}</p>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => setEditSeries(s)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground">
-                        <Pencil size={15} />
-                      </button>
-                      <button onClick={() => confirmDelete(s.title, () => deleteSeries.mutate(s.id))} className="p-2 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500">
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
                   </div>
                 );
               })}
@@ -1326,7 +1523,33 @@ export default function AdminTV() {
               🇫🇷 Ciné FR
               <span className={cn("text-[9px] font-medium",
                 importSubTab === "cinemafr" ? "text-white/70" : "text-muted-foreground")}>
-                Films Français
+                Films Modèn
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("archivefr"); if (afrResults.length === 0) searchArchiveFR(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "archivefr"
+                  ? "bg-purple-700 text-white border-purple-700"
+                  : "border-border text-muted-foreground hover:border-purple-500")}
+            >
+              🏛 Classiques FR
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "archivefr" ? "text-white/70" : "text-muted-foreground")}>
+                33 000+ films
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("seriesfr"); if (srfrResults.length === 0) searchSeriesFR(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "seriesfr"
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "border-border text-muted-foreground hover:border-indigo-400")}
+            >
+              🇫🇷 Séries FR
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "seriesfr" ? "text-white/70" : "text-muted-foreground")}>
+                TVMaze · Gratis
               </span>
             </button>
           </div>
@@ -1751,7 +1974,194 @@ export default function AdminTV() {
             )}
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
               <Globe size={10} />
-              <span>Powered by <a href="https://www.dailymotion.com" target="_blank" rel="noopener" className="underline hover:text-foreground">Dailymotion</a> · language=fr — Gratis</span>
+              <span>Powered by <a href="https://www.dailymotion.com" target="_blank" rel="noopener" className="underline hover:text-foreground">Dailymotion</a> · language=fr&country=fr — Gratis</span>
+            </div>
+          </>)}
+
+          {/* ════ CLASSIQUES FR — Archive.org language:French ════ */}
+          {importSubTab === "archivefr" && (<>
+            <div className="rounded-xl bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">🏛</span>
+              <div>
+                <p className="text-xs font-semibold text-purple-800 dark:text-purple-300">Classiques François — 33 000+ fim · Gratis</p>
+                <p className="text-[11px] text-purple-700 dark:text-purple-400 mt-0.5">
+                  Archive.org · domèn piblik · soti 1895 rive jodi a — pa gen kle API
+                </p>
+              </div>
+            </div>
+
+            {/* Sort + year filters */}
+            <div className="flex gap-1.5 flex-wrap">
+              {[
+                { label: "📥 Plis popilè", sort: "downloads desc", year: "" },
+                { label: "🆕 Pi resan",    sort: "publicdate desc", year: "2000-2025" },
+                { label: "⭐ Klasik",       sort: "downloads desc",  year: "1920-1980" },
+                { label: "📅 2000-2024",    sort: "downloads desc",  year: "2000-2024" },
+              ].map(opt => (
+                <button key={opt.label}
+                  onClick={() => {
+                    setAfrSort(opt.sort); setAfrYear(opt.year);
+                    searchArchiveFR(undefined, opt.year, opt.sort);
+                  }}
+                  className={cn("text-[11px] px-2.5 py-1 rounded-full border transition-colors font-medium",
+                    afrSort === opt.sort && afrYear === opt.year
+                      ? "bg-purple-700 text-white border-purple-700"
+                      : "border-border text-muted-foreground hover:border-purple-500")}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <form onSubmit={searchArchiveFR} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={afrQuery}
+                  onChange={e => setAfrQuery(e.target.value)}
+                  placeholder="Rechèche… ex: comédie, Godard, Truffaut, 1960"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={afrLoading}
+                className="px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {afrLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {afrTotal !== null && !afrLoading && (
+              <p className="text-xs text-muted-foreground">
+                {afrTotal.toLocaleString()} rezilta — {t("tv.importShowing")} {afrResults.length}
+              </p>
+            )}
+            {afrLoading && <ImportSkeleton />}
+            {!afrLoading && afrResults.length === 0 && afrTotal === 0 && <ImportEmpty label={t("tv.importNoResults")} />}
+            {!afrLoading && afrResults.length > 0 && (
+              <ImportGrid
+                items={afrResults}
+                importedIds={importedIds}
+                isPending={importProgram.isPending}
+                pendingId={(importProgram.variables as ArchiveResult | undefined)?.identifier}
+                onAdd={item => importProgram.mutate(item)}
+                addLabel={t("tv.importAdd")}
+                addedLabel={t("tv.importAdded")}
+              />
+            )}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://archive.org" target="_blank" rel="noopener" className="underline hover:text-foreground">Archive.org</a> · language:French — 100% Gratis &amp; Legal</span>
+            </div>
+          </>)}
+
+          {/* ════ SÉRIES FR — TVMaze French-language series ════ */}
+          {importSubTab === "seriesfr" && (<>
+            <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">🇫🇷</span>
+              <div>
+                <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-300">Séries Françaises — TVMaze · Gratis</p>
+                <p className="text-[11px] text-indigo-700 dark:text-indigo-400 mt-0.5">
+                  Enpòte seri fransè (Lupin, Skam France, Criminal: France…) → lye episòd ak lyen videyo w vle
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={searchSeriesFR} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={srfrQuery}
+                  onChange={e => setSrfrQuery(e.target.value)}
+                  placeholder="Rechèche… ex: Lupin, Paris, Skam France"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={srfrLoading}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0"
+              >
+                {srfrLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {srfrLoading && (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3 rounded-xl border border-border p-3 animate-pulse">
+                    <div className="w-14 h-20 bg-muted rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                      <div className="h-7 bg-muted rounded-lg w-full mt-3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!srfrLoading && srfrResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Tv size={40} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{t("tv.importNoResults")}</p>
+              </div>
+            )}
+
+            {!srfrLoading && srfrResults.length > 0 && (
+              <div className="space-y-3">
+                {srfrResults.map(item => {
+                  const isImported  = importedSeriesIds.has(item.identifier);
+                  const isImporting = importSeries.isPending && (importSeries.variables as TVMazeResult | undefined)?.identifier === item.identifier;
+                  return (
+                    <div key={item.identifier} className="flex gap-3 rounded-xl border border-border bg-card hover:border-indigo-400/40 transition-colors p-3">
+                      <div className="w-14 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
+                        {item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Tv size={20} className="text-muted-foreground" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="font-semibold text-sm truncate">{item.title}</p>
+                          {item.year && <span className="text-[10px] text-muted-foreground flex-shrink-0">{item.year}</span>}
+                          {item.status && item.status !== "Ended" && (
+                            <span className="text-[9px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{item.status}</span>
+                          )}
+                        </div>
+                        {item.network && <p className="text-[10px] text-muted-foreground mb-1">{t("tv.tmNetwork")}: {item.network}</p>}
+                        {item.genres.length > 0 && <p className="text-[10px] text-muted-foreground mb-1.5">{item.genres.slice(0,3).join(" · ")}</p>}
+                        {item.description && <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
+                        <button
+                          onClick={() => !isImported && importSeries.mutate(item)}
+                          disabled={isImported || isImporting}
+                          className={cn(
+                            "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                            isImported
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-60"
+                          )}
+                        >
+                          {isImported ? (
+                            <><Check size={10} /> {t("tv.tmImportedSeries")}</>
+                          ) : isImporting ? "…" : (
+                            <><Download size={10} /> {t("tv.tmImportSeries")}</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://www.tvmaze.com" target="_blank" rel="noopener" className="underline hover:text-foreground">TVMaze</a> · French language filter — Gratis</span>
             </div>
           </>)}
         </div>

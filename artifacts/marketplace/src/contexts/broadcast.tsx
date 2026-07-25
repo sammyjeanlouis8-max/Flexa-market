@@ -44,11 +44,15 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
   const [dismissed, setDismissedRaw] = useState(false);
 
   // Auto-un-dismiss when a new broadcast starts (state goes stopped → playing)
-  const prevState = useState(bs.state);
+  // useRef for previous-state tracking — avoids the extra re-render that a
+  // useState setter inside useEffect would cause on every state transition.
+  const prevStateRef = useRef(bs.state);
   useEffect(() => {
-    if (bs.state === "playing" && prevState[0] === "stopped") setDismissedRaw(false);
-    prevState[1](bs.state); // eslint-disable-line
-  }, [bs.state]); // eslint-disable-line
+    if (bs.state === "playing" && prevStateRef.current === "stopped") {
+      setDismissedRaw(false);
+    }
+    prevStateRef.current = bs.state;
+  }, [bs.state]);
 
   const setDismissed = useCallback((v: boolean) => setDismissedRaw(v), []);
 

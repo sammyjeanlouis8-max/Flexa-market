@@ -670,6 +670,65 @@ router.get("/admin/tv/import/dailymotion", requireAdmin, async (req, res): Promi
   }
 });
 
+// ── GET /api/admin/tv/import/seriesepisodes — Dailymotion episodes for a series ─
+// Searches Dailymotion for full-length episodes (longer_than=10 min) of a
+// specific series name. No API key required.
+router.get("/admin/tv/import/seriesepisodes", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const title = String(req.query.title ?? "").trim();
+    if (!title) return void res.status(400).json({ error: "title required" });
+
+    // Try multiple search terms to maximise results
+    const queries = [
+      `${title} épisode complet`,
+      `${title} episode saison`,
+      `${title} série complet`,
+    ];
+
+    const seen = new Map<string, Record<string, unknown>>();
+    await Promise.all(queries.map(async (q) => {
+      try {
+        const params = new URLSearchParams({
+          search      : q,
+          longer_than : "10",   // only full episodes (>10 min)
+          fields      : "id,title,thumbnail_url,duration,description",
+          limit       : "12",
+          sort        : "relevance",
+        });
+        const r = await fetch(`https://api.dailymotion.com/videos?${params}`);
+        if (!r.ok) return;
+        const data = await r.json() as { list: Array<Record<string, unknown>> };
+        for (const v of data.list ?? []) {
+          const id = String(v.id ?? "");
+          if (id && !seen.has(id)) seen.set(id, v);
+        }
+      } catch { /* ignore per-query failures */ }
+    }));
+
+    const results = [...seen.values()].map((v) => {
+      const id     = String(v.id ?? "");
+      const durSec = v.duration ? Number(v.duration) : null;
+      const rawDesc = v.description ? String(v.description) : null;
+      return {
+        identifier     : `dm-${id}`,
+        title          : String(v.title ?? id),
+        description    : rawDesc ? rawDesc.replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year           : null as number | null,
+        creator        : null as string | null,
+        subjects       : [] as string[],
+        durationMinutes: durSec ? Math.round(durSec / 60) : null,
+        thumbnailUrl   : String(v.thumbnail_url ?? ""),
+        videoUrl       : `https://www.dailymotion.com/embed/video/${id}?autoplay=1&queue-enable=false`,
+        downloads      : 0,
+      };
+    });
+
+    return void res.json({ results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search episodes", detail: String(err) });
+  }
+});
+
 // ── GET /api/admin/tv/import/cinemafr — Dailymotion filtered to French content ─
 // language=fr + country=fr returns modern French films, no API key required.
 router.get("/admin/tv/import/cinemafr", requireAdmin, async (req, res): Promise<void> => {
@@ -683,7 +742,8 @@ router.get("/admin/tv/import/cinemafr", requireAdmin, async (req, res): Promise<
     const params = new URLSearchParams({
       search   : searchTerm,
       language : "fr",
-      fields   : "id,title,thumbnail_url,duration,description,language,country",
+      country  : "fr",          // ← origin France only → fewer dubbed Hindi films
+      fields   : "id,title,thumbnail_url,duration,description",
       limit    : "24",
       sort     : "recent",
     });
@@ -717,6 +777,109 @@ router.get("/admin/tv/import/cinemafr", requireAdmin, async (req, res): Promise<
     return void res.json({ numFound: data?.total ?? results.length, results });
   } catch (err) {
     return void res.status(500).json({ error: "Failed to search Ciné FR", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/archivefr — Archive.org language:French ─────────
+// 33,000+ French-language films; public domain, no API key needed.
+router.get("/admin/tv/import/archivefr", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q    = String(req.query.q    ?? "").trim();
+    const year = String(req.query.year ?? "").trim();   // e.g. "2000-2025"
+    const sort = String(req.query.sort ?? "").trim() || "downloads desc";
+
+    let query = "language:French mediatype:movies";
+    if (q) query += ` (title:(${q}) OR creator:(${q}))`;
+    if (year) {
+      const [from, to] = year.split("-");
+      if (from && to) query += ` year:[${from} TO ${to}]`;
+    }
+
+    const params = new URLSearchParams({
+      q     : query,
+      "fl[]": "identifier,title,description,year,creator,runtime,downloads,subject",
+      sort  : sort,
+      rows  : "24",
+      output: "json",
+    });
+
+    const resp = await fetch(`https://archive.org/advancedsearch.php?${params.toString()}`);
+    if (!resp.ok) return void res.status(502).json({ error: "Archive.org unreachable" });
+
+    const data = await resp.json() as { response?: { numFound?: number; docs?: Array<Record<string, unknown>> } };
+    const docs  = data?.response?.docs ?? [];
+
+    const results = docs.map((d) => {
+      const id      = String(d.identifier ?? "");
+      const rawMin  = d.runtime ? String(d.runtime).replace(/[^0-9:]/g, "") : null;
+      const durMin  = rawMin
+        ? rawMin.includes(":") ? Math.round(Number(rawMin.split(":")[0]) * 60 + Number(rawMin.split(":")[1]))
+          : Number(rawMin) || null
+        : null;
+      const subj = Array.isArray(d.subject) ? (d.subject as string[]).slice(0, 5) : [];
+      return {
+        identifier      : `archivefr-${id}`,
+        title           : String(d.title ?? id),
+        description     : d.description ? String(d.description).replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year            : d.year ? Number(String(d.year).slice(0, 4)) : null,
+        creator         : d.creator ? String(d.creator) : null,
+        subjects        : subj,
+        durationMinutes : durMin,
+        thumbnailUrl    : `https://archive.org/services/img/${id}`,
+        videoUrl        : `https://archive.org/embed/${id}?autoplay=1&start=0`,
+        downloads       : d.downloads ? Number(d.downloads) : 0,
+      };
+    });
+
+    return void res.json({ numFound: data?.response?.numFound ?? results.length, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search Archive.org FR", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/seriesfr — TVMaze French-language series ────────
+// Searches TVMaze with multiple French-related terms, merges + deduplicates,
+// filters for language === "French". No API key required.
+router.get("/admin/tv/import/seriesfr", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+
+    const stripHtml = (s: unknown) =>
+      s ? String(s).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#39;/g, "'").trim() : null;
+
+    // Search terms that reliably surface French content when no user query
+    const queries = q
+      ? [q]
+      : ["france", "Lupin", "Paris", "french", "Marseille", "comédie française", "Canal+", "TF1"];
+
+    const seen = new Map<number, Record<string, unknown>>();
+    await Promise.all(queries.map(async (term) => {
+      try {
+        const r = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(term)}`);
+        if (!r.ok) return;
+        const data = await r.json() as Array<{ show: Record<string, unknown> }>;
+        for (const { show } of data) {
+          if (show.language === "French" && typeof show.id === "number" && !seen.has(show.id)) {
+            seen.set(show.id, show);
+          }
+        }
+      } catch { /* ignore per-query failures */ }
+    }));
+
+    const results = [...seen.values()].map((s) => ({
+      identifier  : `tvmaze-${s.id}`,
+      title       : String(s.name ?? ""),
+      description : stripHtml(s.summary),
+      thumbnailUrl: ((s.image as Record<string, string> | null)?.original ?? (s.image as Record<string, string> | null)?.medium ?? "") as string,
+      genres      : (s.genres as string[] | undefined) ?? [],
+      network     : ((s.network as Record<string, string> | null)?.name ?? (s.webChannel as Record<string, string> | null)?.name ?? null) as string | null,
+      year        : s.premiered ? String(s.premiered).slice(0, 4) : null,
+      status      : s.status as string | null,
+    }));
+
+    return void res.json({ results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search French series", detail: String(err) });
   }
 });
 

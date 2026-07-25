@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Square } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -392,6 +392,8 @@ export default function AdminTV() {
   const [tab, setTab] = useState<"programs" | "series">("programs");
   const [editProgram, setEditProgram] = useState<TvProgram | null | "new">(null);
   const [editSeries, setEditSeries] = useState<TvSeries | null | "new">(null);
+  const [previewProgram, setPreviewProgram] = useState<TvProgram | null>(null);
+  const [goingLive, setGoingLive] = useState<number | null>(null);
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -419,12 +421,105 @@ export default function AdminTV() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/admin/tv/series"] }); toast({ title: t("tv.deleted") }); },
   });
 
+  const toggleLive = useMutation({
+    mutationFn: ({ id, makeLive }: { id: number; makeLive: boolean }) =>
+      apiAuth(`/api/admin/tv/programs/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ type: makeLive ? "live" : "program", isActive: true }),
+      }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] });
+      setGoingLive(null);
+      toast({ title: vars.makeLive ? "🔴 Transmisyon Live kòmanse ✅" : "⏹ Live kanpe" });
+    },
+  });
+
+  function getAdminEmbedUrl(p: TvProgram): string | null {
+    if (p.videoUrl) {
+      try {
+        const u = new URL(p.videoUrl);
+        if (u.hostname.includes("youtu.be")) return `https://www.youtube.com/embed/${u.pathname.slice(1).split("?")[0]}?autoplay=1&rel=0`;
+        if (u.hostname.includes("youtube.com")) {
+          const live = u.pathname.match(/\/live\/([^/?]+)/);
+          if (live) return `https://www.youtube.com/embed/${live[1]}?autoplay=1&rel=0`;
+          const v = u.searchParams.get("v");
+          if (v) return `https://www.youtube.com/embed/${v}?autoplay=1&rel=0`;
+        }
+        const vm = p.videoUrl.match(/vimeo\.com\/(\d+)/);
+        if (vm) return `https://player.vimeo.com/video/${vm[1]}?autoplay=1`;
+        return p.videoUrl; // direct
+      } catch { return p.videoUrl; }
+    }
+    if (p.videoKey) return `/api/storage/objects/${p.videoKey}`;
+    return null;
+  }
+
   function confirmDelete(label: string, onConfirm: () => void) {
     if (window.confirm(t("tv.confirmDelete", { title: label }))) onConfirm();
   }
 
   return (
     <div className="max-w-4xl mx-auto px-3 py-4 pb-24">
+
+      {/* ── Admin Preview Player ── */}
+      {previewProgram && (() => {
+        const embedUrl = getAdminEmbedUrl(previewProgram);
+        const isDirect = embedUrl && !embedUrl.includes("youtube") && !embedUrl.includes("vimeo");
+        return (
+          <div className="mb-5 rounded-2xl overflow-hidden border-2 border-violet-500 shadow-xl shadow-violet-500/20 bg-black">
+            <div className="flex items-center justify-between px-3 py-2 bg-violet-700 text-white">
+              <p className="font-bold text-sm truncate flex items-center gap-2"><Play size={14} /> {previewProgram.title}</p>
+              <button onClick={() => setPreviewProgram(null)} className="p-1 rounded-lg hover:bg-white/20"><X size={16} /></button>
+            </div>
+            <div className="relative" style={{ paddingBottom: "56.25%" }}>
+              {embedUrl ? isDirect ? (
+                <video src={embedUrl} controls autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
+              ) : (
+                <iframe
+                  src={embedUrl}
+                  className="absolute inset-0 w-full h-full"
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                  title={previewProgram.title}
+                  style={{ border: "none" }}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-white/40">
+                  <p className="text-sm">Pa gen videyo pou pwogram sa a</p>
+                </div>
+              )}
+            </div>
+            {/* Go Live from preview */}
+            <div className="px-3 py-2 bg-black flex items-center justify-between gap-3">
+              <p className="text-xs text-white/60">
+                {previewProgram.type === "live"
+                  ? "🔴 Kounye a ap difize LIVE sou Flexa TV"
+                  : "Preme Go Live pou tout moun wè videyo sa a"}
+              </p>
+              {previewProgram.type === "live" ? (
+                <button
+                  onClick={() => { toggleLive.mutate({ id: previewProgram.id, makeLive: false }); setPreviewProgram(null); }}
+                  className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors"
+                >
+                  <Square size={10} /> Kanpe Live
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setGoingLive(previewProgram.id);
+                    toggleLive.mutate({ id: previewProgram.id, makeLive: true });
+                  }}
+                  disabled={toggleLive.isPending}
+                  className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-full transition-colors animate-pulse disabled:opacity-60"
+                >
+                  <Radio size={10} /> 🔴 Go Live
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -510,6 +605,11 @@ export default function AdminTV() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-semibold text-sm truncate">{p.title}</p>
+                      {p.type === "live" && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold animate-pulse">
+                          <Radio size={8} /> LIVE
+                        </span>
+                      )}
                       {p.isFeatured && <Star size={12} className="text-yellow-500 flex-shrink-0" />}
                       {!p.isActive && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{t("tv.hidden")}</span>}
                     </div>
@@ -519,8 +619,39 @@ export default function AdminTV() {
                       {p.scheduledAt && <span className="flex items-center gap-1"><Calendar size={10} /> {formatDateTime(p.scheduledAt)}</span>}
                       <span className="flex items-center gap-1"><Eye size={10} /> {p.viewCount}</span>
                     </div>
+                    {/* Quick action buttons */}
+                    <div className="flex gap-2 mt-1.5">
+                      <button
+                        onClick={() => setPreviewProgram(prev => prev?.id === p.id ? null : p)}
+                        className={cn(
+                          "flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full transition-colors",
+                          previewProgram?.id === p.id
+                            ? "bg-violet-600 text-white"
+                            : "bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 hover:bg-violet-200"
+                        )}
+                      >
+                        <Play size={9} /> {previewProgram?.id === p.id ? "Fèmen" : "Preview"}
+                      </button>
+                      {p.type === "live" ? (
+                        <button
+                          onClick={() => toggleLive.mutate({ id: p.id, makeLive: false })}
+                          disabled={toggleLive.isPending && goingLive === p.id}
+                          className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 transition-colors"
+                        >
+                          <Square size={9} /> Kanpe Live
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { setGoingLive(p.id); toggleLive.mutate({ id: p.id, makeLive: true }); }}
+                          disabled={toggleLive.isPending && goingLive === p.id}
+                          className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60"
+                        >
+                          <Radio size={9} /> Go Live
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-1 flex-shrink-0">
+                  <div className="flex flex-col gap-1 flex-shrink-0">
                     <button
                       onClick={() => setEditProgram(p)}
                       className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"

@@ -548,14 +548,38 @@ export default function FlexaTV() {
         {/* ── Player ── */}
         <div className="mb-3">
           {broadcastActive ? (
-            /* ── BROADCAST MODE: admin controls play/pause, viewers locked ── */
+            /* ── BROADCAST MODE ──────────────────────────────────────────────
+               GlobalBroadcastPlayer (persistent iframe, never unmounts) tracks
+               this placeholder div via getBoundingClientRect + ResizeObserver
+               and positions itself exactly over it as a fixed overlay (z-8000).
+               The overlays here (LIVE badge, paused screen) sit above it at z-8500.
+            ── */
             <>
-              <BroadcastPlayer
-                videoUrl={bs.videoUrl}
-                videoKey={bs.videoKey}
-                title={bs.programTitle}
-                isPaused={bs.state === "paused"}
-              />
+              <div
+                id="broadcast-player-slot"
+                className="relative w-full bg-black rounded-xl overflow-hidden"
+                style={{ paddingBottom: "56.25%", zIndex: 8500, position: "relative" }}
+              >
+                {/* LIVE badge — above GlobalBroadcastPlayer */}
+                <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
+                  <Radio size={10} /> LIVE
+                </div>
+
+                {/* Paused overlay — covers GlobalBroadcastPlayer video */}
+                {bs.state === "paused" && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/80 gap-4">
+                    <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-24 h-24 object-contain opacity-80" />
+                    <div className="flex items-center gap-2 text-white">
+                      <Pause size={20} className="text-red-400" />
+                      <p className="text-sm font-semibold">Transmisyon an sispann…</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Interaction blocker — viewers can't touch YouTube controls */}
+                <div className="absolute inset-0 z-[5]" style={{ background: "transparent" }} />
+              </div>
+
               <div className="mt-2 px-1 flex items-center gap-2">
                 <span className="inline-flex items-center gap-1 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
                   <Radio size={8} /> LIVE

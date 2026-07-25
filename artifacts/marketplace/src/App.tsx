@@ -104,6 +104,7 @@ const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
 const AdminTV                        = lazy(() => import("@/pages/AdminTV"));
+const AdminTVProgramForm             = lazy(() => import("@/pages/AdminTVProgramForm"));
 
 // ── Query client ──────────────────────────────────────────────────────────────
 // Retry up to 3 times for server errors (502/503/504) which happen during
@@ -261,6 +262,8 @@ function LayoutRoutes() {
           <Route path="/leaderboard" component={Leaderboard} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/admin/tv" component={AdminTV} />
+          <Route path="/admin/tv/programs/new" component={AdminTVProgramForm} />
+          <Route path="/admin/tv/programs/:id/edit" component={AdminTVProgramForm} />
           <Route component={RedirectHome} />
         </Switch>
       </Suspense>

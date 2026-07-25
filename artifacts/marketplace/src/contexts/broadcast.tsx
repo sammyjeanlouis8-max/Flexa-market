@@ -16,11 +16,12 @@ export interface BroadcastInfo {
   videoUrl: string | null;
   videoKey: string | null;
   viewerCount: number;
+  startedAt: string | null; // ISO string from server, null when stopped
 }
 
 const EMPTY: BroadcastInfo = {
   state: "stopped", programId: null, programTitle: null,
-  videoUrl: null, videoKey: null, viewerCount: 0,
+  videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
 };
 
 const BroadcastContext = createContext<BroadcastInfo>(EMPTY);

@@ -1,11 +1,32 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { useBroadcast } from "@/contexts/broadcast";
+
+// ── Live broadcast duration timer ─────────────────────────────────────────────
+function BroadcastTimer({ startedAt }: { startedAt: string | null }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!startedAt) return;
+    const start = new Date(startedAt).getTime();
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  const fmt = h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return <span className="font-mono text-white/80 text-xs tabular-nums">{fmt}</span>;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TvProgram = {
@@ -396,6 +417,7 @@ export default function AdminTV() {
   const [goingLive, setGoingLive] = useState<number | null>(null);
   const [broadcastState, setBroadcastState] = useState<"playing"|"paused"|"stopped">("stopped");
   const [viewerCount, setViewerCount] = useState(0);
+  const bs = useBroadcast(); // for startedAt (broadcast timer)
 
   // Access check
   if (!user?.isAdmin && !user?.isSuperAdmin) {
@@ -545,13 +567,19 @@ export default function AdminTV() {
             <div className="px-3 py-2.5 bg-black border-t border-white/10">
               {/* Viewer count */}
               {broadcastState !== "stopped" && (
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="inline-flex items-center gap-1 text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
                     <Radio size={8} /> {broadcastState === "paused" ? "PAUSE" : "LIVE"}
                   </span>
                   <span className="text-xs text-white/70 flex items-center gap-1">
-                    <Eye size={11} /> <strong className="text-white">{viewerCount}</strong> moun k'ap gade
+                    <Eye size={11} /> <strong className="text-white">{viewerCount}</strong> moun
                   </span>
+                  {/* Live broadcast duration timer */}
+                  {bs.startedAt && (
+                    <span className="flex items-center gap-1 text-white/60 text-[10px]">
+                      <Timer size={9} /> <BroadcastTimer startedAt={bs.startedAt} />
+                    </span>
+                  )}
                 </div>
               )}
               {/* Play / Pause / Stop row */}
@@ -657,7 +685,7 @@ export default function AdminTV() {
           <div className="flex justify-between items-center mb-3">
             <p className="text-sm text-muted-foreground">{programs?.length ?? 0} pwogram</p>
             <button
-              onClick={() => setEditProgram("new")}
+              onClick={() => setLocation("/admin/tv/programs/new")}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
             >
               <Plus size={16} /> {t("tv.addProgram")}
@@ -734,7 +762,7 @@ export default function AdminTV() {
                   </div>
                   <div className="flex flex-col gap-1 flex-shrink-0">
                     <button
-                      onClick={() => setEditProgram(p)}
+                      onClick={() => setLocation(`/admin/tv/programs/${p.id}/edit`)}
                       className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                     >
                       <Pencil size={15} />
@@ -806,15 +834,7 @@ export default function AdminTV() {
         </>
       )}
 
-      {/* Modals */}
-      {editProgram !== null && (
-        <ProgramModal
-          program={editProgram === "new" ? null : editProgram}
-          series={series ?? []}
-          onClose={() => setEditProgram(null)}
-          onSaved={() => qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] })}
-        />
-      )}
+      {/* Series modal (kept — it's short and fits on screen) */}
       {editSeries !== null && (
         <SeriesModal
           series={editSeries === "new" ? null : editSeries}

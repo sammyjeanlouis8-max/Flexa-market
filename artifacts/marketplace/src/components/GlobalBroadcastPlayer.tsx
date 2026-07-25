@@ -1,18 +1,19 @@
 /**
  * GlobalBroadcastPlayer
  *
- * Lives in the App layout — never unmounts while a broadcast is active.
- * Behaviour by route:
- *   /tv page  → hidden (FlexaTV shows a placeholder + this player is
- *               repositioned to fill it via CSS)
- *   elsewhere → floating mini-player (bottom-right, above bottom nav)
+ * ONE iframe instance that never unmounts while a broadcast is active.
+ * This prevents video restarts when viewers navigate away and return.
  *
- * The iframe / <video> is ONE instance shared across navigation so audio
- * never stops when the user browses other pages.
+ * Behaviour by route:
+ *   /tv        → positioned as a fixed overlay exactly covering the
+ *               #broadcast-player-slot placeholder div in FlexaTV.
+ *               Tracks scroll + resize so it stays in sync.
+ *   /admin/tv  → hidden (AdminTV has its own preview player).
+ *   elsewhere  → floating mini-player (bottom-right, above bottom nav).
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import { X, Maximize2, Pause, Play, Radio } from "lucide-react";
+import { X, Maximize2, Pause, Radio } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 import { cn } from "@/lib/utils";
 
@@ -44,24 +45,46 @@ function buildEmbedUrl(videoUrl: string | null, videoKey: string | null): { url:
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
   const [location, navigate] = useLocation();
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [dismissed, setDismissed] = useState(false);
   const [prevBsState, setPrevBsState] = useState(bs.state);
+  // Bounding rect of the #broadcast-player-slot div (updated on scroll/resize)
+  const [slotRect, setSlotRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
-  // Hide on both viewer /tv and admin /admin/tv — those pages have their own full player
-  const isOnTVPage = location === "/tv" || location === "/admin/tv";
+  const isOnViewerTV = location === "/tv";
+  const isOnAdminTV  = location === "/admin/tv";
   const isActive = bs.state === "playing" || bs.state === "paused";
 
-  // Reset dismissed when a new broadcast starts
+  // Reset dismissed state whenever a new broadcast starts
   useEffect(() => {
-    if (prevBsState === "stopped" && (bs.state === "playing" || bs.state === "paused")) {
-      setDismissed(false);
-    }
+    if (prevBsState === "stopped" && isActive) setDismissed(false);
     setPrevBsState(bs.state);
   }, [bs.state]); // eslint-disable-line
 
-  // Media Session API — shows title + controls on iOS lock screen
+  // ── Slot tracking: keep the fixed overlay aligned with the placeholder div ──
+  useEffect(() => {
+    if (!isOnViewerTV || !isActive) { setSlotRect(null); return; }
+
+    const measure = () => {
+      const slot = document.getElementById("broadcast-player-slot");
+      if (!slot) { setSlotRect(null); return; }
+      const r = slot.getBoundingClientRect();
+      setSlotRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    const slot = document.getElementById("broadcast-player-slot");
+    if (slot) ro.observe(slot);
+    window.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [isOnViewerTV, isActive]);
+
+  // Media Session API — iOS lock screen controls
   useEffect(() => {
     if (!isActive || !("mediaSession" in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -71,22 +94,67 @@ export default function GlobalBroadcastPlayer() {
     });
   }, [isActive, bs.programTitle]);
 
-  const goToTV = useCallback(() => { navigate("/tv"); }, [navigate]);
-  const stopAndDismiss = useCallback(() => setDismissed(true), []);
+  const goToTV = useCallback(() => navigate("/tv"), [navigate]);
 
-  // Don't render if: stopped, dismissed, or on the TV page (TV page handles it)
-  if (!isActive || dismissed || isOnTVPage) return null;
+  // ── Early exits ──────────────────────────────────────────────────────────────
+  if (!isActive || dismissed) return null;
+  if (isOnAdminTV) return null; // admin has its own preview player
 
   const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
 
+  const videoContent = embed ? (
+    embed.isDirect ? (
+      <video
+        src={embed.url}
+        autoPlay
+        playsInline
+        className="w-full h-full object-contain"
+      />
+    ) : (
+      <iframe
+        src={embed.url}
+        className="w-full h-full"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        title={bs.programTitle ?? "Flexa TV"}
+        style={{ border: "none" }}
+      />
+    )
+  ) : (
+    <div className="w-full h-full flex items-center justify-center">
+      <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-20 h-20 object-contain opacity-50" />
+    </div>
+  );
+
+  // ── Slot mode: fixed overlay exactly covering the placeholder in /tv ─────────
+  if (isOnViewerTV) {
+    if (!slotRect) return null; // not measured yet — FlexaTV shows black placeholder
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top:    slotRect.top    + "px",
+          left:   slotRect.left   + "px",
+          width:  slotRect.width  + "px",
+          height: slotRect.height + "px",
+          zIndex: 8000,
+          background: "black",
+          borderRadius: "12px",
+          overflow: "hidden",
+        }}
+      >
+        {videoContent}
+      </div>
+    );
+  }
+
+  // ── Mini-player mode: floating bottom-right on all other pages ───────────────
   return (
     <div
-      ref={wrapperRef}
       className={cn(
         "fixed z-[8000] shadow-2xl rounded-2xl overflow-hidden border border-violet-500/60",
-        "bg-black flex flex-col",
-        // Floating mini-player — bottom-right, above the bottom nav bar (~68px)
-        "bottom-[76px] right-3 w-[220px]"
+        "bg-black",
+        "bottom-[76px] right-3 w-[220px]",
       )}
       style={{ aspectRatio: "16/9" }}
     >
@@ -100,42 +168,20 @@ export default function GlobalBroadcastPlayer() {
         </div>
       )}
 
-      {/* Click-blocker (viewers can't interact with iframe) */}
+      {/* Click anywhere → go to /tv */}
       <div className="absolute inset-0 z-10 cursor-pointer" onClick={goToTV} />
 
-      {/* Video / iframe */}
-      {embed ? (
-        embed.isDirect ? (
-          <video
-            ref={videoRef}
-            src={embed.url}
-            autoPlay
-            playsInline
-            className="w-full h-full object-contain"
-          />
-        ) : (
-          <iframe
-            src={embed.url}
-            className="w-full h-full"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            title={bs.programTitle ?? "Flexa TV"}
-            style={{ border: "none" }}
-          />
-        )
-      ) : (
-        <div className="w-full h-full flex items-center justify-center">
-          <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-12 h-12 object-contain opacity-50" />
-        </div>
-      )}
+      {videoContent}
 
-      {/* Top bar: title + close + expand */}
+      {/* Top bar: title + buttons */}
       <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
         <div className="flex items-center gap-1">
           <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse">
             <Radio size={7} /> LIVE
           </span>
-          <p className="text-white text-[10px] font-semibold truncate max-w-[90px]">{bs.programTitle ?? "Flexa TV"}</p>
+          <p className="text-white text-[10px] font-semibold truncate max-w-[90px]">
+            {bs.programTitle ?? "Flexa TV"}
+          </p>
         </div>
         <div className="flex gap-1 pointer-events-auto">
           <button
@@ -146,7 +192,7 @@ export default function GlobalBroadcastPlayer() {
             <Maximize2 size={10} />
           </button>
           <button
-            onClick={stopAndDismiss}
+            onClick={() => setDismissed(true)}
             className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
             title="Fèmen"
           >

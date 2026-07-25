@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TvProgram = {
@@ -100,6 +101,7 @@ function ProgramModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState<ProgramForm>(
     program
@@ -126,7 +128,7 @@ function ProgramModal({
   const set = (k: keyof ProgramForm, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   async function save() {
-    if (!form.title.trim()) { toast({ title: "Titre obligatwa", variant: "destructive" }); return; }
+    if (!form.title.trim()) { toast({ title: t("tv.titleRequired"), variant: "destructive" }); return; }
     setSaving(true);
     const body: any = {
       title: form.title.trim(),
@@ -147,7 +149,7 @@ function ProgramModal({
     const r = await apiAuth(url, { method, body: JSON.stringify(body) });
     setSaving(false);
     if (r.ok) {
-      toast({ title: program ? "Pwogram mize ajou ✅" : "Pwogram kreye ✅" });
+      toast({ title: t("tv.savedProgram") });
       onSaved();
       onClose();
     } else {
@@ -160,51 +162,51 @@ function ProgramModal({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4">
       <div className="bg-background rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="sticky top-0 bg-background border-b border-border px-5 py-4 flex items-center justify-between">
-          <h2 className="font-bold text-base">{program ? "Modifye Pwogram" : "Ajoute Pwogram"}</h2>
+          <h2 className="font-bold text-base">{program ? t("tv.editProgram") : t("tv.addProgram")}</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <Field label="Titre *">
-            <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder="Non pwogram nan" />
+          <Field label={t("tv.fieldTitle")}>
+            <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder={t("tv.fieldTitle")} />
           </Field>
-          <Field label="Deskripsyon">
-            <textarea className={inputCls} rows={2} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Kout deskripsyon..." />
+          <Field label={t("tv.fieldDescription")}>
+            <textarea className={inputCls} rows={2} value={form.description} onChange={e => set("description", e.target.value)} />
           </Field>
-          <Field label="Kalite">
+          <Field label={t("tv.fieldType")}>
             <select className={inputCls} value={form.type} onChange={e => set("type", e.target.value)}>
-              <option value="film">🎬 Film</option>
-              <option value="series">📺 Episòd Seri</option>
-              <option value="program">📡 Program</option>
-              <option value="news">📰 Nouvèl</option>
+              <option value="film">{t("tv.typeFilm")}</option>
+              <option value="series">{t("tv.typeSeries")}</option>
+              <option value="program">{t("tv.typeProgram")}</option>
+              <option value="news">{t("tv.typeNews")}</option>
             </select>
           </Field>
-          <Field label="URL Videyo (YouTube / Vimeo)">
+          <Field label={t("tv.fieldVideoUrl")}>
             <input className={inputCls} value={form.videoUrl} onChange={e => set("videoUrl", e.target.value)} placeholder="https://youtu.be/..." />
           </Field>
-          <Field label="URL Imaj Miniati (thumbnail)">
+          <Field label={t("tv.fieldThumbnail")}>
             <input className={inputCls} value={form.thumbnailUrl} onChange={e => set("thumbnailUrl", e.target.value)} placeholder="https://..." />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Dire (minit)">
+            <Field label={t("tv.fieldDuration")}>
               <input type="number" className={inputCls} value={form.durationMinutes} onChange={e => set("durationMinutes", e.target.value)} placeholder="90" min={1} />
             </Field>
-            <Field label="Dat / Lè Difizyon">
+            <Field label={t("tv.fieldScheduledAt")}>
               <input type="datetime-local" className={inputCls} value={form.scheduledAt} onChange={e => set("scheduledAt", e.target.value)} />
             </Field>
           </div>
           {form.type === "series" && (
             <>
-              <Field label="Seri">
+              <Field label={t("tv.fieldSeries")}>
                 <select className={inputCls} value={form.seriesId} onChange={e => set("seriesId", e.target.value)}>
-                  <option value="">— Chwazi seri —</option>
+                  <option value="">{t("tv.chooseSeries")}</option>
                   {series.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                 </select>
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Sezon">
+                <Field label={t("tv.fieldSeason")}>
                   <input type="number" className={inputCls} value={form.seasonNumber} onChange={e => set("seasonNumber", e.target.value)} min={1} />
                 </Field>
-                <Field label="Episòd">
+                <Field label={t("tv.fieldEpisode")}>
                   <input type="number" className={inputCls} value={form.episodeNumber} onChange={e => set("episodeNumber", e.target.value)} min={1} />
                 </Field>
               </div>
@@ -213,22 +215,22 @@ function ProgramModal({
           <div className="flex gap-4">
             <label className="flex items-center gap-2 cursor-pointer text-sm">
               <input type="checkbox" checked={form.isActive} onChange={e => set("isActive", e.target.checked)} className="accent-violet-500" />
-              Aktif (vizib)
+              {t("tv.fieldActive")}
             </label>
             <label className="flex items-center gap-2 cursor-pointer text-sm">
               <input type="checkbox" checked={form.isFeatured} onChange={e => set("isFeatured", e.target.checked)} className="accent-violet-500" />
-              ⭐ Vedèt
+              {t("tv.fieldFeatured")}
             </label>
           </div>
         </div>
         <div className="sticky bottom-0 bg-background border-t border-border px-5 py-4 flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">Anile</button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">{t("tv.cancel")}</button>
           <button
             onClick={save}
             disabled={saving}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold transition-colors disabled:opacity-50"
           >
-            {saving ? "Anrejist..." : "Anrejistre"}
+            {saving ? t("tv.saving") : t("tv.save")}
           </button>
         </div>
       </div>
@@ -238,6 +240,7 @@ function ProgramModal({
 
 // ── Series Modal ──────────────────────────────────────────────────────────────
 function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [form, setForm] = useState<SeriesForm>(
     series ? { title: series.title, description: series.description ?? "", thumbnailUrl: series.thumbnailUrl ?? "", isActive: series.isActive }
@@ -247,14 +250,14 @@ function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; on
   const set = (k: keyof SeriesForm, v: any) => setForm(f => ({ ...f, [k]: v }));
 
   async function save() {
-    if (!form.title.trim()) { toast({ title: "Titre obligatwa", variant: "destructive" }); return; }
+    if (!form.title.trim()) { toast({ title: t("tv.titleRequired"), variant: "destructive" }); return; }
     setSaving(true);
     const url = series ? `/api/admin/tv/series/${series.id}` : "/api/admin/tv/series";
     const method = series ? "PUT" : "POST";
     const r = await apiAuth(url, { method, body: JSON.stringify({ ...form, description: form.description || null, thumbnailUrl: form.thumbnailUrl || null }) });
     setSaving(false);
     if (r.ok) {
-      toast({ title: series ? "Seri mize ajou ✅" : "Seri kreye ✅" });
+      toast({ title: t("tv.savedSeries") });
       onSaved();
       onClose();
     } else {
@@ -266,28 +269,28 @@ function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="bg-background rounded-2xl w-full max-w-sm shadow-2xl">
         <div className="border-b border-border px-5 py-4 flex items-center justify-between">
-          <h2 className="font-bold text-base">{series ? "Modifye Seri" : "Nouvo Seri"}</h2>
+          <h2 className="font-bold text-base">{series ? t("tv.editSeries") : t("tv.newSeries")}</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-4">
-          <Field label="Non Seri *">
-            <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder="Tit seri a" />
+          <Field label={t("tv.fieldTitle")}>
+            <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder={t("tv.fieldTitle")} />
           </Field>
-          <Field label="Deskripsyon">
+          <Field label={t("tv.fieldDescription")}>
             <textarea className={inputCls} rows={2} value={form.description} onChange={e => set("description", e.target.value)} />
           </Field>
-          <Field label="URL Imaj Kouvèti">
+          <Field label={t("tv.fieldThumbnail")}>
             <input className={inputCls} value={form.thumbnailUrl} onChange={e => set("thumbnailUrl", e.target.value)} placeholder="https://..." />
           </Field>
           <label className="flex items-center gap-2 cursor-pointer text-sm">
             <input type="checkbox" checked={form.isActive} onChange={e => set("isActive", e.target.checked)} className="accent-violet-500" />
-            Aktif
+            {t("tv.fieldActive")}
           </label>
         </div>
         <div className="border-t border-border px-5 py-4 flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted">Anile</button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted">{t("tv.cancel")}</button>
           <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-bold disabled:opacity-50">
-            {saving ? "Anrejist..." : "Anrejistre"}
+            {saving ? t("tv.saving") : t("tv.save")}
           </button>
         </div>
       </div>
@@ -297,6 +300,7 @@ function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; on
 
 // ── Main Admin TV Page ────────────────────────────────────────────────────────
 export default function AdminTV() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -323,16 +327,16 @@ export default function AdminTV() {
 
   const deleteProgram = useMutation({
     mutationFn: (id: number) => apiAuth(`/api/admin/tv/programs/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] }); toast({ title: "Efase ✅" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/admin/tv/programs"] }); toast({ title: t("tv.deleted") }); },
   });
 
   const deleteSeries = useMutation({
     mutationFn: (id: number) => apiAuth(`/api/admin/tv/series/${id}`, { method: "DELETE" }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/admin/tv/series"] }); toast({ title: "Efase ✅" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/admin/tv/series"] }); toast({ title: t("tv.deleted") }); },
   });
 
   function confirmDelete(label: string, onConfirm: () => void) {
-    if (window.confirm(`Efase "${label}" ? Aksyon sa pa ka defèt.`)) onConfirm();
+    if (window.confirm(t("tv.confirmDelete", { title: label }))) onConfirm();
   }
 
   return (
@@ -344,24 +348,24 @@ export default function AdminTV() {
             <Tv size={20} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Jere Flexa TV</h1>
-            <p className="text-xs text-muted-foreground">Admin panel — pwogram, film, seri, orè</p>
+            <h1 className="text-xl font-bold">{t("tv.adminTitle")}</h1>
+            <p className="text-xs text-muted-foreground">{t("tv.adminSubtitle")}</p>
           </div>
         </div>
         <button
           onClick={() => setLocation("/tv")}
           className="text-xs text-violet-500 hover:underline"
         >
-          Wè TV →
+          {t("tv.seeTV")}
         </button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { icon: Film, label: "Total Pwogram", value: programs?.length ?? "—" },
-          { icon: List, label: "Seri", value: series?.length ?? "—" },
-          { icon: Eye, label: "Vye Total", value: programs ? programs.reduce((s, p) => s + p.viewCount, 0).toLocaleString() : "—" },
+          { icon: Film, label: t("tv.totalPrograms"), value: programs?.length ?? "—" },
+          { icon: List, label: t("tv.totalSeries"), value: series?.length ?? "—" },
+          { icon: Eye, label: t("tv.totalViews"), value: programs ? programs.reduce((s, p) => s + p.viewCount, 0).toLocaleString() : "—" },
         ].map(stat => (
           <div key={stat.label} className="bg-card border border-border rounded-xl p-3 text-center">
             <stat.icon size={18} className="mx-auto mb-1 text-violet-500" />
@@ -374,8 +378,8 @@ export default function AdminTV() {
       {/* Tabs */}
       <div className="flex gap-1 bg-muted rounded-xl p-1 mb-4">
         {[
-          { key: "programs", label: "📡 Pwogram & Films" },
-          { key: "series",   label: "📺 Seri" },
+          { key: "programs", label: t("tv.tabAdminPrograms") },
+          { key: "series",   label: t("tv.tabAdminSeries") },
         ].map(t => (
           <button
             key={t.key}
@@ -396,7 +400,7 @@ export default function AdminTV() {
               onClick={() => setEditProgram("new")}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
             >
-              <Plus size={16} /> Ajoute Pwogram
+              <Plus size={16} /> {t("tv.addProgram")}
             </button>
           </div>
 
@@ -405,8 +409,8 @@ export default function AdminTV() {
           ) : !programs?.length ? (
             <div className="text-center py-16 text-muted-foreground">
               <Film size={48} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Pa gen pwogram ankò</p>
-              <p className="text-sm">Klike "Ajoute Pwogram" pou kòmanse</p>
+              <p className="font-medium">{t("tv.noDataPrograms")}</p>
+              <p className="text-sm">{t("tv.noDataProgramsHint")}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -423,7 +427,7 @@ export default function AdminTV() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <p className="font-semibold text-sm truncate">{p.title}</p>
                       {p.isFeatured && <Star size={12} className="text-yellow-500 flex-shrink-0" />}
-                      {!p.isActive && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Kache</span>}
+                      {!p.isActive && <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded">{t("tv.hidden")}</span>}
                     </div>
                     <p className="text-xs text-muted-foreground">{typeLabel(p.type)}{p.seriesTitle ? ` · ${p.seriesTitle}` : ""}</p>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
@@ -462,7 +466,7 @@ export default function AdminTV() {
               onClick={() => setEditSeries("new")}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors"
             >
-              <Plus size={16} /> Ajoute Seri
+              <Plus size={16} /> {t("tv.addSeries")}
             </button>
           </div>
 
@@ -471,7 +475,7 @@ export default function AdminTV() {
           ) : !series?.length ? (
             <div className="text-center py-16 text-muted-foreground">
               <List size={48} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Pa gen seri ankò</p>
+              <p className="font-medium">{t("tv.noDataSeries")}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -488,7 +492,7 @@ export default function AdminTV() {
                     )}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm">{s.title}</p>
-                      <p className="text-xs text-muted-foreground">{eps} episòd{!s.isActive ? " · Kache" : ""}</p>
+                      <p className="text-xs text-muted-foreground">{eps} {t("tv.episodes")}{!s.isActive ? ` · ${t("tv.hidden")}` : ""}</p>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
                       <button onClick={() => setEditSeries(s)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground">

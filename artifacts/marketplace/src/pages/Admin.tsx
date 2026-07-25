@@ -18,7 +18,7 @@ import {
   Wifi, Monitor, Link2, ShieldAlert, ShieldCheck, LogIn, UserPlus, KeyRound, BadgeCheck, CreditCard, Copy,
   MessageSquare, Send, Briefcase, MapPin, Clock, Wallet, ArrowUpCircle, ArrowDownCircle, CheckCircle, XCircle, RefreshCw,
   Search, Check, Gift, Ticket, Timer, Download, Truck, ArrowRight, Bell, Landmark, ExternalLink, Loader2, Banknote, Phone, Navigation,
-  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy,
+  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy, Tv,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2398,6 +2398,25 @@ export default function Admin() {
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">{t("adminBanner.deliveriesHubDesc")}</p>
           </div>
           <ArrowRight className="h-4 w-4 text-blue-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+
+        {/* Flexa TV */}
+        <button
+          type="button"
+          onClick={() => setLocation("/admin/tv")}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-violet-200 dark:border-violet-800 bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 hover:from-violet-100 hover:to-purple-100 dark:hover:from-violet-900/40 dark:hover:to-purple-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shrink-0 shadow shadow-violet-200 dark:shadow-violet-900/50">
+            <Tv className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-black text-violet-900 dark:text-violet-100">📺 Flexa TV</p>
+              <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold animate-pulse">LIVE</span>
+            </div>
+            <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">{t("tv.adminSubtitle")}</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-violet-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
       </div>

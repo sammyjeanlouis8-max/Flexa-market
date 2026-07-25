@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Tv, Play, Clock, Calendar, Eye, Radio, ChevronRight, Film, Star, List, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type TvProgram = {
@@ -62,12 +63,10 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("fr-HT", { weekday: "long", month: "short", day: "numeric" });
 }
 
-function typeLabel(type: string) {
-  return { film: "🎬 Film", series: "📺 Séri", program: "📡 Program", news: "📰 Nouvèl" }[type] ?? type;
-}
+// typeLabel is now called inside components with t() — see useTypeLabels()
 
 // ── Video Player ─────────────────────────────────────────────────────────────
-function VideoPlayer({ program, onClose }: { program: TvProgram; onClose?: () => void }) {
+function VideoPlayer({ program, onClose, noVideoLabel }: { program: TvProgram; onClose?: () => void; noVideoLabel?: string }) {
   const embedUrl = getEmbedUrl(program);
   const isDirectVideo = embedUrl && !embedUrl.includes("youtube") && !embedUrl.includes("vimeo");
 
@@ -101,7 +100,7 @@ function VideoPlayer({ program, onClose }: { program: TvProgram; onClose?: () =>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-3">
           <Tv size={56} />
-          <p className="text-sm">Pa gen videyo disponib</p>
+          <p className="text-sm">{noVideoLabel ?? "—"}</p>
         </div>
       )}
     </div>
@@ -109,7 +108,10 @@ function VideoPlayer({ program, onClose }: { program: TvProgram; onClose?: () =>
 }
 
 // ── Program Card ─────────────────────────────────────────────────────────────
-function ProgramCard({ program, onClick, compact }: { program: TvProgram; onClick: () => void; compact?: boolean }) {
+function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabel }: {
+  program: TvProgram; onClick: () => void; compact?: boolean;
+  typeLabel?: (t: string) => string; viewsLabel?: string; minLabel?: string;
+}) {
   return (
     <button
       onClick={onClick}
@@ -134,15 +136,15 @@ function ProgramCard({ program, onClick, compact }: { program: TvProgram; onClic
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className={cn("font-semibold truncate", compact ? "text-xs" : "text-sm")}>{program.title}</p>
-        <p className="text-xs text-muted-foreground truncate">{typeLabel(program.type)}</p>
+        <p className="text-xs text-muted-foreground truncate">{typeLabel ? typeLabel(program.type) : program.type}</p>
         {program.durationMinutes && (
           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <Clock size={10} /> {program.durationMinutes} min
+            <Clock size={10} /> {program.durationMinutes} {minLabel ?? "min"}
           </p>
         )}
         {program.viewCount > 0 && (
           <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Eye size={10} /> {program.viewCount.toLocaleString()} view
+            <Eye size={10} /> {program.viewCount.toLocaleString()} {viewsLabel ?? ""}
           </p>
         )}
       </div>
@@ -152,10 +154,14 @@ function ProgramCard({ program, onClick, compact }: { program: TvProgram; onClic
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FlexaTV() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<"schedule" | "films" | "series" | "programs">("schedule");
   const [playing, setPlaying] = useState<TvProgram | null>(null);
   const [now, setNow] = useState(new Date());
   const viewedRef = useRef<Set<number>>(new Set());
+
+  const tlabel = (type: string) =>
+    ({ film: t("tv.typeFilm"), series: t("tv.typeSeries"), program: t("tv.typeProgram"), news: t("tv.typeNews") }[type] ?? type);
 
   // Update clock every minute
   useEffect(() => {
@@ -226,12 +232,12 @@ export default function FlexaTV() {
         </div>
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            Flexa TV
+            {t("tv.pageTitle")}
             <span className="inline-flex items-center gap-1 text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-semibold animate-pulse">
-              <Radio size={10} /> LIVE
+              <Radio size={10} /> {t("tv.live")}
             </span>
           </h1>
-          <p className="text-xs text-muted-foreground">Televizyon Flexa Market — gratis pou tout moun</p>
+          <p className="text-xs text-muted-foreground">{t("tv.pageSubtitle")}</p>
         </div>
       </div>
 
@@ -239,17 +245,17 @@ export default function FlexaTV() {
       <div className="mb-4">
         {playing ? (
           <>
-            <VideoPlayer program={playing} onClose={() => setPlaying(null)} />
+            <VideoPlayer program={playing} onClose={() => setPlaying(null)} noVideoLabel={t("tv.noFilms")} />
             <div className="mt-2 px-1">
               <h2 className="font-semibold text-base">{playing.title}</h2>
-              <p className="text-xs text-muted-foreground">{typeLabel(playing.type)}{playing.durationMinutes ? ` · ${playing.durationMinutes} min` : ""}</p>
+              <p className="text-xs text-muted-foreground">{tlabel(playing.type)}{playing.durationMinutes ? ` · ${playing.durationMinutes} ${t("tv.min")}` : ""}</p>
               {playing.description && <p className="text-sm text-muted-foreground mt-1">{playing.description}</p>}
             </div>
           </>
         ) : (
           <div className="aspect-video bg-muted rounded-xl flex flex-col items-center justify-center gap-3 border border-border">
             <Tv size={48} className="text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">Klike sou yon pwogram pou kòmanse gade</p>
+            <p className="text-sm text-muted-foreground">{t("tv.clickToWatch")}</p>
           </div>
         )}
       </div>
@@ -264,7 +270,7 @@ export default function FlexaTV() {
             <Radio size={16} className="animate-pulse" />
           </div>
           <div className="flex-1 min-w-0 text-left">
-            <p className="text-xs font-medium opacity-80">K ap pase kounye a</p>
+            <p className="text-xs font-medium opacity-80">{t("tv.nowPlayingBanner")}</p>
             <p className="font-bold truncate">{currentAiring.title}</p>
           </div>
           <Play size={20} className="flex-shrink-0 opacity-80" />
@@ -274,10 +280,10 @@ export default function FlexaTV() {
       {/* ── Tabs ── */}
       <div className="flex gap-1 bg-muted rounded-xl p-1 mb-4 overflow-x-auto">
         {[
-          { key: "schedule", label: "📅 Orè" },
-          { key: "films",    label: "🎬 Films" },
-          { key: "series",   label: "📺 Seri" },
-          { key: "programs", label: "📡 Program" },
+          { key: "schedule", label: t("tv.tabSchedule") },
+          { key: "films",    label: t("tv.tabFilms") },
+          { key: "series",   label: t("tv.tabSeries") },
+          { key: "programs", label: t("tv.tabPrograms") },
         ].map(tab => (
           <button
             key={tab.key}
@@ -300,7 +306,7 @@ export default function FlexaTV() {
           {upcoming.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Calendar size={40} className="mx-auto mb-3 opacity-30" />
-              <p>Pa gen pwogram pwochèn nan orè a</p>
+              <p>{t("tv.noSchedule")}</p>
             </div>
           ) : (
             upcoming.map(p => (
@@ -318,11 +324,11 @@ export default function FlexaTV() {
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm truncate">{p.title}</p>
-                  <p className="text-xs text-muted-foreground">{typeLabel(p.type)}</p>
+                  <p className="text-xs text-muted-foreground">{tlabel(p.type)}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-xs font-mono font-bold text-violet-500">{p.scheduledAt ? formatTime(p.scheduledAt) : ""}</p>
-                  <p className="text-xs text-muted-foreground">{p.durationMinutes ? `${p.durationMinutes}min` : ""}</p>
+                  <p className="text-xs text-muted-foreground">{p.durationMinutes ? `${p.durationMinutes}${t("tv.min")}` : ""}</p>
                 </div>
               </button>
             ))
@@ -336,10 +342,10 @@ export default function FlexaTV() {
           {films.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Film size={40} className="mx-auto mb-3 opacity-30" />
-              <p>Pa gen film disponib</p>
+              <p>{t("tv.noFilms")}</p>
             </div>
           ) : (
-            films.map(p => <ProgramCard key={p.id} program={p} onClick={() => play(p)} />)
+            films.map(p => <ProgramCard key={p.id} program={p} onClick={() => play(p)} typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />)
           )}
         </div>
       )}
@@ -350,7 +356,7 @@ export default function FlexaTV() {
           {(series ?? []).length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <List size={40} className="mx-auto mb-3 opacity-30" />
-              <p>Pa gen seri disponib</p>
+              <p>{t("tv.noSeries")}</p>
             </div>
           ) : (
             (series ?? []).map(s => {
@@ -368,9 +374,9 @@ export default function FlexaTV() {
                   </div>
                   <div className="space-y-1 pl-2 border-l-2 border-violet-500/30">
                     {eps.map(ep => (
-                      <ProgramCard key={ep.id} program={ep} onClick={() => play(ep)} compact />
+                      <ProgramCard key={ep.id} program={ep} onClick={() => play(ep)} compact typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />
                     ))}
-                    {eps.length === 0 && <p className="text-xs text-muted-foreground py-2">Pa gen episòd kounye a</p>}
+                    {eps.length === 0 && <p className="text-xs text-muted-foreground py-2">{t("tv.noEpisodes")}</p>}
                   </div>
                 </div>
               );
@@ -385,10 +391,10 @@ export default function FlexaTV() {
           {programList.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Radio size={40} className="mx-auto mb-3 opacity-30" />
-              <p>Pa gen program disponib</p>
+              <p>{t("tv.noPrograms")}</p>
             </div>
           ) : (
-            programList.map(p => <ProgramCard key={p.id} program={p} onClick={() => play(p)} />)
+            programList.map(p => <ProgramCard key={p.id} program={p} onClick={() => play(p)} typeLabel={tlabel} viewsLabel={t("tv.views")} minLabel={t("tv.min")} />)
           )}
         </div>
       )}

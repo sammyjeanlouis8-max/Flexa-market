@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
@@ -42,6 +42,7 @@ type ProgramForm = {
   description: string;
   type: string;
   videoUrl: string;
+  videoKey: string;
   thumbnailUrl: string;
   durationMinutes: string;
   scheduledAt: string;
@@ -55,7 +56,7 @@ type ProgramForm = {
 type SeriesForm = { title: string; description: string; thumbnailUrl: string; isActive: boolean };
 
 const EMPTY_PROGRAM: ProgramForm = {
-  title: "", description: "", type: "film", videoUrl: "", thumbnailUrl: "",
+  title: "", description: "", type: "film", videoUrl: "", videoKey: "", thumbnailUrl: "",
   durationMinutes: "", scheduledAt: "", seriesId: "", episodeNumber: "", seasonNumber: "1",
   isActive: true, isFeatured: false,
 };
@@ -110,6 +111,7 @@ function ProgramModal({
           description: program.description ?? "",
           type: program.type,
           videoUrl: program.videoUrl ?? "",
+          videoKey: program.videoKey ?? "",
           thumbnailUrl: program.thumbnailUrl ?? "",
           durationMinutes: program.durationMinutes?.toString() ?? "",
           scheduledAt: program.scheduledAt
@@ -124,8 +126,44 @@ function ProgramModal({
       : EMPTY_PROGRAM
   );
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const set = (k: keyof ProgramForm, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  async function uploadVideo(file: File) {
+    setUploading(true);
+    setUploadProgress(0);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const formData = new FormData();
+      formData.append("video", file);
+      // Use XHR for progress tracking
+      const result = await new Promise<{ videoKey: string; videoUrl: string }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+          else reject(new Error(`HTTP ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.open("POST", "/api/admin/tv/upload-video");
+        if (tk) xhr.setRequestHeader("Authorization", `Bearer ${tk}`);
+        xhr.send(formData);
+      });
+      set("videoKey", result.videoKey);
+      set("videoUrl", result.videoUrl);
+      toast({ title: "Videyo telechaje ✅" });
+    } catch (e) {
+      toast({ title: "Erè nan telechajman", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+    }
+  }
 
   async function save() {
     if (!form.title.trim()) { toast({ title: t("tv.titleRequired"), variant: "destructive" }); return; }
@@ -135,6 +173,7 @@ function ProgramModal({
       description: form.description || null,
       type: form.type,
       videoUrl: form.videoUrl || null,
+      videoKey: form.videoKey || null,
       thumbnailUrl: form.thumbnailUrl || null,
       durationMinutes: form.durationMinutes ? parseInt(form.durationMinutes) : null,
       scheduledAt: form.scheduledAt || null,
@@ -159,13 +198,13 @@ function ProgramModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4">
-      <div className="bg-background rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="sticky top-0 bg-background border-b border-border px-5 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2 sm:p-4">
+      <div className="bg-background rounded-2xl w-full max-w-lg flex flex-col shadow-2xl" style={{ height: "92dvh", maxHeight: "92dvh" }}>
+        <div className="flex-shrink-0 bg-background border-b border-border px-5 py-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="font-bold text-base">{program ? t("tv.editProgram") : t("tv.addProgram")}</h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-muted"><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4" style={{ WebkitOverflowScrolling: "touch" } as any}>
           <Field label={t("tv.fieldTitle")}>
             <input className={inputCls} value={form.title} onChange={e => set("title", e.target.value)} placeholder={t("tv.fieldTitle")} />
           </Field>
@@ -192,8 +231,42 @@ function ProgramModal({
             </div>
           )}
           <Field label={t("tv.fieldVideoUrl")}>
-            <input className={inputCls} value={form.videoUrl} onChange={e => set("videoUrl", e.target.value)} placeholder="https://youtu.be/..." />
+            <input className={inputCls} value={form.videoUrl} onChange={e => { set("videoUrl", e.target.value); set("videoKey", ""); }} placeholder="https://youtu.be/..." />
           </Field>
+
+          {/* Direct video upload */}
+          <div className="rounded-xl border border-dashed border-violet-400 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 p-3">
+            <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 mb-2">📁 Oswa Telechaje Videyo Dirèk</p>
+            {form.videoKey ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 text-xs text-green-600 dark:text-green-400 font-medium truncate">✅ Videyo telechaje</div>
+                <button type="button" onClick={() => { set("videoKey", ""); set("videoUrl", ""); }} className="text-xs text-red-500 hover:underline">Retire</button>
+              </div>
+            ) : uploading ? (
+              <div className="space-y-1">
+                <div className="w-full bg-muted rounded-full h-2">
+                  <div className="bg-violet-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">{uploadProgress}%</p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-colors"
+              >
+                📤 Chwazi Fichye Videyo (.mp4, .mov...)
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); e.target.value = ""; }}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1.5">Videyo telechaje joue san kontwòl (moun pa ka rewind) — pafè pou transmisyon linèyè</p>
+          </div>
           <Field label={t("tv.fieldThumbnail")}>
             <input className={inputCls} value={form.thumbnailUrl} onChange={e => set("thumbnailUrl", e.target.value)} placeholder="https://..." />
           </Field>
@@ -234,7 +307,7 @@ function ProgramModal({
             </label>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-background border-t border-border px-5 py-4 flex gap-3">
+        <div className="flex-shrink-0 bg-background border-t border-border px-5 py-4 flex gap-3 rounded-b-2xl">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors">{t("tv.cancel")}</button>
           <button
             onClick={save}

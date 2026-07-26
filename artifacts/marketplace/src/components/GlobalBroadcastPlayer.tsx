@@ -85,6 +85,12 @@ function ytUnmuteAndPlay(iframeEl: HTMLIFrameElement | null) {
 
 type SlotRect = { top: number; left: number; width: number; height: number };
 
+// Mini-player dimensions
+const MINI_W      = 264;
+const MINI_H      = 148; // ≈ 16:9
+const MINI_BOT    = 76;
+const MINI_MARGIN = 12;
+
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
   const { dismissed, setDismissed } = bs;
@@ -94,6 +100,60 @@ export default function GlobalBroadcastPlayer() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   // isMuted: true until user taps 🔊 overlay (iOS forces mute on autoplay)
   const [isMuted, setIsMuted] = useState(true);
+
+  // ── Mini-player horizontal drag ──────────────────────────────────────────────
+  const [miniLeft, setMiniLeft] = useState<number | null>(null);
+  const miniLeftRef    = useRef<number | null>(null);
+  const miniOverlayRef = useRef<HTMLDivElement>(null);
+  // drag tracking — all mutable, no re-render during move
+  const dragStartX    = useRef(0);
+  const dragStartLeft = useRef(0);
+  const dragging      = useRef(false);
+  const wasDragRef    = useRef(false); // survives into onClick after touchEnd
+
+  const resolvedMiniLeft = () =>
+    miniLeftRef.current ??
+    (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0);
+
+  const applyLeft = useCallback((left: number) => {
+    miniLeftRef.current = left;
+    if (wrapperRef.current) {
+      wrapperRef.current.style.left  = left + "px";
+      wrapperRef.current.style.right = "auto";
+    }
+    if (miniOverlayRef.current) {
+      miniOverlayRef.current.style.left  = left + "px";
+      miniOverlayRef.current.style.right = "auto";
+    }
+  }, []);
+
+  const handleMiniTouchStart = useCallback((e: React.TouchEvent) => {
+    dragging.current   = false;
+    wasDragRef.current = false;
+    dragStartX.current    = e.touches[0].clientX;
+    dragStartLeft.current = resolvedMiniLeft();
+  }, []);
+
+  const handleMiniTouchMove = useCallback((e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - dragStartX.current;
+    if (!dragging.current && Math.abs(dx) > 5) dragging.current = true;
+    if (!dragging.current) return;
+    const w       = typeof window !== "undefined" ? window.innerWidth : 400;
+    const maxLeft = w - MINI_MARGIN - MINI_W;
+    applyLeft(Math.max(MINI_MARGIN, Math.min(maxLeft, dragStartLeft.current + dx)));
+  }, [applyLeft]);
+
+  const handleMiniTouchEnd = useCallback((_e: React.TouchEvent) => {
+    if (!dragging.current) return;
+    wasDragRef.current = true; // tell onClick to skip navigation
+    dragging.current   = false;
+    // Snap to nearest edge
+    const w       = typeof window !== "undefined" ? window.innerWidth : 400;
+    const cur     = miniLeftRef.current ?? (w - MINI_MARGIN - MINI_W);
+    const snapped = cur + MINI_W / 2 < w / 2 ? MINI_MARGIN : w - MINI_MARGIN - MINI_W;
+    applyLeft(snapped);
+    setMiniLeft(snapped);
+  }, [applyLeft]);
 
   const iframeRef  = useRef<HTMLIFrameElement>(null);
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -192,18 +252,19 @@ export default function GlobalBroadcastPlayer() {
         overflow: "hidden",
       }
     : {
-        // Mini player
+        // Mini player — left-positioned so drag works
         position: "fixed",
-        bottom: "76px",
-        right:  "12px",
-        width:  "220px",
-        height: "124px", // ≈16/9
+        bottom:  MINI_BOT + "px",
+        left:    (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0)) + "px",
+        width:   MINI_W + "px",
+        height:  MINI_H + "px",
         zIndex: 9000,
         background: "black",
         borderRadius: "14px",
         overflow: "hidden",
         boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
         border: "1.5px solid rgba(139,92,246,0.5)",
+        touchAction: "none",
       };
 
   return (
@@ -327,21 +388,33 @@ export default function GlobalBroadcastPlayer() {
       {/* ── Mini-player header overlay ────────────────────────────────────────── */}
       {!slotVisible && !isOnAdminTV && (
         <div
+          ref={miniOverlayRef}
           style={{
             position: "fixed",
-            bottom: "76px",
-            right:  "12px",
-            width:  "220px",
-            height: "124px",
+            bottom:  MINI_BOT + "px",
+            left:    (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0)) + "px",
+            width:   MINI_W + "px",
+            height:  MINI_H + "px",
             zIndex: 9001,
             pointerEvents: "none",
             borderRadius: "14px",
+            touchAction: "none",
           }}
         >
-          {/* Click area → go to /tv */}
+          {/* Drag + click area — covers entire player */}
           <div
             className="absolute inset-0 cursor-pointer pointer-events-auto"
-            onClick={goToTV}
+            onTouchStart={handleMiniTouchStart}
+            onTouchMove={handleMiniTouchMove}
+            onTouchEnd={handleMiniTouchEnd}
+            onClick={() => {
+              // wasDragRef stays true from touchEnd until this onClick fires
+              if (wasDragRef.current) { wasDragRef.current = false; return; }
+              // Unmute inside this user-gesture handler so iOS allows audio
+              ytUnmuteAndPlay(iframeRef.current);
+              setIsMuted(false);
+              goToTV();
+            }}
           />
           {/* LIVE badge + title + buttons */}
           <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
@@ -349,20 +422,20 @@ export default function GlobalBroadcastPlayer() {
               <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse">
                 <Radio size={7} /> LIVE
               </span>
-              <p className="text-white text-[10px] font-semibold truncate max-w-[90px]">
+              <p className="text-white text-[10px] font-semibold truncate max-w-[110px]">
                 {bs.programTitle ?? "Flexa TV"}
               </p>
             </div>
             <div className={cn("flex gap-1 pointer-events-auto")}>
               <button
-                onClick={goToTV}
+                onClick={(e) => { e.stopPropagation(); goToTV(); }}
                 className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
                 title="Ouvri Flexa TV"
               >
                 <Maximize2 size={10} />
               </button>
               <button
-                onClick={() => setDismissed(true)}
+                onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
                 className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
                 title="Fèmen"
               >

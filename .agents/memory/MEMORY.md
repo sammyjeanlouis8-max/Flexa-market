@@ -6,3 +6,4 @@
 - [Flexa Market i18n](flexa-i18n.md) — translations in src/i18n/locales/*.ts; only en/fr/ht maintained (others fall back); recurring bug is hardcoded Creole literals bypassing t().
 - [Flexa delivery listing lookup](flexa-delivery-listing-lookup.md) — many delivery rows have null listingId; product photo/title must join listings via COALESCE(delivery.listingId, transaction.listingId).
 - [Flexa Stripe recharge fallback](flexa-stripe-recharge-fallback.md) — mobile WebView blocks the Stripe success redirect, so wallet credit can't rely on webhook alone; public idempotent /stripe/checkout/activate is the safety net.
+- [Flexa TV stability pitfalls](flexa-tv-stability.md) — lucide-react@0.545 missing icons crash at runtime; IIFE in JSX causes intermittent reconciliation crashes; useRef import omission in BroadcastProvider took down entire site.

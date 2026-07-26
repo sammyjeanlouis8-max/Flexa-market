@@ -272,8 +272,8 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { icon: Film, label: `🔥 ${t("nav.videos")}`, href: "/videos" },
-        { icon: Tv,   label: "📺 Flexa TV",            href: "/tv" },
+        { icon: Film,     label: `🔥 ${t("nav.videos")}`,    href: "/videos" },
+        { icon: Tv,       label: "📺 Flexa TV",              href: "/tv" },
         ...(user ? [{ icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem] : []),
       ] as DrawerItem[],
     },
@@ -601,8 +601,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { href: "/videos",    icon: Film, label: `🔥 ${t("nav.videos")}`,   key: "videos" },
-        { href: "/tv",        icon: Tv,   label: "📺 Flexa TV",              key: "flexa-tv" },
+        { href: "/videos",    icon: Film,     label: `🔥 ${t("nav.videos")}`,   key: "videos" },
+        { href: "/tv",        icon: Tv,       label: "📺 Flexa TV",              key: "flexa-tv" },
         ...(user ? [{ href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" }] : []),
       ],
     },

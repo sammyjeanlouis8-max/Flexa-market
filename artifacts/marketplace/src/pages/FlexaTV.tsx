@@ -532,6 +532,7 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
 
 /** Netflix-style hero card for the first/top live stream — full-width landscape. */
 function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       onClick={onClick}

@@ -5,7 +5,7 @@
  * - Exposes `dismissed` / `setDismissed` so FlexaTV's on/off button and
  *   GlobalBroadcastPlayer share the same toggle state.
  */
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useRef, ReactNode, useCallback } from "react";
 
 export type PlaybackState = "playing" | "paused" | "stopped";
 

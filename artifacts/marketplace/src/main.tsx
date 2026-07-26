@@ -69,6 +69,7 @@ const RETRY_DELAY_MS   = 600;
 interface EBState {
   hasError: boolean; isChunk: boolean;
   retryCount: number; isRetrying: boolean;
+  lastError: string | null;
 }
 
 // ── Minimal fallback shown during error-boundary retries ─────────────────────
@@ -145,16 +146,18 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { hasError: false, isChunk: false, retryCount: 0, isRetrying: false };
+    this.state = { hasError: false, isChunk: false, retryCount: 0, isRetrying: false, lastError: null };
   }
 
   static getDerivedStateFromError(err: unknown): Partial<EBState> {
     const chunk = isChunkError(err);
     if (chunk) autoReloadOnceForChunk();
-    return { hasError: true, isChunk: chunk };
+    const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    return { hasError: true, isChunk: chunk, lastError: msg };
   }
 
-  componentDidCatch(_error: unknown) {
+  componentDidCatch(error: unknown) {
+    console.error("[GlobalErrorBoundary] caught:", error);
     if (this.state.isChunk) return;
     const { retryCount } = this.state;
     if (retryCount < MAX_AUTO_RETRIES) {
@@ -197,8 +200,22 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
       return <SplashScreen showRetry onRetry={this.handleManualRetry} />;
     }
 
-    // All retries exhausted → still branded, subtle retry option
-    return <SplashScreen showRetry onRetry={this.handleManualRetry} />;
+    // All retries exhausted → show error detail for debugging
+    return (
+      <>
+        <SplashScreen showRetry onRetry={this.handleManualRetry} />
+        {this.state.lastError && (
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0,
+            background: "#1e1e1e", color: "#f87171", fontSize: 11,
+            padding: "8px 12px", fontFamily: "monospace", zIndex: 99999,
+            wordBreak: "break-all", maxHeight: 120, overflowY: "auto",
+          }}>
+            {this.state.lastError}
+          </div>
+        )}
+      </>
+    );
   }
 }
 

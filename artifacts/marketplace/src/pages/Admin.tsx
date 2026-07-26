@@ -18,7 +18,7 @@ import {
   Wifi, Monitor, Link2, ShieldAlert, ShieldCheck, LogIn, UserPlus, KeyRound, BadgeCheck, CreditCard, Copy,
   MessageSquare, Send, Briefcase, MapPin, Clock, Wallet, ArrowUpCircle, ArrowDownCircle, CheckCircle, XCircle, RefreshCw,
   Search, Check, Gift, Ticket, Timer, Download, Truck, ArrowRight, Bell, Landmark, ExternalLink, Loader2, Banknote, Phone, Navigation,
-  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy, Tv,
+  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy, Tv, Music2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2417,6 +2417,22 @@ export default function Admin() {
             <p className="text-xs text-violet-600 dark:text-violet-400 mt-0.5">{t("tv.adminSubtitle")}</p>
           </div>
           <ArrowRight className="h-4 w-4 text-violet-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+
+        {/* Flexa Music */}
+        <button
+          type="button"
+          onClick={() => setLocation("/admin/music")}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-fuchsia-200 dark:border-fuchsia-800 bg-gradient-to-br from-fuchsia-50 to-pink-50 dark:from-fuchsia-950/30 dark:to-pink-950/20 hover:from-fuchsia-100 hover:to-pink-100 dark:hover:from-fuchsia-900/40 dark:hover:to-pink-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-fuchsia-600 to-pink-600 flex items-center justify-center shrink-0 shadow shadow-fuchsia-200 dark:shadow-fuchsia-900/50">
+            <Music2 className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-fuchsia-900 dark:text-fuchsia-100">🎵 Flexa Music</p>
+            <p className="text-xs text-fuchsia-600 dark:text-fuchsia-400 mt-0.5">Ajoute &amp; jere chante, album, jen</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-fuchsia-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
       </div>

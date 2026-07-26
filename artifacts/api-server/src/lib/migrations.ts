@@ -1946,6 +1946,31 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "tv_programs.sched_idx", sql: "CREATE INDEX IF NOT EXISTS tv_programs_scheduled_at_idx ON tv_programs(scheduled_at)" });
   migrations.push({ name: "tv_programs.series_idx", sql: "CREATE INDEX IF NOT EXISTS tv_programs_series_id_idx ON tv_programs(series_id)" });
 
+  // ── Flexa Music ───────────────────────────────────────────────────────────────
+  migrations.push({
+    name: "music_tracks.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_tracks (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      album TEXT,
+      genre TEXT,
+      audio_url TEXT,
+      cover_url TEXT,
+      duration_seconds INTEGER,
+      type TEXT NOT NULL DEFAULT 'free',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      is_featured BOOLEAN NOT NULL DEFAULT false,
+      play_count INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({ name: "music_tracks.genre_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_genre_idx ON music_tracks(genre)" });
+  migrations.push({ name: "music_tracks.artist_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_idx ON music_tracks(artist)" });
+  migrations.push({ name: "music_tracks.active_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_active_idx ON music_tracks(is_active)" });
+
   let applied = 0;
   let failed = 0;
 

@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv,
+  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
@@ -273,8 +273,9 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { icon: Film,     label: `🔥 ${t("nav.videos")}`,    href: "/videos" },
-        { icon: Tv,       label: "📺 Flexa TV",              href: "/tv" },
+        { icon: Film,   label: `🔥 ${t("nav.videos")}`,    href: "/videos" },
+        { icon: Tv,     label: "📺 Flexa TV",              href: "/tv" },
+        { icon: Music2, label: "🎵 Flexa Music",           href: "/music" },
         ...(user ? [{ icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem] : []),
       ] as DrawerItem[],
     },
@@ -614,8 +615,9 @@ export default function Layout({ children }: { children: ReactNode }) {
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { href: "/videos",    icon: Film,     label: `🔥 ${t("nav.videos")}`,   key: "videos" },
-        { href: "/tv",        icon: Tv,       label: "📺 Flexa TV",              key: "flexa-tv" },
+        { href: "/videos", icon: Film,   label: `🔥 ${t("nav.videos")}`,   key: "videos"      },
+        { href: "/tv",     icon: Tv,     label: "📺 Flexa TV",              key: "flexa-tv"    },
+        { href: "/music",  icon: Music2, label: "🎵 Flexa Music",           key: "flexa-music" },
         ...(user ? [{ href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" }] : []),
       ],
     },

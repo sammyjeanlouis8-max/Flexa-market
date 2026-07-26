@@ -1,0 +1,587 @@
+You are a Principal Software Architect, Senior UX/UI Designer, Senior Backend Engineer, Product Manager, and Music Streaming Platform Expert.
+
+Your mission is to transform Flexa Market into a complete digital ecosystem by adding a brand-new product called Flexa Music.
+
+IMPORTANT:
+Do NOT modify or break any existing feature of the application.
+Preserve all current functionality, APIs, database tables, authentication, payments, messaging, marketplace listings, Flexa TV, Boosts, Admin Dashboard, and UI.
+Build everything as an independent module that integrates cleanly into the existing architecture.
+Before changing code, analyze the entire project and reuse existing components whenever possible. Avoid duplicate code.
+
+========================
+NEW FEATURE
+========================
+
+Create a premium music streaming platform named "Flexa Music".
+
+It must feel like Spotify + Apple Music + Audiomack while matching Flexa Market's design language.
+
+========================
+MAIN MENU
+========================
+
+Add a new menu item:
+
+🎵 Flexa Music
+
+Place it under Flexa TV.
+
+========================
+HOME PAGE
+========================
+
+Create a beautiful modern home screen including:
+
+Featured Artists
+
+Trending Songs
+
+New Releases
+
+Albums
+
+Singles
+
+Top Charts
+
+Most Played
+
+Recently Played
+
+Continue Listening
+
+Recommended For You
+
+Popular Playlists
+
+Genres
+
+Search Music
+
+Search Artist
+
+Search Album
+
+Music Categories
+
+Animated banners
+
+Auto scrolling featured artists
+
+Dark mode support
+
+Light mode support
+
+========================
+ARTIST ACCOUNTS
+========================
+
+Allow any verified user to become an Artist.
+
+Artist profile includes:
+
+Profile Photo
+
+Cover Photo
+
+Bio
+
+Followers
+
+Following
+
+Verified Badge
+
+Social Links
+
+Albums
+
+Singles
+
+Total Streams
+
+Total Sales
+
+Total Revenue
+
+Monthly Listeners
+
+Playlists
+
+Comments
+
+Ratings
+
+Followers can receive push notifications whenever the artist releases new music.
+
+========================
+UPLOAD MUSIC
+========================
+
+Artists can upload:
+
+MP3
+
+AAC
+
+FLAC
+
+WAV
+
+Album Artwork
+
+Lyrics
+
+Music Video (optional)
+
+Genre
+
+Sub Genre
+
+Language
+
+Country
+
+Release Date
+
+Producer
+
+Composer
+
+ISRC (optional)
+
+Copyright information
+
+========================
+MUSIC TYPES
+========================
+
+Each upload allows the artist to choose:
+
+Free
+
+Premium
+
+Exclusive
+
+Rental
+
+Subscription Only
+
+========================
+FREE MUSIC
+========================
+
+Users can stream free.
+
+Ads appear during playback.
+
+Artist earns advertising revenue.
+
+DO NOT hardcode payouts like "$0.50 every 50 ads."
+
+Instead:
+
+Create a revenue-sharing engine.
+
+Store:
+
+Total Ad Revenue
+
+Artist Share %
+
+Flexa Share %
+
+Current Balance
+
+Pending Earnings
+
+Withdrawable Earnings
+
+Admin can change revenue percentages from Dashboard.
+
+========================
+PAID MUSIC
+========================
+
+Artists choose any selling price.
+
+Revenue split:
+
+80% Artist
+
+20% Flexa
+
+Admin can edit these percentages globally.
+
+========================
+MEDIA PLAYER
+========================
+
+Build a world-class music player.
+
+Include:
+
+Play
+
+Pause
+
+Previous
+
+Next
+
+Shuffle
+
+Repeat
+
+Queue
+
+Equalizer
+
+Playback Speed
+
+Seek Bar
+
+Album Art Animation
+
+Mini Player
+
+Full Screen Player
+
+Background Playback
+
+Picture-in-Picture where supported
+
+Crossfade
+
+Gapless Playback
+
+Auto Next Song
+
+Recently Played History
+
+Sleep Timer
+
+========================
+PLAYLISTS
+========================
+
+Users can:
+
+Create playlists
+
+Rename playlists
+
+Delete playlists
+
+Collaborative playlists
+
+Private playlists
+
+Public playlists
+
+Liked Songs playlist
+
+Offline playlist support
+
+========================
+SOCIAL FEATURES
+========================
+
+Users can:
+
+Like songs
+
+Comment
+
+Share
+
+Follow Artists
+
+Report Songs
+
+Rate Songs
+
+Favorite Albums
+
+Favorite Artists
+
+========================
+SEARCH
+========================
+
+Powerful search including:
+
+Song
+
+Artist
+
+Album
+
+Genre
+
+Lyrics
+
+Playlist
+
+Country
+
+Language
+
+Voice search ready
+
+========================
+MONETIZATION
+========================
+
+Artists Dashboard:
+
+Streams
+
+Sales
+
+Revenue
+
+Ad Revenue
+
+Followers
+
+Downloads
+
+Top Countries
+
+Top Songs
+
+Monthly Reports
+
+Withdraw Funds
+
+Transaction History
+
+Payout Requests
+
+========================
+ADMIN PANEL
+========================
+
+Admin controls:
+
+Approve Artists
+
+Approve Songs
+
+Reject Songs
+
+Delete Songs
+
+Ban Artists
+
+Feature Artists
+
+Manage Ads
+
+Revenue Split
+
+Analytics
+
+Reports
+
+Copyright Claims
+
+Music Categories
+
+Genres
+
+Languages
+
+Countries
+
+Featured Banners
+
+Platform Statistics
+
+========================
+RECOMMENDATION ENGINE
+========================
+
+Recommend songs based on:
+
+Listening history
+
+Favorites
+
+Country
+
+Language
+
+Genre
+
+Trending
+
+Time of Day
+
+Recently Played
+
+========================
+NOTIFICATIONS
+========================
+
+Push Notifications for:
+
+New Releases
+
+New Followers
+
+Comments
+
+Sales
+
+Payout Approved
+
+Playlist Likes
+
+Featured Artist
+
+Platform Announcements
+
+========================
+FLEXA PREMIUM
+========================
+
+Premium subscribers receive:
+
+No Ads
+
+Offline Downloads
+
+Unlimited Skips
+
+High Quality Audio
+
+Exclusive Songs
+
+Early Releases
+
+Premium Badge
+
+========================
+LIVE MUSIC
+========================
+
+Create Flexa Live.
+
+Artists can:
+
+Go Live
+
+Concert Streaming
+
+Podcasts
+
+Interviews
+
+Live Chat
+
+Receive Gifts
+
+Receive Donations
+
+Pinned Messages
+
+Live Viewer Count
+
+========================
+DATABASE
+========================
+
+Design scalable normalized database tables.
+
+Include indexes.
+
+Support millions of songs.
+
+Use pagination everywhere.
+
+Optimize all queries.
+
+========================
+PERFORMANCE
+========================
+
+Lazy loading
+
+Caching
+
+Optimized images
+
+Streaming optimization
+
+Background uploads
+
+Fast search
+
+CDN-ready
+
+========================
+SECURITY
+========================
+
+Validate uploads.
+
+Virus scan files.
+
+Prevent duplicate uploads.
+
+Copyright reporting.
+
+Rate limiting.
+
+Secure APIs.
+
+Encrypted transactions.
+
+========================
+UI
+========================
+
+Premium animations.
+
+Smooth transitions.
+
+Beautiful gradients.
+
+Modern cards.
+
+Responsive layouts.
+
+Native iOS feel.
+
+Native Android feel.
+
+Professional typography.
+
+Micro interactions.
+
+Glassmorphism where appropriate.
+
+========================
+FINAL REQUIREMENTS
+========================
+
+Do not remove or break any existing functionality.
+
+Reuse current components.
+
+Maintain clean architecture.
+
+Write production-ready code.
+
+Fix all TypeScript errors.
+
+Fix all lint warnings.
+
+Optimize performance.
+
+Test every feature before finishing.
+
+Return a complete implementation with a summary of every file created, modified, and every database migration performed.

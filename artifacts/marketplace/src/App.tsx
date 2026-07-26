@@ -103,6 +103,7 @@ const CreditScorePage                = lazy(() => import("@/pages/CreditScorePag
 const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
+const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
 const AdminTV                        = lazy(() => import("@/pages/AdminTV"));
 const AdminTVProgramForm             = lazy(() => import("@/pages/AdminTVProgramForm"));
 
@@ -262,6 +263,7 @@ function LayoutRoutes() {
           <Route path="/admin/drivers/live" component={AdminDriversLiveMap} />
           <Route path="/leaderboard" component={Leaderboard} />
           <Route path="/tv" component={FlexaTV} />
+          <Route path="/music" component={FlexaMusic} />
           <Route path="/admin/tv" component={AdminTV} />
           <Route path="/admin/tv/programs/new" component={AdminTVProgramForm} />
           <Route path="/admin/tv/programs/:id/edit" component={AdminTVProgramForm} />

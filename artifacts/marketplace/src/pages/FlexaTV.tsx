@@ -452,16 +452,17 @@ function VideoPlayer({ program, onClose, noVideoLabel }: {
       style={isFullscreen ? undefined : { paddingBottom: "56.25%" }}
     >
       {isLive && <div className="absolute top-3 left-3 z-20 flex items-center gap-1 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg animate-pulse pointer-events-none"><Radio size={10} /> LIVE</div>}
-      <div className={cn("absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity", isFullscreen && "opacity-100")}>
+      {/* Controls — always visible (mobile has no hover state) */}
+      <div className={cn("absolute top-2 right-2 z-20 flex gap-1", isFullscreen && "opacity-100")}>
         {embed?.isDirect && (
           <>
-            <button onClick={toggleMute} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
-            <button onClick={togglePlay} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isPlaying ? <Pause size={14} /> : <Play size={14} />}</button>
+            <button onClick={toggleMute} className="bg-black/60 rounded-full p-1.5 text-white active:bg-black/90">{isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}</button>
+            <button onClick={togglePlay} className="bg-black/60 rounded-full p-1.5 text-white active:bg-black/90">{isPlaying ? <Pause size={14} /> : <Play size={14} />}</button>
           </>
         )}
-        <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80">{isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}</button>
-        {onClose && !isFullscreen && <button onClick={onClose} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80"><X size={14} /></button>}
-        {isFullscreen && <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80"><X size={14} /></button>}
+        <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white active:bg-black/90">{isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}</button>
+        {onClose && !isFullscreen && <button onClick={onClose} className="bg-black/60 rounded-full p-1.5 text-white active:bg-black/90"><X size={14} /></button>}
+        {isFullscreen && <button onClick={toggleFullscreen} className="bg-black/60 rounded-full p-1.5 text-white active:bg-black/90"><X size={14} /></button>}
       </div>
       {embed ? (
         embed.isIframe ? (

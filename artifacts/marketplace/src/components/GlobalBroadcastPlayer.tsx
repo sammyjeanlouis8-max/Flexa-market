@@ -401,45 +401,66 @@ export default function GlobalBroadcastPlayer() {
             touchAction: "none",
           }}
         >
-          {/* Drag + click area — covers entire player */}
+          {/* Drag + click area — covers only the BODY (below header strip) so buttons aren't blocked */}
           <div
-            className="absolute inset-0 cursor-pointer pointer-events-auto"
+            className="absolute inset-x-0 bottom-0 cursor-pointer pointer-events-auto"
+            style={{ top: 30 }}
             onTouchStart={handleMiniTouchStart}
             onTouchMove={handleMiniTouchMove}
             onTouchEnd={handleMiniTouchEnd}
             onClick={() => {
-              // wasDragRef stays true from touchEnd until this onClick fires
               if (wasDragRef.current) { wasDragRef.current = false; return; }
-              // Unmute inside this user-gesture handler so iOS allows audio
               ytUnmuteAndPlay(iframeRef.current);
               setIsMuted(false);
               goToTV();
             }}
           />
-          {/* LIVE badge + title + buttons */}
-          <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse">
+
+          {/* Header strip — sits ABOVE drag area in DOM (later = higher z-order) */}
+          <div
+            className="absolute top-0 inset-x-0 flex items-center justify-between px-2 bg-gradient-to-b from-black/80 to-transparent pointer-events-none"
+            style={{ height: 30, zIndex: 5 }}
+          >
+            {/* Left: LIVE badge + title — tap this area navigates to TV */}
+            <div
+              className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer pointer-events-auto"
+              onTouchStart={handleMiniTouchStart}
+              onTouchMove={handleMiniTouchMove}
+              onTouchEnd={handleMiniTouchEnd}
+              onClick={() => {
+                if (wasDragRef.current) { wasDragRef.current = false; return; }
+                ytUnmuteAndPlay(iframeRef.current);
+                setIsMuted(false);
+                goToTV();
+              }}
+            >
+              <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
                 <Radio size={7} /> LIVE
               </span>
               <p className="text-white text-[10px] font-semibold truncate max-w-[110px]">
                 {bs.programTitle ?? "Flexa TV"}
               </p>
             </div>
-            <div className={cn("flex gap-1 pointer-events-auto")}>
+
+            {/* Right: action buttons — separate from drag, always tappable */}
+            <div className="flex gap-1.5 shrink-0 pointer-events-auto" style={{ zIndex: 10 }}>
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); goToTV(); }}
-                className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
+                className="bg-black/70 active:bg-violet-700 rounded-full text-white transition-colors"
+                style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 title="Ouvri Flexa TV"
               >
-                <Maximize2 size={10} />
+                <Maximize2 size={11} />
               </button>
               <button
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-                className="bg-black/60 rounded-full p-1 text-white hover:bg-black/90"
+                className="bg-black/70 active:bg-red-600 rounded-full text-white transition-colors"
+                style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 title="Fèmen"
               >
-                <X size={10} />
+                <X size={11} />
               </button>
             </div>
           </div>

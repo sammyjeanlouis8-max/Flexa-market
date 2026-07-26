@@ -1,5 +1,6 @@
 import { ReactNode, useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
+import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
@@ -556,10 +557,22 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
+  const bs = useBroadcast();
   const [moreOpen, setMoreOpen] = useState(false);
 
   // Back button: show on mobile for every page except home, messages, and auth
   const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
+
+  // When leaving the TV page with an active broadcast, go to home so the
+  // GlobalBroadcastPlayer switches to mini-player instead of disappearing.
+  const handleBack = useCallback(() => {
+    const broadcastActive = bs.state === "playing" || bs.state === "paused";
+    if (location === "/tv" && broadcastActive && !bs.dismissed) {
+      navigate("/");
+    } else {
+      window.history.back();
+    }
+  }, [location, bs.state, bs.dismissed, navigate]);
   const pageTitle = getPageTitle(location, t);
 
   const profileHref = user ? "/settings" : "/auth/login";
@@ -694,7 +707,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <>
               <button
                 type="button"
-                onClick={() => window.history.back()}
+                onClick={handleBack}
                 className="md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full hover:bg-accent transition-colors text-foreground"
                 aria-label="Retounen"
               >

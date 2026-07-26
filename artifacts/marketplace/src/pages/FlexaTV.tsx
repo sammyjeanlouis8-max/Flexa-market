@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Tv, Play, Clock, Calendar, Eye, Radio, Film, List, X,
@@ -792,6 +793,7 @@ function SeriesGrid({
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FlexaTV() {
   const { t } = useTranslation();
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<"live" | "schedule" | "films" | "series" | "programs">("live");
   const [playing, setPlaying] = useState<TvProgram | null>(null);
   const [selectedSeriesId, setSelectedSeriesId] = useState<number | null>(null);
@@ -809,6 +811,44 @@ export default function FlexaTV() {
   // ── Broadcast state — shared from global BroadcastContext (no extra polling) ──
   const bs = useBroadcast();
   const broadcastActive = bs.state === "playing" || bs.state === "paused";
+
+  // ── Intercept browser / iOS back-swipe while broadcast is active ─────────────
+  // Pushes a dummy history entry so the first back-swipe is caught here (not
+  // leaving the SPA). We then navigate to "/" so GlobalBroadcastPlayer switches
+  // from slot mode to mini-player mode and keeps playing.
+  useEffect(() => {
+    if (!broadcastActive || bs.dismissed) return;
+
+    // Push a sentinel so there is always one entry to "absorb" before leaving /tv
+    window.history.pushState({ flextv: true }, "", window.location.href);
+
+    const onPopState = (e: PopStateEvent) => {
+      // Prevent the browser from navigating away; instead, go home so mini-player shows
+      if (e.state?.flextv !== false) {
+        navigate("/");
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  // Only set up once when broadcast becomes active on this page
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [broadcastActive, bs.dismissed]);
+
+  // ── Suppress broadcast mini-player while a film is playing in VideoPlayer ────
+  // When the user selects a film, the broadcast goes to mini mode and competes
+  // with the film. Dismiss it so only the film plays. Restore when film closes.
+  useEffect(() => {
+    if (!broadcastActive) return;
+    if (playing) {
+      bs.setDismissed(true);
+    } else {
+      bs.setDismissed(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, broadcastActive]);
 
   // Update clock
   useEffect(() => {

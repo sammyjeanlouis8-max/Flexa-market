@@ -42,19 +42,30 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
     videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
   });
   const [dismissed, setDismissedRaw] = useState(false);
+  // Track WHICH program was dismissed so we only auto-un-dismiss on a NEW broadcast.
+  // Without this, every 5-second poll re-fires the state effect and can reset dismissed.
+  const dismissedProgramRef = useRef<number | null>(null);
 
-  // Auto-un-dismiss when a new broadcast starts (state goes stopped → playing)
-  // useRef for previous-state tracking — avoids the extra re-render that a
-  // useState setter inside useEffect would cause on every state transition.
+  // Auto-un-dismiss ONLY when a genuinely new broadcast starts (different programId)
   const prevStateRef = useRef(bs.state);
   useEffect(() => {
-    if (bs.state === "playing" && prevStateRef.current === "stopped") {
+    const isNewBroadcast =
+      bs.state === "playing" &&
+      (prevStateRef.current === "stopped" ||
+        // Different program than the one the user dismissed
+        (bs.programId !== null && bs.programId !== dismissedProgramRef.current));
+    if (isNewBroadcast) {
+      dismissedProgramRef.current = null;
       setDismissedRaw(false);
     }
     prevStateRef.current = bs.state;
-  }, [bs.state]);
+  }, [bs.state, bs.programId]);
 
-  const setDismissed = useCallback((v: boolean) => setDismissedRaw(v), []);
+  const setDismissed = useCallback((v: boolean) => {
+    // Remember which program was dismissed so auto-un-dismiss only triggers on a NEW one
+    if (v) dismissedProgramRef.current = bs.programId;
+    setDismissedRaw(v);
+  }, [bs.programId]);
 
   // Poll every 5s
   useEffect(() => {

@@ -9,20 +9,23 @@
  *   /tv      → fixed overlay covering #broadcast-player-slot (slot mode)
  *   other    → floating mini-player bottom-right (mini mode)
  *
+ * iOS FIX: In mini mode the iframe gets pointer-events:none so the overlay
+ * inside the same div can reliably receive touch events. iOS Safari steals
+ * all touches for iframes regardless of z-index; this is the only safe fix.
+ *
  * DVR seek bar: YouTube dvr=1 param lets viewers scrub the live buffer.
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { X, Maximize2, Pause, Radio, Volume2 } from "lucide-react";
+import { X, Maximize2, Pause, Radio, Volume2, VolumeX } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
-import { cn } from "@/lib/utils";
 
 // YouTube embed params
-// autoplay=1 — autoplays on all devices. iOS forces mute=1 for autoplay but the
-// video still starts immediately. A tap-to-unmute overlay handles iOS audio policy.
-// dvr=1      — enables DVR seek bar so viewers can scrub back in the live buffer.
+// muted=1 → YouTube starts with its OWN muted flag (not browser-enforced).
+// The browser's autoplay policy is satisfied, AND postMessage unMute/setVolume
+// can override a YouTube-level mute (but NOT a browser-level enforcement).
 const YT_PARAMS =
-  "autoplay=1&dvr=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" +
+  "autoplay=1&muted=1&dvr=1&rel=0&modestbranding=1&controls=1&disablekb=0&playsinline=1&enablejsapi=1&origin=" +
   encodeURIComponent(
     typeof window !== "undefined" ? window.location.origin : "https://flexamarket.com"
   );
@@ -96,20 +99,31 @@ export default function GlobalBroadcastPlayer() {
   const { dismissed, setDismissed } = bs;
   const [location, navigate] = useLocation();
 
-  const [slotRect, setSlotRect] = useState<SlotRect | null>(null);
+  const [slotRect, setSlotRect]     = useState<SlotRect | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // isMuted: true until user taps 🔊 overlay (iOS forces mute on autoplay)
-  const [isMuted, setIsMuted] = useState(true);
+  // isMuted: true until user taps 🔊 (iOS forces mute on autoplay)
+  const [isMuted, setIsMuted]       = useState(true);
 
   // ── Mini-player horizontal drag ──────────────────────────────────────────────
-  const [miniLeft, setMiniLeft] = useState<number | null>(null);
-  const miniLeftRef    = useRef<number | null>(null);
-  const miniOverlayRef = useRef<HTMLDivElement>(null);
+  const [miniLeft, setMiniLeft]     = useState<number | null>(null);
+  const miniLeftRef                 = useRef<number | null>(null);
   // drag tracking — all mutable, no re-render during move
   const dragStartX    = useRef(0);
   const dragStartLeft = useRef(0);
   const dragging      = useRef(false);
   const wasDragRef    = useRef(false); // survives into onClick after touchEnd
+
+  const iframeRef   = useRef<HTMLIFrameElement>(null);
+  const videoRef    = useRef<HTMLVideoElement>(null);
+  const wrapperRef  = useRef<HTMLDivElement>(null);
+  // Background audio session — silent oscillator keeps iOS audio active when screen dims
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  // Screen Wake Lock — prevents auto-lock while broadcast is playing
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  const isOnViewerTV = location === "/tv";
+  const isOnAdminTV  = location.startsWith("/admin");
+  const isActive     = bs.state === "playing" || bs.state === "paused";
 
   const resolvedMiniLeft = () =>
     miniLeftRef.current ??
@@ -120,10 +134,6 @@ export default function GlobalBroadcastPlayer() {
     if (wrapperRef.current) {
       wrapperRef.current.style.left  = left + "px";
       wrapperRef.current.style.right = "auto";
-    }
-    if (miniOverlayRef.current) {
-      miniOverlayRef.current.style.left  = left + "px";
-      miniOverlayRef.current.style.right = "auto";
     }
   }, []);
 
@@ -155,15 +165,7 @@ export default function GlobalBroadcastPlayer() {
     setMiniLeft(snapped);
   }, [applyLeft]);
 
-  const iframeRef  = useRef<HTMLIFrameElement>(null);
-  const videoRef   = useRef<HTMLVideoElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  const isOnViewerTV = location === "/tv";
-  const isOnAdminTV  = location.startsWith("/admin");
-  const isActive     = bs.state === "playing" || bs.state === "paused";
-
-  // ── Slot tracking: poll every 80 ms ─────────────────────────────────────────
+  // ── Slot tracking: poll every 200ms ─────────────────────────────────────────
   useEffect(() => {
     if (!isOnViewerTV || !isActive) { setSlotRect(null); return; }
     let lastKey = "";
@@ -175,8 +177,6 @@ export default function GlobalBroadcastPlayer() {
       if (key !== lastKey) { lastKey = key; setSlotRect({ top: r.top, left: r.left, width: r.width, height: r.height }); }
     };
     measure();
-    // 200ms is fast enough for smooth repositioning while being 2.5× lighter
-    // than 80ms — reduces iOS Safari memory pressure from 750 to 300 updates/min.
     const id = setInterval(measure, 200);
     return () => clearInterval(id);
   }, [isOnViewerTV, isActive]);
@@ -195,9 +195,6 @@ export default function GlobalBroadcastPlayer() {
   // Reset muted overlay whenever broadcast changes (new video = needs new unmute tap)
   useEffect(() => { setIsMuted(true); }, [bs.videoUrl, bs.videoKey]);
 
-  // Auto-reload removed — it caused infinite restart loops because embedKey was
-  // in the dependency array and YouTube live streams don't reliably send playerState=1.
-
   // ── Media Session API (iOS lock-screen) ──────────────────────────────────────
   useEffect(() => {
     if (!isActive || !("mediaSession" in navigator)) return;
@@ -206,7 +203,63 @@ export default function GlobalBroadcastPlayer() {
       artist: "Flexa Market",
       artwork: [{ src: "/flexa-tv-logo.png", sizes: "512x512", type: "image/png" }],
     });
+    // Action handlers let the lock-screen "Now Playing" widget send commands back
+    navigator.mediaSession.setActionHandler("play",  () => ytCmd(iframeRef.current, "playVideo"));
+    navigator.mediaSession.setActionHandler("pause", () => ytCmd(iframeRef.current, "pauseVideo"));
+    return () => {
+      try { navigator.mediaSession.setActionHandler("play",  null); } catch { /**/ }
+      try { navigator.mediaSession.setActionHandler("pause", null); } catch { /**/ }
+    };
   }, [isActive, bs.programTitle]);
+
+  // ── Screen Wake Lock — keeps display on so video isn't suspended ─────────────
+  // Re-acquires after visibility changes (OS releases the lock when page hides)
+  useEffect(() => {
+    if (!isActive || dismissed || !("wakeLock" in navigator)) return;
+    let active = true;
+    const acquire = async () => {
+      try {
+        if (!active) return;
+        wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+      } catch { /* denied or unsupported */ }
+    };
+    acquire();
+    const onVisibility = () => { if (document.visibilityState === "visible") acquire(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", onVisibility);
+      wakeLockRef.current?.release().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [isActive, dismissed]);
+
+  // ── Silent AudioContext — keeps iOS audio session alive in background ─────────
+  // MUST be started inside a user-gesture handler (initBackgroundAudio below).
+  // Once the AudioContext is running, iOS treats the page as an audio app and
+  // allows continued playback even when the display goes off.
+  const initBackgroundAudio = useCallback(() => {
+    if (audioCtxRef.current) return; // already running
+    try {
+      const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx  = new Ctx();
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.001; // near-silent — audible only at maximum speaker volume
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      audioCtxRef.current = ctx;
+    } catch { /* not supported */ }
+  }, []);
+
+  // Cleanup AudioContext when broadcast ends
+  useEffect(() => {
+    if (isActive) return;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  }, [isActive]);
 
   const goToTV = useCallback(() => navigate("/tv"), [navigate]);
 
@@ -229,12 +282,14 @@ export default function GlobalBroadcastPlayer() {
   const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
 
   // ── Compute iframe position ──────────────────────────────────────────────────
-  // ONE iframe, never unmounted. Position/size changes via CSS only.
   const slotVisible =
     isOnViewerTV &&
     slotRect !== null &&
     slotRect.top >= -10 &&
     slotRect.top + slotRect.height <= window.innerHeight + 10;
+
+  // Whether we're in mini-player mode (not slot, not admin)
+  const isMiniMode = !slotVisible && !isOnAdminTV;
 
   // Iframe container geometry
   const iframeStyle: React.CSSProperties = isOnAdminTV
@@ -252,7 +307,7 @@ export default function GlobalBroadcastPlayer() {
         overflow: "hidden",
       }
     : {
-        // Mini player — left-positioned so drag works
+        // Mini player
         position: "fixed",
         bottom:  MINI_BOT + "px",
         left:    (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0)) + "px",
@@ -264,6 +319,7 @@ export default function GlobalBroadcastPlayer() {
         overflow: "hidden",
         boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
         border: "1.5px solid rgba(139,92,246,0.5)",
+        // touchAction none on the wrapper so our drag handlers take priority
         touchAction: "none",
       };
 
@@ -279,7 +335,11 @@ export default function GlobalBroadcastPlayer() {
               autoPlay
               playsInline
               className="w-full h-full object-contain"
-              style={{ borderRadius: "12px" }}
+              style={{
+                borderRadius: "12px",
+                // Mini mode: disable pointer events so overlay inside can receive touches
+                pointerEvents: isMiniMode ? "none" : "auto",
+              }}
             />
           ) : (
             <iframe
@@ -289,7 +349,15 @@ export default function GlobalBroadcastPlayer() {
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen
               title={bs.programTitle ?? "Flexa TV"}
-              style={{ border: "none", borderRadius: "12px" }}
+              style={{
+                border: "none",
+                borderRadius: "12px",
+                // KEY FIX: iOS Safari iframes steal ALL touch events from overlaying
+                // elements regardless of z-index. Disabling pointer events on the
+                // iframe in mini mode lets our overlay reliably receive touches.
+                // In slot/fullscreen mode the iframe needs its own controls.
+                pointerEvents: isMiniMode ? "none" : "auto",
+              }}
             />
           )
         ) : (
@@ -302,7 +370,7 @@ export default function GlobalBroadcastPlayer() {
         {bs.state === "paused" && !isOnAdminTV && (slotVisible || !isOnViewerTV) && (
           <div
             className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 gap-3"
-            style={{ borderRadius: "12px" }}
+            style={{ borderRadius: "12px", pointerEvents: "none" }}
           >
             <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-16 h-16 object-contain opacity-80" />
             <div className="flex items-center gap-2 text-white">
@@ -311,9 +379,147 @@ export default function GlobalBroadcastPlayer() {
             </div>
           </div>
         )}
+
+        {/* ── Mini-player controls overlay — INSIDE wrapperRef ─────────────────
+            Being inside the same div as the iframe puts us in the same stacking
+            context. Later in DOM = on top. Since the iframe has pointer-events:none
+            in mini mode, ALL touches land here instead of being swallowed. */}
+        {isMiniMode && (
+          <div
+            className="absolute inset-0"
+            style={{ zIndex: 10, borderRadius: "14px", touchAction: "none" }}
+          >
+            {/* ── Body area: drag + tap to open TV ──────────────────────────── */}
+            <div
+              className="absolute inset-x-0 bottom-0 cursor-pointer"
+              style={{ top: 34 }}
+              onTouchStart={handleMiniTouchStart}
+              onTouchMove={handleMiniTouchMove}
+              onTouchEnd={handleMiniTouchEnd}
+              onClick={() => {
+                if (wasDragRef.current) { wasDragRef.current = false; return; }
+                goToTV();
+              }}
+            />
+
+            {/* ── Header strip: LIVE badge · title · buttons ──────────────── */}
+            <div
+              className="absolute top-0 inset-x-0 flex items-center gap-1 px-2"
+              style={{
+                height: 34,
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)",
+                borderRadius: "14px 14px 0 0",
+              }}
+            >
+              {/* Left: LIVE + title (draggable + tap-to-TV) */}
+              <div
+                className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
+                onTouchStart={handleMiniTouchStart}
+                onTouchMove={handleMiniTouchMove}
+                onTouchEnd={handleMiniTouchEnd}
+                onClick={() => {
+                  if (wasDragRef.current) { wasDragRef.current = false; return; }
+                  ytUnmuteAndPlay(iframeRef.current);
+                  setIsMuted(false);
+                  goToTV();
+                }}
+              >
+                <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
+                  <Radio size={7} /> LIVE
+                </span>
+                <p className="text-white text-[10px] font-semibold truncate">
+                  {bs.programTitle ?? "Flexa TV"}
+                </p>
+              </div>
+
+              {/* Right: unmute · expand · close
+                  These are siblings of the drag div (not children), so their
+                  onClick fires independently. onPointerDown stopPropagation
+                  prevents the drag handler from seeing the touch first. */}
+              <div className="flex items-center gap-1 shrink-0">
+                {/* 🔊 Unmute / sound toggle */}
+                <button
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault(); // block synthesized click — we handle it here
+                    initBackgroundAudio();
+                    ytUnmuteAndPlay(iframeRef.current);
+                    setIsMuted(false);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {           // fallback for desktop/mouse
+                    e.stopPropagation();
+                    initBackgroundAudio();
+                    ytUnmuteAndPlay(iframeRef.current);
+                    setIsMuted(false);
+                  }}
+                  style={{
+                    width: 30, height: 30,
+                    borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isMuted ? "rgba(139,92,246,0.9)" : "rgba(0,0,0,0.7)",
+                    color: "white",
+                    border: isMuted ? "1.5px solid rgba(255,255,255,0.6)" : "none",
+                    flexShrink: 0,
+                  }}
+                  title={isMuted ? "Aktive son" : "Son aktif"}
+                >
+                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                </button>
+
+                {/* ↗ Expand to /tv */}
+                <button
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    goToTV();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); goToTV(); }}
+                  style={{
+                    width: 30, height: 30,
+                    borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(0,0,0,0.7)",
+                    color: "white",
+                    flexShrink: 0,
+                  }}
+                  title="Ouvri Flexa TV"
+                >
+                  <Maximize2 size={12} />
+                </button>
+
+                {/* ✕ Dismiss — primary fix target */}
+                <button
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault(); // critical: prevents re-show from synthesized click
+                    setDismissed(true);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                  style={{
+                    width: 30, height: 30,
+                    borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(180,0,0,0.75)",
+                    color: "white",
+                    flexShrink: 0,
+                  }}
+                  title="Fèmen"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ── Slot-mode UI overlay (controls layered on top of iframe) ─────────── */}
+      {/* ── Slot-mode UI overlay (controls layered on top of iframe on /tv) ── */}
       {slotVisible && !isOnAdminTV && (
         <div
           style={{
@@ -355,14 +561,22 @@ export default function GlobalBroadcastPlayer() {
           </div>
 
           {/* 🔊 Tap-to-unmute overlay — centered, pulsing, disappears after first tap.
-               iOS forces mute on autoplay; this is the ONE required user gesture. */}
+               muted=1 in YT_PARAMS means this is a YouTube-level mute (not browser-enforced),
+               so postMessage unMute reliably works when called inside a user-gesture handler. */}
           {isMuted && (
             <div
               className="absolute inset-0 flex items-center justify-center pointer-events-auto"
               style={{ zIndex: 20, background: "rgba(0,0,0,0.35)" }}
             >
               <button
+                onTouchEnd={(e) => {
+                  e.preventDefault();
+                  initBackgroundAudio();
+                  ytUnmuteAndPlay(iframeRef.current);
+                  setIsMuted(false);
+                }}
                 onClick={() => {
+                  initBackgroundAudio();
                   ytUnmuteAndPlay(iframeRef.current);
                   setIsMuted(false);
                 }}
@@ -381,89 +595,6 @@ export default function GlobalBroadcastPlayer() {
               </button>
             </div>
           )}
-          {/* ↓ Bottom intentionally empty — native seek bar lives here */}
-        </div>
-      )}
-
-      {/* ── Mini-player header overlay ────────────────────────────────────────── */}
-      {!slotVisible && !isOnAdminTV && (
-        <div
-          ref={miniOverlayRef}
-          style={{
-            position: "fixed",
-            bottom:  MINI_BOT + "px",
-            left:    (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0)) + "px",
-            width:   MINI_W + "px",
-            height:  MINI_H + "px",
-            zIndex: 9001,
-            pointerEvents: "none",
-            borderRadius: "14px",
-            touchAction: "none",
-          }}
-        >
-          {/* Drag + click area — covers only the BODY (below header strip) so buttons aren't blocked */}
-          <div
-            className="absolute inset-x-0 bottom-0 cursor-pointer pointer-events-auto"
-            style={{ top: 30 }}
-            onTouchStart={handleMiniTouchStart}
-            onTouchMove={handleMiniTouchMove}
-            onTouchEnd={handleMiniTouchEnd}
-            onClick={() => {
-              if (wasDragRef.current) { wasDragRef.current = false; return; }
-              ytUnmuteAndPlay(iframeRef.current);
-              setIsMuted(false);
-              goToTV();
-            }}
-          />
-
-          {/* Header strip — sits ABOVE drag area in DOM (later = higher z-order) */}
-          <div
-            className="absolute top-0 inset-x-0 flex items-center justify-between px-2 bg-gradient-to-b from-black/80 to-transparent pointer-events-none"
-            style={{ height: 30, zIndex: 5 }}
-          >
-            {/* Left: LIVE badge + title — tap this area navigates to TV */}
-            <div
-              className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer pointer-events-auto"
-              onTouchStart={handleMiniTouchStart}
-              onTouchMove={handleMiniTouchMove}
-              onTouchEnd={handleMiniTouchEnd}
-              onClick={() => {
-                if (wasDragRef.current) { wasDragRef.current = false; return; }
-                ytUnmuteAndPlay(iframeRef.current);
-                setIsMuted(false);
-                goToTV();
-              }}
-            >
-              <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
-                <Radio size={7} /> LIVE
-              </span>
-              <p className="text-white text-[10px] font-semibold truncate max-w-[110px]">
-                {bs.programTitle ?? "Flexa TV"}
-              </p>
-            </div>
-
-            {/* Right: action buttons — separate from drag, always tappable */}
-            <div className="flex gap-1.5 shrink-0 pointer-events-auto" style={{ zIndex: 10 }}>
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); goToTV(); }}
-                className="bg-black/70 active:bg-violet-700 rounded-full text-white transition-colors"
-                style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Ouvri Flexa TV"
-              >
-                <Maximize2 size={11} />
-              </button>
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-                className="bg-black/70 active:bg-red-600 rounded-full text-white transition-colors"
-                style={{ width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                title="Fèmen"
-              >
-                <X size={11} />
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </>

@@ -812,30 +812,7 @@ export default function FlexaTV() {
   const bs = useBroadcast();
   const broadcastActive = bs.state === "playing" || bs.state === "paused";
 
-  // ── Intercept browser / iOS back-swipe while broadcast is active ─────────────
-  // Pushes a dummy history entry so the first back-swipe is caught here (not
-  // leaving the SPA). We then navigate to "/" so GlobalBroadcastPlayer switches
-  // from slot mode to mini-player mode and keeps playing.
-  useEffect(() => {
-    if (!broadcastActive || bs.dismissed) return;
-
-    // Push a sentinel so there is always one entry to "absorb" before leaving /tv
-    window.history.pushState({ flextv: true }, "", window.location.href);
-
-    const onPopState = (e: PopStateEvent) => {
-      // Prevent the browser from navigating away; instead, go home so mini-player shows
-      if (e.state?.flextv !== false) {
-        navigate("/");
-      }
-    };
-
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
-  // Only set up once when broadcast becomes active on this page
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [broadcastActive, bs.dismissed]);
+  // (popstate intercept removed — Layout.tsx handleBack navigates to "/" on /tv)
 
   // ── Suppress broadcast mini-player while a film is playing in VideoPlayer ────
   // When the user selects a film, the broadcast goes to mini mode and competes

@@ -104,12 +104,35 @@ export default function GlobalBroadcastPlayer() {
   // isMuted: true until user taps 🔊 (iOS forces mute on autoplay)
   const [isMuted, setIsMuted]       = useState(true);
 
-  // ── Mini-player horizontal drag ──────────────────────────────────────────────
+  // ── Grace period — mini-player stays 10 s after broadcast stops ─────────────
+  // Prevents flicker from 5-second poll glitches where stopped/playing bounces.
+  const [stableActive, setStableActive] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isActive = bs.state === "playing" || bs.state === "paused";
+
+  useEffect(() => {
+    if (isActive) {
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+      setStableActive(true);
+    } else {
+      hideTimerRef.current = setTimeout(() => setStableActive(false), 10_000);
+    }
+    return () => {
+      if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+    };
+  }, [isActive]);
+
+  // ── Mini-player 2-axis drag ──────────────────────────────────────────────────
   const [miniLeft, setMiniLeft]     = useState<number | null>(null);
-  const miniLeftRef                 = useRef<number | null>(null);
+  const [miniTop,  setMiniTop]      = useState<number | null>(null);
+  const miniLeftRef = useRef<number | null>(null);
+  const miniTopRef  = useRef<number | null>(null);
   // drag tracking — all mutable, no re-render during move
   const dragStartX    = useRef(0);
+  const dragStartY    = useRef(0);
   const dragStartLeft = useRef(0);
+  const dragStartTop  = useRef(0);
   const dragging      = useRef(false);
   const wasDragRef    = useRef(false); // survives into onClick after touchEnd
 
@@ -123,11 +146,15 @@ export default function GlobalBroadcastPlayer() {
 
   const isOnViewerTV = location === "/tv";
   const isOnAdminTV  = location.startsWith("/admin");
-  const isActive     = bs.state === "playing" || bs.state === "paused";
 
   const resolvedMiniLeft = () =>
     miniLeftRef.current ??
     (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0);
+
+  // Default top = just above the bottom nav bar
+  const resolvedMiniTop = () =>
+    miniTopRef.current ??
+    (typeof window !== "undefined" ? window.innerHeight - MINI_BOT - MINI_H : 300);
 
   const applyLeft = useCallback((left: number) => {
     miniLeftRef.current = left;
@@ -137,32 +164,49 @@ export default function GlobalBroadcastPlayer() {
     }
   }, []);
 
+  const applyTop = useCallback((top: number) => {
+    miniTopRef.current = top;
+    if (wrapperRef.current) {
+      wrapperRef.current.style.top    = top + "px";
+      wrapperRef.current.style.bottom = "auto";
+    }
+  }, []);
+
   const handleMiniTouchStart = useCallback((e: React.TouchEvent) => {
     dragging.current   = false;
     wasDragRef.current = false;
     dragStartX.current    = e.touches[0].clientX;
+    dragStartY.current    = e.touches[0].clientY;
     dragStartLeft.current = resolvedMiniLeft();
+    dragStartTop.current  = resolvedMiniTop();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleMiniTouchMove = useCallback((e: React.TouchEvent) => {
     const dx = e.touches[0].clientX - dragStartX.current;
-    if (!dragging.current && Math.abs(dx) > 5) dragging.current = true;
+    const dy = e.touches[0].clientY - dragStartY.current;
+    if (!dragging.current && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) dragging.current = true;
     if (!dragging.current) return;
-    const w       = typeof window !== "undefined" ? window.innerWidth : 400;
+    const w = typeof window !== "undefined" ? window.innerWidth  : 400;
+    const h = typeof window !== "undefined" ? window.innerHeight : 800;
     const maxLeft = w - MINI_MARGIN - MINI_W;
+    const minTop  = 60;               // below the sticky header
+    const maxTop  = h - MINI_H - 80; // above bottom nav
     applyLeft(Math.max(MINI_MARGIN, Math.min(maxLeft, dragStartLeft.current + dx)));
-  }, [applyLeft]);
+    applyTop(Math.max(minTop, Math.min(maxTop, dragStartTop.current + dy)));
+  }, [applyLeft, applyTop]);
 
   const handleMiniTouchEnd = useCallback((_e: React.TouchEvent) => {
     if (!dragging.current) return;
     wasDragRef.current = true; // tell onClick to skip navigation
     dragging.current   = false;
-    // Snap to nearest edge
+    // Snap left/right to nearest edge; keep vertical position as-is
     const w       = typeof window !== "undefined" ? window.innerWidth : 400;
     const cur     = miniLeftRef.current ?? (w - MINI_MARGIN - MINI_W);
     const snapped = cur + MINI_W / 2 < w / 2 ? MINI_MARGIN : w - MINI_MARGIN - MINI_W;
     applyLeft(snapped);
     setMiniLeft(snapped);
+    setMiniTop(miniTopRef.current);
   }, [applyLeft]);
 
   // ── Slot tracking: poll every 200ms ─────────────────────────────────────────
@@ -277,7 +321,8 @@ export default function GlobalBroadcastPlayer() {
   }, [isFullscreen]);
 
   // ── Nothing to render ────────────────────────────────────────────────────────
-  if (!isActive || dismissed) return null;
+  // Use stableActive (10-s grace) so a 5-second poll glitch doesn't flash the mini-player off
+  if (!stableActive || dismissed) return null;
 
   const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
 
@@ -307,10 +352,10 @@ export default function GlobalBroadcastPlayer() {
         overflow: "hidden",
       }
     : {
-        // Mini player
+        // Mini player — top/left so vertical drag works (bottom-anchored can't move up)
         position: "fixed",
-        bottom:  MINI_BOT + "px",
-        left:    (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0)) + "px",
+        top:  (miniTop  ?? (typeof window !== "undefined" ? window.innerHeight - MINI_BOT - MINI_H : 300)) + "px",
+        left: (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth  - MINI_MARGIN - MINI_W : 0)) + "px",
         width:   MINI_W + "px",
         height:  MINI_H + "px",
         zIndex: 9000,

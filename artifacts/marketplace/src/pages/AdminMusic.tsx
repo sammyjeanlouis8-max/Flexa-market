@@ -696,10 +696,9 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
     setSearching(s => ({...s, jamendo:true}));
     try {
       const q2 = query.trim() || "music";
-      const r = await fetch(`https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&limit=20&offset=0&search=${encodeURIComponent(q2)}&audioformat=mp31&include=musicinfo&imagesize=200`);
-      const d = await r.json();
+      const d = await adminFetch(`/api/admin/music/jamendo/search?q=${encodeURIComponent(q2)}&limit=20`);
       setResults(rv => ({...rv, jamendo: d.results ?? []}));
-    } catch { alert("Erè koneksyon Jamendo"); }
+    } catch (e:any) { alert(e.message || "Erè koneksyon Jamendo"); }
     finally { setSearching(s => ({...s, jamendo:false})); }
   };
 
@@ -721,31 +720,10 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
 
   const bulkImportJamendo = async (count: number) => {
     setBulkLoading(true);
-    let imported2 = 0;
-    const perPage = 20;
-    const pages = Math.ceil(count/perPage);
     try {
-      for (let p = 0; p < pages; p++) {
-        const r = await fetch(`https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&limit=${perPage}&offset=${p*perPage}&orderby=popularity_total&audioformat=mp31&imagesize=200`);
-        const d = await r.json();
-        const tracks: JamendoTrack[] = d.results ?? [];
-        for (const t of tracks) {
-          if (imported2 >= count) break;
-          if (!t.audio) continue;
-          try {
-            await adminFetch("/api/admin/music/import","POST",{
-              title:t.name, artist:t.artist_name, album:t.album_name||undefined,
-              audio_url:t.audio, cover_url:t.image||undefined,
-              duration_seconds:t.duration?String(t.duration):undefined,
-              license:t.license_ccurl||"creative_commons", tags:t.tags||undefined, source:"jamendo",
-            });
-            imported2++;
-          } catch { /* skip dupes */ }
-        }
-        if (tracks.length < perPage) break;
-      }
+      const d = await adminFetch("/api/admin/music/jamendo/bulk","POST",{ count });
       onImportDone();
-      alert(`✅ ${imported2} chante importé`);
+      alert(`✅ ${d.imported} chante importé${d.skipped ? ` (${d.skipped} skip)` : ""}`);
     } catch (e:any) { alert(e.message||"Erè bulk import"); }
     finally { setBulkLoading(false); }
   };

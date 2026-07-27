@@ -199,7 +199,7 @@ function toClientTrack(row: Record<string, unknown>) {
 }
 
 // GET /api/music — list tracks
-router.get("/api/music", async (req, res) => {
+router.get("/music", async (req, res) => {
   try {
     const { genre, artist, search, featured, limit = "50", offset = "0" } = req.query as Record<string, string>;
     let where = "WHERE is_active = TRUE";
@@ -224,7 +224,7 @@ router.get("/api/music", async (req, res) => {
 
 // GET /api/music/diagnose — Wasabi preflight + env check (no auth, safe — redacts secrets)
 // ⚠️ MUST be registered before /:id or Express routes "diagnose" as an id
-router.get("/api/music/diagnose", async (_req, res) => {
+router.get("/music/diagnose", async (_req, res) => {
   const start = Date.now();
   const env: Record<string, string> = {};
   for (const v of ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT","WASABI_PUBLIC"]) {
@@ -238,7 +238,7 @@ router.get("/api/music/diagnose", async (_req, res) => {
 });
 
 // GET /api/music/:id
-router.get("/api/music/:id", async (req, res) => {
+router.get("/music/:id", async (req, res) => {
   try {
     const [row] = await q(`SELECT * FROM music_tracks WHERE id = ${Number(req.params.id)}`);
     if (!row) return res.status(404).json({ error: "Not found" });
@@ -248,7 +248,7 @@ router.get("/api/music/:id", async (req, res) => {
 });
 
 // POST /api/music/impression — log ad impression (fraud-filtered)
-router.post("/api/music/impression", async (req, res) => {
+router.post("/music/impression", async (req, res) => {
   try {
     const { trackId, sessionId, listeningSeconds } = req.body as {
       trackId: number; sessionId: string; listeningSeconds: number;
@@ -304,7 +304,7 @@ router.post("/api/music/impression", async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/music/artist/stats — per-track stats for authenticated artist
-router.get("/api/music/artist/stats", requireAuth, async (req: any, res) => {
+router.get("/music/artist/stats", requireAuth, async (req: any, res) => {
   try {
     const userId = req.user.id;
 
@@ -361,7 +361,7 @@ router.get("/api/music/artist/stats", requireAuth, async (req: any, res) => {
 });
 
 // GET /api/music/artist/earnings — payout history
-router.get("/api/music/artist/earnings", requireAuth, async (req: any, res) => {
+router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const rows = await q(
@@ -401,7 +401,7 @@ router.get("/api/music/artist/earnings", requireAuth, async (req: any, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // GET /api/admin/music — all tracks (with impression stats)
-router.get("/api/admin/music", requireAdmin, async (_req, res) => {
+router.get("/admin/music", requireAdmin, async (_req, res) => {
   try {
     const rows = await q(
       `SELECT mt.*,
@@ -421,7 +421,7 @@ router.get("/api/admin/music", requireAdmin, async (_req, res) => {
 });
 
 // GET /api/admin/music/stats — platform-wide impression stats
-router.get("/api/admin/music/stats", requireAdmin, async (_req, res) => {
+router.get("/admin/music/stats", requireAdmin, async (_req, res) => {
   try {
     const [summary] = await q(
       `SELECT
@@ -447,7 +447,7 @@ router.get("/api/admin/music/stats", requireAdmin, async (_req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // POST /api/music/upload — any logged-in user can submit a track for review
-router.post("/api/music/upload", requireAuth, upload.fields([
+router.post("/music/upload", requireAuth, upload.fields([
   { name: "audio", maxCount: 1 }, { name: "cover", maxCount: 1 },
 ]), async (req: any, res) => {
   const uploadId = `upload-${Date.now()}-${req.user?.id ?? "anon"}`;
@@ -564,7 +564,7 @@ router.post("/api/music/upload", requireAuth, upload.fields([
 });
 
 // POST /api/admin/music — create track
-router.post("/api/admin/music", requireAdmin, upload.fields([
+router.post("/admin/music", requireAdmin, upload.fields([
   { name: "audio", maxCount: 1 }, { name: "cover", maxCount: 1 },
 ]), async (req: any, res) => {
   try {
@@ -617,7 +617,7 @@ router.post("/api/admin/music", requireAdmin, upload.fields([
 });
 
 // PUT /api/admin/music/:id — update
-router.put("/api/admin/music/:id", requireAdmin, upload.fields([
+router.put("/admin/music/:id", requireAdmin, upload.fields([
   { name: "audio", maxCount: 1 }, { name: "cover", maxCount: 1 },
 ]), async (req: any, res) => {
   try {
@@ -680,7 +680,7 @@ router.put("/api/admin/music/:id", requireAdmin, upload.fields([
 });
 
 // DELETE /api/admin/music/:id — removes DB row and Wasabi objects
-router.delete("/api/admin/music/:id", requireAdmin, async (req, res) => {
+router.delete("/admin/music/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const [row] = await q(`SELECT storage_key, cover_storage_key, audio_url, cover_url FROM music_tracks WHERE id = ${id}`);
@@ -696,7 +696,7 @@ router.delete("/api/admin/music/:id", requireAdmin, async (req, res) => {
 });
 
 // GET /api/admin/music/storage-stats
-router.get("/api/admin/music/storage-stats", requireAdmin, async (_req, res) => {
+router.get("/admin/music/storage-stats", requireAdmin, async (_req, res) => {
   try {
     const [stats] = await q<{
       track_count: string; total_duration: string; avg_duration: string; pending_count: string;
@@ -728,7 +728,7 @@ router.get("/api/admin/music/storage-stats", requireAdmin, async (_req, res) => 
 });
 
 // POST /api/admin/music/bulk-action
-router.post("/api/admin/music/bulk-action", requireAdmin, async (req, res) => {
+router.post("/admin/music/bulk-action", requireAdmin, async (req, res) => {
   try {
     const { action, ids } = req.body as { action: string; ids: number[] };
     if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "ids required" });
@@ -757,8 +757,66 @@ router.post("/api/admin/music/bulk-action", requireAdmin, async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// GET /api/admin/music/jamendo/search?q=...&limit=20 — server-side Jamendo search proxy (avoids browser CORS)
+router.get("/admin/music/jamendo/search", requireAdmin, async (req, res) => {
+  try {
+    const q2   = String(req.query.q   ?? "music").trim() || "music";
+    const lim  = Math.min(Number(req.query.limit ?? 20), 50);
+    const url  = `https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&limit=${lim}&offset=0&search=${encodeURIComponent(q2)}&audioformat=mp31&include=musicinfo&imagesize=200`;
+    const resp = await fetch(url);
+    if (!resp.ok) return res.status(502).json({ error: "Jamendo API error" });
+    const data = await resp.json();
+    res.json({ results: data.results ?? [] });
+  } catch (err: any) { res.status(502).json({ error: err?.message ?? "Jamendo unreachable" }); }
+});
+
+// POST /api/admin/music/jamendo/bulk — server-side bulk import from Jamendo (fetch + insert, no browser CORS)
+// body: { count: number }
+router.post("/admin/music/jamendo/bulk", requireAdmin, async (req: any, res) => {
+  const count   = Math.min(Number(req.body?.count ?? 100), 10000);
+  const perPage = 20;
+  const pages   = Math.ceil(count / perPage);
+  let   imported2 = 0;
+  let   skipped   = 0;
+  try {
+    for (let p = 0; p < pages; p++) {
+      const url  = `https://api.jamendo.com/v3.0/tracks/?client_id=b6747d04&limit=${perPage}&offset=${p * perPage}&orderby=popularity_total&audioformat=mp31&imagesize=200`;
+      const resp = await fetch(url);
+      if (!resp.ok) break;
+      const data  = await resp.json();
+      const tracks: Array<Record<string, unknown>> = data.results ?? [];
+      if (!tracks.length) break;
+      for (const t of tracks) {
+        if (imported2 >= count) break;
+        if (!t.audio) { skipped++; continue; }
+        try {
+          await q(
+            `INSERT INTO music_tracks
+               (title, artist, album, audio_url, cover_url, duration_seconds,
+                type, is_active, is_featured, license, tags, copyright_status, created_by)
+             VALUES
+               (${nullOr(String(t.name ?? "").trim())}, ${nullOr(String(t.artist_name ?? "").trim())},
+                ${nullOr(t.album_name ? String(t.album_name) : null)},
+                ${nullOr(String(t.audio))}, ${nullOr(t.image ? String(t.image) : null)},
+                ${nullOr(t.duration ? Number(t.duration) : null)},
+                'free', TRUE, FALSE,
+                ${nullOr(t.license_ccurl ? String(t.license_ccurl) : "creative_commons")},
+                ${nullOr(t.tags ? String(t.tags) : null)},
+                'creative_commons', ${nullOr(req.user?.id)})
+             ON CONFLICT DO NOTHING`
+          );
+          imported2++;
+        } catch { skipped++; }
+      }
+      if (tracks.length < perPage) break;
+    }
+    logger.info({ imported2, skipped }, "Jamendo bulk import complete");
+    res.json({ imported: imported2, skipped });
+  } catch (err: any) { res.status(500).json({ error: err?.message, imported: imported2 }); }
+});
+
 // POST /api/admin/music/import — save track imported from a free music API
-router.post("/api/admin/music/import", requireAdmin, async (req: any, res) => {
+router.post("/admin/music/import", requireAdmin, async (req: any, res) => {
   try {
     const {
       title, artist, album, genre, audio_url, cover_url,
@@ -789,7 +847,7 @@ router.post("/api/admin/music/import", requireAdmin, async (req: any, res) => {
 });
 
 // PUT /api/admin/music/:id/monetization
-router.put("/api/admin/music/:id/monetization", requireAdmin, async (req, res) => {
+router.put("/admin/music/:id/monetization", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { monetization_type, price_usd } = req.body as { monetization_type: string; price_usd?: number };
@@ -799,7 +857,7 @@ router.put("/api/admin/music/:id/monetization", requireAdmin, async (req, res) =
 });
 
 // PUT /api/admin/music/:id/copyright
-router.put("/api/admin/music/:id/copyright", requireAdmin, async (req, res) => {
+router.put("/admin/music/:id/copyright", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { copyright_status } = req.body as { copyright_status: string };
@@ -811,7 +869,7 @@ router.put("/api/admin/music/:id/copyright", requireAdmin, async (req, res) => {
 // ── Playlists CRUD ─────────────────────────────────────────────────────────────
 
 // GET /api/admin/music/playlists
-router.get("/api/admin/music/playlists", requireAdmin, async (_req, res) => {
+router.get("/admin/music/playlists", requireAdmin, async (_req, res) => {
   try {
     const playlists = await q(`
       SELECT p.*, COUNT(pt.track_id)::int AS track_count
@@ -824,7 +882,7 @@ router.get("/api/admin/music/playlists", requireAdmin, async (_req, res) => {
 });
 
 // POST /api/admin/music/playlists
-router.post("/api/admin/music/playlists", requireAdmin, upload.fields([{ name: "cover", maxCount: 1 }]), async (req: any, res) => {
+router.post("/admin/music/playlists", requireAdmin, upload.fields([{ name: "cover", maxCount: 1 }]), async (req: any, res) => {
   try {
     const { title, description, is_featured = "false", is_trending = "false" } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: "title required" });
@@ -846,7 +904,7 @@ router.post("/api/admin/music/playlists", requireAdmin, upload.fields([{ name: "
 });
 
 // PUT /api/admin/music/playlists/:id
-router.put("/api/admin/music/playlists/:id", requireAdmin, async (req, res) => {
+router.put("/admin/music/playlists/:id", requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { title, description, is_featured, is_trending, track_ids } = req.body as {
@@ -872,7 +930,7 @@ router.put("/api/admin/music/playlists/:id", requireAdmin, async (req, res) => {
 });
 
 // DELETE /api/admin/music/playlists/:id
-router.delete("/api/admin/music/playlists/:id", requireAdmin, async (req, res) => {
+router.delete("/admin/music/playlists/:id", requireAdmin, async (req, res) => {
   try {
     await q(`DELETE FROM music_playlists WHERE id = ${Number(req.params.id)}`);
     res.json({ ok: true });
@@ -880,7 +938,7 @@ router.delete("/api/admin/music/playlists/:id", requireAdmin, async (req, res) =
 });
 
 // GET /api/admin/music/artists — aggregate artist stats
-router.get("/api/admin/music/artists", requireAdmin, async (_req, res) => {
+router.get("/admin/music/artists", requireAdmin, async (_req, res) => {
   try {
     const artists = await q(`
       SELECT
@@ -906,7 +964,7 @@ router.get("/api/admin/music/artists", requireAdmin, async (_req, res) => {
 });
 
 // PUT /api/admin/music/artists/:artistName/verify
-router.put("/api/admin/music/artists/verify", requireAdmin, async (req, res) => {
+router.put("/admin/music/artists/verify", requireAdmin, async (req, res) => {
   try {
     const { artist, is_verified } = req.body as { artist: string; is_verified: boolean };
     await q(`UPDATE music_tracks SET is_artist_verified = ${!!is_verified} WHERE artist = ${nullOr(artist)}`);
@@ -933,7 +991,7 @@ router.put("/api/admin/music/artists/verify", requireAdmin, async (req, res) => 
 //   /api/music/stream/music/audio/abc123.mp3
 //   → https://s3.us-east-1.wasabisys.com/flexa-music/music/audio/abc123.mp3
 //
-router.get("/api/music/stream/*key", async (req, res) => {
+router.get("/music/stream/*key", async (req, res) => {
   try {
     const key = (req.params as any).key as string;
     if (!key) return res.status(400).json({ error: "Missing storage key" });
@@ -955,7 +1013,7 @@ router.get("/api/music/stream/*key", async (req, res) => {
 
 // GET /api/music/stream-url/:trackId — returns the current stream URL for a track
 // Useful for mobile/native players that need to set the URL before playback.
-router.get("/api/music/stream-url/:trackId", async (req, res) => {
+router.get("/music/stream-url/:trackId", async (req, res) => {
   try {
     const [track] = await q(`SELECT storage_key, audio_url FROM music_tracks WHERE id = ${Number(req.params.trackId)} AND is_active = TRUE`);
     if (!track) return res.status(404).json({ error: "Track not found" });

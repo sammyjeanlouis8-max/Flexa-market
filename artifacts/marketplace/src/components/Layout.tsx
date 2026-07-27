@@ -693,6 +693,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/listings\/[^/]+/,
     /^\/tv(\/|$)/,
     /^\/admin\/tv(\/|$)/,
+    /^\/admin\/music(\/|$)/,
     /^\/music(\/|$)/,
     /^\/music\/upload$/,
   ].some(rx => rx.test(location));

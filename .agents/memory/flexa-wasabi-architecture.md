@@ -1,42 +1,32 @@
 ---
-name: Flexa Music — Wasabi Storage Architecture
-description: Permanent Wasabi S3 storage rules for all music audio and cover files. Never change this.
+name: Flexa music storage architecture
+description: How music audio and cover files are stored and served; direct Cloudinary upload pattern
 ---
 
-# Flexa Music — Wasabi S3 Architecture (permanent)
+## Storage backends
+- **Cloudinary** — all new music audio + covers use direct browser→Cloudinary upload (`cld:` key prefix)
+- **Wasabi** — legacy only; new uploads no longer go through it (S3 SDK v3 signature mismatch with DO environment)
+- `wasabi.ts` still handles `deleteMusicFile`, `getStreamUrl`, `extractKey` for legacy tracks
 
-**Why:** User explicitly declared this the permanent production architecture. Must never be changed unless explicitly requested.
+## Key prefix convention
+- `cld:<public_id>` — Cloudinary asset; `toClientTrack` returns `audio_url` directly (no proxy)
+- Wasabi keys (no prefix) — routed through `/api/music/stream/{key}` signing proxy
 
-## Rules
-- Audio files live ONLY in Wasabi bucket `flexa-music`, region `us-east-1`, endpoint `https://s3.us-east-1.wasabisys.com`.
-- Never store audio on local filesystem, Replit Object Storage, DigitalOcean, or GitHub.
-- PostgreSQL stores only metadata + URLs. Wasabi stores every audio/cover file permanently.
+## Direct upload flow (browser → Cloudinary, no DO server timeout)
+1. `GET /api/music/upload-signature` — server returns Cloudinary signed params
+2. Browser `XHR POST` audio directly to `https://api.cloudinary.com/v1_1/{cloud}/video/upload`
+3. Browser `fetch POST` cover directly to `https://api.cloudinary.com/v1_1/{cloud}/image/upload`
+4. `POST /api/music/register` — server does DB insert only (< 1s, no timeout risk)
 
-## Env vars (set in Secrets, not dev)
-- `WASABI_ACCESS_KEY`, `WASABI_SECRET_KEY`, `WASABI_BUCKET_NAME`, `WASABI_REGION`, `WASABI_ENDPOINT`
-- In dev: server warns "Wasabi storage NOT configured" — expected, non-fatal.
+**Why:** DigitalOcean App Platform kills TCP connections at ~30s. A 10 MB audio file takes 40–60s to proxy through the server to Cloudinary.
 
-## Central module
-`artifacts/api-server/src/lib/wasabi.ts`
-- `uploadMusicAudio(buffer, mime, originalName?)` → `{ key, url }` — stores under `music/audio/uuid.ext`
-- `uploadMusicCover(buffer, mime, originalName?)` → `{ key, url }` — stores under `music/covers/uuid.ext`
-- `deleteMusicFile(key)` — soft-fails if key missing
-- `getStreamUrl(key)` — public URL (public bucket) or signed URL (private bucket, 1-hr TTL)
-- `getPublicUrl(key)` — direct URL always
-- `extractKey(urlOrKey)` — strips endpoint+bucket prefix to get bare key
-- `isConfigured()` — checks env vars
-- Auto-detects bucket visibility once on startup (cached); override with `WASABI_PUBLIC=true|false`
+## Critical: route ordering in music.ts
+`GET /music/upload-signature` MUST be registered BEFORE `GET /music/:id`.
+If placed after, Express matches the wildcard first → `Number("upload-signature")` = NaN → DB query crashes.
 
-## DB columns
-`music_tracks` has `storage_key TEXT` (audio Wasabi key) and `cover_storage_key TEXT`.
-Always populate both when uploading. Use them for deletes/updates instead of parsing `audio_url`.
+**Rule:** Any named GET route under `/music/` must come before the `router.get("/music/:id", ...)` wildcard.
+Same applies to `/admin/music/` — specific routes like `/admin/music/storage-stats` must precede `/admin/music/:id`.
 
-## Streaming
-`GET /api/music/stream/*key` — 302/307 redirect to Wasabi URL; browser handles Range natively.
-`GET /api/music/stream-url/:trackId` — returns `{ url, key }` for mobile/native players.
-
-## Supported audio formats
-MP3, WAV, FLAC, AAC, M4A (and OGG/WebM). Max file size: 500 MB.
-
-## How to apply
-Any future feature touching music uploads, podcasts, albums, artists, or audio MUST import from `wasabi.ts`. Do NOT use `objectStorage` (Replit GCS) or any other storage for audio files.
+## Admin uploads auto-approved
+Tracks inserted by admin users get `is_active = TRUE` immediately.
+Non-admin artist uploads get `is_active = FALSE` (pending review queue).

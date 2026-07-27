@@ -244,6 +244,33 @@ router.get("/music/diagnose", async (_req, res) => {
   res.json({ timestamp: new Date().toISOString(), durationMs: Date.now() - start, env, wasabi: preflight });
 });
 
+// GET /api/music/upload-signature — MUST be before /music/:id to avoid NaN wildcard match
+router.get("/music/upload-signature", requireAuth, (req, res) => {
+  const apiKey    = process.env["CLOUDINARY_API_KEY"];
+  const apiSecret = process.env["CLOUDINARY_API_SECRET"];
+  const cloudName = process.env["CLOUDINARY_CLOUD_NAME"]?.replace(/-/g, "") || "dvkbgodbk";
+
+  if (!apiKey || !apiSecret) {
+    return res.status(503).json({ error: "Cloudinary not configured" });
+  }
+
+  const timestamp = Math.round(Date.now() / 1000);
+
+  const audioParamStr = `folder=flexa-music/audio&timestamp=${timestamp}`;
+  const coverParamStr = `folder=flexa-music/covers&format=jpg&timestamp=${timestamp}`;
+
+  const audioSig = createHash("sha1").update(audioParamStr + apiSecret).digest("hex");
+  const coverSig = createHash("sha1").update(coverParamStr + apiSecret).digest("hex");
+
+  res.json({
+    cloudName,
+    apiKey,
+    timestamp,
+    audio: { folder: "flexa-music/audio", signature: audioSig },
+    cover: { folder: "flexa-music/covers", signature: coverSig, format: "jpg" },
+  });
+});
+
 // GET /api/music/:id
 router.get("/music/:id", async (req, res) => {
   try {

@@ -2028,6 +2028,49 @@ export async function runStartupMigrations(): Promise<void> {
     END $$`,
   });
 
+  // ── Wasabi storage keys ───────────────────────────────────────────────────
+  migrations.push({ name: "music_tracks.storage_key",       sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS storage_key TEXT" });
+  migrations.push({ name: "music_tracks.cover_storage_key", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS cover_storage_key TEXT" });
+
+  // ── Music admin dashboard: new columns + tables ───────────────────────────
+  migrations.push({ name: "music_tracks.license",           sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS license TEXT" });
+  migrations.push({ name: "music_tracks.monetization_type", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS monetization_type TEXT NOT NULL DEFAULT 'free'" });
+  migrations.push({ name: "music_tracks.price_usd",         sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS price_usd NUMERIC(10,2)" });
+  migrations.push({ name: "music_tracks.copyright_status",  sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS copyright_status TEXT NOT NULL DEFAULT 'verified'" });
+  migrations.push({ name: "music_tracks.download_count",    sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS download_count INTEGER NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.tags",              sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS tags TEXT" });
+  migrations.push({ name: "music_tracks.is_artist_verified",sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS is_artist_verified BOOLEAN NOT NULL DEFAULT FALSE" });
+  migrations.push({
+    name: "music_playlists.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_playlists (
+      id           SERIAL PRIMARY KEY,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      cover_url    TEXT,
+      is_featured  BOOLEAN NOT NULL DEFAULT FALSE,
+      is_trending  BOOLEAN NOT NULL DEFAULT FALSE,
+      created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "music_playlist_tracks.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_playlist_tracks (
+      id          SERIAL PRIMARY KEY,
+      playlist_id INTEGER NOT NULL REFERENCES music_playlists(id) ON DELETE CASCADE,
+      track_id    INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      position    INTEGER NOT NULL DEFAULT 0,
+      added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(playlist_id, track_id)
+    )`,
+  });
+  migrations.push({ name: "music_playlists.indexes", sql: `
+    CREATE INDEX IF NOT EXISTS music_playlists_featured_idx ON music_playlists(is_featured);
+    CREATE INDEX IF NOT EXISTS music_playlist_tracks_pl_idx ON music_playlist_tracks(playlist_id);
+    CREATE INDEX IF NOT EXISTS music_playlist_tracks_tr_idx ON music_playlist_tracks(track_id)
+  `});
+
   let applied = 0;
   let failed = 0;
 

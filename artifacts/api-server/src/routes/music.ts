@@ -17,14 +17,20 @@ import { db, promoWalletTable, walletTransactionsTable, notificationsTable } fro
 import { sql as dsql, eq } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/auth";
 import multer from "multer";
-import { ObjectStorageService } from "../lib/objectStorage";
-import { randomUUID } from "crypto";
+import {
+  uploadMusicAudio,
+  uploadMusicCover,
+  deleteMusicFile,
+  getStreamUrl,
+  extractKey,
+  isConfigured as wasabiConfigured,
+} from "../lib/wasabi";
 import { createHash } from "crypto";
 import { logger } from "../lib/logger";
 
 const router = Router();
-const objectStorage = new ObjectStorageService();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+// Support MP3, WAV, FLAC, AAC, M4A + images — up to 500 MB
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 const CPM_USD           = 1.00;   // $1 per 1 000 valid impressions
 const MIN_LISTEN_SEC    = 30;     // must listen ≥ 30 s for a valid impression
@@ -412,42 +418,35 @@ router.post("/api/music/upload", requireAuth, upload.fields([
     const { title, artist, album, genre, type = "free" } = req.body;
     if (!title?.trim())  return res.status(400).json({ error: "Titre obligatwa" });
     if (!artist?.trim()) return res.status(400).json({ error: "Non atis obligatwa" });
+    if (!req.files?.audio?.[0]) return res.status(400).json({ error: "Fichye odyo obligatwa" });
+    if (!wasabiConfigured()) return res.status(503).json({ error: "Sèvis stockaj pa konfigiré" });
 
-    if (!req.files?.audio?.[0]) {
-      return res.status(400).json({ error: "Fichye odyo obligatwa" });
-    }
-
-    let audioUrl: string | null = null;
-    let coverUrl: string | null = null;
-
-    // Upload audio
+    // Upload audio → Wasabi
     const audioFile = req.files.audio[0];
-    const audioKey  = `music/audio/${randomUUID()}-${audioFile.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    await objectStorage.uploadBuffer(audioFile.buffer, audioKey, audioFile.mimetype);
-    audioUrl = `/api/storage/objects/${audioKey}`;
+    const audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
 
-    // Upload cover if provided
+    // Upload cover → Wasabi (optional)
+    let coverResult: { key: string; url: string } | null = null;
     if (req.files?.cover?.[0]) {
       const coverFile = req.files.cover[0];
-      const coverKey  = `music/covers/${randomUUID()}-${coverFile.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      await objectStorage.uploadBuffer(coverFile.buffer, coverKey, coverFile.mimetype);
-      coverUrl = `/api/storage/objects/${coverKey}`;
+      coverResult = await uploadMusicCover(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
     }
 
     const [track] = await q(
       `INSERT INTO music_tracks
-         (title, artist, album, genre, audio_url, cover_url, type,
-          is_active, is_featured, created_by, artist_user_id)
+         (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
+          type, is_active, is_featured, created_by, artist_user_id)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
-          ${nullOr(audioUrl)}, ${nullOr(coverUrl)},
+          ${nullOr(audioResult.url)}, ${nullOr(coverResult?.url || null)},
+          ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
           ${nullOr(type)}, FALSE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
 
-    logger.info({ trackId: track.id, userId: req.user?.id, title }, "Artist track uploaded — pending review");
+    logger.info({ trackId: track.id, userId: req.user?.id, title, storageKey: audioResult.key }, "Artist track uploaded to Wasabi — pending review");
     res.status(201).json({ track, message: "Track soumèt — admin ap revize li anvan li parèt" });
   } catch (err: any) {
     logger.error({ err }, "Artist music upload error");
@@ -461,36 +460,47 @@ router.post("/api/admin/music", requireAdmin, upload.fields([
 ]), async (req: any, res) => {
   try {
     const { title, artist, album, genre, duration_seconds, type = "free",
-            is_featured = "false", audio_url, cover_url, artist_user_id } = req.body;
+            is_featured = "false", audio_url, cover_url, artist_user_id,
+            license, monetization_type, price_usd, copyright_status, tags } = req.body;
     if (!title?.trim())  return res.status(400).json({ error: "title required" });
     if (!artist?.trim()) return res.status(400).json({ error: "artist required" });
 
     let finalAudio = audio_url ?? null;
     let finalCover = cover_url ?? null;
+    let audioKey:  string | null = null;
+    let coverKey:  string | null = null;
 
     if (req.files?.audio?.[0]) {
-      const file = req.files.audio[0];
-      const key = `music/audio/${randomUUID()}-${file.originalname}`;
-      await objectStorage.uploadBuffer(file.buffer, key, file.mimetype);
-      finalAudio = `/api/storage/objects/${key}`;
+      const file   = req.files.audio[0];
+      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
+      finalAudio   = result.url;
+      audioKey     = result.key;
     }
     if (req.files?.cover?.[0]) {
-      const file = req.files.cover[0];
-      const key = `music/covers/${randomUUID()}-${file.originalname}`;
-      await objectStorage.uploadBuffer(file.buffer, key, file.mimetype);
-      finalCover = `/api/storage/objects/${key}`;
+      const file   = req.files.cover[0];
+      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
+      finalCover   = result.url;
+      coverKey     = result.key;
     }
 
-    const dur      = duration_seconds ? Number(duration_seconds) : null;
-    const featured = is_featured === "true" || is_featured === true;
+    const dur       = duration_seconds ? Number(duration_seconds) : null;
+    const featured  = is_featured === "true" || is_featured === true;
     const artUserId = artist_user_id ? Number(artist_user_id) : null;
 
     const [track] = await q(
-      `INSERT INTO music_tracks (title, artist, album, genre, audio_url, cover_url,
-                                  duration_seconds, type, is_featured, created_by, artist_user_id)
-       VALUES (${nullOr(title)}, ${nullOr(artist)}, ${nullOr(album)}, ${nullOr(genre)},
-               ${nullOr(finalAudio)}, ${nullOr(finalCover)}, ${nullOr(dur)},
-               '${type}', ${featured}, ${nullOr(req.user?.id)}, ${nullOr(artUserId)})
+      `INSERT INTO music_tracks
+         (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
+          duration_seconds, type, is_featured, created_by, artist_user_id,
+          license, monetization_type, price_usd, copyright_status, tags)
+       VALUES
+         (${nullOr(title)}, ${nullOr(artist)}, ${nullOr(album)}, ${nullOr(genre)},
+          ${nullOr(finalAudio)}, ${nullOr(finalCover)},
+          ${nullOr(audioKey)}, ${nullOr(coverKey)},
+          ${nullOr(dur)}, '${esc(type)}', ${featured},
+          ${nullOr(req.user?.id)}, ${nullOr(artUserId)},
+          ${nullOr(license||null)}, ${nullOr(monetization_type||'free')},
+          ${nullOr(price_usd ? Number(price_usd) : null)},
+          ${nullOr(copyright_status||'verified')}, ${nullOr(tags||null)})
        RETURNING *`
     );
     res.status(201).json({ track });
@@ -507,36 +517,52 @@ router.put("/api/admin/music/:id", requireAdmin, upload.fields([
     if (!existing) return res.status(404).json({ error: "Not found" });
 
     const { title, artist, album, genre, duration_seconds, type, is_featured, is_active,
-            audio_url, cover_url, artist_user_id } = req.body;
+            audio_url, cover_url, artist_user_id,
+            license, monetization_type, price_usd, copyright_status, tags } = req.body;
 
-    let finalAudio = audio_url !== undefined ? audio_url : existing.audio_url;
-    let finalCover = cover_url !== undefined ? cover_url : existing.cover_url;
+    let finalAudio  = audio_url  !== undefined ? audio_url  : existing.audio_url;
+    let finalCover  = cover_url  !== undefined ? cover_url  : existing.cover_url;
+    let newAudioKey: string | null = existing.storage_key       ?? null;
+    let newCoverKey: string | null = existing.cover_storage_key ?? null;
 
     if (req.files?.audio?.[0]) {
-      const file = req.files.audio[0];
-      const key = `music/audio/${randomUUID()}-${file.originalname}`;
-      await objectStorage.uploadBuffer(file.buffer, key, file.mimetype);
-      finalAudio = `/api/storage/objects/${key}`;
+      // Upload new audio to Wasabi then delete the old object
+      const file   = req.files.audio[0];
+      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
+      finalAudio   = result.url;
+      const oldKey = existing.storage_key ?? extractKey(existing.audio_url);
+      await deleteMusicFile(oldKey);
+      newAudioKey  = result.key;
     }
     if (req.files?.cover?.[0]) {
-      const file = req.files.cover[0];
-      const key = `music/covers/${randomUUID()}-${file.originalname}`;
-      await objectStorage.uploadBuffer(file.buffer, key, file.mimetype);
-      finalCover = `/api/storage/objects/${key}`;
+      // Upload new cover to Wasabi then delete the old object
+      const file   = req.files.cover[0];
+      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
+      finalCover   = result.url;
+      const oldKey = existing.cover_storage_key ?? extractKey(existing.cover_url);
+      await deleteMusicFile(oldKey);
+      newCoverKey  = result.key;
     }
 
     const sets: string[] = [];
-    if (title !== undefined)           sets.push(`title = ${nullOr(title)}`);
-    if (artist !== undefined)          sets.push(`artist = ${nullOr(artist)}`);
-    if (album !== undefined)           sets.push(`album = ${nullOr(album || null)}`);
-    if (genre !== undefined)           sets.push(`genre = ${nullOr(genre || null)}`);
+    if (title !== undefined)            sets.push(`title = ${nullOr(title)}`);
+    if (artist !== undefined)           sets.push(`artist = ${nullOr(artist)}`);
+    if (album !== undefined)            sets.push(`album = ${nullOr(album || null)}`);
+    if (genre !== undefined)            sets.push(`genre = ${nullOr(genre || null)}`);
     if (duration_seconds !== undefined) sets.push(`duration_seconds = ${nullOr(Number(duration_seconds) || null)}`);
-    if (type !== undefined)            sets.push(`type = ${nullOr(type)}`);
-    if (is_featured !== undefined)     sets.push(`is_featured = ${is_featured === "true" || is_featured === true}`);
-    if (is_active !== undefined)       sets.push(`is_active = ${is_active === "true" || is_active === true}`);
-    if (artist_user_id !== undefined)  sets.push(`artist_user_id = ${nullOr(artist_user_id ? Number(artist_user_id) : null)}`);
+    if (type !== undefined)             sets.push(`type = ${nullOr(type)}`);
+    if (is_featured !== undefined)      sets.push(`is_featured = ${is_featured === "true" || is_featured === true}`);
+    if (is_active !== undefined)        sets.push(`is_active = ${is_active === "true" || is_active === true}`);
+    if (artist_user_id !== undefined)   sets.push(`artist_user_id = ${nullOr(artist_user_id ? Number(artist_user_id) : null)}`);
+    if (license !== undefined)          sets.push(`license = ${nullOr(license || null)}`);
+    if (monetization_type !== undefined) sets.push(`monetization_type = ${nullOr(monetization_type)}`);
+    if (price_usd !== undefined)        sets.push(`price_usd = ${nullOr(price_usd ? Number(price_usd) : null)}`);
+    if (copyright_status !== undefined) sets.push(`copyright_status = ${nullOr(copyright_status)}`);
+    if (tags !== undefined)             sets.push(`tags = ${nullOr(tags || null)}`);
     sets.push(`audio_url = ${nullOr(finalAudio)}`);
     sets.push(`cover_url = ${nullOr(finalCover)}`);
+    sets.push(`storage_key = ${nullOr(newAudioKey)}`);
+    sets.push(`cover_storage_key = ${nullOr(newCoverKey)}`);
     sets.push("updated_at = NOW()");
 
     const [track] = await q(`UPDATE music_tracks SET ${sets.join(", ")} WHERE id = ${id} RETURNING *`);
@@ -544,11 +570,290 @@ router.put("/api/admin/music/:id", requireAdmin, upload.fields([
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
-// DELETE /api/admin/music/:id
+// DELETE /api/admin/music/:id — removes DB row and Wasabi objects
 router.delete("/api/admin/music/:id", requireAdmin, async (req, res) => {
   try {
-    await q(`DELETE FROM music_tracks WHERE id = ${Number(req.params.id)}`);
+    const id = Number(req.params.id);
+    const [row] = await q(`SELECT storage_key, cover_storage_key, audio_url, cover_url FROM music_tracks WHERE id = ${id}`);
+    await q(`DELETE FROM music_tracks WHERE id = ${id}`);
+    if (row) {
+      await Promise.all([
+        deleteMusicFile(row.storage_key       ?? extractKey(row.audio_url as string)),
+        deleteMusicFile(row.cover_storage_key ?? extractKey(row.cover_url as string)),
+      ]);
+    }
     res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/admin/music/storage-stats
+router.get("/api/admin/music/storage-stats", requireAdmin, async (_req, res) => {
+  try {
+    const [stats] = await q<{
+      track_count: string; total_duration: string; avg_duration: string; pending_count: string;
+    }>(`
+      SELECT
+        COUNT(*)::text                                              AS track_count,
+        COALESCE(SUM(duration_seconds),0)::text                   AS total_duration,
+        COALESCE(AVG(duration_seconds),0)::text                   AS avg_duration,
+        COUNT(*) FILTER (WHERE is_active = FALSE)::text           AS pending_count
+      FROM music_tracks
+    `);
+    // Estimate: avg 128kbps MP3 = 16 KB/s; cover ~150 KB each
+    const trackCount  = Number(stats?.track_count ?? 0);
+    const totalDurSec = Number(stats?.total_duration ?? 0);
+    const avgDurSec   = Number(stats?.avg_duration ?? 0);
+    const audioBytes  = totalDurSec * 16 * 1024;
+    const coverBytes  = trackCount  * 150 * 1024;
+    const totalBytes  = audioBytes + coverBytes;
+    res.json({
+      track_count:    trackCount,
+      pending_count:  Number(stats?.pending_count ?? 0),
+      total_duration: totalDurSec,
+      avg_duration:   avgDurSec,
+      estimated_storage_bytes: totalBytes,
+      audio_bytes:    audioBytes,
+      cover_bytes:    coverBytes,
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/bulk-action
+router.post("/api/admin/music/bulk-action", requireAdmin, async (req, res) => {
+  try {
+    const { action, ids } = req.body as { action: string; ids: number[] };
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "ids required" });
+    const safeIds = ids.map(Number).filter(n => n > 0).join(",");
+    if (!safeIds) return res.status(400).json({ error: "invalid ids" });
+    switch (action) {
+      case "approve":   await q(`UPDATE music_tracks SET is_active = TRUE,  updated_at = NOW() WHERE id IN (${safeIds})`); break;
+      case "reject":    await q(`UPDATE music_tracks SET is_active = FALSE, updated_at = NOW() WHERE id IN (${safeIds})`); break;
+      case "feature":   await q(`UPDATE music_tracks SET is_featured = TRUE, updated_at = NOW() WHERE id IN (${safeIds})`); break;
+      case "unfeature": await q(`UPDATE music_tracks SET is_featured = FALSE, updated_at = NOW() WHERE id IN (${safeIds})`); break;
+      case "delete": {
+        // Fetch storage keys before deleting so we can clean Wasabi
+        const rows = await q<{ storage_key: string; cover_storage_key: string; audio_url: string; cover_url: string }>(
+          `SELECT storage_key, cover_storage_key, audio_url, cover_url FROM music_tracks WHERE id IN (${safeIds})`
+        );
+        await q(`DELETE FROM music_tracks WHERE id IN (${safeIds})`);
+        await Promise.all(rows.flatMap(r => [
+          deleteMusicFile(r.storage_key       ?? extractKey(r.audio_url)),
+          deleteMusicFile(r.cover_storage_key ?? extractKey(r.cover_url)),
+        ]));
+        break;
+      }
+      default: return res.status(400).json({ error: "unknown action" });
+    }
+    res.json({ ok: true, affected: ids.length });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/import — save track imported from a free music API
+router.post("/api/admin/music/import", requireAdmin, async (req: any, res) => {
+  try {
+    const {
+      title, artist, album, genre, audio_url, cover_url,
+      duration_seconds, license, tags, source,
+    } = req.body as Record<string, string>;
+    if (!title?.trim())  return res.status(400).json({ error: "title required" });
+    if (!artist?.trim()) return res.status(400).json({ error: "artist required" });
+    if (!audio_url)      return res.status(400).json({ error: "audio_url required" });
+
+    const [track] = await q(
+      `INSERT INTO music_tracks
+         (title, artist, album, genre, audio_url, cover_url, duration_seconds,
+          type, is_active, is_featured, license, tags, copyright_status, created_by)
+       VALUES
+         (${nullOr(title.trim())}, ${nullOr(artist.trim())}, ${nullOr(album||null)},
+          ${nullOr(genre||null)}, ${nullOr(audio_url)}, ${nullOr(cover_url||null)},
+          ${nullOr(duration_seconds ? Number(duration_seconds) : null)},
+          'free', TRUE, FALSE,
+          ${nullOr(license||'creative_commons')},
+          ${nullOr(tags||null)},
+          'creative_commons',
+          ${nullOr(req.user?.id)})
+       RETURNING *`
+    );
+    logger.info({ trackId: track.id, source, title }, "Music track imported from free API");
+    res.status(201).json({ track });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// PUT /api/admin/music/:id/monetization
+router.put("/api/admin/music/:id/monetization", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { monetization_type, price_usd } = req.body as { monetization_type: string; price_usd?: number };
+    await q(`UPDATE music_tracks SET monetization_type = ${nullOr(monetization_type)}, price_usd = ${nullOr(price_usd ?? null)}, updated_at = NOW() WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// PUT /api/admin/music/:id/copyright
+router.put("/api/admin/music/:id/copyright", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { copyright_status } = req.body as { copyright_status: string };
+    await q(`UPDATE music_tracks SET copyright_status = ${nullOr(copyright_status)}, updated_at = NOW() WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ── Playlists CRUD ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/music/playlists
+router.get("/api/admin/music/playlists", requireAdmin, async (_req, res) => {
+  try {
+    const playlists = await q(`
+      SELECT p.*, COUNT(pt.track_id)::int AS track_count
+      FROM music_playlists p
+      LEFT JOIN music_playlist_tracks pt ON pt.playlist_id = p.id
+      GROUP BY p.id ORDER BY p.created_at DESC
+    `);
+    res.json({ playlists });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/playlists
+router.post("/api/admin/music/playlists", requireAdmin, upload.fields([{ name: "cover", maxCount: 1 }]), async (req: any, res) => {
+  try {
+    const { title, description, is_featured = "false", is_trending = "false" } = req.body;
+    if (!title?.trim()) return res.status(400).json({ error: "title required" });
+    let coverUrl: string | null = null;
+    let coverKey: string | null = null;
+    if (req.files?.cover?.[0]) {
+      const file   = req.files.cover[0];
+      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
+      coverUrl = result.url;
+      coverKey = result.key;
+    }
+    const [pl] = await q(`
+      INSERT INTO music_playlists (title, description, cover_url, is_featured, is_trending, created_by)
+      VALUES (${nullOr(title.trim())}, ${nullOr(description||null)}, ${nullOr(coverUrl)},
+              ${is_featured==="true"}, ${is_trending==="true"}, ${nullOr(req.user?.id)})
+      RETURNING *`);
+    res.status(201).json({ playlist: pl });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// PUT /api/admin/music/playlists/:id
+router.put("/api/admin/music/playlists/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { title, description, is_featured, is_trending, track_ids } = req.body as {
+      title?: string; description?: string; is_featured?: boolean; is_trending?: boolean; track_ids?: number[];
+    };
+    const sets: string[] = ["updated_at = NOW()"];
+    if (title !== undefined)       sets.push(`title = ${nullOr(title)}`);
+    if (description !== undefined) sets.push(`description = ${nullOr(description || null)}`);
+    if (is_featured !== undefined) sets.push(`is_featured = ${!!is_featured}`);
+    if (is_trending !== undefined) sets.push(`is_trending = ${!!is_trending}`);
+    await q(`UPDATE music_playlists SET ${sets.join(", ")} WHERE id = ${id}`);
+    // Sync tracks if provided
+    if (Array.isArray(track_ids)) {
+      await q(`DELETE FROM music_playlist_tracks WHERE playlist_id = ${id}`);
+      if (track_ids.length > 0) {
+        const vals = track_ids.map((tid, pos) => `(${id}, ${Number(tid)}, ${pos})`).join(", ");
+        await q(`INSERT INTO music_playlist_tracks (playlist_id, track_id, position) VALUES ${vals} ON CONFLICT DO NOTHING`);
+      }
+    }
+    const [pl] = await q(`SELECT p.*, COUNT(pt.track_id)::int AS track_count FROM music_playlists p LEFT JOIN music_playlist_tracks pt ON pt.playlist_id = p.id WHERE p.id = ${id} GROUP BY p.id`);
+    res.json({ playlist: pl });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// DELETE /api/admin/music/playlists/:id
+router.delete("/api/admin/music/playlists/:id", requireAdmin, async (req, res) => {
+  try {
+    await q(`DELETE FROM music_playlists WHERE id = ${Number(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/admin/music/artists — aggregate artist stats
+router.get("/api/admin/music/artists", requireAdmin, async (_req, res) => {
+  try {
+    const artists = await q(`
+      SELECT
+        mt.artist                              AS name,
+        mt.artist_user_id                      AS user_id,
+        u.name                                 AS user_name,
+        u.email                                AS user_email,
+        BOOL_OR(mt.is_artist_verified)         AS is_verified,
+        COUNT(mt.id)::int                      AS track_count,
+        SUM(mt.play_count)::int                AS total_plays,
+        SUM(mt.valid_impressions)::int         AS total_impressions,
+        SUM(mt.download_count)::int            AS total_downloads,
+        COALESCE(SUM(s.confirmed_revenue_usd),0)::numeric AS total_revenue
+      FROM music_tracks mt
+      LEFT JOIN users u ON u.id = mt.artist_user_id
+      LEFT JOIN music_ad_stats s ON s.track_id = mt.id
+      GROUP BY mt.artist, mt.artist_user_id, u.name, u.email
+      ORDER BY total_plays DESC NULLS LAST
+      LIMIT 200
+    `);
+    res.json({ artists });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// PUT /api/admin/music/artists/:artistName/verify
+router.put("/api/admin/music/artists/verify", requireAdmin, async (req, res) => {
+  try {
+    const { artist, is_verified } = req.body as { artist: string; is_verified: boolean };
+    await q(`UPDATE music_tracks SET is_artist_verified = ${!!is_verified} WHERE artist = ${nullOr(artist)}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// WASABI STREAMING PROXY
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// GET /api/music/stream/*key
+//
+// Redirects the client directly to the Wasabi object URL so all audio data
+// flows client ↔ Wasabi (zero server bandwidth).
+//
+//   Public bucket  → 302 to direct Wasabi URL  (browser caches freely)
+//   Private bucket → 307 to 1-hour signed URL  (browser must re-request)
+//
+// HTTP Range requests for seeking work natively because the browser follows
+// the redirect and sends Range headers directly to Wasabi.
+//
+// The key is everything after /api/music/stream/, e.g.:
+//   /api/music/stream/music/audio/abc123.mp3
+//   → https://s3.us-east-1.wasabisys.com/flexa-music/music/audio/abc123.mp3
+//
+router.get("/api/music/stream/*key", async (req, res) => {
+  try {
+    const key = (req.params as any).key as string;
+    if (!key) return res.status(400).json({ error: "Missing storage key" });
+
+    const streamUrl = await getStreamUrl(key);
+
+    // Preserve any Range header the client sent — the redirect carries it naturally.
+    // We add Accept-Ranges so clients know range requests are supported.
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control",  "private, max-age=3600");
+
+    // 302 for public (cacheable), 307 for signed (must not cache the redirect itself)
+    res.redirect(streamUrl.includes("X-Amz-Signature") ? 307 : 302, streamUrl);
+  } catch (err: any) {
+    logger.error({ err }, "Music stream redirect failed");
+    res.status(500).json({ error: err?.message ?? "Stream unavailable" });
+  }
+});
+
+// GET /api/music/stream-url/:trackId — returns the current stream URL for a track
+// Useful for mobile/native players that need to set the URL before playback.
+router.get("/api/music/stream-url/:trackId", async (req, res) => {
+  try {
+    const [track] = await q(`SELECT storage_key, audio_url FROM music_tracks WHERE id = ${Number(req.params.trackId)} AND is_active = TRUE`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    const key = (track.storage_key as string | null) ?? extractKey(track.audio_url as string);
+    if (!key) return res.status(404).json({ error: "No storage key for this track" });
+    const url = await getStreamUrl(key);
+    res.json({ url, key });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 

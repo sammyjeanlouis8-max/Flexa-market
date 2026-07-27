@@ -70,3 +70,8 @@ externalPort = 3000
 [[ports]]
 localPort = 18116
 externalPort = 3001
+
+[userenv]
+
+[userenv.shared]
+WASABI_PUBLIC = "false"

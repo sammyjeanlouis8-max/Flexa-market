@@ -27,7 +27,8 @@ import { randomUUID }   from "crypto";
 import { logger }       from "./logger";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-const WASABI_ENDPOINT   = process.env.WASABI_ENDPOINT    ?? "https://s3.us-east-1.wasabisys.com";
+// Strip any trailing slash so URL construction never produces double-slashes
+const WASABI_ENDPOINT   = (process.env.WASABI_ENDPOINT    ?? "https://s3.us-east-1.wasabisys.com").replace(/\/+$/, "");
 const WASABI_REGION     = process.env.WASABI_REGION      ?? "us-east-1";
 const WASABI_BUCKET     = process.env.WASABI_BUCKET_NAME ?? "flexa-music";
 const SIGNED_URL_TTL    = 3600; // 1 hour

@@ -74,8 +74,10 @@ export default function FlexaMusicEarnings() {
   const [totals,  setTotals]  = useState<Totals | null>(null);
   const [earnings, setEarnings] = useState<Earning[]>([]);
   const [monthly,  setMonthly]  = useState<Monthly[]>([]);
-  const [wallet,   setWallet]   = useState(0);
-  const [minWith,  setMinWith]  = useState(10);
+  const [musicBalance, setMusicBalance] = useState(0);
+  const [minWith,      setMinWith]      = useState(10);
+  const [withdrawing,  setWithdrawing]  = useState(false);
+  const [withdrawMsg,  setWithdrawMsg]  = useState<string | null>(null);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -94,7 +96,7 @@ export default function FlexaMusicEarnings() {
       setTotals(statsData.totals   ?? null);
       setEarnings(earningsData.earnings ?? []);
       setMonthly(earningsData.monthly   ?? []);
-      setWallet(earningsData.walletBalance ?? 0);
+      setMusicBalance(earningsData.musicEarningsBalance ?? 0);
       setMinWith(earningsData.minWithdraw  ?? 10);
     } catch { /* show stale */ }
     finally { setLoading(false); setRefreshing(false); }
@@ -154,7 +156,7 @@ export default function FlexaMusicEarnings() {
         </div>
       ) : (
         <>
-          {/* ── Wallet / Withdraw Banner ── */}
+          {/* ── Music Earnings Balance Banner ── */}
           <div
             className="rounded-2xl p-4 mb-5 flex items-center gap-4"
             style={{ background: "linear-gradient(135deg,#1e1b4b,#312e81)" }}>
@@ -162,19 +164,44 @@ export default function FlexaMusicEarnings() {
               <Wallet size={20} className="text-violet-300" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-white/60 text-xs">{t("music.walletBalance")}</p>
-              <p className="text-white text-2xl font-black">{fmt$(wallet)}</p>
-              {wallet < minWith && (
+              <p className="text-white/60 text-xs">{t("music.musicEarningsBalance") || "Music Earnings"}</p>
+              <p className="text-white text-2xl font-black">{fmt$(musicBalance)}</p>
+              {withdrawMsg && (
+                <p className="text-emerald-300 text-[11px] mt-0.5 font-semibold">{withdrawMsg}</p>
+              )}
+              {!withdrawMsg && musicBalance < minWith && (
                 <p className="text-white/50 text-[10px] mt-0.5">
                   {t("music.minWithdraw", { amount: fmt$(minWith) })}
                 </p>
               )}
             </div>
             <button
-              onClick={() => setLocation("/wallet")}
-              disabled={wallet < minWith}
+              onClick={async () => {
+                setWithdrawing(true);
+                setWithdrawMsg(null);
+                try {
+                  const token = localStorage.getItem("flexamarket_token");
+                  const r = await fetch("/api/music/artist/withdraw", {
+                    method: "POST",
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  });
+                  const d = await r.json();
+                  if (!r.ok) throw new Error(d.error ?? "Withdraw failed");
+                  setWithdrawMsg(d.message);
+                  setMusicBalance(0);
+                  setTimeout(() => setWithdrawMsg(null), 5000);
+                } catch (err: any) {
+                  setWithdrawMsg(err.message);
+                } finally {
+                  setWithdrawing(false);
+                }
+              }}
+              disabled={musicBalance < minWith || withdrawing}
               className="bg-white text-violet-800 font-bold text-xs px-4 py-2 rounded-xl shrink-0 shadow disabled:opacity-40 hover:bg-violet-50 transition-colors flex items-center gap-1.5">
-              <Wallet size={12} /> {t("music.withdraw")}
+              {withdrawing
+                ? <Loader2 size={12} className="animate-spin" />
+                : <Wallet size={12} />}
+              {t("music.withdraw")}
             </button>
           </div>
 

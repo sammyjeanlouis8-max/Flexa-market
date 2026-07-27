@@ -418,16 +418,58 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
        GROUP BY 1 ORDER BY 1 DESC`
     );
 
-    // Wallet balance
-    const [wallet] = await q(`SELECT balance_usd FROM promo_wallets WHERE user_id = ${userId}`);
+    // Music earnings balance = sum of unpaid earnings (NOT the FM wallet)
+    const [unpaid] = await q<{ total: string }>(
+      `SELECT COALESCE(SUM(amount_usd), 0)::text AS total
+       FROM music_earnings WHERE artist_id = ${userId} AND is_paid_out = FALSE`
+    );
 
     res.json({
       earnings: rows,
       monthly,
-      walletBalance: wallet ? Number(wallet.balance_usd) : 0,
+      musicEarningsBalance: unpaid ? Number(unpaid.total) : 0,
       minWithdraw: MIN_WITHDRAW_USD,
     });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/artist/withdraw — transfer unpaid music earnings → FM wallet
+router.post("/music/artist/withdraw", requireAuth, async (req: any, res) => {
+  const userId = req.user.id;
+  try {
+    // Lock and sum unpaid earnings
+    const [unpaid] = await q<{ total: string }>(
+      `SELECT COALESCE(SUM(amount_usd), 0)::text AS total
+       FROM music_earnings WHERE artist_id = ${userId} AND is_paid_out = FALSE`
+    );
+    const amount = Number(unpaid?.total ?? 0);
+
+    if (amount < MIN_WITHDRAW_USD) {
+      return res.status(400).json({
+        error: `Minimum withdrawal is $${MIN_WITHDRAW_USD.toFixed(2)}. You have ${amount.toFixed(2)}.`,
+      });
+    }
+
+    // Mark all unpaid earnings as paid out
+    await q(
+      `UPDATE music_earnings
+       SET is_paid_out = TRUE, paid_out_at = NOW()
+       WHERE artist_id = ${userId} AND is_paid_out = FALSE`
+    );
+
+    // Credit FM wallet (upsert)
+    await q(
+      `INSERT INTO promo_wallets (user_id, balance_usd)
+       VALUES (${userId}, ${amount})
+       ON CONFLICT (user_id) DO UPDATE
+         SET balance_usd = promo_wallets.balance_usd + ${amount}`
+    );
+
+    logger.info({ userId, amount }, "[music] withdrawal credited to FM wallet");
+    res.json({ ok: true, amount, message: `$${amount.toFixed(2)} transferred to your Flexa Wallet.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

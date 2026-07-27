@@ -2012,6 +2012,8 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_earnings.artist_idx", sql: "CREATE INDEX IF NOT EXISTS music_earnings_artist_idx ON music_earnings(artist_id)" });
   migrations.push({ name: "music_earnings.track_idx",  sql: "CREATE INDEX IF NOT EXISTS music_earnings_track_idx ON music_earnings(track_id)" });
   migrations.push({ name: "music_earnings.date_idx",   sql: "CREATE INDEX IF NOT EXISTS music_earnings_date_idx ON music_earnings(created_at)" });
+  migrations.push({ name: "music_earnings.is_paid_out", sql: "ALTER TABLE music_earnings ADD COLUMN IF NOT EXISTS is_paid_out BOOLEAN NOT NULL DEFAULT FALSE" });
+  migrations.push({ name: "music_earnings.paid_out_at", sql: "ALTER TABLE music_earnings ADD COLUMN IF NOT EXISTS paid_out_at TIMESTAMPTZ" });
 
   // ── Clear sample/seed music tracks (one-time, guarded by a flag table) ──────
   migrations.push({

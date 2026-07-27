@@ -704,13 +704,16 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
 
   const connectProvider = async (id: string) => {
     const key = apiKeys[id]?.trim();
-    if (!key) { alert("Antre kle API a anvan"); return; }
+    if (!key) { setTestMsg(m => ({...m, [id]: "❌ Antre kle API a anvan"})); return; }
     setConnecting(c => ({...c, [id]: true}));
+    setTestMsg(m => ({...m, [id]: ""}));
     try {
       await adminFetch("/api/admin/music/providers/connect","POST",{ provider: id, apiKey: key });
       setConnected(c => ({...c, [id]: true}));
-      setTestMsg(m => ({...m, [id]: "✅ Kle sovgadé"}));
-    } catch (e:any) { alert(e.message || "Erè koneksyon"); }
+      setTestMsg(m => ({...m, [id]: "✅ Kle sovgadé — ap tès koneksyon…"}));
+      // Auto-test immediately after saving
+      setTimeout(() => testProvider(id), 400);
+    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || "Erè koneksyon")})); }
     finally { setConnecting(c => ({...c, [id]: false})); }
   };
 

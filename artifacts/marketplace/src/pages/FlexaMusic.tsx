@@ -148,6 +148,7 @@ function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; 
 // ══════════════════════════════════════════════════════════════════════════════
 function MoreSheet({ track, liked, onClose, onLike, onDownload }:
   { track: Track; liked: boolean; onClose: () => void; onLike: () => void; onDownload: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -168,10 +169,10 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload }:
         </div>
         {/* Options */}
         {[
-          { icon: liked ? "❤️" : "🤍", label: liked ? "Retire nan favoris" : "Ajoute nan favoris", action: () => { onLike(); onClose(); } },
-          { icon: "⬇️", label: "Telechaje",    action: () => { onDownload(); onClose(); } },
-          { icon: "🔗", label: "Pataje chante", action: onClose },
-          { icon: "🚩", label: "Rapòte",        action: onClose },
+          { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
+          { icon: "⬇️", label: t("music.download"),    action: () => { onDownload(); onClose(); } },
+          { icon: "🔗", label: t("music.shareTrack"),  action: onClose },
+          { icon: "🚩", label: t("music.reportTrack"), action: onClose },
         ].map(({ icon, label, action }) => (
           <button key={label} onClick={action}
             className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/5 transition-colors">
@@ -245,6 +246,7 @@ function UploadView({ onBack, onSuccess }: {
   onBack: () => void;
   onSuccess: (track: Track) => void;
 }) {
+  const { t } = useTranslation();
   const { start: startUpload } = useMusicUpload();
 
   const [title,   setTitle]   = useState("");
@@ -269,8 +271,8 @@ function UploadView({ onBack, onSuccess }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !artist.trim()) { setErrMsg("Titre ak atis yo obligatwa"); return; }
-    if (!audioFile) { setErrMsg("Chwazi yon fichye odyo"); return; }
+    if (!title.trim() || !artist.trim()) { setErrMsg(t("upload.errTitleArtist")); return; }
+    if (!audioFile) { setErrMsg(t("upload.errAudio")); return; }
 
     // Step 1: log file selection details
     console.log("[upload] step 1: file selected", {
@@ -311,8 +313,8 @@ function UploadView({ onBack, onSuccess }: {
           <ChevronLeft size={20} className="text-white" />
         </button>
         <div>
-          <p className="font-black text-base">Telechaje Mizik</p>
-          <p className="text-xs text-white/40">Soumèt yon chante — ap kontinye nan background</p>
+          <p className="font-black text-base">{t("upload.title")}</p>
+          <p className="text-xs text-white/40">{t("upload.backgroundSubtitle")}</p>
         </div>
       </div>
 
@@ -328,13 +330,13 @@ function UploadView({ onBack, onSuccess }: {
                 <img src={coverPreview} alt="" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 flex items-end justify-end p-2">
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold"
-                    style={{ background: "rgba(0,0,0,0.7)" }}>Chanje</span>
+                    style={{ background: "rgba(0,0,0,0.7)" }}>{t("upload.changeCover")}</span>
                 </div>
               </>
             ) : (
               <>
                 <ImageIcon size={28} className="text-white/20" />
-                <span className="text-xs text-white/30 text-center px-2">Ajoute foto kouvèti</span>
+                <span className="text-xs text-white/30 text-center px-2">{t("upload.addCoverPhoto")}</span>
               </>
             )}
           </button>
@@ -344,31 +346,31 @@ function UploadView({ onBack, onSuccess }: {
 
         {/* Title */}
         <div>
-          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Tit Chante *</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Non chante ou a…"
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.trackTitle")} *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t("upload.trackTitlePlaceholder")}
             className={inp} style={inpStyle} />
         </div>
 
         {/* Artist */}
         <div>
-          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Non Atis *</label>
-          <input value={artist} onChange={e => setArtist(e.target.value)} placeholder="Non atis ou…"
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.artistName")} *</label>
+          <input value={artist} onChange={e => setArtist(e.target.value)} placeholder={t("upload.artistNamePlaceholder")}
             className={inp} style={inpStyle} />
         </div>
 
         {/* Album */}
         <div>
-          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Album (opsyonèl)</label>
-          <input value={album} onChange={e => setAlbum(e.target.value)} placeholder="Non album…"
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.album")}</label>
+          <input value={album} onChange={e => setAlbum(e.target.value)} placeholder={t("upload.albumPlaceholder")}
             className={inp} style={inpStyle} />
         </div>
 
         {/* Genre */}
         <div>
-          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Kalite Mizik</label>
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.genre")}</label>
           <select value={genre} onChange={e => setGenre(e.target.value)}
             className={inp} style={{ ...inpStyle, appearance: "none" as any }}>
-            <option value="">— Chwazi kalite —</option>
+            <option value="">— {t("upload.genreSelect")} —</option>
             {["Kompa","Rap Kreyòl","Rasin","Gospel","Zouk","Twoubadou","Reggaeton","Pop","R&B","Afrobeat","Autre"].map(g => (
               <option key={g} value={g}>{g}</option>
             ))}
@@ -377,7 +379,7 @@ function UploadView({ onBack, onSuccess }: {
 
         {/* Audio file */}
         <div>
-          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Fichye Odyo *</label>
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.audioFile")} *</label>
           <button type="button" onClick={() => audioInputRef.current?.click()}
             className="w-full rounded-xl px-4 py-4 flex items-center gap-3 active:scale-[0.98] transition-transform"
             style={{ background: "#1a1a1a", border: audioFile ? "1px solid #7c3aed" : "2px dashed rgba(255,255,255,0.12)" }}>
@@ -399,8 +401,8 @@ function UploadView({ onBack, onSuccess }: {
               <>
                 <UploadCloud size={24} className="text-white/20 shrink-0" />
                 <div className="text-left">
-                  <p className="text-sm font-bold text-white/50">Chwazi fichye odyo</p>
-                  <p className="text-xs text-white/30">MP3, WAV, FLAC, AAC, M4A · max 500 MB</p>
+                  <p className="text-sm font-bold text-white/50">{t("upload.chooseAudio")}</p>
+                  <p className="text-xs text-white/30">{t("upload.audioFormats500")}</p>
                 </div>
               </>
             )}
@@ -423,8 +425,7 @@ function UploadView({ onBack, onSuccess }: {
           style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
           <UploadCloud size={15} style={{ color: "#a855f7", flexShrink: 0, marginTop: 1 }} />
           <p className="text-xs" style={{ color: "rgba(168,85,247,0.8)", lineHeight: 1.5 }}>
-            Telechajman ap fèt nan <strong>background</strong> — ou ka ale nenpòt kote sou app la.
-            Yon notifikasyon ap parèt anba ekran an jouk li fini.
+            {t("upload.backgroundNote")}
           </p>
         </div>
 
@@ -433,11 +434,11 @@ function UploadView({ onBack, onSuccess }: {
           className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
           style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                    boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
-          <UploadCloud size={18} /> Telechaje Chante
+          <UploadCloud size={18} /> {t("upload.submit")}
         </button>
 
         <p className="text-center text-xs text-white/25 px-4">
-          Admin ap revize chante ou a anvan li parèt piblikman sou Flexa Music.
+          {t("upload.reviewNote")}
         </p>
       </form>
     </div>
@@ -488,7 +489,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
           onClick={() => setLocation(isAdmin ? "/admin/music" : user ? "/music/earnings" : "/music")}
           className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold"
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
-          <span className="text-xs">🎵</span> Artist Studio
+          <span className="text-xs">🎵</span> {t("music.artistStudio")}
         </button>
         <div className="flex-1" />
         <button onClick={onUpload}
@@ -513,7 +514,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Chèche chante, atis, album…"
+            placeholder={t("music.searchPlaceholder")}
             className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 outline-none"
           />
           {search && <button type="button" onClick={() => setSearch("")}><X size={13} className="text-white/30" /></button>}
@@ -528,7 +529,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
             <button onClick={onUpload}
               className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-full"
               style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
-              <Plus size={15} /> Telechaje Premye Chante
+              <Plus size={15} /> {t("music.uploadFirstSong")}
             </button>
           )}
         </div>
@@ -543,7 +544,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
                   <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }}>
                     <Heart size={20} className="text-red-400 fill-red-400" />
                   </div>
-                  <span className="text-white font-black text-base">Chante Renmen</span>
+                  <span className="text-white font-black text-base">{t("music.likedSongs")}</span>
                 </div>
                 <button onClick={() => { const q = likedTracks.length > 0 ? likedTracks : tracks; if(q.length) onPlay(q[0], q, 0); }}
                   className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
@@ -570,9 +571,9 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
           {/* ── Basé sur ce que vous aimez ── */}
           <div className="mb-6">
             <div className="flex items-center justify-between px-4 mb-3">
-              <p className="text-white font-black text-base">Baze sou sa ou renmen</p>
+              <p className="text-white font-black text-base">{t("music.basedOnLikes")}</p>
               <button className="text-xs font-bold" style={{ color: "#a78bfa" }} onClick={() => onSearch("")}>
-                Tout wè
+                {t("music.seeAll")}
               </button>
             </div>
             <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
@@ -589,7 +590,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
 
           {/* ── Mixé pour [User] ── */}
           <div className="mb-6">
-            <p className="text-white font-black text-base px-4 mb-3">Mixé pou {userName}</p>
+            <p className="text-white font-black text-base px-4 mb-3">{t("music.mixedFor", { name: userName })}</p>
             <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
               {mixes.filter(m => m.tracks.length > 0).map((mix, i) => (
                 <button key={mix.id} onClick={() => onPlayList(mix)}
@@ -619,7 +620,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
 
           {/* ── All tracks list ── */}
           <div className="px-4">
-            <p className="text-white font-black text-base mb-3">Tout Chante</p>
+            <p className="text-white font-black text-base mb-3">{t("music.allSongs")}</p>
             <div className="space-y-0">
               {tracks.map((track, idx) => {
                 const isLiked = liked.has(track.id);
@@ -684,7 +685,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           <div className="flex items-center gap-2 rounded-xl px-3 py-2"
             style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.07)" }}>
             <Search size={14} className="text-white/30 shrink-0" />
-            <span className="text-white/30 text-sm">Chèche chante, atis…</span>
+            <span className="text-white/30 text-sm">{t("music.searchPlaceholder")}</span>
           </div>
         </div>
       </div>
@@ -704,16 +705,16 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
         <h2 className="text-white font-black text-xl leading-tight mb-2">{playlistTitle}</h2>
         <div className="flex items-center gap-2 text-white/40 text-xs mb-3">
           <Lock size={11} />
-          <span>Privé</span>
+          <span>{t("music.private")}</span>
           <span>·</span>
-          <span>{playlist.length} tit</span>
+          <span>{t("music.trackCount", { n: playlist.length })}</span>
           <span>·</span>
           <span>{totalDuration}</span>
         </div>
         {user && (
           <div className="flex items-center gap-2">
             <Avatar src={(user as any)?.avatar_url} name={userName} size={22} />
-            <span className="text-white/50 text-xs">Fèt pou <span className="text-white font-semibold">{userName}</span></span>
+            <span className="text-white/50 text-xs">{t("music.madeFor")} <span className="text-white font-semibold">{userName}</span></span>
           </div>
         )}
       </div>
@@ -750,7 +751,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
       {/* ── "Basé sur…" ── */}
       {currentTrack && (
         <div className="px-5 mb-4">
-          <p className="text-white/30 text-xs">Baze sou · {currentTrack.title}</p>
+          <p className="text-white/30 text-xs">{t("music.basedOn", { title: currentTrack.title })}</p>
         </div>
       )}
 
@@ -761,11 +762,11 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           <span className="text-xl">👑</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-white font-black text-sm">Flexa Premium</p>
-          <p className="text-white/50 text-[10px]">Pa gen reklam · Telechajman · Son HD</p>
+          <p className="text-white font-black text-sm">{t("music.premiumTitle")}</p>
+          <p className="text-white/50 text-[10px]">{t("music.premiumDesc")}</p>
         </div>
         <button className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-full" style={{ background: "#7c3aed", color: "#fff" }}>
-          Gratis
+          {t("music.free")}
         </button>
       </div>
 

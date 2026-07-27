@@ -80,9 +80,11 @@ export default function FlexaMusicEarnings() {
   const load = async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
     try {
+      const token = localStorage.getItem("flexamarket_token");
+      const authHdr = token ? { Authorization: `Bearer ${token}` } : {};
       const [statsRes, earningsRes] = await Promise.all([
-        fetch("/api/music/artist/stats",    { credentials: "include" }),
-        fetch("/api/music/artist/earnings", { credentials: "include" }),
+        fetch("/api/music/artist/stats",    { headers: authHdr }),
+        fetch("/api/music/artist/earnings", { headers: authHdr }),
       ]);
       const [statsData, earningsData] = await Promise.all([
         statsRes.json(), earningsRes.json(),
@@ -231,7 +233,7 @@ export default function FlexaMusicEarnings() {
                             <p className="text-xs text-muted-foreground">{track.artist}{track.genre ? ` · ${track.genre}` : ""}</p>
                           </div>
                           {!track.is_active && (
-                            <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Inaktif</span>
+                            <span className="text-[10px] bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{t("music.inactive")}</span>
                           )}
                         </div>
 
@@ -271,7 +273,7 @@ export default function FlexaMusicEarnings() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm">{fmtDate(date)}</p>
-                        <p className="text-xs text-muted-foreground">{fmtN(stat.impressions)} impressions</p>
+                        <p className="text-xs text-muted-foreground">{fmtN(stat.impressions)} {t("music.impressionsUnit")}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-bold text-sm text-emerald-600">{fmt$(stat.confirmed)}</p>
@@ -294,7 +296,7 @@ export default function FlexaMusicEarnings() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm">{fmtMonth(m.month)}</p>
-                        <p className="text-xs text-muted-foreground">{fmtN(Number(m.total_impressions))} impressions</p>
+                        <p className="text-xs text-muted-foreground">{fmtN(Number(m.total_impressions))} {t("music.impressionsUnit")}</p>
                       </div>
                       <p className="font-black text-lg text-emerald-600 shrink-0">{fmt$(Number(m.total_usd))}</p>
                     </div>
@@ -320,7 +322,7 @@ export default function FlexaMusicEarnings() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-black text-base text-emerald-600">+{fmt$(e.amount_usd)}</p>
-                        <p className="text-[10px] text-muted-foreground">Milestone #{e.milestone}</p>
+                        <p className="text-[10px] text-muted-foreground">{t("music.milestoneLabel", { n: e.milestone })}</p>
                       </div>
                     </div>
                   ))}

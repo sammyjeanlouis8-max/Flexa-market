@@ -809,10 +809,24 @@ router.post("/admin/music/providers/test", requireAdmin, async (req: any, res) =
     );
     switch (provider) {
       case "pixabay": {
-        const r = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(key)}&q=music&per_page=3`);
-        const d = await r.json();
-        ok = r.ok && !d.error;
-        message = ok ? `✅ Pixabay konekte — ${d.totalHits ?? 0} chante disponib` : (d.error ?? "Kle invalid");
+        // Try music endpoint first; fall back to image API to at least validate the key
+        let pxOk = false;
+        let pxMsg = "";
+        try {
+          const r = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(key)}&q=music&per_page=3`, { signal: AbortSignal.timeout(8000) });
+          const d = await r.json().catch(() => ({}));
+          pxOk = r.ok && !d.error && d.hits !== undefined;
+          pxMsg = pxOk ? `✅ Pixabay Music — ${d.totalHits ?? 0} chante disponib` : (d.error ?? "");
+        } catch { /* music endpoint unavailable */ }
+        if (!pxOk) {
+          // Validate key via standard image API
+          const r2 = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=music&per_page=3`, { signal: AbortSignal.timeout(8000) });
+          const d2 = await r2.json().catch(() => ({}));
+          pxOk = r2.ok && !d2.error;
+          pxMsg = pxOk ? `✅ Kle Pixabay valab (API mizik limite — chèche aktif)` : (d2.error ?? "Kle invalid");
+        }
+        ok = pxOk;
+        message = pxMsg || (ok ? "✅ Pixabay konekte" : "❌ Kle Pixabay invalid");
         break;
       }
       case "fma": {
@@ -837,7 +851,7 @@ router.post("/admin/music/providers/test", requireAdmin, async (req: any, res) =
         return res.status(400).json({ error: "Pwovide enkoni" });
     }
     res.json({ ok, message });
-  } catch (err: any) { res.status(502).json({ ok: false, message: err?.message ?? "Koneksyon echwe" }); }
+  } catch (err: any) { res.json({ ok: false, message: err?.message ?? "Koneksyon echwe" }); }
 });
 
 // GET /api/admin/music/pixabay/search?q=...&limit=20 — Pixabay Music search proxy
@@ -848,13 +862,26 @@ router.get("/admin/music/pixabay/search", requireAdmin, async (req: any, res) =>
     if (!apiKey) return res.status(400).json({ error: "Kle API Pixabay pa konfigiré. Konekte Pixabay anvan." });
     const q2  = String(req.query.q ?? "music").trim() || "music";
     const lim = Math.min(Number(req.query.limit ?? 20), 100);
-    const r   = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q2)}&per_page=${lim}`);
-    const d   = await r.json();
-    if (d.error) return res.status(502).json({ error: d.error });
+    // Try music endpoint first
+    let hits: Record<string, unknown>[] = [];
+    let tried = false;
+    try {
+      const r = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q2)}&per_page=${lim}`, { signal: AbortSignal.timeout(10000) });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && !d.error && Array.isArray(d.hits)) { hits = d.hits; tried = true; }
+    } catch { /* music endpoint unavailable */ }
+    if (!tried) {
+      // Fall back to image API (same key, returns images related to query — limited but validates key)
+      const r2 = await fetch(`https://pixabay.com/api/?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q2)}&per_page=${lim}`, { signal: AbortSignal.timeout(10000) });
+      const d2 = await r2.json().catch(() => ({}));
+      if (d2.error) return res.status(502).json({ error: d2.error });
+      // No actual music tracks from image API — return empty with a note
+      return res.json({ results: [], note: "API mizik Pixabay limite — itilize Jamendo pou mizik gratis." });
+    }
     res.json({
-      results: (d.hits ?? []).map((h: Record<string, unknown>) => ({
+      results: hits.map((h: Record<string, unknown>) => ({
         id:           h.id,
-        name:         h.title ?? "Untitled",
+        name:         h.tags ?? h.title ?? "Untitled",
         artist_name:  h.user  ?? "Pixabay",
         duration:     h.duration ?? 0,
         audio:        h.audio ?? h.previewURL,

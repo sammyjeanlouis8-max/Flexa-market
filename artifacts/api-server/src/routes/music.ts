@@ -18,7 +18,6 @@ import { sql as dsql, eq } from "drizzle-orm";
 import { requireAdmin, requireAuth } from "../middlewares/auth";
 import multer from "multer";
 import {
-  uploadMusicAudio,
   uploadMusicCover,
   deleteMusicFile,
   getStreamUrl,
@@ -26,6 +25,10 @@ import {
   isConfigured as wasabiConfigured,
   runPreflight,
 } from "../lib/wasabi";
+import {
+  uploadAudioToCloudinary,
+  isCloudinaryConfigured,
+} from "../lib/cloudinary";
 import { createHash } from "crypto";
 import { logger } from "../lib/logger";
 
@@ -492,27 +495,21 @@ router.post("/music/upload", requireAuth, upload.fields([
     hasCover: !!(req.files as any).cover?.[0],
   });
 
-  // ── Step 5: Wasabi configuration check ───────────────────────────────────
-  if (!wasabiConfigured()) {
-    const missing = ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME"]
-      .filter(k => !process.env[k]).join(", ");
-    return fail(5, "wasabi_config", new Error(`Wasabi pa konfigiré — manke: ${missing}`), 503);
+  // ── Step 5: Storage configuration check ──────────────────────────────────
+  if (!isCloudinaryConfigured()) {
+    return fail(5, "storage_config", new Error("Cloudinary pa konfigiré — manke CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET"), 503);
   }
-  log(5, "wasabi_config", {
-    endpoint: process.env.WASABI_ENDPOINT,
-    bucket:   process.env.WASABI_BUCKET_NAME,
-    region:   process.env.WASABI_REGION,
-  });
+  log(5, "storage_config", { provider: "cloudinary" });
 
-  // ── Step 6: Bucket access + audio upload ─────────────────────────────────
-  log(6, "wasabi_audio_upload_start", { mime: audioFile.mimetype, bytes: audioFile.buffer?.byteLength });
+  // ── Step 6: Audio upload (Cloudinary) ────────────────────────────────────
+  log(6, "audio_upload_start", { mime: audioFile.mimetype, bytes: audioFile.buffer?.byteLength });
   let audioResult: { key: string; url: string };
   try {
-    audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
+    audioResult = await uploadAudioToCloudinary(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
   } catch (err: any) {
-    return fail(6, "wasabi_audio_upload", err);
+    return fail(6, "audio_upload", err);
   }
-  log(7, "wasabi_audio_upload_complete", { key: audioResult.key, url: audioResult.url });
+  log(7, "audio_upload_complete", { key: audioResult.key, url: audioResult.url });
 
   // ── Step 6b: Cover upload (optional) ─────────────────────────────────────
   let coverResult: { key: string; url: string } | null = null;
@@ -581,7 +578,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
 
     if (req.files?.audio?.[0]) {
       const file   = req.files.audio[0];
-      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadAudioToCloudinary(file.buffer, file.mimetype, file.originalname);
       finalAudio   = result.url;
       audioKey     = result.key;
     }
@@ -631,16 +628,17 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
 
     let finalAudio  = audio_url  !== undefined ? audio_url  : existing.audio_url;
     let finalCover  = cover_url  !== undefined ? cover_url  : existing.cover_url;
-    let newAudioKey: string | null = existing.storage_key       ?? null;
-    let newCoverKey: string | null = existing.cover_storage_key ?? null;
+    let newAudioKey: string | null = (existing.storage_key       as string | null) ?? null;
+    let newCoverKey: string | null = (existing.cover_storage_key as string | null) ?? null;
 
     if (req.files?.audio?.[0]) {
-      // Upload new audio to Wasabi then delete the old object
+      // Upload new audio to Cloudinary then clean up the old object
       const file   = req.files.audio[0];
-      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadAudioToCloudinary(file.buffer, file.mimetype, file.originalname);
       finalAudio   = result.url;
-      const oldKey = existing.storage_key ?? extractKey(existing.audio_url);
-      await deleteMusicFile(oldKey);
+      const oldKey = (existing.storage_key as string | null) ?? extractKey(existing.audio_url as string | null);
+      // Only attempt Wasabi deletion for legacy Wasabi keys (not "cld:" prefixed)
+      if (oldKey && !oldKey.startsWith("cld:")) await deleteMusicFile(oldKey);
       newAudioKey  = result.key;
     }
     if (req.files?.cover?.[0]) {
@@ -648,7 +646,7 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
       const file   = req.files.cover[0];
       const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
-      const oldKey = existing.cover_storage_key ?? extractKey(existing.cover_url);
+      const oldKey = (existing.cover_storage_key as string | null) ?? extractKey(existing.cover_url as string | null);
       await deleteMusicFile(oldKey);
       newCoverKey  = result.key;
     }

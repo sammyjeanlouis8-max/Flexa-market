@@ -907,7 +907,8 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function FlexaMusic() {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
+  const isAdmin = (user as any)?.isAdmin === true || (user as any)?.role === "admin";
   const [, setLocation] = useLocation();
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -1016,7 +1017,7 @@ export default function FlexaMusic() {
     audio.muted = playerState.muted;
     audio.volume= playerState.volume;
     setPlayerState(s => ({ ...s, track, playing: false, currentTime: 0, duration: 0 }));
-    if (track.audio_url) { audio.load(); audio.play().catch(() => {}); if (track.id) startTimer(track.id); }
+    if (track.audio_url) { audio.play().catch(() => {}); if (track.id) startTimer(track.id); }
   }, [playerState.muted, playerState.volume]);
 
   const playNext = useCallback(() => {

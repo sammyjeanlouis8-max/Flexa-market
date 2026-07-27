@@ -2089,6 +2089,12 @@ export async function runStartupMigrations(): Promise<void> {
     }
   }
 
+  // One-time: activate all tracks that were uploaded before auto-approve was enabled
+  try {
+    await db.execute(dsql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
+    logger.info("Migration: activated all pending music tracks");
+  } catch { /* non-fatal */ }
+
   logger.info({ applied, failed }, "Startup migrations complete");
 }
 

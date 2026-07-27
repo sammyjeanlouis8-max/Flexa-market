@@ -73,9 +73,10 @@ const fmtN   = (n: number)  => n>=1e6?`${(n/1e6).toFixed(1)}M`:n>=1000?`${(n/100
 const fmtBytes=(b:number)=>{if(b<1024)return`${b}B`;if(b<1024**2)return`${(b/1024).toFixed(1)}KB`;if(b<1024**3)return`${(b/1024**2).toFixed(1)}MB`;return`${(b/1024**3).toFixed(2)}GB`};
 
 async function adminFetch(url: string, method = "GET", body?: Record<string, unknown>) {
-  const opts: RequestInit = { method, credentials: "include" };
-  if (body) { opts.headers = { "Content-Type": "application/json" }; opts.body = JSON.stringify(body); }
-  const r = await fetch(url, opts);
+  const token = localStorage.getItem("flexamarket_token");
+  const headers: Record<string, string> = { Authorization: `Bearer ${token ?? ""}` };
+  if (body) headers["Content-Type"] = "application/json";
+  const r = await fetch(url, { method, headers, ...(body ? { body: JSON.stringify(body) } : {}) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText);
   return r.json();
 }

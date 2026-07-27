@@ -757,6 +757,115 @@ router.post("/admin/music/bulk-action", requireAdmin, async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// ── Provider API-key management ───────────────────────────────────────────────
+
+// GET /api/admin/music/providers — which providers have a saved key
+router.get("/admin/music/providers", requireAdmin, async (_req, res) => {
+  try {
+    const rows = await q<{ key: string; value: string }>(
+      `SELECT key, value FROM platform_settings WHERE key LIKE 'music_api_%'`
+    );
+    const connected: Record<string, boolean> = {};
+    for (const r of rows) connected[r.key.replace("music_api_", "")] = !!r.value;
+    res.json({ connected });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/providers/connect — save or update an API key
+router.post("/admin/music/providers/connect", requireAdmin, async (req: any, res) => {
+  try {
+    const { provider, apiKey } = req.body as { provider: string; apiKey: string };
+    if (!provider || !apiKey?.trim()) return res.status(400).json({ error: "provider and apiKey required" });
+    const safeId = provider.replace(/[^a-z0-9_]/gi, "");
+    await q(
+      `INSERT INTO platform_settings (key, value, updated_at)
+       VALUES ('music_api_${safeId}', ${nullOr(apiKey.trim())}, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`
+    );
+    logger.info({ provider: safeId }, "Music provider API key saved");
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/providers/disconnect — remove a saved key
+router.post("/admin/music/providers/disconnect", requireAdmin, async (req: any, res) => {
+  try {
+    const { provider } = req.body as { provider: string };
+    const safeId = (provider ?? "").replace(/[^a-z0-9_]/gi, "");
+    await q(`DELETE FROM platform_settings WHERE key = 'music_api_${safeId}'`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/admin/music/providers/test — validate an API key with a live request
+router.post("/admin/music/providers/test", requireAdmin, async (req: any, res) => {
+  const { provider, apiKey } = req.body as { provider: string; apiKey: string };
+  try {
+    let ok = false;
+    let message = "";
+    const key = apiKey?.trim() || (
+      await q<{ value: string }>(`SELECT value FROM platform_settings WHERE key = 'music_api_${provider}' LIMIT 1`)
+        .then(r => r[0]?.value ?? "").catch(() => "")
+    );
+    switch (provider) {
+      case "pixabay": {
+        const r = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(key)}&q=music&per_page=3`);
+        const d = await r.json();
+        ok = r.ok && !d.error;
+        message = ok ? `✅ Pixabay konekte — ${d.totalHits ?? 0} chante disponib` : (d.error ?? "Kle invalid");
+        break;
+      }
+      case "fma": {
+        const r = await fetch(`https://freemusicarchive.org/api/get/tracks.json?api_key=${encodeURIComponent(key)}&limit=1`);
+        ok = r.ok;
+        message = ok ? "✅ Free Music Archive konekte" : "Kle FMA invalid";
+        break;
+      }
+      case "archive": {
+        const r = await fetch("https://archive.org/advancedsearch.php?q=subject:music&output=json&rows=1&fl[]=identifier");
+        ok = r.ok;
+        message = ok ? "✅ Internet Archive aksesib (pa bezwen kle)" : "Koneksyon Internet Archive echwe";
+        break;
+      }
+      case "ccmixter": {
+        const r = await fetch("https://ccmixter.org/api/query?f=json&limit=1");
+        ok = r.ok;
+        message = ok ? "✅ ccMixter aksesib (pa bezwen kle)" : "Koneksyon ccMixter echwe";
+        break;
+      }
+      default:
+        return res.status(400).json({ error: "Pwovide enkoni" });
+    }
+    res.json({ ok, message });
+  } catch (err: any) { res.status(502).json({ ok: false, message: err?.message ?? "Koneksyon echwe" }); }
+});
+
+// GET /api/admin/music/pixabay/search?q=...&limit=20 — Pixabay Music search proxy
+router.get("/admin/music/pixabay/search", requireAdmin, async (req: any, res) => {
+  try {
+    const rows = await q<{ value: string }>(`SELECT value FROM platform_settings WHERE key = 'music_api_pixabay' LIMIT 1`);
+    const apiKey = rows[0]?.value;
+    if (!apiKey) return res.status(400).json({ error: "Kle API Pixabay pa konfigiré. Konekte Pixabay anvan." });
+    const q2  = String(req.query.q ?? "music").trim() || "music";
+    const lim = Math.min(Number(req.query.limit ?? 20), 100);
+    const r   = await fetch(`https://pixabay.com/api/music/?key=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(q2)}&per_page=${lim}`);
+    const d   = await r.json();
+    if (d.error) return res.status(502).json({ error: d.error });
+    res.json({
+      results: (d.hits ?? []).map((h: Record<string, unknown>) => ({
+        id:           h.id,
+        name:         h.title ?? "Untitled",
+        artist_name:  h.user  ?? "Pixabay",
+        duration:     h.duration ?? 0,
+        audio:        h.audio ?? h.previewURL,
+        image:        h.image ?? null,
+        tags:         h.tags  ?? "",
+        license_ccurl: "pixabay_license",
+      })),
+    });
+  } catch (err: any) { res.status(502).json({ error: err?.message }); }
+});
+
 // GET /api/admin/music/jamendo/search?q=...&limit=20 — server-side Jamendo search proxy (avoids browser CORS)
 router.get("/admin/music/jamendo/search", requireAdmin, async (req, res) => {
   try {

@@ -682,25 +682,72 @@ const FREE_APIS = [
 type JamendoTrack = { id:number; name:string; artist_name:string; album_name:string; duration:number; audio:string; image:string; license_ccurl:string; tags:string };
 
 function ImportTab({ onImportDone }: { onImportDone: () => void }) {
-  const [apiKeys,   setApiKeys]   = useState<Record<string,string>>({});
-  const [searching, setSearching] = useState<Record<string,boolean>>({});
-  const [testing,   setTesting]   = useState<Record<string,boolean>>({});
-  const [results,   setResults]   = useState<Record<string,JamendoTrack[]>>({});
-  const [query,     setQuery]     = useState("");
-  const [importing, setImporting] = useState<Record<string|number,boolean>>({});
-  const [imported,  setImported]  = useState<Set<number>>(new Set());
-  const [bulkCount, setBulkCount] = useState("100");
+  const [apiKeys,    setApiKeys]    = useState<Record<string,string>>({});
+  const [connected,  setConnected]  = useState<Record<string,boolean>>({});
+  const [searching,  setSearching]  = useState<Record<string,boolean>>({});
+  const [testing,    setTesting]    = useState<Record<string,boolean>>({});
+  const [testMsg,    setTestMsg]    = useState<Record<string,string>>({});
+  const [connecting, setConnecting] = useState<Record<string,boolean>>({});
+  const [results,    setResults]    = useState<Record<string,JamendoTrack[]>>({});
+  const [query,      setQuery]      = useState("");
+  const [importing,  setImporting]  = useState<Record<string|number,boolean>>({});
+  const [imported,   setImported]   = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  const searchJamendo = async () => {
-    setSearching(s => ({...s, jamendo:true}));
+  // Load saved provider connection status on mount
+  useEffect(() => {
+    adminFetch("/api/admin/music/providers")
+      .then(d => setConnected(d.connected ?? {}))
+      .catch(() => {});
+  }, []);
+
+  const connectProvider = async (id: string) => {
+    const key = apiKeys[id]?.trim();
+    if (!key) { alert("Antre kle API a anvan"); return; }
+    setConnecting(c => ({...c, [id]: true}));
+    try {
+      await adminFetch("/api/admin/music/providers/connect","POST",{ provider: id, apiKey: key });
+      setConnected(c => ({...c, [id]: true}));
+      setTestMsg(m => ({...m, [id]: "✅ Kle sovgadé"}));
+    } catch (e:any) { alert(e.message || "Erè koneksyon"); }
+    finally { setConnecting(c => ({...c, [id]: false})); }
+  };
+
+  const disconnectProvider = async (id: string) => {
+    if (!confirm("Retire kle API sa?")) return;
+    try {
+      await adminFetch("/api/admin/music/providers/disconnect","POST",{ provider: id });
+      setConnected(c => ({...c, [id]: false}));
+      setApiKeys(k => ({...k, [id]: ""}));
+      setTestMsg(m => ({...m, [id]: ""}));
+    } catch (e:any) { alert(e.message || "Erè"); }
+  };
+
+  const testProvider = async (id: string) => {
+    setTesting(t => ({...t, [id]: true}));
+    setTestMsg(m => ({...m, [id]: ""}));
+    try {
+      const d = await adminFetch("/api/admin/music/providers/test","POST",{ provider: id, apiKey: apiKeys[id] || "" });
+      setTestMsg(m => ({...m, [id]: d.message ?? (d.ok ? "✅ Koneksyon bon" : "❌ Echwe")}));
+    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || "Erè")})); }
+    finally { setTesting(t => ({...t, [id]: false})); }
+  };
+
+  const searchProvider = async (id: string) => {
+    setSearching(s => ({...s, [id]:true}));
     try {
       const q2 = query.trim() || "music";
-      const d = await adminFetch(`/api/admin/music/jamendo/search?q=${encodeURIComponent(q2)}&limit=20`);
-      setResults(rv => ({...rv, jamendo: d.results ?? []}));
-    } catch (e:any) { alert(e.message || "Erè koneksyon Jamendo"); }
-    finally { setSearching(s => ({...s, jamendo:false})); }
+      const endpoint = id === "jamendo"
+        ? `/api/admin/music/jamendo/search?q=${encodeURIComponent(q2)}&limit=20`
+        : `/api/admin/music/pixabay/search?q=${encodeURIComponent(q2)}&limit=20`;
+      const d = await adminFetch(endpoint);
+      setResults(rv => ({...rv, [id]: d.results ?? []}));
+    } catch (e:any) { alert(e.message || "Erè koneksyon"); }
+    finally { setSearching(s => ({...s, [id]:false})); }
   };
+
+  // Keep legacy alias
+  const searchJamendo = () => searchProvider("jamendo");
 
   const importJamendo = async (t: JamendoTrack) => {
     setImporting(m => ({...m, [t.id]:true}));
@@ -753,63 +800,118 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
       </div>
 
       {/* Provider cards */}
-      {FREE_APIS.map(api => (
+      {FREE_APIS.map(api => {
+        const isLive     = api.live || connected[api.id];
+        const noKeyNeeded = api.id === "archive" || api.id === "ccmixter";
+        const canSearch  = isLive && (api.id === "jamendo" || api.id === "pixabay");
+
+        return (
         <div key={api.id} className={`rounded-2xl p-4 bg-gradient-to-br ${api.color}`}
           style={{ border: `1px solid ${api.border}` }}>
           <div className="flex items-start gap-3 mb-3">
             <span className="text-2xl">{api.icon}</span>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-black text-sm">{api.name}</h3>
-                <Badge label={api.live ? "🟢 Aktif" : "⚙️ Coming Soon"} color={api.live?"bg-emerald-500/20 text-emerald-400":"bg-white/10 text-white/40"} />
+                <Badge
+                  label={isLive ? "🟢 Aktif" : "⚙️ Poko disponib"}
+                  color={isLive ? "bg-emerald-500/20 text-emerald-400" : "bg-white/10 text-white/40"}
+                />
+                {connected[api.id] && !api.live && (
+                  <button onClick={() => disconnectProvider(api.id)}
+                    className="text-[10px] text-red-400 hover:text-red-300 underline">
+                    Retire kle
+                  </button>
+                )}
               </div>
               <p className="text-[11px] opacity-60 mt-0.5">{api.desc}</p>
             </div>
           </div>
 
-          {!api.live && (
+          {/* API key input row — shown if not live-built-in AND not yet connected */}
+          {!api.live && !connected[api.id] && (
             <div className="space-y-2">
-              <div className="flex gap-2">
-                <input
-                  value={apiKeys[api.id]||""}
-                  onChange={e=>setApiKeys(k=>({...k,[api.id]:e.target.value}))}
-                  placeholder={`Kle API ${api.name}…`}
-                  className="flex-1 text-xs rounded-lg px-3 py-2 outline-none"
-                  style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#e2e8f0" }}
-                />
-                <button className="px-3 py-2 rounded-lg text-xs font-bold"
-                  style={{ background:"rgba(255,255,255,0.08)", color:"#a78bfa" }}>
-                  Konekte
+              {!noKeyNeeded && (
+                <div className="flex gap-2">
+                  <input
+                    value={apiKeys[api.id]||""}
+                    onChange={e=>setApiKeys(k=>({...k,[api.id]:e.target.value}))}
+                    onKeyDown={e=>e.key==="Enter"&&connectProvider(api.id)}
+                    placeholder={`Kle API ${api.name}…`}
+                    className="flex-1 text-xs rounded-lg px-3 py-2 outline-none"
+                    style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)", color:"#e2e8f0" }}
+                  />
+                  <button onClick={()=>connectProvider(api.id)} disabled={!!connecting[api.id]}
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+                    style={{ background:"rgba(124,58,237,0.4)", color:"#c4b5fd", border:"1px solid rgba(124,58,237,0.5)" }}>
+                    {connecting[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
+                    Konekte
+                  </button>
+                  <button onClick={()=>testProvider(api.id)} disabled={!!testing[api.id]}
+                    className="px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+                    style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
+                    {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : "Teste"}
+                  </button>
+                </div>
+              )}
+              {noKeyNeeded && (
+                <button onClick={()=>testProvider(api.id)} disabled={!!testing[api.id]}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+                  style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
+                  {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
+                  Teste koneksyon
                 </button>
-                <button disabled className="px-3 py-2 rounded-lg text-xs font-bold opacity-30"
-                  style={{ background:"rgba(255,255,255,0.05)" }}>
-                  Teste
-                </button>
-              </div>
-              <p className="text-[10px] opacity-30">Sync ak Import disponib lè kle API konfiguré ✓</p>
+              )}
+              {testMsg[api.id] && (
+                <p className={`text-[11px] ${testMsg[api.id].startsWith("✅") ? "text-emerald-400" : "text-red-400"}`}>
+                  {testMsg[api.id]}
+                </p>
+              )}
+              {!noKeyNeeded && <p className="text-[10px] opacity-30">Rechèch ak Enpòte disponib lè kle API konfiguré ✓</p>}
             </div>
           )}
 
-          {api.live && (
-            <div className="space-y-3">
+          {/* Connected — show test / disconnect controls */}
+          {!api.live && connected[api.id] && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <button onClick={()=>testProvider(api.id)} disabled={!!testing[api.id]}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
+                  style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
+                  {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
+                  Teste koneksyon
+                </button>
+              </div>
+              {testMsg[api.id] && (
+                <p className={`text-[11px] ${testMsg[api.id].startsWith("✅") ? "text-emerald-400" : "text-red-400"}`}>
+                  {testMsg[api.id]}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Search + import panel — Jamendo (always live) and Pixabay (when connected) */}
+          {canSearch && (
+            <div className="space-y-3 mt-3">
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2 rounded-lg px-3 py-2"
                   style={{ background:"rgba(255,255,255,0.06)", border:"1px solid rgba(255,255,255,0.1)" }}>
                   <Search size={12} className="text-white/40 shrink-0" />
-                  <input value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchJamendo()}
-                    placeholder="Chèche atis, chante, jen…"
+                  <input value={query} onChange={e=>setQuery(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&searchProvider(api.id)}
+                    placeholder="Chèche atis, chante, jenr…"
                     className="flex-1 bg-transparent text-xs text-white placeholder:text-white/30 outline-none" />
                 </div>
-                <button onClick={searchJamendo} disabled={searching.jamendo}
+                <button onClick={()=>searchProvider(api.id)} disabled={!!searching[api.id]}
                   className="px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-60 transition-all"
                   style={{ background:"linear-gradient(135deg,#7c3aed,#c026d3)", color:"#fff" }}>
-                  {searching.jamendo ? <Loader2 size={12} className="animate-spin" /> : "Chèche"}
+                  {searching[api.id] ? <Loader2 size={12} className="animate-spin" /> : "Chèche"}
                 </button>
               </div>
 
-              {results.jamendo && results.jamendo.length > 0 && (
+              {(results[api.id] ?? []).length > 0 && (
                 <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                  {results.jamendo.map(t => (
+                  {(results[api.id] ?? []).map(t => (
                     <div key={t.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
                       style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.06)" }}>
                       <img src={t.image} alt={t.name} className="w-9 h-9 rounded-lg object-cover shrink-0" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />
@@ -820,7 +922,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                       <button onClick={()=>importJamendo(t)} disabled={!!importing[t.id]||imported.has(t.id)}
                         className="shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-40"
                         style={{ background: imported.has(t.id)?"rgba(16,185,129,0.2)":"rgba(124,58,237,0.3)", color: imported.has(t.id)?"#34d399":"#c4b5fd" }}>
-                        {importing[t.id] ? <Loader2 size={10} className="animate-spin" /> : imported.has(t.id) ? <Check size={10} /> : "Import"}
+                        {importing[t.id] ? <Loader2 size={10} className="animate-spin" /> : imported.has(t.id) ? <Check size={10} /> : "Enpòte"}
                       </button>
                     </div>
                   ))}
@@ -829,7 +931,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
             </div>
           )}
         </div>
-      ))}
+      ); })}
     </div>
   );
 }

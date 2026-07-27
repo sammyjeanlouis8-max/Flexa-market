@@ -539,7 +539,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
           ${nullOr("cld:" + audioPublicId)}, ${coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL"},
-          ${nullOr(type)}, ${isAdmin ? "TRUE" : "FALSE"}, FALSE,
+          ${nullOr(type)}, TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
@@ -642,7 +642,7 @@ router.post("/music/upload", requireAuth, upload.fields([
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioResult.url)}, ${nullOr(coverResult?.url || null)},
           ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
-          ${nullOr(type)}, ${req.user?.role === 'admin' ? 'TRUE' : 'FALSE'}, FALSE,
+          ${nullOr(type)}, TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );

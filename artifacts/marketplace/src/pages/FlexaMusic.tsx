@@ -1,302 +1,849 @@
-import { useState } from "react";
+/**
+ * Flexa Music — dark SoundCloud-style streaming page
+ * Views: "home" feed  ←→  "player" playlist/track detail
+ * Audio: HTML5 + MediaSession API (background / lock-screen)
+ * Likes: localStorage (Set<number>)
+ * Mixes: auto-computed from DB tracks by genre
+ * Impressions: logged after 31 s listen via /api/music/impression
+ */
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  Music2, Play, Heart, Search, Shuffle, SkipForward,
-  SkipBack, Volume2, Mic2, Radio, ListMusic, Star,
-  TrendingUp, Headphones, Crown, Clock, Plus, ChevronRight,
+  Play, Pause, Heart, Search, SkipForward, SkipBack,
+  Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
+  Bell, MessageCircle, ChevronLeft, Plus, Loader2, Lock,
+  Music2, UploadCloud, BarChart2,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { useAuth } from "@/contexts/auth";
+import { useLocation } from "wouter";
 
-// ── Placeholder data ──────────────────────────────────────────────────────────
-const GENRES = [
-  { label: "Kompa",     color: "from-violet-600 to-purple-800",  emoji: "🎷" },
-  { label: "Trap",      color: "from-yellow-500 to-orange-700",  emoji: "🔥" },
-  { label: "Rap",       color: "from-gray-700 to-gray-900",      emoji: "🎤" },
-  { label: "Zouk",      color: "from-pink-500 to-rose-700",      emoji: "💃" },
-  { label: "Reggaeton", color: "from-green-500 to-emerald-700",  emoji: "🌴" },
-  { label: "R&B",       color: "from-blue-600 to-indigo-800",    emoji: "🎶" },
-  { label: "Gospel",    color: "from-amber-500 to-yellow-600",   emoji: "🙏" },
-  { label: "Pop",       color: "from-red-500 to-pink-600",       emoji: "⭐" },
+// ── Types ──────────────────────────────────────────────────────────────────────
+type Track = {
+  id: number;
+  title: string;
+  artist: string;
+  album: string | null;
+  genre: string | null;
+  audio_url: string | null;
+  cover_url: string | null;
+  duration_seconds: number | null;
+  type: string;
+  is_featured: boolean;
+  play_count: number;
+  valid_impressions: number;
+  artist_user_id: number | null;
+};
+
+type Mix = {
+  id: string;
+  label: string;       // "MIX 1" etc.
+  subtitle: string;
+  tracks: Track[];
+  cover: string | null;
+  gradient: string;
+};
+
+type View = "home" | "player";
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const LIKED_KEY = "flexa_music_liked_v2";
+const MIX_GRADIENTS = [
+  "linear-gradient(135deg,#1a0533,#4b0082)",
+  "linear-gradient(135deg,#033a1a,#0a7a3a)",
+  "linear-gradient(135deg,#1a1500,#7a5500)",
 ];
 
-const FEATURED = [
-  { title: "Bel Ayiti",    artist: "Mika Menard",    duration: "3:42", liked: true },
-  { title: "Pati Kite M",  artist: "T-Vice",         duration: "4:01", liked: false },
-  { title: "One Love",     artist: "Farruko Haiti",  duration: "3:28", liked: true },
-  { title: "Sak Pase",     artist: "BélO",           duration: "5:12", liked: false },
-  { title: "Cheri",        artist: "Djakout #1",     duration: "4:44", liked: true },
-];
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtDur(s: number | null): string {
+  if (!s) return "0:00";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+  return `${m}:${String(sec).padStart(2,"0")}`;
+}
 
-const ALBUMS = [
-  { title: "Timoun Lakay",   artist: "Carimi",       year: "2024", songs: 12, gradient: "from-violet-500 to-fuchsia-700" },
-  { title: "Haïti Chérie",   artist: "Tabou Combo",  year: "2023", songs: 10, gradient: "from-amber-500 to-red-600"     },
-  { title: "Leve Kanpe",     artist: "Bélô",         year: "2025", songs: 8,  gradient: "from-cyan-500 to-blue-700"     },
-  { title: "Revolisyon",     artist: "Harmonik",     year: "2024", songs: 14, gradient: "from-emerald-500 to-teal-700"  },
-];
+function fmtTotal(tracks: Track[]): string {
+  const total = tracks.reduce((s, t) => s + (t.duration_seconds ?? 0), 0);
+  return fmtDur(total);
+}
 
-// ── Mini Player (demo) ────────────────────────────────────────────────────────
-function MiniPlayer({ track, onLike }: {
-  track: { title: string; artist: string; liked: boolean; duration: string };
-  onLike: () => void;
-}) {
-  const [playing, setPlaying] = useState(true);
-  const [progress] = useState(38);
+function fmtPlays(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1e6).toFixed(1)} M`;
+  if (n >= 1_000)     return `${(n / 1000).toFixed(1)} k`;
+  return String(n);
+}
 
+function getSessionId(): string {
+  const key = "flexa_music_session";
+  let id = sessionStorage.getItem(key);
+  if (!id) { id = crypto.randomUUID(); sessionStorage.setItem(key, id); }
+  return id;
+}
+
+function getLiked(): Set<number> {
+  try { return new Set(JSON.parse(localStorage.getItem(LIKED_KEY) ?? "[]")); }
+  catch { return new Set(); }
+}
+function saveLiked(set: Set<number>) {
+  localStorage.setItem(LIKED_KEY, JSON.stringify([...set]));
+}
+
+// ── Impression tracker ─────────────────────────────────────────────────────────
+const sentImpressions = new Set<number>();
+async function logImpression(trackId: number, sec: number) {
+  if (sentImpressions.has(trackId)) return;
+  sentImpressions.add(trackId);
+  try {
+    await fetch("/api/music/impression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ trackId, sessionId: getSessionId(), listeningSeconds: sec }),
+    });
+  } catch { /* non-fatal */ }
+}
+
+// ── Download helper ────────────────────────────────────────────────────────────
+async function downloadTrack(track: Track) {
+  if (!track.audio_url) return;
+  try {
+    const res  = await fetch(track.audio_url);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement("a"), {
+      href: url, download: `${track.title} - ${track.artist}.mp3`,
+    });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch { window.open(track.audio_url, "_blank"); }
+}
+
+// ── Avatar placeholder ─────────────────────────────────────────────────────────
+function Avatar({ src, name, size = 36, className = "" }: { src?: string | null; name?: string; size?: number; className?: string }) {
+  const init = (name ?? "?")[0]?.toUpperCase() ?? "?";
+  if (src) return <img src={src} alt={name} className={`rounded-full object-cover shrink-0 ${className}`} style={{ width: size, height: size }} />;
   return (
-    <div
-      className="fixed bottom-20 left-0 right-0 mx-3 z-40 rounded-2xl overflow-hidden shadow-2xl"
-      style={{ background: "linear-gradient(135deg,#1e1b4b,#312e81,#4c1d95)", border: "1px solid rgba(139,92,246,0.4)" }}
-    >
-      {/* Progress bar */}
-      <div className="h-0.5 bg-white/10">
-        <div className="h-full bg-violet-400 transition-all" style={{ width: `${progress}%` }} />
+    <div className={`rounded-full flex items-center justify-center shrink-0 font-bold text-white ${className}`}
+      style={{ width: size, height: size, background: "linear-gradient(135deg,#7c3aed,#c026d3)", fontSize: size * 0.38 }}>
+      {init}
+    </div>
+  );
+}
+
+// ── Cover art ─────────────────────────────────────────────────────────────────
+function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; title?: string; size?: number; radius?: number }) {
+  return (
+    <div className="shrink-0 overflow-hidden flex items-center justify-center bg-[#2a2a2a]"
+      style={{ width: size, height: size, borderRadius: radius }}>
+      {src
+        ? <img src={src} alt={title} className="w-full h-full object-cover" />
+        : <Music2 size={size * 0.4} className="text-[#555]" />}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Bottom sheet "More" options
+// ══════════════════════════════════════════════════════════════════════════════
+function MoreSheet({ track, liked, onClose, onLike, onDownload }:
+  { track: Track; liked: boolean; onClose: () => void; onLike: () => void; onDownload: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="relative w-full rounded-t-3xl overflow-hidden"
+        style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}
+        onClick={e => e.stopPropagation()}>
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
+        {/* Track info */}
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-white/5">
+          <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
+          <div className="min-w-0">
+            <p className="text-white font-bold text-sm truncate">{track.title}</p>
+            <p className="text-white/50 text-xs truncate">{track.artist}</p>
+          </div>
+        </div>
+        {/* Options */}
+        {[
+          { icon: liked ? "❤️" : "🤍", label: liked ? "Retire nan favoris" : "Ajoute nan favoris", action: () => { onLike(); onClose(); } },
+          { icon: "⬇️", label: "Telechaje",    action: () => { onDownload(); onClose(); } },
+          { icon: "🔗", label: "Pataje chante", action: onClose },
+          { icon: "🚩", label: "Rapòte",        action: onClose },
+        ].map(({ icon, label, action }) => (
+          <button key={label} onClick={action}
+            className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/5 transition-colors">
+            <span className="text-xl w-7 text-center">{icon}</span>
+            <span className="text-white text-sm font-medium">{label}</span>
+          </button>
+        ))}
+        <div className="pb-safe" style={{ height: 24 }} />
       </div>
+    </div>
+  );
+}
 
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        {/* Artwork */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-400 to-fuchsia-600 flex items-center justify-center shrink-0 shadow-lg">
-          <Music2 size={18} className="text-white" />
-        </div>
+// ══════════════════════════════════════════════════════════════════════════════
+// Mini Player (bottom bar)
+// ══════════════════════════════════════════════════════════════════════════════
+interface PlayerState { track: Track | null; playing: boolean; currentTime: number; duration: number; muted: boolean; volume: number; }
 
-        {/* Title */}
-        <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-bold truncate">{track.title}</p>
-          <p className="text-white/60 text-xs truncate">{track.artist}</p>
-        </div>
-
+function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute, onSeek, onExpand }:
+  { state: PlayerState; audioRef: React.RefObject<HTMLAudioElement>;
+    onPrev: () => void; onNext: () => void; onClose: () => void;
+    onToggle: () => void; onMute: () => void;
+    onSeek: (t: number) => void; onExpand: () => void; }) {
+  const { track, playing, currentTime, duration, muted } = state;
+  if (!track) return null;
+  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  return (
+    <div className="fixed bottom-16 left-0 right-0 mx-3 z-40 rounded-2xl overflow-hidden select-none shadow-2xl"
+      style={{ background: "linear-gradient(135deg,#1e0a3c,#2d1b4e)", border: "1px solid rgba(139,92,246,0.35)" }}>
+      {/* Progress bar */}
+      <div className="h-0.5 bg-white/10 cursor-pointer"
+        onClick={e => { const r = e.currentTarget.getBoundingClientRect(); onSeek(((e.clientX - r.left) / r.width) * (duration || 0)); }}>
+        <div className="h-full bg-violet-400 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="flex items-center gap-2.5 px-3 py-2">
+        {/* Cover — tap to expand */}
+        <button onClick={onExpand} className="shrink-0">
+          <CoverArt src={track.cover_url} title={track.title} size={38} radius={8} />
+        </button>
+        {/* Info */}
+        <button onClick={onExpand} className="flex-1 min-w-0 text-left">
+          <p className="text-white text-xs font-bold truncate">{track.title}</p>
+          <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
+        </button>
+        {/* Time */}
+        <span className="text-white/30 text-[10px] shrink-0">{fmtDur(Math.floor(currentTime))}</span>
         {/* Controls */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={onLike}>
-            <Heart size={18} className={track.liked ? "text-red-400 fill-red-400" : "text-white/50"} />
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button onClick={onPrev} className="w-7 h-7 flex items-center justify-center"><SkipBack size={13} className="text-white/70" /></button>
+          <button onClick={onToggle} className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
+            {playing ? <Pause size={14} className="text-white" /> : <Play size={14} className="text-white ml-0.5" />}
           </button>
-          <button
-            onClick={() => setPlaying(p => !p)}
-            className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center"
-          >
-            {playing
-              ? <span className="text-white font-bold text-xs">⏸</span>
-              : <Play size={16} className="text-white" />}
+          <button onClick={onNext} className="w-7 h-7 flex items-center justify-center"><SkipForward size={13} className="text-white/70" /></button>
+          <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
+            {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
           </button>
-          <button><SkipForward size={18} className="text-white/70" /></button>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center"><X size={13} className="text-white/40" /></button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function FlexaMusic() {
-  const [liked, setLiked] = useState<Record<number, boolean>>(
-    Object.fromEntries(FEATURED.map((t, i) => [i, t.liked]))
-  );
-  const [miniTrack, setMiniTrack] = useState<null | (typeof FEATURED[0] & { liked: boolean })>(null);
+// ══════════════════════════════════════════════════════════════════════════════
+// HOME VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLike, onSearch, setLocation }:
+  { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
+    onPlay: (t: Track, q: Track[], i: number) => void;
+    onPlayList: (mix: Mix) => void;
+    onToggleLike: (id: number) => void;
+    onSearch: (q: string) => void;
+    setLocation: (p: string) => void; }) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
-  const playTrack = (track: typeof FEATURED[0], idx: number) => {
-    setMiniTrack({ ...track, liked: liked[idx] });
+  const likedTracks  = tracks.filter(t => liked.has(t.id));
+  const favDisplay   = likedTracks.slice(0, 4).length > 0 ? likedTracks.slice(0, 4) : tracks.slice(0, 4);
+  const recommended  = tracks.filter(t => t.is_featured || liked.has(t.id) || t.play_count > 100).slice(0, 10);
+  const recFallback  = recommended.length >= 3 ? recommended : tracks.slice(0, 10);
+
+  const mixes = useMemo((): Mix[] => {
+    const genres = [...new Set(tracks.map(t => t.genre).filter(Boolean))] as string[];
+    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+    return [
+      { id:"mix1", label:"MIX 1", subtitle: genres[0] ?? "Tout", tracks: shuffled.slice(0, 20), cover: shuffled[0]?.cover_url ?? null, gradient: MIX_GRADIENTS[0] },
+      { id:"mix2", label:"MIX 2", subtitle: genres[1] ?? "Featured", tracks: tracks.filter(t => t.is_featured).length > 0 ? tracks.filter(t => t.is_featured) : tracks.slice(5,20), cover: tracks.find(t=>t.is_featured)?.cover_url ?? null, gradient: MIX_GRADIENTS[1] },
+      { id:"mix3", label:"MIX 3", subtitle: genres[2] ?? "Latest", tracks: genres[2] ? tracks.filter(t => t.genre===genres[2]) : [...tracks].reverse().slice(0,20), cover: null, gradient: MIX_GRADIENTS[2] },
+    ];
+  }, [tracks]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (search.trim()) onSearch(search.trim());
   };
 
-  const toggleLike = (idx: number) => {
-    setLiked(prev => ({ ...prev, [idx]: !prev[idx] }));
-    if (miniTrack) setMiniTrack(prev => prev ? { ...prev, liked: !prev.liked } : null);
-  };
+  const userName = user?.name ?? user?.username ?? "Ou";
 
   return (
-    <>
-      <div className="max-w-3xl mx-auto px-3 pb-36">
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
 
-        {/* ── Hero ── */}
-        <div
-          className="relative rounded-3xl overflow-hidden mb-6 p-6"
-          style={{ background: "linear-gradient(135deg,#0f0c29,#302b63,#24243e)", minHeight: 200 }}
-        >
-          {/* Animated glow blobs */}
-          <div className="absolute top-0 left-0 w-48 h-48 rounded-full bg-violet-600/30 blur-3xl -translate-x-1/4 -translate-y-1/4" />
-          <div className="absolute bottom-0 right-0 w-40 h-40 rounded-full bg-fuchsia-600/30 blur-3xl translate-x-1/4 translate-y-1/4" />
+      {/* ── Header ── */}
+      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3" style={{ background: "#0a0a0a" }}>
+        <Avatar src={user?.avatar_url} name={userName} size={38} />
+        <button
+          onClick={() => setLocation(isAdmin ? "/admin/music" : user ? "/music/earnings" : "/music/upload")}
+          className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold"
+          style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
+          <span className="text-xs">🎵</span> Artist Studio
+        </button>
+        <div className="flex-1" />
+        <button onClick={() => setLocation("/music/upload")}
+          className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
+          <UploadCloud size={17} className="text-white/80" />
+        </button>
+        <button onClick={() => setLocation("/notifications")}
+          className="w-9 h-9 rounded-full flex items-center justify-center relative" style={{ background: "#1a1a1a" }}>
+          <Bell size={17} className="text-white/80" />
+        </button>
+        <button onClick={() => setLocation("/messages")}
+          className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
+          <MessageCircle size={17} className="text-white/80" />
+        </button>
+      </div>
 
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/20 shadow-lg">
-                <Music2 size={24} className="text-violet-300" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-black text-white tracking-tight">Flexa Music</h1>
-                <p className="text-white/60 text-xs">Streaming · Downloads · Live</p>
+      {/* ── Search ── */}
+      <form onSubmit={handleSearch} className="px-4 mb-5">
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+          style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.07)" }}>
+          <Search size={15} className="text-white/40 shrink-0" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Chèche chante, atis, album…"
+            className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 outline-none"
+          />
+          {search && <button type="button" onClick={() => setSearch("")}><X size={13} className="text-white/30" /></button>}
+        </div>
+      </form>
+
+      {tracks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <Music2 size={48} className="text-white/10" />
+          <p className="text-white/40 text-sm">Pa gen chante disponib ankò</p>
+          {user && (
+            <button onClick={() => setLocation("/music/upload")}
+              className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-full"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
+              <Plus size={15} /> Telechaje Premye Chante
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* ── Vos favoris ── */}
+          <div className="px-4 mb-5">
+            {/* Header card */}
+            <div className="rounded-2xl overflow-hidden mb-2" style={{ background: "linear-gradient(135deg,#3d1c00,#7a2d00)" }}>
+              <div className="flex items-center justify-between px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }}>
+                    <Heart size={20} className="text-red-400 fill-red-400" />
+                  </div>
+                  <span className="text-white font-black text-base">Chante Renmen</span>
+                </div>
+                <button onClick={() => { const q = likedTracks.length > 0 ? likedTracks : tracks; if(q.length) onPlay(q[0], q, 0); }}
+                  className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
+                  <Shuffle size={16} className="text-white" />
+                </button>
               </div>
             </div>
-
-            {/* Search bar */}
-            <div className="flex items-center gap-2 bg-white/10 backdrop-blur rounded-xl px-3 py-2.5 border border-white/20">
-              <Search size={16} className="text-white/50 shrink-0" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Chèche chante, atiste, album..."
-                className="flex-1 bg-transparent text-white text-sm placeholder:text-white/40 outline-none"
-              />
-              <Mic2 size={16} className="text-white/40 shrink-0" />
-            </div>
-
-            {/* Quick pills */}
-            <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
-              {["🔥 Trending", "🎶 New", "❤️ Liked", "🎙 Live"].map(pill => (
-                <button key={pill}
-                  className="text-xs text-white/80 bg-white/10 border border-white/20 rounded-full px-3 py-1 whitespace-nowrap shrink-0 backdrop-blur">
-                  {pill}
+            {/* 2×2 grid */}
+            <div className="grid grid-cols-2 gap-1.5">
+              {favDisplay.map(track => (
+                <button key={track.id} onClick={() => onPlay(track, favDisplay, favDisplay.indexOf(track))}
+                  className="flex items-center gap-2 rounded-xl px-2 py-2 text-left active:scale-[0.97] transition-transform"
+                  style={{ background: "#1a1a1a" }}>
+                  <CoverArt src={track.cover_url} title={track.title} size={40} radius={6} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
+                    <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* ── Featured Tracks ── */}
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-base flex items-center gap-2">
-              <TrendingUp size={16} className="text-violet-500" /> Trending Kounye An
-            </h2>
-            <button className="text-xs text-violet-500 flex items-center gap-0.5">
-              Tout <ChevronRight size={12} />
-            </button>
+          {/* ── Basé sur ce que vous aimez ── */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between px-4 mb-3">
+              <p className="text-white font-black text-base">Baze sou sa ou renmen</p>
+              <button className="text-xs font-bold" style={{ color: "#a78bfa" }} onClick={() => onSearch("")}>
+                Tout wè
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
+              {recFallback.map(track => (
+                <button key={track.id} onClick={() => onPlay(track, recFallback, recFallback.indexOf(track))}
+                  className="shrink-0 text-left active:scale-95 transition-transform" style={{ width: 140 }}>
+                  <CoverArt src={track.cover_url} title={track.title} size={140} radius={12} />
+                  <p className="text-white text-xs font-bold truncate mt-1.5">{track.title}</p>
+                  <p className="text-white/40 text-[10px] truncate">{track.artist}</p>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="space-y-2">
-            {FEATURED.map((track, idx) => (
-              <button
-                key={idx}
-                onClick={() => playTrack(track, idx)}
-                className="w-full flex items-center gap-3 p-3 rounded-2xl bg-muted/50 hover:bg-muted transition-colors text-left active:scale-[0.98]"
-              >
-                {/* Rank / art */}
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shrink-0 shadow">
-                  <span className="text-white font-bold text-sm">{idx + 1}</span>
-                </div>
+          {/* ── Mixé pour [User] ── */}
+          <div className="mb-6">
+            <p className="text-white font-black text-base px-4 mb-3">Mixé pou {userName}</p>
+            <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
+              {mixes.filter(m => m.tracks.length > 0).map((mix, i) => (
+                <button key={mix.id} onClick={() => onPlayList(mix)}
+                  className="shrink-0 relative active:scale-95 transition-transform overflow-hidden rounded-2xl"
+                  style={{ width: 140, height: 140, background: mix.gradient }}>
+                  {/* Cover grid (2×2 mini covers) */}
+                  {mix.tracks.slice(0,4).some(t => t.cover_url) ? (
+                    <div className="absolute inset-0 grid grid-cols-2 gap-0">
+                      {mix.tracks.slice(0,4).map((t,ti) => (
+                        <div key={ti} className="overflow-hidden">
+                          {t.cover_url
+                            ? <img src={t.cover_url} alt="" className="w-full h-full object-cover" />
+                            : <div className="w-full h-full" style={{ background: mix.gradient }} />}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top,rgba(0,0,0,0.7) 40%,transparent)" }} />
+                  <div className="absolute bottom-2.5 left-3">
+                    <p className="text-white font-black text-xl leading-none">{mix.label}</p>
+                    <p className="text-white/60 text-[10px] truncate">{mix.subtitle}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm truncate">{track.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{track.artist}</p>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-muted-foreground">{track.duration}</span>
-                  <button
-                    onClick={e => { e.stopPropagation(); toggleLike(idx); }}
-                    className="p-1"
-                  >
-                    <Heart size={16} className={liked[idx] ? "text-red-400 fill-red-400" : "text-muted-foreground"} />
+          {/* ── All tracks list ── */}
+          <div className="px-4">
+            <p className="text-white font-black text-base mb-3">Tout Chante</p>
+            <div className="space-y-0">
+              {tracks.map((track, idx) => {
+                const isLiked = liked.has(track.id);
+                return (
+                  <button key={track.id} onClick={() => onPlay(track, tracks, idx)}
+                    className="w-full flex items-center gap-3 py-2.5 text-left active:bg-white/5 transition-colors rounded-xl px-1">
+                    <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-semibold truncate">{track.title}</p>
+                      <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                        <span>{track.artist}</span>
+                        {track.play_count > 0 && <><span>·</span><Play size={8} className="inline" /><span>{fmtPlays(track.play_count)}</span></>}
+                        {track.duration_seconds && <><span>·</span><span>{fmtDur(track.duration_seconds)}</span></>}
+                      </div>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); onToggleLike(track.id); }}
+                      className="w-8 h-8 flex items-center justify-center rounded-full">
+                      <Heart size={15} className={isLiked ? "text-red-400 fill-red-400" : "text-white/30"} />
+                    </button>
                   </button>
-                  <div className="w-8 h-8 rounded-full bg-violet-600/20 flex items-center justify-center">
-                    <Play size={12} className="text-violet-500" />
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Albums ── */}
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-base flex items-center gap-2">
-              <ListMusic size={16} className="text-fuchsia-500" /> Albums Popilè
-            </h2>
-            <button className="text-xs text-violet-500 flex items-center gap-0.5">
-              Tout <ChevronRight size={12} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {ALBUMS.map((album, idx) => (
-              <button key={idx}
-                className="rounded-2xl overflow-hidden bg-muted/50 border border-border text-left hover:shadow-md active:scale-[0.97] transition-all">
-                <div className={`h-32 bg-gradient-to-br ${album.gradient} flex items-center justify-center relative`}>
-                  <Music2 size={36} className="text-white/60" />
-                  <div className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                    <Play size={13} className="text-violet-700 ml-0.5" />
-                  </div>
-                </div>
-                <div className="p-2.5">
-                  <p className="font-bold text-sm truncate">{album.title}</p>
-                  <p className="text-xs text-muted-foreground">{album.artist} · {album.songs} chante</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Genres ── */}
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-bold text-base flex items-center gap-2">
-              <Radio size={16} className="text-rose-500" /> Jen Mizik
-            </h2>
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {GENRES.map((g) => (
-              <button key={g.label}
-                className={`bg-gradient-to-br ${g.color} rounded-2xl p-3 flex flex-col items-center gap-1 hover:opacity-90 active:scale-95 transition-all`}>
-                <span className="text-xl">{g.emoji}</span>
-                <span className="text-white text-[10px] font-bold">{g.label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Premium Banner ── */}
-        <section className="mb-6">
-          <div
-            className="rounded-3xl p-5 flex items-center gap-4 overflow-hidden relative"
-            style={{ background: "linear-gradient(135deg,#f59e0b,#d97706,#92400e)" }}
-          >
-            <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/10 blur-2xl" />
-            <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-              <Crown size={24} className="text-white" />
+                );
+              })}
             </div>
-            <div className="flex-1 min-w-0 relative z-10">
-              <p className="text-white font-black text-base">Flexa Premium</p>
-              <p className="text-white/80 text-xs">Okenn reklam · Telechajman · Son HD</p>
-            </div>
-            <button className="bg-white text-amber-700 font-bold text-xs px-4 py-2 rounded-full whitespace-nowrap shrink-0 shadow">
-              Esaye
-            </button>
           </div>
-        </section>
+        </>
+      )}
+    </div>
+  );
+}
 
-        {/* ── Quick Actions ── */}
-        <section className="mb-6 grid grid-cols-2 gap-3">
-          {[
-            { icon: Headphones, label: "Podkass",     sub: "Tande kounye an",  color: "from-blue-500 to-indigo-600" },
-            { icon: Star,       label: "Atis",         sub: "Dekouvri atiste",  color: "from-rose-500 to-pink-600"   },
-            { icon: Clock,      label: "Tan Dòmi",     sub: "Sleep timer",      color: "from-teal-500 to-cyan-600"   },
-            { icon: Plus,       label: "Playlist",     sub: "Kreye playlist",   color: "from-violet-500 to-purple-600"},
-          ].map(({ icon: Icon, label, sub, color }) => (
-            <button key={label}
-              className="flex items-center gap-3 p-3 rounded-2xl bg-muted/50 border border-border hover:bg-muted active:scale-[0.97] transition-all text-left">
-              <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shrink-0`}>
-                <Icon size={18} className="text-white" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-sm">{label}</p>
-                <p className="text-xs text-muted-foreground">{sub}</p>
-              </div>
-            </button>
-          ))}
-        </section>
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAYER VIEW (playlist/track detail)
+// ══════════════════════════════════════════════════════════════════════════════
+function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
+  playerState, liked, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle }:
+  { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
+    playerState: PlayerState; liked: Set<number>;
+    onBack: () => void; onPlay: (t: Track, idx: number) => void;
+    onToggle: () => void; onToggleLike: (id: number) => void;
+    onDownload: (t: Track) => void; onShuffle: () => void; }) {
+  const { user } = useAuth();
+  const [moreTrack, setMoreTrack] = useState<Track | null>(null);
+  const { t } = useTranslation();
 
-        {/* ── Coming Soon Notice ── */}
-        <div className="rounded-2xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/30 p-4 text-center">
-          <p className="text-xs text-violet-600 dark:text-violet-400 font-semibold">🎵 Plis fonksyon ap vini — streaming, upload mizik, live ak plis</p>
+  const currentTrack  = playerState.track;
+  const isLiked       = currentTrack ? liked.has(currentTrack.id) : false;
+  const totalDuration = fmtTotal(playlist);
+  const userName      = (user as any)?.name ?? (user as any)?.username ?? "Flexa";
+
+  const coverSrc = playlistCover ?? currentTrack?.cover_url ?? null;
+
+  return (
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
+
+      {/* ── Top bar ── */}
+      <div className="flex items-center gap-3 px-4 py-3 sticky top-0 z-30" style={{ background: "#0a0a0a" }}>
+        <button onClick={onBack}
+          className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
+          <ChevronLeft size={20} className="text-white" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+            style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <Search size={14} className="text-white/30 shrink-0" />
+            <span className="text-white/30 text-sm">Chèche chante, atis…</span>
+          </div>
         </div>
-
       </div>
 
-      {/* ── Mini Player ── */}
-      {miniTrack && (
-        <MiniPlayer
-          track={miniTrack}
-          onLike={() => {
-            const idx = FEATURED.findIndex(t => t.title === miniTrack.title);
-            if (idx >= 0) toggleLike(idx);
-          }}
+      {/* ── Album art ── */}
+      <div className="flex justify-center px-8 mb-5 mt-2">
+        <div className="w-full max-w-[240px] aspect-square rounded-2xl overflow-hidden shadow-2xl"
+          style={{ background: playlistGrad ?? "linear-gradient(135deg,#2d1b4e,#4b0082)" }}>
+          {coverSrc
+            ? <img src={coverSrc} alt={playlistTitle} className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center"><Music2 size={64} className="text-white/20" /></div>}
+        </div>
+      </div>
+
+      {/* ── Title + meta ── */}
+      <div className="px-5 mb-4">
+        <h2 className="text-white font-black text-xl leading-tight mb-2">{playlistTitle}</h2>
+        <div className="flex items-center gap-2 text-white/40 text-xs mb-3">
+          <Lock size={11} />
+          <span>Privé</span>
+          <span>·</span>
+          <span>{playlist.length} tit</span>
+          <span>·</span>
+          <span>{totalDuration}</span>
+        </div>
+        {user && (
+          <div className="flex items-center gap-2">
+            <Avatar src={(user as any)?.avatar_url} name={userName} size={22} />
+            <span className="text-white/50 text-xs">Fèt pou <span className="text-white font-semibold">{userName}</span></span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Action row ── */}
+      <div className="flex items-center gap-4 px-5 mb-5">
+        <button onClick={() => currentTrack && onToggleLike(currentTrack.id)}
+          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
+          <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/60"} />
+        </button>
+        <button onClick={() => currentTrack && onDownload(currentTrack)}
+          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
+          <Download size={18} className="text-white/60" />
+        </button>
+        <button onClick={() => setMoreTrack(currentTrack)}
+          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
+          <MoreHorizontal size={18} className="text-white/60" />
+        </button>
+        <div className="flex-1" />
+        <button onClick={onShuffle}
+          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
+          <Shuffle size={17} className="text-white/60" />
+        </button>
+        {/* Big play button */}
+        <button onClick={onToggle}
+          className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl"
+          style={{ background: "#fff" }}>
+          {playerState.playing
+            ? <Pause size={24} className="text-black" />
+            : <Play size={24} className="text-black ml-1" />}
+        </button>
+      </div>
+
+      {/* ── "Basé sur…" ── */}
+      {currentTrack && (
+        <div className="px-5 mb-4">
+          <p className="text-white/30 text-xs">Baze sou · {currentTrack.title}</p>
+        </div>
+      )}
+
+      {/* ── Flexa Premium banner ── */}
+      <div className="mx-4 mb-5 rounded-2xl overflow-hidden flex items-center gap-3 px-4 py-3"
+        style={{ background: "linear-gradient(135deg,#1a0040,#330066)" }}>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.1)" }}>
+          <span className="text-xl">👑</span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-black text-sm">Flexa Premium</p>
+          <p className="text-white/50 text-[10px]">Pa gen reklam · Telechajman · Son HD</p>
+        </div>
+        <button className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-full" style={{ background: "#7c3aed", color: "#fff" }}>
+          Gratis
+        </button>
+      </div>
+
+      {/* ── Track list ── */}
+      <div className="px-4 space-y-0">
+        {playlist.map((track, idx) => {
+          const active = playerState.track?.id === track.id;
+          return (
+            <div key={track.id}
+              className={`flex items-center gap-3 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
+              <button onClick={() => onPlay(track, idx)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold truncate ${active ? "text-violet-400" : "text-white"}`}>{track.title}</p>
+                  <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    <span className="truncate">{track.artist}</span>
+                    {track.play_count > 0 && <><Play size={7} className="inline shrink-0" /><span>{fmtPlays(track.play_count)}</span></>}
+                    {track.duration_seconds && <><span>·</span><span>{fmtDur(track.duration_seconds)}</span></>}
+                  </div>
+                </div>
+              </button>
+              <button onClick={() => setMoreTrack(track)}
+                className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                <MoreHorizontal size={16} className="text-white/30" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* More sheet */}
+      {moreTrack && (
+        <MoreSheet
+          track={moreTrack}
+          liked={liked.has(moreTrack.id)}
+          onClose={() => setMoreTrack(null)}
+          onLike={() => onToggleLike(moreTrack.id)}
+          onDownload={() => onDownload(moreTrack)}
         />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════════════════════
+export default function FlexaMusic() {
+  const { user, isAdmin } = useAuth();
+  const [, setLocation] = useLocation();
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+  const [tracks,  setTracks]  = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterQ, setFilterQ] = useState("");
+
+  // ── Likes ─────────────────────────────────────────────────────────────────
+  const [liked, setLiked] = useState<Set<number>>(getLiked);
+  const toggleLike = (id: number) => {
+    setLiked(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      saveLiked(next);
+      return next;
+    });
+  };
+
+  // ── View state ────────────────────────────────────────────────────────────
+  const [view, setView]             = useState<View>("home");
+  const [playlist,  setPlaylist]    = useState<Track[]>([]);
+  const [plTitle,   setPlTitle]     = useState("");
+  const [plCover,   setPlCover]     = useState<string | null>(null);
+  const [plGrad,    setPlGrad]      = useState<string | undefined>(undefined);
+
+  // ── Player state ──────────────────────────────────────────────────────────
+  const [playerState, setPlayerState] = useState<PlayerState>({
+    track: null, playing: false, currentTime: 0, duration: 0, muted: false, volume: 1,
+  });
+  const [queue,    setQueue]    = useState<Track[]>([]);
+  const [queueIdx, setQueueIdx] = useState(0);
+
+  const audioRef  = useRef<HTMLAudioElement>(null);
+  const listenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Fetch ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const p = new URLSearchParams();
+        if (filterQ) p.set("search", filterQ);
+        const res  = await fetch(`/api/music?${p}`);
+        const data = await res.json();
+        setTracks(data.tracks ?? []);
+      } catch { setTracks([]); }
+      finally { setLoading(false); }
+    })();
+  }, [filterQ]);
+
+  // ── Audio events ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => setPlayerState(s => ({ ...s, currentTime: audio.currentTime }));
+    const onDur  = () => setPlayerState(s => ({ ...s, duration: audio.duration || 0 }));
+    const onEnd  = () => playNext();
+    const onPlay = () => setPlayerState(s => ({ ...s, playing: true }));
+    const onPause= () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("durationchange", onDur);
+    audio.addEventListener("ended", onEnd);
+    audio.addEventListener("play",  onPlay);
+    audio.addEventListener("pause", onPause);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("durationchange", onDur);
+      audio.removeEventListener("ended", onEnd);
+      audio.removeEventListener("play",  onPlay);
+      audio.removeEventListener("pause", onPause);
+    };
+  }, []);
+
+  // ── MediaSession ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    const track = playerState.track;
+    if (!("mediaSession" in navigator) || !track) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title, artist: track.artist, album: track.album ?? "",
+      artwork: track.cover_url ? [{ src: track.cover_url, sizes: "512x512" }] : [],
+    });
+    navigator.mediaSession.setActionHandler("play",          () => audioRef.current?.play());
+    navigator.mediaSession.setActionHandler("pause",         () => audioRef.current?.pause());
+    navigator.mediaSession.setActionHandler("nexttrack",     () => playNext());
+    navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
+    navigator.mediaSession.setActionHandler("seekto", d => {
+      if (d.seekTime != null && audioRef.current) audioRef.current.currentTime = d.seekTime;
+    });
+  }, [playerState.track]);
+
+  // ── Impression timer ──────────────────────────────────────────────────────
+  const stopTimer  = () => { if (listenRef.current) { clearTimeout(listenRef.current); listenRef.current = null; } };
+  const startTimer = (id: number) => {
+    stopTimer();
+    listenRef.current = setTimeout(() => logImpression(id, 31), 31_000);
+  };
+
+  // ── Playback ──────────────────────────────────────────────────────────────
+  const playTrack = useCallback((track: Track, newQueue?: Track[], idx?: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (newQueue) { setQueue(newQueue); setQueueIdx(idx ?? 0); }
+    stopTimer();
+    audio.pause();
+    audio.src   = track.audio_url ?? "";
+    audio.muted = playerState.muted;
+    audio.volume= playerState.volume;
+    setPlayerState(s => ({ ...s, track, playing: false, currentTime: 0, duration: 0 }));
+    if (track.audio_url) { audio.load(); audio.play().catch(() => {}); if (track.id) startTimer(track.id); }
+  }, [playerState.muted, playerState.volume]);
+
+  const playNext = useCallback(() => {
+    if (!queue.length) return;
+    const next = (queueIdx + 1) % queue.length;
+    setQueueIdx(next); playTrack(queue[next], queue, next);
+  }, [queue, queueIdx, playTrack]);
+
+  const playPrev = useCallback(() => {
+    if (!queue.length) return;
+    const prev = (queueIdx - 1 + queue.length) % queue.length;
+    setQueueIdx(prev); playTrack(queue[prev], queue, prev);
+  }, [queue, queueIdx, playTrack]);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio || !playerState.track) return;
+    audio.paused ? audio.play().catch(() => {}) : audio.pause();
+  };
+
+  const toggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.muted = !audio.muted;
+    setPlayerState(s => ({ ...s, muted: !s.muted }));
+  };
+
+  const seek = (t: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = t;
+    setPlayerState(s => ({ ...s, currentTime: t }));
+  };
+
+  const closePlayer = () => {
+    audioRef.current?.pause();
+    stopTimer();
+    setPlayerState(s => ({ ...s, track: null, playing: false }));
+  };
+
+  const shuffleQueue = () => {
+    if (!queue.length) return;
+    const sh = [...queue].sort(() => Math.random() - 0.5);
+    setQueue(sh); setQueueIdx(0); playTrack(sh[0], sh, 0);
+  };
+
+  // ── Open a mix / playlist ─────────────────────────────────────────────────
+  const openMix = (mix: Mix) => {
+    if (!mix.tracks.length) return;
+    setPlaylist(mix.tracks);
+    setPlTitle(mix.label + " · " + mix.subtitle);
+    setPlCover(mix.cover);
+    setPlGrad(mix.gradient);
+    setView("player");
+    playTrack(mix.tracks[0], mix.tracks, 0);
+  };
+
+  // ── Open track from home → auto-switch to player view ─────────────────────
+  const openTrack = (track: Track, q: Track[], idx: number) => {
+    setPlaylist(q);
+    setPlTitle(track.title);
+    setPlCover(track.cover_url);
+    setPlGrad(undefined);
+    setView("player");
+    playTrack(track, q, idx);
+  };
+
+  // ── Loading spinner ───────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <audio ref={audioRef} preload="metadata" />
+
+      {view === "home" ? (
+        <HomeView
+          tracks={tracks}
+          liked={liked}
+          user={user}
+          isAdmin={isAdmin}
+          onPlay={openTrack}
+          onPlayList={openMix}
+          onToggleLike={toggleLike}
+          onSearch={setFilterQ}
+          setLocation={setLocation}
+        />
+      ) : (
+        <PlayerView
+          playlist={playlist}
+          playlistTitle={plTitle}
+          playlistCover={plCover}
+          playlistGrad={plGrad}
+          playerState={playerState}
+          liked={liked}
+          onBack={() => setView("home")}
+          onPlay={(t, idx) => playTrack(t, playlist, idx)}
+          onToggle={togglePlay}
+          onToggleLike={toggleLike}
+          onDownload={downloadTrack}
+          onShuffle={shuffleQueue}
+        />
+      )}
+
+      {/* Mini player — visible in both views */}
+      <MiniPlayer
+        state={playerState}
+        audioRef={audioRef}
+        onPrev={playPrev}
+        onNext={playNext}
+        onClose={closePlayer}
+        onToggle={togglePlay}
+        onMute={toggleMute}
+        onSeek={seek}
+        onExpand={() => playerState.track && setView("player")}
+      />
+
+      {/* Admin FAB */}
+      {isAdmin && (
+        <button onClick={() => setLocation("/admin/music")}
+          className="fixed bottom-24 right-4 z-50 flex items-center gap-2 font-bold text-sm px-4 py-3 rounded-2xl shadow-xl active:scale-95 transition-all"
+          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff", boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
+          <Plus size={17} /> Admin
+        </button>
       )}
     </>
   );

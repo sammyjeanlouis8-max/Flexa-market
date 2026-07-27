@@ -1969,7 +1969,64 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "music_tracks.genre_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_genre_idx ON music_tracks(genre)" });
   migrations.push({ name: "music_tracks.artist_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_idx ON music_tracks(artist)" });
-  migrations.push({ name: "music_tracks.active_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_active_idx ON music_tracks(is_active)" });
+  migrations.push({ name: "music_tracks.active_idx",       sql: "CREATE INDEX IF NOT EXISTS music_tracks_active_idx ON music_tracks(is_active)" });
+  // Artist ownership + impression counters (added after initial release)
+  migrations.push({ name: "music_tracks.artist_user_id",   sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS artist_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL" });
+  migrations.push({ name: "music_tracks.total_impressions", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS total_impressions INTEGER NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.valid_impressions", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS valid_impressions INTEGER NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.artist_idx",        sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_user_idx ON music_tracks(artist_user_id)" });
+
+  // ── Music Ad Stats (daily aggregated per track) ───────────────────────────────
+  migrations.push({
+    name: "music_ad_stats.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_ad_stats (
+      id SERIAL PRIMARY KEY,
+      track_id INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      date DATE NOT NULL,
+      raw_impressions INTEGER NOT NULL DEFAULT 0,
+      valid_impressions INTEGER NOT NULL DEFAULT 0,
+      estimated_revenue_usd REAL NOT NULL DEFAULT 0,
+      confirmed_revenue_usd REAL NOT NULL DEFAULT 0,
+      cpm REAL NOT NULL DEFAULT 1.0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(track_id, date)
+    )`,
+  });
+  migrations.push({ name: "music_ad_stats.date_idx",  sql: "CREATE INDEX IF NOT EXISTS music_ad_stats_date_idx ON music_ad_stats(date)" });
+  migrations.push({ name: "music_ad_stats.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_ad_stats_track_idx ON music_ad_stats(track_id)" });
+
+  // ── Music Earnings (confirmed payouts credited to artist wallets) ──────────────
+  migrations.push({
+    name: "music_earnings.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_earnings (
+      id SERIAL PRIMARY KEY,
+      artist_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      track_id INTEGER REFERENCES music_tracks(id) ON DELETE SET NULL,
+      amount_usd REAL NOT NULL,
+      impressions_credited INTEGER NOT NULL,
+      milestone INTEGER NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({ name: "music_earnings.artist_idx", sql: "CREATE INDEX IF NOT EXISTS music_earnings_artist_idx ON music_earnings(artist_id)" });
+  migrations.push({ name: "music_earnings.track_idx",  sql: "CREATE INDEX IF NOT EXISTS music_earnings_track_idx ON music_earnings(track_id)" });
+  migrations.push({ name: "music_earnings.date_idx",   sql: "CREATE INDEX IF NOT EXISTS music_earnings_date_idx ON music_earnings(created_at)" });
+
+  // ── Clear sample/seed music tracks (one-time, guarded by a flag table) ──────
+  migrations.push({
+    name: "flexa_migrations_flags.create",
+    sql: "CREATE TABLE IF NOT EXISTS flexa_migrations_flags (flag TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  });
+  migrations.push({
+    name: "music_tracks.clear_samples_v1",
+    sql: `DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM flexa_migrations_flags WHERE flag = 'music_tracks.clear_samples_v1') THEN
+        DELETE FROM music_tracks;
+        INSERT INTO flexa_migrations_flags (flag) VALUES ('music_tracks.clear_samples_v1');
+      END IF;
+    END $$`,
+  });
 
   let applied = 0;
   let failed = 0;

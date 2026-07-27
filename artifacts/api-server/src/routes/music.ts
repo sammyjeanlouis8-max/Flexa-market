@@ -27,6 +27,7 @@ import {
 } from "../lib/wasabi";
 import {
   uploadAudioToCloudinary,
+  uploadCoverToCloudinary,
   isCloudinaryConfigured,
 } from "../lib/cloudinary";
 import { createHash } from "crypto";
@@ -194,9 +195,12 @@ function nullOr(v: unknown): string {
  */
 function toClientTrack(row: Record<string, unknown>) {
   const key = row.storage_key as string | null;
+  // Cloudinary keys (prefix "cld:") — audio_url already holds the direct Cloudinary URL
+  // Wasabi keys — route through signing proxy so private buckets work
+  const isCld = key?.startsWith("cld:");
   return {
     ...row,
-    audio_url: key ? `/api/music/stream/${key}` : row.audio_url,
+    audio_url: key && !isCld ? `/api/music/stream/${key}` : row.audio_url,
     storage_key: undefined, // never expose storage key to client
   };
 }
@@ -511,14 +515,14 @@ router.post("/music/upload", requireAuth, upload.fields([
   }
   log(7, "audio_upload_complete", { key: audioResult.key, url: audioResult.url });
 
-  // ── Step 6b: Cover upload (optional) ─────────────────────────────────────
+  // ── Step 6b: Cover upload — Cloudinary (optional) ───────────────────────
   let coverResult: { key: string; url: string } | null = null;
   if ((req.files as any).cover?.[0]) {
     const coverFile = (req.files as any).cover[0];
-    log(6, "wasabi_cover_upload_start", { mime: coverFile.mimetype, bytes: coverFile.buffer?.byteLength });
+    log(6, "cover_upload_start", { mime: coverFile.mimetype, bytes: coverFile.buffer?.byteLength });
     try {
-      coverResult = await uploadMusicCover(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
-      log(7, "wasabi_cover_upload_complete", { key: coverResult.key });
+      coverResult = await uploadCoverToCloudinary(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
+      log(7, "cover_upload_complete", { key: coverResult.key });
     } catch (err: any) {
       // Cover failure is non-fatal — log and continue without cover
       logger.warn({ uploadId, err: err.message }, "[upload] cover upload failed — continuing without cover");
@@ -538,7 +542,7 @@ router.post("/music/upload", requireAuth, upload.fields([
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioResult.url)}, ${nullOr(coverResult?.url || null)},
           ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
-          ${nullOr(type)}, FALSE, FALSE,
+          ${nullOr(type)}, ${req.user?.role === 'admin' ? 'TRUE' : 'FALSE'}, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
@@ -584,7 +588,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
     }
     if (req.files?.cover?.[0]) {
       const file   = req.files.cover[0];
-      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadCoverToCloudinary(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
       coverKey     = result.key;
     }
@@ -642,12 +646,12 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
       newAudioKey  = result.key;
     }
     if (req.files?.cover?.[0]) {
-      // Upload new cover to Wasabi then delete the old object
+      // Upload new cover to Cloudinary then clean up the old Wasabi object if any
       const file   = req.files.cover[0];
-      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadCoverToCloudinary(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
       const oldKey = (existing.cover_storage_key as string | null) ?? extractKey(existing.cover_url as string | null);
-      await deleteMusicFile(oldKey);
+      if (oldKey && !oldKey.startsWith("cld:")) await deleteMusicFile(oldKey);
       newCoverKey  = result.key;
     }
 
@@ -1129,6 +1133,14 @@ router.get("/music/stream/*key", async (req, res) => {
   try {
     const key = (req.params as any).key as string;
     if (!key) return res.status(400).json({ error: "Missing storage key" });
+
+    // Cloudinary assets — look up the stored URL and redirect directly
+    if (key.startsWith("cld:")) {
+      const rows = await q(`SELECT audio_url FROM music_tracks WHERE storage_key = '${esc(key)}' LIMIT 1`);
+      const url  = rows[0]?.audio_url as string | null;
+      if (!url) return res.status(404).json({ error: "Track not found" });
+      return res.redirect(302, url);
+    }
 
     const streamUrl = await getStreamUrl(key);
 

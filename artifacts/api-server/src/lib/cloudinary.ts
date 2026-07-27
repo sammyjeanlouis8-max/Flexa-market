@@ -43,6 +43,33 @@ export interface CloudinaryUploadResult {
 }
 
 /**
+ * Upload a cover image buffer to Cloudinary.
+ * Returns {url, key} compatible with the WasabiUploadResult shape.
+ */
+export async function uploadCoverToCloudinary(
+  buffer: Buffer,
+  _contentType: string,
+  _originalName?: string,
+): Promise<CloudinaryUploadResult> {
+  if (!isCloudinaryConfigured()) {
+    throw new Error("Cloudinary not configured. Set CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.");
+  }
+  if (!buffer || buffer.length === 0) {
+    throw new Error("Empty cover buffer — nothing to upload.");
+  }
+  return new Promise<CloudinaryUploadResult>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { resource_type: "image", folder: "flexa-music/covers", format: "jpg" },
+      (error, result) => {
+        if (error || !result) reject(error ?? new Error("Cloudinary cover upload failed"));
+        else resolve({ url: result.secure_url, key: `cld:${result.public_id}` });
+      },
+    );
+    stream.end(buffer);
+  });
+}
+
+/**
  * Upload a music audio buffer to Cloudinary.
  * Returns {url, key} compatible with the WasabiUploadResult shape so
  * call sites can be swapped without further changes.

@@ -12,6 +12,7 @@ import {
   Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
   Bell, MessageCircle, ChevronLeft, Plus, Loader2, Lock,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
+  Pencil, Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -181,6 +182,69 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload }:
           </button>
         ))}
         <div className="pb-safe" style={{ height: 24 }} />
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Admin — quick edit modal
+// ══════════════════════════════════════════════════════════════════════════════
+function EditTrackModal({ track, onClose, onSaved }:
+  { track: Track; onClose: () => void; onSaved: (updated: Track) => void }) {
+  const [title,  setTitle]  = useState(track.title);
+  const [artist, setArtist] = useState(track.artist);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("auth_token") ?? sessionStorage.getItem("auth_token") ?? "";
+      const res = await fetch(`/api/admin/music/${track.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ title: title.trim(), artist: artist.trim() }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
+      const data = await res.json();
+      onSaved({ ...track, ...data.track, title: title.trim(), artist: artist.trim() });
+      onClose();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="relative w-full max-w-sm mx-4 mb-8 sm:mb-0 rounded-2xl p-5 space-y-4"
+        style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <p className="text-white font-bold text-base">Modifye chante</p>
+          <button onClick={onClose}><X size={18} className="text-white/40" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-white/40 mb-1 block">Tit</label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              className="w-full bg-white/5 text-white text-sm rounded-xl px-3 py-2.5 outline-none border border-white/10 focus:border-violet-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/40 mb-1 block">Atis</label>
+            <input value={artist} onChange={e => setArtist(e.target.value)}
+              className="w-full bg-white/5 text-white text-sm rounded-xl px-3 py-2.5 outline-none border border-white/10 focus:border-violet-500"
+            />
+          </div>
+        </div>
+        <button disabled={saving || !title.trim()} onClick={save}
+          className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40"
+          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
+          {saving ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Anrejistre"}
+        </button>
       </div>
     </div>
   );
@@ -446,13 +510,15 @@ function UploadView({ onBack, onSuccess }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLike, onSearch, onUpload, setLocation }:
+function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
     onPlay: (t: Track, q: Track[], i: number) => void;
     onPlayList: (mix: Mix) => void;
     onToggleLike: (id: number) => void;
     onSearch: (q: string) => void;
     onUpload: () => void;
+    onEdit: (t: Track) => void;
+    onDelete: (id: number) => void;
     setLocation: (p: string) => void; }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -625,22 +691,36 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
               {tracks.map((track, idx) => {
                 const isLiked = liked.has(track.id);
                 return (
-                  <button key={track.id} onClick={() => onPlay(track, tracks, idx)}
-                    className="w-full flex items-center gap-3 py-2.5 text-left active:bg-white/5 transition-colors rounded-xl px-1">
-                    <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-semibold truncate">{track.title}</p>
-                      <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                        <span>{track.artist}</span>
-                        {track.play_count > 0 && <><span>·</span><Play size={8} className="inline" /><span>{fmtPlays(track.play_count)}</span></>}
-                        {track.duration_seconds && <><span>·</span><span>{fmtDur(track.duration_seconds)}</span></>}
+                  <div key={track.id} className="flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5 transition-colors">
+                    <button onClick={() => onPlay(track, tracks, idx)}
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                      <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{track.title}</p>
+                        <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                          <span>{track.artist}</span>
+                          {track.play_count > 0 && <><span>·</span><Play size={8} className="inline" /><span>{fmtPlays(track.play_count)}</span></>}
+                          {track.duration_seconds && <><span>·</span><span>{fmtDur(track.duration_seconds)}</span></>}
+                        </div>
                       </div>
-                    </div>
-                    <button onClick={e => { e.stopPropagation(); onToggleLike(track.id); }}
-                      className="w-8 h-8 flex items-center justify-center rounded-full">
+                    </button>
+                    <button onClick={() => onToggleLike(track.id)}
+                      className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
                       <Heart size={15} className={isLiked ? "text-red-400 fill-red-400" : "text-white/30"} />
                     </button>
-                  </button>
+                    {isAdmin && <>
+                      <button onClick={() => onEdit(track)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full shrink-0"
+                        style={{ background: "rgba(124,58,237,0.15)" }}>
+                        <Pencil size={13} className="text-violet-400" />
+                      </button>
+                      <button onClick={() => onDelete(track.id)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full shrink-0"
+                        style={{ background: "rgba(239,68,68,0.12)" }}>
+                        <Trash2 size={13} className="text-red-400" />
+                      </button>
+                    </>}
+                  </div>
                 );
               })}
             </div>
@@ -655,12 +735,13 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
-  playerState, liked, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle }:
+  playerState, liked, isAdmin, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle, onEdit, onDelete }:
   { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
-    playerState: PlayerState; liked: Set<number>;
+    playerState: PlayerState; liked: Set<number>; isAdmin: boolean;
     onBack: () => void; onPlay: (t: Track, idx: number) => void;
     onToggle: () => void; onToggleLike: (id: number) => void;
-    onDownload: (t: Track) => void; onShuffle: () => void; }) {
+    onDownload: (t: Track) => void; onShuffle: () => void;
+    onEdit: (t: Track) => void; onDelete: (id: number) => void; }) {
   const { user } = useAuth();
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
   const { t } = useTranslation();
@@ -776,7 +857,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           const active = playerState.track?.id === track.id;
           return (
             <div key={track.id}
-              className={`flex items-center gap-3 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
+              className={`flex items-center gap-2 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
               <button onClick={() => onPlay(track, idx)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                 <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
                 <div className="flex-1 min-w-0">
@@ -789,9 +870,21 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
                 </div>
               </button>
               <button onClick={() => setMoreTrack(track)}
-                className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
-                <MoreHorizontal size={16} className="text-white/30" />
+                className="w-7 h-7 flex items-center justify-center rounded-full shrink-0">
+                <MoreHorizontal size={15} className="text-white/30" />
               </button>
+              {isAdmin && <>
+                <button onClick={() => onEdit(track)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full shrink-0"
+                  style={{ background: "rgba(124,58,237,0.15)" }}>
+                  <Pencil size={13} className="text-violet-400" />
+                </button>
+                <button onClick={() => onDelete(track.id)}
+                  className="w-7 h-7 flex items-center justify-center rounded-full shrink-0"
+                  style={{ background: "rgba(239,68,68,0.12)" }}>
+                  <Trash2 size={13} className="text-red-400" />
+                </button>
+              </>}
             </div>
           );
         })}
@@ -992,6 +1085,34 @@ export default function FlexaMusic() {
     playTrack(track, q, idx);
   };
 
+  // ── Admin: edit / delete ──────────────────────────────────────────────────
+  const [editTrack, setEditTrack] = useState<Track | null>(null);
+
+  const handleEdit = (track: Track) => setEditTrack(track);
+
+  const handleEditSaved = (updated: Track) => {
+    setTracks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+    if (playerState.track?.id === updated.id) {
+      setPlayerState(s => ({ ...s, track: { ...s.track!, ...updated } }));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("Efase chante sa?")) return;
+    try {
+      const token = localStorage.getItem("auth_token") ?? sessionStorage.getItem("auth_token") ?? "";
+      const res = await fetch(`/api/admin/music/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
+      setTracks(prev => prev.filter(t => t.id !== id));
+      if (playerState.track?.id === id) closePlayer();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   // ── After a successful upload: prepend track, play it, go home ─────────────
   const handleUploadSuccess = (track: Track) => {
     const updated = [track, ...tracks];
@@ -1030,6 +1151,8 @@ export default function FlexaMusic() {
           onToggleLike={toggleLike}
           onSearch={setFilterQ}
           onUpload={() => setView("upload")}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
           setLocation={setLocation}
         />
       ) : (
@@ -1040,12 +1163,24 @@ export default function FlexaMusic() {
           playlistGrad={plGrad}
           playerState={playerState}
           liked={liked}
+          isAdmin={isAdmin}
           onBack={() => setView("home")}
           onPlay={(t, idx) => playTrack(t, playlist, idx)}
           onToggle={togglePlay}
           onToggleLike={toggleLike}
           onDownload={downloadTrack}
           onShuffle={shuffleQueue}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+      )}
+
+      {/* Edit modal */}
+      {editTrack && (
+        <EditTrackModal
+          track={editTrack}
+          onClose={() => setEditTrack(null)}
+          onSaved={handleEditSaved}
         />
       )}
 

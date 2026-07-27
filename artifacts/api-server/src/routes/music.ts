@@ -24,6 +24,7 @@ import {
   getStreamUrl,
   extractKey,
   isConfigured as wasabiConfigured,
+  runPreflight,
 } from "../lib/wasabi";
 import { createHash } from "crypto";
 import { logger } from "../lib/logger";
@@ -219,6 +220,21 @@ router.get("/api/music", async (req, res) => {
     );
     res.json({ tracks: rows.map(toClientTrack) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/diagnose — Wasabi preflight + env check (no auth, safe — redacts secrets)
+// ⚠️ MUST be registered before /:id or Express routes "diagnose" as an id
+router.get("/api/music/diagnose", async (_req, res) => {
+  const start = Date.now();
+  const env: Record<string, string> = {};
+  for (const v of ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT","WASABI_PUBLIC"]) {
+    const val = process.env[v];
+    if (!val) { env[v] = "❌ MISSING"; }
+    else if (v.includes("KEY") || v.includes("SECRET")) { env[v] = `✅ SET (${val.length} chars)`; }
+    else { env[v] = `✅ ${val}`; }
+  }
+  const preflight = await runPreflight();
+  res.json({ timestamp: new Date().toISOString(), durationMs: Date.now() - start, env, wasabi: preflight });
 });
 
 // GET /api/music/:id
@@ -434,25 +450,89 @@ router.get("/api/admin/music/stats", requireAdmin, async (_req, res) => {
 router.post("/api/music/upload", requireAuth, upload.fields([
   { name: "audio", maxCount: 1 }, { name: "cover", maxCount: 1 },
 ]), async (req: any, res) => {
+  const uploadId = `upload-${Date.now()}-${req.user?.id ?? "anon"}`;
+  const log = (step: number, name: string, data?: object) =>
+    logger.info({ uploadId, step, stepName: name, ...data }, `[upload] step ${step}: ${name}`);
+  const fail = (step: number, name: string, err: any, status = 500) => {
+    const message = err?.message ?? String(err ?? "unknown error");
+    const code    = err?.Code ?? err?.name ?? undefined;
+    const http    = err?.$metadata?.httpStatusCode ?? undefined;
+    logger.error({ uploadId, step, stepName: name, message, code, httpStatus: http, err },
+      `[upload] FAILED at step ${step}: ${name} — ${message}`);
+    return res.status(status).json({
+      error:    message,
+      step:     step,
+      stepName: name,
+      uploadId,
+    });
+  };
+
+  // ── Step 2: Request received ──────────────────────────────────────────────
+  log(2, "request_received", {
+    userId:      req.user?.id,
+    contentType: req.headers["content-type"]?.slice(0, 80),
+    bodyKeys:    Object.keys(req.body ?? {}),
+    fileKeys:    Object.keys(req.files ?? {}),
+  });
+
+  // ── Step 3: Authentication ────────────────────────────────────────────────
+  if (!req.user?.id) return fail(3, "authentication", new Error("Non authentifye — konekte anvan ou telechaje"), 401);
+  log(3, "authentication", { userId: req.user.id, role: req.user.role });
+
+  // ── Step 4: Validation ────────────────────────────────────────────────────
+  const { title, artist, album, genre, type = "free" } = req.body;
+  if (!title?.trim())       return fail(4, "validation", new Error("Titre obligatwa"), 400);
+  if (!artist?.trim())      return fail(4, "validation", new Error("Non atis obligatwa"), 400);
+  if (!req.files?.audio?.[0]) return fail(4, "validation", new Error("Fichye odyo obligatwa — multipart field 'audio' manke"), 400);
+  const audioFile = (req.files as any).audio[0];
+  log(4, "validation", {
+    title: title.trim(), artist: artist.trim(), type,
+    audioName: audioFile.originalname, audioMime: audioFile.mimetype,
+    audioBytes: audioFile.size ?? audioFile.buffer?.byteLength,
+    hasCover: !!(req.files as any).cover?.[0],
+  });
+
+  // ── Step 5: Wasabi configuration check ───────────────────────────────────
+  if (!wasabiConfigured()) {
+    const missing = ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME"]
+      .filter(k => !process.env[k]).join(", ");
+    return fail(5, "wasabi_config", new Error(`Wasabi pa konfigiré — manke: ${missing}`), 503);
+  }
+  log(5, "wasabi_config", {
+    endpoint: process.env.WASABI_ENDPOINT,
+    bucket:   process.env.WASABI_BUCKET_NAME,
+    region:   process.env.WASABI_REGION,
+  });
+
+  // ── Step 6: Bucket access + audio upload ─────────────────────────────────
+  log(6, "wasabi_audio_upload_start", { mime: audioFile.mimetype, bytes: audioFile.buffer?.byteLength });
+  let audioResult: { key: string; url: string };
   try {
-    const { title, artist, album, genre, type = "free" } = req.body;
-    if (!title?.trim())  return res.status(400).json({ error: "Titre obligatwa" });
-    if (!artist?.trim()) return res.status(400).json({ error: "Non atis obligatwa" });
-    if (!req.files?.audio?.[0]) return res.status(400).json({ error: "Fichye odyo obligatwa" });
-    if (!wasabiConfigured()) return res.status(503).json({ error: "Sèvis stockaj pa konfigiré" });
+    audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
+  } catch (err: any) {
+    return fail(6, "wasabi_audio_upload", err);
+  }
+  log(7, "wasabi_audio_upload_complete", { key: audioResult.key, url: audioResult.url });
 
-    // Upload audio → Wasabi
-    const audioFile = req.files.audio[0];
-    const audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
-
-    // Upload cover → Wasabi (optional)
-    let coverResult: { key: string; url: string } | null = null;
-    if (req.files?.cover?.[0]) {
-      const coverFile = req.files.cover[0];
+  // ── Step 6b: Cover upload (optional) ─────────────────────────────────────
+  let coverResult: { key: string; url: string } | null = null;
+  if ((req.files as any).cover?.[0]) {
+    const coverFile = (req.files as any).cover[0];
+    log(6, "wasabi_cover_upload_start", { mime: coverFile.mimetype, bytes: coverFile.buffer?.byteLength });
+    try {
       coverResult = await uploadMusicCover(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
+      log(7, "wasabi_cover_upload_complete", { key: coverResult.key });
+    } catch (err: any) {
+      // Cover failure is non-fatal — log and continue without cover
+      logger.warn({ uploadId, err: err.message }, "[upload] cover upload failed — continuing without cover");
     }
+  }
 
-    const [track] = await q(
+  // ── Step 9: Database insert ───────────────────────────────────────────────
+  log(9, "db_insert_start", { audioKey: audioResult.key });
+  let track: any;
+  try {
+    const [row] = await q(
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
           type, is_active, is_featured, created_by, artist_user_id)
@@ -465,14 +545,22 @@ router.post("/api/music/upload", requireAuth, upload.fields([
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
-
-    logger.info({ trackId: track.id, userId: req.user?.id, title, storageKey: audioResult.key }, "Artist track uploaded to Wasabi — pending review");
-    // Return stream URL so client can play immediately from local state
-    res.status(201).json({ track: toClientTrack(track), message: "Track soumèt — admin ap revize li anvan li parèt" });
+    track = row;
   } catch (err: any) {
-    logger.error({ err }, "Artist music upload error");
-    res.status(500).json({ error: err?.message ?? "Upload echwe" });
+    // Audio was already uploaded — log the orphan key so admin can clean it up
+    logger.error({ uploadId, orphanKey: audioResult.key, err: err.message },
+      "[upload] DB insert failed — Wasabi object uploaded but not recorded in DB");
+    return fail(9, "db_insert", err);
   }
+  log(9, "db_insert_complete", { trackId: track.id, storageKey: track.storage_key });
+
+  // ── Step 10: Success ──────────────────────────────────────────────────────
+  log(10, "success_response", { trackId: track.id, uploadId });
+  res.status(201).json({
+    track:   toClientTrack(track),
+    message: "Track soumèt — admin ap revize li anvan li parèt",
+    uploadId,
+  });
 });
 
 // POST /api/admin/music — create track

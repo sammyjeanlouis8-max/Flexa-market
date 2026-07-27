@@ -272,6 +272,12 @@ function UploadView({ onBack, onSuccess }: {
     if (!title.trim() || !artist.trim()) { setErrMsg("Titre ak atis yo obligatwa"); return; }
     if (!audioFile) { setErrMsg("Chwazi yon fichye odyo"); return; }
 
+    // Step 1: log file selection details
+    console.log("[upload] step 1: file selected", {
+      name: audioFile.name, size: audioFile.size,
+      type: audioFile.type, title: title.trim(), artist: artist.trim(),
+    });
+
     const fd = new FormData();
     fd.append("title",  title.trim());
     fd.append("artist", artist.trim());
@@ -285,7 +291,7 @@ function UploadView({ onBack, onSuccess }: {
     startUpload(
       fd,
       { title: title.trim(), artist: artist.trim(), coverPreview: coverPreview ?? undefined },
-      (track) => onSuccess(track),   // called when done, wherever the user is
+      (track) => onSuccess(track),
     );
 
     // Return to home immediately — floating toast shows progress

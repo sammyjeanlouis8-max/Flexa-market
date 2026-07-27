@@ -64,35 +64,54 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
       error: null, track: null,
     });
 
+    console.log("[upload] step 1: file(s) selected, starting upload pipeline", {
+      title: meta.title, artist: meta.artist,
+    });
+
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("POST", "/api/music/upload");
 
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) {
-        setState(s => ({ ...s, progress: Math.round((ev.loaded / ev.total) * 92) }));
+        const pct = Math.round((ev.loaded / ev.total) * 92);
+        console.log(`[upload] step 7: upload progress ${pct}% (${ev.loaded}/${ev.total} bytes)`);
+        setState(s => ({ ...s, progress: pct }));
       }
     };
 
     xhr.onload = () => {
       setState(s => ({ ...s, progress: 100 }));
+      console.log(`[upload] server responded — HTTP ${xhr.status}`, xhr.responseText.slice(0, 300));
+
       if (xhr.status === 201) {
-        const data = JSON.parse(xhr.responseText);
-        const track = data.track;
-        setState(s => ({ ...s, status: "done", track }));
-        doneRef.current?.(track);
-        // Auto-dismiss toast after 8 s
+        let data: any = {};
+        try { data = JSON.parse(xhr.responseText); } catch { /* raw text already logged */ }
+        console.log("[upload] step 10: success", { trackId: data.track?.id, uploadId: data.uploadId });
+        setState(s => ({ ...s, status: "done", track: data.track ?? null }));
+        doneRef.current?.(data.track);
         setTimeout(() => setState(IDLE), 8_000);
       } else {
-        let msg = "Erè pandan telechajman";
-        try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch {}
-        setState(s => ({ ...s, status: "error", error: msg }));
+        let parsed: any = {};
+        try { parsed = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+        // Build a rich error string: include step name if server sent it
+        const serverMsg  = parsed?.error ?? parsed?.message ?? xhr.responseText.slice(0, 200) ?? "Erè sèvè enkoni";
+        const stepName   = parsed?.stepName ? ` [${parsed.stepName}]` : "";
+        const uploadId   = parsed?.uploadId ? ` (ID: ${parsed.uploadId})` : "";
+        const richMsg    = `HTTP ${xhr.status}${stepName}: ${serverMsg}${uploadId}`;
+        console.error("[upload] FAILED:", richMsg, parsed);
+        setState(s => ({ ...s, status: "error", error: richMsg }));
       }
     };
 
-    xhr.onerror  = () => setState(s => ({ ...s, status: "error", error: "Erè rezo — eseye ankò" }));
+    xhr.onerror = () => {
+      const msg = "Erè rezo — sèvè pa reyisit oswa koneksyon koupe";
+      console.error("[upload] network error (xhr.onerror)", msg);
+      setState(s => ({ ...s, status: "error", error: msg }));
+    };
     xhr.onabort  = () => setState(IDLE);
     xhr.send(fd);
+    console.log("[upload] step 2: request sent to /api/music/upload");
   }, []);
 
   return (

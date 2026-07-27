@@ -282,6 +282,94 @@ export function extractKey(urlOrKey: string | null | undefined): string | null {
   }
 }
 
+// ── Preflight / diagnostics ───────────────────────────────────────────────────
+export interface PreflightStep {
+  step:   string;
+  ok:     boolean;
+  detail: string;
+}
+
+export interface PreflightResult {
+  ok:     boolean;
+  steps:  PreflightStep[];
+}
+
+/**
+ * Run a full connectivity + permissions check against Wasabi.
+ * Safe to call from an HTTP endpoint — never throws.
+ * Used by GET /api/music/diagnose and by the upload preflight guard.
+ */
+export async function runPreflight(): Promise<PreflightResult> {
+  const steps: PreflightStep[] = [];
+
+  const pass = (step: string, detail: string) => { steps.push({ step, ok: true,  detail }); };
+  const fail = (step: string, detail: string) => { steps.push({ step, ok: false, detail }); };
+
+  // 1 — env vars
+  const missingVars: string[] = [];
+  for (const v of ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT"]) {
+    if (!process.env[v]) missingVars.push(v);
+  }
+  if (missingVars.length) {
+    fail("env_vars", `Missing: ${missingVars.join(", ")}`);
+    return { ok: false, steps };
+  }
+  pass("env_vars", `endpoint=${WASABI_ENDPOINT} bucket=${WASABI_BUCKET} region=${WASABI_REGION}`);
+
+  // 2 — client construction
+  let client: S3Client;
+  try {
+    client = getClient();
+    pass("client_init", "S3Client constructed");
+  } catch (e: any) {
+    fail("client_init", e.message);
+    return { ok: false, steps };
+  }
+
+  // 3 — bucket access (HeadBucket)
+  try {
+    const { HeadBucketCommand } = await import("@aws-sdk/client-s3");
+    await client.send(new HeadBucketCommand({ Bucket: WASABI_BUCKET }));
+    pass("bucket_access", `HeadBucket OK — bucket ${WASABI_BUCKET} exists and accessible`);
+  } catch (e: any) {
+    const code = (e.$metadata?.httpStatusCode ?? e.name ?? "unknown").toString();
+    fail("bucket_access", `HeadBucket failed — HTTP ${code}: ${e.message}`);
+    return { ok: false, steps };
+  }
+
+  // 4 — PutObject permission
+  const testKey = `diagnostics/preflight-${Date.now()}.txt`;
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: WASABI_BUCKET, Key: testKey,
+      Body: "flexa-music-preflight", ContentType: "text/plain",
+    }));
+    pass("put_object", `PutObject OK → ${testKey}`);
+  } catch (e: any) {
+    fail("put_object", `PutObject denied — ${e.Code ?? e.name}: ${e.message}`);
+    return { ok: false, steps };
+  }
+
+  // 5 — GetObject / presign permission
+  try {
+    const signed = await getSignedUrl(client, new GetObjectCommand({ Bucket: WASABI_BUCKET, Key: testKey }), { expiresIn: 60 });
+    pass("get_object", `Presigned URL generated (${signed.length} chars)`);
+  } catch (e: any) {
+    fail("get_object", `GetObject presign failed — ${e.message}`);
+  }
+
+  // 6 — DeleteObject permission
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: WASABI_BUCKET, Key: testKey }));
+    pass("delete_object", `DeleteObject OK — test object cleaned up`);
+  } catch (e: any) {
+    fail("delete_object", `DeleteObject denied — ${e.Code ?? e.name}: ${e.message}`);
+  }
+
+  const allOk = steps.every(s => s.ok);
+  return { ok: allOk, steps };
+}
+
 // ── Boot-time configuration log ───────────────────────────────────────────────
 if (isConfigured()) {
   logger.info(

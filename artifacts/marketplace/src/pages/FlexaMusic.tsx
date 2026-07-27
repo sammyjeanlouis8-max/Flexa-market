@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
+import { useMusicUpload } from "@/contexts/MusicUpload";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -238,10 +239,14 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
 // HOME VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Upload View ───────────────────────────────────────────────────────────────
+// Upload runs through the global MusicUploadContext so it survives navigation.
+// This component only handles the form; the XHR lives in the context.
 function UploadView({ onBack, onSuccess }: {
   onBack: () => void;
   onSuccess: (track: Track) => void;
 }) {
+  const { start: startUpload } = useMusicUpload();
+
   const [title,   setTitle]   = useState("");
   const [artist,  setArtist]  = useState("");
   const [album,   setAlbum]   = useState("");
@@ -249,9 +254,7 @@ function UploadView({ onBack, onSuccess }: {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [status,   setStatus]   = useState<"idle" | "uploading" | "done" | "error">("idle");
-  const [errMsg,   setErrMsg]   = useState("");
+  const [errMsg,  setErrMsg]  = useState("");
   const audioInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -264,12 +267,10 @@ function UploadView({ onBack, onSuccess }: {
     reader.readAsDataURL(f);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !artist.trim()) { setErrMsg("Titre ak atis yo obligatwa"); return; }
     if (!audioFile) { setErrMsg("Chwazi yon fichye odyo"); return; }
-
-    setStatus("uploading"); setErrMsg(""); setProgress(0);
 
     const fd = new FormData();
     fd.append("title",  title.trim());
@@ -280,27 +281,15 @@ function UploadView({ onBack, onSuccess }: {
     fd.append("audio", audioFile);
     if (coverFile) fd.append("cover", coverFile);
 
-    return new Promise<void>(resolve => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/music/upload");
-      xhr.upload.onprogress = ev => {
-        if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 90));
-      };
-      xhr.onload = () => {
-        setProgress(100);
-        if (xhr.status === 201) {
-          const data = JSON.parse(xhr.responseText);
-          setStatus("done");
-          setTimeout(() => onSuccess(data.track), 900);
-        } else {
-          const data = JSON.parse(xhr.responseText).error ?? "Erè pandan telechajman";
-          setStatus("error"); setErrMsg(data);
-        }
-        resolve();
-      };
-      xhr.onerror = () => { setStatus("error"); setErrMsg("Erè rezo — eseye ankò"); resolve(); };
-      xhr.send(fd);
-    });
+    // Hand off to global context — XHR survives component unmount
+    startUpload(
+      fd,
+      { title: title.trim(), artist: artist.trim(), coverPreview: coverPreview ?? undefined },
+      (track) => onSuccess(track),   // called when done, wherever the user is
+    );
+
+    // Return to home immediately — floating toast shows progress
+    onBack();
   };
 
   const inp = "w-full rounded-xl px-4 py-3 text-sm text-white outline-none border focus:border-purple-500 transition-colors";
@@ -309,13 +298,15 @@ function UploadView({ onBack, onSuccess }: {
   return (
     <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff" }}>
       {/* Header */}
-      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3" style={{ background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <button onClick={onBack} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
+      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3"
+        style={{ background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <button onClick={onBack} className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "#1a1a1a" }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
         <div>
           <p className="font-black text-base">Telechaje Mizik</p>
-          <p className="text-xs text-white/40">Soumèt yon chante pou revizyon</p>
+          <p className="text-xs text-white/40">Soumèt yon chante — ap kontinye nan background</p>
         </div>
       </div>
 
@@ -330,7 +321,8 @@ function UploadView({ onBack, onSuccess }: {
               <>
                 <img src={coverPreview} alt="" className="absolute inset-0 w-full h-full object-cover" />
                 <div className="absolute inset-0 flex items-end justify-end p-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "rgba(0,0,0,0.7)" }}>Chanje</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(0,0,0,0.7)" }}>Chanje</span>
                 </div>
               </>
             ) : (
@@ -340,21 +332,22 @@ function UploadView({ onBack, onSuccess }: {
               </>
             )}
           </button>
-          <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onCoverPick} />
+          <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp"
+            className="hidden" onChange={onCoverPick} />
         </div>
 
         {/* Title */}
         <div>
           <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Tit Chante *</label>
           <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Non chante ou a…"
-            className={inp} style={inpStyle} required />
+            className={inp} style={inpStyle} />
         </div>
 
         {/* Artist */}
         <div>
           <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">Non Atis *</label>
           <input value={artist} onChange={e => setArtist(e.target.value)} placeholder="Non atis ou…"
-            className={inp} style={inpStyle} required />
+            className={inp} style={inpStyle} />
         </div>
 
         {/* Album */}
@@ -384,14 +377,17 @@ function UploadView({ onBack, onSuccess }: {
             style={{ background: "#1a1a1a", border: audioFile ? "1px solid #7c3aed" : "2px dashed rgba(255,255,255,0.12)" }}>
             {audioFile ? (
               <>
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(124,58,237,0.2)" }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(124,58,237,0.2)" }}>
                   <Music2 size={20} style={{ color: "#a855f7" }} />
                 </div>
                 <div className="flex-1 text-left min-w-0">
                   <p className="text-sm font-bold text-white truncate">{audioFile.name}</p>
                   <p className="text-xs text-white/40">{(audioFile.size / 1024 / 1024).toFixed(1)} MB</p>
                 </div>
-                <X size={16} className="text-white/30 shrink-0" onClick={e => { e.stopPropagation(); setAudioFile(null); audioInputRef.current && (audioInputRef.current.value = ""); }} />
+                <X size={16} className="text-white/30 shrink-0"
+                  onClick={e => { e.stopPropagation(); setAudioFile(null);
+                    if (audioInputRef.current) audioInputRef.current.value = ""; }} />
               </>
             ) : (
               <>
@@ -403,47 +399,35 @@ function UploadView({ onBack, onSuccess }: {
               </>
             )}
           </button>
-          <input ref={audioInputRef} type="file" accept=".mp3,.wav,.flac,.aac,.m4a,audio/*" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) setAudioFile(f); }} />
+          <input ref={audioInputRef} type="file" accept=".mp3,.wav,.flac,.aac,.m4a,audio/*"
+            className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setAudioFile(f); }} />
         </div>
 
-        {/* Error */}
+        {/* Validation error */}
         {errMsg && (
-          <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+          <div className="flex items-center gap-2 rounded-xl px-4 py-3"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
             <AlertCircle size={16} className="text-red-400 shrink-0" />
             <p className="text-sm text-red-400">{errMsg}</p>
           </div>
         )}
 
-        {/* Progress */}
-        {status === "uploading" && (
-          <div>
-            <div className="flex justify-between text-xs text-white/40 mb-1.5">
-              <span>Ap telechaje…</span><span>{progress}%</span>
-            </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: "#1a1a1a" }}>
-              <div className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${progress}%`, background: "linear-gradient(90deg,#7c3aed,#c026d3)" }} />
-            </div>
-          </div>
-        )}
-
-        {/* Success flash */}
-        {status === "done" && (
-          <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
-            <CheckCircle size={16} className="text-green-400 shrink-0" />
-            <p className="text-sm text-green-400">Telechajman reyisi! Ap jwe chante a…</p>
-          </div>
-        )}
+        {/* Info banner */}
+        <div className="flex items-start gap-2 rounded-xl px-4 py-3"
+          style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
+          <UploadCloud size={15} style={{ color: "#a855f7", flexShrink: 0, marginTop: 1 }} />
+          <p className="text-xs" style={{ color: "rgba(168,85,247,0.8)", lineHeight: 1.5 }}>
+            Telechajman ap fèt nan <strong>background</strong> — ou ka ale nenpòt kote sou app la.
+            Yon notifikasyon ap parèt anba ekran an jouk li fini.
+          </p>
+        </div>
 
         {/* Submit */}
-        <button type="submit" disabled={status === "uploading" || status === "done"}
-          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-50"
-          style={{ background: status === "done" ? "#1a7a3a" : "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
+        <button type="submit"
+          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                    boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
-          {status === "uploading" ? <><Loader2 size={18} className="animate-spin" /> Ap telechaje…</> :
-           status === "done"      ? <><CheckCircle size={18} /> Chante soumèt!</> :
-           <><UploadCloud size={18} /> Telechaje Chante</>}
+          <UploadCloud size={18} /> Telechaje Chante
         </button>
 
         <p className="text-center text-xs text-white/25 px-4">

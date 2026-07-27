@@ -177,6 +177,26 @@ function nullOr(v: unknown): string {
 // PUBLIC ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Transform a raw DB row so the client always gets a playable URL.
+ *
+ * Wasabi bucket is PRIVATE — direct URLs require auth the browser can't add.
+ * For any track that was uploaded to Wasabi (storage_key IS NOT NULL) we
+ * replace audio_url with our signing proxy: GET /api/music/stream/{key}
+ * which issues a 307 redirect to a 1-hour signed Wasabi URL.
+ *
+ * Legacy tracks (Replit Object Storage, storage_key IS NULL) keep their
+ * /api/storage/objects/… path unchanged so they continue working.
+ */
+function toClientTrack(row: Record<string, unknown>) {
+  const key = row.storage_key as string | null;
+  return {
+    ...row,
+    audio_url: key ? `/api/music/stream/${key}` : row.audio_url,
+    storage_key: undefined, // never expose storage key to client
+  };
+}
+
 // GET /api/music — list tracks
 router.get("/api/music", async (req, res) => {
   try {
@@ -190,24 +210,24 @@ router.get("/api/music", async (req, res) => {
       where += ` AND (title ILIKE '%${s}%' OR artist ILIKE '%${s}%' OR album ILIKE '%${s}%')`;
     }
     const rows = await q(
-      `SELECT id, title, artist, album, genre, cover_url, audio_url, duration_seconds,
-              type, is_featured, play_count, valid_impressions, total_impressions,
-              estimated_revenue_usd, artist_user_id, created_at
+      `SELECT id, title, artist, album, genre, cover_url, audio_url, storage_key,
+              duration_seconds, type, is_featured, play_count, valid_impressions,
+              total_impressions, estimated_revenue_usd, artist_user_id, created_at
        FROM music_tracks ${where}
        ORDER BY is_featured DESC, play_count DESC, created_at DESC
        LIMIT ${Math.min(Number(limit)||50, 200)} OFFSET ${Number(offset)||0}`
     );
-    res.json({ tracks: rows });
+    res.json({ tracks: rows.map(toClientTrack) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
 // GET /api/music/:id
 router.get("/api/music/:id", async (req, res) => {
   try {
-    const [track] = await q(`SELECT * FROM music_tracks WHERE id = ${Number(req.params.id)}`);
-    if (!track) return res.status(404).json({ error: "Not found" });
+    const [row] = await q(`SELECT * FROM music_tracks WHERE id = ${Number(req.params.id)}`);
+    if (!row) return res.status(404).json({ error: "Not found" });
     await q(`UPDATE music_tracks SET play_count = play_count + 1 WHERE id = ${Number(req.params.id)}`);
-    res.json({ track });
+    res.json({ track: toClientTrack(row) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
@@ -447,7 +467,8 @@ router.post("/api/music/upload", requireAuth, upload.fields([
     );
 
     logger.info({ trackId: track.id, userId: req.user?.id, title, storageKey: audioResult.key }, "Artist track uploaded to Wasabi — pending review");
-    res.status(201).json({ track, message: "Track soumèt — admin ap revize li anvan li parèt" });
+    // Return stream URL so client can play immediately from local state
+    res.status(201).json({ track: toClientTrack(track), message: "Track soumèt — admin ap revize li anvan li parèt" });
   } catch (err: any) {
     logger.error({ err }, "Artist music upload error");
     res.status(500).json({ error: err?.message ?? "Upload echwe" });

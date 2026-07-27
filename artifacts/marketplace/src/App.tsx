@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/auth";
 import { FavoritesProvider } from "@/contexts/favorites";
 import { CartProvider } from "@/contexts/cart";
 import { BroadcastProvider } from "@/contexts/broadcast";
+import { MusicUploadProvider } from "@/contexts/MusicUpload";
 import Layout from "@/components/Layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
@@ -333,10 +334,12 @@ function App() {
             <CartProvider>
             <FavoritesProvider>
               <BroadcastProvider>
-                <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-                  <Router />
-                  <GlobalBroadcastPlayer />
-                </WouterRouter>
+                <MusicUploadProvider>
+                  <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                    <Router />
+                    <GlobalBroadcastPlayer />
+                  </WouterRouter>
+                </MusicUploadProvider>
               </BroadcastProvider>
               <Toaster />
             </FavoritesProvider>

@@ -71,6 +71,10 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
     xhr.open("POST", "/api/music/upload");
+    // Attach JWT — backend uses Bearer token auth; missing header causes
+    // a 401 mid-stream which closes the TCP connection and fires onerror.
+    const token = localStorage.getItem("flexamarket_token");
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) {

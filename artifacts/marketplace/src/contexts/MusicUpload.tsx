@@ -6,6 +6,7 @@
  */
 import { createContext, useContext, useRef, useState, useCallback, type ReactNode } from "react";
 import { CheckCircle, AlertCircle, Music2, X, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 export type UploadStatus = "idle" | "uploading" | "done" | "error";
@@ -99,7 +100,7 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
         let parsed: any = {};
         try { parsed = JSON.parse(xhr.responseText); } catch { /* ignore */ }
         // Build a rich error string: include step name if server sent it
-        const serverMsg  = parsed?.error ?? parsed?.message ?? xhr.responseText.slice(0, 200) ?? "Erè sèvè enkoni";
+        const serverMsg  = parsed?.error ?? parsed?.message ?? xhr.responseText.slice(0, 200) ?? "__serverError__";
         const stepName   = parsed?.stepName ? ` [${parsed.stepName}]` : "";
         const uploadId   = parsed?.uploadId ? ` (ID: ${parsed.uploadId})` : "";
         const richMsg    = `HTTP ${xhr.status}${stepName}: ${serverMsg}${uploadId}`;
@@ -109,9 +110,8 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
     };
 
     xhr.onerror = () => {
-      const msg = "Erè rezo — sèvè pa reyisit oswa koneksyon koupe";
-      console.error("[upload] network error (xhr.onerror)", msg);
-      setState(s => ({ ...s, status: "error", error: msg }));
+      console.error("[upload] network error (xhr.onerror)");
+      setState(s => ({ ...s, status: "error", error: "__networkError__" }));
     };
     xhr.onabort  = () => setState(IDLE);
     xhr.send(fd);
@@ -135,11 +135,17 @@ export function useMusicUpload() {
 function FloatingUploadToast({
   state, onDismiss,
 }: { state: UploadState; onDismiss: () => void }) {
+  const { t } = useTranslation();
   if (state.status === "idle") return null;
 
   const isUploading = state.status === "uploading";
   const isDone      = state.status === "done";
   const isError     = state.status === "error";
+
+  // Translate sentinel error codes; pass server messages through as-is
+  const errorText = state.error === "__networkError__" ? t("uploadCtx.networkError")
+                  : state.error === "__serverError__"  ? t("uploadCtx.serverError")
+                  : state.error ?? "";
 
   const borderColor = isDone  ? "rgba(34,197,94,0.4)"
                     : isError ? "rgba(239,68,68,0.4)"
@@ -184,8 +190,8 @@ function FloatingUploadToast({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, marginBottom: 2,
                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {isDone  ? "✅ Telechajman reyisi!" :
-           isError ? "❌ Telechajman echwe" :
+          {isDone  ? t("uploadCtx.done") :
+           isError ? t("uploadCtx.failed") :
            `${state.title} · ${state.artist}`}
         </p>
         {isUploading && (
@@ -194,7 +200,7 @@ function FloatingUploadToast({
                           fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />
-                Ap telechaje sou Wasabi…
+                {t("uploadCtx.uploading")}
               </span>
               <span>{state.progress}%</span>
             </div>
@@ -210,11 +216,11 @@ function FloatingUploadToast({
         )}
         {isDone && (
           <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-            {state.title} · Ap tann revizyon admin
+            {state.title} · {t("uploadCtx.pendingReview")}
           </p>
         )}
         {isError && (
-          <p style={{ fontSize: 11, color: "rgba(239,68,68,0.7)" }}>{state.error}</p>
+          <p style={{ fontSize: 11, color: "rgba(239,68,68,0.7)" }}>{errorText}</p>
         )}
       </div>
 

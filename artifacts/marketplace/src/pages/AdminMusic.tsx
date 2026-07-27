@@ -12,6 +12,7 @@ import {
   BadgeCheck, Clock, Play, Heart,
 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -45,6 +46,7 @@ type Artist = {
 type StorageStats = {
   track_count: number; pending_count: number; total_duration: number;
   avg_duration: number; estimated_storage_bytes: number;
+  audio_bytes: number; cover_bytes: number;
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -58,12 +60,7 @@ const TAB_ICONS: Record<string, React.ElementType> = {
   stats: TrendingUp, playlists: ListMusic, artists: Mic2,
   monetization: DollarSign, copyright: Shield, storage: HardDrive,
 };
-const TAB_LABELS: Record<string, string> = {
-  dashboard: "Dashboard", songs: "Chante", add: "Ajoute", import: "Import",
-  stats: "Statistik", playlists: "Playlist", artists: "Atis",
-  monetization: "Monetizasyon", copyright: "Copyright", storage: "Stockaj",
-};
-const TABS = Object.keys(TAB_LABELS) as TabId[];
+const TABS: TabId[] = ["dashboard","songs","add","import","stats","playlists","artists","monetization","copyright","storage"];
 type TabId = "dashboard"|"songs"|"add"|"import"|"stats"|"playlists"|"artists"|"monetization"|"copyright"|"storage";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -157,6 +154,7 @@ function Sel({ value, options, onChange, placeholder }: { value: string; options
 // ══════════════════════════════════════════════════════════════════════════════
 function DashboardTab({ tracks, platform, storage, daily, loading }:
   { tracks: Track[]; platform: PlatformStats|null; storage: StorageStats|null; daily: DailyStats[]; loading: boolean }) {
+  const { t } = useTranslation();
   const pending  = tracks.filter(t => !t.is_active).length;
   const artists  = new Set(tracks.map(t => t.artist)).size;
   const albums   = new Set(tracks.map(t => t.album).filter(Boolean)).size;
@@ -165,14 +163,14 @@ function DashboardTab({ tracks, platform, storage, daily, loading }:
   const totalPlays = tracks.reduce((s,t) => s + (t.play_count||0), 0);
 
   const cards = [
-    { icon: Music2,     label: "Total Chante",     value: fmtN(platform?.total_tracks ?? tracks.length), color: "bg-violet-600" },
-    { icon: Mic2,       label: "Atis",              value: fmtN(artists),                                color: "bg-fuchsia-600" },
-    { icon: ListMusic,  label: "Album",             value: fmtN(albums),                                 color: "bg-blue-600" },
-    { icon: Play,       label: "Total Plays",       value: fmtN(totalPlays),                             color: "bg-emerald-600" },
-    { icon: Download,   label: "Downloads",         value: fmtN(totalDl),                                color: "bg-cyan-600" },
-    { icon: DollarSign, label: "Revni Total",       value: fmt$(totalRev),                               color: "bg-amber-600" },
-    { icon: Clock,      label: "Chante an Atant",   value: fmtN(pending),                                color: "bg-orange-600" },
-    { icon: HardDrive,  label: "Estokaj (estime)",  value: storage ? fmtBytes(storage.estimated_storage_bytes) : "—", color: "bg-pink-600" },
+    { icon: Music2,     label: t("adminMusic.totalSongsLabel"), value: fmtN(platform?.total_tracks ?? tracks.length), color: "bg-violet-600" },
+    { icon: Mic2,       label: t("adminMusic.artistsLabel"),    value: fmtN(artists),                                color: "bg-fuchsia-600" },
+    { icon: ListMusic,  label: t("adminMusic.albumsLabel"),     value: fmtN(albums),                                 color: "bg-blue-600" },
+    { icon: Play,       label: t("adminMusic.totalPlays"),      value: fmtN(totalPlays),                             color: "bg-emerald-600" },
+    { icon: Download,   label: "Downloads",                     value: fmtN(totalDl),                                color: "bg-cyan-600" },
+    { icon: DollarSign, label: t("music.confirmedRevenue"),     value: fmt$(totalRev),                               color: "bg-amber-600" },
+    { icon: Clock,      label: t("adminMusic.pendingSongs"),    value: fmtN(pending),                                color: "bg-orange-600" },
+    { icon: HardDrive,  label: t("adminMusic.estimatedStorage"),value: storage ? fmtBytes(storage.estimated_storage_bytes) : "—", color: "bg-pink-600" },
   ];
 
   return (
@@ -183,7 +181,7 @@ function DashboardTab({ tracks, platform, storage, daily, loading }:
       {/* Mini charts */}
       {daily.length > 0 && (
         <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-sm font-bold mb-3">Impressions — 30 dènyè jou</p>
+          <p className="text-sm font-bold mb-3">{t("adminMusic.impressionsLast30")}</p>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={[...daily].reverse()} margin={{ top: 0, right: 0, left: -24, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -198,7 +196,7 @@ function DashboardTab({ tracks, platform, storage, daily, loading }:
       {/* Top 5 tracks */}
       {tracks.length > 0 && (
         <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-sm font-bold mb-3">Top 5 Chante</p>
+          <p className="text-sm font-bold mb-3">{t("adminMusic.top5Songs")}</p>
           <div className="space-y-2">
             {[...tracks].sort((a,b) => b.play_count-a.play_count).slice(0,5).map((t,i) => (
               <div key={t.id} className="flex items-center gap-3">
@@ -223,6 +221,7 @@ function DashboardTab({ tracks, platform, storage, daily, loading }:
 // ══════════════════════════════════════════════════════════════════════════════
 function SongsTab({ tracks, onEdit, onRefresh, loading }:
   { tracks: Track[]; onEdit: (t: Track) => void; onRefresh: () => void; loading: boolean }) {
+  const { t } = useTranslation();
   const [search,    setSearch]    = useState("");
   const [genreF,    setGenreF]    = useState("");
   const [statusF,   setStatusF]   = useState("");
@@ -247,42 +246,42 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
 
   const bulkAction = async (action: string) => {
     if (!selected.size) return;
-    if (action==="delete" && !confirm(`Efase ${selected.size} chante?`)) return;
+    if (action==="delete" && !confirm(t("adminMusic.confirmBulkDelete", { count: selected.size }))) return;
     setBulking(true);
     try {
       await adminFetch("/api/admin/music/bulk-action","POST",{ action, ids:[...selected] });
       setSelected(new Set()); onRefresh();
-    } catch { alert("Erè"); }
+    } catch { alert(t("adminMusic.err")); }
     finally { setBulking(false); }
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Efase chante sa a?")) return;
+    if (!confirm(t("adminMusic.confirmDelete"))) return;
     setDeleting(id);
     try { await adminFetch(`/api/admin/music/${id}`,"DELETE"); onRefresh(); }
-    catch { alert("Erè efasaj"); }
+    catch { alert(t("adminMusic.errDelete")); }
     finally { setDeleting(null); }
   };
 
-  const handleToggle = async (t: Track) => {
-    try { await adminFetch(`/api/admin/music/${t.id}`,"PUT",{is_active:!t.is_active}); onRefresh(); }
-    catch { alert("Erè"); }
+  const handleToggle = async (trk: Track) => {
+    try { await adminFetch(`/api/admin/music/${trk.id}`,"PUT",{is_active:!trk.is_active}); onRefresh(); }
+    catch { alert(t("adminMusic.err")); }
   };
 
-  const handleFeature = async (t: Track) => {
-    try { await adminFetch(`/api/admin/music/${t.id}`,"PUT",{is_featured:!t.is_featured}); onRefresh(); }
-    catch { alert("Erè"); }
+  const handleFeature = async (trk: Track) => {
+    try { await adminFetch(`/api/admin/music/${trk.id}`,"PUT",{is_featured:!trk.is_featured}); onRefresh(); }
+    catch { alert(t("adminMusic.err")); }
   };
 
-  const handleDuplicate = async (t: Track) => {
+  const handleDuplicate = async (trk: Track) => {
     try {
       await adminFetch("/api/admin/music","POST",{
-        title: t.title+" (Copy)", artist:t.artist, album:t.album||undefined,
-        genre:t.genre||undefined, audio_url:t.audio_url||undefined, cover_url:t.cover_url||undefined,
-        duration_seconds:t.duration_seconds||undefined, type:t.type, is_featured:false,
+        title: trk.title+" (Copy)", artist:trk.artist, album:trk.album||undefined,
+        genre:trk.genre||undefined, audio_url:trk.audio_url||undefined, cover_url:trk.cover_url||undefined,
+        duration_seconds:trk.duration_seconds||undefined, type:trk.type, is_featured:false,
       });
       onRefresh();
-    } catch { alert("Erè duplikasyon"); }
+    } catch { alert(t("adminMusic.errDuplicate")); }
   };
 
   const genres = [...new Set(tracks.map(t=>t.genre).filter(Boolean))] as string[];
@@ -295,15 +294,15 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
           style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <Search size={13} className="text-white/40 shrink-0" />
           <input value={search} onChange={e=>{setSearch(e.target.value);setPage(0)}}
-            placeholder="Chèche…" className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none" />
+            placeholder={t("adminMusic.search")+"…"} className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 outline-none" />
           {search && <button onClick={()=>setSearch("")}><X size={12} className="text-white/30" /></button>}
         </div>
-        <Sel value={genreF}  options={genres} onChange={v=>{setGenreF(v);setPage(0)}}  placeholder="Jen" />
-        <Sel value={statusF} options={["active","pending"]} onChange={v=>{setStatusF(v);setPage(0)}} placeholder="Estati" />
+        <Sel value={genreF}  options={genres} onChange={v=>{setGenreF(v);setPage(0)}}  placeholder={t("adminMusic.genre")} />
+        <Sel value={statusF} options={["active","pending"]} onChange={v=>{setStatusF(v);setPage(0)}} placeholder={t("adminMusic.status")} />
         {(search||genreF||statusF) && (
           <button onClick={()=>{setSearch("");setGenreF("");setStatusF("");setPage(0)}}
             className="text-[10px] text-violet-400 font-bold px-2">
-            Efase filtè
+            {t("adminMusic.clearFilters")}
           </button>
         )}
       </div>
@@ -312,14 +311,14 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
       {selected.size > 0 && (
         <div className="flex items-center gap-2 mb-3 rounded-xl px-3 py-2"
           style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)" }}>
-          <span className="text-xs font-bold text-violet-400">{selected.size} chwazi</span>
+          <span className="text-xs font-bold text-violet-400">{t("adminMusic.selected", { count: selected.size })}</span>
           <div className="flex-1" />
           {bulking ? <Loader2 size={14} className="animate-spin text-violet-400" /> : (
             <>
-              <button onClick={()=>bulkAction("approve")}  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400">Apwouve</button>
-              <button onClick={()=>bulkAction("reject")}   className="text-[10px] font-bold px-2 py-1 rounded-lg bg-orange-500/20 text-orange-400">Rejte</button>
-              <button onClick={()=>bulkAction("feature")}  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400">Featured</button>
-              <button onClick={()=>bulkAction("delete")}   className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-500/20 text-red-400">Efase</button>
+              <button onClick={()=>bulkAction("approve")}  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400">{t("adminMusic.approve")}</button>
+              <button onClick={()=>bulkAction("reject")}   className="text-[10px] font-bold px-2 py-1 rounded-lg bg-orange-500/20 text-orange-400">{t("adminMusic.reject")}</button>
+              <button onClick={()=>bulkAction("feature")}  className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400">{t("adminMusic.featured")}</button>
+              <button onClick={()=>bulkAction("delete")}   className="text-[10px] font-bold px-2 py-1 rounded-lg bg-red-500/20 text-red-400">{t("adminMusic.delete")}</button>
             </>
           )}
           <button onClick={()=>setSelected(new Set())} className="text-white/30"><X size={14} /></button>
@@ -327,7 +326,7 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
       )}
 
       {/* Count */}
-      <p className="text-xs opacity-40 mb-2">{filtered.length} chante{search||genreF||statusF?" (filtré)":""}</p>
+      <p className="text-xs opacity-40 mb-2">{search||genreF||statusF ? t("adminMusic.songCountFiltered", { count: filtered.length }) : t("adminMusic.songCount", { count: filtered.length })}</p>
 
       {loading ? (
         <div className="space-y-2">
@@ -347,8 +346,8 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
               {selected.size===paged.length && paged.length>0 ? <CheckSquare size={13} className="text-violet-400" /> : <Square size={13} />}
             </button>
             <span />
-            <span>Chante</span>
-            <span>Aksyon</span>
+            <span>{t("adminMusic.colSong")}</span>
+            <span>{t("adminMusic.colAction")}</span>
           </div>
           {/* Rows */}
           <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
@@ -365,7 +364,7 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-bold truncate max-w-[140px]">{track.title}</span>
                     {track.is_featured && <Star size={9} className="text-amber-400 fill-amber-400 shrink-0" />}
-                    {!track.is_active && <Badge label="Annatant" color="bg-orange-500/20 text-orange-400" />}
+                    {!track.is_active && <Badge label={t("adminMusic.pending")} color="bg-orange-500/20 text-orange-400" />}
                   </div>
                   <p className="text-[10px] opacity-50 truncate">{track.artist}{track.album?` · ${track.album}`:""}</p>
                   <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -373,12 +372,12 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
                     <Badge label={track.monetization_type||track.type} color={typeColor[track.monetization_type]||typeColor[track.type]||"bg-white/5 text-white/50"} />
                     <Badge label={track.copyright_status} color={copyrightColor[track.copyright_status]||"bg-white/5 text-white/50"} />
                     <span className="text-[9px] opacity-30">{fmtDur(track.duration_seconds)}</span>
-                    <span className="text-[9px] opacity-30">{fmtN(track.play_count)} plays</span>
+                    <span className="text-[9px] opacity-30">{fmtN(track.play_count)} {t("adminMusic.plays")}</span>
                   </div>
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-0.5">
-                  <button onClick={()=>handleToggle(track)} title={track.is_active?"Kache":"Montre"}
+                  <button onClick={()=>handleToggle(track)} title={track.is_active?t("adminMusic.hide"):t("adminMusic.show")}
                     className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition-colors">
                     {track.is_active ? <Eye size={13} className="text-emerald-400" /> : <EyeOff size={13} className="text-white/30" />}
                   </button>
@@ -410,11 +409,11 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
         <div className="flex items-center justify-center gap-2 mt-4">
           <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0}
             className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30"
-            style={{ background:"rgba(255,255,255,0.08)" }}>← Anvan</button>
+            style={{ background:"rgba(255,255,255,0.08)" }}>{t("adminMusic.prevPage")}</button>
           <span className="text-xs opacity-40">{page+1} / {totalPages}</span>
           <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1}
             className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30"
-            style={{ background:"rgba(255,255,255,0.08)" }}>Suivan →</button>
+            style={{ background:"rgba(255,255,255,0.08)" }}>{t("adminMusic.nextPage")}</button>
         </div>
       )}
     </div>
@@ -425,6 +424,7 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
 // TAB: Add / Edit Song
 // ══════════════════════════════════════════════════════════════════════════════
 function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: ()=>void; onCancel: ()=>void }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState({
     title:            track?.title ?? "",
     artist:           track?.artist ?? "",
@@ -472,8 +472,8 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(""); setProgress(0);
-    if (!form.title.trim())  { setErr("Titre obligatwa"); return; }
-    if (!form.artist.trim()) { setErr("Atis obligatwa");  return; }
+    if (!form.title.trim())  { setErr(t("adminMusic.errTitleRequired")); return; }
+    if (!form.artist.trim()) { setErr(t("adminMusic.errArtistRequired")); return; }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -485,15 +485,16 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(Math.round(e.loaded/e.total*100)); };
         xhr.onload  = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else { try { reject(new Error(JSON.parse(xhr.responseText).error)); } catch { reject(new Error(xhr.statusText)); } } };
-        xhr.onerror = () => reject(new Error("Koneksyon echwe"));
+        xhr.onerror = () => reject(new Error(t("adminMusic.connEchwe")));
         const url = track ? `/api/admin/music/${track.id}` : "/api/admin/music";
         xhr.open(track ? "PUT" : "POST", url);
-        xhr.withCredentials = true;
+        const _tok = localStorage.getItem("flexamarket_token");
+        if (_tok) xhr.setRequestHeader("Authorization", `Bearer ${_tok}`);
         xhr.send(fd);
       });
 
       onSave();
-    } catch (e: any) { setErr(e.message ?? "Erè"); }
+    } catch (e: any) { setErr(e.message ?? t("adminMusic.err")); }
     finally { setUploading(false); }
   };
 
@@ -504,8 +505,8 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pb-6">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-black text-base">{track ? "✏️ Modifye Chante" : "➕ Ajoute Chante"}</h2>
-        {track && <button type="button" onClick={onCancel} className="text-xs opacity-40 hover:opacity-70">Anile</button>}
+        <h2 className="font-black text-base">{track ? t("adminMusic.editSong") : t("adminMusic.addSong")}</h2>
+        {track && <button type="button" onClick={onCancel} className="text-xs opacity-40 hover:opacity-70">{t("adminMusic.cancel")}</button>}
       </div>
 
       {err && (
@@ -516,37 +517,37 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
 
       {/* Audio upload */}
       <div className="rounded-2xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(124,58,237,0.4)" }}>
-        <label className="block text-sm font-bold text-violet-400">🎵 Fichye Odyo *</label>
+        <label className="block text-sm font-bold text-violet-400">{t("adminMusic.audioFileLabel")}</label>
         <label className="flex flex-col items-center justify-center gap-2 py-4 rounded-xl cursor-pointer hover:bg-white/5 transition-colors"
           style={{ border: "1px dashed rgba(255,255,255,0.1)" }}>
           <Upload size={24} className="text-violet-400" />
-          <span className="text-xs opacity-50">{audioFile ? audioFile.name : "Chwazi fichye MP3/OGG/WAV"}</span>
-          <span className="text-[10px] opacity-30">oswa paste URL anba a</span>
+          <span className="text-xs opacity-50">{audioFile ? audioFile.name : t("adminMusic.chooseFile")}</span>
+          <span className="text-[10px] opacity-30">{t("adminMusic.orPasteUrl")}</span>
           <input type="file" accept="audio/*" className="hidden" onChange={e => e.target.files?.[0] && onAudioPick(e.target.files[0])} />
         </label>
         {audioPreview && (
           <audio ref={audioRef} src={audioPreview} controls className="w-full h-8 rounded-lg" style={{ filter: "invert(0.85) hue-rotate(230deg)" }} />
         )}
         <div>
-          <label className={lbl}>URL Odyo (si pa telechaje)</label>
+          <label className={lbl}>{t("adminMusic.audioUrlLabel")}</label>
           <input className={inp} style={inpStyle} value={form.audio_url} onChange={e=>set("audio_url",e.target.value)} placeholder="https://…/audio.mp3" />
         </div>
       </div>
 
       {/* Cover upload */}
       <div className="rounded-2xl p-4 space-y-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px dashed rgba(192,38,211,0.4)" }}>
-        <label className="block text-sm font-bold text-fuchsia-400">🖼️ Kouvèti</label>
+        <label className="block text-sm font-bold text-fuchsia-400">{t("adminMusic.coverLabel")}</label>
         <div className="flex items-center gap-3">
           {coverPreview && <img src={coverPreview} alt="cover" className="w-16 h-16 rounded-xl object-cover" />}
           <label className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl cursor-pointer hover:bg-white/5 transition-colors"
             style={{ border: "1px dashed rgba(255,255,255,0.1)" }}>
             <Upload size={16} className="text-fuchsia-400" />
-            <span className="text-xs opacity-50">{coverFile ? coverFile.name : "Chwazi imaj"}</span>
+            <span className="text-xs opacity-50">{coverFile ? coverFile.name : t("adminMusic.chooseImage")}</span>
             <input type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && onCoverPick(e.target.files[0])} />
           </label>
         </div>
         <div>
-          <label className={lbl}>URL Kouvèti (si pa telechaje)</label>
+          <label className={lbl}>{t("adminMusic.coverUrlLabel")}</label>
           <input className={inp} style={inpStyle} value={form.cover_url} onChange={e=>set("cover_url",e.target.value)} placeholder="https://…/cover.jpg" />
         </div>
       </div>
@@ -554,54 +555,54 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
       {/* Metadata */}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className={lbl}>Titre *</label>
-          <input className={inp} style={inpStyle} value={form.title} onChange={e=>set("title",e.target.value)} placeholder="Non chante…" required />
+          <label className={lbl}>{t("adminMusic.titleLabel")}</label>
+          <input className={inp} style={inpStyle} value={form.title} onChange={e=>set("title",e.target.value)} placeholder={t("upload.trackTitlePlaceholder")} required />
         </div>
         <div>
-          <label className={lbl}>Atis *</label>
+          <label className={lbl}>{t("adminMusic.artistLabel")}</label>
           <input className={inp} style={inpStyle} value={form.artist} onChange={e=>set("artist",e.target.value)} required />
         </div>
         <div>
-          <label className={lbl}>Album</label>
+          <label className={lbl}>{t("adminMusic.albumLabel")}</label>
           <input className={inp} style={inpStyle} value={form.album} onChange={e=>set("album",e.target.value)} />
         </div>
         <div>
-          <label className={lbl}>Jen</label>
+          <label className={lbl}>{t("adminMusic.genreLabel")}</label>
           <select className={inp} style={inpStyle} value={form.genre} onChange={e=>set("genre",e.target.value)}>
-            <option value="">— Chwazi —</option>
+            <option value="">— {t("upload.genreSelect")} —</option>
             {GENRES.map(g=><option key={g} value={g}>{g}</option>)}
           </select>
         </div>
         <div>
-          <label className={lbl}>Dire (sègonn)</label>
+          <label className={lbl}>{t("adminMusic.durationLabel")}</label>
           <input type="number" className={inp} style={inpStyle} value={form.duration_seconds} onChange={e=>set("duration_seconds",e.target.value)} placeholder="240" min={0} />
         </div>
         <div>
-          <label className={lbl}>Monetizasyon</label>
+          <label className={lbl}>{t("adminMusic.monetizationLabel")}</label>
           <select className={inp} style={inpStyle} value={form.monetization_type} onChange={e=>set("monetization_type",e.target.value)}>
             {MONETIZATION_TYPES.map(m=><option key={m} value={m}>{m}</option>)}
           </select>
         </div>
         <div>
-          <label className={lbl}>Pri ($)</label>
+          <label className={lbl}>{t("adminMusic.priceLabel")}</label>
           <input type="number" className={inp} style={inpStyle} value={form.price_usd} onChange={e=>set("price_usd",e.target.value)} placeholder="0.00" min={0} step={0.01} />
         </div>
         <div>
-          <label className={lbl}>Lisans</label>
+          <label className={lbl}>{t("adminMusic.licenseLabel")}</label>
           <input className={inp} style={inpStyle} value={form.license} onChange={e=>set("license",e.target.value)} placeholder="CC BY 4.0…" />
         </div>
         <div>
-          <label className={lbl}>Copyright</label>
+          <label className={lbl}>{t("adminMusic.copyrightLabel")}</label>
           <select className={inp} style={inpStyle} value={form.copyright_status} onChange={e=>set("copyright_status",e.target.value)}>
             {COPYRIGHT_STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div className="col-span-2">
-          <label className={lbl}>Tags (virgil separe)</label>
+          <label className={lbl}>{t("adminMusic.tagsLabel")}</label>
           <input className={inp} style={inpStyle} value={form.tags} onChange={e=>set("tags",e.target.value)} placeholder="haitian, kompa, 2024…" />
         </div>
         <div>
-          <label className={lbl}>Artist User ID</label>
+          <label className={lbl}>{t("adminMusic.artistUserIdLabel")}</label>
           <input type="number" className={inp} style={inpStyle} value={form.artist_user_id} onChange={e=>set("artist_user_id",e.target.value)} placeholder="ID…" />
         </div>
       </div>
@@ -631,13 +632,13 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
           <button type="button" onClick={onCancel}
             className="flex-1 py-3 rounded-xl text-sm font-bold transition-colors"
             style={{ background:"rgba(255,255,255,0.08)", color:"#e2e8f0" }}>
-            Anile
+            {t("adminMusic.cancel")}
           </button>
         )}
         <button type="submit" disabled={uploading}
           className="flex-1 py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           style={{ background:"linear-gradient(135deg,#7c3aed,#c026d3)", color:"#fff" }}>
-          {uploading ? <><Loader2 size={14} className="animate-spin" /> {progress}%</> : <><Check size={14} /> {track?"Sove":"Pibliye Chante"}</>}
+          {uploading ? <><Loader2 size={14} className="animate-spin" /> {progress}%</> : <><Check size={14} /> {track ? t("adminMusic.save") : t("adminMusic.publish")}</>}
         </button>
       </div>
     </form>
@@ -650,31 +651,31 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
 const FREE_APIS = [
   {
     id: "jamendo", name: "Jamendo", icon: "🎸", live: true,
-    desc: "200 000+ chante Creative Commons gratis. Pa bezwen kle API pou chèche.",
+    descKey: "adminMusic.descJamendo",
     color: "from-emerald-900/40 to-emerald-800/20",
     border: "rgba(16,185,129,0.3)",
   },
   {
     id: "pixabay", name: "Pixabay Music", icon: "🎹", live: false,
-    desc: "Mizik gratis libè dwa. Bezwen kle API Pixabay.",
+    descKey: "adminMusic.descPixabay",
     color: "from-yellow-900/40 to-yellow-800/20",
     border: "rgba(234,179,8,0.3)",
   },
   {
     id: "fma", name: "Free Music Archive", icon: "📻", live: false,
-    desc: "Achiv mizik endepandan ak lisans ouvè. Bezwen kle API FMA.",
+    descKey: "adminMusic.descFma",
     color: "from-blue-900/40 to-blue-800/20",
     border: "rgba(59,130,246,0.3)",
   },
   {
     id: "archive", name: "Internet Archive", icon: "🏛️", live: false,
-    desc: "Domèn piblik & odyo istorik. Bezwen kle Archive.org.",
+    descKey: "adminMusic.descArchive",
     color: "from-slate-900/40 to-slate-800/20",
     border: "rgba(100,116,139,0.3)",
   },
   {
     id: "ccmixter", name: "ccMixter", icon: "🎧", live: false,
-    desc: "Mizik remiks Creative Commons. Bezwen kle API ccMixter.",
+    descKey: "adminMusic.descCcmixter",
     color: "from-purple-900/40 to-purple-800/20",
     border: "rgba(168,85,247,0.3)",
   },
@@ -683,6 +684,7 @@ const FREE_APIS = [
 type JamendoTrack = { id:number; name:string; artist_name:string; album_name:string; duration:number; audio:string; image:string; license_ccurl:string; tags:string };
 
 function ImportTab({ onImportDone }: { onImportDone: () => void }) {
+  const { t } = useTranslation();
   const [apiKeys,    setApiKeys]    = useState<Record<string,string>>({});
   const [connected,  setConnected]  = useState<Record<string,boolean>>({});
   const [searching,  setSearching]  = useState<Record<string,boolean>>({});
@@ -704,27 +706,27 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
 
   const connectProvider = async (id: string) => {
     const key = apiKeys[id]?.trim();
-    if (!key) { setTestMsg(m => ({...m, [id]: "❌ Antre kle API a anvan"})); return; }
+    if (!key) { setTestMsg(m => ({...m, [id]: "❌ " + t("adminMusic.enterKeyFirst")})); return; }
     setConnecting(c => ({...c, [id]: true}));
     setTestMsg(m => ({...m, [id]: ""}));
     try {
       await adminFetch("/api/admin/music/providers/connect","POST",{ provider: id, apiKey: key });
       setConnected(c => ({...c, [id]: true}));
-      setTestMsg(m => ({...m, [id]: "✅ Kle sovgadé — ap tès koneksyon…"}));
+      setTestMsg(m => ({...m, [id]: t("adminMusic.keySaved")}));
       // Auto-test immediately after saving
       setTimeout(() => testProvider(id), 400);
-    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || "Erè koneksyon")})); }
+    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || t("adminMusic.errConnect"))})); }
     finally { setConnecting(c => ({...c, [id]: false})); }
   };
 
   const disconnectProvider = async (id: string) => {
-    if (!confirm("Retire kle API sa?")) return;
+    if (!confirm(t("adminMusic.confirmRemoveKey"))) return;
     try {
       await adminFetch("/api/admin/music/providers/disconnect","POST",{ provider: id });
       setConnected(c => ({...c, [id]: false}));
       setApiKeys(k => ({...k, [id]: ""}));
       setTestMsg(m => ({...m, [id]: ""}));
-    } catch (e:any) { alert(e.message || "Erè"); }
+    } catch (e:any) { alert(e.message || t("adminMusic.err")); }
   };
 
   const testProvider = async (id: string) => {
@@ -732,8 +734,8 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
     setTestMsg(m => ({...m, [id]: ""}));
     try {
       const d = await adminFetch("/api/admin/music/providers/test","POST",{ provider: id, apiKey: apiKeys[id] || "" });
-      setTestMsg(m => ({...m, [id]: d.message ?? (d.ok ? "✅ Koneksyon bon" : "❌ Echwe")}));
-    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || "Erè")})); }
+      setTestMsg(m => ({...m, [id]: d.message ?? (d.ok ? t("adminMusic.testOk") : t("adminMusic.testFailed"))}));
+    } catch (e:any) { setTestMsg(m => ({...m, [id]: "❌ " + (e.message || t("adminMusic.err"))})); }
     finally { setTesting(t => ({...t, [id]: false})); }
   };
 
@@ -746,27 +748,27 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
         : `/api/admin/music/pixabay/search?q=${encodeURIComponent(q2)}&limit=20`;
       const d = await adminFetch(endpoint);
       setResults(rv => ({...rv, [id]: d.results ?? []}));
-    } catch (e:any) { alert(e.message || "Erè koneksyon"); }
+    } catch (e:any) { alert(e.message || t("adminMusic.errConnect")); }
     finally { setSearching(s => ({...s, [id]:false})); }
   };
 
   // Keep legacy alias
   const searchJamendo = () => searchProvider("jamendo");
 
-  const importJamendo = async (t: JamendoTrack) => {
-    setImporting(m => ({...m, [t.id]:true}));
+  const importJamendo = async (trk: JamendoTrack) => {
+    setImporting(m => ({...m, [trk.id]:true}));
     try {
       await adminFetch("/api/admin/music/import","POST",{
-        title: t.name, artist: t.artist_name, album: t.album_name||undefined,
-        audio_url: t.audio, cover_url: t.image||undefined,
-        duration_seconds: t.duration ? String(t.duration) : undefined,
-        license: t.license_ccurl||"creative_commons",
-        tags: t.tags||undefined, source: "jamendo",
+        title: trk.name, artist: trk.artist_name, album: trk.album_name||undefined,
+        audio_url: trk.audio, cover_url: trk.image||undefined,
+        duration_seconds: trk.duration ? String(trk.duration) : undefined,
+        license: trk.license_ccurl||"creative_commons",
+        tags: trk.tags||undefined, source: "jamendo",
       });
-      setImported(s => new Set([...s, t.id]));
+      setImported(s => new Set([...s, trk.id]));
       onImportDone();
-    } catch (e:any) { alert(e.message||"Erè import"); }
-    finally { setImporting(m => ({...m, [t.id]:false})); }
+    } catch (e:any) { alert(e.message || t("adminMusic.errImport")); }
+    finally { setImporting(m => ({...m, [trk.id]:false})); }
   };
 
   const bulkImportJamendo = async (count: number) => {
@@ -774,8 +776,10 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
     try {
       const d = await adminFetch("/api/admin/music/jamendo/bulk","POST",{ count });
       onImportDone();
-      alert(`✅ ${d.imported} chante importé${d.skipped ? ` (${d.skipped} skip)` : ""}`);
-    } catch (e:any) { alert(e.message||"Erè bulk import"); }
+      alert(d.skipped
+        ? t("adminMusic.bulkSuccessSkipped", { count: d.imported, skipped: d.skipped })
+        : t("adminMusic.bulkSuccess", { count: d.imported }));
+    } catch (e:any) { alert(e.message || t("adminMusic.errBulkImport")); }
     finally { setBulkLoading(false); }
   };
 
@@ -783,22 +787,22 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
     <div className="space-y-4">
       {/* Bulk import controls */}
       <div className="rounded-2xl p-4" style={{ background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.3)" }}>
-        <p className="text-sm font-black text-violet-400 mb-3">⚡ Importasyon Rapid — Jamendo</p>
+        <p className="text-sm font-black text-violet-400 mb-3">{t("adminMusic.quickImport")}</p>
         <div className="flex gap-2 flex-wrap">
           {["100","500"].map(n => (
-            <button key={n} onClick={() => { if(confirm(`Importe ${n} chante Jamendo?`)) bulkImportJamendo(Number(n)); }}
+            <button key={n} onClick={() => { if(confirm(t("adminMusic.confirmBulkImport", { count: n }))) bulkImportJamendo(Number(n)); }}
               disabled={bulkLoading}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50 transition-all"
               style={{ background:"rgba(124,58,237,0.3)", border:"1px solid rgba(124,58,237,0.5)", color:"#c4b5fd" }}>
               {bulkLoading ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-              Importe {n}
+              {t("adminMusic.importN", { n })}
             </button>
           ))}
-          <button onClick={() => { if(confirm("Importe tout chante disponib? Sa ka pran anpil tan.")) bulkImportJamendo(10000); }}
+          <button onClick={() => { if(confirm(t("adminMusic.confirmImportAll"))) bulkImportJamendo(10000); }}
             disabled={bulkLoading}
             className="px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-50"
             style={{ background:"rgba(192,38,211,0.3)", border:"1px solid rgba(192,38,211,0.5)", color:"#f0abfc" }}>
-            Importe Tout
+            {t("adminMusic.importAll")}
           </button>
         </div>
       </div>
@@ -818,17 +822,17 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-black text-sm">{api.name}</h3>
                 <Badge
-                  label={isLive ? "🟢 Aktif" : "⚙️ Poko disponib"}
+                  label={isLive ? t("adminMusic.active") : t("adminMusic.notAvailable")}
                   color={isLive ? "bg-emerald-500/20 text-emerald-400" : "bg-white/10 text-white/40"}
                 />
                 {connected[api.id] && !api.live && (
                   <button onClick={() => disconnectProvider(api.id)}
                     className="text-[10px] text-red-400 hover:text-red-300 underline">
-                    Retire kle
+                    {t("adminMusic.removeKey")}
                   </button>
                 )}
               </div>
-              <p className="text-[11px] opacity-60 mt-0.5">{api.desc}</p>
+              <p className="text-[11px] opacity-60 mt-0.5">{t(api.descKey)}</p>
             </div>
           </div>
 
@@ -849,12 +853,12 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                     className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
                     style={{ background:"rgba(124,58,237,0.4)", color:"#c4b5fd", border:"1px solid rgba(124,58,237,0.5)" }}>
                     {connecting[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
-                    Konekte
+                    {t("adminMusic.connect")}
                   </button>
                   <button onClick={()=>testProvider(api.id)} disabled={!!testing[api.id]}
                     className="px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
                     style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
-                    {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : "Teste"}
+                    {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : t("adminMusic.test")}
                   </button>
                 </div>
               )}
@@ -863,7 +867,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
                   style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
                   {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
-                  Teste koneksyon
+                  {t("adminMusic.testConnection")}
                 </button>
               )}
               {testMsg[api.id] && (
@@ -871,7 +875,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                   {testMsg[api.id]}
                 </p>
               )}
-              {!noKeyNeeded && <p className="text-[10px] opacity-30">Rechèch ak Enpòte disponib lè kle API konfiguré ✓</p>}
+              {!noKeyNeeded && <p className="text-[10px] opacity-30">{t("adminMusic.searchAvailableWhenKey")}</p>}
             </div>
           )}
 
@@ -883,7 +887,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                   className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold disabled:opacity-50"
                   style={{ background:"rgba(255,255,255,0.07)", color:"#94a3b8", border:"1px solid rgba(255,255,255,0.1)" }}>
                   {testing[api.id] ? <Loader2 size={11} className="animate-spin" /> : null}
-                  Teste koneksyon
+                  {t("adminMusic.testConnection")}
                 </button>
               </div>
               {testMsg[api.id] && (
@@ -903,30 +907,30 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
                   <Search size={12} className="text-white/40 shrink-0" />
                   <input value={query} onChange={e=>setQuery(e.target.value)}
                     onKeyDown={e=>e.key==="Enter"&&searchProvider(api.id)}
-                    placeholder="Chèche atis, chante, jenr…"
+                    placeholder={t("adminMusic.searchPlaceholder")}
                     className="flex-1 bg-transparent text-xs text-white placeholder:text-white/30 outline-none" />
                 </div>
                 <button onClick={()=>searchProvider(api.id)} disabled={!!searching[api.id]}
                   className="px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-60 transition-all"
                   style={{ background:"linear-gradient(135deg,#7c3aed,#c026d3)", color:"#fff" }}>
-                  {searching[api.id] ? <Loader2 size={12} className="animate-spin" /> : "Chèche"}
+                  {searching[api.id] ? <Loader2 size={12} className="animate-spin" /> : t("adminMusic.search")}
                 </button>
               </div>
 
               {(results[api.id] ?? []).length > 0 && (
                 <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                  {(results[api.id] ?? []).map(t => (
-                    <div key={t.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
+                  {(results[api.id] ?? []).map(trk => (
+                    <div key={trk.id} className="flex items-center gap-2 rounded-xl px-3 py-2"
                       style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.06)" }}>
-                      <img src={t.image} alt={t.name} className="w-9 h-9 rounded-lg object-cover shrink-0" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />
+                      <img src={trk.image} alt={trk.name} className="w-9 h-9 rounded-lg object-cover shrink-0" onError={e=>{(e.target as HTMLImageElement).style.display="none"}} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold truncate">{t.name}</p>
-                        <p className="text-[10px] opacity-50 truncate">{t.artist_name} · {fmtDur(t.duration)}</p>
+                        <p className="text-xs font-semibold truncate">{trk.name}</p>
+                        <p className="text-[10px] opacity-50 truncate">{trk.artist_name} · {fmtDur(trk.duration)}</p>
                       </div>
-                      <button onClick={()=>importJamendo(t)} disabled={!!importing[t.id]||imported.has(t.id)}
+                      <button onClick={()=>importJamendo(trk)} disabled={!!importing[trk.id]||imported.has(trk.id)}
                         className="shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-40"
-                        style={{ background: imported.has(t.id)?"rgba(16,185,129,0.2)":"rgba(124,58,237,0.3)", color: imported.has(t.id)?"#34d399":"#c4b5fd" }}>
-                        {importing[t.id] ? <Loader2 size={10} className="animate-spin" /> : imported.has(t.id) ? <Check size={10} /> : "Enpòte"}
+                        style={{ background: imported.has(trk.id)?"rgba(16,185,129,0.2)":"rgba(124,58,237,0.3)", color: imported.has(trk.id)?"#34d399":"#c4b5fd" }}>
+                        {importing[trk.id] ? <Loader2 size={10} className="animate-spin" /> : imported.has(trk.id) ? <Check size={10} /> : t("adminMusic.import")}
                       </button>
                     </div>
                   ))}
@@ -944,6 +948,7 @@ function ImportTab({ onImportDone }: { onImportDone: () => void }) {
 // TAB: Statistics
 // ══════════════════════════════════════════════════════════════════════════════
 function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<"7"|"30"|"90">("30");
 
   const sliced = [...daily].reverse().slice(-(Number(range)));
@@ -975,7 +980,7 @@ function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
 
       {/* Daily impressions */}
       <div className="rounded-2xl p-4" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-        <p className="text-xs font-black mb-3 opacity-70">Impressions pa Jou</p>
+        <p className="text-xs font-black mb-3 opacity-70">{t("adminMusic.impressionsByDay")}</p>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={sliced} margin={{top:0,right:4,left:-24,bottom:0}}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -990,7 +995,7 @@ function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
       {/* Revenue */}
       {sliced.some(d=>d.paid_out>0) && (
         <div className="rounded-2xl p-4" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-xs font-black mb-3 opacity-70">Revni Konfime ($)</p>
+          <p className="text-xs font-black mb-3 opacity-70">{t("adminMusic.confirmedRevenueLbl")}</p>
           <ResponsiveContainer width="100%" height={150}>
             <BarChart data={sliced} margin={{top:0,right:4,left:-24,bottom:0}}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
@@ -1006,7 +1011,7 @@ function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
       {/* Top genres pie */}
       {topGenres.length > 0 && (
         <div className="rounded-2xl p-4" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-xs font-black mb-3 opacity-70">Top Jen pa Plays</p>
+          <p className="text-xs font-black mb-3 opacity-70">{t("adminMusic.topGenresByPlays")}</p>
           <div className="flex items-center gap-4">
             <ResponsiveContainer width={140} height={140}>
               <PieChart>
@@ -1032,7 +1037,7 @@ function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
       {/* Top tracks */}
       {topTracks.length > 0 && (
         <div className="rounded-2xl p-4" style={{ background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-xs font-black mb-3 opacity-70">Top Chante</p>
+          <p className="text-xs font-black mb-3 opacity-70">{t("adminMusic.topSongs")}</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={topTracks} layout="vertical" margin={{top:0,right:8,left:4,bottom:0}}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
@@ -1052,6 +1057,7 @@ function StatsTab({ tracks, daily }: { tracks: Track[]; daily: DailyStats[] }) {
 // TAB: Playlists
 // ══════════════════════════════════════════════════════════════════════════════
 function PlaylistsTab({ tracks }: { tracks: Track[] }) {
+  const { t } = useTranslation();
   const [playlists,   setPlaylists]   = useState<Playlist[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [showModal,   setShowModal]   = useState(false);
@@ -1080,12 +1086,12 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
         await adminFetch("/api/admin/music/playlists","POST",form as any);
       }
       setShowModal(false); load();
-    } catch { alert("Erè"); }
+    } catch { alert(t("adminMusic.err")); }
     finally { setSaving(false); }
   };
 
   const del = async (id: number) => {
-    if (!confirm("Efase playlist?")) return;
+    if (!confirm(t("adminMusic.confirmDeletePlaylist"))) return;
     await adminFetch(`/api/admin/music/playlists/${id}`,"DELETE");
     load();
   };
@@ -1100,13 +1106,13 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
         <p className="text-xs opacity-40">{playlists.length} playlist</p>
         <button onClick={openNew} className="flex items-center gap-1.5 text-sm font-bold px-4 py-2 rounded-xl"
           style={{ background:"linear-gradient(135deg,#7c3aed,#c026d3)", color:"#fff" }}>
-          <Plus size={14} /> Nouvo Playlist
+          <Plus size={14} /> {t("adminMusic.newPlaylist")}
         </button>
       </div>
 
       {loading ? <div className="space-y-2">{[...Array(4)].map((_,i)=><Skeleton key={i} h="h-16" />)}</div> :
         playlists.length === 0 ? (
-          <div className="text-center py-16 opacity-30"><ListMusic size={32} className="mx-auto mb-2" /><p className="text-sm">Pa gen playlist</p></div>
+          <div className="text-center py-16 opacity-30"><ListMusic size={32} className="mx-auto mb-2" /><p className="text-sm">{t("adminMusic.noPlaylists")}</p></div>
         ) : (
           <div className="space-y-2">
             {playlists.map(pl => (
@@ -1119,10 +1125,10 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-bold truncate">{pl.title}</p>
-                    {pl.is_featured && <Badge label="Featured" color="bg-amber-500/20 text-amber-400" />}
-                    {pl.is_trending && <Badge label="Trending" color="bg-fuchsia-500/20 text-fuchsia-400" />}
+                    {pl.is_featured && <Badge label={t("adminMusic.featured")} color="bg-amber-500/20 text-amber-400" />}
+                    {pl.is_trending && <Badge label={t("adminMusic.trending")} color="bg-fuchsia-500/20 text-fuchsia-400" />}
                   </div>
-                  <p className="text-[10px] opacity-40">{pl.track_count} chante</p>
+                  <p className="text-[10px] opacity-40">{t("adminMusic.songCount", { count: pl.track_count })}</p>
                 </div>
                 <div className="flex gap-1">
                   <button onClick={()=>openEdit(pl)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10"><Pencil size={12} className="text-violet-400" /></button>
@@ -1142,13 +1148,13 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
             onClick={e=>e.stopPropagation()}>
             <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-white/20" /></div>
             <div className="px-5 py-4 space-y-3">
-              <h2 className="font-black text-base">{editing?"Modifye Playlist":"Nouvo Playlist"}</h2>
+              <h2 className="font-black text-base">{editing ? t("adminMusic.editPlaylist") : t("adminMusic.newPlaylist")}</h2>
               <div>
-                <label className="block text-xs font-bold opacity-60 mb-1">Titre *</label>
+                <label className="block text-xs font-bold opacity-60 mb-1">{t("adminMusic.titleLabel")}</label>
                 <input className={inp} style={inpStyle} value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} />
               </div>
               <div>
-                <label className="block text-xs font-bold opacity-60 mb-1">Deskripsyon</label>
+                <label className="block text-xs font-bold opacity-60 mb-1">{t("adminMusic.playlistDesc")}</label>
                 <textarea className={inp} style={inpStyle} rows={2} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} />
               </div>
               <div className="flex gap-4">
@@ -1163,7 +1169,7 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
               </div>
               {/* Track selector */}
               <div>
-                <label className="block text-xs font-bold opacity-60 mb-2">Ajoute Chante ({trackSel.size} chwazi)</label>
+                <label className="block text-xs font-bold opacity-60 mb-2">{t("adminMusic.playlistTracks", { count: trackSel.size })}</label>
                 <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl p-2" style={{background:"rgba(255,255,255,0.03)"}}>
                   {tracks.map(t => (
                     <label key={t.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-white/5">
@@ -1178,10 +1184,10 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
                 </div>
               </div>
               <div className="flex gap-3 pb-4">
-                <button onClick={()=>setShowModal(false)} className="flex-1 py-3 rounded-xl text-sm font-bold" style={{background:"rgba(255,255,255,0.08)"}}>Anile</button>
+                <button onClick={()=>setShowModal(false)} className="flex-1 py-3 rounded-xl text-sm font-bold" style={{background:"rgba(255,255,255,0.08)"}}>{t("adminMusic.cancel")}</button>
                 <button onClick={save} disabled={saving||!form.title.trim()} className="flex-1 py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50"
                   style={{background:"linear-gradient(135deg,#7c3aed,#c026d3)",color:"#fff"}}>
-                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Sove
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} {t("adminMusic.save")}
                 </button>
               </div>
             </div>
@@ -1196,6 +1202,7 @@ function PlaylistsTab({ tracks }: { tracks: Track[] }) {
 // TAB: Artists
 // ══════════════════════════════════════════════════════════════════════════════
 function ArtistsTab() {
+  const { t } = useTranslation();
   const [artists,  setArtists]  = useState<Artist[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [toggling, setToggling] = useState<string|null>(null);
@@ -1210,11 +1217,11 @@ function ArtistsTab() {
   const toggleVerify = async (artist: Artist) => {
     setToggling(artist.name);
     try { await adminFetch("/api/admin/music/artists/verify","PUT",{artist:artist.name, is_verified:!artist.is_verified}); load(); }
-    catch { alert("Erè"); } finally { setToggling(null); }
+    catch { alert(t("adminMusic.err")); } finally { setToggling(null); }
   };
 
   if (loading) return <div className="space-y-2">{[...Array(5)].map((_,i)=><Skeleton key={i} h="h-16" />)}</div>;
-  if (!artists.length) return <div className="text-center py-16 opacity-30"><Mic2 size={32} className="mx-auto mb-2" /><p className="text-sm">Pa gen atis</p></div>;
+  if (!artists.length) return <div className="text-center py-16 opacity-30"><Mic2 size={32} className="mx-auto mb-2" /><p className="text-sm">{t("adminMusic.noArtists")}</p></div>;
 
   return (
     <div className="space-y-2">
@@ -1231,7 +1238,7 @@ function ArtistsTab() {
               {a.is_verified && <BadgeCheck size={13} className="text-blue-400 shrink-0" />}
             </div>
             <div className="flex flex-wrap gap-2 text-[10px] opacity-50 mt-0.5">
-              <span>🎵 {a.track_count} chante</span>
+              <span>🎵 {t("adminMusic.songCount", { count: a.track_count })}</span>
               <span>▶ {fmtN(a.total_plays)} plays</span>
               <span>💰 {fmt$(Number(a.total_revenue))}</span>
             </div>
@@ -1239,7 +1246,7 @@ function ArtistsTab() {
           <button onClick={()=>toggleVerify(a)} disabled={toggling===a.name}
             className={`flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all ${a.is_verified?"bg-blue-500/20 text-blue-400":"bg-white/10 text-white/40"}`}>
             {toggling===a.name ? <Loader2 size={10} className="animate-spin" /> : <BadgeCheck size={10} />}
-            {a.is_verified ? "Vérifié" : "Vèrifye"}
+            {a.is_verified ? t("adminMusic.verified") : t("adminMusic.verify")}
           </button>
         </div>
       ))}
@@ -1251,21 +1258,22 @@ function ArtistsTab() {
 // TAB: Monetization
 // ══════════════════════════════════════════════════════════════════════════════
 function MonetizationTab({ tracks, onRefresh }: { tracks: Track[]; onRefresh: ()=>void }) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState<number|null>(null);
   const [vals,   setVals]   = useState<Record<number,{type:string;price:string}>>({});
 
   const getVal = (t: Track) => vals[t.id] || {type:t.monetization_type||t.type, price:t.price_usd?String(t.price_usd):""};
   const setV = (id:number, k:string, v:string) => setVals(m=>({...m,[id]:{...getVal(tracks.find(t=>t.id===id)!), [k]:v}}));
 
-  const save = async (t: Track) => {
-    const v = getVal(t);
-    setSaving(t.id);
+  const save = async (trk: Track) => {
+    const v = getVal(trk);
+    setSaving(trk.id);
     try {
-      await adminFetch(`/api/admin/music/${t.id}/monetization`,"PUT",{
+      await adminFetch(`/api/admin/music/${trk.id}/monetization`,"PUT",{
         monetization_type: v.type, price_usd: v.price ? Number(v.price) : undefined,
       });
       onRefresh();
-    } catch { alert("Erè"); }
+    } catch { alert(t("adminMusic.err")); }
     finally { setSaving(null); }
   };
 
@@ -1308,15 +1316,16 @@ function MonetizationTab({ tracks, onRefresh }: { tracks: Track[]; onRefresh: ()
 // TAB: Copyright
 // ══════════════════════════════════════════════════════════════════════════════
 function CopyrightTab({ tracks, onRefresh }: { tracks: Track[]; onRefresh: ()=>void }) {
+  const { t } = useTranslation();
   const [saving, setSaving] = useState<number|null>(null);
   const [vals,   setVals]   = useState<Record<number,string>>({});
 
   const getV = (t: Track) => vals[t.id] ?? (t.copyright_status||"verified");
 
-  const save = async (t: Track) => {
-    setSaving(t.id);
-    try { await adminFetch(`/api/admin/music/${t.id}/copyright`,"PUT",{copyright_status:getV(t)}); onRefresh(); }
-    catch { alert("Erè"); } finally { setSaving(null); }
+  const save = async (trk: Track) => {
+    setSaving(trk.id);
+    try { await adminFetch(`/api/admin/music/${trk.id}/copyright`,"PUT",{copyright_status:getV(trk)}); onRefresh(); }
+    catch { alert(t("adminMusic.err")); } finally { setSaving(null); }
   };
 
   return (
@@ -1349,6 +1358,7 @@ function CopyrightTab({ tracks, onRefresh }: { tracks: Track[]; onRefresh: ()=>v
 // TAB: Storage
 // ══════════════════════════════════════════════════════════════════════════════
 function StorageTab({ storage, tracks }: { storage: StorageStats|null; tracks: Track[] }) {
+  const { t } = useTranslation();
   if (!storage) return <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-violet-400" /></div>;
 
   const used = storage.estimated_storage_bytes;
@@ -1357,14 +1367,14 @@ function StorageTab({ storage, tracks }: { storage: StorageStats|null; tracks: T
   const genres = [...new Set(tracks.map(t=>t.genre).filter(Boolean))].length;
 
   const items = [
-    { label: "Total Chante",       value: fmtN(storage.track_count),     icon: Music2,     color:"text-violet-400" },
-    { label: "Chante Annatant",     value: fmtN(storage.pending_count),   icon: Clock,      color:"text-orange-400" },
-    { label: "Dire Mwayen",         value: fmtDur(Math.round(storage.avg_duration)), icon: Play, color:"text-emerald-400" },
-    { label: "Dire Total",          value: fmtDur(Math.round(storage.total_duration)), icon: BarChart2, color:"text-blue-400" },
-    { label: "Odyo Estime",         value: fmtBytes(storage.audio_bytes), icon: HardDrive,  color:"text-fuchsia-400" },
-    { label: "Kouvèti Estime",      value: fmtBytes(storage.cover_bytes), icon: Tag,        color:"text-cyan-400" },
-    { label: "Jen Diferan",         value: String(genres),                 icon: Filter,     color:"text-amber-400" },
-    { label: "Mwayen pa Chante",    value: fmtBytes(storage.track_count ? Math.round(used/storage.track_count) : 0), icon: Zap, color:"text-pink-400" },
+    { label: t("adminMusic.totalSongsLabel"),    value: fmtN(storage.track_count),     icon: Music2,     color:"text-violet-400" },
+    { label: t("adminMusic.pendingSongs"),        value: fmtN(storage.pending_count),   icon: Clock,      color:"text-orange-400" },
+    { label: t("adminMusic.avgDuration"),         value: fmtDur(Math.round(storage.avg_duration)), icon: Play, color:"text-emerald-400" },
+    { label: t("adminMusic.totalDuration"),       value: fmtDur(Math.round(storage.total_duration)), icon: BarChart2, color:"text-blue-400" },
+    { label: t("adminMusic.estimatedAudio"),      value: fmtBytes(storage.audio_bytes), icon: HardDrive,  color:"text-fuchsia-400" },
+    { label: t("adminMusic.estimatedCovers"),     value: fmtBytes(storage.cover_bytes), icon: Tag,        color:"text-cyan-400" },
+    { label: t("adminMusic.uniqueGenres"),        value: String(genres),                 icon: Filter,     color:"text-amber-400" },
+    { label: t("adminMusic.avgPerSong"),          value: fmtBytes(storage.track_count ? Math.round(used/storage.track_count) : 0), icon: Zap, color:"text-pink-400" },
   ];
 
   return (
@@ -1374,7 +1384,7 @@ function StorageTab({ storage, tracks }: { storage: StorageStats|null; tracks: T
         <div className="flex items-center justify-between mb-2">
           <div>
             <p className="font-black text-lg">{fmtBytes(used)}</p>
-            <p className="text-xs opacity-40">Estokaj itilize (estime 128kbps)</p>
+            <p className="text-xs opacity-40">{t("adminMusic.storageUsed")}</p>
           </div>
           <HardDrive size={28} className="text-violet-400 opacity-60" />
         </div>
@@ -1383,12 +1393,12 @@ function StorageTab({ storage, tracks }: { storage: StorageStats|null; tracks: T
             style={{ width:`${pct}%`, background:`linear-gradient(90deg,${pct>80?"#ef4444":"#7c3aed"},${pct>80?"#f97316":"#c026d3"})` }} />
         </div>
         <div className="flex justify-between text-[10px] opacity-40 mt-1">
-          <span>{pct.toFixed(1)}% itilize</span>
-          <span>{FREE_LIMIT_GB} GB limèt gratis</span>
+          <span>{t("adminMusic.storageUsedPct", { pct: pct.toFixed(1) })}</span>
+          <span>{t("adminMusic.storageLimit", { n: FREE_LIMIT_GB })}</span>
         </div>
         <div className="mt-3 rounded-xl p-3" style={{ background:"rgba(124,58,237,0.1)", border:"1px solid rgba(124,58,237,0.2)" }}>
           <p className="text-xs font-bold text-violet-400">🚀 Wasabi Cloud Storage</p>
-          <p className="text-[10px] opacity-50 mt-0.5">Sèvè Wasabi S3-compatible ka konekte pita pou estokaj ilimite. Achitekti preparé.</p>
+          <p className="text-[10px] opacity-50 mt-0.5">{t("adminMusic.wasabiNote")}</p>
         </div>
       </div>
 
@@ -1413,6 +1423,7 @@ function StorageTab({ storage, tracks }: { storage: StorageStats|null; tracks: T
 // MAIN PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function AdminMusic() {
+  const { t } = useTranslation();
   const [, setLocation] = useLocation();
 
   const [tracks,    setTracks]    = useState<Track[]>([]);
@@ -1468,14 +1479,14 @@ export default function AdminMusic() {
           </div>
           <div className="flex-1">
             <h1 className="font-black text-base leading-tight">Flexa Music Admin</h1>
-            <p className="text-[10px] opacity-40">Dashboard pwofesyonèl</p>
+            <p className="text-[10px] opacity-40">{t("adminMusic.headerSubtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
             {pending > 0 && (
               <button onClick={()=>setActiveTab("songs")}
                 className="flex items-center gap-1 text-[10px] font-bold px-2.5 py-1.5 rounded-full"
                 style={{ background:"rgba(249,115,22,0.2)", border:"1px solid rgba(249,115,22,0.4)", color:"#fb923c" }}>
-                <AlertCircle size={10} /> {pending} annatant
+                <AlertCircle size={10} /> {t("adminMusic.pendingCount", { count: pending })}
               </button>
             )}
             <button onClick={()=>load(true)} disabled={refreshing}
@@ -1485,7 +1496,7 @@ export default function AdminMusic() {
             <button onClick={()=>{setEditTrack(null);setActiveTab("add")}}
               className="flex items-center gap-1.5 text-xs font-black px-3 py-2 rounded-xl"
               style={{ background:"linear-gradient(135deg,#7c3aed,#c026d3)", color:"#fff" }}>
-              <Plus size={14} /> Ajoute
+              <Plus size={14} /> {t("adminMusic.addBtn")}
             </button>
           </div>
         </div>
@@ -1503,7 +1514,7 @@ export default function AdminMusic() {
                 style={{ background: active ? "rgba(124,58,237,0.4)" : "rgba(255,255,255,0.05)",
                          border: active ? "1px solid rgba(124,58,237,0.6)" : "1px solid transparent" }}>
                 <Icon size={13} />
-                {TAB_LABELS[tab]}
+                {t(`adminMusic.tab${tab.charAt(0).toUpperCase()}${tab.slice(1)}`)}
                 {tab==="songs" && tracks.length>0 && <span className="ml-0.5 opacity-60">({tracks.length})</span>}
               </button>
             );

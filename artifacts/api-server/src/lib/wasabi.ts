@@ -111,6 +111,12 @@ function getClient(): S3Client {
     region:          WASABI_REGION,
     forcePathStyle:  true, // Required for Wasabi S3-compatible endpoint
     credentials:     { accessKeyId, secretAccessKey },
+    // AWS SDK v3.x+ adds CRC32 checksums to PutObject by default.
+    // Wasabi does not support these extra headers; including them produces a
+    // different canonical request on Wasabi's side → "signature does not match".
+    // Disable them so the signed request matches what Wasabi expects.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
 }
 

@@ -1,0 +1,204 @@
+Upgrade Flexa TV into a premium legal streaming platform with a Netflix-quality experience.
+
+Current sources already integrated must continue working.
+
+Add a new architecture that separates:
+- Metadata providers
+- Streaming providers
+- Search providers
+
+PRIMARY METADATA
+
+Use TMDB API as the primary metadata source.
+
+Display:
+- High-resolution posters
+- Backdrops
+- Logos
+- Cast
+- Director
+- Genres
+- Ratings
+- Runtime
+- Trailers
+- Similar movies
+- Recommendations
+- Collections
+- Multiple languages
+- French metadata
+- English metadata
+- Spanish metadata
+
+Never use Archive.org metadata if TMDB data exists.
+
+Archive.org should only provide the actual public-domain video.
+
+When a movie exists on Archive.org, automatically replace:
+- title
+- description
+- poster
+- backdrop
+- logo
+
+with TMDB metadata.
+
+This will make every public-domain movie look modern.
+
+FRENCH CONTENT
+
+Create dedicated sections:
+
+• Films Français
+• Séries Françaises
+• Québec
+• Afrique Francophone
+• Haïti
+
+Search TMDB using language=fr whenever possible.
+
+PLAYER
+
+Upgrade the player to premium quality.
+
+Support:
+
+- Portrait mode
+- Landscape mode
+- Auto rotation
+- Fullscreen
+- Auto fullscreen in landscape
+- Exit fullscreen in portrait
+- HTTP Range requests
+- MP4
+- HLS (.m3u8)
+- Adaptive bitrate
+- Playback speed
+- Subtitle support
+- Chromecast
+- AirPlay
+- Picture in Picture
+- Resume playback
+- Buffer optimization
+- Double tap seek
+- Pinch to zoom
+- Gesture controls
+- Full responsive player
+- Fill screen while preserving aspect ratio
+
+UI
+
+Redesign movie cards.
+
+Each card should contain:
+
+- Large HD poster
+- TMDB rating
+- Release year
+- Resolution badge
+- Language badge
+- Genre
+- Runtime
+- Favorite button
+- Continue watching indicator
+
+HOME PAGE
+
+Create premium sections:
+
+Trending
+Popular
+Recently Added
+Action
+Comedy
+Drama
+Animation
+Sci-Fi
+Horror
+Documentary
+French Movies
+French Series
+Kids
+Classic Movies
+Continue Watching
+Recommended For You
+
+SEARCH
+
+Improve search with:
+
+- Instant search
+- Suggestions
+- Voice search
+- Search history
+- Trending searches
+
+FILTERS
+
+Add filters:
+
+Genre
+Language
+Country
+Year
+Runtime
+Resolution
+Popularity
+Rating
+
+LEGAL STREAMING PROVIDERS
+
+Support providers individually so they can be enabled or disabled.
+
+Archive.org
+Dailymotion
+YouTube Official
+TVMaze
+NASA Video Library
+Europeana
+Openverse
+
+The provider system must be modular.
+
+Future providers should be added without changing existing code.
+
+If a provider fails, automatically try another provider.
+
+IMAGE QUALITY
+
+Use the highest TMDB poster available.
+
+Load low-resolution placeholders first and HD images after.
+
+Cache posters and backdrops.
+
+PERFORMANCE
+
+Lazy load movie lists.
+
+Virtualize long lists.
+
+Cache API responses.
+
+Optimize image loading.
+
+Reduce unnecessary API requests.
+
+ADMIN
+
+Create an admin page where providers can be enabled or disabled individually.
+
+Show provider health.
+
+Show API usage.
+
+Show failed imports.
+
+Show cache statistics.
+
+Show streaming statistics.
+
+Do not remove any current Flexa TV features.
+
+Keep the existing design language.
+
+Only improve the architecture and user experience while maintaining compatibility with the existing backend and database.

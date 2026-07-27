@@ -10,9 +10,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Play, Pause, Heart, Search, SkipForward, SkipBack,
   Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
-  Bell, MessageCircle, ChevronLeft, Plus, Loader2, Lock,
+  Bell, MessageCircle, ChevronLeft, Plus, Loader2, Globe,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
-  Pencil, Trash2,
+  Pencil, Trash2, ShoppingBag,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -731,16 +731,81 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// BOOSTER AD CARD — rotating Flexa Market sponsored listing
+// ══════════════════════════════════════════════════════════════════════════════
+function BoosterAdCard({ onTap }: { onTap: (id: number) => void }) {
+  const { t } = useTranslation();
+  const [ads, setAds]   = useState<any[]>([]);
+  const [idx, setIdx]   = useState(0);
+  const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    fetch("/api/listings?limit=20")
+      .then(r => r.json())
+      .then(d => {
+        const list = d?.listings ?? d ?? [];
+        if (Array.isArray(list) && list.length) {
+          // shuffle so different users see different ads
+          const shuffled = [...list].sort(() => Math.random() - 0.5);
+          setAds(shuffled);
+        }
+      })
+      .catch(() => {});
+    timerRef.current = setInterval(() => setIdx(i => i + 1), 30_000);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
+
+  if (!ads.length) return null;
+  const ad    = ads[idx % ads.length];
+  const img   = Array.isArray(ad?.images) ? ad.images[0] : (ad?.image ?? null);
+  const price = ad?.price != null ? `$${Number(ad.price).toFixed(2)}` : null;
+
+  return (
+    <div className="mx-4 mb-5 rounded-2xl overflow-hidden"
+      style={{ background: "#161616", border: "1px solid rgba(124,58,237,0.25)" }}>
+      {/* Sponsored badge */}
+      <div className="px-3 py-1.5 flex items-center gap-1.5"
+        style={{ background: "rgba(124,58,237,0.18)" }}>
+        <ShoppingBag size={10} className="text-violet-400 shrink-0" />
+        <span className="text-[9px] text-violet-400 font-bold uppercase tracking-wider">
+          {t("music.sponsoredBy")}
+        </span>
+      </div>
+      {/* Listing row */}
+      <button onClick={() => onTap(ad.id)}
+        className="flex items-center gap-3 w-full p-3 text-left active:bg-white/5 transition-colors">
+        {img
+          ? <img src={img} alt={ad.title} className="w-14 h-14 rounded-xl object-cover shrink-0" />
+          : <div className="w-14 h-14 rounded-xl shrink-0 flex items-center justify-center"
+              style={{ background: "#2a2a2a" }}>
+              <ShoppingBag size={22} className="text-white/20" />
+            </div>}
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-semibold text-sm truncate leading-snug">{ad.title}</p>
+          {price && <p className="text-violet-300 text-xs font-black mt-0.5">{price}</p>}
+          <p className="text-white/35 text-[10px] mt-0.5">Flexa Market</p>
+        </div>
+        <div className="shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold"
+          style={{ background: "#7c3aed", color: "#fff" }}>
+          {t("music.shopNow")}
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
-  playerState, liked, isAdmin, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle, onEdit, onDelete }:
+  playerState, liked, isAdmin, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle, onEdit, onDelete, onAdTap }:
   { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
     playerState: PlayerState; liked: Set<number>; isAdmin: boolean;
     onBack: () => void; onPlay: (t: Track, idx: number) => void;
     onToggle: () => void; onToggleLike: (id: number) => void;
     onDownload: (t: Track) => void; onShuffle: () => void;
-    onEdit: (t: Track) => void; onDelete: (id: number) => void; }) {
+    onEdit: (t: Track) => void; onDelete: (id: number) => void;
+    onAdTap: (id: number) => void; }) {
   const { user } = useAuth();
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
   const { t } = useTranslation();
@@ -784,8 +849,8 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
       <div className="px-5 mb-4">
         <h2 className="text-white font-black text-xl leading-tight mb-2">{playlistTitle}</h2>
         <div className="flex items-center gap-2 text-white/40 text-xs mb-3">
-          <Lock size={11} />
-          <span>{t("music.private")}</span>
+          <Globe size={11} />
+          <span>{t("music.public")}</span>
           <span>·</span>
           <span>{t("music.trackCount", { n: playlist.length })}</span>
           <span>·</span>
@@ -834,6 +899,9 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           <p className="text-white/30 text-xs">{t("music.basedOn", { title: currentTrack.title })}</p>
         </div>
       )}
+
+      {/* ── Flexa Market Booster Ad ── */}
+      <BoosterAdCard onTap={onAdTap} />
 
       {/* ── Flexa Premium banner ── */}
       <div className="mx-4 mb-5 rounded-2xl overflow-hidden flex items-center gap-3 px-4 py-3"
@@ -1172,6 +1240,7 @@ export default function FlexaMusic() {
           onShuffle={shuffleQueue}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onAdTap={(id) => setLocation(`/listing/${id}`)}
         />
       )}
 

@@ -3894,6 +3894,7 @@ export default {
     // Earnings page
     earningsTitle: "Music Earnings",
     earningsSubtitle: "Ad revenue from your tracks",
+    musicEarningsBalance: "Music Earnings Balance",
     walletBalance: "Flexa Wallet Balance",
     minWithdraw: "Minimum withdrawal: {{amount}}",
     withdraw: "Withdraw",
@@ -3931,6 +3932,9 @@ export default {
     allSongs: "All Songs",
     basedOn: "Based on · {{title}}",
     private: "Private",
+    public: "Public",
+    sponsoredBy: "Sponsored · Flexa Market",
+    shopNow: "Shop",
     trackCount: "{{n}} tracks",
     madeFor: "Made for",
     uploadFirstSong: "Upload Your First Track",

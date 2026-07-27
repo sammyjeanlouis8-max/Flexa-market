@@ -476,22 +476,88 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
     if (!form.artist.trim()) { setErr(t("adminMusic.errArtistRequired")); return; }
     setUploading(true);
     try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k,v]) => { if (v !== "" && v !== undefined) fd.append(k, String(v)); });
-      if (audioFile) fd.append("audio", audioFile);
-      if (coverFile) fd.append("cover", coverFile);
+      const _tok = localStorage.getItem("flexamarket_token");
+      const authH = _tok ? { Authorization: `Bearer ${_tok}` } : {} as Record<string,string>;
 
-      await new Promise<void>((resolve, reject) => {
+      // ── Editing existing track: use old multipart PUT (no file size concerns) ──
+      if (track) {
+        const fd = new FormData();
+        Object.entries(form).forEach(([k,v]) => { if (v !== "" && v !== undefined) fd.append(k, String(v)); });
+        if (audioFile) fd.append("audio", audioFile);
+        if (coverFile) fd.append("cover", coverFile);
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(Math.round(e.loaded/e.total*100)); };
+          xhr.onload  = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else { try { reject(new Error(JSON.parse(xhr.responseText).error)); } catch { reject(new Error(xhr.statusText)); } } };
+          xhr.onerror = () => reject(new Error(t("adminMusic.connEchwe")));
+          xhr.open("PUT", `/api/admin/music/${track.id}`);
+          if (_tok) xhr.setRequestHeader("Authorization", `Bearer ${_tok}`);
+          xhr.send(fd);
+        });
+        onSave();
+        return;
+      }
+
+      // ── New track: direct Cloudinary upload ──────────────────────────────
+      if (!audioFile) { setErr(t("adminMusic.errAudioRequired") || "Audio file required"); return; }
+
+      setProgress(5);
+      const sigRes = await fetch("/api/music/upload-signature", { headers: authH });
+      if (!sigRes.ok) { const d = await sigRes.json().catch(()=>({})); throw new Error(d.error ?? "Signature failed"); }
+      const sig = await sigRes.json();
+      setProgress(10);
+
+      // Upload audio
+      const audioResult = await new Promise<{publicId:string;secureUrl:string}>((resolve, reject) => {
+        const fd = new FormData();
+        fd.append("file",      audioFile, audioFile.name);
+        fd.append("api_key",   sig.apiKey);
+        fd.append("timestamp", String(sig.timestamp));
+        fd.append("signature", sig.audio.signature);
+        fd.append("folder",    sig.audio.folder);
         const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if (e.lengthComputable) setProgress(Math.round(e.loaded/e.total*100)); };
-        xhr.onload  = () => { if (xhr.status >= 200 && xhr.status < 300) resolve(); else { try { reject(new Error(JSON.parse(xhr.responseText).error)); } catch { reject(new Error(xhr.statusText)); } } };
+        xhr.open("POST", `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
+        xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) setProgress(10 + Math.round((ev.loaded/ev.total)*75)); };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) { const d = JSON.parse(xhr.responseText); resolve({ publicId: d.public_id, secureUrl: d.secure_url }); }
+          else { let msg = `Cloudinary ${xhr.status}`; try { msg = JSON.parse(xhr.responseText)?.error?.message ?? msg; } catch {/***/} reject(new Error(msg)); }
+        };
         xhr.onerror = () => reject(new Error(t("adminMusic.connEchwe")));
-        const url = track ? `/api/admin/music/${track.id}` : "/api/admin/music";
-        xhr.open(track ? "PUT" : "POST", url);
-        const _tok = localStorage.getItem("flexamarket_token");
-        if (_tok) xhr.setRequestHeader("Authorization", `Bearer ${_tok}`);
         xhr.send(fd);
       });
+      setProgress(85);
+
+      // Upload cover (optional)
+      let coverResult: {publicId:string;secureUrl:string}|null = null;
+      if (coverFile) {
+        try {
+          const cfd = new FormData();
+          cfd.append("file",      coverFile, coverFile.name);
+          cfd.append("api_key",   sig.apiKey);
+          cfd.append("timestamp", String(sig.timestamp));
+          cfd.append("signature", sig.cover.signature);
+          cfd.append("folder",    sig.cover.folder);
+          cfd.append("format",    sig.cover.format);
+          const cr = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, { method: "POST", body: cfd });
+          if (cr.ok) { const d = await cr.json(); coverResult = { publicId: d.public_id, secureUrl: d.secure_url }; }
+        } catch { /* non-fatal */ }
+      }
+      setProgress(95);
+
+      // Register in DB
+      const regRes = await fetch("/api/music/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({
+          title: form.title, artist: form.artist,
+          album: form.album || "", genre: form.genre || "",
+          type: form.type || "free",
+          audioPublicId: audioResult.publicId, audioUrl: audioResult.secureUrl,
+          coverPublicId: coverResult?.publicId ?? null, coverUrl: coverResult?.secureUrl ?? null,
+        }),
+      });
+      if (!regRes.ok) { const d = await regRes.json().catch(()=>({})); throw new Error(d.error ?? "Register failed"); }
+      setProgress(100);
 
       onSave();
     } catch (e: any) { setErr(e.message ?? t("adminMusic.err")); }

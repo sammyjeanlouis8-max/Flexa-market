@@ -344,19 +344,18 @@ function UploadView({ onBack, onSuccess }: {
       type: audioFile.type, title: title.trim(), artist: artist.trim(),
     });
 
-    const fd = new FormData();
-    fd.append("title",  title.trim());
-    fd.append("artist", artist.trim());
-    if (album.trim()) fd.append("album", album.trim());
-    if (genre)        fd.append("genre", genre);
-    fd.append("type",  "free");
-    fd.append("audio", audioFile);
-    if (coverFile) fd.append("cover", coverFile);
-
     // Hand off to global context — XHR survives component unmount
     startUpload(
-      fd,
-      { title: title.trim(), artist: artist.trim(), coverPreview: coverPreview ?? undefined },
+      audioFile,
+      coverFile,
+      {
+        title:   title.trim(),
+        artist:  artist.trim(),
+        album:   album.trim() || undefined,
+        genre:   genre || undefined,
+        type:    "free",
+        coverPreview: coverPreview ?? undefined,
+      },
       (track) => onSuccess(track),
     );
 

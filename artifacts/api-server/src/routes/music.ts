@@ -450,6 +450,79 @@ router.get("/admin/music/stats", requireAdmin, async (_req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DIRECT CLOUDINARY UPLOAD  (browser uploads directly — no server timeout)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/music/upload-signature
+ * Returns Cloudinary signed upload params so the browser can POST files
+ * directly to Cloudinary without proxying through this server.
+ * Eliminates the DigitalOcean 30-second request timeout on large audio files.
+ */
+router.get("/music/upload-signature", requireAuth, (req, res) => {
+  const apiKey    = process.env["CLOUDINARY_API_KEY"];
+  const apiSecret = process.env["CLOUDINARY_API_SECRET"];
+  const cloudName = process.env["CLOUDINARY_CLOUD_NAME"]?.replace(/-/g, "") || "dvkbgodbk";
+
+  if (!apiKey || !apiSecret) {
+    return res.status(503).json({ error: "Cloudinary not configured" });
+  }
+
+  const timestamp = Math.round(Date.now() / 1000);
+
+  // Params sorted alphabetically (exclude api_key, file, resource_type, cloud_name)
+  const audioParamStr = `folder=flexa-music/audio&timestamp=${timestamp}`;
+  const coverParamStr = `folder=flexa-music/covers&format=jpg&timestamp=${timestamp}`;
+
+  const audioSig = createHash("sha1").update(audioParamStr + apiSecret).digest("hex");
+  const coverSig = createHash("sha1").update(coverParamStr + apiSecret).digest("hex");
+
+  res.json({
+    cloudName,
+    apiKey,
+    timestamp,
+    audio: { folder: "flexa-music/audio", signature: audioSig },
+    cover: { folder: "flexa-music/covers", signature: coverSig, format: "jpg" },
+  });
+});
+
+/**
+ * POST /api/music/register
+ * Lightweight DB-insert-only endpoint called after the browser has already
+ * uploaded files directly to Cloudinary.  No file processing — just metadata.
+ */
+router.post("/music/register", requireAuth, async (req, res) => {
+  const {
+    title, artist, album, genre, type = "free",
+    audioPublicId, audioUrl, coverPublicId, coverUrl,
+  } = req.body as Record<string, string | undefined>;
+
+  if (!title?.trim())   return res.status(400).json({ error: "Title required" });
+  if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
+  if (!audioPublicId)   return res.status(400).json({ error: "audioPublicId required" });
+
+  const isAdmin = req.user?.role === "admin";
+  try {
+    const [row] = await q(
+      `INSERT INTO music_tracks
+         (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
+          type, is_active, is_featured, created_by, artist_user_id)
+       VALUES
+         (${nullOr(title.trim())}, ${nullOr(artist.trim())},
+          ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
+          ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
+          ${nullOr("cld:" + audioPublicId)}, ${coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL"},
+          ${nullOr(type)}, ${isAdmin ? "TRUE" : "FALSE"}, FALSE,
+          ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
+       RETURNING *`
+    );
+    res.status(201).json({ track: toClientTrack(row) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ARTIST SELF-UPLOAD  (authenticated users — track goes pending review)
 // ══════════════════════════════════════════════════════════════════════════════
 

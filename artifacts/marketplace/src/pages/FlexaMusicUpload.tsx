@@ -86,35 +86,77 @@ export default function FlexaMusicUpload() {
     if (!audioFile)     { setError(t("upload.errAudio"));  return; }
 
     setUploading(true);
-    setProgress(10);
+    setProgress(5);
 
     try {
       const token = localStorage.getItem("flexamarket_token");
-      const fd = new FormData();
-      fd.append("title",  title.trim());
-      fd.append("artist", artist.trim());
-      if (album.trim()) fd.append("album", album.trim());
-      if (genre)        fd.append("genre", genre);
-      fd.append("audio", audioFile, audioFile.name);
-      if (coverFile) fd.append("cover", coverFile, coverFile.name);
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {} as Record<string,string>;
 
-      // Simulate progress during upload
-      const ticker = setInterval(() => setProgress(p => Math.min(p + 5, 90)), 800);
+      // ── Step 1: Get Cloudinary signature ────────────────────────────────
+      const sigRes = await fetch("/api/music/upload-signature", { headers: authHeader });
+      if (!sigRes.ok) { const d = await sigRes.json().catch(()=>({})); throw new Error(d.error ?? "Signature failed"); }
+      const sig = await sigRes.json();
+      setProgress(10);
 
-      const res = await fetch("/api/music/upload", {
-        method: "POST",
-        body: fd,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      // ── Step 2: Upload audio directly to Cloudinary ──────────────────────
+      const audioResult = await new Promise<{publicId:string;secureUrl:string}>((resolve, reject) => {
+        const fd = new FormData();
+        fd.append("file",      audioFile, audioFile.name);
+        fd.append("api_key",   sig.apiKey);
+        fd.append("timestamp", String(sig.timestamp));
+        fd.append("signature", sig.audio.signature);
+        fd.append("folder",    sig.audio.folder);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
+        xhr.upload.onprogress = (ev) => {
+          if (ev.lengthComputable) setProgress(10 + Math.round((ev.loaded / ev.total) * 75));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const d = JSON.parse(xhr.responseText);
+            resolve({ publicId: d.public_id, secureUrl: d.secure_url });
+          } else {
+            let msg = `Cloudinary ${xhr.status}`;
+            try { msg = JSON.parse(xhr.responseText)?.error?.message ?? msg; } catch { /**/ }
+            reject(new Error(msg));
+          }
+        };
+        xhr.onerror = () => reject(new Error(t("upload.errGeneric")));
+        xhr.send(fd);
       });
+      setProgress(85);
 
-      clearInterval(ticker);
-      setProgress(100);
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? res.statusText);
+      // ── Step 3: Upload cover directly to Cloudinary (optional) ───────────
+      let coverResult: {publicId:string;secureUrl:string}|null = null;
+      if (coverFile) {
+        try {
+          const cfd = new FormData();
+          cfd.append("file",      coverFile, coverFile.name);
+          cfd.append("api_key",   sig.apiKey);
+          cfd.append("timestamp", String(sig.timestamp));
+          cfd.append("signature", sig.cover.signature);
+          cfd.append("folder",    sig.cover.folder);
+          cfd.append("format",    sig.cover.format);
+          const cr = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, { method: "POST", body: cfd });
+          if (cr.ok) { const d = await cr.json(); coverResult = { publicId: d.public_id, secureUrl: d.secure_url }; }
+        } catch { /* cover failure is non-fatal */ }
       }
+      setProgress(95);
 
+      // ── Step 4: Register in DB ───────────────────────────────────────────
+      const regRes = await fetch("/api/music/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          title: title.trim(), artist: artist.trim(),
+          album: album.trim() || "", genre: genre || "", type: "free",
+          audioPublicId: audioResult.publicId, audioUrl: audioResult.secureUrl,
+          coverPublicId: coverResult?.publicId ?? null, coverUrl: coverResult?.secureUrl ?? null,
+        }),
+      });
+      if (!regRes.ok) { const d = await regRes.json().catch(()=>({})); throw new Error(d.error ?? "Register failed"); }
+
+      setProgress(100);
       setDone(true);
     } catch (err: any) {
       setError(err.message ?? t("upload.errGeneric"));

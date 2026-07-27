@@ -1,8 +1,16 @@
 /**
  * MusicUploadContext — global background upload manager
  *
+ * Uploads files DIRECTLY to Cloudinary (browser → Cloudinary, not via server)
+ * to avoid DigitalOcean's 30-second request timeout on large audio files.
+ *
+ * Flow:
+ *   1. GET /api/music/upload-signature  (fast, <1s)
+ *   2. XHR audio → Cloudinary /video/upload  (progress tracked, 0–85%)
+ *   3. fetch cover → Cloudinary /image/upload  (85–95%)
+ *   4. POST /api/music/register  (DB insert only, <1s)
+ *
  * Lives at the App root so uploads survive page navigation.
- * A floating toast shows real-time progress from anywhere in the app.
  */
 import { createContext, useContext, useRef, useState, useCallback, type ReactNode } from "react";
 import { CheckCircle, AlertCircle, Music2, X, Loader2 } from "lucide-react";
@@ -18,13 +26,25 @@ export interface UploadState {
   artist:       string;
   coverPreview: string | null;
   error:        string | null;
-  track:        any | null;   // Track returned by API on success
+  track:        any | null;
+}
+
+export interface UploadMeta {
+  title:        string;
+  artist:       string;
+  album?:       string;
+  genre?:       string;
+  type?:        string;
+  coverPreview?: string;
 }
 
 interface MusicUploadCtx {
   state:   UploadState;
-  /** Start an upload. Pass a ready FormData + display meta + optional done callback. */
-  start:   (fd: FormData, meta: { title: string; artist: string; coverPreview?: string },
+  /**
+   * Start a direct-to-Cloudinary upload.
+   * audioFile is required; coverFile is optional.
+   */
+  start:   (audioFile: File, coverFile: File | null, meta: UploadMeta,
             onDone?: (track: any) => void) => void;
   dismiss: () => void;
 }
@@ -41,21 +61,72 @@ const MusicUploadContext = createContext<MusicUploadCtx>({
   dismiss: () => {},
 });
 
+// ── Cloudinary direct-upload helper ───────────────────────────────────────────
+interface CldSig {
+  cloudName: string;
+  apiKey:    string;
+  timestamp: number;
+  audio: { folder: string; signature: string };
+  cover: { folder: string; signature: string; format: string };
+}
+
+/** Upload a file directly to Cloudinary via XHR with progress events. */
+function uploadToCloudinary(
+  file: File,
+  resourceType: "video" | "image",
+  sig: CldSig,
+  params: { folder: string; signature: string; format?: string },
+  onProgress?: (pct: number) => void,
+): Promise<{ publicId: string; secureUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file",      file);
+    fd.append("api_key",   sig.apiKey);
+    fd.append("timestamp", String(sig.timestamp));
+    fd.append("signature", params.signature);
+    fd.append("folder",    params.folder);
+    if (params.format) fd.append("format", params.format);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`);
+
+    if (onProgress) {
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
+      };
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const data = JSON.parse(xhr.responseText);
+        resolve({ publicId: data.public_id, secureUrl: data.secure_url });
+      } else {
+        let msg = `Cloudinary HTTP ${xhr.status}`;
+        try { msg = JSON.parse(xhr.responseText)?.error?.message ?? msg; } catch { /* ignore */ }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Cloudinary network error"));
+    xhr.send(fd);
+  });
+}
+
 // ── Provider ───────────────────────────────────────────────────────────────────
 export function MusicUploadProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<UploadState>(IDLE);
-  const xhrRef   = useRef<XMLHttpRequest | null>(null);
+  const abortRef = useRef<{ abort: () => void } | null>(null);
   const doneRef  = useRef<((track: any) => void) | null>(null);
 
   const dismiss = useCallback(() => setState(IDLE), []);
 
   const start = useCallback((
-    fd:   FormData,
-    meta: { title: string; artist: string; coverPreview?: string },
-    onDone?: (track: any) => void,
+    audioFile: File,
+    coverFile: File | null,
+    meta:      UploadMeta,
+    onDone?:   (track: any) => void,
   ) => {
-    // Abort any in-flight upload
-    xhrRef.current?.abort();
+    // Cancel any in-flight upload
+    abortRef.current?.abort();
     doneRef.current = onDone ?? null;
 
     setState({
@@ -65,57 +136,75 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
       error: null, track: null,
     });
 
-    console.log("[upload] step 1: file(s) selected, starting upload pipeline", {
-      title: meta.title, artist: meta.artist,
-    });
-
-    const xhr = new XMLHttpRequest();
-    xhrRef.current = xhr;
-    xhr.open("POST", "/api/music/upload");
-    // Attach JWT — backend uses Bearer token auth; missing header causes
-    // a 401 mid-stream which closes the TCP connection and fires onerror.
     const token = localStorage.getItem("flexamarket_token");
-    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
-    xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        const pct = Math.round((ev.loaded / ev.total) * 92);
-        console.log(`[upload] step 7: upload progress ${pct}% (${ev.loaded}/${ev.total} bytes)`);
-        setState(s => ({ ...s, progress: pct }));
+    const run = async () => {
+      // ── Step 1: Get Cloudinary signature ──────────────────────────────────
+      const sigRes = await fetch("/api/music/upload-signature", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!sigRes.ok) {
+        const d = await sigRes.json().catch(() => ({}));
+        throw new Error(d.error ?? `Signature HTTP ${sigRes.status}`);
       }
-    };
+      const sig: CldSig = await sigRes.json();
 
-    xhr.onload = () => {
-      setState(s => ({ ...s, progress: 100 }));
-      console.log(`[upload] server responded — HTTP ${xhr.status}`, xhr.responseText.slice(0, 300));
+      // ── Step 2: Upload audio to Cloudinary (progress 0→85) ───────────────
+      const audio = await uploadToCloudinary(
+        audioFile, "video", sig, sig.audio,
+        (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
+      );
 
-      if (xhr.status === 201) {
-        let data: any = {};
-        try { data = JSON.parse(xhr.responseText); } catch { /* raw text already logged */ }
-        console.log("[upload] step 10: success", { trackId: data.track?.id, uploadId: data.uploadId });
-        setState(s => ({ ...s, status: "done", track: data.track ?? null }));
-        doneRef.current?.(data.track);
-        setTimeout(() => setState(IDLE), 8_000);
-      } else {
-        let parsed: any = {};
-        try { parsed = JSON.parse(xhr.responseText); } catch { /* ignore */ }
-        // Build a rich error string: include step name if server sent it
-        const serverMsg  = parsed?.error ?? parsed?.message ?? xhr.responseText.slice(0, 200) ?? "__serverError__";
-        const stepName   = parsed?.stepName ? ` [${parsed.stepName}]` : "";
-        const uploadId   = parsed?.uploadId ? ` (ID: ${parsed.uploadId})` : "";
-        const richMsg    = `HTTP ${xhr.status}${stepName}: ${serverMsg}${uploadId}`;
-        console.error("[upload] FAILED:", richMsg, parsed);
-        setState(s => ({ ...s, status: "error", error: richMsg }));
+      // ── Step 3: Upload cover to Cloudinary (progress 85→95) ──────────────
+      let cover: { publicId: string; secureUrl: string } | null = null;
+      if (coverFile) {
+        setState(s => ({ ...s, progress: 85 }));
+        try {
+          cover = await uploadToCloudinary(coverFile, "image", sig, sig.cover);
+        } catch (err: any) {
+          console.warn("[upload] cover upload failed — continuing without cover", err.message);
+        }
       }
+
+      // ── Step 4: Register in DB ────────────────────────────────────────────
+      setState(s => ({ ...s, progress: 95 }));
+      const regRes = await fetch("/api/music/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          title:         meta.title,
+          artist:        meta.artist,
+          album:         meta.album ?? "",
+          genre:         meta.genre ?? "",
+          type:          meta.type ?? "free",
+          audioPublicId: audio.publicId,
+          audioUrl:      audio.secureUrl,
+          coverPublicId: cover?.publicId ?? null,
+          coverUrl:      cover?.secureUrl ?? null,
+        }),
+      });
+      if (!regRes.ok) {
+        const d = await regRes.json().catch(() => ({}));
+        throw new Error(d.error ?? `Register HTTP ${regRes.status}`);
+      }
+      const { track } = await regRes.json();
+
+      setState(s => ({ ...s, status: "done", progress: 100, track }));
+      doneRef.current?.(track);
+      setTimeout(() => setState(IDLE), 8_000);
     };
 
-    xhr.onerror = () => {
-      console.error("[upload] network error (xhr.onerror)");
-      setState(s => ({ ...s, status: "error", error: "__networkError__" }));
-    };
-    xhr.onabort  = () => setState(IDLE);
-    xhr.send(fd);
-    console.log("[upload] step 2: request sent to /api/music/upload");
+    run().catch((err: Error) => {
+      console.error("[upload] FAILED:", err.message);
+      const isNetwork = err.message.toLowerCase().includes("network");
+      setState(s => ({
+        ...s, status: "error",
+        error: isNetwork ? "__networkError__" : err.message,
+      }));
+    });
   }, []);
 
   return (
@@ -142,7 +231,6 @@ function FloatingUploadToast({
   const isDone      = state.status === "done";
   const isError     = state.status === "error";
 
-  // Translate sentinel error codes; pass server messages through as-is
   const errorText = state.error === "__networkError__" ? t("uploadCtx.networkError")
                   : state.error === "__serverError__"  ? t("uploadCtx.serverError")
                   : state.error ?? "";
@@ -155,7 +243,7 @@ function FloatingUploadToast({
     <div
       style={{
         position:     "fixed",
-        bottom:       80,          // above bottom nav
+        bottom:       80,
         left:         12,
         right:        12,
         zIndex:       9999,

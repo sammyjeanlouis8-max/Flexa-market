@@ -1304,8 +1304,9 @@ export default function FlexaMusic() {
   const [queue,    setQueue]    = useState<Track[]>([]);
   const [queueIdx, setQueueIdx] = useState(0);
 
-  const audioRef  = useRef<HTMLAudioElement>(null);
-  const listenRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioRef    = useRef<HTMLAudioElement>(null);
+  const listenRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playNextRef = useRef<() => void>(() => {});
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1322,26 +1323,36 @@ export default function FlexaMusic() {
     })();
   }, [filterQ]);
 
+  // ── Keep playNextRef fresh so the ended handler never captures a stale closure
+  useEffect(() => { playNextRef.current = playNext; }, [playNext]);
+
   // ── Audio events ──────────────────────────────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const onTime = () => setPlayerState(s => ({ ...s, currentTime: audio.currentTime }));
-    const onDur  = () => setPlayerState(s => ({ ...s, duration: audio.duration || 0 }));
-    const onEnd  = () => playNext();
-    const onPlay = () => setPlayerState(s => ({ ...s, playing: true }));
-    const onPause= () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
-    audio.addEventListener("timeupdate", onTime);
-    audio.addEventListener("durationchange", onDur);
-    audio.addEventListener("ended", onEnd);
-    audio.addEventListener("play",  onPlay);
-    audio.addEventListener("pause", onPause);
+    const onTime  = () => setPlayerState(s => ({ ...s, currentTime: audio.currentTime }));
+    // loadedmetadata fires first (before durationchange on some browsers/CDNs)
+    const onDur   = () => {
+      const d = audio.duration;
+      if (d && isFinite(d)) setPlayerState(s => ({ ...s, duration: d }));
+    };
+    // Always call the latest playNext via ref — avoids stale-closure empty-queue bug
+    const onEnd   = () => playNextRef.current();
+    const onPlay  = () => setPlayerState(s => ({ ...s, playing: true }));
+    const onPause = () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
+    audio.addEventListener("timeupdate",      onTime);
+    audio.addEventListener("durationchange",  onDur);
+    audio.addEventListener("loadedmetadata",  onDur);   // catches duration earlier
+    audio.addEventListener("ended",           onEnd);
+    audio.addEventListener("play",            onPlay);
+    audio.addEventListener("pause",           onPause);
     return () => {
-      audio.removeEventListener("timeupdate", onTime);
-      audio.removeEventListener("durationchange", onDur);
-      audio.removeEventListener("ended", onEnd);
-      audio.removeEventListener("play",  onPlay);
-      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("timeupdate",      onTime);
+      audio.removeEventListener("durationchange",  onDur);
+      audio.removeEventListener("loadedmetadata",  onDur);
+      audio.removeEventListener("ended",           onEnd);
+      audio.removeEventListener("play",            onPlay);
+      audio.removeEventListener("pause",           onPause);
     };
   }, []);
 

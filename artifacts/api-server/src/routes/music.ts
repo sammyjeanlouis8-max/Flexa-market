@@ -111,7 +111,13 @@ async function flushImpressions() {
         const newMilestone  = Math.floor(newValid  / 1000);
         const milestonesDue = newMilestone - prevMilestone;
 
-        if (milestonesDue > 0) {
+        // ── 500-subscriber gate: artist must have ≥ 500 followers to earn ──
+        const [artistRow] = await q<{ follower_count: number }>(
+          `SELECT follower_count FROM users WHERE id = ${track.artist_user_id}`
+        );
+        const hasEnoughFollowers = (artistRow?.follower_count ?? 0) >= 500;
+
+        if (milestonesDue > 0 && hasEnoughFollowers) {
           const earnedUsd = parseFloat((milestonesDue * CPM_USD).toFixed(2));
           const impressionsCredited = milestonesDue * 1000;
 

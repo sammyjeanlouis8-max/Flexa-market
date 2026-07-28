@@ -1838,11 +1838,20 @@ export default function FlexaMusic() {
     if (newQueue) { setQueue(newQueue); setQueueIdx(idx ?? 0); }
     stopTimer();
     audio.pause();
-    audio.src   = track.audio_url ?? "";
-    audio.muted = playerState.muted;
-    audio.volume= playerState.volume;
+    audio.src     = track.audio_url ?? "";
+    audio.muted   = playerState.muted;
+    audio.volume  = playerState.volume;
+    audio.load();   // ← required on iOS Safari after src change
     setPlayerState(s => ({ ...s, track, playing: false, currentTime: 0, duration: 0 }));
-    if (track.audio_url) { audio.play().catch(() => {}); if (track.id) startTimer(track.id); }
+    if (track.audio_url) {
+      audio.play().then(() => {
+        // play() resolved → audio is definitely playing; mirror that into state
+        setPlayerState(s => ({ ...s, playing: true }));
+      }).catch(() => {
+        // autoplay blocked or load error — state stays paused, that's correct
+      });
+      if (track.id) startTimer(track.id);
+    }
   }, [playerState.muted, playerState.volume]);
 
   const playNext = useCallback(() => {

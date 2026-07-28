@@ -350,6 +350,35 @@ function EditTrackModal({ track, onClose, onSaved }:
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Animated "Now Playing" bars — used in mini player & track list
+// ══════════════════════════════════════════════════════════════════════════════
+function NowPlayingBars({ playing, size = "sm" }: { playing: boolean; size?: "sm" | "xs" }) {
+  const h  = size === "xs" ? [7, 11, 8, 13, 6] : [9, 15, 11, 17, 8];
+  const px = size === "xs" ? 1.5 : 2;
+  const w  = size === "xs" ? 2 : 2.5;
+  return (
+    <div className="flex items-end" style={{ gap: `${px}px`, height: `${h[3]}px` }}>
+      {h.map((maxH, i) => (
+        <div key={i} style={{
+          width: `${w}px`, borderRadius: "2px",
+          background: "linear-gradient(to top,#8b5cf6,#c026d3)",
+          animation: playing ? `bar${i} 0.${6 + i * 2}s ease-in-out ${i * 0.07}s infinite alternate` : "none",
+          height: playing ? `${maxH}px` : `${Math.round(maxH * 0.3)}px`,
+          transition: playing ? "none" : "height 0.3s",
+        }} />
+      ))}
+      <style>{`
+        @keyframes bar0 { from{height:3px} to{height:${h[0]}px} }
+        @keyframes bar1 { from{height:4px} to{height:${h[1]}px} }
+        @keyframes bar2 { from{height:3px} to{height:${h[2]}px} }
+        @keyframes bar3 { from{height:5px} to{height:${h[3]}px} }
+        @keyframes bar4 { from{height:3px} to{height:${h[4]}px} }
+      `}</style>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Mini Player (bottom bar)
 // ══════════════════════════════════════════════════════════════════════════════
 interface PlayerState { track: Track | null; playing: boolean; currentTime: number; duration: number; muted: boolean; volume: number; }
@@ -373,58 +402,95 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
   };
 
   return (
-    <div className="fixed bottom-16 left-0 right-0 mx-3 z-40 rounded-2xl overflow-hidden select-none shadow-2xl"
-      style={{ background: "linear-gradient(135deg,#1e0a3c,#2d1b4e)", border: "1px solid rgba(139,92,246,0.35)" }}>
+    <div
+      className="fixed left-0 right-0 mx-3 z-40 rounded-2xl select-none"
+      style={{
+        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
+        background: "linear-gradient(135deg,#1c0934,#2a1648)",
+        border: "1px solid rgba(139,92,246,0.45)",
+        boxShadow: "0 -4px 32px rgba(100,50,200,0.25), 0 8px 32px rgba(0,0,0,0.6)",
+        overflow: "visible",
+      }}>
 
-      {/* ── Draggable progress bar — tall touch target, thin visual bar ── */}
-      <div
-        className="h-5 flex items-center px-0 cursor-pointer relative"
-        style={{ touchAction: "none" }}
-        onClick={e => seekFromX(e.clientX, e.currentTarget)}
-        onTouchStart={e => {
-          isDragging.current = true;
-          seekFromX(e.touches[0].clientX, e.currentTarget);
-        }}
-        onTouchMove={e => {
-          if (!isDragging.current) return;
-          e.preventDefault();
-          seekFromX(e.touches[0].clientX, e.currentTarget);
-        }}
-        onTouchEnd={() => { isDragging.current = false; }}
-      >
-        {/* Track */}
-        <div className="absolute left-0 right-0 h-1.5 rounded-full mx-0" style={{ background: "rgba(255,255,255,0.1)" }} />
-        {/* Fill */}
-        <div className="absolute left-0 h-1.5 rounded-full"
-          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#8b5cf6,#c026d3)" }} />
-        {/* Thumb */}
-        <div className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md -translate-x-1/2 -translate-y-px"
-          style={{ left: `${pct}%`, boxShadow: "0 0 0 2px rgba(139,92,246,0.5)" }} />
-      </div>
+      {/* ── NOW PLAYING pill badge ── */}
+      {playing && (
+        <div className="absolute -top-3 left-4 flex items-center gap-1.5 px-2 py-0.5 rounded-full"
+          style={{ background: "linear-gradient(90deg,#7c3aed,#c026d3)", boxShadow: "0 2px 8px rgba(124,58,237,0.6)" }}>
+          <NowPlayingBars playing={playing} size="xs" />
+          <span className="text-[9px] font-black text-white tracking-widest uppercase">Now Playing</span>
+        </div>
+      )}
 
-      <div className="flex items-center gap-2.5 px-3 pb-2">
-        {/* Cover — tap to expand */}
-        <button onClick={onExpand} className="shrink-0">
-          <CoverArt src={track.cover_url} title={track.title} size={38} radius={8} />
-        </button>
-        {/* Info */}
-        <button onClick={onExpand} className="flex-1 min-w-0 text-left">
-          <p className="text-white text-xs font-bold truncate">{track.title}</p>
-          <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
-        </button>
-        {/* Time */}
-        <span className="text-white/30 text-[10px] shrink-0">{fmtDur(Math.floor(currentTime))}</span>
-        {/* Controls */}
-        <div className="flex items-center gap-0.5 shrink-0">
-          <button onClick={onPrev} className="w-7 h-7 flex items-center justify-center"><SkipBack size={13} className="text-white/70" /></button>
-          <button onClick={onToggle} className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center">
-            {playing ? <Pause size={14} className="text-white" /> : <Play size={14} className="text-white ml-0.5" />}
+      {/* Rounded container for inner content */}
+      <div className="rounded-2xl overflow-hidden">
+        {/* ── Draggable progress bar — tall touch target, thin visual bar ── */}
+        <div
+          className="h-5 flex items-center cursor-pointer relative"
+          style={{ touchAction: "none" }}
+          onClick={e => seekFromX(e.clientX, e.currentTarget)}
+          onTouchStart={e => {
+            isDragging.current = true;
+            seekFromX(e.touches[0].clientX, e.currentTarget);
+          }}
+          onTouchMove={e => {
+            if (!isDragging.current) return;
+            e.preventDefault();
+            seekFromX(e.touches[0].clientX, e.currentTarget);
+          }}
+          onTouchEnd={() => { isDragging.current = false; }}
+        >
+          <div className="absolute left-0 right-0 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.1)" }} />
+          <div className="absolute left-0 h-1 rounded-full"
+            style={{ width: `${pct}%`, background: "linear-gradient(90deg,#8b5cf6,#ec4899)" }} />
+          <div className="absolute w-4 h-4 rounded-full bg-white -translate-x-1/2"
+            style={{ left: `${pct}%`, boxShadow: "0 0 0 3px rgba(139,92,246,0.6), 0 2px 6px rgba(0,0,0,0.5)" }} />
+        </div>
+
+        <div className="flex items-center gap-2.5 px-3 pb-3 pt-1">
+          {/* Cover — tap to expand */}
+          <button onClick={onExpand} className="shrink-0 relative">
+            <CoverArt src={track.cover_url} title={track.title} size={42} radius={10} />
+            {playing && (
+              <div className="absolute inset-0 rounded-[10px] flex items-end justify-center pb-0.5"
+                style={{ background: "rgba(0,0,0,0.35)" }}>
+                <NowPlayingBars playing={playing} size="xs" />
+              </div>
+            )}
           </button>
-          <button onClick={onNext} className="w-7 h-7 flex items-center justify-center"><SkipForward size={13} className="text-white/70" /></button>
-          <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
-            {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
+
+          {/* Info + time */}
+          <button onClick={onExpand} className="flex-1 min-w-0 text-left">
+            <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
+            <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
+            {/* Live time progress under title */}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-violet-300 text-[9px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
+              {duration > 0 && <span className="text-white/20 text-[9px]">/ {fmtDur(Math.floor(duration))}</span>}
+            </div>
           </button>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center"><X size={13} className="text-white/40" /></button>
+
+          {/* Controls */}
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button onClick={onPrev} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+              <SkipBack size={14} className="text-white/70" />
+            </button>
+            <button onClick={onToggle}
+              className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", boxShadow: "0 4px 12px rgba(124,58,237,0.5)" }}>
+              {playing
+                ? <Pause size={15} className="text-white" />
+                : <Play  size={15} className="text-white ml-0.5" />}
+            </button>
+            <button onClick={onNext} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+              <SkipForward size={14} className="text-white/70" />
+            </button>
+            <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
+              {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
+            </button>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center">
+              <X size={13} className="text-white/30" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -640,8 +706,9 @@ function UploadView({ onBack, onSuccess }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation }:
+function HomeView({ tracks, liked, user, isAdmin, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
+    currentTrackId?: number; currentTrackPlaying?: boolean;
     onPlay: (t: Track, q: Track[], i: number) => void;
     onPlayList: (mix: Mix) => void;
     onToggleLike: (id: number) => void;
@@ -827,9 +894,17 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
                   <div key={track.id} className="flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5 transition-colors">
                     <button onClick={() => onPlay(track, tracks, idx)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                      <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
+                      <div className="relative shrink-0">
+                        <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
+                        {track.id === currentTrackId && (
+                          <div className="absolute inset-0 rounded-[6px] flex items-end justify-center pb-1"
+                            style={{ background: "rgba(0,0,0,0.45)" }}>
+                            <NowPlayingBars playing={!!currentTrackPlaying} size="xs" />
+                          </div>
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-semibold truncate">{track.title}</p>
+                        <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-violet-400" : "text-white"}`}>{track.title}</p>
                         <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
                           <span>{track.artist}</span>
                           {track.play_count > 0 && <><span>·</span><Play size={8} className="inline" /><span>{fmtPlays(track.play_count)}</span></>}
@@ -1365,7 +1440,15 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
             <div key={track.id}
               className={`flex items-center gap-2 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
               <button onClick={() => onPlay(track, idx)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
+                <div className="relative shrink-0">
+                  <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
+                  {active && (
+                    <div className="absolute inset-0 rounded-[8px] flex items-end justify-center pb-1"
+                      style={{ background: "rgba(0,0,0,0.45)" }}>
+                      <NowPlayingBars playing={playerState.playing} size="xs" />
+                    </div>
+                  )}
+                </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-semibold truncate ${active ? "text-violet-400" : "text-white"}`}>{track.title}</p>
                   <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.35)" }}>
@@ -1482,18 +1565,16 @@ export default function FlexaMusic() {
     const audio = audioRef.current;
     if (!audio) return;
     const onTime  = () => setPlayerState(s => ({ ...s, currentTime: audio.currentTime }));
-    // loadedmetadata fires first (before durationchange on some browsers/CDNs)
     const onDur   = () => {
       const d = audio.duration;
       if (d && isFinite(d)) setPlayerState(s => ({ ...s, duration: d }));
     };
-    // Always call the latest playNext via ref — avoids stale-closure empty-queue bug
     const onEnd   = () => playNextRef.current();
     const onPlay  = () => setPlayerState(s => ({ ...s, playing: true }));
     const onPause = () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
     audio.addEventListener("timeupdate",      onTime);
     audio.addEventListener("durationchange",  onDur);
-    audio.addEventListener("loadedmetadata",  onDur);   // catches duration earlier
+    audio.addEventListener("loadedmetadata",  onDur);
     audio.addEventListener("ended",           onEnd);
     audio.addEventListener("play",            onPlay);
     audio.addEventListener("pause",           onPause);
@@ -1505,6 +1586,24 @@ export default function FlexaMusic() {
       audio.removeEventListener("play",            onPlay);
       audio.removeEventListener("pause",           onPause);
     };
+  }, []);
+
+  // ── Fallback timer — iOS Safari throttles timeupdate; this ensures the
+  //    seconds tick visibly even when the browser slows event delivery
+  useEffect(() => {
+    const id = setInterval(() => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused && !audio.ended) {
+        setPlayerState(s => {
+          // Only update if meaningfully different to avoid unnecessary renders
+          const newTime = audio.currentTime;
+          return Math.abs(s.currentTime - newTime) >= 0.9
+            ? { ...s, currentTime: newTime }
+            : s;
+        });
+      }
+    }, 950); // just under 1 s — keeps display responsive without hammering React
+    return () => clearInterval(id);
   }, []);
 
   // ── MediaSession ──────────────────────────────────────────────────────────
@@ -1671,6 +1770,8 @@ export default function FlexaMusic() {
           liked={liked}
           user={user}
           isAdmin={isAdmin}
+          currentTrackId={playerState.track?.id}
+          currentTrackPlaying={playerState.playing}
           onPlay={openTrack}
           onPlayList={openMix}
           onToggleLike={toggleLike}

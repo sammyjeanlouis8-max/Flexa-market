@@ -1328,7 +1328,7 @@ export default function FlexaMusic() {
           onPrev={playPrev}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onAdTap={(id) => setLocation(`/listing/${id}`)}
+          onAdTap={(id) => setLocation(`/listings/${id}`)}
         />
       )}
 

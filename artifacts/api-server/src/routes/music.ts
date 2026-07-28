@@ -15,7 +15,7 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
 import { sql as dsql, eq } from "drizzle-orm";
-import { requireAdmin, requireAuth } from "../middlewares/auth";
+import { requireAdmin, requireAuth, optionalAuth } from "../middlewares/auth";
 import multer from "multer";
 import {
   uploadMusicCover,
@@ -1309,6 +1309,108 @@ router.get("/music/stream-url/:trackId", async (req, res) => {
     if (!key) return res.status(404).json({ error: "No storage key for this track" });
     const url = await getStreamUrl(key);
     res.json({ url, key });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ── Music Likes ───────────────────────────────────────────────────────────────
+
+// GET /api/music/:id/likes  — public; optionalAuth fills req.userId for "liked" flag
+router.get("/music/:id/likes", optionalAuth, async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  try {
+    const [row] = await q(`SELECT COUNT(*)::int AS count FROM music_likes WHERE track_id = ${trackId}`);
+    let liked = false;
+    if (req.userId) {
+      const [l] = await q(`SELECT 1 FROM music_likes WHERE track_id = ${trackId} AND user_id = ${req.userId}`);
+      liked = !!l;
+    }
+    res.json({ count: row?.count ?? 0, liked });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/like  — toggle (auth required)
+router.post("/music/:id/like", requireAuth, async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  try {
+    const [existing] = await q(
+      `SELECT 1 FROM music_likes WHERE track_id = ${trackId} AND user_id = ${req.userId}`
+    );
+    if (existing) {
+      await q(`DELETE FROM music_likes WHERE track_id = ${trackId} AND user_id = ${req.userId}`);
+    } else {
+      await q(
+        `INSERT INTO music_likes (track_id, user_id) VALUES (${trackId}, ${req.userId}) ON CONFLICT DO NOTHING`
+      );
+    }
+    const [row] = await q(`SELECT COUNT(*)::int AS count FROM music_likes WHERE track_id = ${trackId}`);
+    res.json({ liked: !existing, count: row?.count ?? 0 });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ── Music Comments ────────────────────────────────────────────────────────────
+
+// GET /api/music/:id/comments
+router.get("/music/:id/comments", async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  try {
+    const rows = await q(`
+      SELECT mc.id, mc.content, mc.created_at,
+             u.id          AS user_id,
+             u.name        AS user_name,
+             u.avatar      AS user_avatar,
+             u.is_verified AS user_is_verified
+      FROM music_comments mc
+      JOIN users u ON u.id = mc.user_id
+      WHERE mc.track_id = ${trackId}
+      ORDER BY mc.created_at ASC
+      LIMIT 100
+    `);
+    res.json({ comments: rows });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/comments
+router.post("/music/:id/comments", requireAuth, async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  const { content } = req.body as { content?: string };
+  if (!content?.trim())          return res.status(400).json({ error: "Comment cannot be empty" });
+  if (content.trim().length > 500) return res.status(400).json({ error: "Comment too long (max 500)" });
+  try {
+    const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    const [row] = await q(`
+      INSERT INTO music_comments (track_id, user_id, content)
+      VALUES (${trackId}, ${req.userId}, ${nullOr(content.trim())})
+      RETURNING id, content, created_at
+    `);
+    const [actor] = await q(
+      `SELECT name, avatar, is_verified FROM users WHERE id = ${req.userId}`
+    );
+    res.status(201).json({
+      id: row.id, content: row.content, created_at: row.created_at,
+      user_id: req.userId,
+      user_name: actor?.name ?? "Utilisateur",
+      user_avatar: actor?.avatar ?? null,
+      user_is_verified: actor?.is_verified ?? false,
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// DELETE /api/music/comments/:commentId  — owner or admin only
+router.delete("/music/comments/:commentId", requireAuth, async (req, res) => {
+  const commentId = Number(req.params.commentId);
+  if (!commentId) return res.status(400).json({ error: "Invalid comment" });
+  try {
+    const [comment] = await q(`SELECT user_id FROM music_comments WHERE id = ${commentId}`);
+    if (!comment) return res.status(404).json({ error: "Comment not found" });
+    if (comment.user_id !== req.userId && !req.user?.isAdmin)
+      return res.status(403).json({ error: "Not allowed" });
+    await q(`DELETE FROM music_comments WHERE id = ${commentId}`);
+    res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 

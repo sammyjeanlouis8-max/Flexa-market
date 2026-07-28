@@ -2074,6 +2074,34 @@ export async function runStartupMigrations(): Promise<void> {
     CREATE INDEX IF NOT EXISTS music_playlist_tracks_tr_idx ON music_playlist_tracks(track_id)
   `});
 
+  // ── Music Likes ───────────────────────────────────────────────────────────
+  migrations.push({
+    name: "music_likes.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_likes (
+      id         SERIAL PRIMARY KEY,
+      track_id   INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(track_id, user_id)
+    )`,
+  });
+  migrations.push({ name: "music_likes.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_likes_track_idx ON music_likes(track_id)" });
+  migrations.push({ name: "music_likes.user_idx",  sql: "CREATE INDEX IF NOT EXISTS music_likes_user_idx  ON music_likes(user_id)" });
+
+  // ── Music Comments ────────────────────────────────────────────────────────
+  migrations.push({
+    name: "music_comments.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_comments (
+      id         SERIAL PRIMARY KEY,
+      track_id   INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content    TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({ name: "music_comments.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_comments_track_idx ON music_comments(track_id)" });
+  migrations.push({ name: "music_comments.user_idx",  sql: "CREATE INDEX IF NOT EXISTS music_comments_user_idx  ON music_comments(user_id)" });
+
   let applied = 0;
   let failed = 0;
 

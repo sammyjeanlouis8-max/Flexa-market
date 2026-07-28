@@ -10,9 +10,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Play, Pause, Heart, Search, SkipForward, SkipBack,
   Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
-  Bell, MessageCircle, ChevronLeft, Plus, Loader2, Globe,
+  Bell, MessageCircle, ChevronLeft, ChevronDown, Plus, Loader2, Globe,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
-  Pencil, Trash2, ShoppingBag,
+  Pencil, Trash2, ShoppingBag, Send,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -43,6 +43,16 @@ type Mix = {
   tracks: Track[];
   cover: string | null;
   gradient: string;
+};
+
+type MusicComment = {
+  id: number;
+  content: string;
+  created_at: string;
+  user_id: number;
+  user_name: string;
+  user_avatar: string | null;
+  user_is_verified: boolean;
 };
 
 type View = "home" | "player" | "upload";
@@ -603,6 +613,12 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
+  // ── Live search: debounce 350 ms so the API isn't hammered on every keystroke
+  useEffect(() => {
+    const id = setTimeout(() => onSearch(search.trim()), 350);
+    return () => clearTimeout(id);
+  }, [search]);
+
   const likedTracks  = tracks.filter(t => liked.has(t.id));
   const favDisplay   = likedTracks.slice(0, 4).length > 0 ? likedTracks.slice(0, 4) : tracks.slice(0, 4);
   const recommended  = tracks.filter(t => t.is_featured || liked.has(t.id) || t.play_count > 100).slice(0, 10);
@@ -663,7 +679,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
             placeholder={t("music.searchPlaceholder")}
             className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 outline-none"
           />
-          {search && <button type="button" onClick={() => setSearch("")}><X size={13} className="text-white/30" /></button>}
+          {search && <button type="button" onClick={() => { setSearch(""); onSearch(""); }}><X size={13} className="text-white/30" /></button>}
         </div>
       </form>
 
@@ -876,6 +892,191 @@ function BoosterAdCard({ onTap }: { onTap: (id: number) => void }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// MUSIC LIKE BUTTON — self-contained, syncs server-side like count
+// ══════════════════════════════════════════════════════════════════════════════
+function MusicLikeButton({ trackId, initialLiked, onToggle }: {
+  trackId: number | null;
+  initialLiked: boolean;
+  onToggle: (id: number) => void;
+}) {
+  const [liked,   setLiked] = useState(initialLiked);
+  const [count,   setCount] = useState(0);
+
+  useEffect(() => {
+    if (!trackId) return;
+    setLiked(initialLiked);
+    const token = localStorage.getItem("flexamarket_token") ?? "";
+    fetch(`/api/music/${trackId}/likes`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.json())
+      .then(d => { setCount(d.count ?? 0); setLiked(d.liked ?? initialLiked); })
+      .catch(() => {});
+  }, [trackId]);
+
+  const toggle = async () => {
+    if (!trackId) return;
+    const was = liked;
+    setLiked(!was);
+    setCount(c => was ? Math.max(0, c - 1) : c + 1);
+    onToggle(trackId);
+    const token = localStorage.getItem("flexamarket_token") ?? "";
+    if (!token) return;
+    try {
+      const r = await fetch(`/api/music/${trackId}/like`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) { const d = await r.json(); setCount(d.count); setLiked(d.liked); }
+      else { setLiked(was); setCount(c => was ? c + 1 : Math.max(0, c - 1)); }
+    } catch { setLiked(was); setCount(c => was ? c + 1 : Math.max(0, c - 1)); }
+  };
+
+  return (
+    <button onClick={toggle}
+      className="flex flex-col items-center justify-center gap-0.5 w-10 h-10 rounded-full"
+      style={{ background: "#1c1c1c" }}>
+      <Heart size={18} className={liked ? "text-red-400 fill-red-400" : "text-white/60"} />
+      {count > 0 && (
+        <span className="text-[8px] text-white/40 leading-none">
+          {count > 999 ? "1k+" : count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MUSIC COMMENTS SECTION — self-contained, lazy-loads on first open
+// ══════════════════════════════════════════════════════════════════════════════
+function MusicCommentsSection({ trackId, user, isAdmin }: {
+  trackId: number | null;
+  user: any;
+  isAdmin: boolean;
+}) {
+  const [open,       setOpen]       = useState(false);
+  const [comments,   setComments]   = useState<MusicComment[]>([]);
+  const [text,       setText]       = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!trackId || !open) return;
+    fetch(`/api/music/${trackId}/comments`)
+      .then(r => r.json())
+      .then(d => setComments(d.comments ?? []))
+      .catch(() => {});
+  }, [trackId, open]);
+
+  // Reset when track changes
+  useEffect(() => {
+    setOpen(false);
+    setComments([]);
+    setText("");
+  }, [trackId]);
+
+  const submit = async () => {
+    if (!text.trim() || !trackId) return;
+    const token = localStorage.getItem("flexamarket_token") ?? "";
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      const r = await fetch(`/api/music/${trackId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: text.trim() }),
+      });
+      if (r.ok) { setComments(prev => [...prev, await r.json()]); setText(""); }
+    } catch {} finally { setSubmitting(false); }
+  };
+
+  const del = async (id: number) => {
+    const token = localStorage.getItem("flexamarket_token") ?? "";
+    const r = await fetch(`/api/music/comments/${id}`, {
+      method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+    });
+    if (r.ok) setComments(prev => prev.filter(c => c.id !== id));
+  };
+
+  const rel = (iso: string) => {
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "kounye an";
+    if (s < 3600) return `${Math.floor(s / 60)}min`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    return `${Math.floor(s / 86400)}j`;
+  };
+
+  return (
+    <div className="mx-4 mb-6">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full py-3">
+        <MessageCircle size={16} className="text-white/60 shrink-0" />
+        <span className="text-white/70 text-sm font-semibold">
+          Komantè{comments.length > 0 ? ` (${comments.length})` : ""}
+        </span>
+        <ChevronDown size={14}
+          className={`text-white/40 ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div>
+          <div className="space-y-2 mb-3">
+            {comments.length === 0 && (
+              <p className="text-white/25 text-xs text-center py-4">
+                Poko gen komantè — kite premye a!
+              </p>
+            )}
+            {comments.map(c => (
+              <div key={c.id} className="flex gap-2.5">
+                <Avatar src={c.user_avatar} name={c.user_name ?? "?"} size={28} />
+                <div className="flex-1 min-w-0 rounded-xl px-3 py-2"
+                  style={{ background: "#1e1e1e" }}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-white text-xs font-bold truncate">{c.user_name}</span>
+                    <span className="text-white/30 text-[10px] shrink-0">{rel(c.created_at)}</span>
+                    {(user?.id === c.user_id || isAdmin) && (
+                      <button onClick={() => del(c.id)} className="ml-auto shrink-0 p-0.5">
+                        <X size={11} className="text-white/20 hover:text-red-400 transition-colors" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-white/80 text-xs leading-relaxed mt-0.5">{c.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {user ? (
+            <div className="flex gap-2 items-center">
+              <Avatar src={user?.avatar_url} name={user?.name ?? "Ou"} size={28} />
+              <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-2"
+                style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <input
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+                  placeholder="Ajoute yon komantè…"
+                  maxLength={500}
+                  className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-white/25"
+                />
+                <button onClick={submit} disabled={!text.trim() || submitting}
+                  className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center disabled:opacity-30 transition-opacity"
+                  style={{ background: "#7c3aed" }}>
+                  {submitting
+                    ? <Loader2 size={11} className="animate-spin text-white" />
+                    : <Send size={11} className="text-white" />}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-white/25 text-xs text-center py-2">Konekte pou komante</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
@@ -908,13 +1109,13 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
-        <div className="flex-1 min-w-0">
+        <button onClick={onBack} className="flex-1 min-w-0">
           <div className="flex items-center gap-2 rounded-xl px-3 py-2"
             style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.07)" }}>
             <Search size={14} className="text-white/30 shrink-0" />
             <span className="text-white/30 text-sm">{t("music.searchPlaceholder")}</span>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* ── Album art ── */}
@@ -948,10 +1149,11 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 
       {/* ── Action row ── */}
       <div className="flex items-center gap-3 px-5 mb-5">
-        <button onClick={() => currentTrack && onToggleLike(currentTrack.id)}
-          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
-          <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/60"} />
-        </button>
+        <MusicLikeButton
+          trackId={currentTrack?.id ?? null}
+          initialLiked={isLiked}
+          onToggle={onToggleLike}
+        />
         <button onClick={() => currentTrack && onDownload(currentTrack)}
           className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
           <Download size={18} className="text-white/60" />
@@ -1042,6 +1244,13 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           );
         })}
       </div>
+
+      {/* ── Comments section ── */}
+      <MusicCommentsSection
+        trackId={currentTrack?.id ?? null}
+        user={user}
+        isAdmin={isAdmin}
+      />
 
       {/* More sheet */}
       {moreTrack && (

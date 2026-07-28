@@ -1982,22 +1982,21 @@ export default function FlexaMusic() {
     setTimeout(() => openTrack(track, updated, 0), 120);
   };
 
-  // ── Always render the audio element first so audioRef is populated before
-  //    any useEffect fires — even during the initial loading spinner render.
-  //    The early-return pattern was keeping <audio> out of the DOM on the
-  //    first render, so the [] event-listener effect always found
-  //    audioRef.current === null and attached nothing.
-  return (
-    <>
-      <audio ref={audioRef} preload="metadata" />
-
-      {loading ? (
+  // ── Loading spinner — keep <audio> in the DOM so the [] event-listener
+  //    effect always finds audioRef.current populated.
+  if (loading) {
+    return (
+      <>
+        <audio ref={audioRef} preload="metadata" />
         <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
-      ) : null}
+      </>
+    );
+  }
 
-      {loading ? null : (<>
+  return (
+    <>
 
       {view === "upload" ? (
         <UploadView
@@ -2081,8 +2080,6 @@ export default function FlexaMusic() {
           onMute={toggleMute}
         />
       )}
-
-      </>)}
 
     </>
   );

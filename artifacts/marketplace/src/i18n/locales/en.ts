@@ -3950,6 +3950,16 @@ export default {
     milestoneLabel: "Milestone #{{n}}",
     impressionsUnit: "impressions",
     free: "Free",
+    // Comments & sharing
+    comments: "Comments",
+    noComments: "No comments yet — be the first!",
+    loginToComment: "Sign in to comment",
+    addCommentPlaceholder: "Add a comment…",
+    plays: "plays",
+    playCount: "{{n}} plays",
+    linkCopied: "Link copied!",
+    openInApp: "Open in Flexa",
+    shareDiscover: "Discover music on Flexa Market",
   },
   upload: {
     title: "Upload Music",

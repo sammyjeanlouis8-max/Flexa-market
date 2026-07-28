@@ -182,7 +182,15 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload }:
         {[
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
           { icon: "⬇️", label: t("music.download"),    action: () => { onDownload(); onClose(); } },
-          { icon: "🔗", label: t("music.shareTrack"),  action: onClose },
+          { icon: "🔗", label: t("music.shareTrack"),  action: () => {
+            const url = `${window.location.origin}/music/play/${track.id}`;
+            if (navigator.share) {
+              navigator.share({ title: track.title, text: `${track.title} — ${track.artist}`, url }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(url).catch(() => {});
+            }
+            onClose();
+          }},
           { icon: "🚩", label: t("music.reportTrack"), action: onClose },
         ].map(({ icon, label, action }) => (
           <button key={label} onClick={action}
@@ -954,6 +962,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
   user: any;
   isAdmin: boolean;
 }) {
+  const { t } = useTranslation();
   const [open,       setOpen]       = useState(false);
   const [comments,   setComments]   = useState<MusicComment[]>([]);
   const [text,       setText]       = useState("");
@@ -1011,7 +1020,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
         className="flex items-center gap-2 w-full py-3">
         <MessageCircle size={16} className="text-white/60 shrink-0" />
         <span className="text-white/70 text-sm font-semibold">
-          Komantè{comments.length > 0 ? ` (${comments.length})` : ""}
+          {t("music.comments")}{comments.length > 0 ? ` (${comments.length})` : ""}
         </span>
         <ChevronDown size={14}
           className={`text-white/40 ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
@@ -1022,7 +1031,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
           <div className="space-y-2 mb-3">
             {comments.length === 0 && (
               <p className="text-white/25 text-xs text-center py-4">
-                Poko gen komantè — kite premye a!
+                {t("music.noComments")}
               </p>
             )}
             {comments.map(c => (
@@ -1054,7 +1063,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
                   value={text}
                   onChange={e => setText(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-                  placeholder="Ajoute yon komantè…"
+                  placeholder={t("music.addCommentPlaceholder")}
                   maxLength={500}
                   className="flex-1 bg-transparent text-white text-xs outline-none placeholder:text-white/25"
                 />
@@ -1068,7 +1077,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
               </div>
             </div>
           ) : (
-            <p className="text-white/25 text-xs text-center py-2">Konekte pou komante</p>
+            <p className="text-white/25 text-xs text-center py-2">{t("music.loginToComment")}</p>
           )}
         </div>
       )}
@@ -1181,10 +1190,15 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
         </button>
       </div>
 
-      {/* ── "Basé sur…" ── */}
+      {/* ── Current track info + play count ── */}
       {currentTrack && (
         <div className="px-5 mb-4">
           <p className="text-white/30 text-xs">{t("music.basedOn", { title: currentTrack.title })}</p>
+          {currentTrack.play_count > 0 && (
+            <p className="text-white/20 text-[10px] mt-1">
+              {currentTrack.play_count.toLocaleString()} {t("music.plays")}
+            </p>
+          )}
         </div>
       )}
 

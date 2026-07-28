@@ -105,6 +105,7 @@ const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
 const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
+const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const FlexaMusicEarnings             = lazy(() => import("@/pages/FlexaMusicEarnings"));
 const FlexaMusicUpload               = lazy(() => import("@/pages/FlexaMusicUpload"));
@@ -319,6 +320,14 @@ function Router() {
       <Route path="/auth/suspended" component={SuspendedScreen} />
       <Route path="/auth/set-new-password" component={SetNewPassword} />
       <Route path="/driver-selfie" component={DriverSelfieMobile} />
+      {/* Public music share page — no auth, no Layout wrapper */}
+      <Route path="/music/play/:id">
+        {() => (
+          <Suspense fallback={<div style={{ background: "#0a0a0a", minHeight: "100vh" }} />}>
+            <MusicPublicPlayer />
+          </Suspense>
+        )}
+      </Route>
       <Route>{() => <LayoutRoutes />}</Route>
     </Switch>
   );

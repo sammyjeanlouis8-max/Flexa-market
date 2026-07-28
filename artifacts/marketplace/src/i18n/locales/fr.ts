@@ -3986,6 +3986,16 @@ export default {
     milestoneLabel: "Palier #{{n}}",
     impressionsUnit: "impressions",
     free: "Gratuit",
+    // Commentaires & partage
+    comments: "Commentaires",
+    noComments: "Pas encore de commentaires — soyez le premier !",
+    loginToComment: "Connectez-vous pour commenter",
+    addCommentPlaceholder: "Ajouter un commentaire…",
+    plays: "écoutes",
+    playCount: "{{n}} écoutes",
+    linkCopied: "Lien copié !",
+    openInApp: "Ouvrir dans Flexa",
+    shareDiscover: "Découvrez la musique sur Flexa Market",
   },
   upload: {
     title: "Uploader de la Musique",

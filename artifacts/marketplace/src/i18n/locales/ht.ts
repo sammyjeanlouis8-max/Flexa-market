@@ -3989,6 +3989,16 @@ export default {
     milestoneLabel: "Etap #{{n}}",
     impressionsUnit: "impressions",
     free: "Gratis",
+    // Komantè & pataj
+    comments: "Komantè",
+    noComments: "Poko gen komantè — kite premye a!",
+    loginToComment: "Konekte pou komante",
+    addCommentPlaceholder: "Ajoute yon komantè…",
+    plays: "jwe",
+    playCount: "{{n}} jwe",
+    linkCopied: "Lyen kopye!",
+    openInApp: "Louvri nan Flexa",
+    shareDiscover: "Dekouvri mizik sou Flexa Market",
   },
   upload: {
     title: "Telechaje Mizik",

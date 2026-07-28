@@ -192,25 +192,73 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload }:
 // ══════════════════════════════════════════════════════════════════════════════
 function EditTrackModal({ track, onClose, onSaved }:
   { track: Track; onClose: () => void; onSaved: (updated: Track) => void }) {
-  const [title,  setTitle]  = useState(track.title);
-  const [artist, setArtist] = useState(track.artist);
-  const [saving, setSaving] = useState(false);
+  const [title,     setTitle]     = useState(track.title);
+  const [artist,    setArtist]    = useState(track.artist);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(track.cover_url);
+  const [saving,    setSaving]    = useState(false);
+  const [errMsg,    setErrMsg]    = useState<string | null>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
+
+  const onPickCover = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setCoverFile(f);
+    setCoverPreview(URL.createObjectURL(f));
+  };
 
   const save = async () => {
+    if (!title.trim()) { setErrMsg("Tit obligatwa"); return; }
     setSaving(true);
+    setErrMsg(null);
     try {
-      const token = localStorage.getItem("auth_token") ?? sessionStorage.getItem("auth_token") ?? "";
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+
+      let coverUrl: string | undefined;
+
+      // ── If a new cover was picked, upload it to Cloudinary first ──────────
+      if (coverFile) {
+        const sigRes = await fetch("/api/music/upload-signature", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!sigRes.ok) throw new Error("Cloudinary signature failed");
+        const sig = await sigRes.json();
+        const fd = new FormData();
+        fd.append("file", coverFile);
+        fd.append("api_key", sig.apiKey);
+        fd.append("timestamp", String(sig.timestamp));
+        fd.append("signature", sig.cover.signature);
+        fd.append("folder",    sig.cover.folder);
+        fd.append("format",    sig.cover.format ?? "jpg");
+        const cldRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`,
+          { method: "POST", body: fd }
+        );
+        const cld = await cldRes.json();
+        if (!cld.secure_url) throw new Error(cld.error?.message ?? "Cover upload failed");
+        coverUrl = cld.secure_url;
+      }
+
       const res = await fetch(`/api/admin/music/${track.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title: title.trim(), artist: artist.trim() }),
+        body: JSON.stringify({
+          title:  title.trim(),
+          artist: artist.trim(),
+          ...(coverUrl ? { cover_url: coverUrl } : {}),
+        }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
       const data = await res.json();
-      onSaved({ ...track, ...data.track, title: title.trim(), artist: artist.trim() });
+      onSaved({
+        ...track, ...data.track,
+        title:     title.trim(),
+        artist:    artist.trim(),
+        cover_url: coverUrl ?? track.cover_url,
+      });
       onClose();
     } catch (e: any) {
-      alert(e.message);
+      setErrMsg(e.message);
     } finally {
       setSaving(false);
     }
@@ -222,10 +270,34 @@ function EditTrackModal({ track, onClose, onSaved }:
       <div className="relative w-full max-w-sm mx-4 mb-8 sm:mb-0 rounded-2xl p-5 space-y-4"
         style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)" }}
         onClick={e => e.stopPropagation()}>
+
         <div className="flex items-center justify-between">
           <p className="text-white font-bold text-base">Modifye chante</p>
           <button onClick={onClose}><X size={18} className="text-white/40" /></button>
         </div>
+
+        {/* ── Cover picker ── */}
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => coverRef.current?.click()}
+            className="w-16 h-16 rounded-xl overflow-hidden shrink-0 flex items-center justify-center relative group"
+            style={{ background: "#2a2a2a", border: "2px dashed rgba(255,255,255,0.12)" }}>
+            {coverPreview
+              ? <img src={coverPreview} alt="" className="w-full h-full object-cover" />
+              : <ImageIcon size={22} className="text-white/20" />}
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              <ImageIcon size={16} className="text-white" />
+            </div>
+          </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-white/60 text-xs font-semibold">Thumbnail / Cover</p>
+            <button type="button" onClick={() => coverRef.current?.click()}
+              className="text-violet-400 text-xs font-bold mt-0.5">
+              {coverPreview ? "Chanje foto" : "Ajoute foto"}
+            </button>
+          </div>
+          <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={onPickCover} />
+        </div>
+
         <div className="space-y-3">
           <div>
             <label className="text-xs text-white/40 mb-1 block">Tit</label>
@@ -240,6 +312,15 @@ function EditTrackModal({ track, onClose, onSaved }:
             />
           </div>
         </div>
+
+        {errMsg && (
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <AlertCircle size={14} className="text-red-400 shrink-0" />
+            <p className="text-red-400 text-xs">{errMsg}</p>
+          </div>
+        )}
+
         <button disabled={saving || !title.trim()} onClick={save}
           className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40"
           style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
@@ -798,12 +879,13 @@ function BoosterAdCard({ onTap }: { onTap: (id: number) => void }) {
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
-  playerState, liked, isAdmin, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle, onEdit, onDelete, onAdTap }:
+  playerState, liked, isAdmin, onBack, onPlay, onToggle, onToggleLike, onDownload, onShuffle, onNext, onPrev, onEdit, onDelete, onAdTap }:
   { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
     playerState: PlayerState; liked: Set<number>; isAdmin: boolean;
     onBack: () => void; onPlay: (t: Track, idx: number) => void;
     onToggle: () => void; onToggleLike: (id: number) => void;
     onDownload: (t: Track) => void; onShuffle: () => void;
+    onNext: () => void; onPrev: () => void;
     onEdit: (t: Track) => void; onDelete: (id: number) => void;
     onAdTap: (id: number) => void; }) {
   const { user } = useAuth();
@@ -865,7 +947,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
       </div>
 
       {/* ── Action row ── */}
-      <div className="flex items-center gap-4 px-5 mb-5">
+      <div className="flex items-center gap-3 px-5 mb-5">
         <button onClick={() => currentTrack && onToggleLike(currentTrack.id)}
           className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
           <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/60"} />
@@ -879,17 +961,21 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           <MoreHorizontal size={18} className="text-white/60" />
         </button>
         <div className="flex-1" />
-        <button onClick={onShuffle}
+        {/* Prev / Play / Next cluster */}
+        <button onClick={onPrev}
           className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
-          <Shuffle size={17} className="text-white/60" />
+          <SkipBack size={18} className="text-white/70" />
         </button>
-        {/* Big play button */}
         <button onClick={onToggle}
           className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl"
           style={{ background: "#fff" }}>
           {playerState.playing
             ? <Pause size={24} className="text-black" />
             : <Play size={24} className="text-black ml-1" />}
+        </button>
+        <button onClick={onNext}
+          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
+          <SkipForward size={18} className="text-white/70" />
         </button>
       </div>
 
@@ -1168,7 +1254,7 @@ export default function FlexaMusic() {
   const handleDelete = async (id: number) => {
     if (!window.confirm("Efase chante sa?")) return;
     try {
-      const token = localStorage.getItem("auth_token") ?? sessionStorage.getItem("auth_token") ?? "";
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
       const res = await fetch(`/api/admin/music/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
@@ -1238,6 +1324,8 @@ export default function FlexaMusic() {
           onToggleLike={toggleLike}
           onDownload={downloadTrack}
           onShuffle={shuffleQueue}
+          onNext={playNext}
+          onPrev={playPrev}
           onEdit={handleEdit}
           onDelete={handleDelete}
           onAdTap={(id) => setLocation(`/listing/${id}`)}

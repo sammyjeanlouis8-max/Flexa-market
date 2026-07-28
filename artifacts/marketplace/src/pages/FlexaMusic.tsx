@@ -360,17 +360,49 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
     onToggle: () => void; onMute: () => void;
     onSeek: (t: number) => void; onExpand: () => void; }) {
   const { track, playing, currentTime, duration, muted } = state;
+  const isDragging = useRef(false);
+
   if (!track) return null;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  // ── Seek helpers (works for both mouse and touch) ──────────────────────────
+  const seekFromX = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+    onSeek(ratio * (duration || 0));
+  };
+
   return (
     <div className="fixed bottom-16 left-0 right-0 mx-3 z-40 rounded-2xl overflow-hidden select-none shadow-2xl"
       style={{ background: "linear-gradient(135deg,#1e0a3c,#2d1b4e)", border: "1px solid rgba(139,92,246,0.35)" }}>
-      {/* Progress bar */}
-      <div className="h-0.5 bg-white/10 cursor-pointer"
-        onClick={e => { const r = e.currentTarget.getBoundingClientRect(); onSeek(((e.clientX - r.left) / r.width) * (duration || 0)); }}>
-        <div className="h-full bg-violet-400 transition-all" style={{ width: `${pct}%` }} />
+
+      {/* ── Draggable progress bar — tall touch target, thin visual bar ── */}
+      <div
+        className="h-5 flex items-center px-0 cursor-pointer relative"
+        style={{ touchAction: "none" }}
+        onClick={e => seekFromX(e.clientX, e.currentTarget)}
+        onTouchStart={e => {
+          isDragging.current = true;
+          seekFromX(e.touches[0].clientX, e.currentTarget);
+        }}
+        onTouchMove={e => {
+          if (!isDragging.current) return;
+          e.preventDefault();
+          seekFromX(e.touches[0].clientX, e.currentTarget);
+        }}
+        onTouchEnd={() => { isDragging.current = false; }}
+      >
+        {/* Track */}
+        <div className="absolute left-0 right-0 h-1.5 rounded-full mx-0" style={{ background: "rgba(255,255,255,0.1)" }} />
+        {/* Fill */}
+        <div className="absolute left-0 h-1.5 rounded-full"
+          style={{ width: `${pct}%`, background: "linear-gradient(90deg,#8b5cf6,#c026d3)" }} />
+        {/* Thumb */}
+        <div className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-md -translate-x-1/2 -translate-y-px"
+          style={{ left: `${pct}%`, boxShadow: "0 0 0 2px rgba(139,92,246,0.5)" }} />
       </div>
-      <div className="flex items-center gap-2.5 px-3 py-2">
+
+      <div className="flex items-center gap-2.5 px-3 pb-2">
         {/* Cover — tap to expand */}
         <button onClick={onExpand} className="shrink-0">
           <CoverArt src={track.cover_url} title={track.title} size={38} radius={8} />
@@ -1588,14 +1620,6 @@ export default function FlexaMusic() {
         onExpand={() => playerState.track && setView("player")}
       />
 
-      {/* Admin FAB */}
-      {isAdmin && (
-        <button onClick={() => setLocation("/admin/music")}
-          className="fixed bottom-24 right-4 z-50 flex items-center gap-2 font-bold text-sm px-4 py-3 rounded-2xl shadow-xl active:scale-95 transition-all"
-          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff", boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
-          <Plus size={17} /> Admin
-        </button>
-      )}
     </>
   );
 }

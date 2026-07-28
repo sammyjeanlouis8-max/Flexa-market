@@ -954,7 +954,7 @@ function BoosterAdCard({ onTap }: { onTap: (id: number) => void }) {
   const timerRef        = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    fetch("/api/listings?limit=20")
+    fetch("/api/listings?boosted=true&limit=20")
       .then(r => r.json())
       .then(d => {
         const list = d?.listings ?? d ?? [];

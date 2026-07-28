@@ -1777,14 +1777,19 @@ export default function FlexaMusic() {
   }, []);
 
   // ── Fallback timer — iOS Safari throttles timeupdate; poll every 250 ms
-  //    to keep the display ticking even under throttled conditions
+  //    to keep currentTime ticking AND sync the playing flag from the real
+  //    audio element (fixes stuck-play-icon on mobile Safari)
   useEffect(() => {
     const id = setInterval(() => {
       const audio = audioRef.current;
-      if (audio && !audio.paused && !audio.ended) {
-        const newTime = audio.currentTime;
-        setPlayerState(s => ({ ...s, currentTime: newTime }));
-      }
+      if (!audio) return;
+      const actuallyPlaying = !audio.paused && !audio.ended && audio.readyState >= 2;
+      setPlayerState(s => {
+        const updates: Partial<PlayerState> = {};
+        if (s.playing !== actuallyPlaying) updates.playing = actuallyPlaying;
+        if (actuallyPlaying) updates.currentTime = audio.currentTime;
+        return Object.keys(updates).length ? { ...s, ...updates } : s;
+      });
     }, 250);
     return () => clearInterval(id);
   }, []);

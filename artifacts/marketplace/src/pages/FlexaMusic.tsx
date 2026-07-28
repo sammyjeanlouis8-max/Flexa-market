@@ -1645,10 +1645,36 @@ export default function FlexaMusic() {
   }, [playerState.muted, playerState.volume]);
 
   const playNext = useCallback(() => {
-    if (!queue.length) return;
-    const next = (queueIdx + 1) % queue.length;
-    setQueueIdx(next); playTrack(queue[next], queue, next);
-  }, [queue, queueIdx, playTrack]);
+    // ── If there's a next track in the current queue, play it normally ────────
+    if (queue.length && queueIdx + 1 < queue.length) {
+      const next = queueIdx + 1;
+      setQueueIdx(next);
+      playTrack(queue[next], queue, next);
+      return;
+    }
+
+    // ── Queue exhausted (or empty): auto-play from same genre ─────────────────
+    const cur = playerState.track;
+    if (!cur || !tracks.length) return;
+
+    // Build same-genre pool (exclude the just-played track)
+    const genre = cur.genre ?? "";
+    let pool = genre
+      ? tracks.filter(t => t.id !== cur.id && t.genre === genre)
+      : [];
+
+    // Genre too small? Fall back to all tracks except current
+    if (pool.length < 2) {
+      pool = tracks.filter(t => t.id !== cur.id);
+    }
+    if (!pool.length) return;
+
+    // Shuffle so every auto-play session feels fresh
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    setQueue(shuffled);
+    setQueueIdx(0);
+    playTrack(shuffled[0], shuffled, 0);
+  }, [queue, queueIdx, playTrack, playerState.track, tracks]);
 
   const playPrev = useCallback(() => {
     if (!queue.length) return;

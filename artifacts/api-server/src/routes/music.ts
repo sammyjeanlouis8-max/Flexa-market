@@ -147,16 +147,14 @@ async function flushImpressions() {
                    SET confirmed_revenue_usd = confirmed_revenue_usd + ${earnedUsd}
                    WHERE track_id = ${trackId} AND date = CURRENT_DATE`);
 
-          // Push notification to artist
+          // Push notification to artist (actorId = artist themselves for system events)
           await db.insert(notificationsTable).values({
-            userId: track.artist_user_id,
-            type: "music_earning",
-            isRead: false,
-            meta: JSON.stringify({
-              message: `🎵 Ou fèk touche $${earnedUsd.toFixed(2)} sou "${track.title}" — ${impressionsCredited.toLocaleString()} impressions!`,
-              earnedUsd, impressionsCredited, trackId,
-            }),
-          } as any).catch(() => {});
+            userId:  track.artist_user_id!,
+            actorId: track.artist_user_id!,
+            type:    "music_earning",
+            message: `🎵 Ou fèk touche $${earnedUsd.toFixed(2)} sou "${track.title}" — ${impressionsCredited.toLocaleString()} impressions!`,
+            isRead:  false,
+          }).catch(() => {});
 
           logger.info({ trackId, artistId: track.artist_user_id, earnedUsd, milestonesDue }, "Music milestone credited");
         }
@@ -1315,6 +1313,57 @@ router.get("/music/stream-url/:trackId", async (req, res) => {
     if (!key) return res.status(404).json({ error: "No storage key for this track" });
     const url = await getStreamUrl(key);
     res.json({ url, key });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ── Music Activity Feed (notifications drawer) ────────────────────────────────
+// GET /api/music/activity — artist's recent comments, likes, and earnings
+router.get("/music/activity", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    // Comments on the artist's tracks (by others)
+    const comments = await q(`
+      SELECT 'comment' AS type,
+             mc.id, mc.created_at,
+             u.name  AS actor_name, u.avatar AS actor_avatar,
+             mt.title AS track_title, mt.id AS track_id,
+             mc.content AS detail
+      FROM music_comments mc
+      JOIN music_tracks mt ON mt.id = mc.track_id
+      JOIN users u          ON u.id  = mc.user_id
+      WHERE mt.artist_user_id = ${userId} AND mc.user_id != ${userId}
+      ORDER BY mc.created_at DESC LIMIT 20
+    `);
+    // Likes on the artist's tracks (by others)
+    const likes = await q(`
+      SELECT 'like' AS type,
+             ml.id, ml.created_at,
+             u.name  AS actor_name, u.avatar AS actor_avatar,
+             mt.title AS track_title, mt.id AS track_id,
+             NULL AS detail
+      FROM music_likes ml
+      JOIN music_tracks mt ON mt.id = ml.track_id
+      JOIN users u          ON u.id  = ml.user_id
+      WHERE mt.artist_user_id = ${userId} AND ml.user_id != ${userId}
+      ORDER BY ml.created_at DESC LIMIT 20
+    `);
+    // Earnings milestones
+    const earnings = await q(`
+      SELECT 'earning' AS type,
+             me.id, me.created_at,
+             NULL AS actor_name, NULL AS actor_avatar,
+             mt.title AS track_title, me.track_id,
+             me.description AS detail
+      FROM music_earnings me
+      JOIN music_tracks mt ON mt.id = me.track_id
+      WHERE me.artist_id = ${userId}
+      ORDER BY me.created_at DESC LIMIT 10
+    `);
+    // Merge & sort newest-first
+    const all = [...comments, ...likes, ...earnings].sort(
+      (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ).slice(0, 40);
+    res.json({ activity: all });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 

@@ -652,6 +652,7 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
     setLocation: (p: string) => void; }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // ── Live search: debounce 350 ms so the API isn't hammered on every keystroke
   useEffect(() => {
@@ -698,13 +699,9 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
           className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
           <UploadCloud size={17} className="text-white/80" />
         </button>
-        <button onClick={() => setLocation("/notifications")}
+        <button onClick={() => setShowNotifications(true)}
           className="w-9 h-9 rounded-full flex items-center justify-center relative" style={{ background: "#1a1a1a" }}>
           <Bell size={17} className="text-white/80" />
-        </button>
-        <button onClick={() => setLocation("/messages")}
-          className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
-          <MessageCircle size={17} className="text-white/80" />
         </button>
       </div>
 
@@ -862,6 +859,11 @@ function HomeView({ tracks, liked, user, isAdmin, onPlay, onPlayList, onToggleLi
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Music notifications drawer ── */}
+      {showNotifications && (
+        <MusicNotificationsDrawer onClose={() => setShowNotifications(false)} />
       )}
     </div>
   );
@@ -1113,6 +1115,109 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MUSIC NOTIFICATIONS DRAWER
+// ══════════════════════════════════════════════════════════════════════════════
+type MusicActivity = {
+  type: "comment" | "like" | "earning";
+  id: number;
+  created_at: string;
+  actor_name: string | null;
+  actor_avatar: string | null;
+  track_title: string;
+  track_id: number;
+  detail: string | null;
+};
+
+function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const [items,   setItems]   = useState<MusicActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem("flexamarket_token") ?? "";
+    if (!token) { setLoading(false); return; }
+    fetch("/api/music/activity", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setItems(d.activity ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const rel = (iso: string) => {
+    const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "kounye an";
+    if (s < 3600) return `${Math.floor(s / 60)}min`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h`;
+    return `${Math.floor(s / 86400)}j`;
+  };
+
+  const itemText = (item: MusicActivity) => {
+    const name = item.actor_name ?? "Yon moun";
+    if (item.type === "comment") {
+      const preview = item.detail ? `"${item.detail.slice(0, 50)}${item.detail.length > 50 ? "…" : ""}"` : "";
+      return `${name} komante sou "${item.track_title}" ${preview}`;
+    }
+    if (item.type === "like") return `${name} renmen "${item.track_title}"`;
+    return item.detail ?? `Revni debloke sou "${item.track_title}"`;
+  };
+
+  const itemEmoji = (item: MusicActivity) =>
+    item.type === "comment" ? "💬" : item.type === "like" ? "❤️" : "🎵";
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full rounded-t-3xl overflow-hidden max-h-[75vh] flex flex-col"
+        style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)" }}
+        onClick={e => e.stopPropagation()}>
+
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-white/20" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3">
+          <p className="text-white font-black text-base">Aktivite Mizik</p>
+          <button onClick={onClose}><X size={18} className="text-white/40" /></button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto pb-8">
+          {loading && (
+            <div className="flex justify-center py-12">
+              <Loader2 size={24} className="animate-spin text-violet-400" />
+            </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 gap-3">
+              <Bell size={36} className="text-white/15" />
+              <p className="text-white/30 text-sm">Pa gen aktivite mizik pou kounye an</p>
+            </div>
+          )}
+          {!loading && items.map((item, i) => (
+            <div key={`${item.type}-${item.id}`}
+              className="flex items-start gap-3 px-5 py-3"
+              style={{ borderBottom: i < items.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden text-base"
+                style={{ background: item.type === "earning" ? "rgba(124,58,237,0.2)" : "#1e1e1e" }}>
+                {item.actor_avatar
+                  ? <img src={item.actor_avatar} alt="" className="w-full h-full object-cover" />
+                  : <span>{itemEmoji(item)}</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white/80 text-xs leading-relaxed">{itemText(item)}</p>
+                <p className="text-white/30 text-[10px] mt-0.5">{rel(item.created_at)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

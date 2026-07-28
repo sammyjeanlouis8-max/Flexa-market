@@ -8,3 +8,4 @@
 - [Flexa Stripe recharge fallback](flexa-stripe-recharge-fallback.md) — mobile WebView blocks the Stripe success redirect, so wallet credit can't rely on webhook alone; public idempotent /stripe/checkout/activate is the safety net.
 - [Flexa TV stability pitfalls](flexa-tv-stability.md) — lucide-react@0.545 missing icons crash at runtime; IIFE in JSX causes intermittent reconciliation crashes; useRef import omission in BroadcastProvider took down entire site.
 - [Flexa music storage architecture](flexa-wasabi-architecture.md) — new uploads: direct browser→Cloudinary (cld: prefix); named routes MUST precede /music/:id wildcard or NaN crash; admin uploads auto-approved.
+- [Flexa music schema migrations](flexa-music-migrations.md) — columns added to music_tracks after CREATE TABLE need explicit ALTER TABLE ADD COLUMN IF NOT EXISTS migrations or production 500s silently; estimated_revenue_usd was missing and caused empty home screen.

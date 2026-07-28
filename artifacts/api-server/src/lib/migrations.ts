@@ -1971,10 +1971,11 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_tracks.artist_idx", sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_idx ON music_tracks(artist)" });
   migrations.push({ name: "music_tracks.active_idx",       sql: "CREATE INDEX IF NOT EXISTS music_tracks_active_idx ON music_tracks(is_active)" });
   // Artist ownership + impression counters (added after initial release)
-  migrations.push({ name: "music_tracks.artist_user_id",   sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS artist_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL" });
-  migrations.push({ name: "music_tracks.total_impressions", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS total_impressions INTEGER NOT NULL DEFAULT 0" });
-  migrations.push({ name: "music_tracks.valid_impressions", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS valid_impressions INTEGER NOT NULL DEFAULT 0" });
-  migrations.push({ name: "music_tracks.artist_idx",        sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_user_idx ON music_tracks(artist_user_id)" });
+  migrations.push({ name: "music_tracks.artist_user_id",      sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS artist_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL" });
+  migrations.push({ name: "music_tracks.total_impressions",   sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS total_impressions INTEGER NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.valid_impressions",   sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS valid_impressions INTEGER NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.estimated_revenue_usd", sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS estimated_revenue_usd REAL NOT NULL DEFAULT 0" });
+  migrations.push({ name: "music_tracks.artist_idx",          sql: "CREATE INDEX IF NOT EXISTS music_tracks_artist_user_idx ON music_tracks(artist_user_id)" });
 
   // ── Music Ad Stats (daily aggregated per track) ───────────────────────────────
   migrations.push({

@@ -1103,7 +1103,7 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content: text.trim() }),
       });
-      if (r.ok) { setComments(prev => [...prev, await r.json()]); setText(""); }
+      if (r.ok) { const comment = await r.json(); setComments(prev => [...prev, comment]); setText(""); }
     } catch {} finally { setSubmitting(false); }
   };
 
@@ -1982,18 +1982,22 @@ export default function FlexaMusic() {
     setTimeout(() => openTrack(track, updated, 0), 120);
   };
 
-  // ── Loading spinner ───────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
-      </div>
-    );
-  }
-
+  // ── Always render the audio element first so audioRef is populated before
+  //    any useEffect fires — even during the initial loading spinner render.
+  //    The early-return pattern was keeping <audio> out of the DOM on the
+  //    first render, so the [] event-listener effect always found
+  //    audioRef.current === null and attached nothing.
   return (
     <>
       <audio ref={audioRef} preload="metadata" />
+
+      {loading ? (
+        <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
+          <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
+        </div>
+      ) : null}
+
+      {loading ? null : (<>
 
       {view === "upload" ? (
         <UploadView
@@ -2077,6 +2081,8 @@ export default function FlexaMusic() {
           onMute={toggleMute}
         />
       )}
+
+      </>)}
 
     </>
   );

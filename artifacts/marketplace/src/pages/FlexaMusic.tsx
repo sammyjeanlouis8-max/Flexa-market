@@ -1501,6 +1501,193 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// FULL-SCREEN NOW-PLAYING MODAL  (Spotify-style slide-up)
+// ══════════════════════════════════════════════════════════════════════════════
+function NowPlayingModal({
+  playerState, liked, onClose, onToggle, onPrev, onNext,
+  onToggleLike, onSeek, onShuffle, onMute,
+}: {
+  playerState: PlayerState;
+  liked: Set<number>;
+  onClose: () => void;
+  onToggle: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onToggleLike: (id: number) => void;
+  onSeek: (t: number) => void;
+  onShuffle: () => void;
+  onMute: () => void;
+}) {
+  const { track, playing, currentTime, duration, muted } = playerState;
+  const pct     = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const timeLeft = Math.max(0, Math.floor(duration - currentTime));
+  const seekRef  = useRef(false);
+  const swipeStartY = useRef(0);
+  const [slideY, setSlideY] = useState(0);
+  const [visible, setVisible] = useState(false);
+
+  // Slide-in animation on mount
+  useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
+
+  if (!track) return null;
+
+  // ── Seek helpers ───────────────────────────────────────────────────────────
+  const seekFromX = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    onSeek(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * (duration || 0));
+  };
+
+  // ── Swipe-down-to-close ───────────────────────────────────────────────────
+  const handleSwipeStart = (y: number) => { swipeStartY.current = y; };
+  const handleSwipeMove  = (y: number) => {
+    const dy = y - swipeStartY.current;
+    if (dy > 0) setSlideY(dy);
+  };
+  const handleSwipeEnd   = (y: number) => {
+    if (y - swipeStartY.current > 110) { onClose(); } else { setSlideY(0); }
+  };
+
+  const isLiked = liked.has(track.id);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex flex-col"
+      style={{
+        transform: `translateY(${visible ? slideY : "100%"})`,
+        transition: slideY > 0 ? "none" : "transform 0.38s cubic-bezier(0.32,0.72,0,1)",
+        willChange: "transform",
+      }}
+      onTouchStart={e => handleSwipeStart(e.touches[0].clientY)}
+      onTouchMove={e  => handleSwipeMove(e.touches[0].clientY)}
+      onTouchEnd={e   => handleSwipeEnd(e.changedTouches[0].clientY)}
+    >
+      {/* ── Blurred album art background ─────────────────────────────────── */}
+      <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 0 }}>
+        {track.cover_url
+          ? <img src={track.cover_url} alt="" className="w-full h-full object-cover"
+              style={{ filter: "blur(60px) brightness(0.25) saturate(1.8)", transform: "scale(1.3)" }} />
+          : null}
+        <div className="absolute inset-0" style={{ background: "rgba(5,0,15,0.75)" }} />
+      </div>
+
+      {/* ── Content ──────────────────────────────────────────────────────── */}
+      <div className="relative z-10 flex flex-col flex-1 px-6 overflow-hidden"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 20px) + 12px)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}>
+
+        {/* Top bar */}
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-10 h-1 rounded-full bg-white/25 mb-4" />
+          <div className="flex items-center justify-between w-full">
+            <button onClick={onClose}
+              className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
+              <ChevronDown size={26} className="text-white/80" />
+            </button>
+            <div className="text-center">
+              <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">Now Playing</p>
+              {playing && <div className="flex justify-center mt-1"><NowPlayingBars playing size="xs" /></div>}
+            </div>
+            <button onClick={onShuffle}
+              className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
+              <Shuffle size={18} className="text-white/60" />
+            </button>
+          </div>
+        </div>
+
+        {/* Album art */}
+        <div className="flex justify-center mb-7">
+          <div className="rounded-3xl overflow-hidden shadow-2xl"
+            style={{ width: "min(72vw, 280px)", height: "min(72vw, 280px)",
+                     boxShadow: "0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+            {track.cover_url
+              ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#2d1b4e,#4b0082)" }}>
+                  <Music2 size={72} className="text-white/20" />
+                </div>}
+          </div>
+        </div>
+
+        {/* Track info + like */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-white font-black text-[22px] leading-tight truncate">{track.title}</h2>
+            <p className="text-white/55 text-sm truncate mt-0.5">{track.artist}</p>
+          </div>
+          <button
+            onClick={() => onToggleLike(track.id)}
+            className="w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition-transform shrink-0"
+            style={{ background: isLiked ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.08)" }}>
+            <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/50"} />
+          </button>
+        </div>
+
+        {/* ── Seekable progress bar ─────────────────────────────────────── */}
+        <div className="mb-1">
+          <div
+            className="h-10 flex items-center relative cursor-pointer"
+            style={{ touchAction: "none" }}
+            onClick={e  => seekFromX(e.clientX, e.currentTarget)}
+            onTouchStart={e => { seekRef.current = true; seekFromX(e.touches[0].clientX, e.currentTarget); e.stopPropagation(); }}
+            onTouchMove={e  => { if (!seekRef.current) return; e.preventDefault(); e.stopPropagation(); seekFromX(e.touches[0].clientX, e.currentTarget); }}
+            onTouchEnd={()  => { seekRef.current = false; }}
+          >
+            {/* Track */}
+            <div className="absolute left-0 right-0 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.18)" }} />
+            {/* Fill */}
+            <div className="absolute left-0 h-1 rounded-full"
+              style={{ width: `${pct}%`, background: "#fff" }} />
+            {/* Thumb */}
+            <div className="absolute w-[18px] h-[18px] rounded-full bg-white -translate-x-1/2 active:scale-125 transition-transform"
+              style={{ left: `${pct}%`, boxShadow: "0 2px 8px rgba(0,0,0,0.5)" }} />
+          </div>
+
+          {/* Time labels */}
+          <div className="flex justify-between px-0.5 -mt-1">
+            <span className="text-white/45 text-[11px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
+            <span className="text-white/45 text-[11px] font-mono tabular-nums">-{fmtDur(timeLeft)}</span>
+          </div>
+        </div>
+
+        {/* ── Playback controls ─────────────────────────────────────────── */}
+        <div className="flex items-center justify-between mt-4">
+          <button onClick={onPrev}
+            className="w-14 h-14 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            <SkipBack size={30} className="text-white" />
+          </button>
+
+          <button onClick={onToggle}
+            className="flex items-center justify-center rounded-full active:scale-90 transition-transform"
+            style={{ width: 72, height: 72,
+                     background: "linear-gradient(135deg,#7c3aed,#c026d3)",
+                     boxShadow: "0 6px 24px rgba(124,58,237,0.55)" }}>
+            {playing
+              ? <Pause  size={30} className="text-white" />
+              : <Play   size={30} className="text-white ml-1" />}
+          </button>
+
+          <button onClick={onNext}
+            className="w-14 h-14 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            <SkipForward size={30} className="text-white" />
+          </button>
+        </div>
+
+        {/* Volume + spacer */}
+        <div className="flex items-center justify-center mt-5">
+          <button onClick={onMute}
+            className="flex items-center gap-2 px-5 py-2 rounded-full active:bg-white/10"
+            style={{ background: "rgba(255,255,255,0.08)" }}>
+            {muted
+              ? <><VolumeX size={16} className="text-white/50" /><span className="text-white/40 text-xs">Mute</span></>
+              : <><Volume2 size={16} className="text-white/70" /><span className="text-white/50 text-xs">Volume</span></>}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function FlexaMusic() {
@@ -1541,6 +1728,7 @@ export default function FlexaMusic() {
   const audioRef    = useRef<HTMLAudioElement>(null);
   const listenRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playNextRef = useRef<() => void>(() => {});
+  const [showNowPlaying, setShowNowPlaying] = useState(false);
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1588,21 +1776,16 @@ export default function FlexaMusic() {
     };
   }, []);
 
-  // ── Fallback timer — iOS Safari throttles timeupdate; this ensures the
-  //    seconds tick visibly even when the browser slows event delivery
+  // ── Fallback timer — iOS Safari throttles timeupdate; poll every 250 ms
+  //    to keep the display ticking even under throttled conditions
   useEffect(() => {
     const id = setInterval(() => {
       const audio = audioRef.current;
       if (audio && !audio.paused && !audio.ended) {
-        setPlayerState(s => {
-          // Only update if meaningfully different to avoid unnecessary renders
-          const newTime = audio.currentTime;
-          return Math.abs(s.currentTime - newTime) >= 0.9
-            ? { ...s, currentTime: newTime }
-            : s;
-        });
+        const newTime = audio.currentTime;
+        setPlayerState(s => ({ ...s, currentTime: newTime }));
       }
-    }, 950); // just under 1 s — keeps display responsive without hammering React
+    }, 250);
     return () => clearInterval(id);
   }, []);
 
@@ -1849,8 +2032,24 @@ export default function FlexaMusic() {
         onToggle={togglePlay}
         onMute={toggleMute}
         onSeek={seek}
-        onExpand={() => playerState.track && setView("player")}
+        onExpand={() => playerState.track && setShowNowPlaying(true)}
       />
+
+      {/* Full-screen Now Playing modal */}
+      {showNowPlaying && playerState.track && (
+        <NowPlayingModal
+          playerState={playerState}
+          liked={liked}
+          onClose={() => setShowNowPlaying(false)}
+          onToggle={togglePlay}
+          onPrev={playPrev}
+          onNext={playNext}
+          onToggleLike={toggleLike}
+          onSeek={seek}
+          onShuffle={shuffleQueue}
+          onMute={toggleMute}
+        />
+      )}
 
     </>
   );

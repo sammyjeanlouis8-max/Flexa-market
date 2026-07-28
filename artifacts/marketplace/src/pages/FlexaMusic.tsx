@@ -1094,17 +1094,31 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
 
   const submit = async () => {
     if (!text.trim() || !trackId) return;
-    const token = localStorage.getItem("flexamarket_token") ?? "";
-    if (!token) return;
+    const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
     setSubmitting(true);
     try {
       const r = await fetch(`/api/music/${trackId}/comments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ content: text.trim() }),
       });
-      if (r.ok) { const comment = await r.json(); setComments(prev => [...prev, comment]); setText(""); }
-    } catch {} finally { setSubmitting(false); }
+      if (r.ok) {
+        const comment = await r.json();
+        setComments(prev => [...prev, comment]);
+        setText("");
+      } else {
+        // Surface the server error so user knows what happened
+        const err = await r.json().catch(() => ({}));
+        alert(err?.error ?? `Erè ${r.status} — eseye ankò`);
+      }
+    } catch (e) {
+      alert("Koneksyon an echwe — verifye entènèt ou epi eseye ankò");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const del = async (id: number) => {
@@ -1389,7 +1403,12 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
           <SkipBack size={18} className="text-white/70" />
         </button>
-        <button onClick={onToggle}
+        <button
+          onClick={() => {
+            // If no track is loaded yet, start the first one in the playlist
+            if (!playerState.track && playlist.length) { onPlay(playlist[0], 0); }
+            else { onToggle(); }
+          }}
           className="w-14 h-14 rounded-full flex items-center justify-center shadow-xl"
           style={{ background: "#fff" }}>
           {playerState.playing
@@ -1479,9 +1498,9 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
         })}
       </div>
 
-      {/* ── Comments section ── */}
+      {/* ── Comments section — use active track; fall back to first in playlist ── */}
       <MusicCommentsSection
-        trackId={currentTrack?.id ?? null}
+        trackId={currentTrack?.id ?? playlist[0]?.id ?? null}
         user={user}
         isAdmin={isAdmin}
       />

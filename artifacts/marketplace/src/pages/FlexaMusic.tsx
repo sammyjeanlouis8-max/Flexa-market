@@ -1745,9 +1745,6 @@ export default function FlexaMusic() {
     })();
   }, [filterQ]);
 
-  // ── Keep playNextRef fresh so the ended handler never captures a stale closure
-  useEffect(() => { playNextRef.current = playNext; }, [playNext]);
-
   // ── Audio events ──────────────────────────────────────────────────────────
   useEffect(() => {
     const audio = audioRef.current;
@@ -1885,6 +1882,10 @@ export default function FlexaMusic() {
     setQueueIdx(0);
     playTrack(shuffled[0], shuffled, 0);
   }, [queue, queueIdx, playTrack, playerState.track, tracks]);
+
+  // ── Keep playNextRef fresh so the audio "ended" handler never captures a stale closure
+  // (must appear AFTER playNext is declared to avoid a TDZ crash in production builds)
+  useEffect(() => { playNextRef.current = playNext; }, [playNext]);
 
   const playPrev = useCallback(() => {
     if (!queue.length) return;

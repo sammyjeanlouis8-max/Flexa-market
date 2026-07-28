@@ -1757,38 +1757,51 @@ export default function FlexaMusic() {
       const d = audio.duration;
       if (d && isFinite(d)) setPlayerState(s => ({ ...s, duration: d }));
     };
-    const onEnd   = () => playNextRef.current();
-    const onPlay  = () => setPlayerState(s => ({ ...s, playing: true }));
-    const onPause = () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
+    const onEnd     = () => playNextRef.current();
+    // "play"    → intent to play (paused may still be true during buffering on iOS)
+    // "playing" → audio is ACTUALLY playing (this is the reliable one on iOS Safari)
+    const onPlay    = () => setPlayerState(s => ({ ...s, playing: true }));
+    const onPlaying = () => setPlayerState(s => ({ ...s, playing: true }));
+    const onPause   = () => { setPlayerState(s => ({ ...s, playing: false })); stopTimer(); };
+    const onWaiting = () => setPlayerState(s => ({ ...s, playing: false }));
     audio.addEventListener("timeupdate",      onTime);
     audio.addEventListener("durationchange",  onDur);
     audio.addEventListener("loadedmetadata",  onDur);
     audio.addEventListener("ended",           onEnd);
     audio.addEventListener("play",            onPlay);
+    audio.addEventListener("playing",         onPlaying);
     audio.addEventListener("pause",           onPause);
+    audio.addEventListener("waiting",         onWaiting);
     return () => {
       audio.removeEventListener("timeupdate",      onTime);
       audio.removeEventListener("durationchange",  onDur);
       audio.removeEventListener("loadedmetadata",  onDur);
       audio.removeEventListener("ended",           onEnd);
       audio.removeEventListener("play",            onPlay);
+      audio.removeEventListener("playing",         onPlaying);
       audio.removeEventListener("pause",           onPause);
+      audio.removeEventListener("waiting",         onWaiting);
     };
   }, []);
 
   // ── Fallback timer — iOS Safari throttles timeupdate; poll every 250 ms
-  //    to keep currentTime ticking AND sync the playing flag from the real
-  //    audio element (fixes stuck-play-icon on mobile Safari)
+  //    to keep currentTime ticking AND reconcile the playing flag with the
+  //    real audio element state (fixes frozen timer + stuck play icon)
   useEffect(() => {
     const id = setInterval(() => {
       const audio = audioRef.current;
       if (!audio) return;
-      const actuallyPlaying = !audio.paused && !audio.ended && audio.readyState >= 2;
+      // Don't rely on readyState — just mirror what the browser reports
+      const actuallyPlaying = !audio.paused && !audio.ended;
       setPlayerState(s => {
-        const updates: Partial<PlayerState> = {};
-        if (s.playing !== actuallyPlaying) updates.playing = actuallyPlaying;
-        if (actuallyPlaying) updates.currentTime = audio.currentTime;
-        return Object.keys(updates).length ? { ...s, ...updates } : s;
+        const playingChanged = s.playing !== actuallyPlaying;
+        const timeChanged    = actuallyPlaying && s.currentTime !== audio.currentTime;
+        if (!playingChanged && !timeChanged) return s;
+        return {
+          ...s,
+          playing:     actuallyPlaying,
+          currentTime: actuallyPlaying ? audio.currentTime : s.currentTime,
+        };
       });
     }, 250);
     return () => clearInterval(id);

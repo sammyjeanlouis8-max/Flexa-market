@@ -1344,10 +1344,15 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         class (with env(safe-area-inset-*)) — no inline height override */}
     <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
 
-      {/* ── Thread header ── */}
-      <div style={{
+      {/* ── Thread header ──
+          paddingTop = safe-area-inset-top (Dynamic Island / notch) + 8px design gap.
+          We use calc() in the inline style rather than a CSS class so the value is
+          always applied even when other rules have higher specificity.
+          NEVER use `padding` shorthand here — it would reset paddingTop to 8px. */}
+      <div className="chat-header-safe" style={{
         display: "flex", alignItems: "center", gap: 8,
-        padding: "8px 10px",
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
+        paddingBottom: "8px", paddingLeft: "10px", paddingRight: "10px",
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",
       }}>

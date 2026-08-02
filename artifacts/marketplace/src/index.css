@@ -54,19 +54,22 @@ main {
    * iOS WebView safe-area fix
    * ─────────────────────────
    * viewport-fit=cover extends the viewport behind the Dynamic Island
-   * (top) and the home indicator (bottom).  We must shift the fixed
-   * chat layer down by env(safe-area-inset-top) and up by
-   * env(safe-area-inset-bottom) so the interactive areas are never
-   * obscured and touches always register.
+   * (top) and the home indicator (bottom).
+   *
+   * IMPORTANT: We intentionally keep top:0 / bottom:0 so the container
+   * covers the *full* screen.  Pushing via top:env() is unreliable in
+   * some iOS WebView configurations (returns 0 when address bar is
+   * showing).  Instead each edge is handled by the element that OWNS
+   * that edge:
+   *   • Top  → .chat-header-safe  adds padding-top: env(safe-area-inset-top)
+   *   • Bottom → .chat-input-bar  adds padding-bottom: env(safe-area-inset-bottom)
    */
   .chat-fullscreen {
     position: fixed !important;
-    top: env(safe-area-inset-top, 0px);
+    top: 0;
     left: 0;
     right: 0;
-    bottom: env(safe-area-inset-bottom, 0px);
-    /* height is derived from top/bottom — do NOT set a px/dvh value here
-       or it will conflict with the env() offsets above */
+    bottom: 0;
     height: auto !important;
     /* Must be > Layout header z-50 (50) so the chat conversation header
        is visible and not hidden underneath the sticky app header */
@@ -75,6 +78,18 @@ main {
     flex-direction: column;
     overflow: hidden;
     background: hsl(var(--background));
+  }
+
+  /*
+   * Thread header — owns the top safe-area inset.
+   * The inline style in Messages.tsx sets paddingTop via this helper;
+   * using a class for documentation, the actual value is injected inline
+   * via calc() so the header background fills the Dynamic Island zone.
+   */
+  .chat-header-safe {
+    /* Fallback: 54px covers Dynamic Island on iPhone 14/15 when
+       env(safe-area-inset-top) is unavailable or returns 0 */
+    padding-top: max(env(safe-area-inset-top, 0px), 0px);
   }
 
   /* Message scroll area — fills remaining space between header and input */

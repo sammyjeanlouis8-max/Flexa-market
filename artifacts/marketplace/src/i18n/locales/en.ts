@@ -624,6 +624,8 @@ export default {
     follow: "Follow",
     unfollow: "Unfollow",
     memberSince: "Member since",
+    totalSales: "sales",
+    verifiedPurchase: "Verified Purchase",
     noListings: "No listings yet",
     noReviews: "No reviews yet",
     editProfile: "Edit Profile",

@@ -668,6 +668,8 @@ export default {
     follow: "Suivre",
     unfollow: "Ne plus suivre",
     memberSince: "Membre depuis",
+    totalSales: "ventes",
+    verifiedPurchase: "Achat Vérifié",
     noListings: "Pas encore d'annonces",
     noReviews: "Pas encore d'avis",
     editProfile: "Modifier le profil",

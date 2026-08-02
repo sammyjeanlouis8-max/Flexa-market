@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, followsTable, listingsTable, categoriesTable, reviewsTable } from "@workspace/db";
+import { db, usersTable, followsTable, listingsTable, categoriesTable, reviewsTable, transactionsTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { UpdateUserBody } from "@workspace/api-zod";
@@ -71,10 +71,13 @@ router.get("/users/:id", optionalAuth, async (req, res): Promise<void> => {
     isFollowing = !!follow;
   }
 
-  // Use the public-safe serializer: role fields (isAdmin, isSuperAdmin, role) are
-  // forced to their "plain user" defaults. Privileged roles are only served via
-  // /auth/me so arbitrary viewers cannot discover who is an admin or super-admin.
-  res.json({ ...formatPublicUser(user), isFollowing });
+  const [salesRow] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(transactionsTable)
+    .where(and(eq(transactionsTable.sellerUserId, id), eq(transactionsTable.paymentStatus, "completed")));
+  const totalSales = salesRow?.total ?? 0;
+
+  res.json({ ...formatPublicUser(user), isFollowing, totalSales });
 });
 
 /**
@@ -255,6 +258,7 @@ router.get("/users/:id/reviews", async (req, res): Promise<void> => {
     listingId: r.reviews.listingId ?? null,
     rating: r.reviews.rating,
     comment: r.reviews.comment,
+    isVerifiedPurchase: r.reviews.isVerifiedPurchase,
     createdAt: r.reviews.createdAt.toISOString(),
   }));
   res.json(reviews);

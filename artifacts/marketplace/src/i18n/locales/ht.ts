@@ -664,6 +664,8 @@ export default {
     follow: "Swiv",
     unfollow: "Pa swiv ankò",
     memberSince: "Manm depi",
+    totalSales: "vant",
+    verifiedPurchase: "Achat Verifyé",
     noListings: "Pa gen lis",
     noReviews: "Pa gen evalyasyon",
     editProfile: "Modifye pwofil",

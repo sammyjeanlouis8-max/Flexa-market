@@ -48,14 +48,15 @@ function calcStrength(
   avatar: string,
   location: string,
   bio: string,
-  phoneVerified: boolean
+  phoneVerified: boolean,
+  country: string
 ): { level: StrengthLevel; score: number; total: number } {
-  const checks = [!!name?.trim(), !!avatar, !!location?.trim(), !!bio?.trim(), phoneVerified];
+  const checks = [!!name?.trim(), !!avatar, !!location?.trim(), !!bio?.trim(), phoneVerified, !!country?.trim()];
   const score = checks.filter(Boolean).length;
   const total = checks.length;
   let level: StrengthLevel = "incomplete";
-  if (phoneVerified && score >= 4) level = "verified";
-  else if (score >= 3) level = "good";
+  if (phoneVerified && score >= 5) level = "verified";
+  else if (score >= 4) level = "good";
   return { level, score, total };
 }
 
@@ -369,7 +370,7 @@ export default function EditProfile() {
   })();
   const countryLocked = countryDaysRemaining > 0;
 
-  const { level, score, total } = calcStrength(name, avatar ?? "", location, bio, !!user?.isPhoneVerified);
+  const { level, score, total } = calcStrength(name, avatar ?? "", location, bio, !!user?.isPhoneVerified, user?.country ?? "");
 
   const strengthMeta = {
     incomplete: { label: t("editProfile.incomplete"), colorClass: "text-orange-500", barClass: "bg-orange-400", bgClass: "bg-orange-100 dark:bg-orange-900/30", Icon: Sparkles },

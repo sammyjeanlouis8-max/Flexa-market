@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -11,6 +11,7 @@ export const reviewsTable = pgTable("reviews", {
   listingId: integer("listing_id").references(() => listingsTable.id),
   rating: integer("rating").notNull(),
   comment: text("comment").notNull(),
+  isVerifiedPurchase: boolean("is_verified_purchase").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   reviewsSellerIdx: index("reviews_seller_id_idx").on(t.sellerId),

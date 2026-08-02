@@ -1,7 +1,7 @@
 import { useRoute, useLocation, Link } from "wouter";
 import { useSEO } from "@/hooks/useSEO";
 import { useTranslation } from "react-i18next";
-import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe } from "lucide-react";
+import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe, Calendar, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -103,7 +103,19 @@ export default function ProfilePage() {
               <span><strong className="text-foreground">{p.listingCount}</strong> {t("profile.listings")}</span>
               <span><strong className="text-foreground">{p.followerCount}</strong> {t("profile.followers")}</span>
               <span><strong className="text-foreground">{p.followingCount}</strong> {t("profile.following")}</span>
+              {(p.totalSales ?? 0) > 0 && (
+                <span className="flex items-center gap-1">
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  <strong className="text-foreground">{p.totalSales}</strong> {t("profile.totalSales")}
+                </span>
+              )}
             </div>
+            {p.createdAt && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                <Calendar className="h-3 w-3 flex-shrink-0" />
+                {t("profile.memberSince")} {new Date(p.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short" })}
+              </div>
+            )}
 
             {/* Action buttons — below stats, never competes with name for width */}
             <div className="flex gap-2 mt-3 flex-wrap">
@@ -167,10 +179,17 @@ export default function ProfilePage() {
                       <Link href={`/profile/${r.reviewerId}`}>
                         <span className="font-semibold text-sm text-foreground hover:text-primary">{r.reviewerName}</span>
                       </Link>
-                      <div className="flex gap-0.5">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} className={`h-3 w-3 ${i < r.rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
-                        ))}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex gap-0.5">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className={`h-3 w-3 ${i < r.rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
+                          ))}
+                        </div>
+                        {r.isVerifiedPurchase && (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
+                            <CheckCircle className="h-3 w-3" /> {t("profile.verifiedPurchase")}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span className="text-xs text-muted-foreground ml-auto">{new Date(r.createdAt).toLocaleDateString()}</span>

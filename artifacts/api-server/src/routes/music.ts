@@ -354,6 +354,48 @@ router.get("/music/upload-signature", requireAuth, (req, res) => {
   });
 });
 
+// GET /api/music/:id/download — authenticated; paid tracks require a purchase record
+// ⚠️ Must be before /music/:id so Express doesn't swallow "download" as an id
+router.get("/music/:id/download", requireAuth, async (req: any, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId || isNaN(trackId)) return res.status(400).json({ error: "Invalid track id" });
+  try {
+    const [track] = await q<{
+      id: number; title: string; artist: string; audio_url: string | null;
+      storage_key: string | null; monetization_type: string; artist_user_id: number | null;
+    }>(`SELECT id, title, artist, audio_url, storage_key, monetization_type, artist_user_id
+        FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE LIMIT 1`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+
+    const isAdmin  = !!(req.user?.role === "admin" || req.user?.isAdmin || req.user?.isSuperAdmin);
+    const isArtist = track.artist_user_id === req.user.id;
+
+    // Paid tracks: require a purchase record (admins + the artist can always download)
+    if (track.monetization_type === "sale" && !isAdmin && !isArtist) {
+      const [purchase] = await q(
+        `SELECT id FROM music_purchases WHERE user_id = ${req.user.id} AND track_id = ${trackId} LIMIT 1`
+      );
+      if (!purchase) return res.status(403).json({ error: "PURCHASE_REQUIRED" });
+    }
+
+    // Bump download counter (best-effort — don't fail the request)
+    q(`UPDATE music_tracks SET download_count = COALESCE(download_count,0)+1 WHERE id = ${trackId}`).catch(() => {});
+
+    const safe = (s: string) => s.replace(/[/\\?%*:|"<>]/g, "-");
+    const filename = safe(`${track.title} - ${track.artist}.mp3`);
+
+    const key = (track.storage_key as string | null) ?? extractKey(track.audio_url as string);
+    const targetUrl = key ? await getStreamUrl(key) : (track.audio_url ?? null);
+    if (!targetUrl) return res.status(404).json({ error: "Audio file not available" });
+
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.redirect(302, targetUrl);
+  } catch (err: any) {
+    logger.error({ err: err?.message, trackId }, "[music] download error");
+    res.status(500).json({ error: err?.message });
+  }
+});
+
 // GET /api/music/:id
 router.get("/music/:id", async (req, res) => {
   try {

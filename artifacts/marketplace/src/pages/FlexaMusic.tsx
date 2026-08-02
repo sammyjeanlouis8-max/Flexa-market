@@ -119,7 +119,34 @@ async function logImpression(trackId: number, sec: number) {
 }
 
 // ── Download helper ────────────────────────────────────────────────────────────
+// Paid tracks always go through the secure backend endpoint (which checks
+// the music_purchases table).  Free tracks are fetched directly.
 async function downloadTrack(track: Track) {
+  const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+
+  if (track.monetization_type === "sale") {
+    // Secure download — server verifies purchase
+    try {
+      const res = await fetch(`/api/music/${track.id}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.status === 403) {
+        alert("Ou dwe achte chante sa anvan ou ka downloade li.");
+        return;
+      }
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement("a"), {
+        href: url, download: `${track.title} - ${track.artist}.mp3`,
+      });
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch { /* silent — download UI already shows "not purchased" */ }
+    return;
+  }
+
+  // Free track — direct blob download
   if (!track.audio_url) return;
   try {
     const res  = await fetch(track.audio_url);
@@ -160,11 +187,16 @@ function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; 
 // ══════════════════════════════════════════════════════════════════════════════
 // Bottom sheet "More" options
 // ══════════════════════════════════════════════════════════════════════════════
-function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit, onDelete }:
+function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit, onDelete, canDownload = true }:
   { track: Track; liked: boolean; onClose: () => void; onLike: () => void; onDownload: () => void;
-    isAdmin?: boolean; onEdit?: (t: Track) => void; onDelete?: (id: number) => void; }) {
+    isAdmin?: boolean; onEdit?: (t: Track) => void; onDelete?: (id: number) => void;
+    /** false when track is "sale" and user has not purchased it yet */
+    canDownload?: boolean; }) {
   const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const isPaidLocked = track.monetization_type === "sale" && !canDownload;
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -186,7 +218,9 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
         {/* Options */}
         {[
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
-          { icon: "⬇️", label: t("music.download"),    action: () => { onDownload(); onClose(); } },
+          isPaidLocked
+            ? { icon: "🔒", label: `Download bloke — achte pou $${(track.price_usd ?? 0).toFixed(2)} anvan`, action: onClose, locked: true }
+            : { icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } },
           { icon: "🔗", label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/music/play/${track.id}`;
             if (navigator.share) {
@@ -197,11 +231,12 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
             onClose();
           }},
           { icon: "🚩", label: t("music.reportTrack"), action: onClose },
-        ].map(({ icon, label, action }) => (
-          <button key={label} onClick={action}
-            className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/5 transition-colors">
+        ].map(({ icon, label, action, locked }: { icon: string; label: string; action: () => void; locked?: boolean }) => (
+          <button key={label} onClick={locked ? undefined : action}
+            disabled={!!locked}
+            className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${locked ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5"}`}>
             <span className="text-xl w-7 text-center">{icon}</span>
-            <span className="text-white text-sm font-medium">{label}</span>
+            <span className={`text-sm font-medium ${locked ? "text-white/40" : "text-white"}`}>{label}</span>
           </button>
         ))}
         {/* Admin-only actions */}
@@ -1147,8 +1182,9 @@ function UploadView({ onBack, onSuccess }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation, autoFocusSearch, onFocusHandled }:
+function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation, autoFocusSearch, onFocusHandled }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
+    purchasedIds: Set<number>;
     currentTrackId?: number; currentTrackPlaying?: boolean;
     onPlay: (t: Track, q: Track[], i: number) => void;
     onPlayList: (mix: Mix) => void;
@@ -1438,7 +1474,8 @@ function HomeView({ tracks, liked, user, isAdmin, currentTrackId, currentTrackPl
           liked={liked.has(moreTrack.id)}
           onClose={() => setMoreTrack(null)}
           onLike={() => onToggleLike(moreTrack.id)}
-          onDownload={() => {}}
+          onDownload={() => downloadTrack(moreTrack)}
+          canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
           onEdit={onEdit}
           onDelete={onDelete}
@@ -1819,9 +1856,10 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
-  playerState, liked, isAdmin, followedArtists, onBack, onSearchRequest, onPlay, onToggle, onToggleLike, onToggleFollow, onDownload, onShuffle, onNext, onPrev, onEdit, onDelete, onAdTap }:
+  playerState, liked, isAdmin, purchasedIds, followedArtists, onBack, onSearchRequest, onPlay, onToggle, onToggleLike, onToggleFollow, onDownload, onShuffle, onNext, onPrev, onEdit, onDelete, onAdTap }:
   { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
     playerState: PlayerState; liked: Set<number>; isAdmin: boolean;
+    purchasedIds: Set<number>;
     followedArtists: Set<number>;
     onBack: () => void; onSearchRequest: () => void; onPlay: (t: Track, idx: number) => void;
     onToggle: () => void; onToggleLike: (id: number) => void;
@@ -1895,10 +1933,21 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           initialLiked={isLiked}
           onToggle={onToggleLike}
         />
-        <button onClick={() => currentTrack && onDownload(currentTrack)}
-          className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
-          <Download size={18} className="text-white/60" />
-        </button>
+        {(() => {
+          const isPaidLocked = currentTrack?.monetization_type === "sale" && !purchasedIds.has(currentTrack?.id ?? -1);
+          return (
+            <button
+              onClick={() => currentTrack && (isPaidLocked ? undefined : onDownload(currentTrack))}
+              title={isPaidLocked ? "Achte chante sa pou ka downloade li" : "Download"}
+              className="w-10 h-10 flex items-center justify-center rounded-full relative"
+              style={{ background: "#1c1c1c", opacity: isPaidLocked ? 0.4 : 1 }}>
+              <Download size={18} className="text-white/60" />
+              {isPaidLocked && (
+                <span className="absolute -top-1 -right-1 text-[10px]">🔒</span>
+              )}
+            </button>
+          );
+        })()}
         <button onClick={() => setMoreTrack(currentTrack)}
           className="w-10 h-10 flex items-center justify-center rounded-full" style={{ background: "#1c1c1c" }}>
           <MoreHorizontal size={18} className="text-white/60" />
@@ -2028,6 +2077,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           onClose={() => setMoreTrack(null)}
           onLike={() => onToggleLike(moreTrack.id)}
           onDownload={() => onDownload(moreTrack)}
+          canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
           onEdit={onEdit}
           onDelete={onDelete}
@@ -2705,6 +2755,7 @@ export default function FlexaMusic() {
           liked={liked}
           user={user}
           isAdmin={isAdmin}
+          purchasedIds={purchasedIds}
           currentTrackId={playerState.track?.id}
           currentTrackPlaying={playerState.playing}
           onPlay={openTrack}
@@ -2727,6 +2778,7 @@ export default function FlexaMusic() {
           playerState={playerState}
           liked={liked}
           isAdmin={isAdmin}
+          purchasedIds={purchasedIds}
           followedArtists={followedArtists}
           onBack={() => setView("home")}
           onSearchRequest={() => { setView("home"); setFocusSearch(true); }}

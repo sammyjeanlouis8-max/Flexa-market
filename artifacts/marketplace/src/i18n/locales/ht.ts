@@ -4099,6 +4099,14 @@ export default {
     // GlobalMusicPlayer drag handle
     playerDragging: "Deplase",
     playerDraggingTip: "↕ deplase",
+    // SongPaywallView
+    paywallListens: "Ou te koute chante sa {{count}} fwa. Limit gratis la se {{limit}} koute. Achte li pou jwi li san limit.",
+    paywallPriceLabel: "Pri chante",
+    paywallArtistShare: "Artis touche ({{pct}}%)",
+    paywallFlexa: "Komisyon Flexa ({{pct}}%)",
+    paywallOr: "OU",
+    paywallProcessing: "Ap trete…",
+    paywallKartFM: "Peye ak Kart FM",
   },
   upload: {
     title: "Telechaje Mizik",

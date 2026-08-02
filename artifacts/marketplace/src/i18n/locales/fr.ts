@@ -4098,6 +4098,14 @@ export default {
     // GlobalMusicPlayer drag handle
     playerDragging: "Déplacer",
     playerDraggingTip: "↕ déplacer",
+    // SongPaywallView
+    paywallListens: "Vous avez écouté cette chanson {{count}} fois. Limite gratuite : {{limit}} écoutes. Achetez-la pour en profiter sans limite.",
+    paywallPriceLabel: "Prix de la chanson",
+    paywallArtistShare: "Part artiste ({{pct}}%)",
+    paywallFlexa: "Commission Flexa ({{pct}}%)",
+    paywallOr: "OU",
+    paywallProcessing: "En cours…",
+    paywallKartFM: "Payer avec Carte FM",
   },
   upload: {
     title: "Uploader de la Musique",

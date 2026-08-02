@@ -4063,6 +4063,14 @@ export default {
     // GlobalMusicPlayer drag handle
     playerDragging: "Move",
     playerDraggingTip: "↕ move",
+    // SongPaywallView
+    paywallListens: "You've listened to this song {{count}} time(s). Free limit: {{limit}} listens. Buy it to enjoy it unlimited.",
+    paywallPriceLabel: "Track price",
+    paywallArtistShare: "Artist earns ({{pct}}%)",
+    paywallFlexa: "Flexa fee ({{pct}}%)",
+    paywallOr: "OR",
+    paywallProcessing: "Processing…",
+    paywallKartFM: "Pay with FM Card",
   },
   upload: {
     title: "Upload Music",

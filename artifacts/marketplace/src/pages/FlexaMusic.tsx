@@ -729,9 +729,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
         <div className="rounded-2xl px-5 py-4 text-center max-w-xs"
           style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)" }}>
           <p className="text-sm leading-relaxed" style={{ color: "#c084fc" }}>
-            Ou te koute chante sa <strong>{playCount} fwa</strong>.
-            Limit gratis la se <strong>{FREE_PLAYS} koute</strong>. <br />
-            Achte li pou jwi li <strong>san limit</strong>.
+            {t("music.paywallListens", { count: playCount, limit: FREE_PLAYS })}
           </p>
         </div>
 
@@ -739,15 +737,15 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
         <div className="w-full max-w-xs rounded-2xl overflow-hidden"
           style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            <span className="text-sm text-white/60">Pri chante</span>
+            <span className="text-sm text-white/60">{t("music.paywallPriceLabel")}</span>
             <span className="font-bold">${price.toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            <span className="text-sm text-white/60">Artis touche ({100 - PLATFORM_PCT}%)</span>
+            <span className="text-sm text-white/60">{t("music.paywallArtistShare", { pct: 100 - PLATFORM_PCT })}</span>
             <span className="font-bold text-green-400">${(price * (100 - PLATFORM_PCT) / 100).toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-sm text-white/60">Komisyon Flexa ({PLATFORM_PCT}%)</span>
+            <span className="text-sm text-white/60">{t("music.paywallFlexa", { pct: PLATFORM_PCT })}</span>
             <span className="text-white/40 text-sm">${(price * PLATFORM_PCT / 100).toFixed(2)}</span>
           </div>
         </div>
@@ -775,7 +773,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
           {/* ── Divider ── */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-white/10" />
-            <span className="text-white/30 text-xs font-bold">OU</span>
+            <span className="text-white/30 text-xs font-bold">{t("music.paywallOr")}</span>
             <div className="flex-1 h-px bg-white/10" />
           </div>
 
@@ -785,9 +783,9 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
             style={{ background: "linear-gradient(135deg,#ea580c,#f97316)", color: "#fff",
                      boxShadow: "0 8px 24px rgba(234,88,12,0.35)" }}>
             {loadingWallet ? <Loader2 size={18} className="animate-spin" /> : "🟠"}
-            {loadingWallet ? "Ap trete…" : (
+            {loadingWallet ? t("music.paywallProcessing") : (
               <>
-                Peye ak Kart FM
+                {t("music.paywallKartFM")}
                 {walletBal !== null && (
                   <span className="ml-1 text-sm font-normal opacity-80">
                     (${walletBal.toFixed(2)})
@@ -2789,6 +2787,13 @@ export default function FlexaMusic() {
   const playNextRef = useRef<() => void>(() => {});
   const [showNowPlaying, setShowNowPlaying] = useState(false);
 
+  // Always-current refs — lets useCallback/effects read fresh values without
+  // adding purchasedIds/user to deps (avoids stale-closure paywall bypass).
+  const purchasedIdsRef = useRef<Set<number>>(purchasedIds);
+  const userRef         = useRef<any>(user);
+  useEffect(() => { purchasedIdsRef.current = purchasedIds; }, [purchasedIds]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
   // ── Register mount/unmount with global store ──────────────────────────────
   useEffect(() => {
     setFlexaMusicMounted(true);
@@ -2940,11 +2945,16 @@ export default function FlexaMusic() {
   useEffect(() => {
     const track = playerState.track;
     if (!track || track.monetization_type !== "sale") return;
-    if (purchasedIds.has(track.id)) return;
+    if (purchasedIdsRef.current.has(track.id)) return;
     if (!playerState.playing || playerState.currentTime < 30) return;
-    // Reached 30 seconds — pause and surface the paywall
+    // Reached 30 seconds — stop the impression timer (so it won't increment
+    // a second time), pause, and surface the paywall.
+    stopTimer();
+    const uid = userRef.current?.id;
+    const cnt = incrementPlayCount(uid, track.id);
     gAudio?.pause();
     setPaywallTrack(track);
+    setPaywallPlayCount(cnt);
     setView("paywall");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerState.currentTime, playerState.playing, playerState.track]);
@@ -2996,6 +3006,20 @@ export default function FlexaMusic() {
   const playTrack = useCallback((track: Track, newQueue?: Track[], idx?: number) => {
     const audio = audioRef.current;
     if (!audio) return;
+    // ── Paywall gate — blocks sale tracks from PlayerView skip/queue too ──────
+    const uid = userRef.current?.id;
+    if (
+      track.monetization_type === "sale" &&
+      !purchasedIdsRef.current.has(track.id) &&
+      !isPurchasedLocally(uid, track.id) &&
+      getPlayCount(uid, track.id) >= FREE_PLAYS
+    ) {
+      gAudio?.pause();
+      setPaywallTrack(track);
+      setPaywallPlayCount(getPlayCount(uid, track.id));
+      setView("paywall");
+      return;
+    }
     if (newQueue) { setQueue(newQueue); setQueueIdx(idx ?? 0); }
     stopTimer();
     audio.pause();

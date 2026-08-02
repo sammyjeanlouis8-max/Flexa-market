@@ -221,7 +221,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
         {[
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
           isPaidLocked
-            ? { icon: "🔒", label: t("music.downloadLocked", { price: (track.price_usd ?? 0).toFixed(2) }), action: onClose, locked: true }
+            ? { icon: "🔒", label: t("music.downloadLocked", { price: Number(track.price_usd ?? 0).toFixed(2) }), action: onClose, locked: true }
             : { icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } },
           { icon: "🔗", label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/music/play/${track.id}`;
@@ -780,9 +780,8 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 402) {
-          const needed = Number(data.required ?? 50);
           const has = Number(data.promoBalance ?? 0) + Number(data.realBalance ?? 0);
-          throw new Error(`Balans FM pa ase. Ou gen $${has.toFixed(2)} — ou bezwen $${needed.toFixed(2)}`);
+          throw new Error(t("music.artistPlanWalletLow", { bal: `$${has.toFixed(2)}` }));
         }
         throw new Error(data.error ?? "Erè");
       }
@@ -794,10 +793,10 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   const canPayWallet = walletBal !== null && walletBal >= 50;
 
   const perks = [
-    { icon: "🎵", title: "Telechaje chante san limit", desc: "Upload otank chante ou vle — pa gen plafon" },
-    { icon: "💰", title: "Touche revni sou mizik ou", desc: "Revni soti nan piblisite, klik sou pwodwi, ak acha" },
-    { icon: "📈", title: "Estatistik detaye", desc: "Wè konbyen moun ki koute, klik, ak revni ou chak jou" },
-    { icon: "🏆", title: "Peman mansyèl apre 500 abone", desc: "Rive 500 abone epi ou kòmanse touche chak mwa otomatikman" },
+    { icon: "🎵", title: t("music.artistPlanPerk1Title"), desc: t("music.artistPlanPerk1Desc") },
+    { icon: "💰", title: t("music.artistPlanPerk2Title"), desc: t("music.artistPlanPerk2Desc") },
+    { icon: "📈", title: t("music.artistPlanPerk3Title"), desc: t("music.artistPlanPerk3Desc") },
+    { icon: "🏆", title: t("music.artistPlanPerk4Title"), desc: t("music.artistPlanPerk4Desc") },
   ];
 
   return (
@@ -809,7 +808,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
           style={{ background: "#1a1a1a" }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
-        <p className="font-black text-base">Plan Artis</p>
+        <p className="font-black text-base">{t("music.artistPlanTitle")}</p>
       </div>
 
       <div className="px-4 py-6 flex flex-col gap-6 pb-28">
@@ -817,14 +816,13 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
         <div className="rounded-2xl p-6 text-center flex flex-col items-center gap-3"
           style={{ background: "linear-gradient(135deg,#7c3aed22,#c026d322)", border: "1px solid rgba(124,58,237,0.3)" }}>
           <div className="text-5xl">🎤</div>
-          <h1 className="font-black text-2xl">Pase nan Plan Artis</h1>
+          <h1 className="font-black text-2xl">{t("music.artistPlanHero")}</h1>
           <p className="text-sm text-white/60 leading-relaxed max-w-xs">
-            Ou gen <span className="text-white font-bold">{songCount} chante</span> deja. Plan gratis la pèmèt {songCount >= 2 ? "2 chante sèlman" : `${2 - songCount} chante anko`}.
-            Pou telechaje plis epi touche revni — akèt Plan Artis la.
+            {t("music.artistPlanDesc", { count: songCount })}
           </p>
           <div className="flex items-baseline gap-1 mt-2">
             <span className="text-4xl font-black" style={{ color: "#a855f7" }}>$50</span>
-            <span className="text-white/40 text-sm">/an</span>
+            <span className="text-white/40 text-sm">{t("music.artistPlanPriceUnit")}</span>
           </div>
         </div>
 
@@ -845,17 +843,17 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
         {/* Revenue model explainer */}
         <div className="rounded-xl p-4 flex flex-col gap-3"
           style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
-          <p className="font-bold text-sm" style={{ color: "#a855f7" }}>💡 Kijan ou touche lajan?</p>
+          <p className="font-bold text-sm" style={{ color: "#a855f7" }}>💡 {t("music.artistPlanRevTitle")}</p>
           <div className="flex flex-col gap-2 text-xs text-white/60 leading-relaxed">
-            <p>• <strong className="text-white/80">Piblisite</strong> — chak 1 000 koute valid = $1.00 (CPM)</p>
-            <p>• <strong className="text-white/80">Klik sou pwodwi</strong> — lè moun klike sou yon pwomoson ki jwe sou mizik ou</p>
-            <p>• <strong className="text-white/80">Acha</strong> — komisyon lè yon acha fèt sou pwodwi ki anba mizik ou</p>
+            <p>• {t("music.artistPlanRevAds")}</p>
+            <p>• {t("music.artistPlanRevClicks")}</p>
+            <p>• {t("music.artistPlanRevSales")}</p>
           </div>
           <div className="mt-1 rounded-lg p-3 flex items-center gap-3"
             style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.2)" }}>
             <span className="text-xl">🔓</span>
             <p className="text-xs leading-relaxed" style={{ color: "#c084fc" }}>
-              <strong>500 abone</strong> = peman otomatik chak mwa. Ou pa bezwen mande — sistem nan vire lajan dirèkteman nan bous ou.
+              {t("music.artistPlanRevAutoNote")}
             </p>
           </div>
         </div>
@@ -880,7 +878,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
                 <span className="text-xl">💳</span>
                 <div>
                   <p className="font-bold text-sm text-emerald-300">Flex Card (FM Wallet)</p>
-                  <p className="text-xs text-white/40">Peman imedya — pa gen redireksyon</p>
+                  <p className="text-xs text-white/40">{t("music.artistPlanPaymentNote")}</p>
                 </div>
               </div>
               {walletBal !== null && (
@@ -936,10 +934,11 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   );
 }
 
-function UploadView({ onBack, onSuccess, onPlanRequired }: {
+function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
   onBack: () => void;
   onSuccess: (track: Track) => void;
   onPlanRequired: (songCount: number) => void;
+  songCount?: number;
 }) {
   const { t } = useTranslation();
   const { start: startUpload } = useMusicUpload();
@@ -1024,6 +1023,17 @@ function UploadView({ onBack, onSuccess, onPlanRequired }: {
       </div>
 
       <form onSubmit={handleSubmit} className="px-4 py-5 flex flex-col gap-5 pb-28">
+
+        {/* ── Approaching free-limit warning (shown when 1 of 2 free slots used) ── */}
+        {songCount === 1 && (
+          <div className="flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.35)" }}>
+            <AlertCircle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-yellow-300 leading-relaxed">
+              {t("music.uploadLimitWarn", { count: 1 })}
+            </p>
+          </div>
+        )}
 
         {/* Cover picker */}
         <div className="flex justify-center">
@@ -2753,6 +2763,7 @@ export default function FlexaMusic() {
       });
       const data = await res.json();
       if (data.isArtistPlan || data.songCount < data.freeSongLimit) {
+        setArtistPlanSongCount(data.songCount); // passed to UploadView for warning banner
         setView("upload");
       } else {
         setArtistPlanSongCount(data.songCount);
@@ -3147,6 +3158,7 @@ export default function FlexaMusic() {
           onBack={() => setView("home")}
           onSuccess={handleUploadSuccess}
           onPlanRequired={(cnt) => { setArtistPlanSongCount(cnt); setView("artist-plan"); }}
+          songCount={artistPlanSongCount}
         />
       ) : view === "home" ? (
         <HomeView

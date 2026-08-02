@@ -87,6 +87,7 @@ const BROWSING_ROUTES: RegExp[] = [
   /^\/search/,
   /^\/listings\/[^/]+$/,
   /^\/saved$/,
+  /^\/music(\/|$)/,   // FlexaMusic — boost should appear here too
 ];
 
 interface BoostAdListing {

@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { Play, Pause, SkipBack, SkipForward, X, Volume2, VolumeX, GripHorizontal } from "lucide-react";
 import {
   getMusicState,
@@ -79,6 +80,7 @@ function savePos(x: number, y: number) {
 
 export default function GlobalMusicPlayer() {
   const [location] = useLocation();
+  const { t } = useTranslation();
   const [, forceUpdate] = useState(0);
 
   // ── Drag-to-reposition state ───────────────────────────────────────────────
@@ -277,7 +279,7 @@ export default function GlobalMusicPlayer() {
       >
         <GripHorizontal size={12} className="text-white/80" />
         {isDragging && (
-          <span className="text-[9px] font-black text-white tracking-widest uppercase">Deplase</span>
+          <span className="text-[9px] font-black text-white tracking-widest uppercase">{t("music.playerDragging")}</span>
         )}
       </div>
 
@@ -381,7 +383,7 @@ export default function GlobalMusicPlayer() {
               )}
               {isDragging && (
                 <span className="text-[9px] font-bold text-violet-300 animate-pulse">
-                  ↕ deplase
+                  {t("music.playerDraggingTip")}
                 </span>
               )}
             </div>

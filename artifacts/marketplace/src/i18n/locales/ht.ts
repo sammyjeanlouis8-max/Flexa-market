@@ -3975,7 +3975,7 @@ export default {
     comingSoon: "🎵 Plis fonksyon ap vini — streaming, upload mizik, live ak plis",
     addTrack: "Ajoute Mizik",
     earningsTitle: "Revni Mizik",
-    earningsSubtitle: "Revni reklam sou mizik ou yo",
+    earningsSubtitle: "Revni reklam + vant chante",
     musicEarningsBalance: "Balans Revni Mizik",
     walletBalance: "Balans Flexa Wallet",
     minWithdraw: "Minimòm retrè: {{amount}}",
@@ -4108,9 +4108,9 @@ export default {
     paywallProcessing: "Ap trete…",
     paywallKartFM: "Peye ak Kart FM",
     // Earnings — 500-subscriber monetisation gate
-    monetizeGateTitle: "500 abone pou kòmanse touche",
-    monetizeGateDesc: "Piblisite toujou pase epi enpresyon yo twouve. Lajan ou a pral kredite otomatikman lè ou rive {{goal}} abone. Ou bezwen {{need}} ankò.",
-    monetizedUnlocked: "✓ Monetize — enpresyon yo ap touche pou ou",
+    monetizeGateTitle: "500 abone pou touche revni piblisite",
+    monetizeGateDesc: "Piblisite toujou pase e enpresyon yo konte. Revni piblisite kòmanse a 500 abone. Vant chante touche imedyatman — pa gen minimòm abone. Ou bezwen {{need}} ankò.",
+    monetizedUnlocked: "✓ Monetize — enpresyon piblisite ap touche pou ou",
   },
   upload: {
     title: "Telechaje Mizik",

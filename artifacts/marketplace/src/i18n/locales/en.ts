@@ -3935,7 +3935,7 @@ export default {
     addTrack: "Add Music",
     // Earnings page
     earningsTitle: "Music Earnings",
-    earningsSubtitle: "Ad revenue from your tracks",
+    earningsSubtitle: "Ad revenue + song sales",
     musicEarningsBalance: "Music Earnings Balance",
     walletBalance: "Flexa Wallet Balance",
     minWithdraw: "Minimum withdrawal: {{amount}}",
@@ -4072,9 +4072,9 @@ export default {
     paywallProcessing: "Processing…",
     paywallKartFM: "Pay with FM Card",
     // Earnings — 500-subscriber monetisation gate
-    monetizeGateTitle: "500 subscribers to unlock earnings",
-    monetizeGateDesc: "Ads always play and impressions are tracked. Your earnings will be credited automatically once you reach {{goal}} subscribers. You need {{need}} more.",
-    monetizedUnlocked: "✓ Monetized — impressions are earning for you",
+    monetizeGateTitle: "500 subscribers to unlock ad earnings",
+    monetizeGateDesc: "Ads always play and impressions are tracked. Ad earnings credit automatically at 500 subscribers. Song sales earn immediately — no subscriber minimum. You need {{need}} more subscribers.",
+    monetizedUnlocked: "✓ Monetized — ad impressions are earning for you",
   },
   upload: {
     title: "Upload Music",

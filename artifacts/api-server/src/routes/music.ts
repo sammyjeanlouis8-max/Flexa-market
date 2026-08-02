@@ -43,7 +43,7 @@ const DEDUP_WINDOW_MS   = 30 * 60_000;   // 30 min per session+track
 const MAX_IP_IMPRESSIONS_PER_HOUR = 15;
 const HOUR_MS           = 3_600_000;
 const FLUSH_INTERVAL_MS = 60_000; // flush buffer every 60 s
-const MIN_WITHDRAW_USD  = 10.00;  // artist must have ≥ $10 to withdraw
+const MIN_WITHDRAW_USD  = 1.00;   // artist must have ≥ $1 to withdraw
 const FREE_SONG_LIMIT   = 2;      // free tier: max 2 songs per artist
 const ARTIST_PLAN_PRICE_CENTS = 5000; // $50.00 USD per year
 

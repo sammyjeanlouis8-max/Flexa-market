@@ -3974,7 +3974,7 @@ export default {
     comingSoon: "🎵 Plus de fonctionnalités à venir — streaming, upload, live et plus",
     addTrack: "Ajouter Musique",
     earningsTitle: "Revenus Musicaux",
-    earningsSubtitle: "Revenus publicitaires sur vos titres",
+    earningsSubtitle: "Revenus pub + ventes de chansons",
     musicEarningsBalance: "Solde Revenus Musicaux",
     walletBalance: "Solde Flexa Wallet",
     minWithdraw: "Retrait minimum : {{amount}}",
@@ -4107,9 +4107,9 @@ export default {
     paywallProcessing: "En cours…",
     paywallKartFM: "Payer avec Carte FM",
     // Earnings — 500-subscriber monetisation gate
-    monetizeGateTitle: "500 abonnés pour débloquer les gains",
-    monetizeGateDesc: "Les publicités passent toujours et les impressions sont comptées. Vos gains seront crédités automatiquement dès que vous atteindrez {{goal}} abonnés. Il vous en manque {{need}}.",
-    monetizedUnlocked: "✓ Monétisé — les impressions génèrent des revenus",
+    monetizeGateTitle: "500 abonnés pour débloquer les gains pub",
+    monetizeGateDesc: "Les pubs passent toujours et les impressions sont comptées. Les gains pub se créditent à 500 abonnés. Les ventes de chansons sont payées immédiatement — sans minimum d'abonnés. Il vous manque encore {{need}}.",
+    monetizedUnlocked: "✓ Monétisé — les impressions pub génèrent des revenus",
   },
   upload: {
     title: "Uploader de la Musique",

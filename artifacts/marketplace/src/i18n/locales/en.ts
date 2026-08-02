@@ -3960,6 +3960,15 @@ export default {
     linkCopied: "Link copied!",
     openInApp: "Open in Flexa",
     shareDiscover: "Discover music on Flexa Market",
+    // Charts & discovery
+    charts: "Top 10 This Week",
+    // Lyrics
+    lyricsTab: "Lyrics",
+    noLyrics: "No lyrics available for this track",
+    // 30s preview
+    previewBanner: "Free preview",
+    previewSecsLeft: "{{sec}}s left",
+    buyToListenFull: "Buy to hear full track",
   },
   upload: {
     title: "Upload Music",
@@ -4003,6 +4012,8 @@ export default {
     priceFlexa: "Flexa",
     priceFreePlays: "Listeners get 2 free plays before buying",
     errMinPrice: "Minimum sale price is $0.99",
+    lyrics: "Lyrics (optional)",
+    lyricsPlaceholder: "Enter song lyrics…",
   },
   uploadCtx: {
     done: "Upload successful! 🎵",

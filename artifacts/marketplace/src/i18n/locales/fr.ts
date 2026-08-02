@@ -3996,6 +3996,12 @@ export default {
     linkCopied: "Lien copié !",
     openInApp: "Ouvrir dans Flexa",
     shareDiscover: "Découvrez la musique sur Flexa Market",
+    charts: "Top 10 Cette Semaine",
+    lyricsTab: "Paroles",
+    noLyrics: "Pas de paroles disponibles pour ce titre",
+    previewBanner: "Aperçu gratuit",
+    previewSecsLeft: "{{sec}}s restant",
+    buyToListenFull: "Acheter pour écouter en entier",
   },
   upload: {
     title: "Uploader de la Musique",
@@ -4039,6 +4045,8 @@ export default {
     priceFlexa: "Flexa",
     priceFreePlays: "Les auditeurs ont 2 écoutes gratuites avant d'acheter",
     errMinPrice: "Le prix minimum est $0.99",
+    lyrics: "Paroles (optionnel)",
+    lyricsPlaceholder: "Saisissez les paroles…",
   },
   uploadCtx: {
     done: "Envoi réussi ! 🎵",

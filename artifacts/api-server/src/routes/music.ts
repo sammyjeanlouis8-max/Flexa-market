@@ -226,8 +226,9 @@ router.get("/music", async (req, res) => {
     const rows = await q(
       `SELECT id, title, artist, album, genre, cover_url, audio_url, storage_key,
               duration_seconds, type, monetization_type, price_usd,
-              is_featured, play_count, valid_impressions,
-              total_impressions, estimated_revenue_usd, artist_user_id, created_at
+              is_featured, play_count, valid_impressions, is_artist_verified,
+              total_impressions, estimated_revenue_usd, artist_user_id, created_at,
+              lyrics
        FROM music_tracks ${where}
        ORDER BY is_featured DESC, play_count DESC, created_at DESC
        LIMIT ${Math.min(Number(limit)||50, 200)} OFFSET ${Number(offset)||0}`
@@ -814,7 +815,7 @@ router.get("/music/upload-signature", requireAuth, (req, res) => {
 router.post("/music/register", requireAuth, async (req, res) => {
   const {
     title, artist, album, genre, type = "free",
-    audioPublicId, audioUrl, coverPublicId, coverUrl,
+    audioPublicId, audioUrl, coverPublicId, coverUrl, lyrics,
   } = req.body as Record<string, string | undefined>;
 
   if (!title?.trim())   return res.status(400).json({ error: "Title required" });
@@ -848,7 +849,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
     const [row] = await q(
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
-          type, monetization_type, price_usd,
+          type, monetization_type, price_usd, lyrics,
           is_active, is_featured, created_by, artist_user_id)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
@@ -856,6 +857,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
           ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
           ${nullOr("cld:" + audioPublicId)}, ${coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL"},
           ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
+          ${nullOr(lyrics?.trim() || null)},
           TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
@@ -922,7 +924,7 @@ router.post("/music/upload", requireAuth, upload.fields([
   }
 
   // ── Step 4: Validation ────────────────────────────────────────────────────
-  const { title, artist, album, genre, type = "free" } = req.body;
+  const { title, artist, album, genre, type = "free", lyrics } = req.body;
   if (!title?.trim())       return fail(4, "validation", new Error("Titre obligatwa"), 400);
   if (!artist?.trim())      return fail(4, "validation", new Error("Non atis obligatwa"), 400);
   if (!req.files?.audio?.[0]) return fail(4, "validation", new Error("Fichye odyo obligatwa — multipart field 'audio' manke"), 400);
@@ -971,13 +973,13 @@ router.post("/music/upload", requireAuth, upload.fields([
     const [row] = await q(
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
-          type, is_active, is_featured, created_by, artist_user_id)
+          type, lyrics, is_active, is_featured, created_by, artist_user_id)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioResult.url)}, ${nullOr(coverResult?.url || null)},
           ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
-          ${nullOr(type)}, TRUE, FALSE,
+          ${nullOr(type)}, ${nullOr(lyrics?.trim() || null)}, TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
@@ -1063,7 +1065,7 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
 
     const { title, artist, album, genre, duration_seconds, type, is_featured, is_active,
             audio_url, cover_url, artist_user_id,
-            license, monetization_type, price_usd, copyright_status, tags } = req.body;
+            license, monetization_type, price_usd, copyright_status, tags, lyrics } = req.body;
 
     let finalAudio  = audio_url  !== undefined ? audio_url  : existing.audio_url;
     let finalCover  = cover_url  !== undefined ? cover_url  : existing.cover_url;
@@ -1105,6 +1107,7 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
     if (price_usd !== undefined)        sets.push(`price_usd = ${nullOr(price_usd ? Number(price_usd) : null)}`);
     if (copyright_status !== undefined) sets.push(`copyright_status = ${nullOr(copyright_status)}`);
     if (tags !== undefined)             sets.push(`tags = ${nullOr(tags || null)}`);
+    if (lyrics !== undefined)           sets.push(`lyrics = ${nullOr(lyrics || null)}`);
     sets.push(`audio_url = ${nullOr(finalAudio)}`);
     sets.push(`cover_url = ${nullOr(finalCover)}`);
     sets.push(`storage_key = ${nullOr(newAudioKey)}`);

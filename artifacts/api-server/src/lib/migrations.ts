@@ -2043,6 +2043,7 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_tracks.download_count",    sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS download_count INTEGER NOT NULL DEFAULT 0" });
   migrations.push({ name: "music_tracks.tags",              sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS tags TEXT" });
   migrations.push({ name: "music_tracks.is_artist_verified",sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS is_artist_verified BOOLEAN NOT NULL DEFAULT FALSE" });
+  migrations.push({ name: "music_tracks.lyrics",            sql: "ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS lyrics TEXT" });
   migrations.push({
     name: "music_playlists.create",
     sql: `CREATE TABLE IF NOT EXISTS music_playlists (

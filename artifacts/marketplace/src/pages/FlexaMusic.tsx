@@ -31,12 +31,14 @@ type Track = {
   cover_url: string | null;
   duration_seconds: number | null;
   type: string;
-  monetization_type: string;   // "stream" | "sale"
-  price_usd: number | null;    // only set when monetization_type === "sale"
+  monetization_type: string;      // "stream" | "sale"
+  price_usd: number | null;       // only set when monetization_type === "sale"
   is_featured: boolean;
   play_count: number;
   valid_impressions: number;
   artist_user_id: number | null;
+  lyrics?: string | null;         // song lyrics (optional, added later)
+  is_artist_verified?: boolean;   // ✓ badge on track cards
 };
 
 type Mix = {
@@ -944,6 +946,7 @@ function UploadView({ onBack, onSuccess }: {
   const [genre,   setGenre]   = useState("");
   const [forSale, setForSale] = useState(false);
   const [priceUsd, setPriceUsd] = useState<number>(0.99);
+  const [lyrics,  setLyrics]  = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -988,6 +991,7 @@ function UploadView({ onBack, onSuccess }: {
         monetizationType:  forSale ? "sale" : "stream",
         priceUsd:          forSale ? priceUsd : undefined,
         coverPreview:      coverPreview ?? undefined,
+        lyrics:            lyrics.trim() || undefined,
       },
       (track) => onSuccess(track),
     );
@@ -1071,6 +1075,20 @@ function UploadView({ onBack, onSuccess }: {
               <option key={g} value={g}>{g}</option>
             ))}
           </select>
+        </div>
+
+        {/* Lyrics */}
+        <div>
+          <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">{t("upload.lyrics")}</label>
+          <textarea
+            value={lyrics}
+            onChange={e => setLyrics(e.target.value)}
+            onKeyDown={e => e.stopPropagation()}
+            placeholder={t("upload.lyricsPlaceholder")}
+            rows={5}
+            className={`${inp} resize-none`}
+            style={inpStyle}
+          />
         </div>
 
         {/* Audio file */}
@@ -1438,6 +1456,53 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             </div>
           </div>
 
+          {/* ── 🔥 Top 10 Cette Semaine ── */}
+          {tracks.filter(t => t.play_count > 0).length >= 3 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between px-4 mb-3">
+                <p className="text-white font-black text-base">🔥 {t("music.charts")}</p>
+              </div>
+              <div className="px-4">
+                {tracks
+                  .filter(t => t.play_count > 0)
+                  .slice(0, 10)
+                  .map((track, idx) => (
+                    <button key={track.id} onClick={() => onPlay(track, tracks, tracks.indexOf(track))}
+                      className="flex items-center gap-3 w-full py-2 px-1 rounded-xl active:bg-white/5 text-left">
+                      <span className="font-black text-sm tabular-nums w-5 text-center shrink-0"
+                        style={{ color: idx === 0 ? "#fbbf24" : idx === 1 ? "#9ca3af" : idx === 2 ? "#b45309" : "rgba(255,255,255,0.25)" }}>
+                        {idx + 1}
+                      </span>
+                      <div className="relative shrink-0">
+                        <CoverArt src={track.cover_url} title={track.title} size={42} radius={6} />
+                        {track.is_artist_verified && (
+                          <div className="absolute -bottom-1 -right-1 w-[14px] h-[14px] rounded-full bg-violet-600 flex items-center justify-center"
+                            style={{ border: "1.5px solid #0a0a0a" }}>
+                            <CheckCircle size={8} className="text-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-semibold truncate">{track.title}</p>
+                        <div className="flex items-center gap-1 text-[10px] text-white/40">
+                          <span className="truncate">{track.artist}</span>
+                          <span>·</span>
+                          <Play size={7} className="inline shrink-0" />
+                          <span>{fmtPlays(track.play_count)}</span>
+                        </div>
+                      </div>
+                      {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                        <span className="text-violet-300 text-xs font-bold shrink-0">${Number(track.price_usd).toFixed(2)}</span>
+                      )}
+                      {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                        <span className="text-emerald-400 text-[10px] font-bold shrink-0">✓</span>
+                      )}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
           {/* ── All tracks list ── */}
           <div className="px-4">
             <p className="text-white font-black text-base mb-3">{t("music.allSongs")}</p>
@@ -1456,9 +1521,27 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                             <NowPlayingBars playing={!!currentTrackPlaying} size="xs" />
                           </div>
                         )}
+                        {track.is_artist_verified && track.id !== currentTrackId && (
+                          <div className="absolute -bottom-1 -right-1 w-[14px] h-[14px] rounded-full bg-violet-600 flex items-center justify-center"
+                            style={{ border: "1.5px solid #0a0a0a" }}>
+                            <CheckCircle size={8} className="text-white" />
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-violet-400" : "text-white"}`}>{track.title}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-violet-400" : "text-white"}`}>{track.title}</p>
+                          {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                            <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                              style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                              ${Number(track.price_usd).toFixed(2)}
+                            </span>
+                          )}
+                          {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                            <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                              style={{ background: "rgba(34,197,94,0.15)", color: "#86efac" }}>✓</span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
                           <span>{track.artist}</span>
                           {track.play_count > 0 && <><span>·</span><Play size={8} className="inline" /><span>{fmtPlays(track.play_count)}</span></>}
@@ -2112,7 +2195,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 // ══════════════════════════════════════════════════════════════════════════════
 function NowPlayingModal({
   playerState, liked, onClose, onToggle, onPrev, onNext,
-  onToggleLike, onSeek, onShuffle, onMute,
+  onToggleLike, onSeek, onShuffle, onMute, isPaidPreview,
 }: {
   playerState: PlayerState;
   liked: Set<number>;
@@ -2124,14 +2207,17 @@ function NowPlayingModal({
   onSeek: (t: number) => void;
   onShuffle: () => void;
   onMute: () => void;
+  isPaidPreview?: boolean;
 }) {
   const { track, playing, currentTime, duration, muted } = playerState;
-  const pct     = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const timeLeft = Math.max(0, Math.floor(duration - currentTime));
+  const pct            = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const timeLeft       = Math.max(0, Math.floor(duration - currentTime));
+  const previewSecsLeft = isPaidPreview ? Math.max(0, 30 - Math.floor(currentTime)) : null;
   const seekRef  = useRef(false);
   const swipeStartY = useRef(0);
   const [slideY, setSlideY] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [lyricsOpen, setLyricsOpen] = useState(false);
 
   // Slide-in animation on mount
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
@@ -2215,9 +2301,14 @@ function NowPlayingModal({
         </div>
 
         {/* Track info + like */}
-        <div className="flex items-center gap-3 mb-5">
+        <div className="flex items-center gap-3 mb-3">
           <div className="flex-1 min-w-0">
-            <h2 className="text-white font-black text-[22px] leading-tight truncate">{track.title}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-white font-black text-[22px] leading-tight truncate">{track.title}</h2>
+              {track.is_artist_verified && (
+                <CheckCircle size={16} className="text-violet-400 fill-violet-400 shrink-0" />
+              )}
+            </div>
             <p className="text-white/55 text-sm truncate mt-0.5">{track.artist}</p>
           </div>
           <button
@@ -2227,6 +2318,25 @@ function NowPlayingModal({
             <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/50"} />
           </button>
         </div>
+
+        {/* ── 30s preview banner ───────────────────────────────────────────── */}
+        {isPaidPreview && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-4"
+            style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.25)" }}>
+            <span className="text-sm">🎧</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-violet-300 text-xs font-bold">Apèsi gratis</span>
+              {previewSecsLeft !== null && previewSecsLeft > 0 && (
+                <span className="text-white/40 text-xs ml-1.5">· {previewSecsLeft}s rete</span>
+              )}
+            </div>
+            {track.price_usd && (
+              <span className="text-violet-300 text-xs font-bold shrink-0">
+                ${Number(track.price_usd).toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ── Seekable progress bar ─────────────────────────────────────── */}
         <div className="mb-1">
@@ -2288,6 +2398,24 @@ function NowPlayingModal({
               : <><Volume2 size={16} className="text-white/70" /><span className="text-white/50 text-xs">Volume</span></>}
           </button>
         </div>
+
+        {/* ── Lyrics ────────────────────────────────────────────────────── */}
+        {track.lyrics ? (
+          <div className="mt-5">
+            <button
+              onClick={() => setLyricsOpen(o => !o)}
+              className="flex items-center gap-2 w-full py-2">
+              <span className="text-white/50 text-sm font-bold">🎵 Paròl</span>
+              <ChevronDown size={14} className={`text-white/30 transition-transform ${lyricsOpen ? "rotate-180" : ""}`} />
+            </button>
+            {lyricsOpen && (
+              <div className="mt-1 rounded-2xl px-4 py-3 max-h-52 overflow-y-auto"
+                style={{ background: "rgba(255,255,255,0.05)" }}>
+                <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{track.lyrics}</p>
+              </div>
+            )}
+          </div>
+        ) : null}
 
       </div>
     </div>
@@ -2511,6 +2639,19 @@ export default function FlexaMusic() {
     }, 250);
     return () => clearInterval(id);
   }, []);
+
+  // ── 30s preview gate — paid tracks that haven't been purchased stop at 30s ──
+  useEffect(() => {
+    const track = playerState.track;
+    if (!track || track.monetization_type !== "sale") return;
+    if (purchasedIds.has(track.id)) return;
+    if (!playerState.playing || playerState.currentTime < 30) return;
+    // Reached 30 seconds — pause and surface the paywall
+    gAudio?.pause();
+    setPaywallTrack(track);
+    setView("paywall");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerState.currentTime, playerState.playing, playerState.track]);
 
   // ── MediaSession ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2867,6 +3008,10 @@ export default function FlexaMusic() {
           onSeek={seek}
           onShuffle={shuffleQueue}
           onMute={toggleMute}
+          isPaidPreview={
+            playerState.track.monetization_type === "sale" &&
+            !purchasedIds.has(playerState.track.id)
+          }
         />
       )}
 

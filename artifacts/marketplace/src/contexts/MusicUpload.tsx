@@ -38,6 +38,7 @@ export interface UploadMeta {
   monetizationType?: string;  // "stream" | "sale"
   priceUsd?:         number;  // set when monetizationType === "sale"
   coverPreview?:     string;
+  lyrics?:           string;
 }
 
 interface MusicUploadCtx {
@@ -188,6 +189,7 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
           audioUrl:          audio.secureUrl,
           coverPublicId:     cover?.publicId ?? null,
           coverUrl:          cover?.secureUrl ?? null,
+          lyrics:            meta.lyrics ?? null,
         }),
       });
       if (!regRes.ok) {

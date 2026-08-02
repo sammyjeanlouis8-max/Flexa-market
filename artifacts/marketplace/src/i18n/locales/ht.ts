@@ -3999,6 +3999,12 @@ export default {
     linkCopied: "Lyen kopye!",
     openInApp: "Louvri nan Flexa",
     shareDiscover: "Dekouvri mizik sou Flexa Market",
+    charts: "Top 10 Semèn Sa",
+    lyricsTab: "Paròl",
+    noLyrics: "Pa gen paròl disponib pou chante sa",
+    previewBanner: "Apèsi gratis",
+    previewSecsLeft: "{{sec}}s rete",
+    buyToListenFull: "Achte pou koute nèt",
   },
   upload: {
     title: "Telechaje Mizik",
@@ -4042,6 +4048,8 @@ export default {
     priceFlexa: "Flexa",
     priceFreePlays: "Moun ka koute 2 fwa gratis anvan yo achte",
     errMinPrice: "Pri minimum pou vann se $0.99",
+    lyrics: "Paròl (opsyonèl)",
+    lyricsPlaceholder: "Ekri paròl chante a…",
   },
   uploadCtx: {
     done: "Telechajman reyisi! 🎵",

@@ -1160,8 +1160,15 @@ function UploadView({ onBack, onSuccess, onPlanRequired }: {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
                 <input
                   type="number" min="0.99" max="50" step="0.01"
-                  value={priceUsd}
-                  onChange={e => setPriceUsd(Math.max(0.99, Number(e.target.value)))}
+                  value={priceUsd || ""}
+                  onChange={e => {
+                    const v = e.target.valueAsNumber;
+                    setPriceUsd(isNaN(v) ? 0 : v);
+                  }}
+                  onBlur={e => {
+                    const v = e.target.valueAsNumber;
+                    if (isNaN(v) || v < 0.99) setPriceUsd(0.99);
+                  }}
                   className="w-full rounded-xl pl-7 pr-4 py-3 text-sm text-white outline-none border focus:border-purple-500 transition-colors"
                   style={{ background: "#0a0a0a", borderColor: "rgba(255,255,255,0.15)" }}
                   placeholder="0.99"

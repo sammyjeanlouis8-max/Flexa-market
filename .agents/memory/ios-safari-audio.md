@@ -22,6 +22,9 @@ description: Known iOS Safari bugs and required workarounds for <audio> playback
 
 **Why:** iOS Safari's autoplay restrictions and its lazy event dispatch differ substantially from Chrome/desktop. The `"play"` / `"playing"` distinction, the `load()` requirement after src swap, and the throttled `timeupdate` are the three most common sources of a "music audible but UI frozen" bug.
 
+6. **Keep `<audio ref={audioRef}>` in the main (non-loading) return, not only in the loading return.**
+   In a component with an early-return loading spinner, placing `<audio>` only in the loading path means it is unmounted as soon as `loading` becomes `false`. After that, `audioRef.current` is permanently `null` and every call to `playTrack` silently bails at `if (!audio) return` — no music, no mini player, no error. The element must appear in **both** returns (or use `style={{ display: "none" }}` in the main return alongside the spinner-path).
+
 **How to apply:** Every time `audio.src` is assigned a new value in `playTrack`, the sequence must be:
 ```
 audio.pause();

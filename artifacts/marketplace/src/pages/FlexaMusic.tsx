@@ -2017,6 +2017,9 @@ export default function FlexaMusic() {
 
   return (
     <>
+      {/* Hidden audio element — must be here (not just in the loading return) so
+          audioRef.current is never null once the page is interactive */}
+      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" style={{ display: "none" }} />
 
       {view === "upload" ? (
         <UploadView

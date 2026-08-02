@@ -189,8 +189,9 @@ function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; 
 // ══════════════════════════════════════════════════════════════════════════════
 // Bottom sheet "More" options
 // ══════════════════════════════════════════════════════════════════════════════
-function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit, onDelete, canDownload = true }:
+function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, onEdit, onDelete, canDownload = true }:
   { track: Track; liked: boolean; onClose: () => void; onLike: () => void; onDownload: () => void;
+    onBuy?: () => void;
     isAdmin?: boolean; onEdit?: (t: Track) => void; onDelete?: (id: number) => void;
     /** false when track is "sale" and user has not purchased it yet */
     canDownload?: boolean; }) {
@@ -217,12 +218,23 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
             <p className="text-white/50 text-xs truncate">{track.artist}</p>
           </div>
         </div>
+        {/* Buy CTA — shown only when track is locked */}
+        {isPaidLocked && (
+          <div className="px-5 py-3 border-b border-white/5">
+            <button
+              onClick={() => { onBuy?.(); onClose(); }}
+              className="w-full rounded-2xl py-3.5 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+              style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
+                       boxShadow: "0 6px 20px rgba(124,58,237,0.4)" }}>
+              <span>💳</span>
+              <span>{t("music.buyTrack", { price: Number(track.price_usd ?? 0).toFixed(2) })}</span>
+            </button>
+          </div>
+        )}
         {/* Options */}
         {[
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
-          isPaidLocked
-            ? { icon: "🔒", label: t("music.downloadLocked", { price: Number(track.price_usd ?? 0).toFixed(2) }), action: onClose, locked: true }
-            : { icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } },
+          ...(isPaidLocked ? [] : [{ icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
           { icon: "🔗", label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/music/play/${track.id}`;
             if (navigator.share) {
@@ -1222,7 +1234,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation, autoFocusSearch, onFocusHandled, searchLoading }:
+function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, onBuy, setLocation, autoFocusSearch, onFocusHandled, searchLoading }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
     purchasedIds: Set<number>;
     currentTrackId?: number; currentTrackPlaying?: boolean;
@@ -1233,6 +1245,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     onUpload: () => void;
     onEdit: (t: Track) => void;
     onDelete: (id: number) => void;
+    onBuy: (t: Track) => void;
     setLocation: (p: string) => void;
     autoFocusSearch?: boolean;
     onFocusHandled?: () => void;
@@ -1640,6 +1653,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           onClose={() => setMoreTrack(null)}
           onLike={() => onToggleLike(moreTrack.id)}
           onDownload={() => downloadTrack(moreTrack)}
+          onBuy={() => { setMoreTrack(null); onBuy(moreTrack); }}
           canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
           onEdit={onEdit}
@@ -2021,7 +2035,7 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
 // PLAYER VIEW (playlist/track detail)
 // ══════════════════════════════════════════════════════════════════════════════
 function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
-  playerState, liked, isAdmin, purchasedIds, followedArtists, onBack, onSearchRequest, onPlay, onToggle, onToggleLike, onToggleFollow, onDownload, onShuffle, onNext, onPrev, onEdit, onDelete, onAdTap }:
+  playerState, liked, isAdmin, purchasedIds, followedArtists, onBack, onSearchRequest, onPlay, onToggle, onToggleLike, onToggleFollow, onDownload, onShuffle, onNext, onPrev, onEdit, onDelete, onAdTap, onBuy }:
   { playlist: Track[]; playlistTitle: string; playlistCover: string | null; playlistGrad?: string;
     playerState: PlayerState; liked: Set<number>; isAdmin: boolean;
     purchasedIds: Set<number>;
@@ -2032,7 +2046,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
     onDownload: (t: Track) => void; onShuffle: () => void;
     onNext: () => void; onPrev: () => void;
     onEdit: (t: Track) => void; onDelete: (id: number) => void;
-    onAdTap: (id: number) => void; }) {
+    onAdTap: (id: number) => void; onBuy: (t: Track) => void; }) {
   const { user } = useAuth();
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
   const { t } = useTranslation();
@@ -2242,6 +2256,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           onClose={() => setMoreTrack(null)}
           onLike={() => onToggleLike(moreTrack.id)}
           onDownload={() => onDownload(moreTrack)}
+          onBuy={() => { setMoreTrack(null); onBuy(moreTrack); }}
           canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
           onEdit={onEdit}
@@ -3176,6 +3191,7 @@ export default function FlexaMusic() {
           onUpload={handleUploadClick}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onBuy={(t) => { setPaywallTrack(t); setPaywallPlayCount(0); setView("paywall"); }}
           setLocation={setLocation}
           autoFocusSearch={focusSearch}
           onFocusHandled={() => setFocusSearch(false)}
@@ -3205,6 +3221,7 @@ export default function FlexaMusic() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onAdTap={(id) => setLocation(`/listings/${id}`)}
+          onBuy={(t) => { setPaywallTrack(t); setPaywallPlayCount(0); setView("paywall"); }}
         />
       )}
 

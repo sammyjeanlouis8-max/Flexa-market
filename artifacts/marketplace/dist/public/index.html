@@ -268,11 +268,32 @@
         }
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-CGZVhaL-.js"></script>
+    <!-- ═══════════════════════ iOS SAFE-AREA BOOTSTRAP ═══════════════════════
+         React Native WebView returns env(safe-area-inset-top) = 0 for
+         position:fixed elements, so we detect the device in JS and set
+         --sat (safe-area-top) before React renders.
+         This runs synchronously so the first paint already has the right value.
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <script>
+      (function () {
+        var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+        var sat = 0;
+        if (isIOS) {
+          // screen.height in logical px (always portrait-native value)
+          // >= 812 → iPhone X and all later models (notch or Dynamic Island)
+          // Dynamic Island (iPhone 14 Pro+): ~59 px
+          // Notch (iPhone X–14 regular): ~47 px
+          // We use 59 for all modern iPhones — slightly generous but safe.
+          sat = window.screen.height >= 812 ? 59 : 20;
+        }
+        document.documentElement.style.setProperty('--sat', sat + 'px');
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-7vXeQWLd.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-D8rembIz.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-o1y1aNek.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-BGxBWBoV.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-CP8JhPrB.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-DrqDdgth.css">
   </head>
   <body>
     <!-- Skip navigation for accessibility / SEO -->

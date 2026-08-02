@@ -3962,6 +3962,10 @@ export default {
     shareDiscover: "Discover music on Flexa Market",
     // Charts & discovery
     charts: "Top 10 This Week",
+    albums: "Albums",
+    radio: "Radio",
+    radioOn: "Radio On",
+    artistTracks: "Tracks by {{name}}",
     // Lyrics
     lyricsTab: "Lyrics",
     noLyrics: "No lyrics available for this track",

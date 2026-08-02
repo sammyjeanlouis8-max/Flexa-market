@@ -12,7 +12,7 @@ import {
   Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
   Bell, MessageCircle, ChevronLeft, ChevronDown, Plus, Loader2, Globe,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
-  Pencil, Trash2, ShoppingBag, Send,
+  Pencil, Trash2, ShoppingBag, Send, Radio,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -60,7 +60,7 @@ type MusicComment = {
   user_is_verified: boolean;
 };
 
-type View = "home" | "player" | "upload" | "artist-plan" | "paywall";
+type View = "home" | "player" | "upload" | "artist-plan" | "paywall" | "artist";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const LIKED_KEY = "flexa_music_liked_v2";
@@ -1249,6 +1249,22 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     ];
   }, [tracks]);
 
+  /** Group tracks by their `album` field (1+ tracks) */
+  const albums = useMemo(() => {
+    const map = new Map<string, Track[]>();
+    tracks.forEach(t => {
+      const k = t.album?.trim();
+      if (!k) return;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(t);
+    });
+    return [...map.entries()].map(([name, ts]) => ({
+      name,
+      tracks: ts,
+      cover: ts[0]?.cover_url ?? null,
+    }));
+  }, [tracks]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (search.trim()) onSearch(search.trim());
@@ -1425,6 +1441,26 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
               ))}
             </div>
           </div>
+
+          {/* ── Albums ── */}
+          {albums.length >= 1 && (
+            <div className="mb-6">
+              <p className="text-white font-black text-base px-4 mb-3">💿 {t("music.albums")}</p>
+              <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
+                {albums.map(album => (
+                  <button key={album.name}
+                    onClick={() => { const first = album.tracks[0]; if (first) onPlay(first, album.tracks, 0); }}
+                    className="shrink-0 text-left active:scale-95 transition-transform" style={{ width: 140 }}>
+                    <CoverArt src={album.cover} title={album.name} size={140} radius={12} />
+                    <p className="text-white text-xs font-bold truncate mt-1.5">{album.name}</p>
+                    <p className="text-white/40 text-[10px] truncate">
+                      {album.tracks[0]?.artist} · {album.tracks.length} tit
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Mixé pour [User] ── */}
           <div className="mb-6">
@@ -2191,11 +2227,124 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ARTIST PROFILE VIEW
+// ══════════════════════════════════════════════════════════════════════════════
+function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, currentTrackPlaying,
+  followedArtists, onBack, onPlay, onToggleLike, onToggleFollow }: {
+  artistName: string;
+  tracks: Track[];
+  liked: Set<number>;
+  purchasedIds: Set<number>;
+  currentTrackId?: number;
+  currentTrackPlaying?: boolean;
+  followedArtists: Set<number>;
+  onBack: () => void;
+  onPlay: (t: Track, q: Track[], i: number) => void;
+  onToggleLike: (id: number) => void;
+  onToggleFollow: (artistId: number, follow: boolean) => void;
+}) {
+  const artistTracks = useMemo(() => tracks.filter(t => t.artist === artistName), [tracks, artistName]);
+  const artistUserId = artistTracks.find(t => t.artist_user_id)?.artist_user_id ?? null;
+  const isFollowed   = artistUserId ? followedArtists.has(artistUserId) : false;
+  const totalPlays   = artistTracks.reduce((s, t) => s + (t.play_count ?? 0), 0);
+
+  return (
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 pt-14 pb-3">
+        <button onClick={onBack}
+          className="w-10 h-10 flex items-center justify-center rounded-full shrink-0"
+          style={{ background: "rgba(255,255,255,0.08)" }}>
+          <ChevronLeft size={20} className="text-white" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-white font-black text-xl truncate">{artistName}</h1>
+          <p className="text-white/40 text-xs">{artistTracks.length} chante · {fmtPlays(totalPlays)} koute</p>
+        </div>
+        {artistUserId && (
+          <button
+            onClick={() => onToggleFollow(artistUserId, !isFollowed)}
+            className="shrink-0 px-4 py-2 rounded-full text-xs font-bold active:scale-95 transition-all"
+            style={{ background: isFollowed ? "rgba(124,58,237,0.25)" : "rgba(124,58,237,0.85)", color: "#fff" }}>
+            {isFollowed ? "✓ Swivi" : "+ Swiv"}
+          </button>
+        )}
+      </div>
+
+      {/* Verified artist badge */}
+      {artistTracks.some(t => t.is_artist_verified) && (
+        <div className="flex items-center gap-2 px-4 py-2 mx-4 mb-4 rounded-xl"
+          style={{ background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.2)" }}>
+          <CheckCircle size={14} className="text-violet-400 shrink-0" />
+          <span className="text-violet-300 text-xs font-bold">Atis Verifye ✓</span>
+        </div>
+      )}
+
+      {/* Track list */}
+      <div className="px-4">
+        <p className="text-white/40 text-[10px] font-bold uppercase tracking-wider mb-3 px-1">Tout chante yo</p>
+        <div className="space-y-0">
+          {artistTracks.map((track, idx) => {
+            const isLiked  = liked.has(track.id);
+            const isActive = track.id === currentTrackId;
+            return (
+              <div key={track.id} className="flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5">
+                <button onClick={() => onPlay(track, artistTracks, idx)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                  <div className="relative shrink-0">
+                    <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
+                    {isActive && (
+                      <div className="absolute inset-0 rounded-[6px] flex items-end justify-center pb-1"
+                        style={{ background: "rgba(0,0,0,0.45)" }}>
+                        <NowPlayingBars playing={!!currentTrackPlaying} size="xs" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-sm font-semibold truncate ${isActive ? "text-violet-400" : "text-white"}`}>{track.title}</p>
+                      {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                        <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                          ${Number(track.price_usd).toFixed(2)}
+                        </span>
+                      )}
+                      {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                        <span className="shrink-0 text-[9px] font-bold text-emerald-400">✓</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      {track.genre && <span className="truncate">{track.genre}</span>}
+                      {track.play_count > 0 && <><span>·</span><Play size={7} className="inline shrink-0" /><span>{fmtPlays(track.play_count)}</span></>}
+                      {track.duration_seconds && <><span>·</span><span>{fmtDur(track.duration_seconds)}</span></>}
+                    </div>
+                  </div>
+                </button>
+                <button onClick={() => onToggleLike(track.id)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                  <Heart size={15} className={isLiked ? "text-red-400 fill-red-400" : "text-white/25"} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Deterministic waveform bar height (20–100%) ────────────────────────────────
+function waveBarH(trackId: number, i: number) {
+  return 20 + 80 * Math.abs(Math.sin((trackId * 17 + i * 37) * 0.12));
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // FULL-SCREEN NOW-PLAYING MODAL  (Spotify-style slide-up)
 // ══════════════════════════════════════════════════════════════════════════════
 function NowPlayingModal({
   playerState, liked, onClose, onToggle, onPrev, onNext,
   onToggleLike, onSeek, onShuffle, onMute, isPaidPreview,
+  radioMode, onToggleRadio, onArtistClick,
 }: {
   playerState: PlayerState;
   liked: Set<number>;
@@ -2208,6 +2357,9 @@ function NowPlayingModal({
   onShuffle: () => void;
   onMute: () => void;
   isPaidPreview?: boolean;
+  radioMode: boolean;
+  onToggleRadio: () => void;
+  onArtistClick: (name: string) => void;
 }) {
   const { track, playing, currentTime, duration, muted } = playerState;
   const pct            = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -2309,7 +2461,11 @@ function NowPlayingModal({
                 <CheckCircle size={16} className="text-violet-400 fill-violet-400 shrink-0" />
               )}
             </div>
-            <p className="text-white/55 text-sm truncate mt-0.5">{track.artist}</p>
+            <button
+              onClick={() => { onClose(); onArtistClick(track.artist); }}
+              className="text-white/55 text-sm truncate mt-0.5 text-left hover:text-white/80 transition-colors active:opacity-70">
+              {track.artist}
+            </button>
           </div>
           <button
             onClick={() => onToggleLike(track.id)}
@@ -2338,28 +2494,36 @@ function NowPlayingModal({
           </div>
         )}
 
-        {/* ── Seekable progress bar ─────────────────────────────────────── */}
+        {/* ── Waveform — seekable ───────────────────────────────────────── */}
         <div className="mb-1">
           <div
-            className="h-10 flex items-center relative cursor-pointer"
-            style={{ touchAction: "none" }}
+            className="relative flex items-end gap-[2px] cursor-pointer"
+            style={{ touchAction: "none", height: 52 }}
             onClick={e  => seekFromX(e.clientX, e.currentTarget)}
             onTouchStart={e => { seekRef.current = true; seekFromX(e.touches[0].clientX, e.currentTarget); e.stopPropagation(); }}
             onTouchMove={e  => { if (!seekRef.current) return; e.preventDefault(); e.stopPropagation(); seekFromX(e.touches[0].clientX, e.currentTarget); }}
             onTouchEnd={()  => { seekRef.current = false; }}
           >
-            {/* Track */}
-            <div className="absolute left-0 right-0 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.18)" }} />
-            {/* Fill */}
-            <div className="absolute left-0 h-1 rounded-full"
-              style={{ width: `${pct}%`, background: "#fff" }} />
-            {/* Thumb */}
-            <div className="absolute w-[18px] h-[18px] rounded-full bg-white -translate-x-1/2 active:scale-125 transition-transform"
-              style={{ left: `${pct}%`, boxShadow: "0 2px 8px rgba(0,0,0,0.5)" }} />
+            {Array.from({ length: 50 }, (_, i) => {
+              const h = waveBarH(track.id, i);
+              const isPast = (i / 50) < (pct / 100);
+              return (
+                <div key={i} className="flex-1 rounded-[2px]"
+                  style={{
+                    height: `${h}%`,
+                    background: isPast ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.18)",
+                    transition: "background 60ms",
+                  }} />
+              );
+            })}
+            {/* Playhead line */}
+            <div className="absolute inset-y-0 w-[2px] pointer-events-none rounded-full"
+              style={{ left: `calc(${pct}% - 1px)`,
+                       background: "rgba(255,255,255,0.9)",
+                       boxShadow: "0 0 6px rgba(255,255,255,0.6)" }} />
           </div>
-
           {/* Time labels */}
-          <div className="flex justify-between px-0.5 -mt-1">
+          <div className="flex justify-between px-0.5 mt-1">
             <span className="text-white/45 text-[11px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
             <span className="text-white/45 text-[11px] font-mono tabular-nums">-{fmtDur(timeLeft)}</span>
           </div>
@@ -2388,14 +2552,28 @@ function NowPlayingModal({
           </button>
         </div>
 
-        {/* Volume + spacer */}
-        <div className="flex items-center justify-center mt-5">
+        {/* ── Secondary controls: shuffle · mute · radio ─────────────── */}
+        <div className="flex items-center justify-center gap-3 mt-5">
+          <button onClick={onShuffle}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:bg-white/10 transition-all"
+            style={{ background: "rgba(255,255,255,0.08)" }}>
+            <Shuffle size={14} className="text-white/50" />
+            <span className="text-white/40 text-xs">Mix</span>
+          </button>
           <button onClick={onMute}
-            className="flex items-center gap-2 px-5 py-2 rounded-full active:bg-white/10"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:bg-white/10 transition-all"
             style={{ background: "rgba(255,255,255,0.08)" }}>
             {muted
-              ? <><VolumeX size={16} className="text-white/50" /><span className="text-white/40 text-xs">Mute</span></>
-              : <><Volume2 size={16} className="text-white/70" /><span className="text-white/50 text-xs">Volume</span></>}
+              ? <><VolumeX size={14} className="text-white/50" /><span className="text-white/40 text-xs">Mute</span></>
+              : <><Volume2 size={14} className="text-white/70" /><span className="text-white/50 text-xs">Son</span></>}
+          </button>
+          <button onClick={onToggleRadio}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:scale-95 transition-all"
+            style={{ background: radioMode ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.08)" }}>
+            <Radio size={14} className={radioMode ? "text-violet-400" : "text-white/50"} />
+            <span className={`text-xs font-semibold ${radioMode ? "text-violet-400" : "text-white/40"}`}>
+              Radio
+            </span>
           </button>
         </div>
 
@@ -2480,6 +2658,8 @@ export default function FlexaMusic() {
 
   // ── View state ────────────────────────────────────────────────────────────
   const [view, setView]             = useState<View>("home");
+  const [artistViewName, setArtistViewName] = useState<string | null>(null);
+  const [radioMode, setRadioMode]   = useState(true); // auto-play similar genre when queue ends
   const [artistPlanSongCount, setArtistPlanSongCount] = useState(0);
   const [paywallTrack, setPaywallTrack]   = useState<Track | null>(null);
   const [paywallPlayCount, setPaywallPlayCount] = useState(0);
@@ -2738,9 +2918,9 @@ export default function FlexaMusic() {
       return;
     }
 
-    // ── Queue exhausted (or empty): auto-play from same genre ─────────────────
+    // ── Queue exhausted (or empty): auto-play from same genre (only in radio mode)
     const cur = playerState.track;
-    if (!cur || !tracks.length) return;
+    if (!cur || !tracks.length || !radioMode) return;
 
     // Build same-genre pool (exclude the just-played track)
     const genre = cur.genre ?? "";
@@ -2904,6 +3084,20 @@ export default function FlexaMusic() {
         <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
+      ) : view === "artist" && artistViewName ? (
+        <ArtistView
+          artistName={artistViewName}
+          tracks={tracks}
+          liked={liked}
+          purchasedIds={purchasedIds}
+          currentTrackId={playerState.track?.id}
+          currentTrackPlaying={playerState.playing}
+          followedArtists={followedArtists}
+          onBack={() => setView("home")}
+          onPlay={openTrack}
+          onToggleLike={toggleLike}
+          onToggleFollow={toggleFollow}
+        />
       ) : view === "paywall" && paywallTrack ? (
         <SongPaywallView
           track={paywallTrack}
@@ -3012,6 +3206,13 @@ export default function FlexaMusic() {
             playerState.track.monetization_type === "sale" &&
             !purchasedIds.has(playerState.track.id)
           }
+          radioMode={radioMode}
+          onToggleRadio={() => setRadioMode(r => !r)}
+          onArtistClick={(name) => {
+            setShowNowPlaying(false);
+            setArtistViewName(name);
+            setView("artist");
+          }}
         />
       )}
 

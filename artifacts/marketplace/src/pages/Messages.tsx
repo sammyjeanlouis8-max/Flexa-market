@@ -1340,9 +1340,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   }, [convId, queryClient]);
 
   return (
-    {/* height/top/bottom are controlled entirely by the .chat-fullscreen CSS
-        class (with env(safe-area-inset-*)) — no inline height override */}
     <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
+      {/* height/top/bottom are controlled entirely by the .chat-fullscreen CSS
+          class (with env(safe-area-inset-*)) — no inline height override */}
 
       {/* ── Thread header ──
           paddingTop = safe-area-inset-top (Dynamic Island / notch) + 8px design gap.

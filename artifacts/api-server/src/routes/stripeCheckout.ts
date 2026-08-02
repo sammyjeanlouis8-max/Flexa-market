@@ -687,8 +687,8 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       // Credit 80% to artist's music_earnings
       if (artistId) {
         await db.execute(sql`
-          INSERT INTO music_earnings (artist_id, track_id, amount_usd, impressions_credited, milestone, description, is_paid_out)
-          VALUES (${artistId}, ${trackId}, ${artistAmount}, 0, 'purchase', 'Vann chante — 80% komisyon', FALSE)
+          INSERT INTO music_earnings (artist_id, track_id, amount_usd, impressions_credited, milestone, description)
+          VALUES (${artistId}, ${trackId}, ${artistAmount}, 0, 'purchase', 'Vann chante — 80% komisyon')
         `);
         // Notify artist
         await db.insert(notificationsTable).values({

@@ -2002,26 +2002,19 @@ export default function FlexaMusic() {
     setTimeout(() => openTrack(track, updated, 0), 120);
   };
 
-  // ── Loading spinner — keep <audio> in the DOM so the [] event-listener
-  //    effect always finds audioRef.current populated.
-  if (loading) {
-    return (
-      <>
-        <audio ref={audioRef} preload="metadata" />
+  // Single return — <audio> is ALWAYS the first child so audioRef.current is
+  // populated from the very first render and is never null, regardless of the
+  // loading / view state. Two separate early-returns each with their own <audio>
+  // caused a brief null window during the loading→ready transition.
+  return (
+    <>
+      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" style={{ display: "none" }} />
+
+      {loading ? (
         <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
-      </>
-    );
-  }
-
-  return (
-    <>
-      {/* Hidden audio element — must be here (not just in the loading return) so
-          audioRef.current is never null once the page is interactive */}
-      <audio ref={audioRef} preload="metadata" crossOrigin="anonymous" style={{ display: "none" }} />
-
-      {view === "upload" ? (
+      ) : view === "upload" ? (
         <UploadView
           onBack={() => setView("home")}
           onSuccess={handleUploadSuccess}

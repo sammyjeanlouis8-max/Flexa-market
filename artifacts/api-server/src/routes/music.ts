@@ -360,7 +360,7 @@ router.post("/music/:id/buy/wallet", requireAuth, async (req: any, res) => {
     const artistId     = track.artist_user_id;
 
     // Record purchase (idempotent — wallet was already charged above)
-    await db.execute(sql`
+    await db.execute(dsql`
       INSERT INTO music_purchases (user_id, track_id, amount_usd, artist_amount_usd, platform_fee_usd)
       VALUES (${buyerId}, ${trackId}, ${price}, ${artistAmount}, ${platformFee})
       ON CONFLICT (user_id, track_id) DO NOTHING
@@ -368,7 +368,7 @@ router.post("/music/:id/buy/wallet", requireAuth, async (req: any, res) => {
 
     // Credit artist 80% into music_earnings
     if (artistId) {
-      await db.execute(sql`
+      await db.execute(dsql`
         INSERT INTO music_earnings (artist_id, track_id, amount_usd, impressions_credited, milestone, description, is_paid_out)
         VALUES (${artistId}, ${trackId}, ${artistAmount}, 0, 'purchase', 'Vann chante — 80% komisyon (Kart FM)', FALSE)
       `);

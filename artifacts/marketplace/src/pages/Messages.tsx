@@ -1379,11 +1379,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         <button
           type="button"
           onClick={() => window.history.back()}
+          onTouchEnd={e => { e.preventDefault(); window.history.back(); }}
           style={{
-            width: 38, height: 38, borderRadius: "50%", background: "none",
+            width: 44, height: 44, borderRadius: "50%", background: "none",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
             color: c.iconColor, cursor: "pointer", flexShrink: 0,
-          }}
+            touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+            userSelect: "none",
+          } as React.CSSProperties}
         >
           <ArrowLeft style={{ width: 22, height: 22 }} />
         </button>
@@ -1803,15 +1806,20 @@ export default function Messages() {
           display: "flex", alignItems: "center", gap: 6,
         }}>
           {/* Back button → home */}
-          <Link href="/">
-            <button type="button" style={{
-              width: 36, height: 36, borderRadius: "50%", background: "none",
+          <button
+            type="button"
+            onClick={() => window.location.href = "/"}
+            onTouchEnd={e => { e.preventDefault(); window.location.href = "/"; }}
+            style={{
+              width: 44, height: 44, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
               color: c.iconColor, cursor: "pointer", flexShrink: 0,
-            }}>
-              <ArrowLeft style={{ width: 20, height: 20 }} />
-            </button>
-          </Link>
+              touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+              userSelect: "none",
+            } as React.CSSProperties}
+          >
+            <ArrowLeft style={{ width: 20, height: 20 }} />
+          </button>
           <h1 style={{ fontWeight: 700, color: c.nameColor, fontSize: 18, margin: 0, flex: 1 }}>
             {t("messages.title")}
           </h1>

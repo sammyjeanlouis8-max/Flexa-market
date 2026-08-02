@@ -1209,7 +1209,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation, autoFocusSearch, onFocusHandled }:
+function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, setLocation, autoFocusSearch, onFocusHandled, searchLoading }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
     purchasedIds: Set<number>;
     currentTrackId?: number; currentTrackPlaying?: boolean;
@@ -1222,7 +1222,8 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     onDelete: (id: number) => void;
     setLocation: (p: string) => void;
     autoFocusSearch?: boolean;
-    onFocusHandled?: () => void; }) {
+    onFocusHandled?: () => void;
+    searchLoading?: boolean; }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -1343,10 +1344,13 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
       {search.trim() ? (
         /* ── Search results ── */
         <div className="px-4">
-          <p className="text-white/40 text-xs mb-3 px-1">
-            {tracks.length} chante pou &ldquo;{search}&rdquo;
+          <p className="text-white/40 text-xs mb-3 px-1 flex items-center gap-2">
+            {searchLoading
+              ? <Loader2 size={12} className="animate-spin text-violet-400 shrink-0" />
+              : null}
+            {searchLoading ? "Ap chèche…" : `${tracks.length} chante pou \u201c${search}\u201d`}
           </p>
-          {tracks.length === 0 ? (
+          {!searchLoading && tracks.length === 0 ? (
             <div className="flex flex-col items-center py-16 gap-3">
               <Music2 size={40} className="text-white/10" />
               <p className="text-white/30 text-sm">Pa gen rezilta</p>
@@ -2618,8 +2622,9 @@ export default function FlexaMusic() {
   const [, setLocation] = useLocation();
 
   // ── Data ──────────────────────────────────────────────────────────────────
-  const [tracks,  setTracks]  = useState<Track[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tracks,       setTracks]       = useState<Track[]>([]);
+  const [loading,      setLoading]      = useState(true);  // initial page load only
+  const [searchLoading, setSearchLoading] = useState(false); // search refetch — never unmounts HomeView
   const [filterQ, setFilterQ] = useState("");
 
   // ── Likes ─────────────────────────────────────────────────────────────────
@@ -2758,7 +2763,10 @@ export default function FlexaMusic() {
   // ── Fetch ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
-      setLoading(true);
+      // Initial load → full-page spinner (HomeView not yet mounted).
+      // Search refetch → subtle in-results spinner only; never unmount HomeView.
+      if (filterQ) setSearchLoading(true);
+      else          setLoading(true);
       try {
         const p = new URLSearchParams();
         if (filterQ) p.set("search", filterQ);
@@ -2766,7 +2774,7 @@ export default function FlexaMusic() {
         const data = await res.json();
         setTracks(data.tracks ?? []);
       } catch { setTracks([]); }
-      finally { setLoading(false); }
+      finally { setLoading(false); setSearchLoading(false); }
     })();
   }, [filterQ]);
 
@@ -3149,6 +3157,7 @@ export default function FlexaMusic() {
           setLocation={setLocation}
           autoFocusSearch={focusSearch}
           onFocusHandled={() => setFocusSearch(false)}
+          searchLoading={searchLoading}
         />
       ) : (
         <PlayerView

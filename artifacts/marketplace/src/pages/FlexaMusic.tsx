@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
-import { gAudio, patchMusicState, setFlexaMusicMounted } from "@/lib/musicStore";
+import { gAudio, patchMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicSeek } from "@/lib/musicStore";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -290,6 +290,7 @@ function EditTrackModal({ track, onClose, onSaved }:
   const [saving,    setSaving]    = useState(false);
   const [errMsg,    setErrMsg]    = useState<string | null>(null);
   const coverRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation();
 
   const onPickCover = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -299,7 +300,7 @@ function EditTrackModal({ track, onClose, onSaved }:
   };
 
   const save = async () => {
-    if (!title.trim()) { setErrMsg("Tit obligatwa"); return; }
+    if (!title.trim()) { setErrMsg(t("upload.errTitle")); return; }
     setSaving(true);
     setErrMsg(null);
     try {
@@ -380,10 +381,10 @@ function EditTrackModal({ track, onClose, onSaved }:
             </div>
           </button>
           <div className="flex-1 min-w-0">
-            <p className="text-white/60 text-xs font-semibold">Thumbnail / Cover</p>
+            <p className="text-white/60 text-xs font-semibold">{t("upload.coverImage")}</p>
             <button type="button" onClick={() => coverRef.current?.click()}
               className="text-violet-400 text-xs font-bold mt-0.5">
-              {coverPreview ? "Chanje foto" : "Ajoute foto"}
+              {coverPreview ? t("upload.changeCover") : t("upload.addCoverPhoto")}
             </button>
           </div>
           <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={onPickCover} />
@@ -391,13 +392,13 @@ function EditTrackModal({ track, onClose, onSaved }:
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-white/40 mb-1 block">Tit</label>
+            <label className="text-xs text-white/40 mb-1 block">{t("upload.trackTitle")}</label>
             <input value={title} onChange={e => setTitle(e.target.value)}
               className="w-full bg-white/5 text-white text-sm rounded-xl px-3 py-2.5 outline-none border border-white/10 focus:border-violet-500"
             />
           </div>
           <div>
-            <label className="text-xs text-white/40 mb-1 block">Atis</label>
+            <label className="text-xs text-white/40 mb-1 block">{t("upload.artistName")}</label>
             <input value={artist} onChange={e => setArtist(e.target.value)}
               className="w-full bg-white/5 text-white text-sm rounded-xl px-3 py-2.5 outline-none border border-white/10 focus:border-violet-500"
             />
@@ -415,7 +416,7 @@ function EditTrackModal({ track, onClose, onSaved }:
         <button disabled={saving || !title.trim()} onClick={save}
           className="w-full py-3 rounded-xl font-bold text-sm text-white transition-all disabled:opacity-40"
           style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
-          {saving ? <Loader2 size={16} className="animate-spin mx-auto" /> : "Anrejistre"}
+          {saving ? <Loader2 size={16} className="animate-spin mx-auto" /> : t("music.save")}
         </button>
       </div>
     </div>
@@ -614,6 +615,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
 }) {
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
+  const { t } = useTranslation();
 
   const handleBuy = async () => {
     setLoading(true); setErrMsg("");
@@ -651,7 +653,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
           style={{ background: "rgba(255,255,255,0.12)" }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
-        <p className="font-black text-base">Koute san limit</p>
+        <p className="font-black text-base">{t("music.listenUnlimited")}</p>
       </div>
 
       {/* Content */}
@@ -718,11 +720,11 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
             style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                      boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
             {loading ? <Loader2 size={18} className="animate-spin" /> : "💳"}
-            {loading ? "Ap konekte…" : `Achte pou $${price.toFixed(2)}`}
+            {loading ? t("music.connectingPayment") : t("music.buyTrack", { price: price.toFixed(2) })}
           </button>
           <button onClick={onBack}
             className="w-full rounded-2xl py-3 text-sm font-bold text-white/50 active:text-white/80 transition-colors">
-            Koute yon lòt chante gratis
+            {t("music.listenFree")}
           </button>
         </div>
       </div>
@@ -738,6 +740,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   const [loadingWallet, setLoadingWallet] = useState(false);
   const [errMsg,  setErrMsg]  = useState("");
   const [walletBal, setWalletBal] = useState<number | null>(null);
+  const { t } = useTranslation();
 
   // Fetch wallet balance on mount so we can show it in the FM button
   useEffect(() => {
@@ -867,7 +870,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
 
         {/* ── Payment options ── */}
         <div className="flex flex-col gap-3">
-          <p className="text-center text-xs text-white/30 uppercase tracking-widest font-bold">Chwazi metòd peman</p>
+          <p className="text-center text-xs text-white/30 uppercase tracking-widest font-bold">{t("music.choosePayment")}</p>
 
           {/* Option 1 — FM Wallet (Flex Card) */}
           <div className="rounded-2xl overflow-hidden"
@@ -901,17 +904,17 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
                 color: "#fff",
               }}>
               {loadingWallet
-                ? <><Loader2 size={15} className="animate-spin" /> Ap trete…</>
+                ? <><Loader2 size={15} className="animate-spin" /> {t("music.processingPayment")}</>
                 : canPayWallet
-                  ? "✓ Peye $50 ak FM Wallet"
-                  : `Balans pa ase (${walletBal !== null ? `$${walletBal.toFixed(2)}` : "…"} / $50.00)`}
+                  ? t("music.payWithWallet")
+                  : t("music.walletInsufficient", { bal: walletBal !== null ? `$${walletBal.toFixed(2)}` : "…" })}
             </button>
           </div>
 
           {/* Divider */}
           <div className="flex items-center gap-3">
             <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
-            <span className="text-xs text-white/20 font-bold">oswa</span>
+            <span className="text-xs text-white/20 font-bold">{t("music.orSeparator")}</span>
             <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
           </div>
 
@@ -921,12 +924,12 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
             style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                      boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
             {loadingStripe ? <Loader2 size={18} className="animate-spin" /> : <span>🌐</span>}
-            {loadingStripe ? "Ap konekte ak Stripe…" : "Peye $50 ak Kat Debi / Kredi"}
+            {loadingStripe ? t("music.connectingStripe") : t("music.payWithCard")}
           </button>
         </div>
 
         <p className="text-center text-xs text-white/20">
-          FM Wallet: peman imedya · Stripe: redirijé sou Stripe · Toulède: $50/an, renouvèlman mansyèl
+          {t("music.paymentInfoNote")}
         </p>
       </div>
     </div>
@@ -1348,7 +1351,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             {searchLoading
               ? <Loader2 size={12} className="animate-spin text-violet-400 shrink-0" />
               : null}
-            {searchLoading ? "Ap chèche…" : `${tracks.length} chante pou \u201c${search}\u201d`}
+            {searchLoading ? t("music.searching") : t("music.searchResults", { n: tracks.length, q: search })}
           </p>
           {!searchLoading && tracks.length === 0 ? (
             <div className="flex flex-col items-center py-16 gap-3">
@@ -2856,16 +2859,22 @@ export default function FlexaMusic() {
     if (!("mediaSession" in navigator) || !track) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title, artist: track.artist, album: track.album ?? "",
-      artwork: track.cover_url ? [{ src: track.cover_url, sizes: "512x512" }] : [],
+      artwork: track.cover_url ? [{ src: track.cover_url, sizes: "512x512", type: "image/jpeg" }] : [],
     });
-    navigator.mediaSession.setActionHandler("play",          () => audioRef.current?.play());
-    navigator.mediaSession.setActionHandler("pause",         () => audioRef.current?.pause());
-    navigator.mediaSession.setActionHandler("nexttrack",     () => playNext());
-    navigator.mediaSession.setActionHandler("previoustrack", () => playPrev());
-    navigator.mediaSession.setActionHandler("seekto", d => {
-      if (d.seekTime != null && audioRef.current) audioRef.current.currentTime = d.seekTime;
-    });
-  }, [playerState.track]);
+    // ← Critical: iOS only shows the lock-screen widget when playbackState is
+    //   set explicitly. Without this the Now Playing bar never appears.
+    navigator.mediaSession.playbackState = playerState.playing ? "playing" : "paused";
+    // Use gAudio (the global singleton) — NOT audioRef — so these handlers
+    // stay valid after FlexaMusic unmounts (user navigates away mid-song).
+    navigator.mediaSession.setActionHandler("play",          () => gAudio.play().catch(() => {}));
+    navigator.mediaSession.setActionHandler("pause",         () => gAudio.pause());
+    navigator.mediaSession.setActionHandler("nexttrack",     () => musicPlayNext());
+    navigator.mediaSession.setActionHandler("previoustrack", () => musicPlayPrev());
+    navigator.mediaSession.setActionHandler("seekto",        d  => { if (d.seekTime != null) musicSeek(d.seekTime); });
+    // iOS lock screen shows ±10s skip buttons
+    navigator.mediaSession.setActionHandler("seekforward",   d  => musicSeek(Math.min(gAudio.currentTime + (d.seekOffset ?? 10), gAudio.duration || 0)));
+    navigator.mediaSession.setActionHandler("seekbackward",  d  => musicSeek(Math.max(gAudio.currentTime - (d.seekOffset ?? 10), 0)));
+  }, [playerState.track, playerState.playing]);
 
   // ── Impression timer ──────────────────────────────────────────────────────
   const stopTimer  = () => { if (listenRef.current) { clearTimeout(listenRef.current); listenRef.current = null; } };

@@ -186,14 +186,10 @@ if (typeof window !== "undefined") {
   if ("mediaSession" in navigator) {
     navigator.mediaSession.setActionHandler("play",          () => gAudio.play().catch(() => {}));
     navigator.mediaSession.setActionHandler("pause",         () => gAudio.pause());
-    navigator.mediaSession.setActionHandler("nexttrack",     () => {
-      if (_flexaMounted) return; // let FlexaMusic handle it
-      musicPlayNext();
-    });
-    navigator.mediaSession.setActionHandler("previoustrack", () => {
-      if (_flexaMounted) return;
-      musicPlayPrev();
-    });
+    // FlexaMusic re-registers these handlers on every track/play change using
+    // the same global functions, so the _flexaMounted guard is no longer needed.
+    navigator.mediaSession.setActionHandler("nexttrack",     () => musicPlayNext());
+    navigator.mediaSession.setActionHandler("previoustrack", () => musicPlayPrev());
     navigator.mediaSession.setActionHandler("seekto", d => {
       if (d.seekTime != null) musicSeek(d.seekTime);
     });

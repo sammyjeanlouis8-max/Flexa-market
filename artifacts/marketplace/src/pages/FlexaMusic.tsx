@@ -2541,6 +2541,22 @@ export default function FlexaMusic() {
     audio.volume  = playerState.volume;
     audio.load();   // ← required on iOS Safari after src change
     setPlayerState(s => ({ ...s, track, playing: false, currentTime: 0, duration: 0 }));
+
+    // ── Keep global musicStore in sync so GlobalMusicPlayer always shows
+    //    the correct track when the user navigates away from /music.
+    //    This is the critical line: without it, if the user changes tracks
+    //    inside PlayerView and then opens any other page, _s.track is stale
+    //    and GlobalMusicPlayer returns null (music appears to stop).
+    {
+      const patch: Partial<Parameters<typeof patchMusicState>[0]> = {
+        track,
+        plTitle: track.title,
+        plCover: track.cover_url ?? null,
+      };
+      if (newQueue !== undefined) { patch.queue = newQueue; patch.queueIdx = idx ?? 0; }
+      patchMusicState(patch);
+    }
+
     if (track.audio_url) {
       audio.play().then(() => {
         // play() resolved → audio is definitely playing; mirror that into state

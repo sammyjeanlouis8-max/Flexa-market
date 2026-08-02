@@ -1019,6 +1019,27 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [convId]);
+
+  // iOS WKWebView zoom-reset: mounting a position:fixed fullscreen overlay
+  // causes WKWebView to recalculate viewport scale, which shifts the whole
+  // page right and puts the back button (far left) in the untouchable dead zone.
+  // Fix: briefly toggle the viewport meta so WKWebView re-parses it at scale=1,
+  // then restore. Also force scroll to top to clear any viewport offset.
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!meta) return;
+    const original = meta.getAttribute('content') ?? '';
+    // Toggle scale slightly — WKWebView re-reads the meta and resets zoom
+    meta.setAttribute('content', original.replace('initial-scale=1.0', 'initial-scale=1.001'));
+    const tid = setTimeout(() => {
+      meta.setAttribute('content', original);
+      window.scrollTo(0, 0);
+    }, 32);
+    window.scrollTo(0, 0);
+    return () => clearTimeout(tid);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [uploading, setUploading] = useState(false);

@@ -78,6 +78,12 @@ main {
     flex-direction: column;
     overflow: hidden;
     background: hsl(var(--background));
+    /* Promote to GPU layer — prevents WKWebView from triggering a viewport
+       scale recalculation when this fixed overlay is added to the DOM */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    /* Block pinch-zoom inside the conversation (pan-y allows scroll) */
+    touch-action: pan-y;
   }
 
   /*

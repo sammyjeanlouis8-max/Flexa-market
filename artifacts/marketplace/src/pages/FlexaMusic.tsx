@@ -2746,6 +2746,8 @@ export default function FlexaMusic() {
     if (purchasedTrackId) {
       const tid = Number(purchasedTrackId);
       if (tid) {
+        // Persist so the fetch-effect can merge it even if user loads later
+        sessionStorage.setItem("flexa_pending_purchase", String(tid));
         markPurchased((user as any)?.id, tid);
         setPurchasedIds(prev => new Set([...prev, tid]));
       }
@@ -2761,9 +2763,13 @@ export default function FlexaMusic() {
       .then(r => r.json())
       .then(d => {
         const ids: number[] = d.purchasedIds ?? [];
-        ids.forEach(id => markPurchased(uid, id));
-        localStorage.setItem(`flexa_owns_all_${uid}`, JSON.stringify(ids));
-        setPurchasedIds(new Set(ids));
+        // Merge any pending purchase from Stripe redirect (webhook may not have fired yet)
+        const pendingTid = Number(sessionStorage.getItem("flexa_pending_purchase") ?? "0");
+        const merged = pendingTid && !ids.includes(pendingTid) ? [...ids, pendingTid] : ids;
+        if (pendingTid) sessionStorage.removeItem("flexa_pending_purchase");
+        merged.forEach(id => markPurchased(uid, id));
+        localStorage.setItem(`flexa_owns_all_${uid}`, JSON.stringify(merged));
+        setPurchasedIds(new Set(merged));
       })
       .catch(() => {});
   }, [(user as any)?.id]);

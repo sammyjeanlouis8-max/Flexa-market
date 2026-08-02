@@ -2131,6 +2131,8 @@ export default {
     confirmCancel: "Wi, anile boost",
     refundEstimate: "Anile kounye a = ~${{amount}} ranbousman",
     willBeRefunded: "pral retounen sou FM Wallet ou",
+    ctrLabel: "CTR",
+    renewBoost: "Renouvle",
   },
   boostWizard: {
     title: "Bouste Videyo Ou",
@@ -2223,6 +2225,7 @@ export default {
     confirmCountry: "Peyi",
     confirmBudgetLabel: "Bidjè Ou",
     confirmBudgetHelp: "Plis lajan = plis moun wè",
+    lowBudgetWarning: "Bidjè anba $15 — ka pa rive jwenn anpil moun pandan 7 jou. Konsidere ogmante rive $15 oswa plis.",
     confirmViewsLoading: "Ap kalkile...",
     confirmViewsUnit: "vye",
     confirmPrice: "Pri",

@@ -28,7 +28,7 @@ interface Props { open: boolean; onClose: () => void; }
 const MAX_VIDEO_SECONDS = 180;
 const MAX_VIDEO_BYTES = 350 * 1024 * 1024; // 350 MB — matches server cap
 const MIN_BUDGET = 5;
-const MAX_BUDGET = 100;
+const MAX_BUDGET = 500;
 const DEFAULT_BUDGET = 12.99;
 
 function toStorageUrl(path: string): string {
@@ -1370,6 +1370,14 @@ export default function BoostWizard({ open, onClose }: Props) {
                 </div>
                 <p className="text-[10px] text-muted-foreground text-center">{t("boostWizard.confirmBudgetHelp")}</p>
               </div>
+
+              {/* Low-budget warning */}
+              {budget < 15 && (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+                  <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">{t("boostWizard.lowBudgetWarning")}</p>
+                </div>
+              )}
 
               <div className="rounded-xl border border-border bg-muted/30 overflow-hidden divide-y divide-border/60">
                 {[

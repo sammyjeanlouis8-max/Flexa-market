@@ -64,8 +64,8 @@ httpServer.listen(port, () => {
       // Run subscription expiry check every 30 minutes
       setInterval(() => { runSubscriptionExpiryJob().catch(() => {}); }, 30 * 60 * 1000);
       runSubscriptionExpiryJob().catch(() => {});
-      // Reset isBoosted flag + clear boost fields for expired boosts every 30 minutes
-      setInterval(() => { runBoostExpiryJob().catch(() => {}); }, 30 * 60 * 1000);
+      // Reset isBoosted flag + clear boost fields for expired boosts every 5 minutes
+      setInterval(() => { runBoostExpiryJob().catch(() => {}); }, 5 * 60 * 1000);
       runBoostExpiryJob().catch(() => {});
     });
     // Run loan repayment job every hour

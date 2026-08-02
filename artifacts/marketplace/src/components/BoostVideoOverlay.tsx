@@ -69,6 +69,24 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
   const [soundLocked, setSoundLocked] = useState(false); // true = iOS forced muted start
+  const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
+
+  // ── Video progress bar ────────────────────────────────────────────────────
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    const onTime = () => {
+      if (vid.duration && isFinite(vid.duration) && vid.duration > 0) {
+        setVideoPct((vid.currentTime / vid.duration) * 100);
+      }
+    };
+    vid.addEventListener("timeupdate", onTime);
+    vid.addEventListener("loadedmetadata", onTime);
+    return () => {
+      vid.removeEventListener("timeupdate", onTime);
+      vid.removeEventListener("loadedmetadata", onTime);
+    };
+  }, []);
 
   // ── Countdown — runs from mount, independent of play state ────────────────
   useEffect(() => {
@@ -236,6 +254,17 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
                 {t("boostAd.sponsoredBy", { name: listing.sellerName })}
               </span>
             )}
+          </div>
+
+          {/* ── Video progress bar — thin strip at the very bottom of the video ── */}
+          <div
+            className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 pointer-events-none"
+            aria-hidden="true"
+          >
+            <div
+              className="h-full bg-white rounded-r-full transition-none"
+              style={{ width: `${videoPct}%` }}
+            />
           </div>
 
           {/* Sound-locked hint — center of video, disappears on first touch */}

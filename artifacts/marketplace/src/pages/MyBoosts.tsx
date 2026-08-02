@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   Zap, Eye, TrendingUp, MousePointerClick, Play,
-  AlertCircle, Loader2, Film, Trash2, Upload,
+  AlertCircle, Loader2, Film, Trash2, Upload, Target, RefreshCw,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -230,16 +230,17 @@ export default function MyBoosts() {
 
           {/* Summary stats strip — only when there are boosts */}
           {boosts.length > 0 && !loading && (
-            <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+            <div className="mt-2.5 grid grid-cols-4 gap-1.5">
               {[
-                { label: t("myBoosts.impressionsLabel"), value: totalImpressions, Icon: TrendingUp },
-                { label: t("myBoosts.viewsLabel"),       value: totalViews,       Icon: Eye },
-                { label: t("myBoosts.clicksLabel"),      value: totalClicks,      Icon: MousePointerClick },
+                { label: t("myBoosts.impressionsLabel"), value: totalImpressions.toLocaleString(), Icon: TrendingUp },
+                { label: t("myBoosts.viewsLabel"),       value: totalViews.toLocaleString(),       Icon: Eye },
+                { label: t("myBoosts.clicksLabel"),      value: totalClicks.toLocaleString(),      Icon: MousePointerClick },
+                { label: t("myBoosts.ctrLabel"),         value: totalImpressions > 0 ? `${((totalClicks / totalImpressions) * 100).toFixed(1)}%` : "—", Icon: Target },
               ].map(({ label, value, Icon }) => (
                 <div key={label} className="bg-white/15 backdrop-blur-sm rounded-lg px-2 py-1.5 text-center">
                   <div className="flex items-center justify-center gap-1 mb-0.5">
                     <Icon className="h-3 w-3 text-white/80" />
-                    <span className="text-white font-black text-sm tabular-nums">{value.toLocaleString()}</span>
+                    <span className="text-white font-black text-sm tabular-nums">{value}</span>
                   </div>
                   <span className="text-white/70 text-[9px] font-medium">{label}</span>
                 </div>
@@ -346,9 +347,14 @@ export default function MyBoosts() {
                         <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/50">
                           <StatChip icon={TrendingUp}         value={boost.impressions} label={t("myBoosts.impressionsLabel")} color="text-blue-500" />
                           <div className="w-px h-6 bg-border/50" />
-                          <StatChip icon={Eye}                value={boost.viewCount}   label={t("myBoosts.viewsLabel")}       color="text-green-500" />
-                          <div className="w-px h-6 bg-border/50" />
                           <StatChip icon={MousePointerClick}  value={boost.clicks}      label={t("myBoosts.clicksLabel")}      color="text-orange-500" />
+                          <div className="w-px h-6 bg-border/50" />
+                          <div className="flex flex-col items-center min-w-[40px]">
+                            <span className="text-xs font-black text-foreground tabular-nums">
+                              {boost.impressions > 0 ? `${((boost.clicks / boost.impressions) * 100).toFixed(1)}%` : "—"}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground font-medium">{t("myBoosts.ctrLabel")}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -375,6 +381,16 @@ export default function MyBoosts() {
                             ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />{t("myBoosts.videoUploading", { defaultValue: "Ap telechaje…" })}</>
                             : <><Upload className="h-3.5 w-3.5" />{t("myBoosts.addVideo")}</>
                           }
+                        </button>
+                      )}
+                      {expiringSoon && (
+                        <button
+                          type="button"
+                          onClick={() => setWizardOpen(true)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-xs font-semibold transition-colors border border-orange-200 dark:border-orange-800/40"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          {t("myBoosts.renewBoost")}
                         </button>
                       )}
                       <Link

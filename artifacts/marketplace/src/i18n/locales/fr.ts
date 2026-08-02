@@ -2130,6 +2130,8 @@ export default {
     confirmCancel: "Oui, annuler le boost",
     refundEstimate: "Annuler maintenant = ~${{amount}} remboursé",
     willBeRefunded: "sera remboursé sur votre FM Wallet",
+    ctrLabel: "CTR",
+    renewBoost: "Renouveler",
   },
   boostWizard: {
     title: "Boostez Votre Vidéo",
@@ -2222,6 +2224,7 @@ export default {
     confirmCountry: "Pays",
     confirmBudgetLabel: "Votre Budget",
     confirmBudgetHelp: "Plus de budget = plus de portée",
+    lowBudgetWarning: "Budget inférieur à 15 $ — peut toucher très peu de personnes sur 7 jours. Envisagez d'augmenter à 15 $ ou plus.",
     confirmViewsLoading: "Calcul en cours...",
     confirmViewsUnit: "vues",
     confirmPrice: "Coût",

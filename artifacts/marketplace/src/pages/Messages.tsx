@@ -1339,21 +1339,31 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     });
   }, [convId, queryClient]);
 
+  // ── iOS safe-area top inset (inline — more reliable than CSS class in WKWebView)
+  // max(env(safe-area-inset-top), var(--sat)) can silently return 0 in some
+  // WKWebView builds. Reading the JS-set CSS variable directly and applying it
+  // as an inline numeric value is guaranteed to win over any CSS rule.
+  const threadHeaderTopPad = (() => {
+    if (typeof document === "undefined") return 8;
+    // --sat is set synchronously in index.html before React renders
+    const v = document.documentElement.style.getPropertyValue("--sat") ||
+              getComputedStyle(document.documentElement).getPropertyValue("--sat");
+    const sat = parseInt(v, 10);
+    if (!isNaN(sat) && sat > 0) return sat + 8;
+    // Final fallback: same iPhone detection as the bootstrap script
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream) {
+      return (window.screen.height >= 812 ? 59 : 20) + 8;
+    }
+    return 8;
+  })();
+
   return (
     <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
-      {/* height/top/bottom are controlled entirely by the .chat-fullscreen CSS
-          class (with env(safe-area-inset-*)) — no inline height override */}
 
-      {/* ── Thread header ──
-          paddingTop = safe-area-inset-top (Dynamic Island / notch) + 8px design gap.
-          We use calc() in the inline style rather than a CSS class so the value is
-          always applied even when other rules have higher specificity.
-          NEVER use `padding` shorthand here — it would reset paddingTop to 8px. */}
-      {/* paddingTop = max(env(), --sat from iOS bootstrap) + 8px.
-          --sat is set synchronously in index.html before first paint:
-          59 px for notch/Dynamic-Island iPhones, 0 for everything else. */}
-      <div className="chat-header-safe" style={{
+      {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
+      <div style={{
         display: "flex", alignItems: "center", gap: 8,
+        paddingTop: threadHeaderTopPad,
         paddingBottom: "8px", paddingLeft: "10px", paddingRight: "10px",
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",

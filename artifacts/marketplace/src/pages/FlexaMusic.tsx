@@ -1376,7 +1376,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3" style={{ background: "#0a0a0a" }}>
         <Avatar src={user?.avatar_url} name={userName} size={38} />
         <button
-          onClick={() => setLocation(isAdmin ? "/admin/music" : user ? "/music/earnings" : "/music")}
+          onClick={() => setLocation(user ? "/music/earnings" : "/music")}
           className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold"
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
           <span className="text-xs">🎵</span> {t("music.artistStudio")}

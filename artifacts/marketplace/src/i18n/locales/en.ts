@@ -4071,6 +4071,10 @@ export default {
     paywallOr: "OR",
     paywallProcessing: "Processing…",
     paywallKartFM: "Pay with FM Card",
+    // Earnings — 500-subscriber monetisation gate
+    monetizeGateTitle: "500 subscribers to unlock earnings",
+    monetizeGateDesc: "Ads always play and impressions are tracked. Your earnings will be credited automatically once you reach {{goal}} subscribers. You need {{need}} more.",
+    monetizedUnlocked: "✓ Monetized — impressions are earning for you",
   },
   upload: {
     title: "Upload Music",

@@ -623,11 +623,19 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
        FROM music_earnings WHERE artist_id = ${userId} AND is_paid_out = FALSE`
     );
 
+    // 500-subscriber gate status — so the UI can show progress
+    const [userRow] = await q<{ follower_count: number }>(
+      `SELECT follower_count FROM users WHERE id = ${userId}`
+    );
+    const followerCount = userRow?.follower_count ?? 0;
+
     res.json({
       earnings: rows,
       monthly,
       musicEarningsBalance: unpaid ? Number(unpaid.total) : 0,
       minWithdraw: MIN_WITHDRAW_USD,
+      followerCount,
+      followerGoal: 500,
     });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });

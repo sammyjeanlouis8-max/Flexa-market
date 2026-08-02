@@ -30,6 +30,7 @@ type Earning = {
   track_title: string | null; track_artist: string | null; cover_url: string | null;
 };
 type Monthly = { month: string; total_usd: string; total_impressions: string; };
+const FOLLOWER_GOAL = 500;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt$ = (n: number) => `$${n.toFixed(2)}`;
@@ -78,6 +79,7 @@ export default function FlexaMusicEarnings() {
   const [minWith,      setMinWith]      = useState(10);
   const [withdrawing,  setWithdrawing]  = useState(false);
   const [withdrawMsg,  setWithdrawMsg]  = useState<string | null>(null);
+  const [followerCount, setFollowerCount] = useState(0);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -98,6 +100,7 @@ export default function FlexaMusicEarnings() {
       setMonthly(earningsData.monthly   ?? []);
       setMusicBalance(earningsData.musicEarningsBalance ?? 0);
       setMinWith(earningsData.minWithdraw  ?? 10);
+      setFollowerCount(earningsData.followerCount ?? 0);
     } catch { /* show stale */ }
     finally { setLoading(false); setRefreshing(false); }
   };
@@ -220,10 +223,40 @@ export default function FlexaMusicEarnings() {
           )}
 
           {/* ── CPM Info ── */}
-          <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-5">
+          <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-3">
             <Info size={14} className="text-amber-600 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-700 dark:text-amber-300">{t("music.cpmInfo", { cpm: fmt$(CPM) })}</p>
           </div>
+
+          {/* ── 500-subscriber monetisation gate ── */}
+          {followerCount >= FOLLOWER_GOAL ? (
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5 mb-5"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)" }}>
+              <Star size={14} className="text-emerald-400 shrink-0" />
+              <p className="text-xs font-semibold text-emerald-400">{t("music.monetizedUnlocked")}</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl p-4 mb-5"
+              style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.25)" }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-black" style={{ color: "#a78bfa" }}>{t("music.monetizeGateTitle")}</p>
+                <span className="text-xs font-bold" style={{ color: "#a78bfa" }}>
+                  {followerCount}/{FOLLOWER_GOAL}
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="h-2 rounded-full mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div className="h-2 rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (followerCount / FOLLOWER_GOAL) * 100)}%`,
+                    background: "linear-gradient(90deg,#7c3aed,#c026d3)",
+                  }} />
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.5)" }}>
+                {t("music.monetizeGateDesc", { count: followerCount, goal: FOLLOWER_GOAL, need: FOLLOWER_GOAL - followerCount })}
+              </p>
+            </div>
+          )}
 
           {/* ── Tabs ── */}
           <div className="flex gap-1 bg-muted rounded-xl p-1 mb-4">

@@ -4106,6 +4106,10 @@ export default {
     paywallOr: "OU",
     paywallProcessing: "En cours…",
     paywallKartFM: "Payer avec Carte FM",
+    // Earnings — 500-subscriber monetisation gate
+    monetizeGateTitle: "500 abonnés pour débloquer les gains",
+    monetizeGateDesc: "Les publicités passent toujours et les impressions sont comptées. Vos gains seront crédités automatiquement dès que vous atteindrez {{goal}} abonnés. Il vous en manque {{need}}.",
+    monetizedUnlocked: "✓ Monétisé — les impressions génèrent des revenus",
   },
   upload: {
     title: "Uploader de la Musique",

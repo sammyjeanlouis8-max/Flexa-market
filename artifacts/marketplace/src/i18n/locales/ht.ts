@@ -4107,6 +4107,10 @@ export default {
     paywallOr: "OU",
     paywallProcessing: "Ap trete…",
     paywallKartFM: "Peye ak Kart FM",
+    // Earnings — 500-subscriber monetisation gate
+    monetizeGateTitle: "500 abone pou kòmanse touche",
+    monetizeGateDesc: "Piblisite toujou pase epi enpresyon yo twouve. Lajan ou a pral kredite otomatikman lè ou rive {{goal}} abone. Ou bezwen {{need}} ankò.",
+    monetizedUnlocked: "✓ Monetize — enpresyon yo ap touche pou ou",
   },
   upload: {
     title: "Telechaje Mizik",

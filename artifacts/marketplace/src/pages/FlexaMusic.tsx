@@ -933,9 +933,10 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   );
 }
 
-function UploadView({ onBack, onSuccess }: {
+function UploadView({ onBack, onSuccess, onPlanRequired }: {
   onBack: () => void;
   onSuccess: (track: Track) => void;
+  onPlanRequired: (songCount: number) => void;
 }) {
   const { t } = useTranslation();
   const { start: startUpload } = useMusicUpload();
@@ -994,6 +995,7 @@ function UploadView({ onBack, onSuccess }: {
         lyrics:            lyrics.trim() || undefined,
       },
       (track) => onSuccess(track),
+      onPlanRequired,
     );
 
     // Return to home immediately — floating toast shows progress
@@ -2741,8 +2743,8 @@ export default function FlexaMusic() {
         setView("artist-plan");
       }
     } catch {
-      // If check fails, allow upload — backend will enforce the limit
-      setView("upload");
+      // If the plan-check API is unreachable, don't open upload — backend will block anyway.
+      // Show a soft retry nudge by doing nothing (user can tap the button again).
     }
   };
 
@@ -3119,6 +3121,7 @@ export default function FlexaMusic() {
         <UploadView
           onBack={() => setView("home")}
           onSuccess={handleUploadSuccess}
+          onPlanRequired={(cnt) => { setArtistPlanSongCount(cnt); setView("artist-plan"); }}
         />
       ) : view === "home" ? (
         <HomeView

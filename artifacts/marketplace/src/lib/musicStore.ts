@@ -70,13 +70,28 @@ let _flexaMounted = false;
 export function setFlexaMusicMounted(v: boolean): void { _flexaMounted = v; }
 
 // ── MediaSession helper ───────────────────────────────────────────────────────
-function syncMediaSession(t: MusicTrack): void {
+function syncMediaSession(t: MusicTrack, playing = true): void {
   if (!("mediaSession" in navigator)) return;
   navigator.mediaSession.metadata = new MediaMetadata({
     title: t.title,
     artist: t.artist,
     artwork: t.cover_url ? [{ src: t.cover_url, sizes: "512x512", type: "image/jpeg" }] : [],
   });
+  // ← iOS REQUIRES this to be set explicitly or audio dies in background
+  navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+}
+
+function syncPositionState(): void {
+  if (!("mediaSession" in navigator)) return;
+  const dur = gAudio.duration;
+  if (!isFinite(dur) || dur <= 0) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration:     dur,
+      playbackRate: gAudio.playbackRate || 1,
+      position:     Math.min(gAudio.currentTime, dur),
+    });
+  } catch { /* ignore — Safari throws if position > duration on rapid seeks */ }
 }
 
 // ── Global controls (work regardless of whether FlexaMusic is mounted) ────────
@@ -136,6 +151,7 @@ if (typeof window !== "undefined") {
     if (!_s.track) return;
     _s.currentTime = gAudio.currentTime;
     _fns.forEach(f => f());
+    syncPositionState(); // keeps iOS lock-screen scrubber in sync
   });
   gAudio.addEventListener("durationchange", () => {
     const d = gAudio.duration;
@@ -145,9 +161,19 @@ if (typeof window !== "undefined") {
     const d = gAudio.duration;
     if (d && isFinite(d)) { _s.duration = d; _fns.forEach(f => f()); }
   });
-  gAudio.addEventListener("play",    () => { _s.playing = true;  _fns.forEach(f => f()); });
-  gAudio.addEventListener("playing", () => { _s.playing = true;  _fns.forEach(f => f()); });
-  gAudio.addEventListener("pause",   () => { _s.playing = false; _fns.forEach(f => f()); });
+  gAudio.addEventListener("play",    () => {
+    _s.playing = true; _fns.forEach(f => f());
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+  });
+  gAudio.addEventListener("playing", () => {
+    _s.playing = true; _fns.forEach(f => f());
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+    syncPositionState();
+  });
+  gAudio.addEventListener("pause", () => {
+    _s.playing = false; _fns.forEach(f => f());
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+  });
   gAudio.addEventListener("ended",   () => {
     _s.playing = false;
     _fns.forEach(f => f());
@@ -170,6 +196,13 @@ if (typeof window !== "undefined") {
     });
     navigator.mediaSession.setActionHandler("seekto", d => {
       if (d.seekTime != null) musicSeek(d.seekTime);
+    });
+    // iOS shows ±10 s skip buttons on lock screen — wire them up
+    navigator.mediaSession.setActionHandler("seekforward", d => {
+      musicSeek(Math.min(gAudio.currentTime + (d.seekOffset ?? 10), gAudio.duration || 0));
+    });
+    navigator.mediaSession.setActionHandler("seekbackward", d => {
+      musicSeek(Math.max(gAudio.currentTime - (d.seekOffset ?? 10), 0));
     });
   }
 }

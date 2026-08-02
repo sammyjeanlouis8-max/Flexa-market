@@ -142,15 +142,15 @@ export default function Footer() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-6">
             {/* Legal */}
             <div>
-              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">Legal</h4>
+              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">{t("footer.legalSection")}</h4>
               <ul className="space-y-1.5">
                 {[
                   { href: "/privacy-policy", label: t("footer.privacy", { defaultValue: "Privacy Policy" }), testid: "footer-link-privacy" },
                   { href: "/terms", label: t("footer.terms", { defaultValue: "Terms of Service" }), testid: "footer-link-terms" },
-                  { href: "/cookies", label: "Cookies" },
-                  { href: "/eula", label: "EULA" },
-                  { href: "/dmca", label: "DMCA / Copyright" },
-                  { href: "/accessibility", label: "Aksesiblite" },
+                  { href: "/cookies", label: t("footer.cookies") },
+                  { href: "/eula", label: t("footer.eula") },
+                  { href: "/dmca", label: t("footer.dmca") },
+                  { href: "/accessibility", label: t("footer.accessibility") },
                 ].map(l => (
                   <li key={l.href}>
                     <Link href={l.href} data-testid={l.testid} className="text-xs text-muted-foreground hover:text-primary transition-colors">
@@ -162,15 +162,15 @@ export default function Footer() {
             </div>
             {/* Community */}
             <div>
-              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">Kominote</h4>
+              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">{t("footer.communitySection")}</h4>
               <ul className="space-y-1.5">
                 {[
-                  { href: "/community-guidelines", label: "Règ Kominotè" },
-                  { href: "/prohibited-items", label: "Pwodwi Entèdi" },
-                  { href: "/content-policy", label: "Règ Kontni" },
-                  { href: "/report-abuse", label: "Rapòte Abi" },
-                  { href: "/trust-center", label: "Sant Konfyans" },
-                  { href: "/safety", label: "Sekirite" },
+                  { href: "/community-guidelines", label: t("footer.communityGuidelines") },
+                  { href: "/prohibited-items", label: t("footer.prohibitedItems") },
+                  { href: "/content-policy", label: t("footer.contentPolicy") },
+                  { href: "/report-abuse", label: t("footer.reportAbuse") },
+                  { href: "/trust-center", label: t("footer.trustCenter") },
+                  { href: "/safety", label: t("footer.safety") },
                 ].map(l => (
                   <li key={l.href}>
                     <Link href={l.href} className="text-xs text-muted-foreground hover:text-primary transition-colors">
@@ -182,13 +182,13 @@ export default function Footer() {
             </div>
             {/* Buyers & Sellers */}
             <div>
-              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">Achte & Vann</h4>
+              <h4 className="text-xs font-bold text-foreground uppercase tracking-widest mb-2">{t("footer.buyerSellerSection")}</h4>
               <ul className="space-y-1.5">
                 {[
-                  { href: "/refund-policy", label: "Règ Ranbousman" },
-                  { href: "/shipping-policy", label: "Règ Livrezon" },
-                  { href: "/seller-policy", label: "Règ Vandè" },
-                  { href: "/about", label: "Sou Nou" },
+                  { href: "/refund-policy", label: t("footer.refundPolicy") },
+                  { href: "/shipping-policy", label: t("footer.shippingPolicy") },
+                  { href: "/seller-policy", label: t("footer.sellerPolicy") },
+                  { href: "/about", label: t("footer.about") },
                   { href: "/contact", label: t("footer.contactSupport", { defaultValue: "Contact Support" }), testid: "footer-link-contact" },
                 ].map(l => (
                   <li key={l.href}>

@@ -46,9 +46,12 @@ interface MusicUploadCtx {
   /**
    * Start a direct-to-Cloudinary upload.
    * audioFile is required; coverFile is optional.
+   * onPlanRequired is called (with songCount) when the free limit is hit —
+   * the caller should redirect to the Plan Artis upgrade screen.
    */
   start:   (audioFile: File, coverFile: File | null, meta: UploadMeta,
-            onDone?: (track: any) => void) => void;
+            onDone?: (track: any) => void,
+            onPlanRequired?: (songCount: number) => void) => void;
   dismiss: () => void;
 }
 
@@ -127,6 +130,7 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
     coverFile: File | null,
     meta:      UploadMeta,
     onDone?:   (track: any) => void,
+    onPlanRequired?: (songCount: number) => void,
   ) => {
     // Cancel any in-flight upload
     abortRef.current?.abort();
@@ -142,6 +146,21 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem("flexamarket_token");
 
     const run = async () => {
+      // ── Step 0: Pre-check plan limit BEFORE wasting Cloudinary bandwidth ──
+      try {
+        const planRes = await fetch("/api/music/artist/plan", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (planRes.ok) {
+          const pd = await planRes.json();
+          if (!pd.isArtistPlan && pd.songCount >= pd.freeSongLimit) {
+            setState(IDLE);
+            onPlanRequired?.(pd.songCount);
+            return;
+          }
+        }
+      } catch { /* ignore — backend enforces at register step */ }
+
       // ── Step 1: Get Cloudinary signature ──────────────────────────────────
       const sigRes = await fetch("/api/music/upload-signature", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -194,6 +213,11 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
       });
       if (!regRes.ok) {
         const d = await regRes.json().catch(() => ({}));
+        if (d.error === "ARTIST_PLAN_REQUIRED") {
+          setState(IDLE);
+          onPlanRequired?.(d.count ?? 0);
+          return;
+        }
         throw new Error(d.error ?? `Register HTTP ${regRes.status}`);
       }
       const { track } = await regRes.json();

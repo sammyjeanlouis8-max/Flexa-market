@@ -644,7 +644,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
     } catch (e: any) { setErrMsg(e.message); setLoading(false); }
   };
 
-  const price = track.price_usd ?? 0;
+  const price = Number(track.price_usd ?? 0);
   const PLATFORM_PCT = 20;
 
   return (

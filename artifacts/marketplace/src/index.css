@@ -57,7 +57,9 @@ main {
     right: 0;
     bottom: 0;
     height: 100dvh;
-    z-index: 45;
+    /* Must be > Layout header z-50 (50) so the chat conversation header
+       is visible and not hidden underneath the sticky app header */
+    z-index: 60;
     display: flex;
     flex-direction: column;
     overflow: hidden;

@@ -13,6 +13,7 @@ import Layout from "@/components/Layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
 import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
+import GlobalMusicPlayer from "@/components/GlobalMusicPlayer";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -347,6 +348,7 @@ function App() {
                   <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
                     <Router />
                     <GlobalBroadcastPlayer />
+                    <GlobalMusicPlayer />
                   </WouterRouter>
                 </MusicUploadProvider>
               </BroadcastProvider>

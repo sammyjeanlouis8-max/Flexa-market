@@ -221,7 +221,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
         {[
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
           isPaidLocked
-            ? { icon: "🔒", label: `Download bloke — achte pou $${(track.price_usd ?? 0).toFixed(2)} anvan`, action: onClose, locked: true }
+            ? { icon: "🔒", label: t("music.downloadLocked", { price: (track.price_usd ?? 0).toFixed(2) }), action: onClose, locked: true }
             : { icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } },
           { icon: "🔗", label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/music/play/${track.id}`;
@@ -247,27 +247,27 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, isAdmin, onEdit,
             <button onClick={() => { onEdit?.(track); onClose(); }}
               className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/5 transition-colors">
               <Pencil size={18} className="text-violet-400 w-7" />
-              <span className="text-violet-300 text-sm font-medium">Modifye chante</span>
+              <span className="text-violet-300 text-sm font-medium">{t("music.editTrack")}</span>
             </button>
             {confirmDelete ? (
               <div className="flex items-center gap-3 px-5 py-3">
-                <span className="text-white/60 text-sm flex-1">Ou sèten ou vle efase?</span>
+                <span className="text-white/60 text-sm flex-1">{t("music.confirmDeleteQ")}</span>
                 <button onClick={() => { onDelete?.(track.id); onClose(); }}
                   className="px-4 py-2 rounded-full text-xs font-bold text-white"
                   style={{ background: "#dc2626" }}>
-                  Wi, efase
+                  {t("music.confirmYes")}
                 </button>
                 <button onClick={() => setConfirmDelete(false)}
                   className="px-4 py-2 rounded-full text-xs font-bold text-white/60"
                   style={{ background: "rgba(255,255,255,0.08)" }}>
-                  Non
+                  {t("music.confirmNo")}
                 </button>
               </div>
             ) : (
               <button onClick={() => setConfirmDelete(true)}
                 className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-red-900/20 transition-colors">
                 <Trash2 size={18} className="text-red-400 w-7" />
-                <span className="text-red-400 text-sm font-medium">Efase chante</span>
+                <span className="text-red-400 text-sm font-medium">{t("music.deleteTrack")}</span>
               </button>
             )}
           </div>
@@ -364,7 +364,7 @@ function EditTrackModal({ track, onClose, onSaved }:
         onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between">
-          <p className="text-white font-bold text-base">Modifye chante</p>
+          <p className="text-white font-bold text-base">{t("music.editTrack")}</p>
           <button onClick={onClose}><X size={18} className="text-white/40" /></button>
         </div>
 
@@ -2621,6 +2621,7 @@ function NowPlayingModal({
 // ══════════════════════════════════════════════════════════════════════════════
 export default function FlexaMusic() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const isAdmin = (user as any)?.isAdmin === true || (user as any)?.role === "admin";
   const [, setLocation] = useLocation();
 
@@ -3060,7 +3061,7 @@ export default function FlexaMusic() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Efase chante sa?")) return;
+    if (!window.confirm(t("music.confirmDeleteQ"))) return;
     try {
       const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
       const res = await fetch(`/api/admin/music/${id}`, {

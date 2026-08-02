@@ -4063,6 +4063,11 @@ export default {
     paymentInfoNote: "FM Wallet : paiement immédiat · Stripe : redirigé vers Stripe · Les deux : 50 $/an, renouvellement mensuel",
     deleteTrack: "Supprimer la chanson",
     buyBeforeDownload: "Vous devez acheter ce titre avant de le télécharger.",
+    editTrack: "Modifier la chanson",
+    confirmDeleteQ: "Êtes-vous sûr(e) de vouloir supprimer ?",
+    confirmYes: "Oui, supprimer",
+    confirmNo: "Annuler",
+    downloadLocked: "Téléchargement bloqué — acheter pour ${{price}} d'abord",
   },
   upload: {
     title: "Uploader de la Musique",

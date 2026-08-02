@@ -4028,6 +4028,11 @@ export default {
     paymentInfoNote: "FM Wallet: instant payment · Stripe: redirected to Stripe · Both: $50/yr, monthly renewal",
     deleteTrack: "Delete track",
     buyBeforeDownload: "You must buy this track before downloading it.",
+    editTrack: "Edit track",
+    confirmDeleteQ: "Are you sure you want to delete?",
+    confirmYes: "Yes, delete",
+    confirmNo: "Cancel",
+    downloadLocked: "Download locked — buy for ${{price}} first",
   },
   upload: {
     title: "Upload Music",

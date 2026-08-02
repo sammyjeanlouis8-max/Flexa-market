@@ -4064,6 +4064,11 @@ export default {
     paymentInfoNote: "FM Wallet: peman imedya · Stripe: redirijé sou Stripe · Toulède: $50/an, renouvèlman mansyèl",
     deleteTrack: "Efase chante",
     buyBeforeDownload: "Ou dwe achte chante sa anvan ou ka downloade li.",
+    editTrack: "Modifye chante",
+    confirmDeleteQ: "Ou sèten ou vle efase?",
+    confirmYes: "Wi, efase",
+    confirmNo: "Non",
+    downloadLocked: "Download bloke — achte pou ${{price}} anvan",
   },
   upload: {
     title: "Telechaje Mizik",

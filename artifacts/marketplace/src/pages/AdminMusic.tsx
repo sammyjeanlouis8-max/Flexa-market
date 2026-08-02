@@ -28,6 +28,7 @@ type Track = {
   is_artist_verified: boolean; play_count: number; valid_impressions: number;
   download_count: number; artist_user_id: number | null; artist_name: string | null;
   stats_impressions: number; stats_estimated: number; stats_confirmed: number;
+  sales_count: number;
   created_at: string;
 };
 type PlatformStats = {
@@ -373,6 +374,9 @@ function SongsTab({ tracks, onEdit, onRefresh, loading }:
                     <Badge label={track.copyright_status} color={copyrightColor[track.copyright_status]||"bg-white/5 text-white/50"} />
                     <span className="text-[9px] opacity-30">{fmtDur(track.duration_seconds)}</span>
                     <span className="text-[9px] opacity-30">{fmtN(track.play_count)} {t("adminMusic.plays")}</span>
+                    {(track.sales_count > 0) && (
+                      <span className="text-[9px] font-semibold text-emerald-400">{track.sales_count} vann</span>
+                    )}
                   </div>
                 </div>
                 {/* Actions */}

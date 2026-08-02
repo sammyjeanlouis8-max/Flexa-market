@@ -817,10 +817,12 @@ router.get("/admin/music", requireAdmin, async (_req, res) => {
               COALESCE(SUM(s.valid_impressions),0)::int   AS stats_impressions,
               COALESCE(SUM(s.estimated_revenue_usd),0)    AS stats_estimated,
               COALESCE(SUM(s.confirmed_revenue_usd),0)    AS stats_confirmed,
-              u.name AS artist_name
+              u.name AS artist_name,
+              COUNT(DISTINCT mp.id)::int                  AS sales_count
        FROM music_tracks mt
        LEFT JOIN music_ad_stats s ON s.track_id = mt.id
        LEFT JOIN users u ON u.id = mt.artist_user_id
+       LEFT JOIN music_purchases mp ON mp.track_id = mt.id
        GROUP BY mt.id, u.name
        ORDER BY mt.created_at DESC
        LIMIT 200`

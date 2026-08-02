@@ -273,6 +273,7 @@ function BubbleContextMenu({
   isMe: boolean; hasText: boolean; text: string;
   theme: (typeof T)[ChatTheme]; onCopy: () => void; onDelete: () => void; onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const c = theme;
   useEffect(() => {
     const h = () => onClose();
@@ -308,7 +309,7 @@ function BubbleContextMenu({
           }}
         >
           <Copy style={{ width: 15, height: 15, opacity: 0.7 }} />
-          Copie
+          {t("messages.copy")}
         </button>
       )}
       {isMe && (
@@ -324,7 +325,7 @@ function BubbleContextMenu({
           }}
         >
           <Trash2 style={{ width: 15, height: 15 }} />
-          Efase
+          {t("messages.deleteMsg")}
         </button>
       )}
     </div>
@@ -333,6 +334,7 @@ function BubbleContextMenu({
 
 // ─── Fullscreen Media Modal ───────────────────────────────────────────────────
 function MediaModal({ url, type, onClose }: { url: string; type: "image" | "video"; onClose: () => void }) {
+  const { t } = useTranslation();
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", h);
@@ -356,7 +358,7 @@ function MediaModal({ url, type, onClose }: { url: string; type: "image" | "vide
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
           color: "#fff", zIndex: 1,
         }}
-        aria-label="Retounen"
+        aria-label={t("messages.back")}
       >
         <ArrowLeft style={{ width: 22, height: 22 }} />
       </button>
@@ -638,6 +640,7 @@ function MsgBubble({
   isTranslating?: boolean;
   onTranslate?: () => void;
 }) {
+  const { t } = useTranslation();
   const c = theme;
   const [showMenu, setShowMenu] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -647,7 +650,7 @@ function MsgBubble({
     return (
       <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "2px 8px" }}>
         <span style={{ fontSize: 12, color: theme.timeOut, fontStyle: "italic", opacity: 0.55 }}>
-          🗑 Mesaj efase
+          {t("messages.deletedMessage")}
         </span>
       </div>
     );
@@ -686,7 +689,7 @@ function MsgBubble({
   };
   const handleDelete = () => {
     setShowMenu(false);
-    if (window.confirm("Efase mesaj sa a?")) {
+    if (window.confirm(t("messages.confirmDelete"))) {
       onDeleteMsg?.(msg.id);
     }
   };
@@ -808,7 +811,7 @@ function MsgBubble({
                     {/* "Translated from X" badge */}
                     <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: textColor, opacity: 0.5 }}>
                       <Globe size={10} />
-                      <span>Tradui depi {translation.detectedLanguage}</span>
+                      <span>{t("messages.translatedFrom", { lang: translation.detectedLanguage })}</span>
                     </div>
                     {/* Toggle original / translation */}
                     <button
@@ -821,7 +824,7 @@ function MsgBubble({
                         display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content",
                       }}
                     >
-                      {showOriginal ? "Wè tradiksyon" : "Wè orijinal"}
+                      {showOriginal ? t("messages.showTranslation") : t("messages.showOriginal")}
                     </button>
                   </>
                 ) : (
@@ -841,12 +844,12 @@ function MsgBubble({
                     {isTranslating ? (
                       <>
                         <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />
-                        <span>Tradiksyon...</span>
+                        <span>{t("messages.translating")}</span>
                       </>
                     ) : (
                       <>
                         <Globe size={11} />
-                        <span>Tradui</span>
+                        <span>{t("messages.translate")}</span>
                       </>
                     )}
                   </button>
@@ -1275,14 +1278,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     const tkn = localStorage.getItem("flexamarket_token") ?? "";
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
-    if (!isImage && !isVideo) { alert("Sèlman foto ak videyo!"); return; }
+    if (!isImage && !isVideo) { alert(t("messages.onlyPhotosVideos")); return; }
     const limitMB = isVideo ? 50 : 10;
-    if (file.size > limitMB * 1024 * 1024) { alert(`Fichye a twò gwo. Maksimòm ${limitMB}MB.`); return; }
+    if (file.size > limitMB * 1024 * 1024) { alert(t("messages.fileTooLarge", { size: limitMB })); return; }
     setUploading(true);
     try {
       const url = await uploadMedia(file, file.type, tkn);
       doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
-    } catch { alert("Upload echwe. Eseye ankò."); }
+    } catch { alert(t("messages.uploadFailed")); }
     finally { setUploading(false); }
   };
 
@@ -1426,7 +1429,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             <button
               type="button"
               onClick={onToggleTheme}
-              title={isDarkMode ? "Sunlight Mode" : "Night Mode"}
+              title={isDarkMode ? t("messages.sunlightMode") : t("messages.nightMode")}
               style={{
                 width: 30, height: 30, borderRadius: "50%",
                 background: c.iconActiveBg, border: "none",
@@ -1487,7 +1490,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             )}
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{ margin: 0, fontSize: 11, color: c.listSub, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Annons
+                {t("messages.listingLabel")}
               </p>
               <p style={{ margin: 0, fontSize: 13, color: c.nameColor, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {conv.listingTitle}
@@ -1648,7 +1651,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 value={text}
                 onChange={e => { setText(e.target.value); handleTyping(); }}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
-                placeholder={uploading ? "Ap telechaje…" : t("messages.typeMessage", "Ekri yon mesaj…")}
+                placeholder={uploading ? t("messages.uploading") : t("messages.typeMessage", "Ekri yon mesaj…")}
                 disabled={uploading}
                 className="chat-input w-full"
                 style={{
@@ -1714,7 +1717,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading ? 0.4 : 1,
                 }}
-                aria-label="Anrejistre vwa"
+                aria-label={t("messages.recordVoice")}
               >
                 <Mic style={{ width: 20, height: 20 }} />
               </button>

@@ -50,13 +50,24 @@ main {
    On md+ screens it reverts to normal in-flow flex layout.
    ────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 767px) {
+  /*
+   * iOS WebView safe-area fix
+   * ─────────────────────────
+   * viewport-fit=cover extends the viewport behind the Dynamic Island
+   * (top) and the home indicator (bottom).  We must shift the fixed
+   * chat layer down by env(safe-area-inset-top) and up by
+   * env(safe-area-inset-bottom) so the interactive areas are never
+   * obscured and touches always register.
+   */
   .chat-fullscreen {
     position: fixed !important;
-    top: 0;
+    top: env(safe-area-inset-top, 0px);
     left: 0;
     right: 0;
-    bottom: 0;
-    height: 100dvh;
+    bottom: env(safe-area-inset-bottom, 0px);
+    /* height is derived from top/bottom — do NOT set a px/dvh value here
+       or it will conflict with the env() offsets above */
+    height: auto !important;
     /* Must be > Layout header z-50 (50) so the chat conversation header
        is visible and not hidden underneath the sticky app header */
     z-index: 60;
@@ -72,14 +83,19 @@ main {
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    /* bottom padding = input bar height + safe area */
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 68px);
+    /* Small bottom buffer so the last message isn't flush against the bar */
+    padding-bottom: 8px;
   }
 
-  /* Input bar pinned at the very bottom, above the safe area */
+  /*
+   * Input bar — safe-area padding is handled here, not inline.
+   * The inline style in Messages.tsx only sets top/side padding;
+   * this rule owns padding-bottom so the home indicator never blocks
+   * the send button / mic button / attach button.
+   */
   .chat-input-bar {
     flex-shrink: 0;
-    padding-bottom: env(safe-area-inset-bottom, 12px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
   }
 
   /* 44×44 minimum touch target — Apple HIG requirement */

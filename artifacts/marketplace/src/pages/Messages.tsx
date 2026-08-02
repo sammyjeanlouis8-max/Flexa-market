@@ -1340,11 +1340,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   }, [convId, queryClient]);
 
   return (
-    <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: c.pageBg }}>
+    {/* height/top/bottom are controlled entirely by the .chat-fullscreen CSS
+        class (with env(safe-area-inset-*)) — no inline height override */}
+    <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
 
       {/* ── Thread header ── */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 10px",
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",
       }}>
@@ -1561,13 +1564,17 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         }}
       />
 
-      {/* ── Input bar ── */}
+      {/* ── Input bar ──
+          IMPORTANT: do NOT set paddingBottom here — the .chat-input-bar CSS
+          class owns it so that env(safe-area-inset-bottom) is applied and
+          the home indicator / Dynamic Island never blocks the buttons. */}
       <div className="chat-input-bar" style={{
         flexShrink: 0,
         position: "sticky", bottom: 0, zIndex: 10,
         background: c.inputWrapBg,
         borderTop: `1px solid ${c.headerBorder}`,
-        padding: `8px 10px`,
+        paddingTop: "8px", paddingLeft: "10px", paddingRight: "10px",
+        /* paddingBottom intentionally omitted — CSS class handles safe-area */
         maxWidth: "100vw", overflow: "hidden",
       }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />

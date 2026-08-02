@@ -3995,6 +3995,8 @@ export default {
     tab_sales: "Ventes",
     tab_monthly: "Par Mois",
     tab_history: "Historique",
+    follow: "Suivre",
+    following: "Suivi",
     totalSales: "Total Ventes",
     salesRevenue: "Votre Part",
     noSales: "Aucune vente de chanson pour l'instant",

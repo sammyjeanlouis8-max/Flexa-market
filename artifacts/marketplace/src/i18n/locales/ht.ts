@@ -3996,6 +3996,8 @@ export default {
     tab_sales: "Vant",
     tab_monthly: "Pa Mwa",
     tab_history: "Istwa",
+    follow: "Swiv",
+    following: "Swivi",
     totalSales: "Total Vant",
     salesRevenue: "Pati Ou",
     noSales: "Pa gen vant chante ankò",

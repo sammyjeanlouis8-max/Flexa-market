@@ -2242,7 +2242,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
                   color: "#fff",
                 }}
               >
-                {followedArtists.has(currentTrack.artist_user_id) ? "✓ Swivi" : "+ Swiv"}
+                {followedArtists.has(currentTrack.artist_user_id) ? `✓ ${t("music.following")}` : `+ ${t("music.follow")}`}
               </button>
             )}
           </div>
@@ -2345,6 +2345,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
   onToggleLike: (id: number) => void;
   onToggleFollow: (artistId: number, follow: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const artistTracks = useMemo(() => tracks.filter(t => t.artist === artistName), [tracks, artistName]);
   const artistUserId = artistTracks.find(t => t.artist_user_id)?.artist_user_id ?? null;
   const isFollowed   = artistUserId ? followedArtists.has(artistUserId) : false;
@@ -2368,7 +2369,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
             onClick={() => onToggleFollow(artistUserId, !isFollowed)}
             className="shrink-0 px-4 py-2 rounded-full text-xs font-bold active:scale-95 transition-all"
             style={{ background: isFollowed ? "rgba(124,58,237,0.25)" : "rgba(124,58,237,0.85)", color: "#fff" }}>
-            {isFollowed ? "✓ Swivi" : "+ Swiv"}
+            {isFollowed ? `✓ ${t("music.following")}` : `+ ${t("music.follow")}`}
           </button>
         )}
       </div>

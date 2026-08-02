@@ -13,7 +13,7 @@
  */
 
 import { Router } from "express";
-import { db, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
+import { db, promoWalletTable, walletTransactionsTable, notificationsTable, usersTable } from "@workspace/db";
 import { sql as dsql, eq } from "drizzle-orm";
 import { requireAdmin, requireAuth, optionalAuth } from "../middlewares/auth";
 import multer from "multer";
@@ -544,6 +544,59 @@ router.get("/music/artist/plan", requireAuth, async (req: any, res) => {
       canEarn: followerCount >= 500,
     });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/artist/subscribe/wallet — pay $50 directly from FM wallet (instant activation)
+// ⚠️ MUST be before /subscribe so Express doesn't match "wallet" as the next segment of another route
+router.post("/music/artist/subscribe/wallet", requireAuth, async (req: any, res) => {
+  const userId = req.user.id;
+  try {
+    // Guard: already active?
+    const plan = (req.user as any).subscriptionPlan ?? "basic";
+    const expiresAt = (req.user as any).subscriptionExpiresAt ?? null;
+    const isActive = plan === "artist" &&
+      (expiresAt === null || new Date(expiresAt) > new Date());
+    if (isActive) return res.json({ ok: true, alreadyActive: true });
+
+    const { deductWalletHybrid } = await import("./wallet");
+    const PRICE_USD = ARTIST_PLAN_PRICE_CENTS / 100; // 50.00
+
+    const deduct = await deductWalletHybrid(
+      userId, PRICE_USD,
+      "Plan Artis FlexaMusic — 1 an",
+      "subscription_debit",
+      userId,
+    );
+
+    if (!deduct.ok) {
+      return res.status(402).json({
+        error: deduct.error,
+        promoBalance: deduct.promoBalance,
+        realBalance: deduct.realBalance,
+        required: PRICE_USD,
+      });
+    }
+
+    // Activate plan for 1 year
+    const newExpiry = new Date();
+    newExpiry.setFullYear(newExpiry.getFullYear() + 1);
+
+    await db.update(usersTable)
+      .set({ subscriptionPlan: "artist" as any, subscriptionExpiresAt: newExpiry, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+
+    // Notification
+    await db.insert(notificationsTable).values({
+      userId, actorId: userId, type: "system_alert",
+      message: `🎤 Plan Artis aktive! Ou ka telechaje chante san limit pou 1 an. (Peye via Flex Card)`,
+    }).catch(() => {});
+
+    logger.info({ userId, promoUsed: deduct.promoUsed, realUsed: deduct.realUsed }, "[music] artist plan activated via wallet");
+    res.json({ ok: true, expiresAt: newExpiry.toISOString() });
+  } catch (err: any) {
+    logger.error({ err: err?.message }, "[music] artist subscribe wallet error");
+    res.status(500).json({ error: err?.message });
+  }
 });
 
 // POST /api/music/artist/subscribe — create Stripe checkout for $50/year Artist Plan

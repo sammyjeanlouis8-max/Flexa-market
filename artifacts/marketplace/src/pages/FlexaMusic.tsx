@@ -697,26 +697,61 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
 // ARTIST PLAN VIEW — upgrade screen shown when free limit (2 songs) is reached
 // ══════════════════════════════════════════════════════════════════════════════
 function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () => void }) {
-  const [loading, setLoading] = useState(false);
-  const [errMsg, setErrMsg] = useState("");
+  const [loadingStripe, setLoadingStripe] = useState(false);
+  const [loadingWallet, setLoadingWallet] = useState(false);
+  const [errMsg,  setErrMsg]  = useState("");
+  const [walletBal, setWalletBal] = useState<number | null>(null);
 
-  const handleBuy = async () => {
-    setLoading(true);
-    setErrMsg("");
+  // Fetch wallet balance on mount so we can show it in the FM button
+  useEffect(() => {
+    const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+    if (!token) return;
+    fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setWalletBal(Number(d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
+      .catch(() => {});
+  }, []);
+
+  const getToken = () =>
+    localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+
+  // Pay via Stripe
+  const handleStripe = async () => {
+    setLoadingStripe(true); setErrMsg("");
     try {
-      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
       const res = await fetch("/api/music/artist/subscribe", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erè");
       if (data.url) window.location.href = data.url;
-    } catch (e: any) {
-      setErrMsg(e.message ?? "Erè koneksyon");
-      setLoading(false);
-    }
+    } catch (e: any) { setErrMsg(e.message ?? "Erè koneksyon"); setLoadingStripe(false); }
   };
+
+  // Pay via FM Wallet (Flex Card)
+  const handleWallet = async () => {
+    setLoadingWallet(true); setErrMsg("");
+    try {
+      const res = await fetch("/api/music/artist/subscribe/wallet", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 402) {
+          const needed = Number(data.required ?? 50);
+          const has = Number(data.promoBalance ?? 0) + Number(data.realBalance ?? 0);
+          throw new Error(`Balans FM pa ase. Ou gen $${has.toFixed(2)} — ou bezwen $${needed.toFixed(2)}`);
+        }
+        throw new Error(data.error ?? "Erè");
+      }
+      // Success — reload to get updated plan state
+      window.location.href = "/music?plan=activated";
+    } catch (e: any) { setErrMsg(e.message ?? "Erè koneksyon"); setLoadingWallet(false); }
+  };
+
+  const canPayWallet = walletBal !== null && walletBal >= 50;
 
   const perks = [
     { icon: "🎵", title: "Telechaje chante san limit", desc: "Upload otank chante ou vle — pa gen plafon" },
@@ -793,17 +828,68 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
           </div>
         )}
 
-        {/* CTA */}
-        <button onClick={handleBuy} disabled={loading}
-          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
-          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
-                   boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
-          {loading ? <Loader2 size={18} className="animate-spin" /> : <span>💳</span>}
-          {loading ? "Ap konekte ak Stripe…" : "Achte Plan Artis — $50/an"}
-        </button>
+        {/* ── Payment options ── */}
+        <div className="flex flex-col gap-3">
+          <p className="text-center text-xs text-white/30 uppercase tracking-widest font-bold">Chwazi metòd peman</p>
 
-        <p className="text-center text-xs text-white/25">
-          Peman sécurisé via Stripe · Renouvèlman mansyèl · Anile nenpòt ki lè
+          {/* Option 1 — FM Wallet (Flex Card) */}
+          <div className="rounded-2xl overflow-hidden"
+            style={{ border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.06)" }}>
+            <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💳</span>
+                <div>
+                  <p className="font-bold text-sm text-emerald-300">Flex Card (FM Wallet)</p>
+                  <p className="text-xs text-white/40">Peman imedya — pa gen redireksyon</p>
+                </div>
+              </div>
+              {walletBal !== null && (
+                <span className="text-xs font-bold px-2 py-1 rounded-full"
+                  style={{
+                    background: canPayWallet ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.1)",
+                    color: canPayWallet ? "#6ee7b7" : "#f87171",
+                  }}>
+                  ${walletBal.toFixed(2)}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleWallet}
+              disabled={loadingWallet || loadingStripe || !canPayWallet}
+              className="w-full py-3 font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+              style={{
+                background: canPayWallet
+                  ? "linear-gradient(135deg,#059669,#10b981)"
+                  : "rgba(255,255,255,0.04)",
+                color: "#fff",
+              }}>
+              {loadingWallet
+                ? <><Loader2 size={15} className="animate-spin" /> Ap trete…</>
+                : canPayWallet
+                  ? "✓ Peye $50 ak FM Wallet"
+                  : `Balans pa ase (${walletBal !== null ? `$${walletBal.toFixed(2)}` : "…"} / $50.00)`}
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+            <span className="text-xs text-white/20 font-bold">oswa</span>
+            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+          </div>
+
+          {/* Option 2 — Stripe */}
+          <button onClick={handleStripe} disabled={loadingStripe || loadingWallet}
+            className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
+                     boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
+            {loadingStripe ? <Loader2 size={18} className="animate-spin" /> : <span>🌐</span>}
+            {loadingStripe ? "Ap konekte ak Stripe…" : "Peye $50 ak Kat Debi / Kredi"}
+          </button>
+        </div>
+
+        <p className="text-center text-xs text-white/20">
+          FM Wallet: peman imedya · Stripe: redirijé sou Stripe · Toulède: $50/an, renouvèlman mansyèl
         </p>
       </div>
     </div>

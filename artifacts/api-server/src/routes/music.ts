@@ -629,6 +629,30 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
     );
     const followerCount = userRow?.follower_count ?? 0;
 
+    // Song sales — purchases of the artist's tracks
+    const sales = await q(
+      `SELECT mp.id, mp.created_at,
+              t.title AS track_title, t.cover_url,
+              mp.amount_usd,
+              mp.artist_amount_usd,
+              b.name AS buyer_name
+       FROM music_purchases mp
+       JOIN music_tracks t ON t.id = mp.track_id
+       LEFT JOIN users b ON b.id = mp.user_id
+       WHERE t.artist_user_id = ${userId}
+       ORDER BY mp.created_at DESC
+       LIMIT 200`
+    );
+
+    // Sales totals
+    const [salesTotals] = await q<{ total_sales: string; total_revenue: string }>(
+      `SELECT COUNT(mp.id)::text AS total_sales,
+              COALESCE(SUM(mp.artist_amount_usd), 0)::text AS total_revenue
+       FROM music_purchases mp
+       JOIN music_tracks t ON t.id = mp.track_id
+       WHERE t.artist_user_id = ${userId}`
+    );
+
     res.json({
       earnings: rows,
       monthly,
@@ -636,6 +660,11 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
       minWithdraw: MIN_WITHDRAW_USD,
       followerCount,
       followerGoal: 500,
+      sales,
+      salesTotals: {
+        totalSales:   Number(salesTotals?.total_sales   ?? 0),
+        totalRevenue: Number(salesTotals?.total_revenue ?? 0),
+      },
     });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });

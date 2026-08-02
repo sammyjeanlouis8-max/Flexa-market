@@ -6,8 +6,8 @@
 import { useState, useEffect } from "react";
 import {
   ArrowLeft, Music2, DollarSign, TrendingUp, BarChart2,
-  Loader2, Wallet, ChevronRight, Calendar, Clock, Star,
-  RefreshCw, Info,
+  Loader2, Wallet, Calendar, Clock, Star,
+  RefreshCw, Info, ShoppingBag,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -30,6 +30,13 @@ type Earning = {
   track_title: string | null; track_artist: string | null; cover_url: string | null;
 };
 type Monthly = { month: string; total_usd: string; total_impressions: string; };
+type Sale = {
+  id: number; created_at: string;
+  track_title: string; cover_url: string | null;
+  amount_usd: number; artist_amount_usd: number;
+  buyer_name: string | null;
+};
+type SalesTotals = { totalSales: number; totalRevenue: number; };
 const FOLLOWER_GOAL = 500;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,7 +47,7 @@ const fmtN = (n: number) => n >= 1_000_000
 const fmtDate = (s: string) => new Date(s).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 const fmtMonth = (s: string) => new Date(s).toLocaleDateString(undefined, { month: "long", year: "numeric" });
 
-type Tab = "tracks" | "daily" | "monthly" | "history";
+type Tab = "tracks" | "sales" | "monthly" | "history";
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
 function StatCard({ icon: Icon, label, value, sub, color }: {
@@ -75,6 +82,8 @@ export default function FlexaMusicEarnings() {
   const [totals,  setTotals]  = useState<Totals | null>(null);
   const [earnings, setEarnings] = useState<Earning[]>([]);
   const [monthly,  setMonthly]  = useState<Monthly[]>([]);
+  const [sales,        setSales]        = useState<Sale[]>([]);
+  const [salesTotals,  setSalesTotals]  = useState<SalesTotals>({ totalSales: 0, totalRevenue: 0 });
   const [musicBalance, setMusicBalance] = useState(0);
   const [minWith,      setMinWith]      = useState(10);
   const [withdrawing,  setWithdrawing]  = useState(false);
@@ -98,6 +107,8 @@ export default function FlexaMusicEarnings() {
       setTotals(statsData.totals   ?? null);
       setEarnings(earningsData.earnings ?? []);
       setMonthly(earningsData.monthly   ?? []);
+      setSales(earningsData.sales ?? []);
+      setSalesTotals(earningsData.salesTotals ?? { totalSales: 0, totalRevenue: 0 });
       setMusicBalance(earningsData.musicEarningsBalance ?? 0);
       setMinWith(earningsData.minWithdraw  ?? 10);
       setFollowerCount(earningsData.followerCount ?? 0);
@@ -260,10 +271,15 @@ export default function FlexaMusicEarnings() {
 
           {/* ── Tabs ── */}
           <div className="flex gap-1 bg-muted rounded-xl p-1 mb-4">
-            {(["tracks","daily","monthly","history"] as Tab[]).map(tb => (
+            {(["tracks","sales","monthly","history"] as Tab[]).map(tb => (
               <button key={tb} onClick={() => setTab(tb)}
-                className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-all ${tab === tb ? "bg-background shadow text-foreground" : "text-muted-foreground"}`}>
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-lg transition-all ${tab === tb ? "bg-background shadow text-foreground" : "text-muted-foreground"} relative`}>
                 {t(`music.tab_${tb}`)}
+                {tb === "sales" && salesTotals.totalSales > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">
+                    {salesTotals.totalSales > 9 ? "9+" : salesTotals.totalSales}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -321,27 +337,47 @@ export default function FlexaMusicEarnings() {
                 </div>
           )}
 
-          {/* ── Tab: Daily ── */}
-          {tab === "daily" && (
-            dailyByDate.length === 0
-              ? <Empty label={t("music.noData")} />
-              : <div className="space-y-2">
-                  {dailyByDate.map(([date, stat]) => (
-                    <div key={date} className="flex items-center gap-3 p-3 bg-card border border-border rounded-2xl">
-                      <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-950/40 flex items-center justify-center shrink-0">
-                        <Calendar size={16} className="text-violet-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm">{fmtDate(date)}</p>
-                        <p className="text-xs text-muted-foreground">{fmtN(stat.impressions)} {t("music.impressionsUnit")}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-bold text-sm text-emerald-600">{fmt$(stat.confirmed)}</p>
-                        <p className="text-[10px] text-muted-foreground">{fmt$(stat.estimated)} {t("music.estimated")}</p>
-                      </div>
-                    </div>
-                  ))}
+          {/* ── Tab: Sales ── */}
+          {tab === "sales" && (
+            <>
+              {/* Sales totals banner */}
+              {salesTotals.totalSales > 0 && (
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-3 text-center">
+                    <p className="text-2xl font-black text-emerald-600">{salesTotals.totalSales}</p>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold">{t("music.totalSales")}</p>
+                  </div>
+                  <div className="bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 rounded-2xl p-3 text-center">
+                    <p className="text-2xl font-black text-violet-600">{fmt$(salesTotals.totalRevenue)}</p>
+                    <p className="text-[11px] text-violet-700 dark:text-violet-400 font-semibold">{t("music.salesRevenue")}</p>
+                  </div>
                 </div>
+              )}
+              {sales.length === 0
+                ? <Empty label={t("music.noSales")} />
+                : <div className="space-y-2">
+                    {sales.map(s => (
+                      <div key={s.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-2xl">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center shrink-0 overflow-hidden">
+                          {s.cover_url
+                            ? <img src={s.cover_url} alt={s.track_title} className="w-full h-full object-cover" />
+                            : <ShoppingBag size={16} className="text-emerald-600" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm truncate">{s.track_title}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {s.buyer_name ?? t("music.unknownBuyer")} · {fmtDate(s.created_at)}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-black text-base text-emerald-600">+{fmt$(s.artist_amount_usd)}</p>
+                          <p className="text-[10px] text-muted-foreground">{t("music.salePrice", { price: fmt$(s.amount_usd) })}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </>
           )}
 
           {/* ── Tab: Monthly ── */}

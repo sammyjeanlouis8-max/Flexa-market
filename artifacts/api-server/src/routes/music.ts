@@ -313,6 +313,79 @@ router.post("/music/:id/buy", requireAuth, async (req: any, res) => {
   }
 });
 
+// POST /api/music/:id/buy/wallet — purchase a song directly from FM wallet (instant, no Stripe)
+// ⚠️ MUST stay before generic /:id routes
+router.post("/music/:id/buy/wallet", requireAuth, async (req: any, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId || isNaN(trackId)) return res.status(400).json({ error: "Invalid track id" });
+
+  const buyerId: number = req.user.id;
+  try {
+    const [track] = await q<{
+      id: number; title: string; artist: string;
+      monetization_type: string; price_usd: string | null; artist_user_id: number | null;
+    }>(`SELECT id, title, artist, monetization_type, price_usd, artist_user_id
+        FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE LIMIT 1`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    if (track.monetization_type !== "sale") return res.status(400).json({ error: "Track is not for sale" });
+    const price = Number(track.price_usd ?? 0);
+    if (price <= 0) return res.status(400).json({ error: "Track has no price set" });
+
+    // Idempotency: already purchased?
+    const [existing] = await q(
+      `SELECT id FROM music_purchases WHERE user_id = ${buyerId} AND track_id = ${trackId} LIMIT 1`
+    );
+    if (existing) return res.json({ alreadyPurchased: true });
+
+    // Deduct from FM wallet (promo-first, then real balance)
+    const { deductWalletHybrid } = await import("./wallet");
+    const deduct = await deductWalletHybrid(
+      buyerId, price,
+      `Achte chante: ${track.title} — ${track.artist}`,
+      "purchase_debit",
+      buyerId,
+    );
+
+    if (!deduct.ok) {
+      return res.status(402).json({
+        error: deduct.error,
+        promoBalance: deduct.promoBalance,
+        realBalance: deduct.realBalance,
+        required: price,
+      });
+    }
+
+    const platformFee  = parseFloat((price * 0.20).toFixed(2));
+    const artistAmount = parseFloat((price - platformFee).toFixed(2));
+    const artistId     = track.artist_user_id;
+
+    // Record purchase (idempotent — wallet was already charged above)
+    await db.execute(sql`
+      INSERT INTO music_purchases (user_id, track_id, amount_usd, artist_amount_usd, platform_fee_usd)
+      VALUES (${buyerId}, ${trackId}, ${price}, ${artistAmount}, ${platformFee})
+      ON CONFLICT (user_id, track_id) DO NOTHING
+    `);
+
+    // Credit artist 80% into music_earnings
+    if (artistId) {
+      await db.execute(sql`
+        INSERT INTO music_earnings (artist_id, track_id, amount_usd, impressions_credited, milestone, description, is_paid_out)
+        VALUES (${artistId}, ${trackId}, ${artistAmount}, 0, 'purchase', 'Vann chante — 80% komisyon (Kart FM)', FALSE)
+      `);
+      await db.insert(notificationsTable).values({
+        userId: artistId, actorId: buyerId, type: "system_alert",
+        message: `🎵 Yon moun achte chante ou via Kart FM! Ou touche $${artistAmount.toFixed(2)} (80%).`,
+      }).catch(() => {});
+    }
+
+    logger.info({ trackId, buyerId, artistId, price, artistAmount, platformFee }, "[music] track purchased via FM wallet");
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.error({ err: err?.message, trackId }, "[music] buy/wallet error");
+    res.status(500).json({ error: err?.message });
+  }
+});
+
 // GET /api/music/diagnose — Wasabi preflight + env check (no auth, safe — redacts secrets)
 // ⚠️ MUST be registered before /:id or Express routes "diagnose" as an id
 router.get("/music/diagnose", async (_req, res) => {

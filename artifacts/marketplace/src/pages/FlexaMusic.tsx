@@ -625,23 +625,58 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
   onBought: () => void;
   onBack: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [errMsg, setErrMsg] = useState("");
+  const [loading,       setLoading]       = useState(false);
+  const [loadingWallet, setLoadingWallet] = useState(false);
+  const [errMsg,        setErrMsg]        = useState("");
+  const [walletBal,     setWalletBal]     = useState<number | null>(null);
   const { t } = useTranslation();
 
+  const getToken = () =>
+    localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+
+  // Fetch wallet balance so we can show it on the FM button
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setWalletBal(Number(d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
+      .catch(() => {});
+  }, []);
+
+  // ── Pay via Stripe checkout ─────────────────────────────────────────────────
   const handleBuy = async () => {
     setLoading(true); setErrMsg("");
     try {
-      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
-      const res = await fetch(`/api/music/${track.id}/buy`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      const res  = await fetch(`/api/music/${track.id}/buy`, {
+        method: "POST", headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erè");
       if (data.alreadyPurchased) { markPurchased(userId, track.id); onBought(); return; }
       if (data.url) window.location.href = data.url;
     } catch (e: any) { setErrMsg(e.message); setLoading(false); }
+  };
+
+  // ── Pay via FM wallet (instant) ─────────────────────────────────────────────
+  const handleBuyWallet = async () => {
+    setLoadingWallet(true); setErrMsg("");
+    try {
+      const res  = await fetch(`/api/music/${track.id}/buy/wallet`, {
+        method: "POST", headers: { Authorization: `Bearer ${getToken()}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // Insufficient balance → show friendly message with current balance
+        if (res.status === 402) {
+          const have = Number((data.promoBalance ?? 0) + (data.realBalance ?? 0)).toFixed(2);
+          throw new Error(`Balans pa ase — ou gen $${have}, chante a koute $${Number(data.required ?? 0).toFixed(2)}`);
+        }
+        throw new Error(data.error ?? "Erè");
+      }
+      if (data.alreadyPurchased) { markPurchased(userId, track.id); onBought(); return; }
+      if (data.ok) { markPurchased(userId, track.id); onBought(); return; }
+    } catch (e: any) { setErrMsg(e.message); setLoadingWallet(false); }
   };
 
   const price = Number(track.price_usd ?? 0);
@@ -725,15 +760,43 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
           </div>
         )}
 
-        {/* CTA */}
+        {/* CTA — two payment options */}
         <div className="w-full max-w-xs flex flex-col gap-3">
-          <button onClick={handleBuy} disabled={loading}
+
+          {/* ── Option 1: Stripe card ── */}
+          <button onClick={handleBuy} disabled={loading || loadingWallet}
             className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
             style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                      boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
             {loading ? <Loader2 size={18} className="animate-spin" /> : "💳"}
             {loading ? t("music.connectingPayment") : t("music.buyTrack", { price: price.toFixed(2) })}
           </button>
+
+          {/* ── Divider ── */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-white/30 text-xs font-bold">OU</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          {/* ── Option 2: FM Wallet ── */}
+          <button onClick={handleBuyWallet} disabled={loading || loadingWallet}
+            className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg,#ea580c,#f97316)", color: "#fff",
+                     boxShadow: "0 8px 24px rgba(234,88,12,0.35)" }}>
+            {loadingWallet ? <Loader2 size={18} className="animate-spin" /> : "🟠"}
+            {loadingWallet ? "Ap trete…" : (
+              <>
+                Peye ak Kart FM
+                {walletBal !== null && (
+                  <span className="ml-1 text-sm font-normal opacity-80">
+                    (${walletBal.toFixed(2)})
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+
           <button onClick={onBack}
             className="w-full rounded-2xl py-3 text-sm font-bold text-white/50 active:text-white/80 transition-colors">
             {t("music.listenFree")}

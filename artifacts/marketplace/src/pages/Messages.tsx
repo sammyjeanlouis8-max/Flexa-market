@@ -1446,8 +1446,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           flex: 1, overflowY: "auto", overflowX: "hidden",
           backgroundImage: "url(/chat-bg.png)",
           backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundAttachment: "local",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+          backgroundColor: "#f5e8c0",   /* warm gold fallback while image loads */
           WebkitOverflowScrolling: "touch",
           position: "relative",
         } as React.CSSProperties}

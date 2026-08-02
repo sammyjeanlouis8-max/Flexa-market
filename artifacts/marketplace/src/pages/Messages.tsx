@@ -1310,22 +1310,23 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: c.pageBg }}>
 
       {/* ── Thread header ── */}
-      {conv && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-          borderBottom: `1px solid ${c.headerBorder}`,
-          background: c.headerBg, flexShrink: 0, overflow: "hidden",
-        }}>
-          {/* Back button (mobile) */}
-          <Link href="/messages" className="md:hidden">
-            <button type="button" style={{
-              width: 38, height: 38, borderRadius: "50%", background: "none",
-              border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              color: c.iconColor, cursor: "pointer", flexShrink: 0,
-            }}>
-              <ArrowLeft style={{ width: 22, height: 22 }} />
-            </button>
-          </Link>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+        borderBottom: `1px solid ${c.headerBorder}`,
+        background: c.headerBg, flexShrink: 0, overflow: "hidden",
+      }}>
+        {/* Back button — always visible, not gated on conv loading */}
+        <Link href="/messages" className="md:hidden">
+          <button type="button" style={{
+            width: 38, height: 38, borderRadius: "50%", background: "none",
+            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+            color: c.iconColor, cursor: "pointer", flexShrink: 0,
+          }}>
+            <ArrowLeft style={{ width: 22, height: 22 }} />
+          </button>
+        </Link>
+
+      {conv && (<>
 
           {/* Avatar + online dot */}
           <Link href={`/profile/${conv.otherUserId}`} style={{ flexShrink: 0 }}>
@@ -1408,8 +1409,8 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               />
             )}
           </div>
-        </div>
-      )}
+        </>)}
+      </div>
 
       {/* ── Listing context banner ── */}
       {conv && conv.listingTitle && (
@@ -1443,8 +1444,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         ref={msgContainerRef}
         style={{
           flex: 1, overflowY: "auto", overflowX: "hidden",
-          background: c.msgAreaBg,
+          backgroundImage: "url(/chat-bg.png)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundAttachment: "local",
           WebkitOverflowScrolling: "touch",
+          position: "relative",
         } as React.CSSProperties}
       >
         {isLoading && (

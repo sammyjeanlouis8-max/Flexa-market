@@ -4035,6 +4035,13 @@ export default {
     chooseAudio: "Chwazi fichye odyo",
     audioFormats500: "MP3, WAV, FLAC, AAC, M4A · maks 500 MB",
     backgroundNote: "Telechajman ap fèt nan background — ou ka ale nenpòt kote sou app la. Yon notifikasyon ap parèt anba ekran an jouk li fini.",
+    forSaleTitle: "💰 Mete chante sa pou vann",
+    forSaleSubtitle: "Ou touche 80% · Flexa kenbe 20%",
+    priceLabel: "Pri ($USD) *",
+    priceArtistEarns: "Artis touche",
+    priceFlexa: "Flexa",
+    priceFreePlays: "Moun ka koute 2 fwa gratis anvan yo achte",
+    errMinPrice: "Pri minimum pou vann se $0.99",
   },
   uploadCtx: {
     done: "Telechajman reyisi! 🎵",

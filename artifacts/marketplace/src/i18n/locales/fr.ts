@@ -4032,6 +4032,13 @@ export default {
     chooseAudio: "Choisir un fichier audio",
     audioFormats500: "MP3, WAV, FLAC, AAC, M4A · max 500 Mo",
     backgroundNote: "Le téléversement continue en arrière-plan — vous pouvez naviguer partout dans l'app. Une notification apparaîtra en bas de l'écran jusqu'à la fin.",
+    forSaleTitle: "💰 Mettre ce titre en vente",
+    forSaleSubtitle: "Vous gagnez 80% · Flexa garde 20%",
+    priceLabel: "Prix ($USD) *",
+    priceArtistEarns: "Artiste gagne",
+    priceFlexa: "Flexa",
+    priceFreePlays: "Les auditeurs ont 2 écoutes gratuites avant d'acheter",
+    errMinPrice: "Le prix minimum est $0.99",
   },
   uploadCtx: {
     done: "Envoi réussi ! 🎵",

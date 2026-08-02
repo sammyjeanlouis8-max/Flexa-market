@@ -937,7 +937,7 @@ function UploadView({ onBack, onSuccess }: {
     });
 
     if (forSale && (!priceUsd || priceUsd < 0.99)) {
-      setErrMsg("Pri minimum pou vann se $0.99"); return;
+      setErrMsg(t("upload.errMinPrice")); return;
     }
 
     // Hand off to global context — XHR survives component unmount
@@ -1086,8 +1086,8 @@ function UploadView({ onBack, onSuccess }: {
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold">💰 Mete chante sa pou vann</p>
-              <p className="text-xs text-white/40 mt-0.5">Ou touche 80% · Flexa kenbe 20%</p>
+              <p className="text-sm font-bold">{t("upload.forSaleTitle")}</p>
+              <p className="text-xs text-white/40 mt-0.5">{t("upload.forSaleSubtitle")}</p>
             </div>
             <button type="button" onClick={() => setForSale(v => !v)}
               className="w-12 h-6 rounded-full transition-all relative shrink-0"
@@ -1099,7 +1099,7 @@ function UploadView({ onBack, onSuccess }: {
           {forSale && (
             <div>
               <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">
-                Pri ($USD) *
+                {t("upload.priceLabel")}
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
@@ -1113,9 +1113,9 @@ function UploadView({ onBack, onSuccess }: {
                 />
               </div>
               <p className="text-xs text-white/30 mt-1">
-                Artis touche: <strong className="text-green-400">${(priceUsd * 0.80).toFixed(2)}</strong>
-                {" "}· Flexa: <strong className="text-white/40">${(priceUsd * 0.20).toFixed(2)}</strong>
-                {" "}· Moun ka koute 2 fwa gratis anvan yo achte
+                {t("upload.priceArtistEarns")}: <strong className="text-green-400">${(priceUsd * 0.80).toFixed(2)}</strong>
+                {" "}· {t("upload.priceFlexa")}: <strong className="text-white/40">${(priceUsd * 0.20).toFixed(2)}</strong>
+                {" "}· {t("upload.priceFreePlays")}
               </p>
             </div>
           )}

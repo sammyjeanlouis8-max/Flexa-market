@@ -105,6 +105,7 @@ export default function GlobalMusicPlayer() {
   useEffect(() => subscribeMusicState(() => forceUpdate(n => n + 1)), []);
 
   const s = getMusicState();
+  const [, navigate] = useLocation();
   const onMusicPage = /^\/music(\/|$)/.test(location);
   if (!s.track || onMusicPage) return null;
 
@@ -361,33 +362,39 @@ export default function GlobalMusicPlayer() {
 
         {/* ── Info + controls row ── */}
         <div className="flex items-center gap-2.5 px-3 pb-3 pt-0.5">
-          <div className="shrink-0 w-[42px] h-[42px] rounded-[10px] overflow-hidden">
-            <CoverThumb src={track.cover_url} title={track.title} />
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
-            <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-violet-300 text-[9px] font-mono tabular-nums">
-                {fmtDur(Math.floor(isSwiping ? previewTime : currentTime))}
-              </span>
-              {duration > 0 && (
-                <span className="text-white/20 text-[9px]">/ {fmtDur(Math.floor(duration))}</span>
-              )}
-              {isSwiping && !isDragging && Math.abs(swipeDelta) > SWIPE_THRESH && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                  style={{ background: "rgba(236,72,153,0.25)", color: "#f9a8d4" }}>
-                  {seekDeltaSec >= 0 ? `+${Math.round(seekDeltaSec)}s` : `${Math.round(seekDeltaSec)}s`}
-                </span>
-              )}
-              {isDragging && (
-                <span className="text-[9px] font-bold text-violet-300 animate-pulse">
-                  {t("music.playerDraggingTip")}
-                </span>
-              )}
+          {/* ── Cover + info — tap to open /music ── */}
+          <div
+            className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer active:opacity-70 transition-opacity"
+            onClick={() => { if (!isDragging && !isSwiping) navigate("/music"); }}
+          >
+            <div className="shrink-0 w-[42px] h-[42px] rounded-[10px] overflow-hidden">
+              <CoverThumb src={track.cover_url} title={track.title} />
             </div>
-          </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
+              <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-violet-300 text-[9px] font-mono tabular-nums">
+                  {fmtDur(Math.floor(isSwiping ? previewTime : currentTime))}
+                </span>
+                {duration > 0 && (
+                  <span className="text-white/20 text-[9px]">/ {fmtDur(Math.floor(duration))}</span>
+                )}
+                {isSwiping && !isDragging && Math.abs(swipeDelta) > SWIPE_THRESH && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(236,72,153,0.25)", color: "#f9a8d4" }}>
+                    {seekDeltaSec >= 0 ? `+${Math.round(seekDeltaSec)}s` : `${Math.round(seekDeltaSec)}s`}
+                  </span>
+                )}
+                {isDragging && (
+                  <span className="text-[9px] font-bold text-violet-300 animate-pulse">
+                    {t("music.playerDraggingTip")}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>{/* end tappable area */}
 
           <div className="flex items-center gap-0.5 shrink-0">
             <button onClick={musicPlayPrev}

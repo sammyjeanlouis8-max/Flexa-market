@@ -1349,9 +1349,11 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           We use calc() in the inline style rather than a CSS class so the value is
           always applied even when other rules have higher specificity.
           NEVER use `padding` shorthand here — it would reset paddingTop to 8px. */}
+      {/* paddingTop = max(env(), --sat from iOS bootstrap) + 8px.
+          --sat is set synchronously in index.html before first paint:
+          59 px for notch/Dynamic-Island iPhones, 0 for everything else. */}
       <div className="chat-header-safe" style={{
         display: "flex", alignItems: "center", gap: 8,
-        paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)",
         paddingBottom: "8px", paddingLeft: "10px", paddingRight: "10px",
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",

@@ -82,14 +82,12 @@ main {
 
   /*
    * Thread header — owns the top safe-area inset.
-   * The inline style in Messages.tsx sets paddingTop via this helper;
-   * using a class for documentation, the actual value is injected inline
-   * via calc() so the header background fills the Dynamic Island zone.
+   * --sat is set by the iOS bootstrap script in index.html.
+   * max() picks whichever is larger: the real env() value (Safari) or
+   * the JS-detected fallback (React Native WebView where env() = 0).
    */
   .chat-header-safe {
-    /* Fallback: 54px covers Dynamic Island on iPhone 14/15 when
-       env(safe-area-inset-top) is unavailable or returns 0 */
-    padding-top: max(env(safe-area-inset-top, 0px), 0px);
+    padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
   }
 
   /* Message scroll area — fills remaining space between header and input */

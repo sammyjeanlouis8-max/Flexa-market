@@ -1261,8 +1261,12 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         </button>
       </div>
 
-      {/* ── Search ── */}
-      <form onSubmit={handleSearch} className="px-4 mb-5">
+      {/* ── Search ──
+          NOTE: intentionally a <div>, NOT a <form>.
+          A <form method="GET"> can trigger URL navigation in some iOS WebViews
+          even when e.preventDefault() is called, making the search bar "go back".
+          Live search runs via the useEffect debounce below — no form needed. */}
+      <div className="px-4 mb-5">
         <div className="flex items-center gap-2 rounded-xl px-3 py-2.5"
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.07)" }}>
           <Search size={15} className="text-white/40 shrink-0" />
@@ -1270,12 +1274,28 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             ref={searchInputRef}
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => {
+              // Prevent Enter / any key from bubbling to the WebView router
+              e.stopPropagation();
+              // Dismiss keyboard on Enter (search already runs via debounce)
+              if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+            }}
             placeholder={t("music.searchPlaceholder")}
             className="flex-1 bg-transparent text-white text-sm placeholder:text-white/30 outline-none"
+            inputMode="search"
+            enterKeyHint="search"
           />
-          {search && <button type="button" onClick={() => { setSearch(""); onSearch(""); }}><X size={13} className="text-white/30" /></button>}
+          {search && (
+            <button
+              type="button"
+              onClick={() => { setSearch(""); onSearch(""); }}
+              onTouchEnd={e => { e.preventDefault(); setSearch(""); onSearch(""); }}
+            >
+              <X size={13} className="text-white/30" />
+            </button>
+          )}
         </div>
-      </form>
+      </div>
 
       {search.trim() ? (
         /* ── Search results ── */

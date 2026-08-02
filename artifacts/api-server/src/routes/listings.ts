@@ -97,9 +97,11 @@ function getAdminScopeCountriesList(user: any): string[] {
 
 /** Appends country-scope conditions for a scoped admin with no explicit country filter. */
 function enforceAdminCountryScope(conditions: any[], user: any, country?: string): void {
+  // Explicit country always wins — even for super admin who selected a specific country
+  if (country) { conditions.push(eq(listingsTable.country!, country)); return; }
+  // Super admin with no country selected → see everything
   const isSuperAdmin = user?.isSuperAdmin;
   if (isSuperAdmin) return;
-  if (country) { conditions.push(eq(listingsTable.country!, country)); return; }
   const list = getAdminScopeCountriesList(user);
   if (list.length === 1) conditions.push(eq(listingsTable.country!, list[0]));
   else if (list.length > 1) conditions.push(inArray(listingsTable.country!, list) as any);

@@ -2016,6 +2016,36 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_earnings.is_paid_out", sql: "ALTER TABLE music_earnings ADD COLUMN IF NOT EXISTS is_paid_out BOOLEAN NOT NULL DEFAULT FALSE" });
   migrations.push({ name: "music_earnings.paid_out_at", sql: "ALTER TABLE music_earnings ADD COLUMN IF NOT EXISTS paid_out_at TIMESTAMPTZ" });
 
+  // ── Backfill: every music_purchase that has no matching music_earnings row ──
+  // The original INSERT was crashing (is_paid_out column missing) so all early
+  // purchases have earnings entries missing.  We recreate them once, idempotent
+  // via the NOT EXISTS guard.
+  migrations.push({
+    name: "music_earnings.backfill_from_purchases",
+    sql: `
+      INSERT INTO music_earnings
+        (artist_id, track_id, amount_usd, impressions_credited, milestone, description, created_at)
+      SELECT
+        t.artist_user_id,
+        mp.track_id,
+        mp.artist_amount_usd,
+        0,
+        'purchase',
+        'Vann chante — 80% komisyon (rekiperasyon)',
+        mp.created_at
+      FROM music_purchases mp
+      JOIN music_tracks t ON t.id = mp.track_id
+      WHERE t.artist_user_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM music_earnings me
+          WHERE me.artist_id  = t.artist_user_id
+            AND me.track_id   = mp.track_id
+            AND me.milestone  = 'purchase'
+            AND ABS(EXTRACT(EPOCH FROM (me.created_at - mp.created_at))) < 600
+        )
+    `,
+  });
+
   // ── Clear sample/seed music tracks (one-time, guarded by a flag table) ──────
   migrations.push({
     name: "flexa_migrations_flags.create",

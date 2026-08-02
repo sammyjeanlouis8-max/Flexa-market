@@ -31,6 +31,8 @@ type Track = {
   cover_url: string | null;
   duration_seconds: number | null;
   type: string;
+  monetization_type: string;   // "stream" | "sale"
+  price_usd: number | null;    // only set when monetization_type === "sale"
   is_featured: boolean;
   play_count: number;
   valid_impressions: number;
@@ -56,7 +58,7 @@ type MusicComment = {
   user_is_verified: boolean;
 };
 
-type View = "home" | "player" | "upload";
+type View = "home" | "player" | "upload" | "artist-plan" | "paywall";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const LIKED_KEY = "flexa_music_liked_v2";
@@ -537,6 +539,277 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
 // ── Upload View ───────────────────────────────────────────────────────────────
 // Upload runs through the global MusicUploadContext so it survives navigation.
 // This component only handles the form; the XHR lives in the context.
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAY-COUNT HELPERS — tracks how many times a "sale" song was played (≥30s)
+// Stored in localStorage; server is not consulted until purchase is needed.
+// ══════════════════════════════════════════════════════════════════════════════
+const FREE_PLAYS = 2; // number of free listens before paywall
+function getPcKey(userId: number | undefined, trackId: number) {
+  return `flexa_pc_${userId ?? "anon"}_${trackId}`;
+}
+function getPlayCount(userId: number | undefined, trackId: number): number {
+  try { return Number(localStorage.getItem(getPcKey(userId, trackId)) ?? 0); }
+  catch { return 0; }
+}
+function incrementPlayCount(userId: number | undefined, trackId: number) {
+  try {
+    const n = getPlayCount(userId, trackId) + 1;
+    localStorage.setItem(getPcKey(userId, trackId), String(n));
+    return n;
+  } catch { return 999; }
+}
+function markPurchased(userId: number | undefined, trackId: number) {
+  try { localStorage.setItem(`flexa_owns_${userId ?? "anon"}_${trackId}`, "1"); } catch { /* */ }
+}
+function isPurchasedLocally(userId: number | undefined, trackId: number): boolean {
+  try { return localStorage.getItem(`flexa_owns_${userId ?? "anon"}_${trackId}`) === "1"; } catch { return false; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SONG PAYWALL VIEW — shown when a "for sale" track hits the 2-listen limit
+// ══════════════════════════════════════════════════════════════════════════════
+function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
+  track: Track;
+  userId: number | undefined;
+  playCount: number;
+  onBought: () => void;
+  onBack: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+
+  const handleBuy = async () => {
+    setLoading(true); setErrMsg("");
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      const res = await fetch(`/api/music/${track.id}/buy`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erè");
+      if (data.alreadyPurchased) { markPurchased(userId, track.id); onBought(); return; }
+      if (data.url) window.location.href = data.url;
+    } catch (e: any) { setErrMsg(e.message); setLoading(false); }
+  };
+
+  const price = track.price_usd ?? 0;
+  const PLATFORM_PCT = 20;
+
+  return (
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", display: "flex", flexDirection: "column" }}>
+      {/* Blurred cover bg */}
+      {track.cover_url && (
+        <div style={{
+          position: "fixed", inset: 0, backgroundImage: `url(${track.cover_url})`,
+          backgroundSize: "cover", backgroundPosition: "center",
+          filter: "blur(40px) brightness(0.15)", zIndex: 0,
+        }} />
+      )}
+
+      {/* Header */}
+      <div className="relative z-10 flex items-center gap-3 px-4 py-3 sticky top-0"
+        style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(12px)" }}>
+        <button onClick={onBack} className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(255,255,255,0.12)" }}>
+          <ChevronLeft size={20} className="text-white" />
+        </button>
+        <p className="font-black text-base">Koute san limit</p>
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 flex flex-col items-center gap-6 px-5 py-8 pb-28">
+        {/* Track art */}
+        <div className="relative w-52 h-52 rounded-3xl overflow-hidden shadow-2xl"
+          style={{ boxShadow: "0 20px 60px rgba(0,0,0,0.8)" }}>
+          {track.cover_url
+            ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+            : <div className="w-full h-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
+                <Music2 size={48} className="text-white/20" />
+              </div>}
+          {/* Lock overlay */}
+          <div className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.55)" }}>
+            <span className="text-5xl">🔒</span>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <h2 className="font-black text-xl mb-1">{track.title}</h2>
+          <p className="text-white/50 text-sm">{track.artist}</p>
+        </div>
+
+        {/* Listen count notice */}
+        <div className="rounded-2xl px-5 py-4 text-center max-w-xs"
+          style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)" }}>
+          <p className="text-sm leading-relaxed" style={{ color: "#c084fc" }}>
+            Ou te koute chante sa <strong>{playCount} fwa</strong>.
+            Limit gratis la se <strong>{FREE_PLAYS} koute</strong>. <br />
+            Achte li pou jwi li <strong>san limit</strong>.
+          </p>
+        </div>
+
+        {/* Price breakdown */}
+        <div className="w-full max-w-xs rounded-2xl overflow-hidden"
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            <span className="text-sm text-white/60">Pri chante</span>
+            <span className="font-bold">${price.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            <span className="text-sm text-white/60">Artis touche ({100 - PLATFORM_PCT}%)</span>
+            <span className="font-bold text-green-400">${(price * (100 - PLATFORM_PCT) / 100).toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-sm text-white/60">Komisyon Flexa ({PLATFORM_PCT}%)</span>
+            <span className="text-white/40 text-sm">${(price * PLATFORM_PCT / 100).toFixed(2)}</span>
+          </div>
+        </div>
+
+        {errMsg && (
+          <div className="w-full max-w-xs flex items-center gap-2 rounded-xl px-4 py-3"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <AlertCircle size={15} className="text-red-400 shrink-0" />
+            <p className="text-sm text-red-400">{errMsg}</p>
+          </div>
+        )}
+
+        {/* CTA */}
+        <div className="w-full max-w-xs flex flex-col gap-3">
+          <button onClick={handleBuy} disabled={loading}
+            className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
+                     boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
+            {loading ? <Loader2 size={18} className="animate-spin" /> : "💳"}
+            {loading ? "Ap konekte…" : `Achte pou $${price.toFixed(2)}`}
+          </button>
+          <button onClick={onBack}
+            className="w-full rounded-2xl py-3 text-sm font-bold text-white/50 active:text-white/80 transition-colors">
+            Koute yon lòt chante gratis
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ARTIST PLAN VIEW — upgrade screen shown when free limit (2 songs) is reached
+// ══════════════════════════════════════════════════════════════════════════════
+function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+
+  const handleBuy = async () => {
+    setLoading(true);
+    setErrMsg("");
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      const res = await fetch("/api/music/artist/subscribe", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erè");
+      if (data.url) window.location.href = data.url;
+    } catch (e: any) {
+      setErrMsg(e.message ?? "Erè koneksyon");
+      setLoading(false);
+    }
+  };
+
+  const perks = [
+    { icon: "🎵", title: "Telechaje chante san limit", desc: "Upload otank chante ou vle — pa gen plafon" },
+    { icon: "💰", title: "Touche revni sou mizik ou", desc: "Revni soti nan piblisite, klik sou pwodwi, ak acha" },
+    { icon: "📈", title: "Estatistik detaye", desc: "Wè konbyen moun ki koute, klik, ak revni ou chak jou" },
+    { icon: "🏆", title: "Peman mansyèl apre 500 abone", desc: "Rive 500 abone epi ou kòmanse touche chak mwa otomatikman" },
+  ];
+
+  return (
+    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff" }}>
+      {/* Header */}
+      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3"
+        style={{ background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <button onClick={onBack} className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "#1a1a1a" }}>
+          <ChevronLeft size={20} className="text-white" />
+        </button>
+        <p className="font-black text-base">Plan Artis</p>
+      </div>
+
+      <div className="px-4 py-6 flex flex-col gap-6 pb-28">
+        {/* Hero */}
+        <div className="rounded-2xl p-6 text-center flex flex-col items-center gap-3"
+          style={{ background: "linear-gradient(135deg,#7c3aed22,#c026d322)", border: "1px solid rgba(124,58,237,0.3)" }}>
+          <div className="text-5xl">🎤</div>
+          <h1 className="font-black text-2xl">Pase nan Plan Artis</h1>
+          <p className="text-sm text-white/60 leading-relaxed max-w-xs">
+            Ou gen <span className="text-white font-bold">{songCount} chante</span> deja. Plan gratis la pèmèt {songCount >= 2 ? "2 chante sèlman" : `${2 - songCount} chante anko`}.
+            Pou telechaje plis epi touche revni — akèt Plan Artis la.
+          </p>
+          <div className="flex items-baseline gap-1 mt-2">
+            <span className="text-4xl font-black" style={{ color: "#a855f7" }}>$50</span>
+            <span className="text-white/40 text-sm">/an</span>
+          </div>
+        </div>
+
+        {/* Perks */}
+        <div className="flex flex-col gap-3">
+          {perks.map((p, i) => (
+            <div key={i} className="flex items-start gap-4 rounded-xl p-4"
+              style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <span className="text-2xl shrink-0">{p.icon}</span>
+              <div>
+                <p className="font-bold text-sm">{p.title}</p>
+                <p className="text-xs text-white/40 mt-0.5 leading-relaxed">{p.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Revenue model explainer */}
+        <div className="rounded-xl p-4 flex flex-col gap-3"
+          style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
+          <p className="font-bold text-sm" style={{ color: "#a855f7" }}>💡 Kijan ou touche lajan?</p>
+          <div className="flex flex-col gap-2 text-xs text-white/60 leading-relaxed">
+            <p>• <strong className="text-white/80">Piblisite</strong> — chak 1 000 koute valid = $1.00 (CPM)</p>
+            <p>• <strong className="text-white/80">Klik sou pwodwi</strong> — lè moun klike sou yon pwomoson ki jwe sou mizik ou</p>
+            <p>• <strong className="text-white/80">Acha</strong> — komisyon lè yon acha fèt sou pwodwi ki anba mizik ou</p>
+          </div>
+          <div className="mt-1 rounded-lg p-3 flex items-center gap-3"
+            style={{ background: "rgba(168,85,247,0.1)", border: "1px solid rgba(168,85,247,0.2)" }}>
+            <span className="text-xl">🔓</span>
+            <p className="text-xs leading-relaxed" style={{ color: "#c084fc" }}>
+              <strong>500 abone</strong> = peman otomatik chak mwa. Ou pa bezwen mande — sistem nan vire lajan dirèkteman nan bous ou.
+            </p>
+          </div>
+        </div>
+
+        {errMsg && (
+          <div className="flex items-center gap-2 rounded-xl px-4 py-3"
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+            <AlertCircle size={15} className="text-red-400 shrink-0" />
+            <p className="text-sm text-red-400">{errMsg}</p>
+          </div>
+        )}
+
+        {/* CTA */}
+        <button onClick={handleBuy} disabled={loading}
+          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
+          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
+                   boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
+          {loading ? <Loader2 size={18} className="animate-spin" /> : <span>💳</span>}
+          {loading ? "Ap konekte ak Stripe…" : "Achte Plan Artis — $50/an"}
+        </button>
+
+        <p className="text-center text-xs text-white/25">
+          Peman sécurisé via Stripe · Renouvèlman mansyèl · Anile nenpòt ki lè
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function UploadView({ onBack, onSuccess }: {
   onBack: () => void;
   onSuccess: (track: Track) => void;
@@ -548,6 +821,8 @@ function UploadView({ onBack, onSuccess }: {
   const [artist,  setArtist]  = useState("");
   const [album,   setAlbum]   = useState("");
   const [genre,   setGenre]   = useState("");
+  const [forSale, setForSale] = useState(false);
+  const [priceUsd, setPriceUsd] = useState<number>(0.99);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -575,17 +850,23 @@ function UploadView({ onBack, onSuccess }: {
       type: audioFile.type, title: title.trim(), artist: artist.trim(),
     });
 
+    if (forSale && (!priceUsd || priceUsd < 0.99)) {
+      setErrMsg("Pri minimum pou vann se $0.99"); return;
+    }
+
     // Hand off to global context — XHR survives component unmount
     startUpload(
       audioFile,
       coverFile,
       {
-        title:   title.trim(),
-        artist:  artist.trim(),
-        album:   album.trim() || undefined,
-        genre:   genre || undefined,
-        type:    "free",
-        coverPreview: coverPreview ?? undefined,
+        title:             title.trim(),
+        artist:            artist.trim(),
+        album:             album.trim() || undefined,
+        genre:             genre || undefined,
+        type:              "free",
+        monetizationType:  forSale ? "sale" : "stream",
+        priceUsd:          forSale ? priceUsd : undefined,
+        coverPreview:      coverPreview ?? undefined,
       },
       (track) => onSuccess(track),
     );
@@ -713,6 +994,46 @@ function UploadView({ onBack, onSuccess }: {
             <p className="text-sm text-red-400">{errMsg}</p>
           </div>
         )}
+
+        {/* For sale toggle */}
+        <div className="flex flex-col gap-3 rounded-xl p-4"
+          style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold">💰 Mete chante sa pou vann</p>
+              <p className="text-xs text-white/40 mt-0.5">Ou touche 80% · Flexa kenbe 20%</p>
+            </div>
+            <button type="button" onClick={() => setForSale(v => !v)}
+              className="w-12 h-6 rounded-full transition-all relative shrink-0"
+              style={{ background: forSale ? "#7c3aed" : "rgba(255,255,255,0.1)" }}>
+              <span className="absolute top-0.5 transition-all w-5 h-5 rounded-full bg-white"
+                style={{ left: forSale ? "calc(100% - 22px)" : 2 }} />
+            </button>
+          </div>
+          {forSale && (
+            <div>
+              <label className="block text-xs font-bold text-white/50 mb-1.5 uppercase tracking-wider">
+                Pri ($USD) *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 font-bold">$</span>
+                <input
+                  type="number" min="0.99" max="50" step="0.01"
+                  value={priceUsd}
+                  onChange={e => setPriceUsd(Math.max(0.99, Number(e.target.value)))}
+                  className="w-full rounded-xl pl-7 pr-4 py-3 text-sm text-white outline-none border focus:border-purple-500 transition-colors"
+                  style={{ background: "#0a0a0a", borderColor: "rgba(255,255,255,0.15)" }}
+                  placeholder="0.99"
+                />
+              </div>
+              <p className="text-xs text-white/30 mt-1">
+                Artis touche: <strong className="text-green-400">${(priceUsd * 0.80).toFixed(2)}</strong>
+                {" "}· Flexa: <strong className="text-white/40">${(priceUsd * 0.20).toFixed(2)}</strong>
+                {" "}· Moun ka koute 2 fwa gratis anvan yo achte
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Info banner */}
         <div className="flex items-start gap-2 rounded-xl px-4 py-3"
@@ -1862,9 +2183,24 @@ export default function FlexaMusic() {
     } catch { /* optimistic — UI already updated */ }
   };
 
+  // ── Purchased tracks (server-synced into localStorage on mount) ──────────
+  const [purchasedIds, setPurchasedIds] = useState<Set<number>>(() => {
+    // hydrate from localStorage so paywall is instant on re-open
+    try {
+      const uid = (user as any)?.id;
+      if (!uid) return new Set<number>();
+      const stored = localStorage.getItem(`flexa_owns_all_${uid}`);
+      return stored ? new Set<number>(JSON.parse(stored)) : new Set<number>();
+    } catch { return new Set<number>(); }
+  });
+
   // ── View state ────────────────────────────────────────────────────────────
   const [view, setView]             = useState<View>("home");
+  const [artistPlanSongCount, setArtistPlanSongCount] = useState(0);
+  const [paywallTrack, setPaywallTrack]   = useState<Track | null>(null);
+  const [paywallPlayCount, setPaywallPlayCount] = useState(0);
   const [focusSearch, setFocusSearch] = useState(false);
+  const [planToast, setPlanToast]   = useState(false);
   const [playlist,  setPlaylist]    = useState<Track[]>([]);
   const [plTitle,   setPlTitle]     = useState("");
   const [plCover,   setPlCover]     = useState<string | null>(null);
@@ -1888,6 +2224,63 @@ export default function FlexaMusic() {
     setFlexaMusicMounted(true);
     return () => setFlexaMusicMounted(false);
   }, []);
+
+  // ── Plan-activated / purchase-completed URL params ────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    window.history.replaceState({}, "", window.location.pathname);
+
+    if (params.get("plan") === "activated") {
+      setPlanToast(true);
+      setTimeout(() => setPlanToast(false), 6000);
+    }
+
+    const purchasedTrackId = params.get("purchased");
+    if (purchasedTrackId) {
+      const tid = Number(purchasedTrackId);
+      if (tid) {
+        markPurchased((user as any)?.id, tid);
+        setPurchasedIds(prev => new Set([...prev, tid]));
+      }
+    }
+  }, []);
+
+  // ── Fetch purchased track IDs once on mount (sync localStorage) ──────────
+  useEffect(() => {
+    const uid = (user as any)?.id;
+    if (!uid) return;
+    const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+    fetch("/api/music/purchased", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        const ids: number[] = d.purchasedIds ?? [];
+        ids.forEach(id => markPurchased(uid, id));
+        localStorage.setItem(`flexa_owns_all_${uid}`, JSON.stringify(ids));
+        setPurchasedIds(new Set(ids));
+      })
+      .catch(() => {});
+  }, [(user as any)?.id]);
+
+  // ── Upload gate: check song count before showing upload view ──────────────
+  const handleUploadClick = async () => {
+    if (isAdmin) { setView("upload"); return; }
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      const res = await fetch("/api/music/artist/plan", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.isArtistPlan || data.songCount < data.freeSongLimit) {
+        setView("upload");
+      } else {
+        setArtistPlanSongCount(data.songCount);
+        setView("artist-plan");
+      }
+    } catch {
+      // If check fails, allow upload — backend will enforce the limit
+      setView("upload");
+    }
+  };
 
   // ── Fetch ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1982,9 +2375,22 @@ export default function FlexaMusic() {
 
   // ── Impression timer ──────────────────────────────────────────────────────
   const stopTimer  = () => { if (listenRef.current) { clearTimeout(listenRef.current); listenRef.current = null; } };
-  const startTimer = (id: number) => {
+  const startTimer = (id: number, track?: Track) => {
     stopTimer();
-    listenRef.current = setTimeout(() => logImpression(id, 31), 31_000);
+    listenRef.current = setTimeout(() => {
+      logImpression(id, 31);
+      // Count paid-track listens ONLY for "sale" tracks not yet purchased
+      if (track?.monetization_type === "sale" && !purchasedIds.has(id)) {
+        const newCount = incrementPlayCount((user as any)?.id, id);
+        if (newCount >= FREE_PLAYS) {
+          // Pause audio and surface the paywall
+          gAudio?.pause();
+          setPaywallTrack(track);
+          setPaywallPlayCount(newCount);
+          setView("paywall");
+        }
+      }
+    }, 31_000);
   };
 
   // ── Playback ──────────────────────────────────────────────────────────────
@@ -2006,7 +2412,7 @@ export default function FlexaMusic() {
       }).catch(() => {
         // autoplay blocked or load error — state stays paused, that's correct
       });
-      if (track.id) startTimer(track.id);
+      if (track.id) startTimer(track.id, track);
     }
   }, [playerState.muted, playerState.volume]);
 
@@ -2098,6 +2504,20 @@ export default function FlexaMusic() {
 
   // ── Open track from home → auto-switch to player view ─────────────────────
   const openTrack = (track: Track, q: Track[], idx: number) => {
+    // ── Paywall gate: "sale" tracks with ≥ FREE_PLAYS listens and not bought ─
+    if (
+      track.monetization_type === "sale" &&
+      !purchasedIds.has(track.id) &&
+      !isPurchasedLocally((user as any)?.id, track.id) &&
+      getPlayCount((user as any)?.id, track.id) >= FREE_PLAYS
+    ) {
+      gAudio?.pause();
+      setPaywallTrack(track);
+      setPaywallPlayCount(getPlayCount((user as any)?.id, track.id));
+      setView("paywall");
+      return;
+    }
+
     setPlaylist(q);
     setPlTitle(track.title);
     setPlCover(track.cover_url);
@@ -2153,10 +2573,41 @@ export default function FlexaMusic() {
     <>
       {/* audio lives in the global musicStore singleton — no <audio> element here */}
 
+      {/* ── Plan-activated toast ── */}
+      {planToast && (
+        <div style={{
+          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+          background: "linear-gradient(135deg,#7c3aed,#c026d3)",
+          color: "#fff", borderRadius: 16, padding: "12px 20px",
+          fontWeight: 700, fontSize: 14, zIndex: 9999,
+          boxShadow: "0 8px 32px rgba(124,58,237,0.5)",
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          🎉 Plan Artis aktive! Ou ka telechaje san limit kounye a.
+        </div>
+      )}
+
       {loading ? (
         <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
+      ) : view === "paywall" && paywallTrack ? (
+        <SongPaywallView
+          track={paywallTrack}
+          userId={(user as any)?.id}
+          playCount={paywallPlayCount}
+          onBought={() => {
+            setPurchasedIds(prev => new Set([...prev, paywallTrack.id]));
+            // Play the song now that it's unlocked
+            openTrack(paywallTrack, tracks, 0);
+          }}
+          onBack={() => setView("home")}
+        />
+      ) : view === "artist-plan" ? (
+        <ArtistPlanView
+          songCount={artistPlanSongCount}
+          onBack={() => setView("home")}
+        />
       ) : view === "upload" ? (
         <UploadView
           onBack={() => setView("home")}
@@ -2174,7 +2625,7 @@ export default function FlexaMusic() {
           onPlayList={openMix}
           onToggleLike={toggleLike}
           onSearch={setFilterQ}
-          onUpload={() => setView("upload")}
+          onUpload={handleUploadClick}
           onEdit={handleEdit}
           onDelete={handleDelete}
           setLocation={setLocation}

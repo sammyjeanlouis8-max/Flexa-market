@@ -2102,6 +2102,26 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_comments.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_comments_track_idx ON music_comments(track_id)" });
   migrations.push({ name: "music_comments.user_idx",  sql: "CREATE INDEX IF NOT EXISTS music_comments_user_idx  ON music_comments(user_id)" });
 
+  // ── Music Purchases ────────────────────────────────────────────────────────
+  // Stores one row per (user, track) buy — idempotent via UNIQUE constraint.
+  // artist_amount_usd = 80%, platform_fee_usd = 20%.
+  migrations.push({
+    name: "music_purchases.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_purchases (
+      id                SERIAL PRIMARY KEY,
+      user_id           INTEGER NOT NULL REFERENCES users(id)        ON DELETE CASCADE,
+      track_id          INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      amount_usd        NUMERIC(10,2) NOT NULL,
+      artist_amount_usd NUMERIC(10,2) NOT NULL,
+      platform_fee_usd  NUMERIC(10,2) NOT NULL,
+      stripe_session_id TEXT,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, track_id)
+    )`,
+  });
+  migrations.push({ name: "music_purchases.user_idx",  sql: "CREATE INDEX IF NOT EXISTS music_purchases_user_idx  ON music_purchases(user_id)" });
+  migrations.push({ name: "music_purchases.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_purchases_track_idx ON music_purchases(track_id)" });
+
   let applied = 0;
   let failed = 0;
 

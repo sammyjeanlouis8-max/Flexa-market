@@ -30,12 +30,14 @@ export interface UploadState {
 }
 
 export interface UploadMeta {
-  title:        string;
-  artist:       string;
-  album?:       string;
-  genre?:       string;
-  type?:        string;
-  coverPreview?: string;
+  title:             string;
+  artist:            string;
+  album?:            string;
+  genre?:            string;
+  type?:             string;
+  monetizationType?: string;  // "stream" | "sale"
+  priceUsd?:         number;  // set when monetizationType === "sale"
+  coverPreview?:     string;
 }
 
 interface MusicUploadCtx {
@@ -175,15 +177,17 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          title:         meta.title,
-          artist:        meta.artist,
-          album:         meta.album ?? "",
-          genre:         meta.genre ?? "",
-          type:          meta.type ?? "free",
-          audioPublicId: audio.publicId,
-          audioUrl:      audio.secureUrl,
-          coverPublicId: cover?.publicId ?? null,
-          coverUrl:      cover?.secureUrl ?? null,
+          title:             meta.title,
+          artist:            meta.artist,
+          album:             meta.album ?? "",
+          genre:             meta.genre ?? "",
+          type:              meta.type ?? "free",
+          monetization_type: meta.monetizationType ?? "stream",
+          price_usd:         meta.priceUsd ?? null,
+          audioPublicId:     audio.publicId,
+          audioUrl:          audio.secureUrl,
+          coverPublicId:     cover?.publicId ?? null,
+          coverUrl:          cover?.secureUrl ?? null,
         }),
       });
       if (!regRes.ok) {

@@ -982,6 +982,40 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  // ── Hardware / WebView back-button fix ─────────────────────────────────────
+  // Problem: when inside a conversation the WebView may push extra history
+  // entries (media loads, link previews, etc.).  Calling window.history.back()
+  // would traverse those entries rather than returning to /messages.
+  // Solution: push a sentinel entry on mount so the hardware back button
+  // has exactly ONE thing to pop; intercept the resulting popstate event and
+  // navigate directly to /messages via wouter (bypasses the dirty history).
+  // The in-thread ArrowLeft button also calls window.history.back() so both
+  // paths converge through the same handler.
+  useEffect(() => {
+    const sentinel = { _flexaConvBack: convId };
+    window.history.pushState(sentinel, "");
+
+    let handled = false;
+    const onPop = () => {
+      if (handled) return;
+      handled = true;
+      setLocation("/messages");
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      // If the sentinel is still on top (e.g. user navigated away via a Link),
+      // silently pop it so we don't leave garbage in the session history.
+      if (window.history.state?._flexaConvBack === convId) {
+        handled = true;            // prevent onPop from firing again
+        window.history.back();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convId]);
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1314,16 +1348,22 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",
       }}>
-        {/* Back button — always visible */}
-        <Link href="/messages" style={{ display: "flex", flexShrink: 0 }}>
-          <button type="button" style={{
+        {/* Back button — always visible.
+            Uses window.history.back() to pop the sentinel we pushed on mount.
+            The popstate handler then calls setLocation("/messages"), which
+            ensures we land on the list regardless of any extra WebView history
+            entries that accumulated while the conversation was open. */}
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          style={{
             width: 38, height: 38, borderRadius: "50%", background: "none",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
             color: c.iconColor, cursor: "pointer", flexShrink: 0,
-          }}>
-            <ArrowLeft style={{ width: 22, height: 22 }} />
-          </button>
-        </Link>
+          }}
+        >
+          <ArrowLeft style={{ width: 22, height: 22 }} />
+        </button>
 
       {conv && (<>
 

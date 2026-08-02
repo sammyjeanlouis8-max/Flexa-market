@@ -662,6 +662,67 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
 
   const meta = session.metadata ?? {};
 
+  // ── Music track purchase ──────────────────────────────────────────────────
+  if (meta.type === "music_purchase") {
+    const trackId  = Number(meta.trackId);
+    const buyerId  = Number(meta.buyerId);
+    const artistId = meta.artistId ? Number(meta.artistId) : null;
+    const priceUsd = Number(meta.priceUsd ?? 0);
+    if (!trackId || !buyerId || priceUsd <= 0) {
+      logger.warn({ meta, sessionId }, "music_purchase checkout missing required metadata");
+      return;
+    }
+
+    const platformFee  = parseFloat((priceUsd * 0.20).toFixed(2));
+    const artistAmount = parseFloat((priceUsd - platformFee).toFixed(2));
+
+    try {
+      // Idempotent: INSERT … ON CONFLICT DO NOTHING
+      await db.execute(sql`
+        INSERT INTO music_purchases (user_id, track_id, amount_usd, artist_amount_usd, platform_fee_usd, stripe_session_id)
+        VALUES (${buyerId}, ${trackId}, ${priceUsd}, ${artistAmount}, ${platformFee}, ${sessionId})
+        ON CONFLICT (user_id, track_id) DO NOTHING
+      `);
+
+      // Credit 80% to artist's music_earnings
+      if (artistId) {
+        await db.execute(sql`
+          INSERT INTO music_earnings (artist_id, track_id, amount_usd, impressions_credited, milestone, description, is_paid_out)
+          VALUES (${artistId}, ${trackId}, ${artistAmount}, 0, 'purchase', 'Vann chante — 80% komisyon', FALSE)
+        `);
+        // Notify artist
+        await db.insert(notificationsTable).values({
+          userId: artistId, actorId: buyerId, type: "system_alert",
+          message: `🎵 Yon moun achte chante ou! Ou touche $${artistAmount.toFixed(2)} (80%).`,
+        }).catch(() => {});
+      }
+
+      logger.info({ trackId, buyerId, artistId, priceUsd, artistAmount, platformFee }, "[music] track purchased via Stripe");
+    } catch (purchaseErr: any) {
+      logger.error({ err: purchaseErr?.message, trackId, buyerId }, "[music] purchase insert failed");
+    }
+    return;
+  }
+
+  // ── Artist Plan activation ────────────────────────────────────────────────
+  if (meta.type === "artist_plan") {
+    const userId = Number(meta.userId);
+    if (!userId) { logger.warn({ meta, sessionId }, "artist_plan checkout missing userId"); return; }
+
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    await db.update(usersTable)
+      .set({ subscriptionPlan: "artist" as any, subscriptionExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+
+    await db.insert(notificationsTable).values({
+      userId, actorId: userId, type: "system_alert",
+      message: `🎵 Plan Artis ou aktive! Ou ka telechaje chante san limit pou 1 an. Kolekte 500 abone pou kòmanse touche revni chak mwa.`,
+    }).catch(() => {});
+
+    logger.info({ userId, sessionId, expiresAt }, "[music] Artist Plan activated via Stripe");
+    return;
+  }
+
   // ── Boost card payment ────────────────────────────────────────────────────
   if (meta.type === "boost") {
     const boostId   = meta.boostId   ? Number(meta.boostId)   : null;

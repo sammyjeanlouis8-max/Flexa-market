@@ -44,6 +44,8 @@ const MAX_IP_IMPRESSIONS_PER_HOUR = 15;
 const HOUR_MS           = 3_600_000;
 const FLUSH_INTERVAL_MS = 60_000; // flush buffer every 60 s
 const MIN_WITHDRAW_USD  = 10.00;  // artist must have ≥ $10 to withdraw
+const FREE_SONG_LIMIT   = 2;      // free tier: max 2 songs per artist
+const ARTIST_PLAN_PRICE_CENTS = 5000; // $50.00 USD per year
 
 // ── In-memory guards ─────────────────────────────────────────────────────────
 /** key: `${sessionId}:${trackId}` → expiry timestamp */
@@ -223,7 +225,8 @@ router.get("/music", async (req, res) => {
     }
     const rows = await q(
       `SELECT id, title, artist, album, genre, cover_url, audio_url, storage_key,
-              duration_seconds, type, is_featured, play_count, valid_impressions,
+              duration_seconds, type, monetization_type, price_usd,
+              is_featured, play_count, valid_impressions,
               total_impressions, estimated_revenue_usd, artist_user_id, created_at
        FROM music_tracks ${where}
        ORDER BY is_featured DESC, play_count DESC, created_at DESC
@@ -231,6 +234,82 @@ router.get("/music", async (req, res) => {
     );
     res.json({ tracks: rows.map(toClientTrack) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/purchased — list track IDs the authenticated user has bought
+// ⚠️ Named route — MUST be before /music/:id wildcard
+router.get("/music/purchased", requireAuth, async (req: any, res) => {
+  try {
+    const rows = await q<{ track_id: number }>(
+      `SELECT track_id FROM music_purchases WHERE user_id = ${req.user.id}`
+    );
+    res.json({ purchasedIds: rows.map(r => r.track_id) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/buy — create Stripe checkout to purchase a song
+// ⚠️ Named path segment — placed before generic /:id GET so it's never swallowed
+router.post("/music/:id/buy", requireAuth, async (req: any, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId || isNaN(trackId)) return res.status(400).json({ error: "Invalid track id" });
+
+  try {
+    const [track] = await q<{
+      id: number; title: string; artist: string; cover_url: string | null;
+      monetization_type: string; price_usd: string | null; artist_user_id: number | null;
+    }>(`SELECT id, title, artist, cover_url, monetization_type, price_usd, artist_user_id
+        FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE LIMIT 1`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    if (track.monetization_type !== "sale") return res.status(400).json({ error: "Track is not for sale" });
+    const price = Number(track.price_usd ?? 0);
+    if (price <= 0) return res.status(400).json({ error: "Track has no price set" });
+
+    // Check already purchased
+    const [existing] = await q(
+      `SELECT id FROM music_purchases WHERE user_id = ${req.user.id} AND track_id = ${trackId} LIMIT 1`
+    );
+    if (existing) return res.json({ alreadyPurchased: true });
+
+    const { getStripeClient } = await import("../lib/stripeClient");
+    const stripe = await getStripeClient();
+
+    const BASE_URL = (() => {
+      if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+      const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+      return domain ? `https://${domain}` : "https://flexamarket.com";
+    })();
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(price * 100),
+          product_data: {
+            name: `${track.title} — ${track.artist}`,
+            description: "Achte mizik sa pou koute san limit",
+            ...(track.cover_url ? { images: [track.cover_url] } : {}),
+          },
+        },
+        quantity: 1,
+      }],
+      metadata: {
+        type:      "music_purchase",
+        trackId:   String(trackId),
+        buyerId:   String(req.user.id),
+        artistId:  String(track.artist_user_id ?? ""),
+        priceUsd:  String(price),
+      },
+      success_url: `${BASE_URL}/music?purchased=${trackId}`,
+      cancel_url:  `${BASE_URL}/music`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    logger.error({ err: err?.message, trackId }, "[music] buy checkout error");
+    res.status(500).json({ error: err?.message });
+  }
 });
 
 // GET /api/music/diagnose — Wasabi preflight + env check (no auth, safe — redacts secrets)
@@ -437,6 +516,79 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// GET /api/music/artist/plan — plan status, song count, follower count
+router.get("/music/artist/plan", requireAuth, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const plan = (req.user as any).subscriptionPlan ?? "basic";
+    const expiresAt = (req.user as any).subscriptionExpiresAt ?? null;
+
+    const [cnt] = await q<{ cnt: string }>(
+      `SELECT COUNT(*)::text AS cnt FROM music_tracks WHERE artist_user_id = ${userId}`
+    );
+    const [follower] = await q<{ follower_count: number }>(
+      `SELECT follower_count FROM users WHERE id = ${userId}`
+    );
+    const songCount = Number(cnt?.cnt ?? 0);
+    const followerCount = follower?.follower_count ?? 0;
+    const isArtistPlan = plan === "artist" && (expiresAt === null || new Date(expiresAt) > new Date());
+
+    res.json({
+      plan,
+      isArtistPlan,
+      expiresAt,
+      songCount,
+      freeSongLimit: FREE_SONG_LIMIT,
+      followerCount,
+      followerGoal: 500,
+      canEarn: followerCount >= 500,
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/artist/subscribe — create Stripe checkout for $50/year Artist Plan
+router.post("/music/artist/subscribe", requireAuth, async (req: any, res) => {
+  try {
+    const { getStripeClient } = await import("../lib/stripeClient");
+    const stripe = await getStripeClient();
+    const userId = req.user.id;
+
+    const BASE_URL = (() => {
+      if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+      const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+      return domain ? `https://${domain}` : "https://flexamarket.com";
+    })();
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          unit_amount: ARTIST_PLAN_PRICE_CENTS,
+          product_data: {
+            name: "Flexa Music — Plan Artis",
+            description: "Telechaje chante san limit + touche revni sou mizik ou pandan 1 an",
+            images: ["https://flexamarket.com/logo.png"],
+          },
+        },
+        quantity: 1,
+      }],
+      metadata: {
+        type: "artist_plan",
+        userId: String(userId),
+      },
+      success_url: `${BASE_URL}/music?plan=activated`,
+      cancel_url:  `${BASE_URL}/music`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    logger.error({ err: err?.message }, "[music] artist subscribe error");
+    res.status(500).json({ error: err?.message });
+  }
+});
+
 // POST /api/music/artist/withdraw — transfer unpaid music earnings → FM wallet
 router.post("/music/artist/withdraw", requireAuth, async (req: any, res) => {
   const userId = req.user.id;
@@ -574,18 +726,42 @@ router.post("/music/register", requireAuth, async (req, res) => {
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
   if (!audioPublicId)   return res.status(400).json({ error: "audioPublicId required" });
 
+  const {
+    monetization_type = "stream",
+    price_usd: priceUsdRaw,
+  } = req.body as Record<string, string | undefined>;
+  const priceUsd = priceUsdRaw ? Number(priceUsdRaw) : null;
+
   const isAdmin = req.user?.role === "admin";
   try {
+    // ── Artist Plan upload limit (non-admin only) ──────────────────────────
+    if (!isAdmin) {
+      const plan = (req.user as any).subscriptionPlan ?? "basic";
+      const isArtistPlan = plan === "artist" &&
+        ((req.user as any).subscriptionExpiresAt === null ||
+          new Date((req.user as any).subscriptionExpiresAt) > new Date());
+      if (!isArtistPlan) {
+        const [cnt] = await q<{ cnt: string }>(
+          `SELECT COUNT(*)::text AS cnt FROM music_tracks WHERE artist_user_id = ${req.user!.id}`
+        );
+        if (Number(cnt?.cnt ?? 0) >= FREE_SONG_LIMIT) {
+          return res.status(403).json({ error: "ARTIST_PLAN_REQUIRED", count: Number(cnt?.cnt ?? 0), limit: FREE_SONG_LIMIT });
+        }
+      }
+    }
+
     const [row] = await q(
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
-          type, is_active, is_featured, created_by, artist_user_id)
+          type, monetization_type, price_usd,
+          is_active, is_featured, created_by, artist_user_id)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
           ${nullOr("cld:" + audioPublicId)}, ${coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL"},
-          ${nullOr(type)}, TRUE, FALSE,
+          ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
+          TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
        RETURNING *`
     );
@@ -631,6 +807,24 @@ router.post("/music/upload", requireAuth, upload.fields([
   // ── Step 3: Authentication ────────────────────────────────────────────────
   if (!req.user?.id) return fail(3, "authentication", new Error("Non authentifye — konekte anvan ou telechaje"), 401);
   log(3, "authentication", { userId: req.user.id, role: req.user.role });
+
+  // ── Step 3b: Artist Plan upload limit (non-admin only) ───────────────────
+  if (req.user.role !== "admin") {
+    const plan = (req.user as any).subscriptionPlan ?? "basic";
+    const isArtistPlan = plan === "artist" &&
+      ((req.user as any).subscriptionExpiresAt === null ||
+        new Date((req.user as any).subscriptionExpiresAt) > new Date());
+    if (!isArtistPlan) {
+      const [cnt] = await q<{ cnt: string }>(
+        `SELECT COUNT(*)::text AS cnt FROM music_tracks WHERE artist_user_id = ${req.user.id}`
+      );
+      if (Number(cnt?.cnt ?? 0) >= FREE_SONG_LIMIT) {
+        return fail(3, "upload_limit",
+          Object.assign(new Error("ARTIST_PLAN_REQUIRED"), { code: "ARTIST_PLAN_REQUIRED", count: Number(cnt?.cnt ?? 0), limit: FREE_SONG_LIMIT }),
+          403);
+      }
+    }
+  }
 
   // ── Step 4: Validation ────────────────────────────────────────────────────
   const { title, artist, album, genre, type = "free" } = req.body;

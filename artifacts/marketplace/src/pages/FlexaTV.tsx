@@ -484,6 +484,7 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
   typeLabel?: (t: string) => string; viewsLabel?: string; minLabel?: string;
 }) {
   const isLive = program.type === "live";
+  const [imgErr, setImgErr] = useState(false);
   return (
     <button
       onClick={onClick}
@@ -494,8 +495,8 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
       )}
     >
       <div className={cn("relative flex-shrink-0 rounded-lg overflow-hidden bg-muted", compact ? "w-16 h-10" : "w-24 h-16")}>
-        {program.thumbnailUrl ? (
-          <img src={program.thumbnailUrl} alt={program.title} className="w-full h-full object-cover" />
+        {program.thumbnailUrl && !imgErr ? (
+          <img src={program.thumbnailUrl} alt={program.title} onError={() => setImgErr(true)} className="w-full h-full object-cover" />
         ) : (
           <div className={cn("w-full h-full bg-gradient-to-br flex items-center justify-center", titleGradient(program.title))}>
             <span className="text-white font-bold drop-shadow" style={{ fontSize: compact ? 14 : 20 }}>
@@ -535,6 +536,7 @@ function ProgramCard({ program, onClick, compact, typeLabel, viewsLabel, minLabe
 /** Netflix-style hero card for the first/top live stream — full-width landscape. */
 function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () => void }) {
   const { t } = useTranslation();
+  const [imgErr, setImgErr] = useState(false);
   return (
     <button
       onClick={onClick}
@@ -542,10 +544,11 @@ function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () =>
       style={{ paddingBottom: "52%" }}
     >
       <div className="absolute inset-0">
-        {program.thumbnailUrl ? (
+        {program.thumbnailUrl && !imgErr ? (
           <img
             src={program.thumbnailUrl}
             alt={program.title}
+            onError={() => setImgErr(true)}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
@@ -581,6 +584,7 @@ function LiveHeroCard({ program, onClick }: { program: TvProgram; onClick: () =>
 
 /** Netflix-style compact landscape card — used in the 2-col live grid. */
 function LiveGridCard({ program, onClick }: { program: TvProgram; onClick: () => void }) {
+  const [imgErr, setImgErr] = useState(false);
   return (
     <button
       onClick={onClick}
@@ -588,10 +592,11 @@ function LiveGridCard({ program, onClick }: { program: TvProgram; onClick: () =>
     >
       <div className="relative w-full overflow-hidden rounded-xl bg-[#141414]" style={{ paddingBottom: "56.25%" }}>
         <div className="absolute inset-0">
-          {program.thumbnailUrl ? (
+          {program.thumbnailUrl && !imgErr ? (
             <img
               src={program.thumbnailUrl}
               alt={program.title}
+              onError={() => setImgErr(true)}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
@@ -632,6 +637,7 @@ function PosterCard({ program, onClick, minLabel }: {
   program: TvProgram; onClick: () => void; minLabel?: string;
 }) {
   const isLive = program.type === "live";
+  const [imgErr, setImgErr] = useState(false);
   return (
     <button
       onClick={onClick}
@@ -640,10 +646,11 @@ function PosterCard({ program, onClick, minLabel }: {
       {/* Poster — 2:3 portrait ratio */}
       <div className="relative w-full overflow-hidden rounded-lg bg-[#141414]" style={{ paddingBottom: "150%" }}>
         <div className="absolute inset-0">
-          {program.thumbnailUrl ? (
+          {program.thumbnailUrl && !imgErr ? (
             <img
               src={program.thumbnailUrl}
               alt={program.title}
+              onError={() => setImgErr(true)}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
@@ -705,6 +712,7 @@ function SeriesGrid({
   tlabel: (type: string) => string;
 }) {
   const { t } = useTranslation();
+  const [sImgErr, setSImgErr] = useState<Record<number, boolean>>({});
   const selectedSeries = series.find(s => s.id === selectedSeriesId) ?? null;
   const selectedEps = selectedSeries
     ? episodeList.filter(p => p.seriesId === selectedSeries.id).sort((a, b) => (a.episodeNumber ?? 0) - (b.episodeNumber ?? 0))
@@ -733,10 +741,11 @@ function SeriesGrid({
             >
               <div className="relative w-full overflow-hidden rounded-lg bg-[#141414]" style={{ paddingBottom: "150%" }}>
                 <div className="absolute inset-0">
-                  {s.thumbnailUrl ? (
+                  {s.thumbnailUrl && !sImgErr[s.id] ? (
                     <img
                       src={s.thumbnailUrl}
                       alt={s.title}
+                      onError={() => setSImgErr(p => ({ ...p, [s.id]: true }))}
                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : (

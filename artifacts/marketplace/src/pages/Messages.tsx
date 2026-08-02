@@ -378,10 +378,9 @@ function MediaModal({ url, type, onClose }: { url: string; type: "image" | "vide
 // ─── Audio Bubble ─────────────────────────────────────────────────────────────
 // Natural-sounding voice waveform heights (0–1 scale)
 const WAVE_BARS = [
-  0.30,0.55,0.80,0.45,1.00,0.68,0.42,0.88,0.35,0.72,
-  0.58,0.92,0.78,0.48,0.65,0.85,0.38,0.62,0.95,0.74,
-  0.28,0.52,0.82,0.46,0.70,0.90,0.55,0.40,0.76,0.60,
-  0.32,0.68,
+  0.30,0.72,0.48,1.00,0.55,0.85,0.38,0.90,0.62,0.45,
+  0.78,0.32,0.95,0.58,0.80,0.42,0.68,0.52,0.88,0.35,
+  0.65,0.50,
 ];
 
 // Module-level singleton — only one audio plays at a time
@@ -672,7 +671,7 @@ function MsgBubble({
   const textColor = isMe ? c.textOut : c.textIn;
   const timeColor = isMe ? c.timeOut : c.timeIn;
   const mediaW = "min(200px, 72vw)";
-  const bubbleMaxW = isAudio ? "min(200px, 72vw)" : hasMedia && !hasText ? mediaW : "72%";
+  const bubbleMaxW = isAudio ? "160px" : hasMedia && !hasText ? mediaW : "72%";
 
   const startLongPress = () => {
     longPressRef.current = setTimeout(() => setShowMenu(true), 380);
@@ -1315,8 +1314,8 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         borderBottom: `1px solid ${c.headerBorder}`,
         background: c.headerBg, flexShrink: 0, overflow: "hidden",
       }}>
-        {/* Back button — always visible, not gated on conv loading */}
-        <Link href="/messages" className="md:hidden">
+        {/* Back button — always visible */}
+        <Link href="/messages" style={{ display: "flex", flexShrink: 0 }}>
           <button type="button" style={{
             width: 38, height: 38, borderRadius: "50%", background: "none",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",

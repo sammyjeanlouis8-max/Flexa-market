@@ -633,8 +633,8 @@ router.get("/music/artist/earnings", requireAuth, async (req: any, res) => {
     const sales = await q(
       `SELECT mp.id, mp.created_at,
               t.title AS track_title, t.cover_url,
-              mp.amount_usd,
-              mp.artist_amount_usd,
+              mp.amount_usd::float        AS amount_usd,
+              mp.artist_amount_usd::float AS artist_amount_usd,
               b.name AS buyer_name
        FROM music_purchases mp
        JOIN music_tracks t ON t.id = mp.track_id

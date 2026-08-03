@@ -276,9 +276,20 @@
          ═══════════════════════════════════════════════════════════════════════ -->
     <script>
       (function () {
+        // Priority 1: native React Native WebView injects window.__flexaNativeSafeTop
+        // before this script runs (injectedJavaScriptBeforeContentLoaded).
+        // If it's already set we trust it unconditionally.
+        if (typeof window.__flexaNativeSafeTop === 'number' && window.__flexaNativeSafeTop > 0) {
+          document.documentElement.style.setProperty('--sat', window.__flexaNativeSafeTop + 'px');
+          return;
+        }
+        // Priority 2: standard iOS Safari / Chrome UA detection
         var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+        // Priority 3: FlexaMarket native WebView uses a custom UA — detect by
+        // the app name OR by the absence of "Chrome" / "Safari" (pure WKWebView).
+        var isFlexaWebView = /FlexaMarket/i.test(navigator.userAgent);
         var sat = 0;
-        if (isIOS) {
+        if (isIOS || isFlexaWebView) {
           // screen.height in logical px (always portrait-native value)
           // >= 812 → iPhone X and all later models (notch or Dynamic Island)
           // Dynamic Island (iPhone 14 Pro+): ~59 px

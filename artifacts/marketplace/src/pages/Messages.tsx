@@ -1369,13 +1369,16 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   // as an inline numeric value is guaranteed to win over any CSS rule.
   const threadHeaderTopPad = (() => {
     if (typeof document === "undefined") return 8;
-    // --sat is set synchronously in index.html before React renders
+    // Priority 1: injected by the native React Native WebView before page load
+    const native = (window as any).__flexaNativeSafeTop;
+    if (typeof native === "number" && native > 0) return native + 8;
+    // Priority 2: --sat set synchronously in index.html bootstrap
     const v = document.documentElement.style.getPropertyValue("--sat") ||
               getComputedStyle(document.documentElement).getPropertyValue("--sat");
     const sat = parseInt(v, 10);
     if (!isNaN(sat) && sat > 0) return sat + 8;
-    // Final fallback: same iPhone detection as the bootstrap script
-    if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream) {
+    // Priority 3: FlexaMarket WebView UA or standard iOS UA
+    if (/FlexaMarket|iPhone|iPad|iPod/.test(navigator.userAgent)) {
       return (window.screen.height >= 812 ? 59 : 20) + 8;
     }
     return 8;

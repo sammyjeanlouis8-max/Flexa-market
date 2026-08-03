@@ -15,7 +15,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
@@ -161,6 +161,19 @@ export default function HomeTab() {
   const [progress, setProgress] = useState(0);
   const [offline, setOffline] = useState(false);
   const [permStatus, setPermStatus] = useState<PermStatus>("checking");
+
+  // Real native safe-area insets — injected into the WebView before page load
+  // so the web page knows the exact Dynamic Island / notch height even though
+  // the custom UA ("FlexaMarket/...") doesn't contain "iPhone".
+  const insets = useSafeAreaInsets();
+  const SAT_INJECT = `
+(function(){
+  window.__flexaNativeSafeTop    = ${Math.round(insets.top)};
+  window.__flexaNativeSafeBottom = ${Math.round(insets.bottom)};
+  document.documentElement.style.setProperty('--sat', '${Math.round(insets.top)}px');
+  document.documentElement.style.setProperty('--sab', '${Math.round(insets.bottom)}px');
+})();
+true;`.trim();
 
   const injectJs = useCallback((script: string) => {
     webRef.current?.injectJavaScript(script);
@@ -400,6 +413,7 @@ export default function HomeTab() {
         onError={() => { setOffline(true); setLoading(false); }}
         onHttpError={({ nativeEvent }: any) => { if (nativeEvent.statusCode >= 500) setOffline(true); }}
         userAgent="FlexaMarket/1.0 (Mobile App)"
+        injectedJavaScriptBeforeContentLoaded={SAT_INJECT}
         injectedJavaScript={buildVideoInterceptorScript(Platform.OS === "ios")}
         injectedJavaScriptForMainFrameOnly
         onMessage={handleMessage}

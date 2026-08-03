@@ -204,10 +204,15 @@ function toClientTrack(row: Record<string, unknown>) {
   // Cloudinary keys (prefix "cld:") — audio_url already holds the direct Cloudinary URL
   // Wasabi keys — route through signing proxy so private buckets work
   const isCld = key?.startsWith("cld:");
+  // Always show the uploader's real account name (uploader_name) instead of
+  // the manually-typed artist field so listeners see who actually uploaded the track.
+  const displayArtist = (row.uploader_name as string | null) || (row.artist as string);
   return {
     ...row,
+    artist: displayArtist,
     audio_url: key && !isCld ? `/api/music/stream/${key}` : row.audio_url,
-    storage_key: undefined, // never expose storage key to client
+    storage_key: undefined,
+    uploader_name: undefined, // don't expose separately — already merged into artist
   };
 }
 
@@ -224,13 +229,16 @@ router.get("/music", async (req, res) => {
       where += ` AND (title ILIKE '%${s}%' OR artist ILIKE '%${s}%' OR album ILIKE '%${s}%')`;
     }
     const rows = await q(
-      `SELECT id, title, artist, album, genre, cover_url, audio_url, storage_key,
-              duration_seconds, type, monetization_type, price_usd,
-              is_featured, play_count, valid_impressions, is_artist_verified,
-              total_impressions, estimated_revenue_usd, artist_user_id, created_at,
-              lyrics
-       FROM music_tracks ${where}
-       ORDER BY is_featured DESC, play_count DESC, created_at DESC
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.audio_url, mt.storage_key,
+              mt.duration_seconds, mt.type, mt.monetization_type, mt.price_usd,
+              mt.is_featured, mt.play_count, mt.valid_impressions, mt.is_artist_verified,
+              mt.total_impressions, mt.estimated_revenue_usd, mt.artist_user_id, mt.created_at,
+              mt.lyrics,
+              u.name AS uploader_name
+       FROM music_tracks mt
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       ${where}
+       ORDER BY mt.is_featured DESC, mt.play_count DESC, mt.created_at DESC
        LIMIT ${Math.min(Number(limit)||50, 200)} OFFSET ${Number(offset)||0}`
     );
     res.json({ tracks: rows.map(toClientTrack) });
@@ -473,7 +481,12 @@ router.get("/music/:id/download", requireAuth, async (req: any, res) => {
 // GET /api/music/:id
 router.get("/music/:id", async (req, res) => {
   try {
-    const [row] = await q(`SELECT * FROM music_tracks WHERE id = ${Number(req.params.id)}`);
+    const [row] = await q(
+      `SELECT mt.*, u.name AS uploader_name
+       FROM music_tracks mt
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE mt.id = ${Number(req.params.id)}`
+    );
     if (!row) return res.status(404).json({ error: "Not found" });
     await q(`UPDATE music_tracks SET play_count = play_count + 1 WHERE id = ${Number(req.params.id)}`);
     res.json({ track: toClientTrack(row) });

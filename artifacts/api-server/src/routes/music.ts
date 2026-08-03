@@ -1873,4 +1873,54 @@ router.delete("/music/comments/:commentId", requireAuth, async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MONTHLY EARNINGS REMINDER JOB
+// Runs via setInterval every hour; fires on the 1st of each month (once only).
+// Sends an Expo push to every artist who has unpaid music_earnings > 0.
+// ══════════════════════════════════════════════════════════════════════════════
+let _lastReminderMonth = "";   // "YYYY-MM" — prevents double-firing same month
+
+export async function runMusicMonthlyReminder(): Promise<void> {
+  const now   = new Date();
+  const day   = now.getDate();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  // Only fire on the 1st, once per month
+  if (day !== 1 || month === _lastReminderMonth) return;
+  _lastReminderMonth = month;
+
+  try {
+    // All artists with unpaid earnings ≥ $1
+    const artists = await q<{ artist_id: number; total: string }>(
+      `SELECT artist_id, COALESCE(SUM(amount_usd), 0)::text AS total
+       FROM music_earnings
+       WHERE is_paid_out = FALSE
+       GROUP BY artist_id
+       HAVING SUM(amount_usd) >= 1`
+    );
+
+    if (!artists.length) {
+      logger.info("[music-reminder] No artists with balance ≥ $1 — skipping");
+      return;
+    }
+
+    const { sendExpoPushToUser } = await import("../lib/expo-push");
+
+    let sent = 0;
+    for (const row of artists) {
+      const amount = Number(row.total).toFixed(2);
+      await sendExpoPushToUser(row.artist_id, {
+        title: "🎵 Balans mizik ou prèt pou retire",
+        body:  `Ou gen $${amount} nan kont mizik ou. Yon klik pou transfere nan kart FM ou.`,
+        data:  { screen: "MusicEarnings" },
+      });
+      sent++;
+    }
+
+    logger.info({ sent, month }, "[music-reminder] Monthly earnings reminder sent");
+  } catch (err) {
+    logger.error({ err }, "[music-reminder] Failed to send monthly reminders");
+  }
+}
+
 export default router;

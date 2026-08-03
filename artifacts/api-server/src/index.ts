@@ -7,6 +7,7 @@ import { initSocketServer } from "./lib/socketServer";
 import { runSubscriptionExpiryJob } from "./routes/subscription";
 import { runLoanRepaymentJob, runLoanAdminRejectionJob } from "./routes/loans";
 import { runBoostExpiryJob } from "./routes/boost";
+import { runMusicMonthlyReminder } from "./routes/music";
 
 
 import { runStartupMigrations } from "./lib/migrations";
@@ -80,6 +81,9 @@ httpServer.listen(port, () => {
     // AI Guardian — Claude activity monitor every 2 hours
     setInterval(() => { runAiActivityMonitor().catch(() => {}); }, 2 * 60 * 60 * 1000);
     runAiActivityMonitor().catch(() => {});
+    // Music monthly reminder — fires once on the 1st of each month
+    setInterval(() => { runMusicMonthlyReminder().catch(() => {}); }, 60 * 60 * 1000);
+    runMusicMonthlyReminder().catch(() => {});
     logger.info("API server ready");
 
     // ── Graceful shutdown ──────────────────────────────────────────────────

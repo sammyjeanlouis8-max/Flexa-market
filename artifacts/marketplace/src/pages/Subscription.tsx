@@ -538,8 +538,8 @@ export default function Subscription() {
                 {mySub.cancelAtPeriodEnd && (() => {
                   const d = daysUntil(mySub.expiresAt);
                   if (d === null) return null;
-                  if (d === 0) return <span className="text-red-600 font-semibold ml-1">(Dènye jou)</span>;
-                  return <span className="text-yellow-600 dark:text-yellow-400 font-semibold ml-1">({d} jou rete)</span>;
+                  if (d === 0) return <span className="text-red-600 font-semibold ml-1">({t("subscription.lastDay")})</span>;
+                  return <span className="text-yellow-600 dark:text-yellow-400 font-semibold ml-1">({t("subscription.daysRemaining", { count: d })})</span>;
                 })()}
               </span>
             )}
@@ -859,11 +859,14 @@ export default function Subscription() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
               <span className="text-lg">💳</span>
-              Chwazi metòd pèman
+              {t("subscription.choosePayment")}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {pendingPlanId && plans.find(p => p.id === pendingPlanId) && (
-                <>Plan <strong>{plans.find(p => p.id === pendingPlanId)!.name}</strong> — <strong>${plans.find(p => p.id === pendingPlanId)!.priceUsd}/mwa</strong></>
+                t("subscription.planSummary", {
+                  name: plans.find(p => p.id === pendingPlanId)!.name,
+                  price: plans.find(p => p.id === pendingPlanId)!.priceUsd,
+                })
               )}
             </DialogDescription>
           </DialogHeader>
@@ -891,15 +894,24 @@ export default function Subscription() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className="font-bold text-sm">Kat FM</p>
-                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">Otomatik ⚡</span>
+                  <p className="font-bold text-sm">{t("subscription.walletName")}</p>
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">{t("subscription.walletBadge")}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {walletBalance !== null
-                    ? `Balans: $${walletBalance.real.toFixed(2)}${walletBalance.promo > 0 ? ` + $${walletBalance.promo.toFixed(2)} promo` : ""} = $${(walletBalance.real + walletBalance.promo).toFixed(2)}`
-                    : "Chaje balans…"}
+                    ? walletBalance.promo > 0
+                      ? t("subscription.walletBalancePromo", {
+                          real: walletBalance.real.toFixed(2),
+                          promo: walletBalance.promo.toFixed(2),
+                          total: (walletBalance.real + walletBalance.promo).toFixed(2),
+                        })
+                      : t("subscription.walletBalance", {
+                          real: walletBalance.real.toFixed(2),
+                          total: (walletBalance.real + walletBalance.promo).toFixed(2),
+                        })
+                    : t("subscription.walletLoading")}
                 </p>
-                <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">Dédwi dirèkteman — entansif ⚡</p>
+                <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">{t("subscription.walletDesc")}</p>
               </div>
             </button>
 
@@ -924,9 +936,9 @@ export default function Subscription() {
                 <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm">Kat Kredi / Debi</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Visa, Mastercard, Apple Pay, SEPA</p>
-                <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5">Renouvèlman otomatik chak mwa via Stripe</p>
+                <p className="font-bold text-sm">{t("subscription.cardName")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("subscription.cardNetworks")}</p>
+                <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-0.5">{t("subscription.cardDesc")}</p>
               </div>
             </button>
           </div>
@@ -938,7 +950,7 @@ export default function Subscription() {
               onClick={() => setPayMethodOpen(false)}
               disabled={walletLoading || !!subscribing}
             >
-              Anile
+              {t("subscription.payCancel")}
             </Button>
             <Button
               size="sm"
@@ -956,7 +968,7 @@ export default function Subscription() {
               }}
             >
               {(walletLoading || subscribing === pendingPlanId) && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {selectedPayMethod === "wallet" ? "Peye ak Kat FM" : "Kontinye ak Stripe"}
+              {selectedPayMethod === "wallet" ? t("subscription.payWithWallet") : t("subscription.payWithCard")}
             </Button>
           </DialogFooter>
         </DialogContent>

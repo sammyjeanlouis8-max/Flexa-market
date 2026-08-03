@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 
 const FLEXA_HOST = "flexamarket.com";
@@ -61,9 +61,12 @@ const VIEWPORT_FIX = `
 })();
 `.trim();
 
+// SafeAreaView edges — identical pattern to the main tab WebView
+const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
+  Platform.OS === "ios" ? ["top", "bottom"] : [];
+
 export default function StripeCheckoutScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { url } = useLocalSearchParams<{ url: string }>();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
@@ -75,19 +78,14 @@ export default function StripeCheckoutScreen() {
     return null;
   }
 
-  // Top inset: Dynamic Island / notch height.
-  // Bottom inset: home indicator height.
-  const topInset = insets.top;
-  const bottomInset = Platform.OS === "ios" ? insets.bottom : 0;
-
   return (
-    <View style={[styles.root, { backgroundColor: "#ffffff" }]}>
-      {/* Native status-bar background so Dynamic Island area stays white */}
-      <View style={[styles.statusBarFill, { height: topInset, backgroundColor: "#ffffff" }]} />
+    // SafeAreaView with edges=["top","bottom"] lets React Native measure and
+    // apply the exact Dynamic Island / home-indicator insets natively — no
+    // manual useSafeAreaInsets() calculation that can return 0 on first render.
+    <SafeAreaView style={[styles.root, { backgroundColor: "#ffffff" }]} edges={SAFE_EDGES}>
 
-      {/* Native close button — lives in the native layer, always touchable,
-          clearly below Dynamic Island / notch, above the WebView content */}
-      <View style={[styles.closeRow, { marginTop: topInset }]}>
+      {/* Native close button — always inside the safe area, never behind Dynamic Island */}
+      <View style={styles.closeRow}>
         <Pressable
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
           onPress={() => router.back()}
@@ -127,7 +125,6 @@ export default function StripeCheckoutScreen() {
               const { cardSuccess, sessionId } = handleFlexaSuccessUrl(request.url);
               setTimeout(() => {
                 if (cardSuccess && sessionId) {
-                  // Navigate to wallet with success params so the web page polls balance
                   router.replace({
                     pathname: "/(tabs)/wallet",
                     params: { card_success: "1", session_id: sessionId },
@@ -155,12 +152,7 @@ export default function StripeCheckoutScreen() {
           }}
         />
       </View>
-
-      {/* Home indicator spacer so Stripe content never hides behind it */}
-      {bottomInset > 0 && (
-        <View style={{ height: bottomInset, backgroundColor: "#ffffff" }} />
-      )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -168,19 +160,11 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
   },
-  statusBarFill: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
   closeRow: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
-    zIndex: 20,
     backgroundColor: "#ffffff",
   },
   closeBtn: {

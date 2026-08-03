@@ -8,7 +8,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 
 const FLEXA_HOST = "flexamarket.com";
@@ -65,8 +65,56 @@ const VIEWPORT_FIX = `
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
   Platform.OS === "ios" ? ["top", "bottom"] : [];
 
+/**
+ * Build the same injection script used for the main WebView's conversation
+ * page, adapted for Stripe's hosted checkout.
+ *
+ * Strategy (mirrors Messages.tsx / index.html approach):
+ *  1. Inject a position:fixed white bar at the very top of Stripe's page that
+ *     covers the Dynamic Island / notch area — so Stripe content is never
+ *     physically behind the cutout.
+ *  2. Add matching padding-top to <html> so Stripe's own scroll area starts
+ *     below the bar (not hidden under it).
+ *  3. Run BEFORE content loads so the first paint is already correct.
+ */
+function buildStripeInjectScript(topInset: number): string {
+  if (topInset <= 0) return VIEWPORT_FIX;
+  return `
+${VIEWPORT_FIX}
+(function() {
+  var sat = ${topInset};
+  // White status-bar overlay — covers Dynamic Island / notch
+  var bar = document.createElement('div');
+  bar.id = '__flexa_sat';
+  bar.style.cssText = [
+    'position:fixed',
+    'top:0',
+    'left:0',
+    'right:0',
+    'height:' + sat + 'px',
+    'background:#ffffff',
+    'z-index:2147483647',
+    'pointer-events:none',
+  ].join(';');
+  function injectBar() {
+    if (document.body && !document.getElementById('__flexa_sat')) {
+      document.body.appendChild(bar);
+      document.documentElement.style.paddingTop = sat + 'px';
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectBar);
+  } else {
+    injectBar();
+  }
+  true;
+})();
+`.trim();
+}
+
 export default function StripeCheckoutScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { url } = useLocalSearchParams<{ url: string }>();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +164,8 @@ export default function StripeCheckoutScreen() {
           mediaPlaybackRequiresUserAction={false}
           overScrollMode="never"
           scalesPageToFit={false}
-          injectedJavaScript={VIEWPORT_FIX}
+          injectedJavaScriptBeforeContentLoaded={buildStripeInjectScript(insets.top)}
+          injectedJavaScript={buildStripeInjectScript(insets.top)}
           injectedJavaScriptForMainFrameOnly
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}

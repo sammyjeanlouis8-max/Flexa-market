@@ -245,7 +245,8 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
     void sendExpoPushToUser(recipientId, {
       title: pushTitle,
       body: pushBody,
-      data: { screen: "messages", params: { conversationId: String(id) } },
+      data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
+      sound: "default",
     });
   } catch {}
 

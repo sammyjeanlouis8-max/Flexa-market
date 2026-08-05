@@ -292,6 +292,17 @@ function Router() {
   const [location, setLocation] = useLocation();
   useExpoPushToken();
 
+  // Handle push notification tap from the native iOS/Android WebView wrapper.
+  // The native layer calls window.__handlePushUrl(url) when the user taps a
+  // push notification that contains a "url" field in its data payload.
+  useEffect(() => {
+    const w = window as any;
+    w.__handlePushUrl = (url: string) => {
+      if (typeof url === "string" && url.startsWith("/")) setLocation(url);
+    };
+    return () => { w.__handlePushUrl = undefined; };
+  }, [setLocation]);
+
   // Scroll to top instantly on genuine navigation (not on initial mount)
   const isFirstRender = useRef(true);
   useEffect(() => {

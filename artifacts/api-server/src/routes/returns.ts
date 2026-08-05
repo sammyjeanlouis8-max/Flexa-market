@@ -6,6 +6,7 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
+import { sendExpoPushToUser } from "../lib/expo-push";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { returnRequestedSellerEmail, returnStatusBuyerEmail } from "../lib/emailTemplates";
@@ -92,6 +93,11 @@ router.post("/orders/:id/return", requireAuth, async (req, res): Promise<void> =
       url: `/orders/${orderId}`,
       tag: `return-${returnId}`,
     });
+    void sendExpoPushToUser(tx.sellerUserId, {
+      title: "Demann retou resevwa 📦",
+      body: `Achetè a mande retou pou kòmand #${orderId}. Reponn nan 48 èdtan.`,
+      data: { url: `/orders/${orderId}` }, sound: "default",
+    });
     // Fire-and-forget: notify seller by email too
     void (async () => {
       const [sellerUser] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tx.sellerUserId!));
@@ -173,6 +179,13 @@ router.post("/returns/:returnId/seller-respond", requireAuth, async (req, res): 
     url: `/orders/${ret.order_id}`,
     tag: `return-${returnId}`,
   });
+  void sendExpoPushToUser(Number(ret.buyer_id), {
+    title: decision === "accept" ? "Retou aksepte! ✅" : "Retou refize ❌",
+    body: decision === "accept"
+      ? `Vandè a aksepte demann retou ou pou kòmand #${ret.order_id}.`
+      : `Vandè a refize retou ou pou kòmand #${ret.order_id}.`,
+    data: { url: `/orders/${ret.order_id}` }, sound: "default",
+  });
 
   // Fire-and-forget email to buyer
   void (async () => {
@@ -222,6 +235,11 @@ router.post("/returns/:returnId/buyer-ship", requireAuth, async (req, res): Prom
       body: `Achetè a voye atik la tounen${trackingNumber ? ` (${carrier} ${trackingNumber})` : ""}. Konfime resepsyon.`,
       url: `/orders/${ret.order_id}`,
       tag: `return-${returnId}`,
+    });
+    void sendExpoPushToUser(Number(ret.tx_seller_id), {
+      title: "Atik retou voye 📬",
+      body: `Achetè a voye atik la tounen. Konfime resepsyon.`,
+      data: { url: `/orders/${ret.order_id}` }, sound: "default",
     });
   }
 
@@ -391,6 +409,11 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
         url: `/orders/${ret.order_id}`,
         tag: `return-${returnId}`,
       });
+      void sendExpoPushToUser(buyerId, {
+        title: refundMethod === "stripe_card" ? "Ranbousman kat akòde! 💳" : "Ranbousman akòde! ✅",
+        body: pushBody,
+        data: { url: `/orders/${ret.order_id}` }, sound: "default",
+      });
 
       // Fire-and-forget refund email to buyer
       void (async () => {
@@ -417,6 +440,11 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
         body: `Admin refize demann retou ou pou kòmand #${ret.order_id}.${noteVal ? ` ${noteVal}` : ""}`,
         url: `/orders/${ret.order_id}`,
         tag: `return-${returnId}`,
+      });
+      void sendExpoPushToUser(Number(ret.buyer_id), {
+        title: "Demann retou refize ❌",
+        body: `Admin refize demann retou ou pou kòmand #${ret.order_id}.`,
+        data: { url: `/orders/${ret.order_id}` }, sound: "default",
       });
 
       // Fire-and-forget admin-reject email to buyer

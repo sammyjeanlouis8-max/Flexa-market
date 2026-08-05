@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, boostsTable, notificationsTable, sellerPayoutAccountsTable, offersTable } from "@workspace/db";
 import { sendPushToUser } from "../lib/push";
+import { sendExpoPushToUser } from "../lib/expo-push";
 import { sendEmail } from "../lib/email";
 import { orderPlacedBuyerEmail, orderSoldSellerEmail } from "../lib/emailTemplates";
 import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, handleSubscriptionDeleted, handleSubscriptionPaymentFailed, handleSubscriptionUpdated } from "./subscription";
@@ -866,6 +867,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       url: updatedTx ? `/orders/${updatedTx.id}` : "/orders",
       tag: `order-confirmed-${sessionId}`,
     });
+    void sendExpoPushToUser(buyerUserId, {
+      title: "Kòmand ou konfime! ✅",
+      body: "Peman ou resevwa. Vandè ap prepare pake a pou ou.",
+      data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/orders" }, sound: "default",
+    });
   }
 
   // ── If seller chose "Kat FM" payout → auto-credit their FM wallet ──────────
@@ -906,6 +912,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       url: updatedTx ? `/orders/${updatedTx.id}` : "/sales",
       tag: `new-order-${sessionId}`,
     });
+    void sendExpoPushToUser(sellerUserId, {
+      title: "Nouvo kòmand resevwa! 🛍️",
+      body: `Ou resevwa yon nouvo kòmand. Prepare pake a!`,
+      data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/sales" }, sound: "default",
+    });
   }
 
   // Congratulatory push notification to buyer (best-effort).
@@ -915,6 +926,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       body: "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.",
       url: `/orders/${updatedTx.id}`,
       tag: `purchase-congrats-${updatedTx.id}`,
+    });
+    void sendExpoPushToUser(buyerUserId, {
+      title: "Felisitasyon pou achte ou! 🎉",
+      body: "Mèsi pou konfyans ou. Kòmand ou an konfime!",
+      data: { url: `/orders/${updatedTx.id}` }, sound: "default",
     });
   }
 

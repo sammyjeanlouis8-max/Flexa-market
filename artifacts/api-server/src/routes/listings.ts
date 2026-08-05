@@ -13,6 +13,7 @@ import { getDisplayRate } from "../lib/exchange-rate";
 import { notificationsTable } from "@workspace/db";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
+import { sendExpoPushToUser } from "../lib/expo-push";
 import { emitListingEngagement } from "../lib/socketServer";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
@@ -1275,6 +1276,12 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     body: "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.",
     url: insertedTxId ? `/orders/${insertedTxId}` : "/orders",
     tag: `purchase-congrats-${insertedTxId}`,
+  });
+  void sendExpoPushToUser(req.userId!, {
+    title: "Felisitasyon pou achte ou! 🎉",
+    body: "Mèsi pou konfyans ou. Kòmand ou an konfime epi vandè ap prepare li pou ou.",
+    data: { url: insertedTxId ? `/orders/${insertedTxId}` : "/orders" },
+    sound: "default",
   });
 
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, updated!.sellerId));

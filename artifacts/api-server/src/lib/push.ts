@@ -2,7 +2,6 @@ import webpush from "web-push";
 import { db, pushSubscriptionsTable, platformSettingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
-
 /**
  * Web Push helpers.
  *

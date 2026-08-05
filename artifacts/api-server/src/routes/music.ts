@@ -38,6 +38,19 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
 
 const CPM_USD           = 1.00;   // $1 per 1 000 valid impressions
+
+// ── Dynamic music platform fee (DB-backed, 30 s TTL, default 20%) ─────────────
+let _musicFeeCacheEntry: { value: number; expiresAt: number } | null = null;
+async function getMusicPlatformFeePct(): Promise<number> {
+  if (_musicFeeCacheEntry && Date.now() < _musicFeeCacheEntry.expiresAt) return _musicFeeCacheEntry.value;
+  try {
+    const [row] = await q<{ value: string }>(`SELECT value FROM platform_settings WHERE key = 'music_platform_fee_pct' LIMIT 1`);
+    const parsed = row ? parseFloat(row.value) : NaN;
+    const value = Number.isFinite(parsed) && parsed >= 0 && parsed <= 0.99 ? parsed : 0.20;
+    _musicFeeCacheEntry = { value, expiresAt: Date.now() + 30_000 };
+    return value;
+  } catch { return 0.20; }
+}
 const MIN_LISTEN_SEC    = 30;     // must listen ≥ 30 s for a valid impression
 const DEDUP_WINDOW_MS   = 30 * 60_000;   // 30 min per session+track
 const MAX_IP_IMPRESSIONS_PER_HOUR = 15;
@@ -363,7 +376,8 @@ router.post("/music/:id/buy/wallet", requireAuth, async (req: any, res) => {
       });
     }
 
-    const platformFee  = parseFloat((price * 0.20).toFixed(2));
+    const feePct       = await getMusicPlatformFeePct();
+    const platformFee  = parseFloat((price * feePct).toFixed(2));
     const artistAmount = parseFloat((price - platformFee).toFixed(2));
     const artistId     = track.artist_user_id;
 

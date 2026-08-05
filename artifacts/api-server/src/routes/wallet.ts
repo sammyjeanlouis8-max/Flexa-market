@@ -26,13 +26,34 @@ const MAX_LOOKUPS_PER_HOUR = 40;
 
 // ╔══════════════════════════════════════════════════════════════════╗
 // ║  WALLET CONSTANTS                                                ║
-// ║  P2P transfer fee  : 5%                                         ║
+// ║  P2P transfer fee  : 5% (overridable via platform_settings)     ║
+// ║  Recharge fee      : 2% (overridable via platform_settings)     ║
 // ║  Minimum balance   : $0 (no reserve — full balance spendable)   ║
 // ╚══════════════════════════════════════════════════════════════════╝
-/** Platform fee applied to P2P transfers — 5% */
+/** Default platform fee applied to P2P transfers — 5% (DB-overridable) */
 const TRANSFER_FEE_PCT = 0.05;
-/** Platform fee on ALL recharges (2%) */
+/** Default platform fee on ALL recharges — 2% (DB-overridable) */
 const RECHARGE_FEE_PCT = 0.02;
+
+// ── Dynamic fee rate cache (platform_settings, 30 s TTL) ──────────────────────
+const _walletFeeCache = new Map<string, { value: number; expiresAt: number }>();
+const WALLET_FEE_CACHE_MS = 30_000;
+
+async function getDynamicFeeRate(key: string, defaultRate: number): Promise<number> {
+  const cached = _walletFeeCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+  try {
+    const [row] = await db.select({ value: platformSettingsTable.value })
+      .from(platformSettingsTable)
+      .where(eq(platformSettingsTable.key, key));
+    const parsed = row ? parseFloat(row.value) : NaN;
+    const value = Number.isFinite(parsed) && parsed >= 0 && parsed <= 0.99 ? parsed : defaultRate;
+    _walletFeeCache.set(key, { value, expiresAt: Date.now() + WALLET_FEE_CACHE_MS });
+    return value;
+  } catch {
+    return defaultRate;
+  }
+}
 /** Minimum real balance reserved BEFORE first recharge — $0 (new users not yet constrained) */
 export const MIN_REAL_BALANCE_USD = 0;
 /** Minimum balance that must ALWAYS remain after the user has made their first recharge */
@@ -171,7 +192,8 @@ export async function applyRechargeCredits(
   const wallet = await getOrCreateWallet(userId);
   const isFirstRecharge = !wallet.firstRechargeDone;
 
-  const feeUsd = parseFloat((grossAmountUsd * RECHARGE_FEE_PCT).toFixed(2));
+  const rechargeFeePct = await getDynamicFeeRate("recharge_fee_pct", RECHARGE_FEE_PCT);
+  const feeUsd = parseFloat((grossAmountUsd * rechargeFeePct).toFixed(2));
   const netUsd = parseFloat((grossAmountUsd - feeUsd).toFixed(2));
 
   // Credit net amount to wallet
@@ -186,7 +208,7 @@ export async function applyRechargeCredits(
       .where(and(eq(promoWalletTable.userId, userId), eq(promoWalletTable.firstRechargeDone, false)));
   }
 
-  // Log the 2% fee for transparency
+  // Log the recharge fee for transparency
   if (feeUsd > 0) {
     await db.insert(walletTransactionsTable).values({
       userId,
@@ -194,14 +216,14 @@ export async function applyRechargeCredits(
       amountUsd: -feeUsd,
       status: "completed",
       paymentRef: paymentRef ?? undefined,
-      note: `Frè rechaj 2% — rechaj brut $${grossAmountUsd.toFixed(2)}`,
+      note: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — rechaj brut $${grossAmountUsd.toFixed(2)}`,
     });
     await db.insert(notificationsTable).values({
       userId,
       type: "wallet_fee",
       isRead: false,
       meta: JSON.stringify({
-        message: `Frè rechaj 2% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${grossAmountUsd.toFixed(2)} ou a.`,
+        message: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${grossAmountUsd.toFixed(2)} ou a.`,
         feeUsd,
         netUsd,
         grossAmountUsd,
@@ -677,7 +699,8 @@ router.post("/wallet/transfer", requireAuth, requireCardNotBlocked, async (req, 
     .where(eq(usersTable.id, receiverWallet.userId));
 
   // ── 8. Compute fee (server-authoritative — never trust frontend) ─────────
-  const feeUsd = Math.round(parsedAmount * TRANSFER_FEE_PCT * 100) / 100;
+  const transferFeePct = await getDynamicFeeRate("transfer_fee_pct", TRANSFER_FEE_PCT);
+  const feeUsd = Math.round(parsedAmount * transferFeePct * 100) / 100;
   const netAmount = Math.round((parsedAmount - feeUsd) * 100) / 100;
 
   // ── 9. Atomic debit sender — floor enforced in WHERE to prevent race conditions ──

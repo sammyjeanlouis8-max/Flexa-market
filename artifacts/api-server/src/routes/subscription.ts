@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable } from "@workspace/db";
+import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable } from "@workspace/db";
 import { PLAN_CONFIG, type SubscriptionPlan } from "@workspace/db";
 import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
@@ -11,6 +11,20 @@ import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
 
 const GRACE_PERIOD_DAYS = 5;
+
+// ── Dynamic plan price lookup (DB override > PLAN_CONFIG fallback) ────────────
+async function getDynamicPlanPrice(plan: SubscriptionPlan): Promise<number> {
+  const key = `sub_price_${plan}`;
+  try {
+    const [row] = await db.select({ value: platformSettingsTable.value })
+      .from(platformSettingsTable)
+      .where(eq(platformSettingsTable.key, key));
+    const parsed = row ? parseFloat(row.value) : NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : PLAN_CONFIG[plan].priceUsd;
+  } catch {
+    return PLAN_CONFIG[plan].priceUsd;
+  }
+}
 
 const router = Router();
 
@@ -225,6 +239,8 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
     if (plan === "basic") return res.status(400).json({ error: "Plan Basic gratis" });
 
     const config = PLAN_CONFIG[plan];
+    // Use DB-overridable price (falls back to PLAN_CONFIG if not set)
+    const priceUsd = await getDynamicPlanPrice(plan);
     const userId: number = req.userId;
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
@@ -233,7 +249,7 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
     // Deduct from wallet (promo first, then real balance)
     const deduction = await deductWalletHybrid(
       userId,
-      config.priceUsd,
+      priceUsd,
       `Abònman ${config.name} — 1 mwa`,
       "vendor_subscription",
       userId,
@@ -241,7 +257,7 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
     if (!deduction.ok) {
       return res.status(402).json({
         error: "Balans pa ase",
-        needed: config.priceUsd,
+        needed: priceUsd,
         promoBalance: deduction.promoBalance,
         realBalance: deduction.realBalance,
       });
@@ -257,7 +273,7 @@ router.post("/subscription/wallet-pay", requireAuth, async (req: any, res: any) 
       plan,
       status: "active",
       expiresAt,
-      amountUsd: config.priceUsd,
+      amountUsd: priceUsd,
       interval: "month",
     });
 

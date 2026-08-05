@@ -1783,6 +1783,56 @@ export default function Admin() {
   const [buyerFeeDraft, setBuyerFeeDraft] = useState<number>(0.025);
   const [buyerFeeSaving, setBuyerFeeSaving] = useState(false);
 
+  // ── Platform Fees — super-admin configurable revenue rates ──────────────────
+  type PlatformFees = {
+    transfer_fee_pct: number;
+    recharge_fee_pct: number;
+    music_platform_fee_pct: number;
+    delivery_platform_fee_pct: number;
+    sub_price_standard: number;
+    sub_price_premium: number;
+    sub_price_vip: number;
+    artist_plan_price_usd: number;
+  };
+  const [platformFees, setPlatformFees] = useState<PlatformFees | null>(null);
+  const [feesLoading, setFeesLoading] = useState(false);
+  const [feesDraft, setFeesDraft] = useState<Partial<Record<keyof PlatformFees, string>>>({});
+  const [feesSaving, setFeesSaving] = useState<string | null>(null);
+
+  const loadPlatformFees = async () => {
+    setFeesLoading(true);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const r = await fetch("/api/admin/platform-fees", { headers: { Authorization: `Bearer ${tk}` } });
+      if (r.ok) {
+        const data = await r.json();
+        setPlatformFees(data);
+        setFeesDraft({});
+      }
+    } finally { setFeesLoading(false); }
+  };
+
+  const saveFee = async (key: keyof PlatformFees) => {
+    const raw = feesDraft[key];
+    if (raw === undefined) return;
+    const value = parseFloat(raw);
+    if (!isFinite(value) || value < 0) { toast({ title: "Valè envalid", variant: "destructive" }); return; }
+    setFeesSaving(key);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const r = await fetch("/api/admin/platform-fees", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        body: JSON.stringify({ key, value }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) { toast({ title: "Erè", description: (data as any)?.error || "Eseye ankò", variant: "destructive" }); return; }
+      setPlatformFees(prev => prev ? { ...prev, [key]: value } : prev);
+      setFeesDraft(prev => { const n = { ...prev }; delete n[key]; return n; });
+      toast({ title: `✓ ${key} chanje a ${value}` });
+    } finally { setFeesSaving(null); }
+  };
+
   // Platform revenue analytics
   const [platformRevenue, setPlatformRevenue] = useState<{
     period: string;
@@ -2716,6 +2766,7 @@ export default function Admin() {
             </TabsTrigger>
             <TabsTrigger value="deliveries" className="text-xs" data-testid="tab-deliveries"><Truck className="h-3 w-3 mr-1" />Livrezon</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="revenue" className="text-xs font-bold text-emerald-700 dark:text-emerald-400" onClick={() => loadPlatformRevenue()} data-testid="tab-revenue"><TrendingUp className="h-3 w-3 mr-1" />Revni</TabsTrigger>}
+            {isSuperAdmin && <TabsTrigger value="fees" className="text-xs font-bold text-blue-700 dark:text-blue-400" onClick={loadPlatformFees} data-testid="tab-fees"><DollarSign className="h-3 w-3 mr-1" />Taux & Frè</TabsTrigger>}
             {isSuperAdmin && <TabsTrigger value="views" className="text-xs" onClick={loadViewAnalytics} data-testid="tab-views"><Eye className="h-3 w-3 mr-1" />Vues</TabsTrigger>}
             <TabsTrigger value="logs" className="text-xs" onClick={() => loadLogs(buildLogsParams(logsDateRange, logsDateFrom, logsDateTo))}><Activity className="h-3 w-3 mr-1" />Log</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="audit" className="text-xs font-bold text-red-600 dark:text-red-400" data-testid="tab-audit"><ShieldAlert className="h-3 w-3 mr-1" />Audit Trail</TabsTrigger>}
@@ -4106,6 +4157,267 @@ export default function Admin() {
                       <p className="text-muted-foreground text-sm">Pa gen done revni pou peryòd sa.</p>
                     </div>
                   )}
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ─── Platform Fees & Rates Dashboard ──────────────────────── */}
+        <TabsContent value="fees">
+          {!isSuperAdmin ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+              <Lock className="h-8 w-8 text-red-500" />
+              <p className="font-semibold text-red-600 dark:text-red-400">Aksè Refize</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black">Taux & Frè Platfòm</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Chanjman yo pran efè imedyatman sou nouvo tranzaksyon yo</p>
+                </div>
+                <button onClick={loadPlatformFees} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+                  <RefreshCw className={`h-3 w-3 ${feesLoading ? "animate-spin" : ""}`} />Refresh
+                </button>
+              </div>
+
+              {!platformFees ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  {/* ── Wallet Fees ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <h4 className="text-sm font-bold flex items-center gap-2"><Wallet className="h-4 w-4 text-blue-500" />Frè Pòtfèy</h4>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {([
+                        { key: "transfer_fee_pct" as const, label: "Frè Transfè P2P", desc: "Platfòm prelevè X% sou chak voye lajan", isPct: true, color: "text-blue-500", defaultVal: 0.05 },
+                        { key: "recharge_fee_pct" as const, label: "Frè Rechaj Kont", desc: "Platfòm prelevè X% sou chak rechaj MonCash/Kart", isPct: true, color: "text-cyan-500", defaultVal: 0.02 },
+                      ] as const).map(({ key, label, desc, isPct, color, defaultVal }) => {
+                        const current = platformFees[key] ?? defaultVal;
+                        const draft = feesDraft[key];
+                        const isDirty = draft !== undefined;
+                        return (
+                          <div key={key} className="flex items-center gap-4 px-5 py-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold">{label}</p>
+                              <p className="text-xs text-muted-foreground">{desc}</p>
+                              <p className={`text-lg font-black tabular-nums ${color} mt-1`}>{(current * 100).toFixed(1)}%</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="relative">
+                                <Input
+                                  type="number" step="0.1" min="0" max="99"
+                                  value={draft ?? (current * 100).toFixed(1)}
+                                  onChange={e => setFeesDraft(p => ({ ...p, [key]: String(parseFloat(e.target.value) / 100) }))}
+                                  className="w-24 text-sm pr-6"
+                                  placeholder={(current * 100).toFixed(1)}
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                              </div>
+                              <Button size="sm" disabled={!isDirty || feesSaving === key} onClick={() => saveFee(key)} className="text-xs">
+                                {feesSaving === key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sovgade"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ── Music Fees ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <h4 className="text-sm font-bold flex items-center gap-2"><Music2 className="h-4 w-4 text-fuchsia-500" />Revni Mizik</h4>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {([
+                        { key: "music_platform_fee_pct" as const, label: "Komisyon Platfòm — Vant Chante", desc: "Platfòm prelevè X% sou chak chante ki achte", isPct: true, color: "text-fuchsia-500", defaultVal: 0.20 },
+                      ] as const).map(({ key, label, desc, isPct, color, defaultVal }) => {
+                        const current = platformFees[key] ?? defaultVal;
+                        const draft = feesDraft[key];
+                        const isDirty = draft !== undefined;
+                        return (
+                          <div key={key} className="flex items-center gap-4 px-5 py-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold">{label}</p>
+                              <p className="text-xs text-muted-foreground">{desc}</p>
+                              <p className={`text-lg font-black tabular-nums ${color} mt-1`}>{(current * 100).toFixed(1)}%</p>
+                              <p className="text-xs text-muted-foreground">Artis resevwa: <strong>{(100 - current * 100).toFixed(1)}%</strong></p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="relative">
+                                <Input
+                                  type="number" step="1" min="0" max="99"
+                                  value={draft !== undefined ? (parseFloat(draft) * 100).toFixed(0) : (current * 100).toFixed(0)}
+                                  onChange={e => setFeesDraft(p => ({ ...p, [key]: String(parseFloat(e.target.value) / 100) }))}
+                                  className="w-24 text-sm pr-6"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                              </div>
+                              <Button size="sm" disabled={!isDirty || feesSaving === key} onClick={() => saveFee(key)} className="text-xs">
+                                {feesSaving === key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sovgade"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ── Delivery Fees ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <h4 className="text-sm font-bold flex items-center gap-2"><Truck className="h-4 w-4 text-orange-500" />Komisyon Livrezon</h4>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {([
+                        { key: "delivery_platform_fee_pct" as const, label: "Komisyon Platfòm — Livrezon", desc: "Platfòm prelevè X% sou chak frè livrezon (chofè resevwa rès la)", isPct: true, color: "text-orange-500", defaultVal: 0.20 },
+                      ] as const).map(({ key, label, desc, isPct, color, defaultVal }) => {
+                        const current = platformFees[key] ?? defaultVal;
+                        const draft = feesDraft[key];
+                        const isDirty = draft !== undefined;
+                        return (
+                          <div key={key} className="flex items-center gap-4 px-5 py-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold">{label}</p>
+                              <p className="text-xs text-muted-foreground">{desc}</p>
+                              <p className={`text-lg font-black tabular-nums ${color} mt-1`}>{(current * 100).toFixed(1)}%</p>
+                              <p className="text-xs text-muted-foreground">Chofè resevwa: <strong>{(100 - current * 100).toFixed(1)}%</strong></p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="relative">
+                                <Input
+                                  type="number" step="1" min="0" max="99"
+                                  value={draft !== undefined ? (parseFloat(draft) * 100).toFixed(0) : (current * 100).toFixed(0)}
+                                  onChange={e => setFeesDraft(p => ({ ...p, [key]: String(parseFloat(e.target.value) / 100) }))}
+                                  className="w-24 text-sm pr-6"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                              </div>
+                              <Button size="sm" disabled={!isDirty || feesSaving === key} onClick={() => saveFee(key)} className="text-xs">
+                                {feesSaving === key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sovgade"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ── Boost ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <h4 className="text-sm font-bold flex items-center gap-2"><Zap className="h-4 w-4 text-yellow-500" />Revni Boost</h4>
+                    </div>
+                    <div className="px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">Boost Lis yo</p>
+                        <p className="text-xs text-muted-foreground">Tout revni boost ale 100% nan platfòm lan</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-black text-yellow-500">100%</p>
+                        <p className="text-xs text-muted-foreground">Pa konfigirab (tout platfòm)</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Subscription Prices ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-bold flex items-center gap-2"><CreditCard className="h-4 w-4 text-purple-500" />Pri Abònman Vendè</h4>
+                        <span className="text-xs text-amber-500 font-medium">⚠️ Afekte pèman FM Wallet sèlman</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {([
+                        { key: "sub_price_standard" as const, label: "Standard", desc: "1 mwa — pèman via FM Wallet", color: "text-blue-500", defaultVal: 15 },
+                        { key: "sub_price_premium" as const, label: "Premium", desc: "1 mwa — pèman via FM Wallet", color: "text-purple-500", defaultVal: 30 },
+                        { key: "sub_price_vip" as const, label: "VIP", desc: "1 mwa — pèman via FM Wallet", color: "text-amber-500", defaultVal: 50 },
+                      ] as const).map(({ key, label, desc, color, defaultVal }) => {
+                        const current = platformFees[key] ?? defaultVal;
+                        const draft = feesDraft[key];
+                        const isDirty = draft !== undefined;
+                        return (
+                          <div key={key} className="flex items-center gap-4 px-5 py-4">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold">{label}</p>
+                              <p className="text-xs text-muted-foreground">{desc}</p>
+                              <p className={`text-lg font-black tabular-nums ${color} mt-1`}>${current.toFixed(2)}<span className="text-xs font-normal text-muted-foreground">/mwa</span></p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="relative">
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                                <Input
+                                  type="number" step="1" min="1" max="9999"
+                                  value={draft ?? current.toFixed(2)}
+                                  onChange={e => setFeesDraft(p => ({ ...p, [key]: e.target.value }))}
+                                  className="w-24 text-sm pl-5"
+                                />
+                              </div>
+                              <Button size="sm" disabled={!isDirty || feesSaving === key} onClick={() => saveFee(key)} className="text-xs">
+                                {feesSaving === key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sovgade"}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ── Artist Plan Price ── */}
+                  <div className="bg-card border border-border rounded-xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-border bg-muted/30">
+                      <h4 className="text-sm font-bold flex items-center gap-2"><Music2 className="h-4 w-4 text-fuchsia-500" />Plan Artis</h4>
+                    </div>
+                    {([
+                      { key: "artist_plan_price_usd" as const, label: "Plan Artis Anyèl", desc: "Prix pou artis yo pou up acharje plis chante (pa ane)", color: "text-fuchsia-500", defaultVal: 50 },
+                    ] as const).map(({ key, label, desc, color, defaultVal }) => {
+                      const current = platformFees[key] ?? defaultVal;
+                      const draft = feesDraft[key];
+                      const isDirty = draft !== undefined;
+                      return (
+                        <div key={key} className="flex items-center gap-4 px-5 py-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">{label}</p>
+                            <p className="text-xs text-muted-foreground">{desc}</p>
+                            <p className={`text-lg font-black tabular-nums ${color} mt-1`}>${current.toFixed(2)}<span className="text-xs font-normal text-muted-foreground">/an</span></p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="relative">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                              <Input
+                                type="number" step="1" min="1" max="9999"
+                                value={draft ?? current.toFixed(2)}
+                                onChange={e => setFeesDraft(p => ({ ...p, [key]: e.target.value }))}
+                                className="w-24 text-sm pl-5"
+                              />
+                            </div>
+                            <Button size="sm" disabled={!isDirty || feesSaving === key} onClick={() => saveFee(key)} className="text-xs">
+                              {feesSaving === key ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sovgade"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* ── Merchant Commission link ── */}
+                  <div className="bg-muted/30 border border-border rounded-xl p-4 flex items-center gap-3">
+                    <BarChart3 className="h-5 w-5 text-orange-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold">Komisyon Vant Machann</p>
+                      <p className="text-xs text-muted-foreground">Taux komisyon vant (MonCash, Stripe, Default) — konfigirab nan onglet Komisyon</p>
+                    </div>
+                    <Button variant="outline" size="sm" className="text-xs shrink-0" onClick={() => document.querySelector<HTMLElement>('[data-testid="tab-commission"]')?.click()}>
+                      Wè Komisyon →
+                    </Button>
+                  </div>
                 </>
               )}
             </div>

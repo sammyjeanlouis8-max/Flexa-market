@@ -2356,4 +2356,59 @@ router.post("/admin/orders/:id/cancel", requireSuperAdmin, async (req, res): Pro
   res.json({ ok: true });
 });
 
+// ─── Platform Fees — super admin configurable revenue rates ──────────────────
+
+const FEE_KEYS = new Set([
+  "transfer_fee_pct",
+  "recharge_fee_pct",
+  "music_platform_fee_pct",
+  "delivery_platform_fee_pct",
+  "sub_price_standard",
+  "sub_price_premium",
+  "sub_price_vip",
+  "artist_plan_price_usd",
+]);
+
+const FEE_DEFAULTS: Record<string, number> = {
+  transfer_fee_pct:         0.05,
+  recharge_fee_pct:         0.02,
+  music_platform_fee_pct:   0.20,
+  delivery_platform_fee_pct:0.20,
+  sub_price_standard:       15,
+  sub_price_premium:        30,
+  sub_price_vip:            50,
+  artist_plan_price_usd:    50,
+};
+
+router.get("/admin/platform-fees", requireSuperAdmin, async (_req, res): Promise<void> => {
+  const keyList = Array.from(FEE_KEYS);
+  const rows = await db.select({ key: platformSettingsTable.key, value: platformSettingsTable.value })
+    .from(platformSettingsTable)
+    .where(sql`${platformSettingsTable.key} = ANY(${keyList})`);
+  const m = new Map(rows.map(r => [r.key, r.value]));
+  const out: Record<string, number> = {};
+  for (const key of keyList) {
+    const raw = m.get(key);
+    const parsed = raw !== undefined ? parseFloat(raw) : NaN;
+    out[key] = Number.isFinite(parsed) ? parsed : FEE_DEFAULTS[key] ?? 0;
+  }
+  res.json(out);
+});
+
+router.put("/admin/platform-fees", requireSuperAdmin, async (req: any, res): Promise<void> => {
+  const { key, value } = req.body as { key: string; value: number };
+  if (!FEE_KEYS.has(key)) { res.status(400).json({ error: "Kle envalid" }); return; }
+  if (!Number.isFinite(value) || value < 0) { res.status(400).json({ error: "Valè envalid" }); return; }
+  const PCT_KEYS = new Set(["transfer_fee_pct","recharge_fee_pct","music_platform_fee_pct","delivery_platform_fee_pct"]);
+  if (PCT_KEYS.has(key) && value > 0.99) { res.status(400).json({ error: "Posantaj dwe ant 0% ak 99%" }); return; }
+  if (!PCT_KEYS.has(key) && value > 9999) { res.status(400).json({ error: "Pri trò wo" }); return; }
+  await db.execute(sql`
+    INSERT INTO platform_settings (key, value, updated_at)
+    VALUES (${key}, ${String(value)}, NOW())
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+  `);
+  await log(req.userId, "update_platform_fee", "platform_settings", undefined, `${key} → ${value}`);
+  res.json({ ok: true, key, value });
+});
+
 export default router;

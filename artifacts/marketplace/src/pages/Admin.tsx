@@ -18,7 +18,7 @@ import {
   Wifi, Monitor, Link2, ShieldAlert, ShieldCheck, LogIn, UserPlus, KeyRound, BadgeCheck, CreditCard, Copy,
   MessageSquare, Send, Briefcase, MapPin, Clock, Wallet, ArrowUpCircle, ArrowDownCircle, CheckCircle, XCircle, RefreshCw,
   Search, Check, Gift, Ticket, Timer, Download, Truck, ArrowRight, Bell, Landmark, ExternalLink, Loader2, Banknote, Phone, Navigation,
-  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy, Tv, Music2,
+  TrendingUp, BarChart3, Receipt, ArrowLeft, Trophy, Tv, Music2, ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2489,6 +2489,22 @@ export default function Admin() {
           <ArrowRight className="h-4 w-4 text-fuchsia-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
+        {/* Transactions */}
+        <button
+          type="button"
+          onClick={() => { loadWalletAdmin(); setAdminTab("transactions-hub"); }}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 hover:from-emerald-100 hover:to-teal-100 dark:hover:from-emerald-900/40 dark:hover:to-teal-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center shrink-0 shadow shadow-emerald-200 dark:shadow-emerald-900/50">
+            <ArrowLeftRight className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">💳 {t("adminBanner.txHubTitle")}</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{t("adminBanner.txHubSubtitle")}</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+
       </div>
 
       {/* Super Admin shortcut — Add Admin */}
@@ -2733,6 +2749,7 @@ export default function Admin() {
             )}
             <TabsTrigger value="promo" className="text-xs" onClick={loadPromo} data-testid="tab-promo"><Gift className="h-3 w-3 mr-1" />Promo</TabsTrigger>
             <TabsTrigger value="subscriptions" className="text-xs" onClick={loadAdminSubscriptions} data-testid="tab-subscriptions"><Crown className="h-3 w-3 mr-1" />Abònman</TabsTrigger>
+            <TabsTrigger value="transactions-hub" className="text-xs" onClick={loadWalletAdmin} data-testid="tab-transactions-hub"><ArrowLeftRight className="h-3 w-3 mr-1" />{t("adminBanner.txHubTitle")}</TabsTrigger>
             {can("payments") && (
               <TabsTrigger value="agents" className="text-xs" onClick={loadAgents} data-testid="tab-agents"><ShieldCheck className="h-3 w-3 mr-1" />Ajant</TabsTrigger>
             )}
@@ -7219,6 +7236,93 @@ export default function Admin() {
                 );
               })()}
             </div>
+          </div>
+        </TabsContent>
+
+        {/* ── Transactions Hub ── */}
+        <TabsContent value="transactions-hub">
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <ArrowLeftRight className="h-4 w-4 text-emerald-500" />
+                {t("adminBanner.txHubTitle")}
+              </h2>
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={loadWalletAdmin}>
+                <RefreshCw className="h-3 w-3 mr-1" />{t("adminBanner.txHubRefresh")}
+              </Button>
+            </div>
+
+            {/* Info banner */}
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                💡 {t("adminBanner.txHubInfo")}
+              </p>
+            </div>
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder={t("adminBanner.txHubSearch")}
+                value={usersSheetSearch}
+                onChange={e => setUsersSheetSearch(e.target.value)}
+                className="w-full h-10 rounded-xl border border-border bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              />
+            </div>
+
+            {/* User list */}
+            {walletBalances.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <div className="h-14 w-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
+                  <ArrowLeftRight className="h-7 w-7 text-emerald-400" />
+                </div>
+                <p className="text-sm text-muted-foreground">{t("adminBanner.txHubLoading")}</p>
+              </div>
+            ) : (() => {
+              const q = usersSheetSearch.trim().toLowerCase();
+              const list = q.length >= 1
+                ? walletBalances.filter((w: any) =>
+                    (w.userName ?? "").toLowerCase().includes(q) ||
+                    (w.userEmail ?? "").toLowerCase().includes(q) ||
+                    String(w.userId).includes(q)
+                  )
+                : walletBalances;
+              return (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">{list.length} {t("adminBanner.txHubCount")}</p>
+                  {list.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-10">{t("adminBanner.txHubNoResult")} "{usersSheetSearch}"</p>
+                  ) : list.map((w: any) => {
+                    const bal = parseFloat(w.balanceUsd ?? 0);
+                    const initials = (w.userName ?? "?")[0].toUpperCase();
+                    return (
+                      <button
+                        key={w.userId}
+                        onClick={() => openWalletDetail(w.userId)}
+                        className="w-full flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 hover:bg-accent hover:border-emerald-500/40 active:scale-[0.98] transition-all text-left group"
+                      >
+                        <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                          <span className="text-sm font-bold text-emerald-600">{initials}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate">{w.userName ?? `User #${w.userId}`}</p>
+                          <p className="text-xs text-muted-foreground truncate">{w.userEmail ?? `ID #${w.userId}`}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-sm font-black tabular-nums ${bal > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>
+                            ${bal.toFixed(2)}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">{w.userCountry ?? ""}</p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-emerald-500 transition-colors" />
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </TabsContent>
 

@@ -94,8 +94,7 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     ELSE 0
   END)`;
 
-  // Flexa Family: NO country filter — this is a cross-country premium benefit.
-  // Sellers from any country with an active paid subscription appear here.
+  // Flexa VIP: country-scoped (each subscriber sees VIP sellers from their own country only).
   // isNull(subscriptionExpiresAt) intentionally removed — must have a real future expiry.
   const familyOnlyWhere = and(
     eq(listingsTable.status, "available"),
@@ -103,6 +102,7 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)),
     inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
     gt(usersTable.subscriptionExpiresAt, new Date()),
+    ...(country ? [eq(listingsTable.country, country)] : []),
   );
 
   const flexaFamilyRows = await db.select().from(listingsTable)

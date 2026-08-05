@@ -195,7 +195,7 @@ type DrawerItem =
   | { kind?: "nav";   icon: React.ComponentType<{ className?: string }>; label: string; href: string }
   | { kind: "lang";   icon: React.ComponentType<{ className?: string }>; label: string; href?: never }
   | { kind: "loan";   icon: React.ComponentType<{ className?: string }>; label: string; subtitle: string; href: string }
-  | { kind: "promo";  icon: React.ComponentType<{ className?: string }>; label: string; href: string; balance: number };
+  | { kind: "promo";  icon: React.ComponentType<{ className?: string }>; label: string; href: string; balance: number; realBalance: number };
 
 function DarkModeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
@@ -256,8 +256,8 @@ function useDriverStatus(user: ReturnType<typeof useAuth>["user"]): DriverStatus
   return status;
 }
 
-function usePromoBalance(userId: number | string | undefined): number {
-  const [balance, setBalance] = useState(0);
+function useWalletBalances(userId: number | string | undefined): { promo: number; real: number } {
+  const [bal, setBal] = useState({ promo: 0, real: 0 });
   useEffect(() => {
     if (!userId) return;
     const token = localStorage.getItem("flexamarket_token");
@@ -265,11 +265,13 @@ function usePromoBalance(userId: number | string | undefined): number {
     let cancelled = false;
     fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => { if (!cancelled) setBalance(d?.promoBalance ?? 0); })
+      .then(d => {
+        if (!cancelled) setBal({ promo: d?.promoBalance ?? 0, real: d?.balanceUsd ?? 0 });
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [userId]);
-  return balance;
+  return bal;
 }
 
 function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -278,7 +280,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   const [, navigate] = useLocation();
   const [showLangPicker, setShowLangPicker] = useState(false);
   const driverStatus = useDriverStatus(user);
-  const promoBalance = usePromoBalance(user?.id);
+  const walletBal = useWalletBalances(user?.id);
 
   const currentLang = SUPPORTED_LANGUAGES.find(l => l.code === i18n.language);
 
@@ -297,7 +299,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         { icon: Music2, label: "🎵 Flexa Music",           href: "/music" },
         ...(user ? [
           { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem,
-          { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: promoBalance },
+          { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: walletBal.promo, realBalance: walletBal.real },
         ] : []),
       ] as DrawerItem[],
     },
@@ -413,35 +415,38 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
               <div className="space-y-0.5">
                 {section.items.map((item, idx) => {
                   if (item.kind === "promo") {
+                    const totalBal = (item.balance ?? 0) + (item.realBalance ?? 0);
                     return (
                       <button
                         key="promo-account"
                         type="button"
                         onClick={() => go(item.href)}
-                        className="w-full text-left rounded-2xl overflow-hidden relative group active:scale-[0.98] transition-transform"
+                        className="w-full text-left rounded-xl overflow-hidden relative active:scale-[0.98] transition-transform"
                         style={{
-                          background: "linear-gradient(135deg, #92400e 0%, #b45309 30%, #d97706 65%, #f59e0b 100%)",
-                          boxShadow: "0 4px 20px 0 rgba(217,119,6,0.50), inset 0 1px 0 rgba(255,255,255,0.22)",
+                          background: "linear-gradient(120deg, #92400e 0%, #b45309 35%, #d97706 68%, #f59e0b 100%)",
+                          boxShadow: "0 4px 16px 0 rgba(180,83,9,0.55), inset 0 1px 0 rgba(255,255,255,0.30)",
                         }}
                       >
-                        <div className="absolute inset-0 opacity-25 pointer-events-none" style={{ background: "linear-gradient(120deg, rgba(255,255,255,0.5) 0%, transparent 55%)" }} />
-                        <div className="flex items-center gap-3 px-3 py-2.5 relative z-10">
-                          <div className="shrink-0 flex items-center justify-center h-10 w-10 rounded-xl" style={{ background: "rgba(0,0,0,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.3)" }}>
-                            <Gift className="h-5 w-5 text-white drop-shadow" />
+                        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(110deg, rgba(255,255,255,0.30) 0%, transparent 50%)" }} />
+                        <div className="flex items-center gap-2.5 px-3 py-2 relative z-10">
+                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg" style={{ background: "rgba(0,0,0,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)" }}>
+                            <Gift className="h-4 w-4 text-yellow-100" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="block text-sm font-extrabold text-white tracking-wide drop-shadow-sm">
+                            <span className="block text-sm font-bold text-white leading-tight" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.40)" }}>
                               {item.label}
                             </span>
-                            <span className="text-[10px] font-semibold" style={{ color: "#fde68a" }}>
-                              💰 {t("nav.promoBalanceAvail", { defaultValue: "Balans Promo disponib" })}
+                            <span className="block text-[10px] font-medium leading-tight" style={{ color: "#fde68a" }}>
+                              {item.realBalance > 0
+                                ? `💵 $${item.realBalance.toFixed(2)} · 🎁 $${item.balance.toFixed(2)}`
+                                : `💰 ${t("nav.promoBalanceAvail", { defaultValue: "Balans disponib" })}`}
                             </span>
                           </div>
-                          <div className="flex flex-col items-end shrink-0">
-                            <span className="text-xl font-black text-white leading-none" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.5)" }}>
-                              ${item.balance.toFixed(2)}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-lg font-black text-white" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.50)" }}>
+                              ${totalBal.toFixed(2)}
                             </span>
-                            <ChevronRight className="h-4 w-4 mt-0.5" style={{ color: "rgba(255,255,255,0.7)" }} />
+                            <ChevronRight className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.75)" }} />
                           </div>
                         </div>
                       </button>

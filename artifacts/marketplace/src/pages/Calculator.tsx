@@ -164,7 +164,6 @@ export default function CalculatorPage() {
   const { i18n } = useTranslation();
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>(() => loadHistory());
-  const [streamingText, setStreamingText] = useState("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +174,7 @@ export default function CalculatorPage() {
   useEffect(() => {
     saveHistory(messages);
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streamingText]);
+  }, [messages]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -202,39 +201,12 @@ export default function CalculatorPage() {
         body: JSON.stringify({ messages: next }),
       });
 
-      if (!resp.ok || !resp.body) {
-        const errBody = await resp.json().catch(() => ({}));
-        throw new Error(errBody?.error ?? `HTTP ${resp.status}`);
-      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data?.error ?? `HTTP ${resp.status}`);
+      if (data?.error) throw new Error(data.error);
 
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          const trimLine = line.trim();
-          if (!trimLine.startsWith("data:")) continue;
-          try {
-            const parsed = JSON.parse(trimLine.slice(5).trim());
-            if (parsed.error) throw new Error(parsed.error);
-            if (parsed.content) {
-              accumulated += parsed.content;
-              setStreamingText(accumulated);
-            }
-            if (parsed.done) break;
-          } catch (e: any) {
-            if (e.message && !e.message.includes("JSON")) throw e;
-          }
-        }
-      }
-
-      const finalText = accumulated || "…";
+      const finalText = data?.content || "…";
       setMessages(prev => [...prev, { role: "assistant" as const, content: finalText }].slice(-MAX_HISTORY));
-      setStreamingText("");
     } catch (err: any) {
       setError(err?.message ?? "Erè. Eseye ankò.");
     } finally {

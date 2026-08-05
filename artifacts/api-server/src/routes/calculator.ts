@@ -89,51 +89,27 @@ router.post("/calculator/ask", requireAuth, calcLimiter, async (req, res) => {
     return;
   }
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  // Heartbeat comment every 5 s to keep the proxy connection alive
-  const heartbeat = setInterval(() => {
-    try { res.write(": keep-alive\n\n"); } catch { /* ignore */ }
-  }, 5000);
-
   try {
-    const stream = client.messages.stream({
+    const response = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 8192,
+      max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: cleaned,
     });
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
-      }
-    }
+    const text = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
 
-    clearInterval(heartbeat);
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    res.end();
+    res.json({ content: text });
   } catch (err: any) {
-    clearInterval(heartbeat);
-    req.log.error({ err }, "[calculator] Anthropic stream failed");
+    req.log.error({ err }, "[calculator] Anthropic request failed");
     const status = typeof err?.status === "number" ? err.status : 500;
-    const safeStatus = status >= 400 && status < 600 ? status : 500;
-    const errPayload =
-      safeStatus === 429
-        ? { error: "Twòp demann — tann yon moman epi eseye ankò." }
-        : { error: "Kalkilatè a pa reponn. Eseye ankò." };
-    try {
-      res.write(`data: ${JSON.stringify({ ...errPayload, done: true })}\n\n`);
-      res.end();
-    } catch {
-      res.end();
+    if (status === 429) {
+      res.status(429).json({ error: "Twòp demann — tann yon moman epi eseye ankò." });
+    } else {
+      res.status(500).json({ error: "Kalkilatè a pa reponn. Eseye ankò." });
     }
   }
 });

@@ -165,31 +165,13 @@ export default function Chatbot() {
         throw new Error(errBody?.error ?? `HTTP ${resp.status}`);
       }
 
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          const trimLine = line.trim();
-          if (!trimLine.startsWith("data:")) continue;
-          try {
-            const parsed = JSON.parse(trimLine.slice(5).trim());
-            if (parsed.error) throw new Error(parsed.error);
-            if (parsed.content) accumulated += parsed.content;
-            if (parsed.done) break;
-          } catch (e: any) {
-            if (e.message && !e.message.includes("JSON")) throw e;
-          }
-        }
-      }
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data?.error ?? `HTTP ${resp.status}`);
+      if (data?.error) throw new Error(data.error);
 
       setMessages(curr => [
         ...curr,
-        { role: "assistant" as const, content: accumulated || "…" },
+        { role: "assistant" as const, content: data?.content || "…" },
       ].slice(-MAX_HISTORY));
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");

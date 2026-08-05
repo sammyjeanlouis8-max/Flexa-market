@@ -4,12 +4,20 @@ import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 
-const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
-const apiKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+// ── AI providers ─────────────────────────────────────────────────────────────
+// Priority: Groq (free, fast, reliable) → Anthropic (Replit-managed proxy)
+// Groq: get a free key at https://console.groq.com  (no credit card needed)
+const GROQ_API_KEY      = process.env.GROQ_API_KEY ?? "";
+const GROQ_MODEL        = "llama-3.1-8b-instant";   // free, ~300 tok/s
+const GROQ_API_URL      = "https://api.groq.com/openai/v1/chat/completions";
 
-const client = baseURL && apiKey
-  ? new Anthropic({ baseURL, apiKey, timeout: 55000 })
+const anthropicBaseURL  = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
+const anthropicApiKey   = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+const anthropicClient   = anthropicBaseURL && anthropicApiKey
+  ? new Anthropic({ baseURL: anthropicBaseURL, apiKey: anthropicApiKey, timeout: 25000 })
   : null;
+
+const hasAI = !!(GROQ_API_KEY || anthropicClient);
 
 const SYSTEM_PROMPT = `You are FlexaBot, the friendly AI assistant for FLEXA MARKET — a peer-to-peer marketplace serving primarily Haitian users (with Haitian Creole, French, English, Spanish, and Portuguese speakers).
 
@@ -43,8 +51,53 @@ function parseBody(body: any): { ok: true; messages: ChatMessage[] } | { ok: fal
   return { ok: true, messages: cleaned };
 }
 
+// ── Call Groq (OpenAI-compatible) ────────────────────────────────────────────
+async function callGroq(messages: ChatMessage[]): Promise<string> {
+  const res = await fetch(GROQ_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...messages,
+      ],
+      max_tokens: 1024,
+      temperature: 0.7,
+    }),
+    signal: AbortSignal.timeout(20000), // 20 s hard limit
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw Object.assign(new Error(err?.error?.message ?? `Groq HTTP ${res.status}`), { status: res.status });
+  }
+
+  const json = await res.json() as any;
+  return (json.choices?.[0]?.message?.content ?? "").trim();
+}
+
+// ── Call Anthropic ───────────────────────────────────────────────────────────
+async function callAnthropic(messages: ChatMessage[]): Promise<string> {
+  if (!anthropicClient) throw new Error("Anthropic not configured");
+  const response = await anthropicClient.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 1024,
+    system: SYSTEM_PROMPT,
+    messages,
+  });
+  return response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map(b => b.text)
+    .join("")
+    .trim();
+}
+
 router.post("/chatbot/message", requireAuth, async (req, res) => {
-  if (!client) {
+  if (!hasAI) {
     res.status(503).json({ error: "Chatbot is not configured" });
     return;
   }
@@ -55,52 +108,27 @@ router.post("/chatbot/message", requireAuth, async (req, res) => {
     return;
   }
 
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no");
-  res.flushHeaders();
-
-  const heartbeat = setInterval(() => {
-    try { res.write(": keep-alive\n\n"); } catch { /* ignore */ }
-  }, 5000);
-
   try {
-    const stream = client.messages.stream({
-      model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: parsed.messages,
-    });
+    let text: string;
 
-    for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
-        res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
-      }
+    if (GROQ_API_KEY) {
+      // Groq primary — free and very fast
+      text = await callGroq(parsed.messages);
+    } else {
+      // Anthropic fallback
+      text = await callAnthropic(parsed.messages);
     }
 
-    clearInterval(heartbeat);
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    res.end();
+    res.json({ content: text });
   } catch (err: any) {
-    clearInterval(heartbeat);
-    req.log.error({ err }, "[chatbot] Anthropic stream failed");
+    req.log.error({ err }, "[chatbot] AI request failed");
     const status = typeof err?.status === "number" ? err.status : 500;
-    const safeStatus = status >= 400 && status < 600 ? status : 500;
-    const message =
-      safeStatus === 429
-        ? "Twòp demann — tann yon moman epi eseye ankò."
-        : safeStatus === 401 || safeStatus === 403
-          ? "Chatbot pa disponib kounye a."
-          : "Chatbot pa reponn. Eseye ankò.";
-    try {
-      res.write(`data: ${JSON.stringify({ error: message, done: true })}\n\n`);
-      res.end();
-    } catch {
-      res.end();
+    if (status === 429) {
+      res.status(429).json({ error: "Twòp demann — tann yon moman epi eseye ankò." });
+    } else if (status === 401 || status === 403) {
+      res.status(503).json({ error: "Chatbot pa disponib kounye a." });
+    } else {
+      res.status(500).json({ error: "Chatbot pa reponn. Eseye ankò." });
     }
   }
 });

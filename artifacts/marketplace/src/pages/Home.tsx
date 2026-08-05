@@ -563,9 +563,12 @@ export default function Home() {
         page: String(pageParam),
         limit: "20",
         ...(activeCategory ? { category: activeCategory } : {}),
+        // When a category is selected, skip scope/proximity filtering so we
+        // show all country-wide results in that category (not just nearby).
+        // Without this, city-scoped queries return 0 if no local results exist.
         ...(isAdmin
           ? effectiveAdminCountry ? { country: effectiveAdminCountry } : {}
-          : scope !== "country" ? { scope } : {}),
+          : !activeCategory && scope !== "country" ? { scope } : {}),
       });
       return apiFetch<{ listings: NormalListing[]; page: number; totalPages: number }>(
         `/api/listings?${params}`

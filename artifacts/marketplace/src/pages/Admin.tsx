@@ -432,6 +432,8 @@ export default function Admin() {
   const [adminSubsLoading, setAdminSubsLoading] = useState(false);
   const [grantForm, setGrantForm] = useState({ userId: "", plan: "standard", months: "1" });
   const [grantSaving, setGrantSaving] = useState(false);
+  const [adminSubsSearch, setAdminSubsSearch] = useState("");
+  const [adminSubsFilter, setAdminSubsFilter] = useState<"all" | "active" | "grace" | "vip">("all");
 
   const [sellerAccountActioning, setSellerAccountActioning] = useState<number | null>(null);
   const [sellerAccountRejectId, setSellerAccountRejectId] = useState<number | null>(null);
@@ -2257,6 +2259,7 @@ export default function Admin() {
           <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />
           <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />
           <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />
+          <StatCard icon={Crown} label="Abòman VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />
         </div>
       )}
 
@@ -7062,10 +7065,29 @@ export default function Admin() {
 
         {/* ── Vendor Subscriptions ── */}
         <TabsContent value="subscriptions">
-          <div className="space-y-6">
-            {/* Grant form */}
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-              <h3 className="font-bold flex items-center gap-2"><Crown className="h-4 w-4 text-amber-500" />Ba Abònman Manyèlman</h3>
+          <div className="space-y-5">
+
+            {/* ── Summary bar ── */}
+            {s && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-purple-400">{s.activeSubscriptions ?? 0}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Aktif</p>
+                </div>
+                <div className={`rounded-xl p-3 text-center border ${(s.graceSubscriptions ?? 0) > 0 ? "bg-amber-500/10 border-amber-500/30" : "bg-muted/40 border-border/40"}`}>
+                  <p className={`text-xl font-bold ${(s.graceSubscriptions ?? 0) > 0 ? "text-amber-400" : "text-muted-foreground"}`}>{s.graceSubscriptions ?? 0}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Tan Gras (5j)</p>
+                </div>
+                <div className="bg-muted/40 border border-border/40 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold text-foreground">{adminSubs.filter((r: any) => r.sub?.plan === "vip" && r.sub?.status === "active").length}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">VIP $50/mwa</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── Grant form ── */}
+            <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+              <h3 className="font-bold text-sm flex items-center gap-2"><Crown className="h-4 w-4 text-amber-500" />Ba Abònman Manyèlman</h3>
               <div className="grid grid-cols-2 gap-2">
                 <input type="number" placeholder="ID Itilizatè *" value={grantForm.userId} onChange={e => setGrantForm(f => ({ ...f, userId: e.target.value }))} className="col-span-2 h-9 rounded-lg border border-border bg-background px-3 text-sm" />
                 <select value={grantForm.plan} onChange={e => setGrantForm(f => ({ ...f, plan: e.target.value }))} className="h-9 rounded-lg border border-border bg-background px-3 text-sm">
@@ -7080,14 +7102,36 @@ export default function Admin() {
               </Button>
             </div>
 
-            {/* Subscriptions list */}
-            <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+            {/* ── Subscriptions list ── */}
+            <div className="bg-card border border-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <h3 className="font-bold flex items-center gap-2"><Crown className="h-4 w-4 text-primary" />Lis Abòman</h3>
+                <h3 className="font-bold text-sm flex items-center gap-2"><Crown className="h-4 w-4 text-primary" />Tout Abòman</h3>
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={loadAdminSubscriptions}>
                   <RefreshCw className="h-3 w-3 mr-1" />Refresh
                 </Button>
               </div>
+
+              {/* Search + filter */}
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  type="text"
+                  placeholder="Chèche non, email, ID…"
+                  value={adminSubsSearch}
+                  onChange={e => setAdminSubsSearch(e.target.value)}
+                  className="flex-1 min-w-0 h-8 rounded-lg border border-border bg-background px-3 text-xs"
+                />
+                <select
+                  value={adminSubsFilter}
+                  onChange={e => setAdminSubsFilter(e.target.value as any)}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-xs shrink-0"
+                >
+                  <option value="all">Tout</option>
+                  <option value="active">Aktif</option>
+                  <option value="vip">VIP sèlman</option>
+                  <option value="grace">Tan Gras</option>
+                </select>
+              </div>
+
               {adminSubsLoading ? (
                 <p className="text-sm text-muted-foreground text-center py-4">Ap chaje…</p>
               ) : adminSubs.length === 0 ? (
@@ -7095,37 +7139,85 @@ export default function Admin() {
                   <Crown className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p className="text-sm">Pa gen abònman ankò</p>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {adminSubs.map((row: any) => {
-                    const sub = row.sub; const user = row.user;
-                    const isActive = sub.status === "active" && (!sub.expiresAt || new Date(sub.expiresAt) > new Date());
-                    const planColors: Record<string, string> = { basic: "bg-muted text-muted-foreground", standard: "bg-blue-500/15 text-blue-500", premium: "bg-primary/15 text-primary", vip: "bg-amber-500/20 text-amber-600" };
-                    return (
-                      <div key={sub.id} className={`flex items-center gap-3 p-3 rounded-xl border ${isActive ? "border-border" : "border-border/40 opacity-60"}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold">{user?.name ?? `#${sub.userId}`}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${planColors[sub.plan] ?? planColors.basic}`}>{sub.plan}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${isActive ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground"}`}>{sub.status}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-0.5 flex gap-3 flex-wrap">
-                            <span>#{sub.userId}</span>
-                            {user?.email && <span>{user.email}</span>}
-                            {sub.expiresAt && <span>Exp: {new Date(sub.expiresAt).toLocaleDateString("fr-HT")}</span>}
-                            {sub.amountUsd != null && sub.amountUsd > 0 && <span>${sub.amountUsd}/mwa</span>}
+              ) : (() => {
+                const q = adminSubsSearch.toLowerCase();
+                const filtered = adminSubs.filter((row: any) => {
+                  const sub = row.sub; const user = row.user;
+                  if (adminSubsFilter === "active" && sub.status !== "active") return false;
+                  if (adminSubsFilter === "vip" && sub.plan !== "vip") return false;
+                  if (adminSubsFilter === "grace" && sub.status !== "grace_period") return false;
+                  if (!q) return true;
+                  return (
+                    String(sub.userId).includes(q) ||
+                    (user?.name ?? "").toLowerCase().includes(q) ||
+                    (user?.email ?? "").toLowerCase().includes(q)
+                  );
+                });
+                if (filtered.length === 0) return (
+                  <p className="text-sm text-muted-foreground text-center py-4">Pa gen rezilta</p>
+                );
+                const planColors: Record<string, string> = { basic: "bg-muted text-muted-foreground", standard: "bg-blue-500/15 text-blue-500", premium: "bg-primary/15 text-primary", vip: "bg-amber-500/20 text-amber-600" };
+                const planLabels: Record<string, string> = { standard: "Standard $15", premium: "Premium $30", vip: "VIP $50", basic: "Basic" };
+                return (
+                  <div className="space-y-2">
+                    {filtered.map((row: any) => {
+                      const sub = row.sub; const user = row.user;
+                      const isActive = sub.status === "active";
+                      const isGrace = sub.status === "grace_period";
+                      const now = new Date();
+                      const graceUntil = sub.graceUntil ? new Date(sub.graceUntil) : null;
+                      const expiresAt = sub.expiresAt ? new Date(sub.expiresAt) : null;
+                      const nextBilling = sub.nextBillingDate ? new Date(sub.nextBillingDate) : expiresAt;
+                      const daysLeft = graceUntil ? Math.max(0, Math.ceil((graceUntil.getTime() - now.getTime()) / 86400000)) : null;
+                      const startedAt = sub.startedAt ? new Date(sub.startedAt) : sub.createdAt ? new Date(sub.createdAt) : null;
+                      return (
+                        <div key={sub.id} className={`p-3 rounded-xl border transition-colors ${isActive ? "border-border" : isGrace ? "border-amber-500/40 bg-amber-500/5" : "border-border/40 opacity-55"}`}>
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              {/* Row 1: name + badges */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-sm font-semibold truncate">{user?.name ?? `Itilizatè #${sub.userId}`}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${planColors[sub.plan] ?? planColors.basic}`}>{planLabels[sub.plan] ?? sub.plan}</span>
+                                {isActive && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-600 font-semibold">✓ Aktif</span>}
+                                {isGrace && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 font-bold">⚠ Tan Gras {daysLeft !== null ? `${daysLeft}j` : ""}</span>}
+                                {!isActive && !isGrace && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{sub.status}</span>}
+                              </div>
+                              {/* Row 2: ID + email */}
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                ID #{sub.userId}{user?.email ? ` · ${user.email}` : ""}
+                              </div>
+                              {/* Row 3: dates + price */}
+                              <div className="flex gap-3 flex-wrap mt-1">
+                                {startedAt && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    📅 Kòmanse: <span className="text-foreground font-medium">{startedAt.toLocaleDateString("fr-HT")}</span>
+                                  </span>
+                                )}
+                                {nextBilling && (isActive || isGrace) && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    🔄 Pwochen peman: <span className={`font-medium ${isGrace ? "text-amber-500" : "text-foreground"}`}>{nextBilling.toLocaleDateString("fr-HT")}</span>
+                                  </span>
+                                )}
+                                {sub.amountUsd != null && sub.amountUsd > 0 && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    💰 <span className="text-foreground font-medium">${sub.amountUsd}/mwa</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {(isActive || isGrace) && sub.plan !== "basic" && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs shrink-0 text-red-500 border-red-500/30 hover:bg-red-500/10 mt-0.5" onClick={() => revokeSubscription(sub.userId)}>
+                                Revoké
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        {isActive && sub.plan !== "basic" && (
-                          <Button size="sm" variant="outline" className="h-7 text-xs shrink-0 text-red-500 border-red-500/30 hover:bg-red-500/10" onClick={() => revokeSubscription(sub.userId)}>
-                            Revoké
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                    <p className="text-[10px] text-muted-foreground text-center pt-1">{filtered.length} rezilta</p>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </TabsContent>

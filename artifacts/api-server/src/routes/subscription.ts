@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable } from "@workspace/db";
 import { PLAN_CONFIG, type SubscriptionPlan } from "@workspace/db";
-import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
@@ -769,10 +769,11 @@ export async function runSubscriptionExpiryJob(): Promise<void> {
     // 0. FM-wallet auto-renewal: try to charge wallet for subscriptions that
     //    have no Stripe ID (wallet-paid) and have reached their billing date.
     //    Up to WALLET_MAX_ATTEMPTS retries spaced WALLET_RETRY_DAYS apart.
+    //    Both "active" (first attempt) and "grace_period" (retry within grace) are queried.
     const walletDue = await db.select()
       .from(vendorSubscriptionsTable)
       .where(and(
-        eq(vendorSubscriptionsTable.status, "active"),
+        inArray(vendorSubscriptionsTable.status, ["active", "grace_period"]),
         sql`${vendorSubscriptionsTable.stripeSubscriptionId} IS NULL`,
         isNotNull(vendorSubscriptionsTable.expiresAt),
         // Due if: expiresAt < now AND (no retryAt OR retryAt < now)
@@ -833,9 +834,9 @@ export async function runSubscriptionExpiryJob(): Promise<void> {
       } else {
         // Payment failed — schedule retry or expire
         if (attempt >= WALLET_MAX_ATTEMPTS) {
-          // Final attempt failed → expire now
+          // Final attempt failed → hard expire, remove from VIP
           await db.update(vendorSubscriptionsTable)
-            .set({ status: "expired", walletPaymentAttempts: attempt, updatedAt: new Date() })
+            .set({ status: "expired", walletPaymentAttempts: attempt, graceUntil: null, updatedAt: new Date() })
             .where(eq(vendorSubscriptionsTable.id, sub.id));
           await expireUserSubscription(sub.userId);
           try {
@@ -845,17 +846,28 @@ export async function runSubscriptionExpiryJob(): Promise<void> {
           } catch { /* non-fatal */ }
           logger.warn({ userId: sub.userId, attempt }, "Wallet subscription expired after max attempts");
         } else {
-          // Schedule next retry
+          // First failure: enter grace_period with 5-day hard deadline
+          // Subsequent failures within grace: just reschedule retry
           const retryAt = new Date(Date.now() + WALLET_RETRY_DAYS * 24 * 60 * 60 * 1000);
-          await db.update(vendorSubscriptionsTable)
-            .set({ walletPaymentAttempts: attempt, nextWalletRetryAt: retryAt, updatedAt: new Date() })
-            .where(eq(vendorSubscriptionsTable.id, sub.id));
+          if (sub.status === "active") {
+            // Transition into grace_period — user keeps VIP access for GRACE_PERIOD_DAYS
+            const graceUntil = new Date((sub.expiresAt ?? new Date()).getTime() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+            await db.update(vendorSubscriptionsTable)
+              .set({ status: "grace_period", graceUntil, walletPaymentAttempts: attempt, nextWalletRetryAt: retryAt, updatedAt: new Date() })
+              .where(eq(vendorSubscriptionsTable.id, sub.id));
+            logger.warn({ userId: sub.userId, attempt, graceUntil, retryAt }, "Wallet subscription payment failed — entered 5-day grace period");
+          } else {
+            // Already in grace_period — just reschedule retry
+            await db.update(vendorSubscriptionsTable)
+              .set({ walletPaymentAttempts: attempt, nextWalletRetryAt: retryAt, updatedAt: new Date() })
+              .where(eq(vendorSubscriptionsTable.id, sub.id));
+            logger.warn({ userId: sub.userId, attempt, retryAt }, "Wallet subscription payment failed in grace period — retry scheduled");
+          }
           try {
             await db.insert(notificationsTable).values({
               userId: sub.userId, actorId: sub.userId, type: "subscription_payment_failed",
             });
           } catch { /* non-fatal */ }
-          logger.warn({ userId: sub.userId, attempt, retryAt }, "Wallet subscription payment failed — retry scheduled");
         }
       }
     }

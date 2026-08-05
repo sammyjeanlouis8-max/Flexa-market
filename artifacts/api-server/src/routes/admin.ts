@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable } from "@workspace/db";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
@@ -246,6 +246,7 @@ router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
     [boostedListings], [featuredListings], [totalBoosts],
     [pendingReports], [flaggedUsers], [bannedUsers], [adminUsers],
     revenueResult,
+    [activeSubscriptions], [graceSubscriptions],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable).where(userWhere()),
     db.select({ count: count() }).from(listingsTable).where(listingWhere()),
@@ -258,6 +259,8 @@ router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
     db.select({ count: count() }).from(usersTable).where(userWhere(eq(usersTable.isBanned, true))),
     db.select({ count: count() }).from(usersTable).where(eq(usersTable.isAdmin, true)),
     db.select({ total: sql<number>`COALESCE(SUM(price), 0)` }).from(boostsTable),
+    db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "active")),
+    db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "grace_period")),
   ]);
 
   res.json({
@@ -272,6 +275,8 @@ router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
     bannedUsers: Number(bannedUsers.count),
     adminUsers: Number(adminUsers.count),
     totalRevenue: Number(revenueResult[0]?.total ?? 0),
+    activeSubscriptions: Number(activeSubscriptions.count),
+    graceSubscriptions: Number(graceSubscriptions.count),
     // Scope metadata for the frontend to display
     scopeLevel: getScopeLevel(admin),
     scopeCountry: admin.adminScopeCountry ?? null,

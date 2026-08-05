@@ -138,6 +138,19 @@ const FR_GENRES = [
   { label: "🧒 Fanmi",        value: "famille" },
 ];
 
+const ANIME_GENRES = [
+  { label: "⚔️ Action",        value: "1"  },
+  { label: "😂 Comedy",        value: "4"  },
+  { label: "💔 Drama",         value: "8"  },
+  { label: "🎭 Romance",       value: "22" },
+  { label: "🔮 Fantasy",       value: "10" },
+  { label: "🚀 Sci-Fi",        value: "24" },
+  { label: "👻 Horror",        value: "14" },
+  { label: "✨ Supernatural",   value: "37" },
+  { label: "🌸 Slice of Life", value: "36" },
+  { label: "🏆 Sports",        value: "30" },
+];
+
 const DM_CATEGORIES = [
   { label: "🎬 Action",      value: "action movie" },
   { label: "😂 Comedy",      value: "comedy movie" },
@@ -572,7 +585,7 @@ export default function AdminTV() {
   const bs = useBroadcast(); // for startedAt + programId (broadcast timer)
 
   // ── Archive.org import state ──────────────────────────────────────────────
-  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze" | "yts" | "cinemafr" | "archivefr" | "seriesfr">("archive");
+  const [importSubTab, setImportSubTab]     = useState<"archive" | "dailymotion" | "tvmaze" | "yts" | "cinemafr" | "archivefr" | "seriesfr" | "anime" | "seriesen" | "tvarchi">("archive");
   const [archiveQuery, setArchiveQuery]     = useState("");
   const [archiveGenre, setArchiveGenre]     = useState("");
   const [archiveResults, setArchiveResults] = useState<ArchiveResult[]>([]);
@@ -615,6 +628,20 @@ export default function AdminTV() {
   const [srfrQuery, setSrfrQuery]       = useState("");
   const [srfrResults, setSrfrResults]   = useState<TVMazeResult[]>([]);
   const [srfrLoading, setSrfrLoading]   = useState(false);
+  // ── Anime (Jikan/MyAnimeList) state ───────────────────────────────────────
+  const [animeQuery, setAnimeQuery]     = useState("");
+  const [animeGenre, setAnimeGenre]     = useState("");
+  const [animeResults, setAnimeResults] = useState<TVMazeResult[]>([]);
+  const [animeLoading, setAnimeLoading] = useState(false);
+  // ── Séries EN (TVMaze English) state ──────────────────────────────────────
+  const [srenQuery, setSrenQuery]       = useState("");
+  const [srenResults, setSrenResults]   = useState<TVMazeResult[]>([]);
+  const [srenLoading, setSrenLoading]   = useState(false);
+  // ── TV Archive (Archive.org TV) state ─────────────────────────────────────
+  const [tvaQuery, setTvaQuery]         = useState("");
+  const [tvaResults, setTvaResults]     = useState<ArchiveResult[]>([]);
+  const [tvaTotal, setTvaTotal]         = useState<number | null>(null);
+  const [tvaLoading, setTvaLoading]     = useState(false);
 
   // ── Episode import panel (per-series inline DM search) ────────────────────
   const [epImportSeriesId, setEpImportSeriesId] = useState<number | null>(null);
@@ -766,7 +793,6 @@ export default function AdminTV() {
   }
 
   // ── Import a TV series from TVMaze into the series list ────────────────────
-  type TVMazeResult = { identifier: string; title: string; description: string | null; thumbnailUrl: string; genres: string[]; network: string | null; year: string | null; status: string | null };
   const importSeries = useMutation({
     mutationFn: (item: TVMazeResult) =>
       apiAuth("/api/admin/tv/series", {
@@ -800,6 +826,57 @@ export default function AdminTV() {
       toast({ title: "Erè rechèch Séries FR", variant: "destructive" });
     } finally {
       setSrfrLoading(false);
+    }
+  }
+
+  async function searchAnime(e?: FormEvent) {
+    e?.preventDefault();
+    setAnimeLoading(true);
+    setAnimeResults([]);
+    try {
+      const params = new URLSearchParams();
+      if (animeQuery.trim()) params.set("q", animeQuery.trim());
+      if (animeGenre)        params.set("genre", animeGenre);
+      const data = await apiAuth(`/api/admin/tv/import/anime?${params}`).then(r => r.json());
+      setAnimeResults(data.results ?? []);
+    } catch {
+      toast({ title: "Erè rechèch Anime", variant: "destructive" });
+    } finally {
+      setAnimeLoading(false);
+    }
+  }
+
+  async function searchSeriesEN(e?: FormEvent) {
+    e?.preventDefault();
+    setSrenLoading(true);
+    setSrenResults([]);
+    try {
+      const params = new URLSearchParams();
+      if (srenQuery.trim()) params.set("q", srenQuery.trim());
+      const data = await apiAuth(`/api/admin/tv/import/seriesen?${params}`).then(r => r.json());
+      setSrenResults(data.results ?? []);
+    } catch {
+      toast({ title: "Erè rechèch Séries EN", variant: "destructive" });
+    } finally {
+      setSrenLoading(false);
+    }
+  }
+
+  async function searchTVArchi(e?: FormEvent) {
+    e?.preventDefault();
+    setTvaLoading(true);
+    setTvaResults([]);
+    setTvaTotal(null);
+    try {
+      const params = new URLSearchParams();
+      if (tvaQuery.trim()) params.set("q", tvaQuery.trim());
+      const data = await apiAuth(`/api/admin/tv/import/tvarchi?${params}`).then(r => r.json());
+      setTvaResults(data.results ?? []);
+      setTvaTotal(data.numFound ?? 0);
+    } catch {
+      toast({ title: "Erè rechèch TV Archive", variant: "destructive" });
+    } finally {
+      setTvaLoading(false);
     }
   }
 
@@ -969,6 +1046,7 @@ export default function AdminTV() {
       return () => clearTimeout(timer);
     }
     prevBroadcastState.current = broadcastState;
+    return undefined;
   }, [broadcastState]); // eslint-disable-line
 
   // Returns { url, isIframe } so the preview player knows whether to render
@@ -1550,6 +1628,45 @@ export default function AdminTV() {
               <span className={cn("text-[9px] font-medium",
                 importSubTab === "seriesfr" ? "text-white/70" : "text-muted-foreground")}>
                 TVMaze · Gratis
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("anime"); if (animeResults.length === 0) searchAnime(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "anime"
+                  ? "bg-pink-600 text-white border-pink-600"
+                  : "border-border text-muted-foreground hover:border-pink-400")}
+            >
+              🎌 Anime
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "anime" ? "text-white/70" : "text-muted-foreground")}>
+                MyAnimeList · Gratis
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("seriesen"); if (srenResults.length === 0) searchSeriesEN(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "seriesen"
+                  ? "bg-sky-600 text-white border-sky-600"
+                  : "border-border text-muted-foreground hover:border-sky-400")}
+            >
+              📺 Séries EN
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "seriesen" ? "text-white/70" : "text-muted-foreground")}>
+                TVMaze · Anglè
+              </span>
+            </button>
+            <button
+              onClick={() => { setImportSubTab("tvarchi"); if (tvaResults.length === 0) searchTVArchi(); }}
+              className={cn("flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold py-2.5 rounded-xl border transition-colors",
+                importSubTab === "tvarchi"
+                  ? "bg-amber-600 text-white border-amber-600"
+                  : "border-border text-muted-foreground hover:border-amber-400")}
+            >
+              📡 TV Archive
+              <span className={cn("text-[9px] font-medium",
+                importSubTab === "tvarchi" ? "text-white/70" : "text-muted-foreground")}>
+                Archive.org · TV
               </span>
             </button>
           </div>
@@ -2162,6 +2279,326 @@ export default function AdminTV() {
             <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
               <Globe size={10} />
               <span>Powered by <a href="https://www.tvmaze.com" target="_blank" rel="noopener" className="underline hover:text-foreground">TVMaze</a> · French language filter — Gratis</span>
+            </div>
+          </>)}
+
+          {/* ════ ANIME — Jikan/MyAnimeList (no API key) ════ */}
+          {importSubTab === "anime" && (<>
+            <div className="rounded-xl bg-pink-50 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">🎌</span>
+              <div>
+                <p className="text-xs font-semibold text-pink-800 dark:text-pink-300">Anime — MyAnimeList · Gratis</p>
+                <p className="text-[11px] text-pink-700 dark:text-pink-400 mt-0.5">
+                  Enpòte seri anime popilè — enpòte kòm seri epi ajoute episòd apre
+                </p>
+              </div>
+            </div>
+
+            {/* Genre filter */}
+            <div className="flex gap-1 flex-wrap">
+              <button
+                onClick={() => { setAnimeGenre(""); searchAnime(); }}
+                className={cn("text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors",
+                  animeGenre === "" ? "bg-pink-600 text-white border-pink-600" : "border-border text-muted-foreground hover:border-pink-400")}
+              >All</button>
+              {ANIME_GENRES.map(g => (
+                <button key={g.value}
+                  onClick={() => { setAnimeGenre(g.value); setAnimeQuery(""); setTimeout(() => searchAnime(), 0); }}
+                  className={cn("text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-colors",
+                    animeGenre === g.value ? "bg-pink-600 text-white border-pink-600" : "border-border text-muted-foreground hover:border-pink-400")}
+                >{g.label}</button>
+              ))}
+            </div>
+
+            <form onSubmit={searchAnime} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={animeQuery}
+                  onChange={e => setAnimeQuery(e.target.value)}
+                  placeholder="Rechèche… ex: Naruto, Attack on Titan, One Piece"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500/40"
+                />
+              </div>
+              <button type="submit" disabled={animeLoading}
+                className="px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0">
+                {animeLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {animeLoading && (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3 rounded-xl border border-border p-3 animate-pulse">
+                    <div className="w-14 h-20 bg-muted rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                      <div className="h-7 bg-muted rounded-lg w-full mt-3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!animeLoading && animeResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Tv size={40} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{t("tv.importNoResults")}</p>
+              </div>
+            )}
+
+            {!animeLoading && animeResults.length > 0 && (
+              <div className="space-y-3">
+                {animeResults.map(item => {
+                  const isImported  = importedSeriesIds.has(item.identifier);
+                  const isImporting = importSeries.isPending && (importSeries.variables as TVMazeResult | undefined)?.identifier === item.identifier;
+                  return (
+                    <div key={item.identifier} className="flex gap-3 rounded-xl border border-border bg-card hover:border-pink-400/40 transition-colors p-3">
+                      <div className="w-14 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
+                        {item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Tv size={20} className="text-muted-foreground" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="font-semibold text-sm truncate">{item.title}</p>
+                          {item.year && <span className="text-[10px] text-muted-foreground flex-shrink-0">{item.year}</span>}
+                          {item.status && item.status !== "Finished Airing" && (
+                            <span className="text-[9px] bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-400 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{item.status}</span>
+                          )}
+                        </div>
+                        {item.network && <p className="text-[10px] text-muted-foreground mb-1">Studio: {item.network}</p>}
+                        {item.genres.length > 0 && <p className="text-[10px] text-muted-foreground mb-1.5">{item.genres.slice(0,3).join(" · ")}</p>}
+                        {item.description && <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
+                        <button
+                          onClick={() => !isImported && importSeries.mutate(item)}
+                          disabled={isImported || isImporting}
+                          className={cn(
+                            "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                            isImported
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "bg-pink-600 hover:bg-pink-700 text-white disabled:opacity-60"
+                          )}
+                        >
+                          {isImported ? (<><Check size={10} /> {t("tv.tmImportedSeries")}</>) : isImporting ? "…" : (<><Download size={10} /> {t("tv.tmImportSeries")}</>)}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://jikan.moe" target="_blank" rel="noopener" className="underline hover:text-foreground">Jikan</a> · MyAnimeList unofficial API — 100% Gratis</span>
+            </div>
+          </>)}
+
+          {/* ════ SÉRIES EN — TVMaze popular English series ════ */}
+          {importSubTab === "seriesen" && (<>
+            <div className="rounded-xl bg-sky-50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">📺</span>
+              <div>
+                <p className="text-xs font-semibold text-sky-800 dark:text-sky-300">Séries Angle — TVMaze · Gratis</p>
+                <p className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
+                  Breaking Bad, Stranger Things, Game of Thrones, The Office ak plis — enpòte kòm seri
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={searchSeriesEN} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={srenQuery}
+                  onChange={e => setSrenQuery(e.target.value)}
+                  placeholder="Rechèche… ex: Breaking Bad, Stranger Things, CSI"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                />
+              </div>
+              <button type="submit" disabled={srenLoading}
+                className="px-4 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0">
+                {srenLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {srenLoading && (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3 rounded-xl border border-border p-3 animate-pulse">
+                    <div className="w-14 h-20 bg-muted rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                      <div className="h-7 bg-muted rounded-lg w-full mt-3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!srenLoading && srenResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Tv size={40} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{t("tv.importNoResults")}</p>
+              </div>
+            )}
+
+            {!srenLoading && srenResults.length > 0 && (
+              <div className="space-y-3">
+                {srenResults.map(item => {
+                  const isImported  = importedSeriesIds.has(item.identifier);
+                  const isImporting = importSeries.isPending && (importSeries.variables as TVMazeResult | undefined)?.identifier === item.identifier;
+                  return (
+                    <div key={item.identifier} className="flex gap-3 rounded-xl border border-border bg-card hover:border-sky-400/40 transition-colors p-3">
+                      <div className="w-14 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
+                        {item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Tv size={20} className="text-muted-foreground" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="font-semibold text-sm truncate">{item.title}</p>
+                          {item.year && <span className="text-[10px] text-muted-foreground flex-shrink-0">{item.year}</span>}
+                          {item.status && item.status !== "Ended" && (
+                            <span className="text-[9px] bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{item.status}</span>
+                          )}
+                        </div>
+                        {item.network && <p className="text-[10px] text-muted-foreground mb-1">{t("tv.tmNetwork")}: {item.network}</p>}
+                        {item.genres.length > 0 && <p className="text-[10px] text-muted-foreground mb-1.5">{item.genres.slice(0,3).join(" · ")}</p>}
+                        {item.description && <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
+                        <button
+                          onClick={() => !isImported && importSeries.mutate(item)}
+                          disabled={isImported || isImporting}
+                          className={cn(
+                            "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                            isImported
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "bg-sky-600 hover:bg-sky-700 text-white disabled:opacity-60"
+                          )}
+                        >
+                          {isImported ? (<><Check size={10} /> {t("tv.tmImportedSeries")}</>) : isImporting ? "…" : (<><Download size={10} /> {t("tv.tmImportSeries")}</>)}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://www.tvmaze.com" target="_blank" rel="noopener" className="underline hover:text-foreground">TVMaze</a> · English series — Gratis</span>
+            </div>
+          </>)}
+
+          {/* ════ TV ARCHIVE — Archive.org TV shows ════ */}
+          {importSubTab === "tvarchi" && (<>
+            <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 p-3 flex gap-2">
+              <span className="text-lg flex-shrink-0">📡</span>
+              <div>
+                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">TV Archive — Archive.org · Gratis</p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                  Emisyon televizyon klasik — episòd konplè gratis sou Archive.org
+                </p>
+              </div>
+            </div>
+
+            {tvaTotal !== null && (
+              <p className="text-[11px] text-muted-foreground">{tvaTotal.toLocaleString()} rezilta</p>
+            )}
+
+            <form onSubmit={searchTVArchi} className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={tvaQuery}
+                  onChange={e => setTvaQuery(e.target.value)}
+                  placeholder="Rechèche… ex: Twilight Zone, Star Trek, I Love Lucy"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-border bg-muted/50 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+              </div>
+              <button type="submit" disabled={tvaLoading}
+                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-60 flex-shrink-0">
+                {tvaLoading ? "…" : t("tv.importSearch")}
+              </button>
+            </form>
+
+            {tvaLoading && (
+              <div className="space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex gap-3 rounded-xl border border-border p-3 animate-pulse">
+                    <div className="w-14 h-20 bg-muted rounded-lg flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3.5 bg-muted rounded w-3/4" />
+                      <div className="h-2.5 bg-muted rounded w-1/2" />
+                      <div className="h-7 bg-muted rounded-lg w-full mt-3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!tvaLoading && tvaResults.length === 0 && (
+              <div className="text-center py-10 text-muted-foreground">
+                <Tv size={40} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">{t("tv.importNoResults")}</p>
+              </div>
+            )}
+
+            {!tvaLoading && tvaResults.length > 0 && (
+              <div className="space-y-3">
+                {tvaResults.map(item => {
+                  const isImported  = importedIds.has(item.identifier);
+                  const isImporting = importProgram.isPending && (importProgram.variables as ArchiveResult | undefined)?.identifier === item.identifier;
+                  return (
+                    <div key={item.identifier} className="flex gap-3 rounded-xl border border-border bg-card hover:border-amber-400/40 transition-colors p-3">
+                      <div className="w-14 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-muted">
+                        {item.thumbnailUrl ? (
+                          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center"><Tv size={20} className="text-muted-foreground" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                          <p className="font-semibold text-sm truncate">{item.title}</p>
+                          {item.year && <span className="text-[10px] text-muted-foreground flex-shrink-0">{item.year}</span>}
+                        </div>
+                        {item.creator && <p className="text-[10px] text-muted-foreground mb-1">{item.creator}</p>}
+                        {item.subjects.length > 0 && <p className="text-[10px] text-muted-foreground mb-1.5">{item.subjects.slice(0,3).join(" · ")}</p>}
+                        {item.description && <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">{item.description}</p>}
+                        <button
+                          onClick={() => !isImported && importProgram.mutate(item)}
+                          disabled={isImported || isImporting}
+                          className={cn(
+                            "w-full flex items-center justify-center gap-1 text-[11px] font-bold py-1.5 rounded-lg transition-colors",
+                            isImported
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
+                              : "bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-60"
+                          )}
+                        >
+                          {isImported ? (<><Check size={10} /> {t("tv.importAdded")}</>) : isImporting ? "…" : (<><Download size={10} /> {t("tv.importAdd")}</>)}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground pt-1">
+              <Globe size={10} />
+              <span>Powered by <a href="https://archive.org" target="_blank" rel="noopener" className="underline hover:text-foreground">Archive.org</a> · TV collections — 100% Gratis &amp; Legal</span>
             </div>
           </>)}
         </div>

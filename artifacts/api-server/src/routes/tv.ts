@@ -931,6 +931,152 @@ router.get("/admin/tv/import/seriesfr", requireAdmin, async (req, res): Promise<
   }
 });
 
+// ── GET /api/admin/tv/import/anime — Jikan/MyAnimeList (no API key needed) ────
+// Jikan is a free unofficial MyAnimeList API. Returns current-airing or searched anime.
+router.get("/admin/tv/import/anime", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q     = String(req.query.q     ?? "").trim();
+    const genre = String(req.query.genre ?? "").trim();
+
+    let url: string;
+    if (q) {
+      const p = new URLSearchParams({ order_by: "popularity", sort: "asc", limit: "24", sfw: "true" });
+      p.set("q", q);
+      if (genre) p.set("genres", genre);
+      url = `https://api.jikan.moe/v4/anime?${p}`;
+    } else {
+      const p = new URLSearchParams({ filter: "airing", limit: "24" });
+      if (genre) p.set("genres", genre);
+      url = `https://api.jikan.moe/v4/top/anime?${p}`;
+    }
+
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    if (!resp.ok) return void res.status(502).json({ error: "Jikan unreachable" });
+    const data = await resp.json() as { data?: Array<Record<string, unknown>> };
+    const items = data?.data ?? [];
+
+    const results = items.map((a) => {
+      const images  = a.images  as Record<string, Record<string, string>> | null;
+      const studios = a.studios as Array<{ name: string }> | undefined;
+      const genres  = a.genres  as Array<{ name: string }> | undefined;
+      const aired   = a.aired   as Record<string, unknown> | null;
+      const prop    = (aired?.prop as Record<string, unknown> | null);
+      const fromYear = (prop?.from as Record<string, unknown> | null)?.year;
+      return {
+        identifier  : `anime-${a.mal_id}`,
+        title       : String(a.title_english ?? a.title ?? ""),
+        description : a.synopsis ? String(a.synopsis).replace(/\[Written by MAL Rewrite\]/g, "").replace(/\[Written.*?\]/g, "").trim().slice(0, 500) : null,
+        thumbnailUrl: images?.jpg?.large_image_url ?? images?.jpg?.image_url ?? "",
+        genres      : (genres ?? []).map(g => g.name),
+        network     : studios?.[0]?.name ?? null,
+        year        : a.year ? String(a.year) : (fromYear ? String(fromYear) : null),
+        status      : a.status ? String(a.status) : null,
+      };
+    });
+
+    return void res.json({ results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search anime", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/seriesen — TVMaze popular English series ─────────
+// Uses TVMaze public API. No key required. Default shows popular shows by title search.
+router.get("/admin/tv/import/seriesen", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+
+    const stripHtml = (s: unknown) =>
+      s ? String(s).replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&#39;/g, "'").trim() : null;
+
+    let shows: Record<string, unknown>[] = [];
+
+    if (q) {
+      const resp = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(8_000) });
+      if (!resp.ok) return void res.status(502).json({ error: "TVMaze unreachable" });
+      const data = await resp.json() as Array<{ show: Record<string, unknown> }>;
+      shows = data.map(d => d.show);
+    } else {
+      const terms = ["breaking bad", "stranger things", "game of thrones", "the office", "friends", "house md", "suits", "prison break", "dexter", "24", "lost", "walking dead"];
+      const seen = new Map<number, Record<string, unknown>>();
+      await Promise.all(terms.map(async (term) => {
+        try {
+          const r = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(term)}`, { signal: AbortSignal.timeout(5_000) });
+          if (!r.ok) return;
+          const data = await r.json() as Array<{ show: Record<string, unknown> }>;
+          for (const { show } of data) {
+            if (typeof show.id === "number" && !seen.has(show.id)) seen.set(show.id, show);
+          }
+        } catch { /* ignore per-term errors */ }
+      }));
+      shows = [...seen.values()];
+    }
+
+    const results = shows.map((s) => ({
+      identifier  : `tvmaze-${s.id}`,
+      title       : String(s.name ?? ""),
+      description : stripHtml(s.summary),
+      thumbnailUrl: ((s.image as Record<string, string> | null)?.original ?? (s.image as Record<string, string> | null)?.medium ?? "") as string,
+      genres      : (s.genres as string[] | undefined) ?? [],
+      network     : ((s.network as Record<string, string> | null)?.name ?? (s.webChannel as Record<string, string> | null)?.name ?? null) as string | null,
+      year        : s.premiered ? String(s.premiered).slice(0, 4) : null,
+      status      : s.status as string | null,
+    }));
+
+    return void res.json({ results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search English series", detail: String(err) });
+  }
+});
+
+// ── GET /api/admin/tv/import/tvarchi — Archive.org TV shows/series ───────────
+// Searches Archive.org for TV content (classic shows, episodes, collections).
+router.get("/admin/tv/import/tvarchi", requireAdmin, async (req, res): Promise<void> => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+
+    const baseQuery = q
+      ? `(${q}) AND (subject:television OR subject:"TV series" OR subject:"TV show" OR collection:classic_tv) AND mediatype:movies`
+      : `(subject:television OR subject:"TV series" OR collection:classic_tv) AND mediatype:movies`;
+
+    const params = new URLSearchParams({
+      q     : baseQuery,
+      fl    : "identifier,title,description,year,creator,subject,downloads",
+      rows  : "24",
+      sort  : "downloads desc",
+      output: "json",
+    });
+
+    const resp = await fetch(`https://archive.org/advancedsearch.php?${params}`, { signal: AbortSignal.timeout(8_000) });
+    if (!resp.ok) return void res.status(502).json({ error: "Archive.org unreachable" });
+
+    const data = await resp.json() as { response?: { docs?: Array<Record<string, unknown>>; numFound?: number } };
+    const docs = data?.response?.docs ?? [];
+
+    const results = docs.map((d) => {
+      const id = String(d.identifier ?? "");
+      const subjects = Array.isArray(d.subject) ? (d.subject as string[]) : d.subject ? [String(d.subject)] : [];
+      const rawDesc  = Array.isArray(d.description) ? (d.description as string[])[0] : d.description;
+      return {
+        identifier     : `tvarchi-${id}`,
+        title          : String(d.title ?? id),
+        description    : rawDesc ? String(rawDesc).replace(/<[^>]+>/g, "").slice(0, 400) : null,
+        year           : d.year ? Number(d.year) : null,
+        creator        : d.creator ? String(Array.isArray(d.creator) ? (d.creator as string[])[0] : d.creator) : null,
+        subjects,
+        durationMinutes: null as number | null,
+        thumbnailUrl   : `https://archive.org/services/img/${id}`,
+        videoUrl       : `https://archive.org/embed/${id}`,
+        downloads      : d.downloads ? Number(d.downloads) : 0,
+      };
+    });
+
+    return void res.json({ numFound: data?.response?.numFound ?? results.length, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to search TV archive", detail: String(err) });
+  }
+});
+
 // ── GET /api/tv/movies — public YTS proxy for the Films tab (no auth needed) ─
 // Returns real HD films from YTS (40,000+). Players use vidsrc.to embed by IMDB ID.
 router.get("/tv/movies", async (req, res): Promise<void> => {

@@ -1444,6 +1444,7 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
     walletFeeRow,
     p2pTransferFeeRow,
     deliveryPlatformRow,
+    musicPlatformRow,
   ] = await Promise.all([
     // Recharge fee revenue (type='recharge_fee')
     db.select({
@@ -1518,6 +1519,13 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
         ? sql`SELECT coalesce(sum(fee_usd * 0.20),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL AND created_at >= ${since}`
         : sql`SELECT coalesce(sum(fee_usd * 0.20),0)::float AS total, count(*)::int AS count FROM deliveries WHERE status = 'completed' AND fee_usd IS NOT NULL`,
     ).then(r => ({ total: Number((r.rows[0] as any)?.total ?? 0), count: Number((r.rows[0] as any)?.count ?? 0) })),
+
+    // Music platform fee: 20% cut on every song sold
+    db.execute(
+      since
+        ? sql`SELECT coalesce(sum(platform_fee_usd),0)::float AS total, count(*)::int AS count FROM music_purchases WHERE created_at >= ${since}`
+        : sql`SELECT coalesce(sum(platform_fee_usd),0)::float AS total, count(*)::int AS count FROM music_purchases`,
+    ).then(r => ({ total: Number((r.rows[0] as any)?.total ?? 0), count: Number((r.rows[0] as any)?.count ?? 0) })),
   ]);
 
   // Daily breakdown for last 30 days (purchases + boost revenue combined)
@@ -1576,8 +1584,9 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
   const walletFees          = walletFeeRow?.total       ?? 0;
   const p2pTransferFees     = p2pTransferFeeRow?.total  ?? 0;
   const deliveryFees        = deliveryPlatformRow?.total ?? 0;
+  const musicRevenue        = musicPlatformRow?.total   ?? 0;
 
-  const totalRevenue = rechargeFees + merchantCommission + boostRevenue + subscriptionRevenue + transferFees + walletFees + p2pTransferFees + deliveryFees;
+  const totalRevenue = rechargeFees + merchantCommission + boostRevenue + subscriptionRevenue + transferFees + walletFees + p2pTransferFees + deliveryFees + musicRevenue;
 
   res.json({
     period,
@@ -1592,11 +1601,13 @@ router.get("/admin/platform-revenue", requireSuperAdmin, async (req, res): Promi
       walletFees:            parseFloat(walletFees.toFixed(2)),
       p2pTransferFees:       parseFloat(p2pTransferFees.toFixed(2)),
       deliveryFees:          parseFloat(deliveryFees.toFixed(2)),
+      musicRevenue:          parseFloat(musicRevenue.toFixed(2)),
       rechargeCount:         rechargeFeesRow?.count    ?? 0,
       orderCount:            merchantRow?.count        ?? 0,
       boostCount:            boostRow?.count           ?? 0,
       subscriptionCount:     subscriptionRow?.count    ?? 0,
       transferFeeCount:      transferFeeRow?.count     ?? 0,
+      musicCount:            musicPlatformRow?.count   ?? 0,
     },
     daily,
   });

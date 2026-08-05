@@ -2767,6 +2767,18 @@ export default function FlexaMusic() {
     } catch { return new Set<number>(); }
   });
 
+  // true once the server /api/music/purchased fetch has returned.
+  // Paywall gate MUST NOT fire before this — prevents false paywall on fresh sessions
+  // where localStorage is empty but the user has purchased on another device/session.
+  const [purchasedFetched, setPurchasedFetched] = useState<boolean>(() => {
+    try {
+      const uid = (user as any)?.id;
+      if (!uid) return false;
+      // If we already have local data, consider it good enough to enforce immediately
+      return !!localStorage.getItem(`flexa_owns_all_${uid}`);
+    } catch { return false; }
+  });
+
   // ── View state ────────────────────────────────────────────────────────────
   const [view, setView]             = useState<View>("home");
   const [artistViewName, setArtistViewName] = useState<string | null>(null);
@@ -2832,7 +2844,7 @@ export default function FlexaMusic() {
   // ── Fetch purchased track IDs once on mount (sync localStorage) ──────────
   useEffect(() => {
     const uid = (user as any)?.id;
-    if (!uid) return;
+    if (!uid) { setPurchasedFetched(true); return; }
     const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
     fetch("/api/music/purchased", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
@@ -2846,7 +2858,8 @@ export default function FlexaMusic() {
         localStorage.setItem(`flexa_owns_all_${uid}`, JSON.stringify(merged));
         setPurchasedIds(new Set(merged));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPurchasedFetched(true)); // allow paywall to enforce after server confirm
   }, [(user as any)?.id]);
 
   // ── Upload gate: check song count before showing upload view ──────────────
@@ -2953,6 +2966,7 @@ export default function FlexaMusic() {
     const track = playerState.track;
     if (!track || track.monetization_type !== "sale") return;
     if (purchasedIdsRef.current.has(track.id)) return;
+    if (isPurchasedLocally(userRef.current?.id, track.id)) return; // trust localStorage after purchase
     if (!playerState.playing || playerState.currentTime < 30) return;
     // Reached 30 seconds — stop the impression timer (so it won't increment
     // a second time), pause, and surface the paywall.
@@ -2996,9 +3010,9 @@ export default function FlexaMusic() {
     listenRef.current = setTimeout(() => {
       logImpression(id, 31);
       // Count paid-track listens ONLY for "sale" tracks not yet purchased
-      if (track?.monetization_type === "sale" && !purchasedIds.has(id)) {
+      if (track?.monetization_type === "sale" && !purchasedIds.has(id) && !isPurchasedLocally((user as any)?.id, id)) {
         const newCount = incrementPlayCount((user as any)?.id, id);
-        if (newCount >= FREE_PLAYS) {
+        if (purchasedFetched && newCount >= FREE_PLAYS) {
           // Pause audio and surface the paywall
           gAudio?.pause();
           setPaywallTrack(track);
@@ -3016,6 +3030,7 @@ export default function FlexaMusic() {
     // ── Paywall gate — blocks sale tracks from PlayerView skip/queue too ──────
     const uid = userRef.current?.id;
     if (
+      purchasedFetched &&
       track.monetization_type === "sale" &&
       !purchasedIdsRef.current.has(track.id) &&
       !isPurchasedLocally(uid, track.id) &&
@@ -3151,7 +3166,10 @@ export default function FlexaMusic() {
   // ── Open track from home → auto-switch to player view ─────────────────────
   const openTrack = (track: Track, q: Track[], idx: number) => {
     // ── Paywall gate: "sale" tracks with ≥ FREE_PLAYS listens and not bought ─
+    // purchasedFetched guard: never block playback until the server has confirmed
+    // which tracks this user owns — prevents false paywalls on fresh sessions.
     if (
+      purchasedFetched &&
       track.monetization_type === "sale" &&
       !purchasedIds.has(track.id) &&
       !isPurchasedLocally((user as any)?.id, track.id) &&

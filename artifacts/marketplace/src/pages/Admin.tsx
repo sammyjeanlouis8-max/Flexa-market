@@ -1790,6 +1790,7 @@ export default function Admin() {
       totalRevenue: number; rechargeFees: number; activationFees: number;
       totalRechargeRevenue: number; merchantCommission: number;
       boostRevenue: number; subscriptionRevenue: number; transferFees: number; walletFees: number;
+      musicRevenue: number; musicCount: number;
       rechargeCount: number; activationCount: number; orderCount: number; gmv: number;
       boostCount: number; subscriptionCount: number; transferFeeCount: number;
     };
@@ -3997,6 +3998,7 @@ export default function Admin() {
                       { icon: Zap, label: "Revni Boost", value: platformRevenue.summary.boostRevenue, sub: `${platformRevenue.summary.boostCount} boost`, color: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-950/30 border-yellow-500/20" },
                       { icon: Receipt, label: "Frè Rechaj", value: platformRevenue.summary.rechargeFees, sub: `${platformRevenue.summary.rechargeCount} rechaj`, color: "text-blue-400", bg: "bg-blue-950/30 border-blue-500/20" },
                       { icon: BarChart3, label: "Komisyon Vant", value: platformRevenue.summary.merchantCommission, sub: `${platformRevenue.summary.orderCount} kòmand`, color: "text-orange-400", bg: "bg-orange-950/30 border-orange-500/20" },
+                      { icon: Music2, label: "Revni Mizik (20%)", value: platformRevenue.summary.musicRevenue ?? 0, sub: `${platformRevenue.summary.musicCount ?? 0} achte`, color: "text-fuchsia-400", bg: "bg-fuchsia-950/30 border-fuchsia-500/20" },
                       { icon: CreditCard, label: "Abònman Vendè", value: platformRevenue.summary.subscriptionRevenue, sub: `${platformRevenue.summary.subscriptionCount} abò`, color: "text-purple-400", bg: "bg-purple-950/30 border-purple-500/20" },
                       { icon: Banknote, label: "Frè Aktivasyon", value: platformRevenue.summary.activationFees, sub: `${platformRevenue.summary.activationCount} kont`, color: "text-violet-400", bg: "bg-violet-950/30 border-violet-500/20" },
                       { icon: Send, label: "Frè Transfè", value: platformRevenue.summary.transferFees, sub: `${platformRevenue.summary.transferFeeCount} jou`, color: "text-cyan-400", bg: "bg-cyan-950/30 border-cyan-500/20" },
@@ -4025,6 +4027,7 @@ export default function Admin() {
                           { value: platformRevenue.summary.boostRevenue, color: "bg-yellow-500" },
                           { value: platformRevenue.summary.rechargeFees, color: "bg-blue-500" },
                           { value: platformRevenue.summary.merchantCommission, color: "bg-orange-500" },
+                          { value: platformRevenue.summary.musicRevenue ?? 0, color: "bg-fuchsia-500" },
                           { value: platformRevenue.summary.subscriptionRevenue, color: "bg-purple-500" },
                           { value: platformRevenue.summary.activationFees, color: "bg-violet-500" },
                           { value: platformRevenue.summary.transferFees, color: "bg-cyan-500" },
@@ -4039,6 +4042,7 @@ export default function Admin() {
                           { label: "Boost", value: platformRevenue.summary.boostRevenue, color: "bg-yellow-500" },
                           { label: "Frè Rechaj", value: platformRevenue.summary.rechargeFees, color: "bg-blue-500" },
                           { label: "Komisyon Vant", value: platformRevenue.summary.merchantCommission, color: "bg-orange-500" },
+                          { label: "Revni Mizik", value: platformRevenue.summary.musicRevenue ?? 0, color: "bg-fuchsia-500" },
                           { label: "Abònman", value: platformRevenue.summary.subscriptionRevenue, color: "bg-purple-500" },
                           { label: "Frè Aktivasyon", value: platformRevenue.summary.activationFees, color: "bg-violet-500" },
                           { label: "Frè Transfè", value: platformRevenue.summary.transferFees, color: "bg-cyan-500" },

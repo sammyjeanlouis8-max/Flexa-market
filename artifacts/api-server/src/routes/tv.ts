@@ -883,6 +883,56 @@ router.get("/admin/tv/import/seriesfr", requireAdmin, async (req, res): Promise<
   }
 });
 
+// ── GET /api/tv/movies — public YTS proxy for the Films tab (no auth needed) ─
+// Returns real HD films from YTS (40,000+). Players use vidsrc.to embed by IMDB ID.
+router.get("/tv/movies", async (req, res): Promise<void> => {
+  try {
+    const q     = String(req.query.q     ?? "").trim();
+    const genre = String(req.query.genre ?? "").trim();
+    const page  = Math.max(1, Number(req.query.page ?? 1));
+
+    const params = new URLSearchParams({
+      limit         : "24",
+      page          : String(page),
+      sort_by       : q ? "rating" : "download_count",
+      order_by      : "desc",
+      minimum_rating: "5",
+    });
+    if (q)     params.set("query_term", q);
+    if (genre && genre !== "All") params.set("genre", genre);
+
+    const resp = await fetch(`https://yts.mx/api/v2/list_movies.json?${params}`, {
+      headers: { "User-Agent": "FlexaMarket/1.0" },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!resp.ok) return void res.status(502).json({ error: "YTS unreachable" });
+
+    const data = await resp.json() as {
+      data?: { movie_count?: number; movies?: Array<Record<string, unknown>> };
+    };
+    const movies = data?.data?.movies ?? [];
+
+    const results = movies.map((m) => {
+      const imdbCode = String(m.imdb_code ?? "");
+      return {
+        imdbCode,
+        title          : String(m.title_long ?? m.title ?? ""),
+        description    : String(m.summary ?? "").replace(/<[^>]+>/g, "").slice(0, 500),
+        year           : m.year ? Number(m.year) : null,
+        durationMinutes: m.runtime ? Number(m.runtime) : null,
+        rating         : m.rating ? Number(m.rating) : null,
+        genres         : Array.isArray(m.genres) ? (m.genres as string[]) : [],
+        thumbnailUrl   : String(m.large_cover_image ?? m.medium_cover_image ?? ""),
+        videoUrl       : imdbCode ? `https://vidsrc.to/embed/movie/${imdbCode}` : null,
+      };
+    });
+
+    return void res.json({ numFound: data?.data?.movie_count ?? results.length, page, results });
+  } catch (err) {
+    return void res.status(500).json({ error: "Failed to fetch movies", detail: String(err) });
+  }
+});
+
 // ── GET /api/admin/tv/import/yts — proxy to YTS public API (no key needed) ───
 // YTS has 40,000+ HD films (720p / 1080p / 4K). Embed via vidsrc.me using IMDb ID.
 router.get("/admin/tv/import/yts", requireAdmin, async (req, res): Promise<void> => {

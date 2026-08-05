@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Tv, Play, Clock, Calendar, Eye, Radio, Film, List, X,
   Maximize, Minimize, Volume2, VolumeX, Pause, ShoppingBag, Search,
-  Share2, Monitor, Copy, Check, Airplay,
+  Share2, Monitor, Copy, Check, Airplay, Loader2, Star, ChevronDown,
 } from "lucide-react";
 
 // Auto-gradient thumbnail fallback — unique colour per title
@@ -47,6 +47,41 @@ type TvProgram = {
 };
 
 type TvSeries = { id: number; title: string; description: string | null; thumbnailUrl: string | null };
+
+type YtsMovie = {
+  imdbCode: string;
+  title: string;
+  description: string;
+  year: number | null;
+  durationMinutes: number | null;
+  rating: number | null;
+  genres: string[];
+  thumbnailUrl: string;
+  videoUrl: string | null;
+};
+
+const YTS_GENRES = ["All","Action","Adventure","Animation","Comedy","Crime","Drama","Horror","Romance","Sci-Fi","Thriller"] as const;
+type YtsGenre = typeof YTS_GENRES[number];
+
+function ytsToProgram(m: YtsMovie): TvProgram {
+  return {
+    id: -1,
+    title: m.title,
+    description: m.description || null,
+    type: "film",
+    videoUrl: m.videoUrl,
+    videoKey: null,
+    thumbnailUrl: m.thumbnailUrl || null,
+    durationMinutes: m.durationMinutes,
+    scheduledAt: null,
+    endsAt: null,
+    seriesId: null,
+    episodeNumber: null,
+    seasonNumber: null,
+    isFeatured: false,
+    viewCount: 0,
+  };
+}
 
 type BoostedListing = {
   id: number;
@@ -100,6 +135,10 @@ function getEmbedInfo(program: TvProgram): EmbedInfo | null {
       const sep = program.videoUrl.includes("?") ? "&" : "?";
       const url = program.videoUrl.includes("autoplay=1") ? program.videoUrl : `${program.videoUrl}${sep}autoplay=1`;
       return { url, isIframe: true, isDirect: false };
+    }
+    // vidsrc.to / vidsrc.me — IMDB/TMDB embed (iframe, no autoplay param needed)
+    if (program.videoUrl.includes("vidsrc.to/embed/") || program.videoUrl.includes("vidsrc.me/embed/")) {
+      return { url: program.videoUrl, isIframe: true, isDirect: false };
     }
     return { url: program.videoUrl, isIframe: false, isDirect: true };
   }
@@ -810,6 +849,8 @@ export default function FlexaTV() {
   const [adListing, setAdListing] = useState<BoostedListing | null>(null);
   const [adDone, setAdDone] = useState(false);
   const [search, setSearch] = useState("");
+  const [movieGenre, setMovieGenre] = useState<YtsGenre>("All");
+  const [moviePage, setMoviePage] = useState(1);
   const viewedRef = useRef<Set<number>>(new Set());
 
   const tlabel = (type: string) => ({
@@ -885,6 +926,19 @@ export default function FlexaTV() {
   const { data: series } = useQuery<TvSeries[]>({
     queryKey: ["/tv/series"],
     queryFn: () => fetch("/api/tv/series").then(r => r.json()).then(d => d.series ?? []),
+  });
+
+  const movieSearchQ = activeTab === "films" ? search : "";
+  const { data: moviesData, isFetching: moviesFetching } = useQuery<{ numFound: number; page: number; results: YtsMovie[] }>({
+    queryKey: ["/tv/movies", movieGenre, moviePage, movieSearchQ],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(moviePage) });
+      if (movieGenre !== "All") params.set("genre", movieGenre);
+      if (movieSearchQ) params.set("q", movieSearchQ);
+      return fetch(`/api/tv/movies?${params}`).then(r => r.json());
+    },
+    staleTime: 5 * 60_000,
+    enabled: activeTab === "films",
   });
 
   const viewMutation = useMutation({
@@ -1160,20 +1214,108 @@ export default function FlexaTV() {
           </div>
         )}
 
-        {/* ── Films Tab — Netflix-style 3-column poster grid ── */}
+        {/* ── Films Tab — genre filters + YTS HD movies ── */}
         {activeTab === "films" && (
-          films.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Film size={40} className="mx-auto mb-3 opacity-30" />
-              <p>{t("tv.noFilms")}</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {films.map(p => (
-                <PosterCard key={p.id} program={p} onClick={() => play(p)} minLabel={t("tv.min")} />
+          <div>
+            {/* Genre chips */}
+            <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3" style={{ scrollbarWidth: "none" }}>
+              {YTS_GENRES.map(g => (
+                <button
+                  key={g}
+                  onClick={() => { setMovieGenre(g); setMoviePage(1); }}
+                  className={cn(
+                    "flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-all border",
+                    movieGenre === g
+                      ? "bg-violet-600 text-white border-violet-600 shadow"
+                      : "bg-muted text-muted-foreground border-border hover:border-violet-400 hover:text-foreground"
+                  )}
+                >
+                  {g}
+                </button>
               ))}
             </div>
-          )
+
+            {/* DB films (manually added) — shown first if any */}
+            {films.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {films.map(p => (
+                  <PosterCard key={p.id} program={p} onClick={() => play(p)} minLabel={t("tv.min")} />
+                ))}
+              </div>
+            )}
+
+            {/* YTS movie grid */}
+            {moviesFetching && (moviesData?.results ?? []).length === 0 ? (
+              <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
+                <Loader2 size={32} className="animate-spin opacity-50" />
+                <p className="text-sm">Chaje fim yo…</p>
+              </div>
+            ) : (moviesData?.results ?? []).length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Film size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Pa gen rezilta pou {movieGenre}</p>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  {(moviesData?.results ?? []).map((m) => (
+                    <button
+                      key={m.imdbCode || m.title}
+                      onClick={() => play(ytsToProgram(m))}
+                      className="group relative flex flex-col text-left w-full focus:outline-none"
+                    >
+                      <div className="relative w-full overflow-hidden rounded-lg bg-[#141414]" style={{ paddingBottom: "150%" }}>
+                        <div className="absolute inset-0">
+                          {m.thumbnailUrl ? (
+                            <img
+                              src={m.thumbnailUrl}
+                              alt={m.title}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className={cn("w-full h-full bg-gradient-to-br flex items-center justify-center", titleGradient(m.title))}>
+                              <Film size={24} className="text-white/60" />
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
+                            <div className="w-9 h-9 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                              <Play size={16} className="text-black fill-black ml-0.5" />
+                            </div>
+                          </div>
+                          {m.rating !== null && m.rating > 0 && (
+                            <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-black/70 rounded px-1 py-0.5">
+                              <Star size={8} className="text-yellow-400 fill-yellow-400" />
+                              <span className="text-[9px] text-white font-bold">{m.rating.toFixed(1)}</span>
+                            </div>
+                          )}
+                          {m.year && (
+                            <div className="absolute bottom-1 left-1">
+                              <span className="text-[9px] text-white/80 font-medium">{m.year}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-[11px] font-semibold leading-tight line-clamp-2 text-foreground px-0.5">{m.title}</p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Load more */}
+                {(moviesData?.results.length ?? 0) >= 24 && (
+                  <button
+                    onClick={() => setMoviePage(p => p + 1)}
+                    disabled={moviesFetching}
+                    className="mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:border-violet-500 transition-all disabled:opacity-50"
+                  >
+                    {moviesFetching ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
+                    {moviesFetching ? "Chaje…" : "Wè plis fim"}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         )}
 
         {/* ── Series Tab — Netflix-style poster grid ── */}

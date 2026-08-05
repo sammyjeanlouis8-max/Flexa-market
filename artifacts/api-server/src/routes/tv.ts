@@ -93,10 +93,23 @@ function activeViewers() {
 // Otherwise fall back to any program marked type="live" in the DB so that
 // FlexaTV "Live" programs automatically appear in the mini-player without
 // the admin needing to manually trigger a broadcast.
+// Facebook/Instagram block iframe embedding via X-Frame-Options — skip those URLs
+function isBlockedEmbedHost(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return (
+      h.includes("facebook.com") || h.includes("instagram.com") ||
+      h.includes("fb.watch") || h.includes("fb.com")
+    );
+  } catch { return false; }
+}
+
 router.get("/tv/broadcast", async (_req, res): Promise<void> => {
   const adminActive =
     (broadcast.state === "playing" || broadcast.state === "paused") &&
-    (broadcast.videoUrl || broadcast.videoKey);
+    (broadcast.videoUrl || broadcast.videoKey) &&
+    !isBlockedEmbedHost(broadcast.videoUrl); // skip Facebook/Instagram — they block iframes
 
   if (adminActive) {
     res.json({ broadcast: { ...broadcast, viewerCount: activeViewers() } });

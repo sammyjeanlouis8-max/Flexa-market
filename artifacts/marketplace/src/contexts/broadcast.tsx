@@ -9,6 +9,17 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode, useC
 
 export type PlaybackState = "playing" | "paused" | "stopped";
 
+/** Film the user started watching — persists across navigation for mini-player hand-off */
+export type FilmEntry = {
+  videoUrl: string | null;
+  videoKey: string | null;
+  title: string;
+  description: string | null;
+  type: string;
+  programId: number;
+  thumbnailUrl: string | null;
+};
+
 export interface BroadcastInfo {
   state: PlaybackState;
   programId: number | null;
@@ -17,15 +28,19 @@ export interface BroadcastInfo {
   videoKey: string | null;
   viewerCount: number;
   startedAt: string | null;
-  // Player on/off toggle (viewer preference, session-scoped)
+  // Broadcast on/off toggle (viewer preference, session-scoped)
   dismissed: boolean;
   setDismissed: (v: boolean) => void;
+  // Film player — persists when user navigates away from /tv so mini-player can continue
+  filmPlayer: FilmEntry | null;
+  setFilmPlayer: (f: FilmEntry | null) => void;
 }
 
 const EMPTY: BroadcastInfo = {
   state: "stopped", programId: null, programTitle: null,
   videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
   dismissed: false, setDismissed: () => {},
+  filmPlayer: null, setFilmPlayer: () => {},
 };
 
 const BroadcastContext = createContext<BroadcastInfo>(EMPTY);
@@ -37,11 +52,13 @@ function getViewerId() {
 }
 
 export function BroadcastProvider({ children }: { children: ReactNode }) {
-  const [bs, setBs] = useState<Omit<BroadcastInfo, "dismissed" | "setDismissed">>({
+  const [bs, setBs] = useState<Omit<BroadcastInfo, "dismissed" | "setDismissed" | "filmPlayer" | "setFilmPlayer">>({
     state: "stopped", programId: null, programTitle: null,
     videoUrl: null, videoKey: null, viewerCount: 0, startedAt: null,
   });
   const [dismissed, setDismissedRaw] = useState(false);
+  const [filmPlayer, setFilmPlayerRaw] = useState<FilmEntry | null>(null);
+  const setFilmPlayer = useCallback((f: FilmEntry | null) => setFilmPlayerRaw(f), []);
   // Track WHICH program was dismissed so we only auto-un-dismiss on a NEW broadcast.
   // Without this, every 5-second poll re-fires the state effect and can reset dismissed.
   const dismissedProgramRef = useRef<number | null>(null);
@@ -94,7 +111,7 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <BroadcastContext.Provider value={{ ...bs, dismissed, setDismissed }}>
+    <BroadcastContext.Provider value={{ ...bs, dismissed, setDismissed, filmPlayer, setFilmPlayer }}>
       {children}
     </BroadcastContext.Provider>
   );

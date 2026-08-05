@@ -877,6 +877,35 @@ export default function FlexaTV() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, broadcastActive]);
 
+  // ── Resume film when mini-player is tapped while already on /tv ─────────────
+  useEffect(() => {
+    const handler = () => {
+      const fp = bs.filmPlayer;
+      if (!fp) return;
+      setPlaying({
+        id: fp.programId,
+        title: fp.title,
+        description: fp.description,
+        type: fp.type as TvProgram["type"],
+        videoUrl: fp.videoUrl,
+        videoKey: fp.videoKey,
+        thumbnailUrl: fp.thumbnailUrl,
+        durationMinutes: null,
+        scheduledAt: null,
+        endsAt: null,
+        seriesId: null,
+        episodeNumber: null,
+        seasonNumber: null,
+        isFeatured: false,
+        viewCount: 0,
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    window.addEventListener("flexa:resume-film", handler);
+    return () => window.removeEventListener("flexa:resume-film", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bs.filmPlayer]);
+
   // Update clock
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
@@ -947,6 +976,16 @@ export default function FlexaTV() {
 
   function play(program: TvProgram) {
     setPlaying(program);
+    // Track in context so mini-player can continue if user navigates away
+    bs.setFilmPlayer({
+      videoUrl: program.videoUrl,
+      videoKey: program.videoKey,
+      title: program.title,
+      description: program.description,
+      type: program.type,
+      programId: program.id,
+      thumbnailUrl: program.thumbnailUrl,
+    });
     if (!viewedRef.current.has(program.id)) {
       viewedRef.current.add(program.id);
       viewMutation.mutate(program.id);
@@ -1018,14 +1057,17 @@ export default function FlexaTV() {
           {playing ? (
             /* ── USER SELECTED A FILM — play it; broadcast becomes mini-player ── */
             <>
-              <VideoPlayer
-                program={playing}
-                onClose={() => setPlaying(null)}
-                noVideoLabel={t("tv.noVideo")}
-              />
+              {/* id lets GlobalBroadcastPlayer detect the VideoPlayer is active and suppress its own mini */}
+              <div id="flexa-tv-video-player">
+                <VideoPlayer
+                  program={playing}
+                  onClose={() => setPlaying(null)}
+                  noVideoLabel={t("tv.noVideo")}
+                />
+              </div>
               <PlayerActions title={playing.title} videoUrl={playing.videoUrl} />
             </>
-          ) : broadcastActive ? (
+          ) : (broadcastActive || bs.filmPlayer !== null) ? (
             /* ── BROADCAST MODE ──────────────────────────────────────────────
                GlobalBroadcastPlayer (persistent iframe, never unmounts) tracks
                this placeholder div via getBoundingClientRect + setInterval(100ms)
@@ -1063,12 +1105,20 @@ export default function FlexaTV() {
               )}
 
               <div className="mt-2 px-1 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
-                  <Radio size={8} /> LIVE
-                </span>
-                <p className="font-semibold text-sm">{bs.programTitle ?? "Flexa TV Live"}</p>
+                {broadcastActive ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold animate-pulse">
+                    <Radio size={8} /> LIVE
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded-full font-bold">
+                    <Film size={8} /> Film
+                  </span>
+                )}
+                <p className="font-semibold text-sm">
+                  {broadcastActive ? (bs.programTitle ?? "Flexa TV Live") : (bs.filmPlayer?.title ?? "Flexa TV")}
+                </p>
               </div>
-              <PlayerActions title={bs.programTitle ?? "Flexa TV Live"} />
+              <PlayerActions title={broadcastActive ? (bs.programTitle ?? "Flexa TV Live") : (bs.filmPlayer?.title ?? "Flexa TV")} />
             </>
           ) : (
             <div className="aspect-video bg-[#0d0d1a] rounded-xl flex flex-col items-center justify-center gap-4 border border-border overflow-hidden relative">

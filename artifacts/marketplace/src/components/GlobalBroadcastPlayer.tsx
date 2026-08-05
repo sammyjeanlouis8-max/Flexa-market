@@ -17,7 +17,7 @@
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
-import { X, Maximize2, Pause, Radio, Volume2, VolumeX } from "lucide-react";
+import { X, Maximize2, Pause, Radio, Volume2, VolumeX, Film } from "lucide-react";
 import { useBroadcast } from "@/contexts/broadcast";
 
 // YouTube embed params
@@ -96,8 +96,12 @@ const MINI_MARGIN = 12;
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
-  const { dismissed, setDismissed } = bs;
+  const { dismissed, setDismissed, filmPlayer, setFilmPlayer } = bs;
   const [location, navigate] = useLocation();
+
+  // Film mode: filmPlayer is set but no active live broadcast
+  const isFilmActive = filmPlayer !== null;
+  const isFilmMode   = isFilmActive && !(bs.state === "playing" || bs.state === "paused");
 
   const [slotRect, setSlotRect]     = useState<SlotRect | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -110,9 +114,11 @@ export default function GlobalBroadcastPlayer() {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isActive = bs.state === "playing" || bs.state === "paused";
+  // stableActive stays true for either a live broadcast OR a film player
+  const isEitherActive = isActive || isFilmActive;
 
   useEffect(() => {
-    if (isActive) {
+    if (isEitherActive) {
       if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
       setStableActive(true);
     } else {
@@ -121,7 +127,7 @@ export default function GlobalBroadcastPlayer() {
     return () => {
       if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
     };
-  }, [isActive]);
+  }, [isEitherActive]);
 
   // ── Mini-player 2-axis drag ──────────────────────────────────────────────────
   const [miniLeft, setMiniLeft]     = useState<number | null>(null);
@@ -211,7 +217,7 @@ export default function GlobalBroadcastPlayer() {
 
   // ── Slot tracking: poll every 200ms ─────────────────────────────────────────
   useEffect(() => {
-    if (!isOnViewerTV || !isActive) { setSlotRect(null); return; }
+    if (!isOnViewerTV || !isEitherActive) { setSlotRect(null); return; }
     let lastKey = "";
     const measure = () => {
       const slot = document.getElementById("broadcast-player-slot");
@@ -223,7 +229,7 @@ export default function GlobalBroadcastPlayer() {
     measure();
     const id = setInterval(measure, 200);
     return () => clearInterval(id);
-  }, [isOnViewerTV, isActive]);
+  }, [isOnViewerTV, isEitherActive]);
 
   // ── Fullscreen change listener ───────────────────────────────────────────────
   useEffect(() => {
@@ -236,8 +242,8 @@ export default function GlobalBroadcastPlayer() {
     };
   }, []);
 
-  // Reset muted overlay whenever broadcast changes (new video = needs new unmute tap)
-  useEffect(() => { setIsMuted(true); }, [bs.videoUrl, bs.videoKey]);
+  // Reset muted overlay whenever video source changes (new video = needs new unmute tap)
+  useEffect(() => { setIsMuted(true); }, [bs.videoUrl, bs.videoKey, filmPlayer?.videoUrl]);
 
   // ── Media Session API (iOS lock-screen) ──────────────────────────────────────
   useEffect(() => {
@@ -322,9 +328,20 @@ export default function GlobalBroadcastPlayer() {
 
   // ── Nothing to render ────────────────────────────────────────────────────────
   // Use stableActive (10-s grace) so a 5-second poll glitch doesn't flash the mini-player off
-  if (!stableActive || dismissed) return null;
+  if (!stableActive) return null;
+  // Broadcast dismissed and no film to fall back to → nothing
+  if (isActive && dismissed && !isFilmActive) return null;
 
-  const embed = buildEmbedUrl(bs.videoUrl, bs.videoKey);
+  // Film mini player is suppressed while VideoPlayer is the active full-screen player on /tv
+  const videoPlayerActive = isOnViewerTV && typeof document !== "undefined" && !!document.getElementById("flexa-tv-video-player");
+  if (isFilmMode && videoPlayerActive) return null;
+
+  // Effective video source — film takes priority when no live broadcast is active
+  const effectiveVideoUrl = isFilmMode ? (filmPlayer?.videoUrl ?? null) : bs.videoUrl;
+  const effectiveVideoKey = isFilmMode ? (filmPlayer?.videoKey ?? null) : bs.videoKey;
+  const effectiveTitle    = isFilmMode ? (filmPlayer?.title ?? "Flexa TV") : (bs.programTitle ?? "Flexa TV");
+
+  const embed = buildEmbedUrl(effectiveVideoUrl, effectiveVideoKey);
 
   // ── Compute iframe position ──────────────────────────────────────────────────
   const slotVisible =
@@ -393,7 +410,7 @@ export default function GlobalBroadcastPlayer() {
               className="w-full h-full"
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
               allowFullScreen
-              title={bs.programTitle ?? "Flexa TV"}
+              title={effectiveTitle}
               style={{
                 border: "none",
                 borderRadius: "12px",
@@ -443,6 +460,7 @@ export default function GlobalBroadcastPlayer() {
               onTouchEnd={handleMiniTouchEnd}
               onClick={() => {
                 if (wasDragRef.current) { wasDragRef.current = false; return; }
+                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
                 goToTV();
               }}
             />
@@ -464,16 +482,23 @@ export default function GlobalBroadcastPlayer() {
                 onTouchEnd={handleMiniTouchEnd}
                 onClick={() => {
                   if (wasDragRef.current) { wasDragRef.current = false; return; }
+                  if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
                   ytUnmuteAndPlay(iframeRef.current);
                   setIsMuted(false);
                   goToTV();
                 }}
               >
-                <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
-                  <Radio size={7} /> LIVE
-                </span>
+                {isFilmMode ? (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold shrink-0">
+                    <Film size={7} /> Film
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
+                    <Radio size={7} /> LIVE
+                  </span>
+                )}
                 <p className="text-white text-[10px] font-semibold truncate">
-                  {bs.programTitle ?? "Flexa TV"}
+                  {effectiveTitle}
                 </p>
               </div>
 
@@ -542,10 +567,10 @@ export default function GlobalBroadcastPlayer() {
                   onTouchEnd={(e) => {
                     e.stopPropagation();
                     e.preventDefault(); // critical: prevents re-show from synthesized click
-                    setDismissed(true);
+                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                  onClick={(e) => { e.stopPropagation(); isFilmMode ? setFilmPlayer(null) : setDismissed(true); }}
                   style={{
                     width: 30, height: 30,
                     borderRadius: "50%",

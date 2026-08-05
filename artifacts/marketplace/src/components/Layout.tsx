@@ -423,11 +423,11 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         onClick={() => go(item.href)}
                         className="w-full text-left rounded-xl overflow-hidden relative active:scale-[0.98] transition-transform"
                         style={{
-                          background: "linear-gradient(120deg, #92400e 0%, #b45309 35%, #d97706 68%, #f59e0b 100%)",
-                          boxShadow: "0 4px 16px 0 rgba(180,83,9,0.55), inset 0 1px 0 rgba(255,255,255,0.30)",
+                          background: "linear-gradient(120deg, #ca8a04 0%, #d97706 28%, #f59e0b 55%, #fbbf24 78%, #fde68a 100%)",
+                          boxShadow: "0 4px 18px 0 rgba(202,138,4,0.60), inset 0 1px 0 rgba(255,255,255,0.45)",
                         }}
                       >
-                        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(110deg, rgba(255,255,255,0.30) 0%, transparent 50%)" }} />
+                        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(110deg, rgba(255,255,255,0.38) 0%, transparent 52%)" }} />
                         <div className="flex items-center gap-2.5 px-3 py-2 relative z-10">
                           <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg" style={{ background: "rgba(0,0,0,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)" }}>
                             <Gift className="h-4 w-4 text-yellow-100" />

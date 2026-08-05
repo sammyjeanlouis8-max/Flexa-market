@@ -116,7 +116,18 @@ function isYouTubeLive(url: string) {
 
 type EmbedInfo = { url: string; isIframe: boolean; isDirect: boolean };
 
+// Facebook/Instagram block iframe embedding via X-Frame-Options — return null so
+// VideoPlayer shows the "no video" placeholder instead of the Facebook error page.
+function isBlockedEmbedUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.includes("facebook.com") || h.includes("instagram.com") ||
+           h.includes("fb.watch") || h.includes("fb.com");
+  } catch { return false; }
+}
+
 function getEmbedInfo(program: TvProgram): EmbedInfo | null {
+  if (program.videoUrl && isBlockedEmbedUrl(program.videoUrl)) return null;
   if (program.videoUrl) {
     const ytId = getYouTubeId(program.videoUrl);
     if (ytId) {
@@ -998,9 +1009,10 @@ export default function FlexaTV() {
   const autoPlayedRef = useRef(false);
   useEffect(() => {
     if (autoPlayedRef.current || playing) return;
-    const liveProg = programs?.find(p => p.type === "live");
+    // Skip live programs with blocked embed URLs (Facebook/Instagram) — they show an error page
+    const liveProg = programs?.find(p => p.type === "live" && !isBlockedEmbedUrl(p.videoUrl ?? ""));
     if (liveProg) { autoPlayedRef.current = true; play(liveProg); return; }
-    if (nowPlaying) { autoPlayedRef.current = true; play(nowPlaying); return; }
+    if (nowPlaying && !isBlockedEmbedUrl(nowPlaying.videoUrl ?? "")) { autoPlayedRef.current = true; play(nowPlaying); return; }
     const featured = programs?.find(p => p.isFeatured);
     if (featured) { autoPlayedRef.current = true; play(featured); }
   }, [nowPlaying, programs]); // eslint-disable-line

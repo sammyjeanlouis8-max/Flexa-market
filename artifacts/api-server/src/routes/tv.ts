@@ -338,7 +338,7 @@ router.get("/tv/schedule", async (_req, res): Promise<void> => {
 // ── GET /api/tv/programs ── public ────────────────────────────────────────────
 router.get("/tv/programs", async (_req, res): Promise<void> => {
   try {
-    const programs = await db
+    const rawPrograms = await db
       .select({
         id: tvProgramsTable.id,
         title: tvProgramsTable.title,
@@ -361,6 +361,14 @@ router.get("/tv/programs", async (_req, res): Promise<void> => {
       .leftJoin(tvSeriesTable, eq(tvProgramsTable.seriesId, tvSeriesTable.id))
       .where(eq(tvProgramsTable.isActive, true))
       .orderBy(desc(tvProgramsTable.isFeatured), desc(tvProgramsTable.viewCount));
+    // Strip live programs whose videoUrl is a blocked embed host (Facebook/Instagram
+    // block iframes — returning them causes "Ce contenu n'est plus disponible" error)
+    const programs = rawPrograms.map(p => {
+      if (p.type === "live" && p.videoUrl && isBlockedEmbedHost(p.videoUrl)) {
+        return { ...p, videoUrl: null }; // clear the URL so VideoPlayer shows "no video"
+      }
+      return p;
+    });
     return void res.json({ programs });
   } catch {
     return void res.status(500).json({ error: "Failed to fetch programs" });

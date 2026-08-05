@@ -38,7 +38,7 @@
         "NSLocationWhenInUseUsageDescription": "Flexa Market uses your location to show you nearby listings and to automatically set the location for items you are selling, helping local buyers find your products.",
         "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
         "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": ["audio", "remote-notification"]
       }
     },
     "android": {

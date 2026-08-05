@@ -94,20 +94,24 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     ELSE 0
   END)`;
 
+  // Flexa Family: NO country filter — this is a cross-country premium benefit.
+  // Sellers from any country with an active paid subscription appear here.
+  // isNull(subscriptionExpiresAt) intentionally removed — must have a real future expiry.
+  const familyOnlyWhere = and(
+    eq(listingsTable.status, "available"),
+    eq(listingsTable.moderationStatus, "approved"),
+    or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)),
+    inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
+    gt(usersTable.subscriptionExpiresAt, new Date()),
+  );
+
   const flexaFamilyRows = await db.select().from(listingsTable)
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
     .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
     .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
-    .where(and(
-      baseWhere,
-      inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
-      or(
-        isNull(usersTable.subscriptionExpiresAt),
-        gt(usersTable.subscriptionExpiresAt, new Date())
-      )
-    ))
+    .where(familyOnlyWhere)
     .orderBy(desc(familyTierSql), desc(listingsTable.createdAt))
-    .limit(12);
+    .limit(20);
 
   res.json({
     totalListings: Number(totalListingsResult.count),

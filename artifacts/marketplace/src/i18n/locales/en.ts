@@ -428,7 +428,7 @@ export default {
     watchAllVideos: "Watch All Videos",
     selectCountryDesc: "You need to select your country to see products in your area.",
     selectCountryTitle: "Select your country",
-    flexaFamily: "Flexa Family",
+    flexaFamily: "Flexa VIP",
     flexaFamilyDesc: "Trusted sellers with a monthly plan",
   },
   sell: {

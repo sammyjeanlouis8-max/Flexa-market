@@ -468,7 +468,7 @@ export default {
     watchAllVideos: "Voir toutes les vidéos",
     selectCountryDesc: "Vous devez sélectionner votre pays pour voir les produits dans votre région.",
     selectCountryTitle: "Sélectionnez votre pays",
-    flexaFamily: "Famille Flexa",
+    flexaFamily: "Flexa VIP",
     flexaFamilyDesc: "Vendeurs de confiance avec un abonnement mensuel",
   },
   sell: {

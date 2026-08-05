@@ -488,6 +488,14 @@ export default function Home() {
 
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
   const isSuperAdmin = !!(user?.isSuperAdmin);
+
+  // Flexa Fanmi is exclusive to users with an active paid subscription
+  const hasActiveSubscription = !!(
+    user &&
+    ['standard', 'premium', 'vip'].includes(user.subscriptionPlan ?? '') &&
+    user.subscriptionExpiresAt &&
+    new Date(user.subscriptionExpiresAt) > new Date()
+  );
   // Parse multi-country scope list from JWT
   const adminScopeCountriesList: string[] = (() => {
     if (!isAdmin || isSuperAdmin) return [];
@@ -1154,30 +1162,69 @@ export default function Home() {
           </section>
         ) : null}
 
-        {/* === FLEXA FAMILY SECTION (paid-plan sellers, ranked by tier) === */}
+        {/* === FLEXA FAMILY SECTION — exclusive to active subscribers === */}
         {stats?.flexaFamilyListings && stats.flexaFamilyListings.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Crown className="h-4 w-4 text-purple-500 fill-purple-500" />
+          hasActiveSubscription ? (
+            /* ── Subscribed: show full section ── */
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-1.5">
+                  <Crown className="h-4 w-4 text-purple-500 fill-purple-500" />
+                  <h2 className="text-base font-bold text-foreground">{t("home.flexaFamily")}</h2>
+                  <span className="text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full font-semibold">
+                    Abonè
+                  </span>
+                </div>
+              </div>
+              <div
+                className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+              >
+                {stats.flexaFamilyListings.map((l: NormalListing) => (
+                  <div key={l.id} className="flex-shrink-0 w-44 sm:w-52 relative">
+                    <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-purple-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
+                      <Crown className="h-2.5 w-2.5" />
+                      {t("home.flexaFamily")}
+                    </div>
+                    <ListingCard listing={l} compact />
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : (
+            /* ── Not subscribed: show locked teaser ── */
+            <section>
+              <div className="flex items-center gap-1.5 mb-3">
+                <Crown className="h-4 w-4 text-purple-400" />
                 <h2 className="text-base font-bold text-foreground">{t("home.flexaFamily")}</h2>
               </div>
-            </div>
-            <div
-              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {stats.flexaFamilyListings.map((l: NormalListing) => (
-                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52 relative">
-                  <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-purple-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
-                    <Crown className="h-2.5 w-2.5" />
-                    {t("home.flexaFamily")}
-                  </div>
-                  <ListingCard listing={l} compact />
+              <div className="relative rounded-xl overflow-hidden border border-purple-200 dark:border-purple-800">
+                {/* Blurred preview of first 3 cards */}
+                <div className="flex gap-3 px-4 py-3 pointer-events-none select-none blur-sm opacity-60">
+                  {stats.flexaFamilyListings.slice(0, 3).map((l: NormalListing) => (
+                    <div key={l.id} className="flex-shrink-0 w-36">
+                      <ListingCard listing={l} compact />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+                {/* Lock overlay */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-transparent via-background/80 to-background/95 px-4 text-center">
+                  <div className="bg-purple-600 rounded-full p-2 mb-2">
+                    <Crown className="h-5 w-5 text-white fill-white" />
+                  </div>
+                  <p className="text-sm font-bold text-foreground mb-0.5">Seksyon Eksklizyf</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Abonnen pou wè tout pwodwi machann Flexa Fanmi yo
+                  </p>
+                  <Link href="/subscription">
+                    <button className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors">
+                      Abonnen Kounye a
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            </section>
+          )
         )}
 
         {/* === VIDEO PROMO SECTION === */}

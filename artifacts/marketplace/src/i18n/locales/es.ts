@@ -289,7 +289,7 @@ export default {
     loadingMore: "Cargando más…",
     allCaughtUp: "¡Estás al día!",
     allCaughtUpDesc: "Vuelve más tarde para ver nuevos anuncios.",
-    flexaFamily: "Familia Flexa",
+    flexaFamily: "Flexa VIP",
     flexaFamilyDesc: "Vendedores de confianza con un plan mensual",
   },
   sell: {

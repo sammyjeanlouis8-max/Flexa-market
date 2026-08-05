@@ -40,6 +40,19 @@ function getCommunesForDepartment(department: string): string[] {
   return HAITI_DEPARTMENTS[department] ?? [];
 }
 import { getExchangeRate } from "../lib/exchange-rate";
+import { sendEmail } from "../lib/email";
+import {
+  deliveryCreatedEmail,
+  deliveryStatusEmail,
+  deliveryCompletedEmail,
+} from "../lib/emailTemplates";
+
+// ── Tracking number generator (FM-XXXXXXXXX) ──────────────────────────────────
+function generateTrackingNumber(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/I/1 to avoid confusion
+  const rand = Array.from({ length: 9 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  return `FM-${rand}`;
+}
 
 const router = Router();
 
@@ -1168,12 +1181,18 @@ router.patch("/delivery/:id/status", requireAuth, async (req, res): Promise<void
   // stays in sync (no code reveal here — code was already shared on accept).
   emitDeliveryStatus(deliveryId, { status });
 
-  // Mobile/web push for each transition (best-effort, no code in payload).
+  // Mobile/web push + email for each transition (best-effort, no code in payload).
   const buyerPushMsg: Record<string, string> = {
     arrived_pickup: "Chofè a rive kote machann lan pou ranmase kòmand ou.",
     picked_up:      "Chofè a pran kòmand ou epi l ap prepare pou livre l.",
     on_the_way:     "Chofè a sou wout pou l ba ou kòmand ou — pare kòd sekrè ou!",
     arrived:        "Chofè a rive! Ba li kòd sekrè ou pou konfime livrezon an.",
+  };
+  const emailStatusMeta: Record<string, { emoji: string; label: string; detail: string }> = {
+    arrived_pickup: { emoji: "📍", label: "Chofè Rive Kote Machann", detail: "Chofè a rive kote machann lan epi l ap ranmase kòmand ou kounye a." },
+    picked_up:      { emoji: "📦", label: "Kolis Ranmase!", detail: "Chofè a ranmase kòmand ou. Li sou wout ba ou — prepare kòd sekrè ou pou konfime livrezon an." },
+    on_the_way:     { emoji: "🏍️", label: "Chofè Sou Wout!", detail: "Chofè a sou wout dirèk ba ou. Prepare kòd sekrè ou pou lè li rive." },
+    arrived:        { emoji: "🚨", label: "Chofè Rive Kote Ou!", detail: "Chofè a rive devan pòt ou! Ba li kòd sekrè ou pou konfime livrezon an. Pa fè l tann twò lontan." },
   };
   if (buyerPushMsg[status]) {
     await pushBoth(
@@ -1182,6 +1201,24 @@ router.patch("/delivery/:id/status", requireAuth, async (req, res): Promise<void
       buyerPushMsg[status],
       { deliveryId, status, type: `delivery_${status}` },
     );
+  }
+  // Email buyer at key milestones (non-blocking)
+  if (emailStatusMeta[status]) {
+    db.select({ email: usersTable.email, name: usersTable.name })
+      .from(usersTable).where(eq(usersTable.id, delivery.buyerId)).limit(1)
+      .then(([buyer]) => {
+        if (!buyer?.email) return;
+        const tn = (delivery as any).trackingNumber ?? `#${deliveryId}`;
+        const emailOpts = deliveryStatusEmail({
+          buyerName: buyer.name ?? "Kliyan",
+          trackingNumber: tn,
+          trackingUrl: `https://flexamarket.com/track/${tn}`,
+          statusEmoji: emailStatusMeta[status].emoji,
+          statusLabel: emailStatusMeta[status].label,
+          detail:      emailStatusMeta[status].detail,
+        });
+        sendEmail({ to: buyer.email, ...emailOpts }).catch(() => {});
+      }).catch(() => {});
   }
 
   res.json({ delivery: updated });
@@ -1396,6 +1433,34 @@ router.post("/delivery/:id/verify-code", requireAuth, async (req, res): Promise<
       "Kòmand ou livre avèk siksè! Mèsi dèske ou itilize Flexa Market.",
       { deliveryId, type: "delivery_delivered" },
     );
+
+    // Email both buyer and seller on delivery completion (non-blocking)
+    const tn = (updated as any).trackingNumber ?? `#${deliveryId}`;
+    Promise.all([
+      db.select({ email: usersTable.email, name: usersTable.name })
+        .from(usersTable).where(eq(usersTable.id, delivery.buyerId)).limit(1),
+      db.select({ email: usersTable.email, name: usersTable.name })
+        .from(usersTable).where(eq(usersTable.id, delivery.sellerId)).limit(1),
+    ]).then(([[buyer], [seller]]) => {
+      const delivCity = (updated as any).deliveryCity ?? (delivery as any).deliveryCity ?? "";
+      if (buyer?.email) {
+        sendEmail({ to: buyer.email, ...deliveryCompletedEmail({
+          recipientName: buyer.name ?? "Kliyan",
+          trackingNumber: tn,
+          isSeller: false,
+          deliveryCity: delivCity,
+        }) }).catch(() => {});
+      }
+      if (seller?.email) {
+        sendEmail({ to: seller.email, ...deliveryCompletedEmail({
+          recipientName: seller.name ?? "Machann",
+          trackingNumber: tn,
+          isSeller: true,
+          amountUsd: driverEarningsUsd ?? undefined,
+          deliveryCity: delivCity,
+        }) }).catch(() => {});
+      }
+    }).catch(() => {});
   }
 
   res.json({ success: true, driverEarnings: driverEarningsUsd });
@@ -2433,6 +2498,17 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
   const driverEarningsNum = feeUsdNum != null ? Math.round(feeUsdNum * DRIVER_COMMISSION_PCT * 100) / 100 : null;
   const tipUsdNum = tipUsd != null && parseFloat(String(tipUsd)) > 0 ? parseFloat(parseFloat(String(tipUsd)).toFixed(2)) : null;
 
+  // Generate unique tracking number (retry up to 5 times on collision)
+  let trackingNumber = generateTrackingNumber();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const [existing] = await db.select({ id: deliveriesTable.id })
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.trackingNumber, trackingNumber))
+      .limit(1);
+    if (!existing) break;
+    trackingNumber = generateTrackingNumber();
+  }
+
   const [delivery] = await db
     .insert(deliveriesTable)
     .values({
@@ -2456,10 +2532,117 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
       tipUsd: tipUsdNum,
       speedTier: speedTier ? String(speedTier) : null,
       holdAmountUsd: 10,
-    })
+      trackingNumber,
+    } as any)
     .returning();
 
+  // Email buyer with tracking number + link
+  const buyerIdNum = parseInt(buyerId, 10);
+  db.select({ email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, buyerIdNum))
+    .limit(1)
+    .then(([buyer]) => {
+      if (buyer?.email) {
+        const trackingUrl = `https://flexamarket.com/track/${trackingNumber}`;
+        const emailOpts = deliveryCreatedEmail({
+          buyerName: buyer.name ?? "Kliyan",
+          trackingNumber,
+          trackingUrl,
+          deliveryCity: deliveryCity ? String(deliveryCity) : (country ?? ""),
+          deliveryMethod: String(deliveryMethod),
+        });
+        sendEmail({ to: buyer.email, ...emailOpts }).catch(() => {});
+      }
+    }).catch(() => {});
+
   res.status(201).json({ delivery });
+});
+
+// ── GET /api/track/:trackingNumber — PUBLIC, no auth required ─────────────────
+// Returns safe public tracking info: status, timeline, driver first name only.
+// Never exposes verification code, phone, or full addresses.
+router.get("/track/:trackingNumber", async (req, res): Promise<void> => {
+  const tn = String(req.params.trackingNumber).toUpperCase().trim();
+  if (!tn.startsWith("FM-") || tn.length < 6) {
+    res.status(400).json({ error: "Fòma nimewo tracking envalid (FM-XXXXXXXXX)" });
+    return;
+  }
+
+  const [delivery] = await db
+    .select({
+      id:             deliveriesTable.id,
+      trackingNumber: sql<string>`deliveries.tracking_number`,
+      status:         deliveriesTable.status,
+      deliveryCity:   deliveriesTable.deliveryCity,
+      pickupCity:     deliveriesTable.pickupCity,
+      country:        deliveriesTable.country,
+      createdAt:      deliveriesTable.createdAt,
+      acceptedAt:     deliveriesTable.acceptedAt,
+      pickedUpAt:     deliveriesTable.pickedUpAt,
+      deliveredAt:    deliveriesTable.deliveredAt,
+      driverUserId:   deliveriesTable.driverUserId,
+    })
+    .from(deliveriesTable)
+    .where(sql`deliveries.tracking_number = ${tn}`)
+    .limit(1);
+
+  if (!delivery) {
+    res.status(404).json({ error: "Nimewo tracking sa pa jwenn. Tcheke l epi eseye ankò." });
+    return;
+  }
+
+  // Fetch only public-safe driver info (first name + vehicle type only)
+  let driverFirstName: string | null = null;
+  let driverVehicleType: string | null = null;
+  let estimatedMinutes: number | null = null;
+
+  if (delivery.driverUserId) {
+    const [drv] = await db
+      .select({
+        name:        usersTable.name,
+        vehicleType: driversTable.vehicleType,
+        latitude:    driversTable.latitude,
+        longitude:   driversTable.longitude,
+      })
+      .from(usersTable)
+      .leftJoin(driversTable, eq(driversTable.userId, usersTable.id))
+      .where(eq(usersTable.id, delivery.driverUserId))
+      .limit(1);
+
+    if (drv) {
+      driverFirstName = drv.name ? drv.name.split(" ")[0] : null;
+      driverVehicleType = drv.vehicleType ?? null;
+      // Simple ETA estimate based on status
+      if (drv.latitude != null && drv.longitude != null && delivery.deliveryCity) {
+        const CITY_COORDS: Record<string, [number, number]> = {
+          "Port-au-Prince": [18.5392, -72.3288], "Pétion-Ville": [18.5128, -72.2872],
+          "Delmas": [18.5494, -72.3072], "Croix-des-Bouquets": [18.5769, -72.2217],
+          "Tabarre": [18.5844, -72.2711], "Cap-Haïtien": [19.7580, -72.2003],
+        };
+        const cityKey = Object.keys(CITY_COORDS).find(k =>
+          delivery.deliveryCity!.toLowerCase().includes(k.toLowerCase())
+        );
+        if (cityKey) {
+          const [dlat, dlng] = CITY_COORDS[cityKey];
+          const dLat = ((dlat - drv.latitude) * Math.PI) / 180;
+          const dLon = ((dlng - drv.longitude) * Math.PI) / 180;
+          const a = Math.sin(dLat/2)**2 + Math.cos(drv.latitude*Math.PI/180)*Math.cos(dlat*Math.PI/180)*Math.sin(dLon/2)**2;
+          const km = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          estimatedMinutes = Math.max(1, Math.round((km / 30) * 60));
+        }
+      }
+    }
+  }
+
+  res.json({
+    delivery: {
+      ...delivery,
+      driverFirstName,
+      driverVehicleType,
+      estimatedMinutes,
+    },
+  });
 });
 
 // PATCH /api/delivery/:id/tip — buyer adds or updates driver tip

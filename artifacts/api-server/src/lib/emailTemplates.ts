@@ -82,6 +82,99 @@ function divider(): string {
   return `<div style="height:1px;background:#334155;margin:24px 0;"></div>`;
 }
 
+// ─── DELIVERY CREATED (BUYER) ─────────────────────────────────────────────────
+
+export function deliveryCreatedEmail(opts: {
+  buyerName: string;
+  trackingNumber: string;
+  trackingUrl: string;
+  deliveryCity: string;
+  deliveryMethod: string;
+}): { subject: string; html: string; text: string } {
+  const methodLabel = opts.deliveryMethod === "motorcycle" ? "🏍️ Moto" : opts.deliveryMethod === "car" ? "🚗 Machin" : "🛵 Livrezon";
+  const subject = `📦 Livrezon ou an wout — ${opts.trackingNumber}`;
+  const html = base(subject, `
+    ${h1("Livrezon ou konfime! 📦", SUCCESS)}
+    ${p(`Bonjou <strong style="color:${TEXT};">${opts.buyerName}</strong>, kòmand ou pral livre pa Flexa Market.`)}
+    ${divider()}
+    <div style="background:#1a2744;border-radius:12px;padding:24px;text-align:center;margin:20px 0;border:1px solid #334155;">
+      <p style="margin:0 0 8px;font-size:12px;color:${MUTED};text-transform:uppercase;letter-spacing:2px;font-weight:600;">Nimewo Tracking Ou</p>
+      <p style="margin:0;font-size:28px;font-weight:800;color:${PRIMARY};font-family:monospace;letter-spacing:3px;">${opts.trackingNumber}</p>
+      <p style="margin:8px 0 0;font-size:12px;color:${MUTED};">Konsève nimewo sa — ou ka swiv kòmand ou nenpòt ki lè</p>
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+      ${orderCard("Metòd Livrezon", methodLabel)}
+      ${orderCard("Destinasyon", opts.deliveryCity)}
+      ${orderCard("Estati", badge("Ap chèche chofè...", WARNING))}
+    </table>
+    ${p("Ou pral resevwa yon notifikasyon imedyatman lè yon chofè aksepte kòmand ou.", MUTED)}
+    ${ctaButton("🔍 Swiv Kòmand Ou", opts.trackingUrl, PRIMARY)}
+  `);
+  const text = `Livrezon konfime! Nimewo tracking: ${opts.trackingNumber}. Swiv kòmand ou: ${opts.trackingUrl}`;
+  return { subject, html, text };
+}
+
+// ─── DELIVERY STATUS UPDATE ────────────────────────────────────────────────────
+
+export function deliveryStatusEmail(opts: {
+  buyerName: string;
+  trackingNumber: string;
+  trackingUrl: string;
+  statusLabel: string;
+  statusEmoji: string;
+  detail: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `${opts.statusEmoji} ${opts.statusLabel} — ${opts.trackingNumber}`;
+  const html = base(subject, `
+    ${h1(`${opts.statusEmoji} ${opts.statusLabel}`, SUCCESS)}
+    ${p(`Bonjou <strong style="color:${TEXT};">${opts.buyerName}</strong>, gen yon ajou sou livrezon ou.`)}
+    ${divider()}
+    <div style="background:#1a2744;border-radius:12px;padding:20px;margin:20px 0;border-left:4px solid ${SUCCESS};">
+      <p style="margin:0 0 4px;font-size:12px;color:${MUTED};text-transform:uppercase;letter-spacing:1px;">Tracking #</p>
+      <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:${TEXT};font-family:monospace;">${opts.trackingNumber}</p>
+      <p style="margin:0;font-size:14px;color:${TEXT};line-height:1.6;">${opts.detail}</p>
+    </div>
+    ${ctaButton("🔍 Wè Tracking Kounye a", opts.trackingUrl, SUCCESS)}
+  `);
+  const text = `${opts.statusLabel}: ${opts.detail} — Swiv: ${opts.trackingUrl}`;
+  return { subject, html, text };
+}
+
+// ─── DELIVERY COMPLETED ────────────────────────────────────────────────────────
+
+export function deliveryCompletedEmail(opts: {
+  recipientName: string;
+  trackingNumber: string;
+  isSeller: boolean;
+  amountUsd?: number;
+  deliveryCity: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `✅ Livrezon #${opts.trackingNumber} konplè!`;
+  const html = base(subject, `
+    ${h1("Livrezon Konplè! ✅", SUCCESS)}
+    ${p(`Bonjou <strong style="color:${TEXT};">${opts.recipientName}</strong>!`)}
+    ${divider()}
+    <div style="background:#14532d;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">
+      <div style="font-size:48px;margin-bottom:12px;">✅</div>
+      <p style="margin:0 0 4px;font-size:14px;color:#86efac;font-weight:600;">
+        ${opts.isSeller ? "Kòmand ou livre avèk siksè!" : "Kolis ou resevwa avèk siksè!"}
+      </p>
+      ${opts.isSeller && opts.amountUsd ? `
+      <p style="margin:12px 0 0;font-size:32px;font-weight:800;color:${SUCCESS};">+$${opts.amountUsd.toFixed(2)}</p>
+      <p style="margin:4px 0 0;font-size:12px;color:#86efac;">Nan pòtfèy FM ou</p>
+      ` : ""}
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+      ${orderCard("Tracking #", opts.trackingNumber)}
+      ${orderCard("Vil Livrezon", opts.deliveryCity)}
+      ${orderCard("Estati", badge("LIVRE ✓", SUCCESS))}
+    </table>
+    ${ctaButton(opts.isSeller ? "Wè Pòtfèy" : "Wè Kòmand Ou", opts.isSeller ? "https://flexamarket.com/wallet" : "https://flexamarket.com/orders", SUCCESS)}
+  `);
+  const text = `Livrezon ${opts.trackingNumber} konplè! ${opts.isSeller && opts.amountUsd ? `$${opts.amountUsd.toFixed(2)} ajoute nan pòtfèy ou.` : "Kolis ou resevwa."}`;
+  return { subject, html, text };
+}
+
 // ─── WELCOME ─────────────────────────────────────────────────────────────────
 
 export function welcomeEmail(name: string): { subject: string; html: string; text: string } {

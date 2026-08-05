@@ -130,6 +130,7 @@ export const deliveriesTable = pgTable("deliveries", {
   deliveryCity: text("delivery_city"),
   country: text("country").notNull(),
   status: text("status").notNull().default("waiting"),
+  trackingNumber: text("tracking_number"),
   verificationCode: text("verification_code"),
   codeVerifiedAt: timestamp("code_verified_at", { withTimezone: true }),
   distanceMiles: real("distance_miles"),

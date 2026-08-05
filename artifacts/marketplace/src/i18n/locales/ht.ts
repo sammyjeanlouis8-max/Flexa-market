@@ -468,8 +468,8 @@ export default {
     watchAllVideos: "Wè tout videyo yo",
     selectCountryDesc: "Ou bezwen chwazi peyi ou pou wè pwodwi nan zòn ou.",
     selectCountryTitle: "Chwazi peyi ou",
-    flexaFamily: "Fanmi Flexa",
-    flexaFamilyDesc: "Vandè serye ki gen yon plan mansyèl",
+    flexaFamily: "Flexa VIP",
+    flexaFamilyDesc: "Vandè serye ki gen yon abonman mansyèl",
   },
   sell: {
     pageTitle: "Vann yon bagay",

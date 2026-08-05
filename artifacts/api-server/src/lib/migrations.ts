@@ -2153,6 +2153,7 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_purchases.user_idx",  sql: "CREATE INDEX IF NOT EXISTS music_purchases_user_idx  ON music_purchases(user_id)" });
   migrations.push({ name: "music_purchases.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_purchases_track_idx ON music_purchases(track_id)" });
   migrations.push({ name: "reviews.is_verified_purchase", sql: "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_verified_purchase BOOLEAN NOT NULL DEFAULT FALSE" });
+  migrations.push({ name: "deliveries.tracking_number", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS tracking_number TEXT" });
 
   let applied = 0;
   let failed = 0;

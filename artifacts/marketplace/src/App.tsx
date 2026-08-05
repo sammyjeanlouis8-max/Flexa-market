@@ -86,6 +86,7 @@ const KYCVerification    = lazy(() => import("@/pages/KYCVerification"));
 const ApplyForDriver        = lazy(() => import("@/pages/ApplyForDriver"));
 const AvailableDeliveries   = lazy(() => import("@/pages/AvailableDeliveries"));
 const DeliveryTracking      = lazy(() => import("@/pages/DeliveryTracking"));
+const PublicTracking        = lazy(() => import("@/pages/PublicTracking"));
 const DriverSuspensionPage  = lazy(() => import("@/pages/DriverSuspensionPage"));
 const WalletTransfer        = lazy(() => import("@/pages/WalletTransfer"));
 const AgentApplication               = lazy(() => import("@/pages/AgentApplication"));
@@ -259,6 +260,8 @@ function LayoutRoutes() {
           <Route path="/admin/fraud" component={AdminFraudPanel} />
           <Route path="/credit-score" component={CreditScorePage} />
           <Route path="/delivery/tracking/:id" component={DeliveryTracking} />
+          <Route path="/track/:trackingNumber" component={PublicTracking} />
+          <Route path="/track" component={PublicTracking} />
           <Route path="/delivery/suspended" component={DriverSuspensionPage} />
           <Route path="/wallet/transfer" component={WalletTransfer} />
           <Route path="/flex-card/repay" component={FlexCardRepay} />

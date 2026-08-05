@@ -412,7 +412,35 @@ export default function Subscription() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 pb-16 pt-6">
+    <div className="max-w-5xl mx-auto pb-16" style={{ touchAction: "manipulation" }}>
+
+      {/* ── Sticky back button header (mobile) ──────────────────────────── */}
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border/40 px-4 py-3 flex items-center gap-3 md:hidden">
+        <button
+          onClick={() => (window.history.length > 1 ? window.history.back() : setLocation("/"))}
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          aria-label="Retounen"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <span className="flex-1 text-sm font-semibold text-center pr-8">
+          {t("subscription.title", { defaultValue: "Abònman FLEXA" })}
+        </span>
+      </div>
+
+      {/* ── Desktop back link ────────────────────────────────────────────── */}
+      <div className="hidden md:flex items-center px-4 pt-6 mb-2">
+        <button
+          onClick={() => (window.history.length > 1 ? window.history.back() : setLocation("/"))}
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t("subscription.backToHome", { defaultValue: "Retounen" })}
+        </button>
+      </div>
+
+      {/* ── Page content ────────────────────────────────────────────────── */}
+      <div className="px-4 pt-4">
 
       {/* ── Return-to-app banner (shown after mobile payment) ─────────────── */}
       {showReturnApp && (
@@ -973,6 +1001,7 @@ export default function Subscription() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>{/* end px-4 pt-4 */}
     </div>
   );
 }

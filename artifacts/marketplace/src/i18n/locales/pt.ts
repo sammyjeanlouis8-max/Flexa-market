@@ -1716,5 +1716,8 @@ export default {
     talkToAgent: "Falar com um agente",
     botCantResolve: "FlexaBot não consegue resolver? Fale com um agente real.",
     clear: "Limpar",
+    escalateSubject: "Pedido de suporte do FlexaBot",
+    escalateBody: "O utilizador estava a conversar com o FlexaBot e precisa de um agente real.\n\nConversa:\n{{context}}",
+    escalateBodyEmpty: "O utilizador precisa de suporte de um agente real.",
   },
 } as const;

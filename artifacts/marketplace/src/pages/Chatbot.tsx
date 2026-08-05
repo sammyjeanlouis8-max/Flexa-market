@@ -368,10 +368,10 @@ export default function Chatbot() {
         .slice(-10)
         .map(m => `${m.role === "user" ? "Itilizatè" : "FlexaBot"}: ${m.content}`)
         .join("\n");
-      const subject = "Demann sipò ki soti nan FlexaBot";
+      const subject = t("chatbot.escalateSubject", { defaultValue: "Demann sipò ki soti nan FlexaBot" });
       const message = contextLines.length > 0
-        ? `Itilizatè a t ap pale ak FlexaBot epi li bezwen yon ajan reyèl.\n\nKonvèsasyon an:\n${contextLines}`
-        : "Itilizatè a bezwen sipò yon ajan reyèl.";
+        ? t("chatbot.escalateBody", { defaultValue: "Itilizatè a t ap pale ak FlexaBot epi li bezwen yon ajan reyèl.\n\nKonvèsasyon an:\n{{context}}", context: contextLines })
+        : t("chatbot.escalateBodyEmpty", { defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl." });
       const r = await apiFetch<{ id: number }>("/api/support/threads", {
         method: "POST",
         body: JSON.stringify({ subject, message }),
@@ -478,7 +478,9 @@ export default function Chatbot() {
       )}
 
       <Card className="flex-1 overflow-hidden flex flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col" data-testid="chat-messages">
+          <div className="flex-1" />
+          <div className="space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col gap-3 py-2">
               {/* Greeting */}
@@ -559,6 +561,7 @@ export default function Chatbot() {
           {error && (
             <div className="text-xs text-destructive bg-destructive/10 rounded-md p-2 text-center">{error}</div>
           )}
+          </div>{/* end space-y-4 */}
         </div>
 
         <div className="border-t p-3 bg-background">

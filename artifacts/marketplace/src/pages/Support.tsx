@@ -650,30 +650,30 @@ export default function Support() {
         <MessageSquare className="h-8 w-8 text-primary" />
       </div>
       <div className="text-center max-w-sm">
-        <h1 className="text-2xl font-bold text-foreground mb-2">Sipò FLEXA MARKET</h1>
+        <h1 className="text-2xl font-bold text-foreground mb-2">{t("support.guestTitle", { defaultValue: "Sipò FLEXA MARKET" })}</h1>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          Bezwen èd? Ekip sipò nou disponib 7 jou sou 7. Konekte pou ouvri yon tikè oswa chatte ak yon ajan.
+          {t("support.guestDesc", { defaultValue: "Bezwen èd? Ekip sipò nou disponib 7 jou sou 7. Konekte pou ouvri yon tikè oswa chatte ak yon ajan." })}
         </p>
       </div>
       <div className="w-full max-w-sm space-y-3">
         <Link href="/auth/login">
           <button className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
-            Konekte pou kontakte sipò
+            {t("support.guestLogin", { defaultValue: "Konekte pou kontakte sipò" })}
           </button>
         </Link>
         <Link href="/contact">
           <button className="w-full py-3 rounded-xl border border-border text-foreground font-semibold text-sm hover:bg-accent transition-colors">
-            Wè enfòmasyon kontakt
+            {t("support.guestContact", { defaultValue: "Wè enfòmasyon kontakt" })}
           </button>
         </Link>
         <Link href="/faq">
           <button className="w-full py-3 rounded-xl border border-border text-foreground font-semibold text-sm hover:bg-accent transition-colors">
-            Wè FAQ
+            {t("support.guestFaq", { defaultValue: "Wè FAQ" })}
           </button>
         </Link>
       </div>
       <p className="text-xs text-muted-foreground text-center">
-        Email: support@flexamarket.com · Disponib 8h–20h (EST)
+        {t("support.guestEmail", { defaultValue: "Email: support@flexamarket.com · Disponib 8h–20h (EST)" })}
       </p>
     </div>
   );
@@ -713,7 +713,9 @@ export default function Support() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
+        <div className="flex-1" />
+        <div className="space-y-3">
         {detail.messages.map((m) => {
           const isBot = m.senderRole === "bot";
           const mine = m.senderId === user.id && !isBot;
@@ -770,6 +772,7 @@ export default function Support() {
           </div>
         )}
         <div ref={bottomRef} />
+        </div>{/* end space-y-3 */}
       </div>
 
       {/* Input */}

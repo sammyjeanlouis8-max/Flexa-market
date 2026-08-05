@@ -296,8 +296,8 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         { icon: Tv,     label: "📺 Flexa TV",              href: "/tv" },
         { icon: Music2, label: "🎵 Flexa Music",           href: "/music" },
         ...(user ? [
-          { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: promoBalance },
           { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem,
+          { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: promoBalance },
         ] : []),
       ] as DrawerItem[],
     },
@@ -434,7 +434,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                               {item.label}
                             </span>
                             <span className="text-[10px] font-semibold" style={{ color: "#fde68a" }}>
-                              💰 Balans Promo disponib
+                              💰 {t("nav.promoBalanceAvail", { defaultValue: "Balans Promo disponib" })}
                             </span>
                           </div>
                           <div className="flex flex-col items-end shrink-0">
@@ -676,8 +676,8 @@ export default function Layout({ children }: { children: ReactNode }) {
         { href: "/tv",     icon: Tv,     label: "📺 Flexa TV",              key: "flexa-tv"    },
         { href: "/music",  icon: Music2, label: "🎵 Flexa Music",           key: "flexa-music" },
         ...(user ? [
-          { href: "/wallet",    icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
           { href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" },
+          { href: "/wallet",    icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
         ] : []),
       ],
     },

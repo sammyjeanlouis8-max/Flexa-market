@@ -1784,6 +1784,9 @@ export default {
     clear: "Limpiar",
     signInRequired: "Inicia sesión para chatear con FlexaBot.",
     placeholder: "Pregúntale algo a FlexaBot…",
+    escalateSubject: "Solicitud de soporte desde FlexaBot",
+    escalateBody: "El usuario estaba chateando con FlexaBot y necesita un agente real.\n\nConversación:\n{{context}}",
+    escalateBodyEmpty: "El usuario necesita soporte de un agente real.",
   },
   adminBanner: {
     title: "Solicitudes Pendientes — Acción Requerida",

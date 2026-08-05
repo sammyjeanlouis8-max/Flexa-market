@@ -193,7 +193,11 @@ true;`.trim();
     webRef.current?.injectJavaScript(script);
   }, []);
 
-  usePushNotifications(injectJs);
+  // tokenRef holds the Expo push token once it arrives. We pass injectJs so
+  // the hook injects it into the WebView immediately on first arrival.
+  // We also re-inject it on every onLoadEnd (see below) so that full-page
+  // reloads and SPA navigations that destroy the window object don't lose it.
+  const tokenRef = usePushNotifications(injectJs);
 
   const canGoBack = navState?.canGoBack ?? false;
 
@@ -443,7 +447,24 @@ true;`.trim();
         overScrollMode="never"
         onNavigationStateChange={setNavState}
         onLoadStart={() => { setLoading(true); setOffline(false); }}
-        onLoadEnd={() => setLoading(false)}
+        onLoadEnd={() => {
+          setLoading(false);
+          // Re-inject the push token on every page load (covers full reloads and
+          // SPA navigations that destroy window). If the token hasn't arrived yet
+          // the hook's own injectJs callback will fire once it does.
+          const token = tokenRef.current;
+          if (token) {
+            const platform = Platform.OS;
+            webRef.current?.injectJavaScript(
+              `(function(){` +
+              `window.__expoPushToken=${JSON.stringify(token)};` +
+              `window.__expoPushPlatform=${JSON.stringify(platform)};` +
+              `if(typeof window.__onExpoPushToken==='function')` +
+              `window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
+              `})();true;`
+            );
+          }
+        }}
         onLoadProgress={({ nativeEvent }: any) => setProgress(nativeEvent.progress)}
         onError={() => { setOffline(true); setLoading(false); }}
         onHttpError={({ nativeEvent }: any) => { if (nativeEvent.statusCode >= 500) setOffline(true); }}

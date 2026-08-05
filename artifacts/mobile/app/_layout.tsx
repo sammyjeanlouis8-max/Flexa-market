@@ -10,18 +10,12 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { usePushNotifications } from "../hooks/usePushNotifications";
 
 SplashScreen.preventAutoHideAsync();
 
 const NO_HEADER = { headerShown: false } as const;
 
 export default function RootLayout() {
-  // Register for push notifications globally so the device token is saved
-  // to the server and incoming pushes (e.g. new chat messages) trigger native
-  // iOS/Android sound + banner even when the WebView is in the background.
-  usePushNotifications();
-
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,

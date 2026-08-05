@@ -1217,7 +1217,7 @@ export default function Home() {
                   </div>
                   <p className="text-sm font-bold text-foreground mb-0.5">Seksyon Eksklizyf</p>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Abonnen pou wè tout pwodwi machann Flexa Fanmi yo
+                    Abonnen pou wè tout pwodwi eksklizyf Flexa VIP yo
                   </p>
                   <Link href="/subscription">
                     <button className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-4 py-2 rounded-full transition-colors">

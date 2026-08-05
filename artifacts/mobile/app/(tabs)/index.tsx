@@ -188,13 +188,34 @@ true;`.trim();
   }, []);
 
   async function checkAndRequestPermission() {
-    const { status } = await Notifications.getPermissionsAsync();
-    if (status === "granted") { setPermStatus("granted"); return; }
-    if (status === "undetermined") {
-      const { status: newStatus } = await Notifications.requestPermissionsAsync();
-      setPermStatus(newStatus === "granted" ? "granted" : "denied");
-    } else {
-      setPermStatus("denied");
+    try {
+      // Race against a 5-second safety valve so the app NEVER hangs on this check.
+      // We deliberately do NOT call requestPermissionsAsync() here — that is handled
+      // exclusively by usePushNotifications to avoid a race condition where two
+      // concurrent requestPermissionsAsync() calls on Android cause the OS dialog to
+      // freeze and leave permStatus stuck at "checking" forever.
+      const result = await Promise.race<{ status: string }>([
+        Notifications.getPermissionsAsync(),
+        new Promise<{ status: string }>((resolve) =>
+          setTimeout(() => resolve({ status: "undetermined" }), 5000)
+        ),
+      ]);
+
+      if (result.status === "granted") {
+        setPermStatus("granted");
+      } else if (result.status === "denied") {
+        // "denied" on iOS means the user explicitly blocked in Settings — show gate.
+        // On Android it may just mean the runtime dialog hasn't appeared yet;
+        // usePushNotifications will request it in the background, so show the app.
+        setPermStatus(Platform.OS === "ios" ? "denied" : "granted");
+      } else {
+        // undetermined — show the app on both platforms; the notification hook will
+        // ask for permission in the background without blocking the UI.
+        setPermStatus("granted");
+      }
+    } catch {
+      // Any unexpected error must never freeze the app.
+      setPermStatus("granted");
     }
   }
 

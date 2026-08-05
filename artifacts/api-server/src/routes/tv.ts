@@ -89,7 +89,55 @@ function activeViewers() {
 }
 
 // ── GET /api/tv/broadcast ── public — viewers poll this ───────────────────────
-router.get("/tv/broadcast", (_req, res): void => {
+// If admin has an active broadcast with a video → serve it.
+// Otherwise fall back to any program marked type="live" in the DB so that
+// FlexaTV "Live" programs automatically appear in the mini-player without
+// the admin needing to manually trigger a broadcast.
+router.get("/tv/broadcast", async (_req, res): Promise<void> => {
+  const adminActive =
+    (broadcast.state === "playing" || broadcast.state === "paused") &&
+    (broadcast.videoUrl || broadcast.videoKey);
+
+  if (adminActive) {
+    res.json({ broadcast: { ...broadcast, viewerCount: activeViewers() } });
+    return;
+  }
+
+  // Auto-detect: first active "live" program in the DB
+  try {
+    const [live] = await db
+      .select({
+        id: tvProgramsTable.id,
+        title: tvProgramsTable.title,
+        videoUrl: tvProgramsTable.videoUrl,
+        videoKey: tvProgramsTable.videoKey,
+      })
+      .from(tvProgramsTable)
+      .where(
+        and(
+          eq(tvProgramsTable.type, "live"),
+          eq(tvProgramsTable.isActive, true),
+        ),
+      )
+      .orderBy(desc(tvProgramsTable.isFeatured), asc(tvProgramsTable.id))
+      .limit(1);
+
+    if (live && (live.videoUrl || live.videoKey)) {
+      res.json({
+        broadcast: {
+          state: "playing",
+          programId: live.id,
+          programTitle: live.title,
+          videoUrl: live.videoUrl,
+          videoKey: live.videoKey,
+          viewerCount: activeViewers(),
+          startedAt: null,
+        },
+      });
+      return;
+    }
+  } catch { /* fall through to stopped state */ }
+
   res.json({ broadcast: { ...broadcast, viewerCount: activeViewers() } });
 });
 

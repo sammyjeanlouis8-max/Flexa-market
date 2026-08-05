@@ -19,7 +19,7 @@ RUN pnpm install --filter "@workspace/api-server..." --frozen-lockfile
 RUN pnpm --filter @workspace/api-server run build
 
 # Create a standalone production deploy tree with correct node_modules
-RUN pnpm --filter @workspace/api-server deploy --prod /app/deploy
+RUN pnpm --filter @workspace/api-server deploy --prod --legacy /app/deploy
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine

@@ -626,16 +626,19 @@ export default function Layout({ children }: { children: ReactNode }) {
   // Back button: show on mobile for every page except home, messages, and auth
   const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
 
-  // When leaving the TV page with an active broadcast, go to home so the
-  // GlobalBroadcastPlayer switches to mini-player instead of disappearing.
+  // When leaving the TV page with an active broadcast OR film playing,
+  // always use navigate("/") so GlobalBroadcastPlayer keeps its React state
+  // and switches to mini-player. window.history.back() can escape the SPA
+  // in WebView contexts and lose all context state.
   const handleBack = useCallback(() => {
     const broadcastActive = bs.state === "playing" || bs.state === "paused";
-    if (location === "/tv" && broadcastActive && !bs.dismissed) {
+    const filmActive = bs.filmPlayer !== null;
+    if (location === "/tv" && (broadcastActive || filmActive)) {
       navigate("/");
     } else {
       window.history.back();
     }
-  }, [location, bs.state, bs.dismissed, navigate]);
+  }, [location, bs.state, bs.filmPlayer, navigate]);
   const pageTitle = getPageTitle(location, t);
 
   const profileHref = user ? "/settings" : "/auth/login";

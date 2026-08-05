@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, listingsTable, usersTable, categoriesTable } from "@workspace/db";
-import { eq, desc, count, and, or, isNull, gt } from "drizzle-orm";
+import { eq, desc, count, and, or, isNull, gt, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { optionalAuth } from "../middlewares/auth";
 
@@ -86,12 +86,36 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     .where(and(baseWhere, eq(listingsTable.isBoosted, true)))
     .orderBy(desc(listingsTable.createdAt)).limit(8);
 
+  // Flexa Family: active paid-plan sellers, ranked by tier (VIP > Premium > Standard)
+  const familyTierSql = sql<number>`(CASE ${usersTable.subscriptionPlan}
+    WHEN 'vip' THEN 3
+    WHEN 'premium' THEN 2
+    WHEN 'standard' THEN 1
+    ELSE 0
+  END)`;
+
+  const flexaFamilyRows = await db.select().from(listingsTable)
+    .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+    .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
+    .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
+    .where(and(
+      baseWhere,
+      inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
+      or(
+        isNull(usersTable.subscriptionExpiresAt),
+        gt(usersTable.subscriptionExpiresAt, new Date())
+      )
+    ))
+    .orderBy(desc(familyTierSql), desc(listingsTable.createdAt))
+    .limit(12);
+
   res.json({
     totalListings: Number(totalListingsResult.count),
     totalUsers: Number(totalUsersResult.count),
     categoryCounts,
     recentListings: recentRows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories)),
     featuredListings: featuredRows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories)),
+    flexaFamilyListings: flexaFamilyRows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories)),
   });
 });
 

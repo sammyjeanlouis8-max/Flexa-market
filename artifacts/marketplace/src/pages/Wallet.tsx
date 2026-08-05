@@ -2971,7 +2971,7 @@ export default function WalletPage() {
           {/* Balance */}
           <div className="mb-3">
             <p className="font-semibold mb-1" style={{ color: "#22d3ee", fontSize: 12, letterSpacing: "0.03em" }}>
-              Balans Total
+              {t("wallet.totalBalance")}
             </p>
             {isLoading ? (
               <div className="h-9 w-36 rounded-lg animate-pulse" style={{ background: "rgba(255,255,255,0.12)" }} />

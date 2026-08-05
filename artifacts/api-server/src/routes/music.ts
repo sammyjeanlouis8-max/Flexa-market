@@ -1179,6 +1179,54 @@ router.post("/admin/music", requireAdmin, upload.fields([
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
+// PUT /api/music/:id — artist updates their OWN track (title, artist, album, genre, cover, lyrics)
+router.put("/music/:id", requireAuth, async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    const userId = req.userId;
+    const [existing] = await q<{ id: number; artist_user_id: number | null }>(
+      `SELECT id, artist_user_id FROM music_tracks WHERE id = ${id}`
+    );
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    if (!existing.artist_user_id || existing.artist_user_id !== userId) {
+      return res.status(403).json({ error: "You can only edit your own tracks" });
+    }
+    const { title, artist, album, genre, cover_url, lyrics } = req.body;
+    const sets: string[] = [];
+    if (title   !== undefined) sets.push(`title   = ${nullOr(title)}`);
+    if (artist  !== undefined) sets.push(`artist  = ${nullOr(artist)}`);
+    if (album   !== undefined) sets.push(`album   = ${nullOr(album  || null)}`);
+    if (genre   !== undefined) sets.push(`genre   = ${nullOr(genre  || null)}`);
+    if (cover_url !== undefined) sets.push(`cover_url = ${nullOr(cover_url)}`);
+    if (lyrics  !== undefined) sets.push(`lyrics  = ${nullOr(lyrics || null)}`);
+    sets.push("updated_at = NOW()");
+    const [track] = await q(`UPDATE music_tracks SET ${sets.join(", ")} WHERE id = ${id} RETURNING *`);
+    res.json({ track });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// DELETE /api/music/:id — artist deletes their OWN track
+router.delete("/music/:id", requireAuth, async (req: any, res) => {
+  try {
+    const id = Number(req.params.id);
+    const userId = req.userId;
+    const [row] = await q<{ artist_user_id: number | null; storage_key: string | null; cover_storage_key: string | null; audio_url: string | null; cover_url: string | null }>(
+      `SELECT artist_user_id, storage_key, cover_storage_key, audio_url, cover_url FROM music_tracks WHERE id = ${id}`
+    );
+    if (!row) return res.status(404).json({ error: "Not found" });
+    if (!row.artist_user_id || row.artist_user_id !== userId) {
+      return res.status(403).json({ error: "You can only delete your own tracks" });
+    }
+    await q(`DELETE FROM music_tracks WHERE id = ${id}`);
+    // Best-effort cleanup of stored files
+    await Promise.allSettled([
+      deleteMusicFile(row.storage_key       ?? extractKey(row.audio_url)),
+      deleteMusicFile(row.cover_storage_key ?? extractKey(row.cover_url)),
+    ]);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
 // PUT /api/admin/music/:id — update
 router.put("/admin/music/:id", requireAdmin, upload.fields([
   { name: "audio", maxCount: 1 }, { name: "cover", maxCount: 1 },

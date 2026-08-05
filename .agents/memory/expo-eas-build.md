@@ -42,6 +42,18 @@ query { app { byFullName(fullName: "@muelsa89/mobile") { iosAppCredentials { ios
 mutation { appleProvisioningProfile { deleteAppleProvisioningProfiles(ids: ["<id>"]) { id } } }
 ```
 
+## Xcode image compatibility
+**Why:** `"image": "macos-sequoia-15.6-xcode-26.2"` in eas.json causes `cannot find 'ExpoAppDelegate' in scope` compile error with Expo SDK 54. Remove the `"image"` key entirely from the iOS production profile and let EAS select the default image for the SDK version.
+
+## expo-file-system ExpoAppDelegate compile error (SDK 54 / expo-modules-core 3.x)
+**Root cause:** expo-modules-core 3.x (pulled by expo@54.0.36) renamed `ExpoAppDelegate` → `ExpoAppDelegateSubscriberRepository`. `expo-file-system@18.0.12/ios/FileSystemModule.swift` still calls `ExpoAppDelegate.getSubscriberOfType()` → Swift compile error.
+**Fix:** Pin `expo-file-system` to `18.1.11` in `artifacts/mobile/package.json` (this version uses the new API). Must also update `pnpm-lock.yaml` to match (the lockfile specifier must equal the package.json specifier or `pnpm install --frozen-lockfile` on EAS will fail).
+**Safety net:** `artifacts/mobile/scripts/patch-expo-router-ctx.js` postinstall script also patches FileSystemModule.swift as a backup.
+**How to apply:** If this error reappears after any expo SDK update, check expo-file-system version and compare with expo-modules-core API.
+
+## pnpm lockfile consistency on EAS
+EAS runs `pnpm install --frozen-lockfile`. If `package.json` specifier ≠ lockfile specifier for any package, the Install dependencies phase fails with "Unknown error". Always ensure lockfile and package.json are in sync before submitting. Partial/interrupted `pnpm install` runs can leave the lockfile in an inconsistent state — commit the lockfile after any install attempt.
+
 ## Android build
 No special credentials needed. Just EXPO_TOKEN + `--platform android`.
 

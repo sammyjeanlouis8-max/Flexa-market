@@ -189,14 +189,16 @@ function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; 
 // ══════════════════════════════════════════════════════════════════════════════
 // Bottom sheet "More" options
 // ══════════════════════════════════════════════════════════════════════════════
-function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, onEdit, onDelete, canDownload = true }:
+function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, currentUserId, onEdit, onDelete, canDownload = true }:
   { track: Track; liked: boolean; onClose: () => void; onLike: () => void; onDownload: () => void;
     onBuy?: () => void;
-    isAdmin?: boolean; onEdit?: (t: Track) => void; onDelete?: (id: number) => void;
+    isAdmin?: boolean; currentUserId?: number;
+    onEdit?: (t: Track) => void; onDelete?: (id: number) => void;
     /** false when track is "sale" and user has not purchased it yet */
     canDownload?: boolean; }) {
   const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const isOwner = !!(currentUserId && track.artist_user_id && currentUserId === track.artist_user_id);
 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
 
@@ -253,8 +255,8 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
             <span className={`text-sm font-medium ${locked ? "text-white/40" : "text-white"}`}>{label}</span>
           </button>
         ))}
-        {/* Admin-only actions */}
-        {isAdmin && (
+        {/* Admin / artist-owner actions */}
+        {(isAdmin || isOwner) && (
           <div className="border-t border-white/5 mt-1">
             <button onClick={() => { onEdit?.(track); onClose(); }}
               className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-white/5 transition-colors">
@@ -293,8 +295,8 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
 // ══════════════════════════════════════════════════════════════════════════════
 // Admin — quick edit modal
 // ══════════════════════════════════════════════════════════════════════════════
-function EditTrackModal({ track, onClose, onSaved }:
-  { track: Track; onClose: () => void; onSaved: (updated: Track) => void }) {
+function EditTrackModal({ track, onClose, onSaved, isAdmin = false }:
+  { track: Track; onClose: () => void; onSaved: (updated: Track) => void; isAdmin?: boolean }) {
   const [title,     setTitle]     = useState(track.title);
   const [artist,    setArtist]    = useState(track.artist);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -343,7 +345,9 @@ function EditTrackModal({ track, onClose, onSaved }:
         coverUrl = cld.secure_url;
       }
 
-      const res = await fetch(`/api/admin/music/${track.id}`, {
+      // Admin → full admin endpoint; artist-owner → restricted artist endpoint
+      const endpoint = isAdmin ? `/api/admin/music/${track.id}` : `/api/music/${track.id}`;
+      const res = await fetch(endpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -1717,6 +1721,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           onBuy={() => { setMoreTrack(null); onBuy(moreTrack); }}
           canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
+          currentUserId={user?.id}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -2320,6 +2325,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           onBuy={() => { setMoreTrack(null); onBuy(moreTrack); }}
           canDownload={moreTrack.monetization_type !== "sale" || purchasedIds.has(moreTrack.id)}
           isAdmin={isAdmin}
+          currentUserId={(user as any)?.id}
           onEdit={onEdit}
           onDelete={onDelete}
         />
@@ -3184,7 +3190,9 @@ export default function FlexaMusic() {
     if (!window.confirm(t("music.confirmDeleteQ"))) return;
     try {
       const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
-      const res = await fetch(`/api/admin/music/${id}`, {
+      // Admin → admin endpoint; artist-owner → restricted artist endpoint
+      const endpoint = isAdmin ? `/api/admin/music/${id}` : `/api/music/${id}`;
+      const res = await fetch(endpoint, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -3325,6 +3333,7 @@ export default function FlexaMusic() {
           track={editTrack}
           onClose={() => setEditTrack(null)}
           onSaved={handleEditSaved}
+          isAdmin={isAdmin}
         />
       )}
 

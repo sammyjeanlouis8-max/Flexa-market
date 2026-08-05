@@ -898,7 +898,7 @@ export default function Admin() {
     setSellerPayoutActioning(payoutId);
     try {
       await adminFetch(`/api/admin/seller-payouts/${payoutId}/mark-paid`, "POST", { notes: sellerPayoutNote[payoutId] ?? "" });
-      toast({ title: "✅ Peman make kòm peye" });
+      toast({ title: t("adminBanner.toastPaymentMarked") });
       await loadSellerPayouts();
     } catch (e: any) { toast({ title: e.message, variant: "destructive" }); }
     finally { setSellerPayoutActioning(null); }
@@ -992,7 +992,7 @@ export default function Admin() {
         adminNote: driverAppNote || null,
         vehicleType: driverAppVehicleType,
       });
-      toast({ title: "✅ Demand chofe aprouve!" });
+      toast({ title: t("adminBanner.toastDriverApproved") });
       setDriverAppNoteId(null); setDriverAppNote(""); setDriverAppExpanded(null);
       await loadDriverApps();
     } catch (e: any) { toast({ title: e.message ?? "Erè", variant: "destructive" }); }
@@ -1003,7 +1003,7 @@ export default function Admin() {
     setDriverAppActioning(appId);
     try {
       await adminFetch(`/api/admin/delivery/applications/${appId}/reject`, "PATCH", { adminNote: driverAppNote || null });
-      toast({ title: "❌ Demand chofe rejete" });
+      toast({ title: t("adminBanner.toastDriverRejected") });
       setDriverAppNoteId(null); setDriverAppNote(""); setDriverAppExpanded(null);
       await loadDriverApps();
     } catch (e: any) { toast({ title: e.message ?? "Erè", variant: "destructive" }); }
@@ -1090,7 +1090,7 @@ export default function Admin() {
     setKycAgentAppActioning(appId);
     try {
       await adminFetch(`/api/admin/agents/${appId}/reject`, "PATCH", { adminNote: kycAgentAppNote || null });
-      toast({ title: "❌ Demand anje rejete" });
+      toast({ title: t("adminBanner.toastAgentRejected") });
       setKycAgentAppNoteId(null); setKycAgentAppNote(""); setKycAgentAppExpanded(null);
       await loadKycAgentApps();
     } catch (e: any) { toast({ title: e.message ?? "Erè", variant: "destructive" }); }
@@ -2368,15 +2368,15 @@ export default function Admin() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">Demand Prè</p>
+              <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">{t("adminBanner.loanHubTitle")}</p>
               {loanAdminPending > 0 && (
                 <span className="bg-emerald-600 text-white text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none animate-pulse">
-                  {loanAdminPending} NOU
+                  {loanAdminPending} {t("adminBanner.loanHubNew")}
                 </span>
               )}
             </div>
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
-              {loanAdminPending > 0 ? `${loanAdminPending} aplikasyon annatant revizyon` : "Klike pou wè tout demand prè"}
+              {loanAdminPending > 0 ? t("adminBanner.loanHubPending", { count: loanAdminPending }) : t("adminBanner.loanHubEmpty")}
             </p>
           </div>
           <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
@@ -2430,7 +2430,7 @@ export default function Admin() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-fuchsia-900 dark:text-fuchsia-100">🎵 Flexa Music</p>
-            <p className="text-xs text-fuchsia-600 dark:text-fuchsia-400 mt-0.5">Ajoute &amp; jere chante, album, jen</p>
+            <p className="text-xs text-fuchsia-600 dark:text-fuchsia-400 mt-0.5">{t("adminBanner.musicHubSubtitle")}</p>
           </div>
           <ArrowRight className="h-4 w-4 text-fuchsia-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
@@ -2462,7 +2462,7 @@ export default function Admin() {
         <div className="mb-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 px-4 py-3 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 shrink-0">
             <Globe className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <span className="text-xs font-bold text-blue-800 dark:text-blue-200">Wè pa peyi :</span>
+            <span className="text-xs font-bold text-blue-800 dark:text-blue-200">{t("adminBanner.countryViewLabel")}</span>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
             {(() => {
@@ -2663,7 +2663,7 @@ export default function Admin() {
             {isSuperAdmin && (
               <TabsTrigger value="commission" className="text-xs" onClick={loadCommission} data-testid="tab-commission">% Commission</TabsTrigger>
             )}
-            {isSuperAdmin && <TabsTrigger value="payment-apis" className="text-xs" onClick={() => { loadPaymentProviders(); loadUsdtWallet(); }} data-testid="tab-payment-apis"><KeyRound className="h-3 w-3 mr-1" />API Peman</TabsTrigger>}
+            {isSuperAdmin && <TabsTrigger value="payment-apis" className="text-xs" onClick={() => { loadPaymentProviders(); loadUsdtWallet(); }} data-testid="tab-payment-apis"><KeyRound className="h-3 w-3 mr-1" />{t("adminBanner.tabPaymentApis")}</TabsTrigger>}
             <TabsTrigger value="reports" className="text-xs">Reports</TabsTrigger>
             {/* Admin Team moved to top — hidden here to avoid duplicate */}
             <TabsTrigger value="support" className="text-xs relative" data-testid="tab-support"><MessageSquare className="h-3 w-3 mr-1" />Sipò{supportUnread > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-red-600 hover:bg-red-600">{supportUnread}</Badge>}</TabsTrigger>
@@ -2675,7 +2675,7 @@ export default function Admin() {
               <TabsTrigger value="cashout" className="text-xs" onClick={loadCashout} data-testid="tab-cashout"><ArrowDownCircle className="h-3 w-3 mr-1" />Retrait{cashoutRequests.filter((r: any) => r.status === "pending").length > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-amber-600 hover:bg-amber-600">{cashoutRequests.filter((r: any) => r.status === "pending").length}</Badge>}</TabsTrigger>
             )}
             {can("payments") && (
-              <TabsTrigger value="seller-payouts" className="text-xs" onClick={loadSellerPayouts} data-testid="tab-seller-payouts"><Wallet className="h-3 w-3 mr-1" />Peman Vendè{sellerPayouts.filter((p: any) => p.status === "pending").length > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-orange-600 hover:bg-orange-600">{sellerPayouts.filter((p: any) => p.status === "pending").length}</Badge>}</TabsTrigger>
+              <TabsTrigger value="seller-payouts" className="text-xs" onClick={loadSellerPayouts} data-testid="tab-seller-payouts"><Wallet className="h-3 w-3 mr-1" />{t("adminBanner.tabSellerPayouts")}{sellerPayouts.filter((p: any) => p.status === "pending").length > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-orange-600 hover:bg-orange-600">{sellerPayouts.filter((p: any) => p.status === "pending").length}</Badge>}</TabsTrigger>
             )}
             <TabsTrigger value="promo" className="text-xs" onClick={loadPromo} data-testid="tab-promo"><Gift className="h-3 w-3 mr-1" />Promo</TabsTrigger>
             <TabsTrigger value="subscriptions" className="text-xs" onClick={loadAdminSubscriptions} data-testid="tab-subscriptions"><Crown className="h-3 w-3 mr-1" />Abònman</TabsTrigger>
@@ -2683,13 +2683,13 @@ export default function Admin() {
               <TabsTrigger value="agents" className="text-xs" onClick={loadAgents} data-testid="tab-agents"><ShieldCheck className="h-3 w-3 mr-1" />Ajant</TabsTrigger>
             )}
             <TabsTrigger value="chofe-apps" className="text-xs relative" onClick={() => loadDriverApps(driverAppsFilter)} data-testid="tab-chofe-apps">
-              <Truck className="h-3 w-3 mr-1" />Demand Chofe
+              <Truck className="h-3 w-3 mr-1" />{t("adminBanner.tabDriverApps")}
               {driverApps.filter((a: any) => a.status === "pending").length > 0 && (
                 <span className="ml-1 bg-orange-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{driverApps.filter((a: any) => a.status === "pending").length}</span>
               )}
             </TabsTrigger>
             <TabsTrigger value="loans" className="text-xs relative" data-testid="tab-loans">
-              <Landmark className="h-3 w-3 mr-1" />Demand Prè
+              <Landmark className="h-3 w-3 mr-1" />{t("adminBanner.tabLoanApps")}
               {loanAdminPending > 0 && (
                 <span className="ml-1 bg-emerald-600 text-white text-[9px] font-black rounded-full px-1 leading-none animate-pulse">{loanAdminPending}</span>
               )}
@@ -2702,7 +2702,7 @@ export default function Admin() {
               )}
             </TabsTrigger>
             <TabsTrigger value="anje-apps" className="text-xs relative" onClick={() => loadKycAgentApps(kycAgentAppsFilter)} data-testid="tab-anje-apps">
-              <ShieldCheck className="h-3 w-3 mr-1" />Demand Anje
+              <ShieldCheck className="h-3 w-3 mr-1" />{t("adminBanner.tabAgentApps")}
               {kycAgentApps.filter((a: any) => a.status === "pending").length > 0 && (
                 <span className="ml-1 bg-violet-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{kycAgentApps.filter((a: any) => a.status === "pending").length}</span>
               )}

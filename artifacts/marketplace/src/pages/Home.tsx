@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 
-import { Search, ChevronRight, Zap, TrendingUp, Package, ArrowRight, MapPin, Navigation, AlertCircle, ShieldCheck, BadgeCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video } from "lucide-react";
+import { Search, ChevronRight, Zap, TrendingUp, Package, ArrowRight, MapPin, Navigation, AlertCircle, ShieldCheck, BadgeCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
@@ -1153,6 +1153,32 @@ export default function Home() {
             </div>
           </section>
         ) : null}
+
+        {/* === FLEXA FAMILY SECTION (paid-plan sellers, ranked by tier) === */}
+        {stats?.flexaFamilyListings && stats.flexaFamilyListings.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-1.5">
+                <Crown className="h-4 w-4 text-purple-500 fill-purple-500" />
+                <h2 className="text-base font-bold text-foreground">{t("home.flexaFamily")}</h2>
+              </div>
+            </div>
+            <div
+              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {stats.flexaFamilyListings.map((l: NormalListing) => (
+                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52 relative">
+                  <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-purple-600/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
+                    <Crown className="h-2.5 w-2.5" />
+                    {t("home.flexaFamily")}
+                  </div>
+                  <ListingCard listing={l} compact />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* === VIDEO PROMO SECTION === */}
         <VideoPromoSection />

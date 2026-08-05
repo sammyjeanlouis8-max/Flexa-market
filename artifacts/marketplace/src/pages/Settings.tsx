@@ -58,6 +58,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
   const [status, setStatus] = useState<string>("not_connected");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const { t } = useTranslation();
 
   const tk = () => localStorage.getItem("flexamarket_token") ?? "";
 
@@ -126,27 +127,22 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
       <div className="p-4 space-y-3">
         {isActive ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Kont Stripe ou <span className="font-semibold text-foreground">aktif</span>. Ou pral resevwa peman otomatikman apre chak vant konfime.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("settings.stripeActiveDesc")}</p>
             <ul className="text-xs text-muted-foreground space-y-1">
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Peman otomatik — pa bezwen atann admin</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Kòmisyon platfòm dedui otomatikman</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Peman nan 2-7 jou travay</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoNoWait")}</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletPaydays")}</li>
             </ul>
             <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-              Wè Tableau de Bò Stripe
+              Stripe Dashboard
             </Button>
           </>
         ) : isPending ? (
           <>
-            <p className="text-sm text-muted-foreground">
-              Ou kòmanse konfigirasyon Stripe ou — konplete li pou kòmanse resevwa peman.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("settings.stripePendingDesc")}</p>
             <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              Konplete Konfigirasyon Stripe
+              {t("settings.stripeCompleteBtn")}
             </Button>
           </>
         ) : (
@@ -154,17 +150,16 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
             {required && (
               <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>Konekte kont Stripe ou pou ka resevwa peman pou vant ou yo.</span>
+                <span>{t("settings.stripeRequiredAlert")}</span>
               </div>
             )}
             <ul className="text-xs text-muted-foreground space-y-1">
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Peman otomatik — rapid ak sekirize</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Idantite verifye pa Stripe</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Sèlman kòmisyon platfòm dedui</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoFast")}</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletIdentityVerified")}</li>
             </ul>
             <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              Konekte kont Stripe ou
+              {t("settings.stripeConnectBtn")}
             </Button>
           </>
         )}
@@ -180,6 +175,7 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => { setInput(account?.moncashNumber ?? ""); }, [account?.moncashNumber]);
 
@@ -220,22 +216,22 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
 
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-          Resevwa peman via MonCash (peman manyèl)
+          {t("settings.moncashSectionTitle")}
         </p>
         {isVerified ? (
           <p className="text-sm text-muted-foreground">
-            Nimewo MonCash <span className="font-mono font-semibold text-foreground">{account!.moncashNumber}</span> verifye.
+            MonCash <span className="font-mono font-semibold text-foreground">{account!.moncashNumber}</span> ✓
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Antre nimewo MonCash ayisyen ou pou resevwa peman apre chak vant.
+            {t("settings.moncashEnterDesc")}
           </p>
         )}
       </div>
 
       <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-        <span>Peman ka pran <strong>24-72 èdtan</strong> apre vant konfime.</span>
+        <span>{t("settings.moncashDelay")}</span>
       </div>
 
       <div className="flex gap-2">
@@ -264,15 +260,16 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
 
 // ─── Trust footer (reused across panels) ──────────────────────────────────────
 function TrustFooter() {
+  const { t } = useTranslation();
   return (
     <div className="border-t border-border pt-3 mt-1 grid grid-cols-2 gap-2">
       <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-        <span>Peman sekirize disponib</span>
+        <span>{t("settings.securePayout")}</span>
       </div>
       <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <UserCheck className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-        <span>Peman manyèl verifye pa admin</span>
+        <span>{t("settings.manualPayout")}</span>
       </div>
     </div>
   );
@@ -283,6 +280,7 @@ function CardPayoutMethodPanel() {
   const [method, setMethod] = useState<"fm_wallet" | "stripe">("fm_wallet");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const { t } = useTranslation();
 
   const tk = () => localStorage.getItem("flexamarket_token") ?? "";
 
@@ -312,7 +310,7 @@ function CardPayoutMethodPanel() {
   return (
     <Card className="overflow-hidden mt-3">
       <div className="p-4 border-b border-border bg-muted/30">
-        <span className="font-semibold text-sm">Kijan ou vle touche lè yon moun peye pa kat?</span>
+        <span className="font-semibold text-sm">{t("settings.cardPayoutQuestion")}</span>
       </div>
       <div className="p-4 space-y-3">
         {/* Kat FM option */}
@@ -334,7 +332,7 @@ function CardPayoutMethodPanel() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">Kat FM</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400">
-                Rekòmande
+                {t("settings.recommended")}
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -386,6 +384,7 @@ function HaitiPayoutPanel() {
   const [account, setAccount] = useState<PayoutAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"stripe" | "moncash">("stripe");
+  const { t } = useTranslation();
 
   // Stripe status
   const [stripeStatus, setStripeStatus] = useState<string>("not_connected");
@@ -447,7 +446,7 @@ function HaitiPayoutPanel() {
   return (
     <Card className="overflow-hidden">
       <div className="p-4 border-b border-border bg-muted/30 flex items-center justify-between">
-        <span className="font-semibold text-sm">Metòd Peman Vant</span>
+        <span className="font-semibold text-sm">{t("settings.payoutMethodTitle")}</span>
         {(loading || stripeLoading) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
@@ -464,7 +463,7 @@ function HaitiPayoutPanel() {
             : makeBadge(stripeActive, stripePending, false)
           }
           {!stripeLoading && !stripeActive && !stripePending && (
-            <Badge className="ml-1.5 bg-blue-100 text-blue-700 border-0 text-[10px]">Rekòmande</Badge>
+            <Badge className="ml-1.5 bg-blue-100 text-blue-700 border-0 text-[10px]">{t("settings.recommended")}</Badge>
           )}
         </button>
         <button
@@ -484,41 +483,35 @@ function HaitiPayoutPanel() {
             <div className="space-y-3">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  Peman Imedya (Rekòmande)
+                  {t("settings.instantPayout")}
                 </p>
                 {stripeActive ? (
-                  <p className="text-sm text-muted-foreground">
-                    Kont Stripe ou <span className="font-semibold text-foreground">aktif</span>. Peman otomatik apre chak vant.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t("settings.stripeActiveDesc")}</p>
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Konekte kont Stripe ou pou peman imedya otomatik, menm si Stripe pa toujou popilè ann Ayiti.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t("settings.stripeConnectDesc")}</p>
                 )}
               </div>
 
               {stripeActive ? (
                 <>
                   <ul className="text-xs text-muted-foreground space-y-1">
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Peman otomatik — rapid ak sekirize</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Pa bezwen atann admin</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Aksè ak Tableau de Bò Stripe</li>
+                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoFast")}</li>
+                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoNoWait")}</li>
                   </ul>
                   <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
                     {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-                    Wè Tableau de Bò Stripe
+                    Stripe Dashboard
                   </Button>
                 </>
               ) : (
                 <>
                   <ul className="text-xs text-muted-foreground space-y-1">
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Peman imedya — san delè 24-72h</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Idantite verifye pa Stripe</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />Pou itilizatè avanse</li>
+                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletInstantPayout")}</li>
+                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletIdentityVerified")}</li>
                   </ul>
                   <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
                     {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                    {stripePending ? "Konplete Konfigirasyon Stripe" : "Konekte kont Stripe ou"}
+                    {stripePending ? t("settings.stripeCompleteBtn") : t("settings.stripeConnectBtn")}
                   </Button>
                 </>
               )}
@@ -540,12 +533,13 @@ function HaitiPayoutPanel() {
 // ─── Payment Status Summary Banner ────────────────────────────────────────────
 function PaymentStatusBanner({ stripeStatus, country }: { stripeStatus?: string | null; country?: string | null }) {
   const isMoncash = country ? MONCASH_COUNTRIES.has(country) : false;
+  const { t } = useTranslation();
 
   if (stripeStatus === "active") {
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
-        <span><strong>Stripe Konekte ✅</strong> — Peman otomatik aktif pou kont ou.</span>
+        <span>{t("settings.stripeConnectedBanner")}</span>
       </div>
     );
   }
@@ -554,7 +548,7 @@ function PaymentStatusBanner({ stripeStatus, country }: { stripeStatus?: string 
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
         <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span><strong>MonCash disponib ⚠️</strong> — Peman manyèl ka pran 24-72 èdtan. Stripe rekòmande pou peman rapid.</span>
+        <span>{t("settings.moncashAvailableBanner")}</span>
       </div>
     );
   }
@@ -562,7 +556,7 @@ function PaymentStatusBanner({ stripeStatus, country }: { stripeStatus?: string 
   return (
     <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
       <AlertTriangle className="h-4 w-4 shrink-0" />
-      <span><strong>Stripe pa konekte</strong> — Konekte kont Stripe ou pou resevwa peman.</span>
+      <span>{t("settings.stripeNotConnectedBanner")}</span>
     </div>
   );
 }
@@ -700,7 +694,7 @@ export default function Settings() {
       {/* Payments section */}
       <div className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2">
-          Peman
+          {t("settings.paymentSection")}
         </h2>
 
         <PaymentStatusBanner stripeStatus={user.stripeAccountStatus} country={user.country} />

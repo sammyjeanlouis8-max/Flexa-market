@@ -42,6 +42,20 @@ function isInternal(url: string): boolean {
   }
 }
 
+// Returns true for any Stripe payment/checkout/billing hostname that should be
+// opened in the native stripe-checkout screen (with Dynamic Island safe area).
+function isStripePayment(hostname: string): boolean {
+  const STRIPE_PAYMENT_HOSTS = [
+    "checkout.stripe.com",
+    "buy.stripe.com",       // Stripe payment links (subscriptions, one-time)
+    "billing.stripe.com",   // Stripe customer portal
+    "invoice.stripe.com",   // Stripe invoice pages
+  ];
+  return STRIPE_PAYMENT_HOSTS.some(
+    (h) => hostname === h || hostname.endsWith("." + h)
+  );
+}
+
 // Max file size we can safely pass through the postMessage bridge (40 MB)
 const MAX_BRIDGE_BYTES = 40 * 1024 * 1024;
 
@@ -442,7 +456,11 @@ true;`.trim();
           const url = request.url;
           try {
             const { hostname } = new URL(url);
-            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+            // Redirect ALL Stripe payment/checkout pages to the native stripe-checkout
+            // screen which has proper Dynamic Island safe area handling.
+            // This covers: checkout.stripe.com, buy.stripe.com (payment links),
+            // billing.stripe.com (customer portal), and any subdomain variants.
+            if (isStripePayment(hostname)) {
               setTimeout(() => router.push(`/stripe-checkout?url=${encodeURIComponent(url)}`), 0);
               return false;
             }
@@ -454,7 +472,7 @@ true;`.trim();
           const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? "";
           try {
             const { hostname } = new URL(targetUrl);
-            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
+            if (isStripePayment(hostname)) {
               router.push(`/stripe-checkout?url=${encodeURIComponent(targetUrl)}`);
             }
           } catch {}

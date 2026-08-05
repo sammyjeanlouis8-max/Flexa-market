@@ -10,25 +10,28 @@ function factorial(n: number): number {
   return n * factorial(n - 1);
 }
 
-function safeEval(
-  expr: string,
-  deg: boolean,
-): { value: string; ok: boolean } {
+function safeEval(expr: string, deg: boolean): { value: string; ok: boolean } {
   if (!expr || expr === "-") return { value: "0", ok: false };
   try {
     let s = expr
       .replace(/×/g, "*")
       .replace(/÷/g, "/")
+      // ² ³ powers (must come before π/e substitution)
+      .replace(/\(([^)]+)\)²/g, "(($1)**2)")
+      .replace(/\(([^)]+)\)³/g, "(($1)**3)")
+      .replace(/(\d+(?:\.\d+)?)²/g, "($1**2)")
+      .replace(/(\d+(?:\.\d+)?)³/g, "($1**3)")
       .replace(/π/g, `(${Math.PI})`)
-      .replace(/(?<!\w)e(?!\w)/g, `(${Math.E})`)
+      .replace(/(?<![a-zA-Z])e(?![a-zA-Z\d])/g, `(${Math.E})`)
       .replace(/\^/g, "**")
-      // handle implicit multiplication: 2π → 2*(π), 3( → 3*(
-      .replace(/(\d)(π|e\b)/g, "$1*$2")
+      // % as percent-of (divide by 100)
+      .replace(/(\d+(?:\.\d+)?)%/g, "($1/100)")
+      // implicit multiplication: 2π → 2*(π), 3( → 3*(
       .replace(/(\d)\(/g, "$1*(")
-      // factorial: n! → FACT(n) — simple last-number replacement
+      // factorial
       .replace(/(\d+(?:\.\d+)?)!/g, (_: string, n: string) => `FACT(${n})`);
 
-    // Replace trig/log names (order matters: sin⁻¹ before sin)
+    // Replace trig/log (inverses before direct)
     s = s
       .replace(/sin⁻¹\(/g, "__ASIN(")
       .replace(/cos⁻¹\(/g, "__ACOS(")
@@ -48,8 +51,8 @@ function safeEval(
 
     /* eslint-disable no-new-func */
     const fn = new Function(
-      "__SIN", "__COS", "__TAN", "__ASIN", "__ACOS", "__ATAN",
-      "__LOG10", "__LN", "__SQRT", "__CBRT", "__ABS", "FACT",
+      "__SIN","__COS","__TAN","__ASIN","__ACOS","__ATAN",
+      "__LOG10","__LN","__SQRT","__CBRT","__ABS","FACT",
       `"use strict"; return (${s})`,
     );
 
@@ -60,25 +63,19 @@ function safeEval(
       (x: number) => fromRad(Math.asin(x)),
       (x: number) => fromRad(Math.acos(x)),
       (x: number) => fromRad(Math.atan(x)),
-      Math.log10,
-      Math.log,
-      Math.sqrt,
-      Math.cbrt,
-      Math.abs,
+      Math.log10, Math.log, Math.sqrt, Math.cbrt, Math.abs,
       factorial,
     );
 
     if (typeof result !== "number") return { value: "Error", ok: false };
-    if (!isFinite(result)) {
-      return { value: isNaN(result) ? "Undefine" : "∞", ok: false };
-    }
+    if (!isFinite(result)) return { value: isNaN(result) ? "Undef" : "∞", ok: false };
 
     const abs = Math.abs(result);
     let formatted: string;
     if (abs === 0) {
       formatted = "0";
     } else if (abs >= 1e10 || (abs < 0.0001 && abs > 0)) {
-      formatted = result.toExponential(6).replace(/\.?0+(e)/, "$1");
+      formatted = result.toExponential(5).replace(/\.?0+(e)/, "$1");
     } else {
       formatted = parseFloat(result.toPrecision(10)).toString();
     }
@@ -88,128 +85,119 @@ function safeEval(
   }
 }
 
-// ── Button spec ────────────────────────────────────────────────────────────
+// ── Button types ──────────────────────────────────────────────────────────
 type BtnKind =
-  | { t: "digit"; v: string }
-  | { t: "op"; v: string }          // +, -, ×, ÷, ^, %
-  | { t: "fn"; v: string }          // sin(, cos(, …
-  | { t: "const"; v: string }       // π, e
-  | { t: "paren"; v: "(" | ")" }
-  | { t: "special"; v: string };    // AC, DEL, =, +/-, M+, M-, MR, MC, EXP, ANS, SHIFT, DEG
+  | { t: "digit";   v: string }
+  | { t: "op";      v: string }
+  | { t: "fn";      v: string }
+  | { t: "const";   v: string }
+  | { t: "paren";   v: "(" | ")" }
+  | { t: "special"; v: string };
 
 interface BtnDef {
   label: React.ReactNode;
-  sub?: string;      // small label above (shift label)
+  sub?: string;
   kind: BtnKind;
   color?: "orange" | "dark" | "sci" | "mem" | "shift";
-  wide?: boolean;
 }
 
 const BUTTONS: BtnDef[] = [
-  // ── Row 1: SHIFT + memory ────────────────────────────────────────────────
+  // Row 1: SHIFT + memory
   { label: "SHIFT", kind: { t: "special", v: "SHIFT" }, color: "shift" },
   { label: "MC",    kind: { t: "special", v: "MC"    }, color: "mem"   },
   { label: "M+",    kind: { t: "special", v: "M+"    }, color: "mem"   },
-  { label: "M-",    kind: { t: "special", v: "M-"    }, color: "mem"   },
+  { label: "M−",    kind: { t: "special", v: "M-"    }, color: "mem"   },
   { label: "MR",    kind: { t: "special", v: "MR"    }, color: "mem"   },
 
-  // ── Row 2: trig (sin/sin⁻¹ via SHIFT) ────────────────────────────────────
-  { label: "sin", sub: "sin⁻¹", kind: { t: "fn", v: "sin("    }, color: "sci" },
-  { label: "cos", sub: "cos⁻¹", kind: { t: "fn", v: "cos("    }, color: "sci" },
-  { label: "tan", sub: "tan⁻¹", kind: { t: "fn", v: "tan("    }, color: "sci" },
-  { label: "ln",  sub: "eˣ",    kind: { t: "fn", v: "ln("     }, color: "sci" },
-  { label: "log", sub: "10ˣ",   kind: { t: "fn", v: "log("    }, color: "sci" },
+  // Row 2: trig
+  { label: "sin", sub: "sin⁻¹", kind: { t: "fn", v: "sin(" }, color: "sci" },
+  { label: "cos", sub: "cos⁻¹", kind: { t: "fn", v: "cos(" }, color: "sci" },
+  { label: "tan", sub: "tan⁻¹", kind: { t: "fn", v: "tan(" }, color: "sci" },
+  { label: "ln",  sub: "eˣ",    kind: { t: "fn", v: "ln("  }, color: "sci" },
+  { label: "log", sub: "10ˣ",   kind: { t: "fn", v: "log(" }, color: "sci" },
 
-  // ── Row 3: powers / roots ──────────────────────────────────────────────
-  { label: "x²",  sub: "√",     kind: { t: "fn", v: "²"       }, color: "sci" },
-  { label: "x³",  sub: "∛",     kind: { t: "fn", v: "³"       }, color: "sci" },
-  { label: "xʸ",  sub: "",      kind: { t: "op", v: "^"       }, color: "sci" },
-  { label: "(",               kind: { t: "paren", v: "("      }, color: "sci" },
-  { label: ")",               kind: { t: "paren", v: ")"      }, color: "sci" },
+  // Row 3: powers / roots
+  { label: "x²",  sub: "√",  kind: { t: "fn",    v: "²"   }, color: "sci" },
+  { label: "x³",  sub: "∛",  kind: { t: "fn",    v: "³"   }, color: "sci" },
+  { label: "xʸ",  sub: "",   kind: { t: "op",    v: "^"   }, color: "sci" },
+  { label: "(",              kind: { t: "paren",  v: "("   }, color: "sci" },
+  { label: ")",              kind: { t: "paren",  v: ")"   }, color: "sci" },
 
-  // ── Row 4: constants / misc ────────────────────────────────────────────
-  { label: "π",   sub: "",      kind: { t: "const", v: "π"    }, color: "sci" },
-  { label: "e",   sub: "",      kind: { t: "const", v: "e"    }, color: "sci" },
-  { label: "%",   sub: "",      kind: { t: "op",   v: "%"     }, color: "sci" },
-  { label: "x!",  sub: "",      kind: { t: "fn",   v: "!"     }, color: "sci" },
-  { label: "abs", sub: "",      kind: { t: "fn",   v: "abs("  }, color: "sci" },
+  // Row 4: constants / misc
+  { label: "π",   kind: { t: "const", v: "π"   }, color: "sci" },
+  { label: "e",   kind: { t: "const", v: "e"   }, color: "sci" },
+  { label: "%",   kind: { t: "op",    v: "%"   }, color: "sci" },
+  { label: "x!",  kind: { t: "fn",    v: "!"   }, color: "sci" },
+  { label: "abs", kind: { t: "fn",    v: "abs(" }, color: "sci" },
 
-  // ── Row 5: 7 8 9 DEL AC ───────────────────────────────────────────────
-  { label: "7",   kind: { t: "digit", v: "7" } },
-  { label: "8",   kind: { t: "digit", v: "8" } },
-  { label: "9",   kind: { t: "digit", v: "9" } },
-  { label: <Delete className="h-4 w-4" />, kind: { t: "special", v: "DEL"  }, color: "dark" },
-  { label: "AC",  kind: { t: "special", v: "AC"   }, color: "orange" },
+  // Row 5: 7 8 9 DEL AC
+  { label: "7", kind: { t: "digit", v: "7" } },
+  { label: "8", kind: { t: "digit", v: "8" } },
+  { label: "9", kind: { t: "digit", v: "9" } },
+  { label: <Delete className="w-4 h-4" />, kind: { t: "special", v: "DEL" }, color: "dark" },
+  { label: "AC", kind: { t: "special", v: "AC" }, color: "orange" },
 
-  // ── Row 6: 4 5 6 × ÷ ──────────────────────────────────────────────────
-  { label: "4",   kind: { t: "digit", v: "4" } },
-  { label: "5",   kind: { t: "digit", v: "5" } },
-  { label: "6",   kind: { t: "digit", v: "6" } },
-  { label: "×",   kind: { t: "op",   v: "×" }, color: "dark" },
-  { label: "÷",   kind: { t: "op",   v: "÷" }, color: "dark" },
+  // Row 6: 4 5 6 × ÷
+  { label: "4", kind: { t: "digit", v: "4" } },
+  { label: "5", kind: { t: "digit", v: "5" } },
+  { label: "6", kind: { t: "digit", v: "6" } },
+  { label: "×", kind: { t: "op",    v: "×" }, color: "dark" },
+  { label: "÷", kind: { t: "op",    v: "÷" }, color: "dark" },
 
-  // ── Row 7: 1 2 3 + - ──────────────────────────────────────────────────
-  { label: "1",   kind: { t: "digit", v: "1" } },
-  { label: "2",   kind: { t: "digit", v: "2" } },
-  { label: "3",   kind: { t: "digit", v: "3" } },
-  { label: "+",   kind: { t: "op",   v: "+" }, color: "dark" },
-  { label: "-",   kind: { t: "op",   v: "-" }, color: "dark" },
+  // Row 7: 1 2 3 + −
+  { label: "1", kind: { t: "digit", v: "1" } },
+  { label: "2", kind: { t: "digit", v: "2" } },
+  { label: "3", kind: { t: "digit", v: "3" } },
+  { label: "+", kind: { t: "op",    v: "+" }, color: "dark" },
+  { label: "−", kind: { t: "op",    v: "-" }, color: "dark" },
 
-  // ── Row 8: 0 . +/- ANS = ──────────────────────────────────────────────
-  { label: "0",   kind: { t: "digit", v: "0" } },
-  { label: ".",   kind: { t: "digit", v: "." } },
-  { label: "EXP", kind: { t: "special", v: "EXP" }, color: "dark" },
+  // Row 8: 0 . +/- EXP =
+  { label: "0",   kind: { t: "digit",   v: "0"   } },
+  { label: ".",   kind: { t: "digit",   v: "."   } },
   { label: "+/−", kind: { t: "special", v: "+/-" }, color: "dark" },
+  { label: "EXP", kind: { t: "special", v: "EXP" }, color: "dark" },
   { label: "=",   kind: { t: "special", v: "="   }, color: "orange" },
 ];
 
-// ── Shift map: normal → shift label/action ────────────────────────────────
 const SHIFT_MAP: Record<string, string> = {
   "sin(": "sin⁻¹(",
   "cos(": "cos⁻¹(",
   "tan(": "tan⁻¹(",
   "²":    "√(",
   "³":    "∛(",
-  "ln(":  "eˣ(",   // eˣ → insert e^(
+  "ln(":  "eˣ(",
 };
 
-// ── Colors ─────────────────────────────────────────────────────────────────
 const COLOR_MAP: Record<string, string> = {
-  orange: "bg-orange-500 hover:bg-orange-400 active:bg-orange-600 text-white shadow-[inset_0_-3px_0_rgba(0,0,0,0.35)]",
-  dark:   "bg-[#3a3a3a] hover:bg-[#484848] active:bg-[#2a2a2a] text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
-  sci:    "bg-[#252535] hover:bg-[#30304a] active:bg-[#1e1e2c] text-[#c8c8f0] shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
-  mem:    "bg-[#1e2a1e] hover:bg-[#263626] active:bg-[#182018] text-[#7ec87e] shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
-  shift:  "bg-[#2a1e00] hover:bg-[#3a2800] active:bg-[#1e1600] text-orange-400 shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
-  normal: "bg-[#2a2a2a] hover:bg-[#363636] active:bg-[#1e1e1e] text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
+  orange: "bg-orange-500 active:bg-orange-600 text-white shadow-[inset_0_-3px_0_rgba(0,0,0,0.4)]",
+  dark:   "bg-[#3a3a3a] active:bg-[#2a2a2a] text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
+  sci:    "bg-[#252535] active:bg-[#1e1e2c] text-[#c8c8f0] shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
+  mem:    "bg-[#1e2a1e] active:bg-[#182018] text-[#7ec87e] shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
+  shift:  "bg-[#2a1e00] active:bg-[#1e1600] text-orange-400 shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
+  normal: "bg-[#2a2a2a] active:bg-[#1e1e1e] text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]",
 };
 
-// ── Main component ─────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────
 export default function CalculatorPage() {
   const { user } = useAuth();
 
-  const [expr, setExpr]         = useState("");          // expression string
-  const [memory, setMemory]     = useState(0);
-  const [hasMemory, setHasMemory] = useState(false);
-  const [degMode, setDegMode]   = useState(true);
-  const [shiftOn, setShiftOn]   = useState(false);
-  const [isResult, setIsResult] = useState(false);       // just pressed =
-  const [lastAns, setLastAns]   = useState("0");
-  const [history, setHistory]   = useState<string[]>([]); // prev expressions
+  const [expr,       setExpr]       = useState("");
+  const [memory,     setMemory]     = useState(0);
+  const [hasMemory,  setHasMemory]  = useState(false);
+  const [degMode,    setDegMode]    = useState(true);
+  const [shiftOn,    setShiftOn]    = useState(false);
+  const [isResult,   setIsResult]   = useState(false);
+  const [lastAns,    setLastAns]    = useState("0");
 
-  // Live preview
-  const preview = safeEval(expr || "0", degMode);
+  const preview       = safeEval(expr || "0", degMode);
   const displayResult = expr ? preview.value : "0";
+  const displayExpr   = (expr || "0")
+    .replace(/\*/g, "×").replace(/\//g, "÷");
 
   const appendToExpr = useCallback((s: string) => {
-    setExpr(prev => {
-      if (isResult && /^[\d.]/.test(s)) {
-        setIsResult(false);
-        return s;
-      }
-      setIsResult(false);
-      return prev + s;
-    });
-  }, [isResult]);
+    setIsResult(false);
+    setExpr(prev => prev + s);
+  }, []);
 
   const handleBtn = useCallback((btn: BtnDef, shift: boolean) => {
     const k = btn.kind;
@@ -218,42 +206,28 @@ export default function CalculatorPage() {
       setShiftOn(s => !s);
       return;
     }
-
-    setShiftOn(false); // auto-clear shift after press
+    setShiftOn(false);
 
     if (k.t === "digit") {
-      if (isResult && k.v !== ".") {
-        setExpr(k.v);
+      setExpr(prev => {
+        if (isResult && k.v !== ".") { setIsResult(false); return k.v; }
         setIsResult(false);
-      } else {
-        setExpr(prev => {
-          if (prev === "0" && k.v !== ".") return k.v;
-          return prev + k.v;
-        });
-        setIsResult(false);
-      }
+        if (prev === "0" && k.v !== ".") return k.v;
+        return prev + k.v;
+      });
       return;
     }
 
-    if (k.t === "op") {
-      appendToExpr(k.v);
-      return;
-    }
-
-    if (k.t === "const") {
-      appendToExpr(k.v);
-      return;
-    }
-
-    if (k.t === "paren") {
+    if (k.t === "op" || k.t === "const" || k.t === "paren") {
+      if (isResult) setIsResult(false);
       appendToExpr(k.v);
       return;
     }
 
     if (k.t === "fn") {
+      if (isResult) setIsResult(false);
       let fn = k.v;
       if (shift && SHIFT_MAP[fn]) fn = SHIFT_MAP[fn];
-      // Handle ² and ³: append to current expr
       if (fn === "²") { appendToExpr("²"); return; }
       if (fn === "³") { appendToExpr("³"); return; }
       if (fn === "!") { appendToExpr("!"); return; }
@@ -267,15 +241,13 @@ export default function CalculatorPage() {
     if (k.t === "special") {
       switch (k.v) {
         case "AC":
-          setExpr("");
-          setIsResult(false);
+          setExpr(""); setIsResult(false);
           break;
 
         case "DEL":
           setExpr(prev => {
             if (!prev) return prev;
-            // Handle multi-char endings like "sin⁻¹(" or "sin("
-            const endings = ["sin⁻¹(","cos⁻¹(","tan⁻¹(","sin(","cos(","tan(","log(","ln(","√(","∛(","abs("];
+            const endings = ["sin⁻¹(","cos⁻¹(","tan⁻¹(","sin(","cos(","tan(","log(","ln(","√(","∛(","abs(","×10^"];
             for (const end of endings) {
               if (prev.endsWith(end)) return prev.slice(0, -end.length);
             }
@@ -287,7 +259,6 @@ export default function CalculatorPage() {
         case "=": {
           const ev = safeEval(expr || "0", degMode);
           if (ev.ok) {
-            setHistory(h => [expr, ...h].slice(0, 20));
             setLastAns(ev.value);
             setExpr(ev.value);
             setIsResult(true);
@@ -306,10 +277,6 @@ export default function CalculatorPage() {
           appendToExpr("×10^");
           break;
 
-        case "ANS":
-          appendToExpr(lastAns);
-          break;
-
         case "M+": {
           const v = safeEval(expr || "0", degMode);
           if (v.ok) { setMemory(m => m + parseFloat(v.value)); setHasMemory(true); }
@@ -321,25 +288,26 @@ export default function CalculatorPage() {
           break;
         }
         case "MR":
+          if (isResult) setIsResult(false);
           appendToExpr(String(memory));
           break;
         case "MC":
-          setMemory(0);
-          setHasMemory(false);
+          setMemory(0); setHasMemory(false);
           break;
       }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      void lastAns;
     }
   }, [expr, degMode, isResult, lastAns, memory, appendToExpr]);
 
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-[60vh] px-4">
-        <div className="bg-[#1a1a1a] border border-[#333] rounded-2xl p-8 text-center max-w-sm w-full">
+        <div className="text-center">
           <div className="text-4xl mb-3">🖩</div>
-          <h2 className="text-white font-bold text-lg mb-2">Kalkilatè Syantifik</h2>
-          <p className="text-gray-400 text-sm mb-5">Konekte pou itilize kalkilatè a.</p>
+          <p className="text-gray-400 text-sm mb-4">Konekte pou itilize kalkilatè a.</p>
           <Link href="/auth/login">
-            <button className="flex items-center gap-2 mx-auto bg-orange-500 hover:bg-orange-400 text-white font-semibold px-5 py-2.5 rounded-xl">
+            <button className="flex items-center gap-2 mx-auto bg-orange-500 text-white font-semibold px-5 py-2.5 rounded-xl">
               <ChevronRight className="h-4 w-4" />Konekte
             </button>
           </Link>
@@ -348,28 +316,23 @@ export default function CalculatorPage() {
     );
   }
 
-  // Formatted expression for display (replace * with × etc.)
-  const displayExpr = expr
-    .replace(/\*/g, "×")
-    .replace(/\//g, "÷")
-    || "0";
-
   return (
     <div
-      className="flex justify-center items-start min-h-screen pb-8"
-      style={{ background: "#0d0d0d" }}
+      className="flex justify-center"
+      style={{ background: "#0d0d0d", height: "calc(100dvh - 56px)", overflow: "hidden" }}
     >
       <div
-        className="w-full max-w-sm flex flex-col"
-        style={{ background: "#111", minHeight: "100vh" }}
+        className="w-full flex flex-col"
+        style={{ background: "#111", maxWidth: 420 }}
       >
-        {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-1">
-          <span className="text-white font-bold text-lg tracking-wide">Scientific</span>
-          <div className="flex items-center gap-3">
+        {/* Header */}
+        <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
+          <span className="text-white font-bold text-base tracking-wide">Scientific</span>
+          <div className="flex items-center gap-2">
+            {hasMemory && <span className="text-[#7ec87e] text-xs font-bold">M</span>}
             <button
               onClick={() => setDegMode(d => !d)}
-              className="px-2.5 py-0.5 rounded text-xs font-bold border"
+              className="px-2 py-0.5 rounded text-xs font-bold border"
               style={{
                 color: degMode ? "#f97316" : "#7ec8e3",
                 borderColor: degMode ? "#f97316" : "#7ec8e3",
@@ -378,67 +341,57 @@ export default function CalculatorPage() {
             >
               {degMode ? "DEG" : "RAD"}
             </button>
-            {hasMemory && (
-              <span className="text-[#7ec87e] text-xs font-bold">M</span>
-            )}
           </div>
         </div>
 
-        {/* ── Display ────────────────────────────────────────────────── */}
+        {/* Display */}
         <div
-          className="mx-3 rounded-xl px-4 pt-3 pb-4 mb-3 flex flex-col items-end justify-end"
+          className="mx-2 rounded-xl px-3 pt-2 pb-3 mb-2 flex flex-col items-end justify-end flex-shrink-0"
           style={{
             background: "#1a2318",
-            minHeight: 110,
+            minHeight: 76,
             boxShadow: "inset 0 2px 8px rgba(0,0,0,0.6)",
           }}
         >
-          {/* Expression (top, small) */}
           <div
-            className="w-full text-right text-sm leading-snug break-all mb-1"
-            style={{
-              color: "#6a9a6a",
-              fontFamily: "monospace",
-              minHeight: 20,
-              fontSize: 13,
-            }}
+            className="w-full text-right break-all leading-snug mb-0.5"
+            style={{ color: "#6a9a6a", fontFamily: "monospace", fontSize: 12, minHeight: 16 }}
           >
-            {displayExpr.length > 28
-              ? "…" + displayExpr.slice(-27)
-              : displayExpr}
+            {displayExpr.length > 30 ? "…" + displayExpr.slice(-29) : displayExpr}
           </div>
-
-          {/* Result (bottom, large) */}
           <div
             className="w-full text-right font-bold leading-none"
             style={{
               color: preview.ok || !expr ? "#c8e6c0" : "#e07070",
               fontFamily: "monospace",
-              fontSize: displayResult.length > 10 ? 26 : displayResult.length > 8 ? 32 : 40,
+              fontSize: displayResult.length > 11 ? 22
+                      : displayResult.length > 8  ? 28 : 36,
             }}
           >
             {displayResult}
           </div>
         </div>
 
-        {/* ── Button grid ────────────────────────────────────────────── */}
-        <div className="px-2 grid grid-cols-5 gap-1.5 flex-1">
+        {/* Button grid — fills remaining height */}
+        <div
+          className="px-2 pb-2 grid grid-cols-5"
+          style={{
+            flex: 1,
+            gap: 4,
+            gridTemplateRows: "repeat(8, 1fr)",
+            minHeight: 0,
+          }}
+        >
           {BUTTONS.map((btn, i) => {
             const isShiftActive = shiftOn && btn.kind.t === "special" && btn.kind.v === "SHIFT";
-            const colorKey = btn.color ?? "normal";
+            const colorKey   = btn.color ?? "normal";
             const colorClass = isShiftActive
               ? "bg-orange-500 text-white shadow-[inset_0_-2px_0_rgba(0,0,0,0.4)]"
               : COLOR_MAP[colorKey];
 
-            // Determine display label under shift
             let mainLabel = btn.label;
-            let subLabel  = btn.sub;
-            if (shiftOn && btn.kind.t === "fn") {
-              const shifted = SHIFT_MAP[btn.kind.v];
-              if (shifted) {
-                // Swap main/sub labels visually to hint shift action
-                mainLabel = subLabel || btn.label;
-              }
+            if (shiftOn && btn.kind.t === "fn" && SHIFT_MAP[btn.kind.v]) {
+              mainLabel = btn.sub || btn.label;
             }
 
             return (
@@ -451,32 +404,26 @@ export default function CalculatorPage() {
                 className={`
                   relative flex flex-col items-center justify-center
                   rounded-xl select-none active:scale-95
-                  transition-transform duration-75
+                  transition-transform duration-75 w-full h-full
                   ${colorClass}
                 `}
-                style={{ height: 56, fontSize: 16 }}
               >
-                {/* Shift sub-label */}
-                {subLabel && (
+                {btn.sub && (
                   <span
                     className="absolute top-0.5 left-0 right-0 text-center leading-none"
                     style={{
-                      fontSize: 8,
-                      color: shiftOn ? "#f97316" : "rgba(255,255,255,0.35)",
-                      letterSpacing: 0,
+                      fontSize: 7,
+                      color: shiftOn ? "#f97316" : "rgba(255,255,255,0.3)",
                     }}
                   >
-                    {subLabel}
+                    {btn.sub}
                   </span>
                 )}
-                {/* Main label */}
                 <span
                   className="font-semibold leading-none"
                   style={{
                     fontSize:
-                      typeof mainLabel === "string" && mainLabel.length > 3
-                        ? 12
-                        : 17,
+                      typeof mainLabel === "string" && mainLabel.length > 3 ? 11 : 15,
                   }}
                 >
                   {mainLabel}
@@ -485,14 +432,6 @@ export default function CalculatorPage() {
             );
           })}
         </div>
-
-        {/* ── Footer ─────────────────────────────────────────────────── */}
-        <p
-          className="text-center text-[10px] py-2"
-          style={{ color: "#444" }}
-        >
-          1 USD ≈ 130 HTG · Komisyon FLEXA 7%
-        </p>
       </div>
     </div>
   );

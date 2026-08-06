@@ -41,6 +41,9 @@ type Order = {
   shippingPhone: string | null;
   shippingCity: string | null;
   shippingStreet: string | null;
+  // packageReady is canonical on the transaction — present for every order type
+  packageReady: boolean;
+  packageReadyAt: string | null;
   listing: { id: number; title: string; image: string | null } | null;
   buyer: { id: number; name: string; phone: string | null } | null;
   delivery: {
@@ -147,7 +150,7 @@ export default function ManagerDashboard() {
       toast({ title: "✅ Make prè!" });
       setOrders(prev => prev.map(o =>
         o.id === orderId
-          ? { ...o, delivery: { ...(o.delivery ?? { status: "waiting", hasDriver: false }), packageReady: true, packageReadyAt: new Date().toISOString() } }
+          ? { ...o, packageReady: true, packageReadyAt: new Date().toISOString() }
           : o
       ));
     } catch (e: any) {
@@ -238,7 +241,8 @@ export default function ManagerDashboard() {
 }
 
 function OrderCard({ order, onMarkReady, marking }: { order: Order; onMarkReady: (id: number) => void; marking: boolean }) {
-  const ready = order.delivery?.packageReady;
+  // Use top-level packageReady (canonical, from transaction) — present for all order types
+  const ready = order.packageReady;
   const [, setLocation] = useLocation();
 
   return (

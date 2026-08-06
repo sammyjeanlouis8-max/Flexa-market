@@ -232,6 +232,11 @@ router.get("/manager/orders", requireAuth, async (req, res): Promise<void> => {
       shippingStreet: r.tx.shippingStreet,
       listing: r.listing ? { id: r.listing.id, title: r.listing.title, image: (r.listing.images as string[])?.[0] ?? null } : null,
       buyer: r.buyer ? { id: r.buyer.id, name: r.buyer.name, phone: r.buyer.phone } : null,
+        // packageReady is always sourced from the transaction (persisted for all
+      // purchase types, including direct wallet orders that have no delivery row).
+      // The delivery object is still returned for driver/status info.
+      packageReady: r.tx.packageReady ?? false,
+      packageReadyAt: r.tx.packageReadyAt ?? null,
       delivery: d ? {
         status: d.status,
         packageReady: d.packageReady ?? false,

@@ -551,8 +551,8 @@ export default function GlobalBroadcastPlayer() {
                 </p>
               </div>
 
-              {/* Right: sound · expand */}
-              <div className="flex items-center gap-1 shrink-0">
+              {/* Right: sound · expand · close — all 3 inside the header bounds */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 {/* 🔊 Unmute */}
                 <button
                   onTouchStart={(e) => e.stopPropagation()}
@@ -571,17 +571,18 @@ export default function GlobalBroadcastPlayer() {
                     setIsMuted(false);
                   }}
                   style={{
-                    width: 34, height: 34,
+                    width: 30, height: 30,
                     borderRadius: "50%",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: isMuted ? "rgba(139,92,246,0.95)" : "rgba(0,0,0,0.6)",
+                    background: isMuted ? "rgba(124,58,237,0.95)" : "rgba(0,0,0,0.55)",
                     color: "white",
-                    border: isMuted ? "1.5px solid rgba(255,255,255,0.6)" : "none",
+                    border: isMuted ? "1.5px solid rgba(255,255,255,0.5)" : "1px solid rgba(255,255,255,0.15)",
                     flexShrink: 0,
+                    cursor: "pointer",
                   }}
                   title={isMuted ? "Aktive son" : "Son aktif"}
                 >
-                  {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                 </button>
 
                 {/* ↗ Expand */}
@@ -591,59 +592,50 @@ export default function GlobalBroadcastPlayer() {
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); goToTV(); }}
                   style={{
-                    width: 34, height: 34,
+                    width: 30, height: 30,
                     borderRadius: "50%",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(0,0,0,0.6)",
+                    background: "rgba(0,0,0,0.55)",
+                    border: "1px solid rgba(255,255,255,0.15)",
                     color: "white",
                     flexShrink: 0,
+                    cursor: "pointer",
                   }}
                   title="Ouvri Flexa TV"
                 >
-                  <Maximize2 size={13} />
+                  <Maximize2 size={12} />
+                </button>
+
+                {/* ✕ Close — same row, same size, red tint to signal destructive */}
+                <button
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+                  }}
+                  style={{
+                    width: 30, height: 30,
+                    borderRadius: "50%",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(220,38,38,0.85)",
+                    border: "1px solid rgba(255,255,255,0.25)",
+                    color: "white",
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                  title="Fèmen"
+                  aria-label="Fèmen"
+                >
+                  <X size={13} strokeWidth={2.5} />
                 </button>
               </div>
             </div>
-
-            {/* ── ✕ Close button — large floating pill at top-right ─────────────
-                Positioned as an absolute overlay OUTSIDE the cramped header row
-                so it has a large independent touch target (44×44 minimum).
-                onTouchEnd with preventDefault() prevents the synthesized click
-                from re-triggering the body tap-to-TV handler below it. */}
-            <button
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-              }}
-              style={{
-                position: "absolute",
-                top: -10,
-                right: -10,
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: "#dc2626",
-                color: "white",
-                border: "2px solid #fff",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
-                zIndex: 20,
-                flexShrink: 0,
-                padding: 0,
-                cursor: "pointer",
-              }}
-              title="Fèmen"
-              aria-label="Fèmen"
-            >
-              <X size={14} strokeWidth={3} />
-            </button>
           </div>
         )}
       </div>

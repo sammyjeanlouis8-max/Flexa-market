@@ -119,18 +119,18 @@ router.post("/moncash/otp/send", requireAuth, async (req, res): Promise<void> =>
 
   const emailHtml = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#fff;border-radius:12px">
     <h2 style="color:#f97316;margin:0 0 8px">FLEXA MARKET – MonCash</h2>
-    <p style="color:#444;margin:0 0 4px">Kòd konfirmasyon peman boost ou ($${amount}):</p>
+    <p style="color:#444;margin:0 0 4px">Your boost payment confirmation code ($${amount}):</p>
     <div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:24px;text-align:center;margin:16px 0">
       <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ea580c">${code}</span>
     </div>
-    <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ Kòd la ekspire nan <strong>10 minit</strong>.</p>
-    <p style="color:#999;font-size:12px;margin:0">Pa pataje kòd sa a ak pèsonn.</p>
+    <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ This code expires in <strong>10 minutes</strong>.</p>
+    <p style="color:#999;font-size:12px;margin:0">Do not share this code with anyone.</p>
   </div>`;
 
   const emailSent = await sendEmail({
     to: userEmail,
-    subject: "FLEXA MARKET – Kòd Konfirmasyon MonCash",
-    text: `Kòd konfirmasyon peman boost ou ($${amount}) via MonCash: ${code}\nKòd la ekspire nan 10 minit. Pa pataje li ak pèsonn.`,
+    subject: "FLEXA MARKET – MonCash Payment Confirmation Code",
+    text: `Your boost payment confirmation code ($${amount}) via MonCash: ${code}\nThis code expires in 10 minutes. Do not share it with anyone.`,
     html: emailHtml,
   });
 

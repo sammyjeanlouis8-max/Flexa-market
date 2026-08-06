@@ -50,12 +50,12 @@ function generateWithdrawalToken(): string {
 function otpEmailHtml(otpCode: string): string {
   return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#fff;border-radius:12px">
     <h2 style="color:#f97316;margin:0 0 8px">FLEXA MARKET</h2>
-    <p style="color:#444;margin:0 0 20px">Kòd verifikasyon ou:</p>
+    <p style="color:#444;margin:0 0 20px">Your verification code:</p>
     <div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:24px;text-align:center;margin:0 0 20px">
       <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ea580c">${otpCode}</span>
     </div>
-    <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ Kòd la ekspire nan <strong>5 minit</strong>.</p>
-    <p style="color:#999;font-size:12px;margin:0">Pa pataje kòd sa a ak pèsonn. FLEXA MARKET pa janm mande kòd ou.</p>
+    <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ This code expires in <strong>5 minutes</strong>.</p>
+    <p style="color:#999;font-size:12px;margin:0">Do not share this code with anyone. FLEXA MARKET will never ask for your code.</p>
   </div>`;
 }
 

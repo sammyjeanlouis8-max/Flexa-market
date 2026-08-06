@@ -151,7 +151,7 @@ router.post("/recovery/start", async (req, res): Promise<void> => {
   const maskedDestination = user.email ? maskEmail(user.email) : maskPhone(user.phone ?? "");
   const isDev = process.env["NODE_ENV"] !== "production";
 
-  const emailText = `Bonjou ${user.name},\n\nKòd rekiperasyon kont FLEXA MARKET ou: ${otpCode}\n\nKòd la ekspire nan 10 minit. Pa pataje li ak pèsonn.\n\nSi ou pa t'ap mande kòd sa a, inyore mesaj sa a.`;
+  const emailText = `Hello ${user.name},\n\nYour FLEXA MARKET account recovery code: ${otpCode}\n\nThis code expires in 10 minutes. Do not share it with anyone.\n\nIf you did not request this code, please ignore this message.`;
   const emailHtml = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#fff;border-radius:12px">
     <h2 style="color:#f97316;margin:0 0 8px">FLEXA MARKET</h2>
     <p style="color:#444;margin:0 0 4px">Hello <strong>${user.name}</strong>,</p>
@@ -162,7 +162,7 @@ router.post("/recovery/start", async (req, res): Promise<void> => {
     <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
     <p style="color:#999;font-size:12px;margin:0">If you did not request this code, please ignore this message.</p>
   </div>`;
-  await sendEmail({ to: user.email, subject: "FLEXA MARKET – Kòd Rekiperasyon Kont Ou", text: emailText, html: emailHtml }).catch(() => {});
+  await sendEmail({ to: user.email, subject: "FLEXA MARKET – Account Recovery Code", text: emailText, html: emailHtml }).catch(() => {});
 
   // Persist session
   await db.insert(accountRecoverySessionsTable).values({
@@ -333,13 +333,13 @@ router.post("/recovery/resend-otp", async (req, res): Promise<void> => {
 
   const emailHtml = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;background:#fff;border-radius:12px">
     <h2 style="color:#f97316;margin:0 0 8px">FLEXA MARKET</h2>
-    <p style="color:#444;margin:0 0 16px">Nouvo kòd rekiperasyon kont ou:</p>
+    <p style="color:#444;margin:0 0 16px">Your new account recovery code:</p>
     <div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:24px;text-align:center;margin:0 0 16px">
       <span style="font-size:40px;font-weight:bold;letter-spacing:12px;color:#ea580c">${otpCode}</span>
     </div>
     <p style="color:#666;font-size:14px;margin:0 0 8px">⏱ This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
   </div>`;
-  await sendEmail({ to: user.email, subject: "FLEXA MARKET – New Recovery Code", text: `Your recovery code: ${otpCode}\nThis code expires in 10 minutes.`, html: emailHtml }).catch(() => {});
+  await sendEmail({ to: user.email, subject: "FLEXA MARKET – New Recovery Code", text: `Your new recovery code: ${otpCode}\nThis code expires in 10 minutes.`, html: emailHtml }).catch(() => {});
 
   await db.update(accountRecoverySessionsTable)
     .set({ otpHash: hashedOtp, otpExpiresAt, otpAttempts: 0, lockedUntil: null })

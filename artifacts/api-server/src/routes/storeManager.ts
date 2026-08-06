@@ -162,7 +162,7 @@ router.get("/manager/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   const [seller] = await db
-    .select({ id: usersTable.id, name: usersTable.name, avatar: usersTable.avatar, location: usersTable.location, phone: usersTable.phone })
+    .select({ id: usersTable.id, name: usersTable.name, avatar: usersTable.avatar, location: usersTable.location, phone: usersTable.phone, pickupSchedule: usersTable.pickupSchedule })
     .from(usersTable)
     .where(eq(usersTable.id, sellerId));
   res.json({ seller: seller ?? null });

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
-import { Printer, Package, ChevronLeft, MapPin, Truck, CheckCircle2, Clock, Eye, DollarSign, Sparkles, TrendingDown, TrendingUp, ShieldCheck } from "lucide-react";
+import { Printer, Package, ChevronLeft, MapPin, Truck, CheckCircle2, Clock, Eye, DollarSign, Sparkles, TrendingDown, TrendingUp, ShieldCheck, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/auth";
@@ -32,6 +32,11 @@ type Sale = {
   listingTitle: string;
   listingImages: string[] | null;
   buyerName: string | null;
+  // Driver contact (FM deliveries only)
+  deliveryId: number | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  deliveryStatus: string | null;
 };
 
 type Summary = {
@@ -226,6 +231,19 @@ export default function Sales() {
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">
                       {s.carrier}: {s.trackingNumber}
                     </p>
+                  )}
+                  {/* Driver contact chip — visible when an FM driver is assigned */}
+                  {s.driverName && s.driverPhone && (
+                    <a
+                      href={`tel:${s.driverPhone}`}
+                      className="inline-flex items-center gap-1.5 mt-1 text-xs font-medium text-primary hover:underline"
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Truck className="h-3 w-3" />
+                      {s.driverName}
+                      <Phone className="h-3 w-3 ml-0.5" />
+                      {s.driverPhone}
+                    </a>
                   )}
                 </div>
 

@@ -54,12 +54,17 @@ type Order = {
   } | null;
 };
 
+type PickupSlot = { day: number; openTime: string; closeTime: string };
+
+const DAY_SHORT = ["Di", "Li", "Ma", "Mè", "Je", "Va", "Sa"];
+
 type Seller = {
   id: number;
   name: string;
   avatar: string | null;
   location: string | null;
   phone: string | null;
+  pickupSchedule: PickupSlot[] | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -192,6 +197,19 @@ export default function ManagerDashboard() {
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm text-foreground truncate">{seller.name}</p>
             {seller.location && <p className="text-xs text-muted-foreground truncate">{seller.location}</p>}
+            {seller.pickupSchedule && seller.pickupSchedule.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {seller.pickupSchedule.map(slot => (
+                  <span key={slot.day} className="inline-flex items-center gap-1 text-[10px] font-semibold bg-primary/10 text-primary rounded-md px-1.5 py-0.5">
+                    <Clock className="h-2.5 w-2.5" />
+                    {DAY_SHORT[slot.day]} {slot.openTime}–{slot.closeTime}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(!seller.pickupSchedule || seller.pickupSchedule.length === 0) && (
+              <p className="text-[10px] text-amber-500 mt-1">⚠️ Vandè a pa mete orè pran toujou</p>
+            )}
           </div>
           <button
             onClick={() => loadOrders(1, true)}

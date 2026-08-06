@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
-import { eq, desc, and, or, sql, notInArray, inArray } from "drizzle-orm";
+import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
@@ -490,7 +490,8 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
 // ─── Orders: list (seller) ────────────────────────────────────────────────────
 
 router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
-  const buyerAlias = usersTable;
+  const buyerAlias = aliasedTable(usersTable, "buyer");
+  const driverUserAlias = aliasedTable(usersTable, "driver_user");
   const rows = await db
     .select({
       id: transactionsTable.id,
@@ -519,10 +520,17 @@ router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
       listingImages: listingsTable.images,
       sellerId: listingsTable.sellerId,
       buyerName: buyerAlias.name,
+      // Driver contact — from the linked FM delivery row (if one exists)
+      deliveryId: deliveriesTable.id,
+      driverName: driverUserAlias.name,
+      driverPhone: driverUserAlias.phone,
+      deliveryStatus: deliveriesTable.status,
     })
     .from(transactionsTable)
     .innerJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
     .leftJoin(buyerAlias, eq(transactionsTable.userId, buyerAlias.id))
+    .leftJoin(deliveriesTable, eq(deliveriesTable.transactionId, transactionsTable.id))
+    .leftJoin(driverUserAlias, eq(driverUserAlias.id, deliveriesTable.driverUserId))
     .where(and(
       eq(listingsTable.sellerId, req.userId!),
       eq(transactionsTable.type, "purchase"),

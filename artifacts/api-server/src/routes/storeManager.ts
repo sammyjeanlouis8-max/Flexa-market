@@ -267,7 +267,19 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
 
   if (!tx) { res.status(404).json({ error: "Order not found." }); return; }
 
-  // Mark delivery as package_ready using typed columns (no as any)
+  // Persist readiness on the transaction (always present for every purchase type)
+  const now = new Date();
+  const [updatedTx] = await db.update(transactionsTable)
+    .set({ packageReady: true, packageReadyAt: now })
+    .where(eq(transactionsTable.id, orderId))
+    .returning({ id: transactionsTable.id });
+
+  if (!updatedTx) {
+    res.status(500).json({ error: "Could not save package-ready status." });
+    return;
+  }
+
+  // Also update the delivery row if one exists (e.g. FM-pool / motorcycle orders)
   const [delivery] = await db
     .select()
     .from(deliveriesTable)
@@ -275,7 +287,7 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
 
   if (delivery) {
     await db.update(deliveriesTable)
-      .set({ packageReady: true, packageReadyAt: new Date() })
+      .set({ packageReady: true, packageReadyAt: now })
       .where(eq(deliveriesTable.id, delivery.id));
   }
 

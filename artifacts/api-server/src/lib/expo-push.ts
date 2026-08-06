@@ -155,28 +155,40 @@ export async function deleteExpoPushToken(
 
 /**
  * Send a new-order alert to the seller AND their store manager (if one exists).
+ * Covers both Expo (mobile) and web push so the manager is notified regardless
+ * of which device they are on.
  * Use this in all purchase-completion paths so the manager is always in the loop.
  */
 export async function sendNewOrderAlertsForSeller(
   sellerId: number,
   payload: ExpoPushPayload,
 ): Promise<void> {
-  // Send to seller
+  // Send to seller (Expo only — caller already sends web push to seller)
   void sendExpoPushToUser(sellerId, payload);
 
-  // Look up store manager linked to this seller
+  // Look up store manager linked to this seller and notify them via both channels
   try {
     const [mgr] = await db
       .select({ id: usersTable.id })
       .from(usersTable)
-      .where(eq((usersTable as any).managedSellerId, sellerId))
+      .where(eq(usersTable.managedSellerId, sellerId))
       .limit(1);
 
     if (mgr) {
-      void sendExpoPushToUser(mgr.id, {
-        ...payload,
-        title: `🏪 [Manager] ${payload.title}`,
-      });
+      const mgrPayload = { ...payload, title: `🏪 ${payload.title}` };
+
+      // Expo push (mobile)
+      void sendExpoPushToUser(mgr.id, mgrPayload);
+
+      // Web push (browser / PWA) — lazy import to avoid circular dependency
+      import("./push").then(({ sendPushToUser }) => {
+        void sendPushToUser(mgr.id, {
+          title: mgrPayload.title ?? "New Order",
+          body: typeof mgrPayload.body === "string" ? mgrPayload.body : "",
+          url: (mgrPayload.data as any)?.url ?? "/manager",
+          tag: `mgr-order-${Date.now()}`,
+        });
+      }).catch(() => {});
     }
   } catch {
     // Non-fatal — manager lookup failure must never block order flow

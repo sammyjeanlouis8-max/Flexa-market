@@ -86,6 +86,9 @@ export const transactionsTable = pgTable("transactions", {
   stripeCheckoutSessionId: text("stripe_checkout_session_id"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   stripeTransferId: text("stripe_transfer_id"),
+  // Store-manager readiness flag — set when manager physically marks package ready for pickup
+  packageReady: boolean("package_ready").notNull().default(false),
+  packageReadyAt: timestamp("package_ready_at", { withTimezone: true }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

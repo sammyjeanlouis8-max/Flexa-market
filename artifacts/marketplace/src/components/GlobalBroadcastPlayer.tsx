@@ -442,6 +442,32 @@ export default function GlobalBroadcastPlayer() {
           </div>
         )}
 
+        {/* ── Mini-mode dark poster — hides white iframe error pages (Facebook "Ce contenu
+            n'est plus disponible") that bleed through as a pale background on mobile.
+            Sits above the iframe (z-index 5) but below the controls overlay (z-index 10).
+            Shows thumbnail for film entries; Flexa TV logo for live broadcasts. */}
+        {isMiniMode && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden", background: "#0a0a0a" }}
+          >
+            {/* Thumbnail image (film) or logo (live) */}
+            {isFilmMode && filmPlayer?.thumbnailUrl ? (
+              <img
+                src={filmPlayer.thumbnailUrl}
+                alt={filmPlayer.title}
+                className="w-full h-full object-cover opacity-70"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-10 h-10 object-contain opacity-25" />
+              </div>
+            )}
+            {/* Bottom vignette so title strip stays readable */}
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 60%)" }} />
+          </div>
+        )}
+
         {/* ── Mini-player controls overlay — INSIDE wrapperRef ─────────────────
             Being inside the same div as the iframe puts us in the same stacking
             context. Later in DOM = on top. Since the iframe has pointer-events:none

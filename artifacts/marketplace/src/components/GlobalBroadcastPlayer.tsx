@@ -105,6 +105,9 @@ const MINI_H      = 72;
 const MINI_THUMB  = 128; // 16:9 at 72px height
 const MINI_BOT    = 76;  // above bottom nav bar
 const MINI_MARGIN = 8;
+// MINI_W kept for drag-handler math (drag is dormant in current design but
+// removing the const causes a Rollup TDZ crash in the minified bundle).
+const MINI_W      = typeof window !== "undefined" ? Math.max(200, window.innerWidth - MINI_MARGIN * 2) : 340;
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();

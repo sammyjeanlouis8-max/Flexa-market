@@ -184,19 +184,30 @@ router.patch("/users/me/pickup-schedule", requireAuth, async (req, res): Promise
     return;
   }
 
-  // Validate each slot
+  // Validate each slot: integer day 0-6, HH:MM times, closeTime > openTime, no duplicate days
   const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const seenDays = new Set<number>();
   for (const slot of schedule) {
     if (
       typeof slot !== "object" ||
       slot === null ||
-      typeof (slot as any).day !== "number" ||
+      !Number.isInteger((slot as any).day) ||
       (slot as any).day < 0 ||
       (slot as any).day > 6 ||
       !timeRe.test((slot as any).openTime) ||
       !timeRe.test((slot as any).closeTime)
     ) {
-      res.status(400).json({ error: "Each slot must have day (0-6), openTime and closeTime as HH:MM" });
+      res.status(400).json({ error: "Each slot must have day (0-6, integer), openTime and closeTime as HH:MM" });
+      return;
+    }
+    const day = (slot as any).day as number;
+    if (seenDays.has(day)) {
+      res.status(400).json({ error: `Duplicate day: ${day}` });
+      return;
+    }
+    seenDays.add(day);
+    if ((slot as any).closeTime <= (slot as any).openTime) {
+      res.status(400).json({ error: `closeTime must be after openTime for day ${day}` });
       return;
     }
   }
@@ -205,7 +216,7 @@ router.patch("/users/me/pickup-schedule", requireAuth, async (req, res): Promise
     day: s.day as number,
     openTime: s.openTime as string,
     closeTime: s.closeTime as string,
-  }));
+  })).sort((a, b) => a.day - b.day);
 
   const [updated] = await db
     .update(usersTable)

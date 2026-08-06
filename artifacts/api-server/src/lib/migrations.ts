@@ -2154,6 +2154,8 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "music_purchases.track_idx", sql: "CREATE INDEX IF NOT EXISTS music_purchases_track_idx ON music_purchases(track_id)" });
   migrations.push({ name: "reviews.is_verified_purchase", sql: "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_verified_purchase BOOLEAN NOT NULL DEFAULT FALSE" });
   migrations.push({ name: "deliveries.tracking_number", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS tracking_number TEXT" });
+  // Seller pickup schedule — JSON array of {day:0-6, openTime:"HH:MM", closeTime:"HH:MM"}
+  migrations.push({ name: "users.pickup_schedule", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS pickup_schedule jsonb" });
 
   let applied = 0;
   let failed = 0;
@@ -2176,9 +2178,6 @@ export async function runStartupMigrations(): Promise<void> {
     await db.execute(dsql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
-
-  // Seller pickup schedule — JSON array of {day,openTime,closeTime}
-  migrations.push({ name: "users.pickup_schedule", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS pickup_schedule jsonb" });
 
   logger.info({ applied, failed }, "Startup migrations complete");
 }

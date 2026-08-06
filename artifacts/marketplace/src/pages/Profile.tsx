@@ -1,7 +1,7 @@
 import { useRoute, useLocation, Link } from "wouter";
 import { useSEO } from "@/hooks/useSEO";
 import { useTranslation } from "react-i18next";
-import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe, Calendar, ShoppingBag } from "lucide-react";
+import { Star, CheckCircle, MapPin, Package, UserPlus, UserMinus, Pencil, Globe, Calendar, ShoppingBag, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,52 @@ import ListingCard from "@/components/ListingCard";
 import { AdminBlockButton } from "@/components/AdminBlockModal";
 
 import { COUNTRY_FLAGS } from "@/lib/countries";
+
+// ── Pickup schedule display ───────────────────────────────────────────────────
+type PickupSlot = { day: number; openTime: string; closeTime: string };
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function fmt12(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const h = parseInt(hStr, 10);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${mStr} ${ampm}`;
+}
+
+function PickupScheduleBadge({ schedule }: { schedule: PickupSlot[] }) {
+  if (!schedule || schedule.length === 0) return null;
+  // Group consecutive days with identical hours
+  const sorted = [...schedule].sort((a, b) => a.day - b.day);
+  const groups: { days: string[]; openTime: string; closeTime: string }[] = [];
+  for (const slot of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.openTime === slot.openTime && last.closeTime === slot.closeTime) {
+      last.days.push(DAY_SHORT[slot.day]);
+    } else {
+      groups.push({ days: [DAY_SHORT[slot.day]], openTime: slot.openTime, closeTime: slot.closeTime });
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-1.5 mt-1.5 flex-wrap">
+      <Clock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+      <div className="flex flex-col gap-0.5">
+        {groups.map((g, i) => (
+          <span key={i} className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground/80">
+              {g.days.length === 1
+                ? g.days[0]
+                : `${g.days[0]}–${g.days[g.days.length - 1]}`}
+            </span>
+            {" · "}
+            {fmt12(g.openTime)} – {fmt12(g.closeTime)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const [, params] = useRoute("/profile/:id");
@@ -99,6 +145,9 @@ export default function ProfilePage() {
               </div>
             )}
             {p.bio && <p className="text-sm text-foreground/80 mt-2">{p.bio}</p>}
+            {p.pickupSchedule && Array.isArray(p.pickupSchedule) && p.pickupSchedule.length > 0 && (
+              <PickupScheduleBadge schedule={p.pickupSchedule as PickupSlot[]} />
+            )}
             <div className="flex gap-4 text-sm text-muted-foreground mt-2 flex-wrap">
               <span><strong className="text-foreground">{p.listingCount}</strong> {t("profile.listings")}</span>
               <span><strong className="text-foreground">{p.followerCount}</strong> {t("profile.followers")}</span>

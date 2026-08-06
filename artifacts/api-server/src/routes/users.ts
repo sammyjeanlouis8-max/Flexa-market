@@ -171,6 +171,51 @@ router.delete("/users/me", requireAuth, async (req, res): Promise<void> => {
   res.json({ message: "Account deleted" });
 });
 
+/**
+ * Save the seller's pickup availability schedule.
+ * Body: { schedule: Array<{day:0-6, openTime:"HH:MM", closeTime:"HH:MM"}> }
+ * Pass an empty array to clear the schedule.
+ */
+router.patch("/users/me/pickup-schedule", requireAuth, async (req, res): Promise<void> => {
+  const { schedule } = req.body as Record<string, unknown>;
+
+  if (!Array.isArray(schedule)) {
+    res.status(400).json({ error: "schedule must be an array" });
+    return;
+  }
+
+  // Validate each slot
+  const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+  for (const slot of schedule) {
+    if (
+      typeof slot !== "object" ||
+      slot === null ||
+      typeof (slot as any).day !== "number" ||
+      (slot as any).day < 0 ||
+      (slot as any).day > 6 ||
+      !timeRe.test((slot as any).openTime) ||
+      !timeRe.test((slot as any).closeTime)
+    ) {
+      res.status(400).json({ error: "Each slot must have day (0-6), openTime and closeTime as HH:MM" });
+      return;
+    }
+  }
+
+  const normalized = schedule.map((s: any) => ({
+    day: s.day as number,
+    openTime: s.openTime as string,
+    closeTime: s.closeTime as string,
+  }));
+
+  const [updated] = await db
+    .update(usersTable)
+    .set({ pickupSchedule: normalized.length > 0 ? normalized : null })
+    .where(eq(usersTable.id, req.userId!))
+    .returning();
+
+  res.json({ pickupSchedule: updated.pickupSchedule });
+});
+
 router.patch("/me/country", requireAuth, async (req, res): Promise<void> => {
   const { country } = req.body as Record<string, unknown>;
   if (typeof country !== "string" || !country.trim()) {

@@ -14,7 +14,7 @@ import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Camera, Check, CheckCircle, Globe, Loader2,
+  Camera, Check, CheckCircle, Clock, Globe, Loader2,
   Lock, Phone, Shield, Sparkles, Star
 } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
@@ -202,6 +202,121 @@ function ChangePasswordCard() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ── Pickup Hours Card ─────────────────────────────────────────────────────────
+type PickupSlot = { day: number; openTime: string; closeTime: string };
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | null }) {
+  const { toast } = useToast();
+  const [slots, setSlots] = useState<PickupSlot[]>(() => initialSchedule ?? []);
+  const [saving, setSaving] = useState(false);
+
+  const enabledDays = new Set(slots.map((s) => s.day));
+
+  const toggleDay = (day: number) => {
+    if (enabledDays.has(day)) {
+      setSlots((prev) => prev.filter((s) => s.day !== day));
+    } else {
+      setSlots((prev) =>
+        [...prev, { day, openTime: "08:00", closeTime: "17:00" }].sort((a, b) => a.day - b.day)
+      );
+    }
+  };
+
+  const updateTime = (day: number, field: "openTime" | "closeTime", value: string) => {
+    setSlots((prev) => prev.map((s) => s.day === day ? { ...s, [field]: value } : s));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const res = await fetch("/api/users/me/pickup-schedule", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        body: JSON.stringify({ schedule: slots }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Pickup hours saved ✓" });
+    } catch {
+      toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="font-bold text-foreground text-base flex items-center gap-1.5">
+            <Clock className="h-4 w-4" /> Pickup Hours
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Let drivers know when your location is open for package pickup
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {DAY_LABELS.map((label, day) => {
+          const enabled = enabledDays.has(day);
+          const slot = slots.find((s) => s.day === day);
+          return (
+            <div key={day} className="flex items-center gap-3">
+              {/* Day toggle */}
+              <button
+                type="button"
+                onClick={() => toggleDay(day)}
+                className={[
+                  "w-12 text-xs font-semibold py-1.5 rounded-lg border transition-all shrink-0",
+                  enabled
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-border hover:border-primary/50",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+
+              {/* Time pickers */}
+              {enabled && slot ? (
+                <div className="flex items-center gap-1.5 flex-1">
+                  <input
+                    type="time"
+                    value={slot.openTime}
+                    onChange={(e) => updateTime(day, "openTime", e.target.value)}
+                    className="flex-1 min-w-0 rounded-lg border border-border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <span className="text-xs text-muted-foreground shrink-0">–</span>
+                  <input
+                    type="time"
+                    value={slot.closeTime}
+                    onChange={(e) => updateTime(day, "closeTime", e.target.value)}
+                    className="flex-1 min-w-0 rounded-lg border border-border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">Closed</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Button
+        type="button"
+        size="sm"
+        className="w-full mt-4 rounded-xl"
+        onClick={handleSave}
+        disabled={saving}
+      >
+        {saving ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving…</> : "Save Pickup Hours"}
+      </Button>
     </div>
   );
 }
@@ -567,7 +682,7 @@ export default function EditProfile() {
       <ChangePasswordCard />
 
       {/* ── Language card ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm mb-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-foreground text-base">{t("settings.language")}</h2>
@@ -576,6 +691,9 @@ export default function EditProfile() {
           <LanguageSwitcher />
         </div>
       </div>
+
+      {/* ── Pickup Hours card ── */}
+      <PickupHoursCard initialSchedule={(user as any)?.pickupSchedule ?? null} />
 
       {/* ── Change Country Dialog ── */}
       <Dialog open={countryDialogOpen} onOpenChange={closeCountryDialog}>

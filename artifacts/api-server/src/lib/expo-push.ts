@@ -11,6 +11,10 @@ export type ExpoPushPayload = {
   sound?: "default" | null;
   badge?: number;
   channelId?: string;
+  /** Expo delivery priority: "default" | "normal" | "high" */
+  priority?: "default" | "normal" | "high";
+  /** Seconds before Expo drops an undelivered notification (max 2419200) */
+  ttl?: number;
 };
 
 function isExpoPushToken(token: string): boolean {
@@ -55,6 +59,8 @@ export async function sendExpoPushToUser(
       sound: payload.sound ?? "default",
       badge: payload.badge,
       channelId: payload.channelId ?? "default",
+      priority: payload.priority ?? "default",
+      ...(payload.ttl !== undefined ? { ttl: payload.ttl } : {}),
     }));
 
     const res = await fetch(EXPO_PUSH_URL, {

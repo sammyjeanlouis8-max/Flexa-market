@@ -907,15 +907,19 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     }).catch(() => {});
 
     void sendPushToUser(sellerUserId, {
-      title: "Nouvo kòmand resevwa! 🛍️",
-      body: `Ou resevwa yon nouvo kòmand pou "${ listingId ? `anons #${listingId}` : "pwodwi ou" }". Prepare pake a!${sellerCardPayoutMethod === "fm_wallet" ? " Kòb ou ajoute nan pòtfèy FM ou." : ""}`,
+      title: "🛍️ New Order Received!",
+      body: `You received a new order for "${listingId ? `listing #${listingId}` : "your product"}". Get the package ready!${sellerCardPayoutMethod === "fm_wallet" ? " Payment added to your FM Wallet." : ""}`,
       url: updatedTx ? `/orders/${updatedTx.id}` : "/sales",
       tag: `new-order-${sessionId}`,
     });
     void sendExpoPushToUser(sellerUserId, {
-      title: "Nouvo kòmand resevwa! 🛍️",
-      body: `Ou resevwa yon nouvo kòmand. Prepare pake a!`,
-      data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/sales" }, sound: "default",
+      title: "🛍️ New Order Received!",
+      body: `You received a new order. Get the package ready!${sellerCardPayoutMethod === "fm_wallet" ? " Payment added to your FM Wallet." : ""}`,
+      data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/sales" },
+      sound: "default",
+      channelId: "orders",
+      priority: "high",
+      ttl: 300,
     });
   }
 

@@ -2177,6 +2177,9 @@ export async function runStartupMigrations(): Promise<void> {
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
 
+  // Seller pickup schedule — JSON array of {day,openTime,closeTime}
+  migrations.push({ name: "users.pickup_schedule", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS pickup_schedule jsonb" });
+
   logger.info({ applied, failed }, "Startup migrations complete");
 }
 

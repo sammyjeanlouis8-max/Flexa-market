@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -79,6 +79,9 @@ export const usersTable = pgTable("users", {
   // Denormalized fast-check flag; authoritative record lives in flex_card_debts.
   flexCardBlocked: boolean("flex_card_blocked").notNull().default(false),
   flexCardDebtUsd: real("flex_card_debt_usd").notNull().default(0),
+  // Seller pickup availability schedule — array of {day,openTime,closeTime}
+  // day: 0=Sun…6=Sat, openTime/closeTime: "HH:MM" 24h strings
+  pickupSchedule: jsonb("pickup_schedule"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

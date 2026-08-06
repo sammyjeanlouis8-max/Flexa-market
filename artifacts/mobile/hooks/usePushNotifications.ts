@@ -16,6 +16,7 @@ Notifications.setNotificationHandler({
 // We create it here (not inside registerForPushNotifications) so it is always
 // present even if the user has not yet granted permission.
 if (Platform.OS === "android") {
+  // Default notification channel for general alerts
   Notifications.setNotificationChannelAsync("default", {
     name: "Flexa Market",
     importance: Notifications.AndroidImportance.MAX,
@@ -24,6 +25,21 @@ if (Platform.OS === "android") {
     sound: "default",
   }).catch(() => {
     // Non-fatal — channel creation can fail on some emulators
+  });
+
+  // High-priority channel for new orders — bypasses DND, max vibration
+  Notifications.setNotificationChannelAsync("orders", {
+    name: "New Orders",
+    description: "Urgent alerts when you receive a new order",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 500, 500, 500, 500, 500],
+    lightColor: "#F97316",
+    sound: "default",
+    bypassDnd: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    showBadge: true,
+  }).catch(() => {
+    // Non-fatal
   });
 }
 

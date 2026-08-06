@@ -100,11 +100,11 @@ function ytUnmuteAndPlay(iframeEl: HTMLIFrameElement | null) {
 
 type SlotRect = { top: number; left: number; width: number; height: number };
 
-// Mini-player dimensions
-const MINI_W      = 264;
-const MINI_H      = 148; // ≈ 16:9
-const MINI_BOT    = 76;
-const MINI_MARGIN = 12;
+// Mini-player dimensions — YouTube-style full-width bottom bar
+const MINI_H      = 72;
+const MINI_THUMB  = 128; // 16:9 at 72px height
+const MINI_BOT    = 76;  // above bottom nav bar
+const MINI_MARGIN = 8;
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
@@ -403,20 +403,18 @@ export default function GlobalBroadcastPlayer() {
         overflow: "hidden",
       }
     : {
-        // Mini player — top/left so vertical drag works (bottom-anchored can't move up)
+        // YouTube-style: full-width bar pinned at bottom above the nav
         position: "fixed",
-        top:  (miniTop  ?? (typeof window !== "undefined" ? window.innerHeight - MINI_BOT - MINI_H : 300)) + "px",
-        left: (miniLeft ?? (typeof window !== "undefined" ? window.innerWidth  - MINI_MARGIN - MINI_W : 0)) + "px",
-        width:   MINI_W + "px",
+        bottom:  MINI_BOT + "px",
+        left:    MINI_MARGIN + "px",
+        right:   MINI_MARGIN + "px",
         height:  MINI_H + "px",
         zIndex: 9000,
-        background: "black",
-        borderRadius: "14px",
+        background: "#161622",
+        borderRadius: "12px",
         overflow: "hidden",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.7)",
-        border: "1.5px solid rgba(139,92,246,0.5)",
-        // touchAction none on the wrapper so our drag handlers take priority
-        touchAction: "none",
+        boxShadow: "0 -4px 32px rgba(0,0,0,0.75)",
+        border: "1px solid rgba(255,255,255,0.06)",
       };
 
   return (
@@ -516,199 +514,135 @@ export default function GlobalBroadcastPlayer() {
           </div>
         )}
 
-        {/* ── Mini-mode poster — OPAQUE cover over the iframe ─────────────────
-            The iframe MUST stay hidden in mini mode because:
-            - Facebook/Instagram embeds show a prominent error card ("Ce contenu
-              n'est plus disponible") when the URL is geo-blocked or removed.
-            - YouTube shows a white preload flash before the player loads.
-            The poster is the authoritative visual; the iframe provides audio only.
-            Priority: film thumbnail → branded gradient → logo.                  */}
+        {/* ── Mini-player — YouTube-style full-width bottom bar ────────────────
+            Layout: [thumbnail zone | info + controls]
+            The iframe stays behind everything (audio only in mini mode).
+            Left zone shows thumbnail / branded gradient; right shows title + buttons. */}
         {isMiniMode && (
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden", background: "#0a0a0a" }}
-          >
-            {isFilmMode ? (
-              filmPlayer?.thumbnailUrl ? (
-                /* Film with thumbnail — show it full-size */
+          <div className="absolute inset-0 flex" style={{ zIndex: 5 }}>
+
+            {/* LEFT: thumbnail / brand visual (16:9 at 72 px height = 128 px wide) */}
+            <div
+              className="relative shrink-0 cursor-pointer"
+              style={{ width: MINI_THUMB, height: MINI_H }}
+              onClick={() => {
+                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
+                goToTV();
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
+                goToTV();
+              }}
+            >
+              {isFilmMode && filmPlayer?.thumbnailUrl ? (
                 <img
                   src={filmPlayer.thumbnailUrl}
                   alt={filmPlayer.title ?? "Film"}
                   className="w-full h-full object-cover"
                 />
-              ) : (
-                /* Film without thumbnail — gradient + title */
-                <>
-                  <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#1e0a3c 0%,#2d1657 50%,#0f0f1a 100%)" }} />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3">
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center mb-1"
-                      style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
-                      <Film size={16} className="text-white" />
-                    </div>
-                    <p className="text-white text-[10px] font-bold text-center leading-tight line-clamp-2 opacity-90">
-                      {filmPlayer?.title ?? "Flexa TV"}
-                    </p>
-                  </div>
-                </>
-              )
-            ) : (
-              /* Live broadcast — animated gradient + logo */
-              <>
-                <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#0f0f1a 0%,#1a0a2e 60%,#0a0a0a 100%)" }} />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-12 h-12 object-contain opacity-30" />
+              ) : isFilmMode ? (
+                /* Film without thumbnail */
+                <div className="w-full h-full flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#1e0a3c,#2d1657)" }}>
+                  <Film size={24} className="text-purple-300 opacity-60" />
                 </div>
-              </>
-            )}
-            {/* Top + bottom gradients for header/title legibility */}
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.70) 0%, transparent 45%)" }} />
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.60) 0%, transparent 45%)" }} />
-          </div>
-        )}
+              ) : (
+                /* Live broadcast */
+                <div className="w-full h-full flex items-center justify-center"
+                  style={{ background: "linear-gradient(135deg,#0f0f1a,#1a0a2e)" }}>
+                  <img src="/flexa-tv-logo.png" alt="Flexa TV"
+                    className="w-9 h-9 object-contain opacity-40" />
+                </div>
+              )}
+              {/* Hairline right separator */}
+              <div className="absolute inset-y-0 right-0 w-px"
+                style={{ background: "rgba(255,255,255,0.07)" }} />
+            </div>
 
-        {/* ── Mini-player controls overlay — INSIDE wrapperRef ─────────────────
-            Being inside the same div as the iframe puts us in the same stacking
-            context. Later in DOM = on top. Since the iframe has pointer-events:none
-            in mini mode, ALL touches land here instead of being swallowed. */}
-        {isMiniMode && (
-          <div
-            className="absolute inset-0"
-            style={{ zIndex: 10, borderRadius: "14px", touchAction: "none" }}
-          >
-            {/* ── Body area: drag + tap to open TV (excludes top 44px header) ── */}
+            {/* RIGHT: info + controls */}
             <div
-              className="absolute inset-x-0 bottom-0 cursor-pointer"
-              style={{ top: 44 }}
-              onTouchStart={handleMiniTouchStart}
-              onTouchMove={handleMiniTouchMove}
-              onTouchEnd={handleMiniTouchEnd}
+              className="flex-1 flex items-center gap-2 px-3 min-w-0 cursor-pointer"
+              style={{ background: "#161622" }}
               onClick={() => {
-                if (wasDragRef.current) { wasDragRef.current = false; return; }
                 if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
                 goToTV();
               }}
-            />
-
-            {/* ── Header strip: badge · title · sound · expand ─────────────── */}
-            <div
-              className="absolute top-0 inset-x-0 flex items-center gap-1 px-2"
-              style={{
-                height: 44,
-                borderRadius: "14px 14px 0 0",
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
+                goToTV();
               }}
             >
-              {/* Left: badge + title (draggable + tap-to-TV) */}
-              <div
-                className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
-                onTouchStart={handleMiniTouchStart}
-                onTouchMove={handleMiniTouchMove}
-                onTouchEnd={handleMiniTouchEnd}
-                onClick={() => {
-                  if (wasDragRef.current) { wasDragRef.current = false; return; }
-                  if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
-                  ytUnmuteAndPlay(iframeRef.current);
-                  setIsMuted(false);
-                  goToTV();
-                }}
-              >
+              {/* Badge + title */}
+              <div className="flex-1 min-w-0">
                 {isFilmMode ? (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-purple-600 text-white px-1.5 py-0.5 rounded font-bold shrink-0">
-                    <Film size={7} /> Film
-                  </span>
+                  <span style={{
+                    display: "inline-block", fontSize: 8, background: "#7c3aed",
+                    color: "#fff", padding: "1px 5px", borderRadius: 3,
+                    fontWeight: 700, lineHeight: 1.5, marginBottom: 2,
+                  }}>FILM</span>
                 ) : (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold animate-pulse shrink-0">
-                    <Radio size={7} /> LIVE
-                  </span>
+                  <span className="animate-pulse" style={{
+                    display: "inline-block", fontSize: 8, background: "#dc2626",
+                    color: "#fff", padding: "1px 5px", borderRadius: 3,
+                    fontWeight: 700, lineHeight: 1.5, marginBottom: 2,
+                  }}>● LIVE</span>
                 )}
-                <p className="text-white text-[10px] font-semibold truncate drop-shadow">
+                <p className="text-white font-semibold truncate"
+                  style={{ fontSize: 12, lineHeight: 1.25 }}>
                   {effectiveTitle}
                 </p>
               </div>
 
-              {/* Right: sound · expand · close — all 3 inside the header bounds */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                {/* 🔊 Unmute */}
-                <button
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    initBackgroundAudio();
-                    ytUnmuteAndPlay(iframeRef.current);
-                    setIsMuted(false);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    initBackgroundAudio();
-                    ytUnmuteAndPlay(iframeRef.current);
-                    setIsMuted(false);
-                  }}
-                  style={{
-                    width: 30, height: 30,
-                    borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: isMuted ? "rgba(124,58,237,0.95)" : "rgba(0,0,0,0.55)",
-                    color: "white",
-                    border: isMuted ? "1.5px solid rgba(255,255,255,0.5)" : "1px solid rgba(255,255,255,0.15)",
-                    flexShrink: 0,
-                    cursor: "pointer",
-                  }}
-                  title={isMuted ? "Aktive son" : "Son aktif"}
-                >
-                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                </button>
+              {/* 🔊 Sound toggle */}
+              <button
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => {
+                  e.stopPropagation(); e.preventDefault();
+                  initBackgroundAudio();
+                  ytUnmuteAndPlay(iframeRef.current);
+                  setIsMuted(false);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  initBackgroundAudio();
+                  ytUnmuteAndPlay(iframeRef.current);
+                  setIsMuted(false);
+                }}
+                style={{
+                  width: 40, height: 40, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: isMuted ? "rgba(167,139,250,1)" : "rgba(255,255,255,0.75)",
+                  cursor: "pointer",
+                }}
+                title={isMuted ? "Aktive son" : "Son aktif"}
+              >
+                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              </button>
 
-                {/* ↗ Expand */}
-                <button
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); goToTV(); }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); goToTV(); }}
-                  style={{
-                    width: 30, height: 30,
-                    borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(0,0,0,0.55)",
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    color: "white",
-                    flexShrink: 0,
-                    cursor: "pointer",
-                  }}
-                  title="Ouvri Flexa TV"
-                >
-                  <Maximize2 size={12} />
-                </button>
-
-                {/* ✕ Close — same row, same size, red tint to signal destructive */}
-                <button
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-                  }}
-                  style={{
-                    width: 30, height: 30,
-                    borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(220,38,38,0.85)",
-                    border: "1px solid rgba(255,255,255,0.25)",
-                    color: "white",
-                    flexShrink: 0,
-                    cursor: "pointer",
-                  }}
-                  title="Fèmen"
-                  aria-label="Fèmen"
-                >
-                  <X size={13} strokeWidth={2.5} />
-                </button>
-              </div>
+              {/* ✕ Close */}
+              <button
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => {
+                  e.stopPropagation(); e.preventDefault();
+                  isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+                }}
+                style={{
+                  width: 40, height: 40, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "rgba(255,255,255,0.4)",
+                  cursor: "pointer",
+                }}
+                title="Fèmen"
+                aria-label="Fèmen"
+              >
+                <X size={20} />
+              </button>
             </div>
           </div>
         )}

@@ -3,27 +3,17 @@
  * Route: /admin/transactions
  */
 import { useState, useEffect } from "react";
-import { ArrowLeft, ArrowLeftRight, RefreshCw, Search, Copy, Wallet } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, RefreshCw, Search, Copy, Wallet, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
-
-async function adminFetch(path: string, method = "GET", body?: object) {
-  const res = await fetch(path, {
-    method,
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
-}
 
 const TYPE_LABELS: Record<string, string> = {
   recharge: "Recharge", boost_debit: "Boost annons", purchase_debit: "Achèt",
@@ -47,9 +37,11 @@ export default function AdminTransactions() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   // Detail sheet
@@ -59,10 +51,22 @@ export default function AdminTransactions() {
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await adminFetch("/api/wallet/admin/all");
+      const res = await fetch("/api/wallet/admin/all", {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        setError(`Erè ${res.status}: ${res.statusText}`);
+        setBalances([]);
+        return;
+      }
+      const data = await res.json();
       setBalances(Array.isArray(data?.balances) ? data.balances : []);
-    } catch {
+    } catch (e: any) {
+      setError(e?.message ?? "Koneksyon echwe");
       setBalances([]);
     } finally {
       setLoading(false);
@@ -74,8 +78,11 @@ export default function AdminTransactions() {
     setDetailData(null);
     setDetailLoading(true);
     try {
-      const data = await adminFetch(`/api/wallet/admin/user/${userId}`);
-      setDetailData(data);
+      const res = await fetch(`/api/wallet/admin/user/${userId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) { setDetailData(null); return; }
+      setDetailData(await res.json());
     } catch {
       setDetailData(null);
     } finally {
@@ -83,10 +90,22 @@ export default function AdminTransactions() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // Load once user is confirmed as admin
+  useEffect(() => {
+    if (user?.isAdmin || user?.isSuperAdmin) {
+      load();
+    }
+  }, [user?.id]);
 
   // Guard: admin only
-  if (!user?.isAdmin && !user?.isSuperAdmin) {
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+  if (!user.isAdmin && !user.isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-3 text-center px-6">
         <p className="text-lg font-bold text-red-500">Aksè Refize</p>
@@ -122,13 +141,13 @@ export default function AdminTransactions() {
             <ArrowLeftRight className="h-4 w-4 text-white" />
           </div>
           <div>
-            <h1 className="text-sm font-black leading-none">💳 Transactions</h1>
-            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">Balans & istwa konplè pa itilizatè</p>
+            <h1 className="text-sm font-black leading-none">💳 {t("adminBanner.txHubTitle")}</h1>
+            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">{t("adminBanner.txHubSubtitle")}</p>
           </div>
         </div>
         <Button size="sm" variant="outline" className="h-8 text-xs shrink-0" onClick={load} disabled={loading}>
           <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+          {t("adminBanner.txHubRefresh")}
         </Button>
       </div>
 
@@ -136,7 +155,7 @@ export default function AdminTransactions() {
         {/* Info banner */}
         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
           <p className="text-xs text-emerald-600 dark:text-emerald-400">
-            💡 Klike sou yon itilizatè pou wè tout istwa tranzaksyon wallet li yo.
+            💡 {t("adminBanner.txHubInfo")}
           </p>
         </div>
 
@@ -145,33 +164,47 @@ export default function AdminTransactions() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input
             type="text"
-            placeholder="Chèche pa non, imèl, oswa ID…"
+            placeholder={t("adminBanner.txHubSearch")}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full h-10 rounded-xl border border-border bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
           />
         </div>
 
+        {/* Error state */}
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+            <p className="text-xs text-red-600 dark:text-red-400 flex-1">{error}</p>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={load}>
+              <RefreshCw className="h-3 w-3 mr-1" /> Retry
+            </Button>
+          </div>
+        )}
+
         {/* User list */}
         {loading ? (
           <div className="space-y-2">
-            {[1,2,3,4,5].map(i => (
+            {[1,2,3,4,5,6].map(i => (
               <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
-        ) : balances.length === 0 ? (
+        ) : !error && balances.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
             <div className="h-14 w-14 rounded-full bg-emerald-500/10 flex items-center justify-center">
               <ArrowLeftRight className="h-7 w-7 text-emerald-400" />
             </div>
-            <p className="text-sm text-muted-foreground">Pa gen done. Klike Refresh.</p>
+            <p className="text-sm text-muted-foreground">{t("adminBanner.txHubLoading")}</p>
+            <Button size="sm" variant="outline" onClick={load}>
+              <RefreshCw className="h-3 w-3 mr-1" /> {t("adminBanner.txHubRefresh")}
+            </Button>
           </div>
-        ) : (
+        ) : !error && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">{filtered.length} itilizatè</p>
+            <p className="text-xs text-muted-foreground">{filtered.length} {t("adminBanner.txHubCount")}</p>
             {filtered.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-10">
-                Okenn rezilta pou "{search}"
+                {t("adminBanner.txHubNoResult")} "{search}"
               </p>
             ) : filtered.map((w: any) => {
               const bal = parseFloat(w.balanceUsd ?? 0);
@@ -346,7 +379,6 @@ export default function AdminTransactions() {
                                   toast({ title: "✅ Kopye!" });
                                 }}
                                 className="text-muted-foreground hover:text-primary transition-colors"
-                                title="Kopye"
                               >
                                 <Copy className="h-3.5 w-3.5" />
                               </button>

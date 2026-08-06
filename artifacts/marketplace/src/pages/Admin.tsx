@@ -5092,6 +5092,15 @@ export default function Admin() {
                                       </Button>
                                     )
                                   )}
+                                  {isSuperAdmin && !u.isSuperAdmin && (
+                                    <Button size="sm" variant="outline"
+                                      className="h-7 text-xs border-purple-300 text-purple-700 dark:border-purple-700 dark:text-purple-400"
+                                      onClick={() => handleResetPassword(u)}
+                                      disabled={actioning === `resetpw-${u.id}`}
+                                      title="Reyinisyalize modpas tanporè">
+                                      <KeyRound className="h-3 w-3 mr-1" />Modpas
+                                    </Button>
+                                  )}
                                   <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive"
                                     onClick={() => handleSetRole(u.id, "user")} disabled={!!actioning}
                                     data-testid={`button-remove-admin-${u.id}`}>

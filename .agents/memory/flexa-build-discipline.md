@@ -22,5 +22,17 @@ Always run `cd artifacts/marketplace && npx vite build --config vite.config.ts` 
 ## Double-fragment nesting crash
 Wrapping the entire non-loading JSX in `{loading ? null : (<>...</>)}` inside an outer `<>...</>` introduced a circular reference in Rollup's chunk graph, also causing `Cannot access 'O' before initialization`. Keep the early-return pattern for loading states; just include `<audio ref={audioRef} />` in both the loading and non-loading return paths so the ref is always populated.
 
+## Const declared after early-return used in hook before it → TDZ
+In long components with early `return null` guards, any `const foo = ...` declared AFTER the guard is invisible to Rollup's production optimizer when a `useEffect`/`useCallback` hook BEFORE the guard lists `foo` in its body or deps array. Fix: move the declaration above the hook. After every edit to GlobalBroadcastPlayer.tsx, run this scan before pushing:
+```bash
+python3 -c "
+import re; lines=open('artifacts/marketplace/src/components/GlobalBroadcastPlayer.tsx').readlines()
+early=[i+1 for i,l in enumerate(lines) if 'if (!stableActive) return null' in l][0]
+post={re.match(r'\s+const (\w+)',l).group(1):i+1 for i,l in enumerate(lines[early:],early) if re.match(r'\s+const (\w+)',l)}
+hooks=[(i+1,l) for i,l in enumerate(lines[:early]) if any(k in l for k in ['useEffect','useCallback','useMemo','], ['])]
+[print(n,'declared',post[n],'used in hook at',ln) for n in post for ln,l in hooks if re.search(r'\b'+n+r'\b',l)]
+"
+```
+
 ## Removing a module-level const crashes production if any code still references it
 When deleting a `const` from a component file, grep the ENTIRE file for every reference first — including dormant/dead-code functions that are no longer called. Rollup's production bundle still hoists and validates those references, producing a TDZ `ReferenceError: Cannot access 'X' before initialization` that crashes the whole app. The local `vite build` passes because esbuild's dev analysis doesn't expose this. Always grep before deleting: `grep -n "CONST_NAME" artifacts/marketplace/src/components/YourFile.tsx`.

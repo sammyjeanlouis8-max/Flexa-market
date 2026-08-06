@@ -286,24 +286,9 @@ router.get("/admin/flex-card", requireFinanceAdmin, async (req, res): Promise<vo
   res.json({ items, total: items.length, totalOutstandingUsd });
 });
 
-// Admin: view a user's debt status + history.
-router.get("/admin/flex-card/:userId", requireFinanceAdmin, async (req, res): Promise<void> => {
-  const userId = Number(req.params.userId);
-  if (!Number.isFinite(userId) || userId <= 0) { res.status(400).json({ error: "Invalid userId" }); return; }
-
-  const active = await getActiveDebt(userId);
-  const debts = await db.select().from(flexCardDebtsTable)
-    .where(eq(flexCardDebtsTable.userId, userId))
-    .orderBy(desc(flexCardDebtsTable.createdAt));
-  const repayments = await db.select().from(flexCardRepaymentsTable)
-    .where(eq(flexCardRepaymentsTable.userId, userId))
-    .orderBy(desc(flexCardRepaymentsTable.createdAt));
-
-  res.json({ blocked: !!active, active, debts, repayments });
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN: list ALL users with wallet balance + flex-card status (for block hub)
+// NOTE: must be registered BEFORE /:userId or Express captures "users" as an id
 // ─────────────────────────────────────────────────────────────────────────────
 
 router.get("/admin/flex-card/users", requireFinanceAdmin, async (req, res): Promise<void> => {
@@ -396,6 +381,23 @@ router.get("/flex-card/me", requireAuth, async (req, res): Promise<void> => {
     repayments,
     walletBalanceUsd: wallet?.balanceUsd ?? 0,
   });
+});
+
+// Admin: view a single user's debt status + full history.
+// MUST stay after /users so Express doesn't treat "users" as a userId.
+router.get("/admin/flex-card/:userId", requireFinanceAdmin, async (req, res): Promise<void> => {
+  const userId = Number(req.params.userId);
+  if (!Number.isFinite(userId) || userId <= 0) { res.status(400).json({ error: "Invalid userId" }); return; }
+
+  const active = await getActiveDebt(userId);
+  const debts = await db.select().from(flexCardDebtsTable)
+    .where(eq(flexCardDebtsTable.userId, userId))
+    .orderBy(desc(flexCardDebtsTable.createdAt));
+  const repayments = await db.select().from(flexCardRepaymentsTable)
+    .where(eq(flexCardRepaymentsTable.userId, userId))
+    .orderBy(desc(flexCardRepaymentsTable.createdAt));
+
+  res.json({ blocked: !!active, active, debts, repayments });
 });
 
 // Repay the debt from the FM wallet balance. Auto-unblocks when it reaches 0.

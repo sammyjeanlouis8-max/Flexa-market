@@ -21,3 +21,6 @@ Always run `cd artifacts/marketplace && npx vite build --config vite.config.ts` 
 
 ## Double-fragment nesting crash
 Wrapping the entire non-loading JSX in `{loading ? null : (<>...</>)}` inside an outer `<>...</>` introduced a circular reference in Rollup's chunk graph, also causing `Cannot access 'O' before initialization`. Keep the early-return pattern for loading states; just include `<audio ref={audioRef} />` in both the loading and non-loading return paths so the ref is always populated.
+
+## Removing a module-level const crashes production if any code still references it
+When deleting a `const` from a component file, grep the ENTIRE file for every reference first — including dormant/dead-code functions that are no longer called. Rollup's production bundle still hoists and validates those references, producing a TDZ `ReferenceError: Cannot access 'X' before initialization` that crashes the whole app. The local `vite build` passes because esbuild's dev analysis doesn't expose this. Always grep before deleting: `grep -n "CONST_NAME" artifacts/marketplace/src/components/YourFile.tsx`.

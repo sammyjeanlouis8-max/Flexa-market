@@ -64,6 +64,7 @@ import shippingRouter from "./shipping";
 import flexCardRouter from "./flex-card";
 import tvRouter from "./tv";
 import musicRouter from "./music";
+import storeManagerRouter from "./storeManager";
 import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
@@ -234,5 +235,6 @@ router.use(flexCardRouter);
 router.use(referralsRouter);
 router.use(tvRouter);
 router.use(musicRouter);
+router.use(storeManagerRouter);
 
 export default router;

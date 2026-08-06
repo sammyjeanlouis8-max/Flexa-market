@@ -3,7 +3,7 @@ import { db, transactionsTable, usersTable, listingsTable, notificationsTable, p
 import { eq, desc, and, or, sql, notInArray, inArray } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
-import { sendExpoPushToUser } from "../lib/expo-push";
+import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
@@ -2232,7 +2232,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       url: `/orders/${txRow.id}`,
       tag: `new-order-cart-${txRow.id}`,
     });
-    void sendExpoPushToUser(listing.sellerId, {
+    void sendNewOrderAlertsForSeller(listing.sellerId, {
       title: "🛍️ New Order Received!",
       body: `Cart order for "${listing.title}" — $${itemTotal.toFixed(2)}. Get the package ready!`,
       data: { url: `/orders/${txRow.id}` },

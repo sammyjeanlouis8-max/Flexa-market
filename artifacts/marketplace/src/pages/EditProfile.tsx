@@ -15,7 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import {
   Camera, Check, CheckCircle, Clock, Globe, Loader2,
-  Lock, Phone, Shield, Sparkles, Star
+  Lock, Phone, Shield, Sparkles, Star, Store, UserPlus, UserX, AlertTriangle,
 } from "lucide-react";
 import { useUpload } from "@workspace/object-storage-web";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -202,6 +202,140 @@ function ChangePasswordCard() {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ── Store Manager Card ────────────────────────────────────────────────────────
+const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+
+function StoreManagerCard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [manager, setManager] = useState<{ id: number; name: string; email: string | null; phone: string | null } | null>(null);
+  const [loadingManager, setLoadingManager] = useState(true);
+  const [identifier, setIdentifier] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+
+  const token = () => localStorage.getItem("flexamarket_token");
+
+  const fetchManager = async () => {
+    try {
+      const r = await fetch(`${BASE_URL}/api/seller/manager`, {
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      setManager(d.manager ?? null);
+    } catch { /* non-fatal */ } finally {
+      setLoadingManager(false);
+    }
+  };
+
+  useEffect(() => { fetchManager(); }, []);
+
+  const handleInvite = async () => {
+    if (!identifier.trim()) return;
+    setInviting(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/seller/manager/invite`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: identifier.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Invite failed");
+      setManager(d.manager);
+      setIdentifier("");
+      toast({ title: "Manadjè envite ✓" });
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRevoke = async () => {
+    setRevoking(true);
+    try {
+      const r = await fetch(`${BASE_URL}/api/seller/manager`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token()}` },
+      });
+      if (!r.ok) throw new Error((await r.json()).error ?? "Revoke failed");
+      setManager(null);
+      toast({ title: "Aksè manadjè retire ✓" });
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm mb-4">
+      <div className="flex items-center gap-2 mb-1">
+        <Store className="h-4 w-4 text-primary" />
+        <h2 className="font-bold text-foreground text-base">Manadjè Lokal</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        Chwazi yon moun nan zòn nan pou resevwa kòmand ak prepare pake yo pou chaofè.
+      </p>
+
+      {loadingManager ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" /> Ap chaje…
+        </div>
+      ) : manager ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+              {manager.name?.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm text-foreground truncate">{manager.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{manager.phone ?? manager.email ?? "—"}</p>
+            </div>
+            <UserX
+              className="h-4 w-4 text-destructive cursor-pointer shrink-0"
+              onClick={handleRevoke}
+            />
+          </div>
+          <button
+            onClick={handleRevoke}
+            disabled={revoking}
+            className="w-full text-xs text-destructive hover:text-destructive/80 transition-colors font-medium flex items-center justify-center gap-1.5"
+          >
+            {revoking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
+            Retire aksè manadjè
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              value={identifier}
+              onChange={e => setIdentifier(e.target.value)}
+              placeholder="Email oswa nimewo telefòn"
+              className="flex-1 h-9 px-3 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              onKeyDown={e => e.key === "Enter" && handleInvite()}
+            />
+            <button
+              onClick={handleInvite}
+              disabled={inviting || !identifier.trim()}
+              className="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5 transition-opacity"
+            >
+              {inviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+              Envite
+            </button>
+          </div>
+          <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+            <span>Moun nan dwe gen kont Flexa deja. Yo ap wè kòmand ou yo sèlman — pa finansman.</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -698,6 +832,9 @@ export default function EditProfile() {
 
       {/* ── Pickup Hours card ── */}
       <PickupHoursCard initialSchedule={(user as any)?.pickupSchedule ?? null} />
+
+      {/* ── Store Manager card ── */}
+      <StoreManagerCard />
 
       {/* ── Change Country Dialog ── */}
       <Dialog open={countryDialogOpen} onOpenChange={closeCountryDialog}>

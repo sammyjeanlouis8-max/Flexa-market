@@ -152,3 +152,33 @@ export async function deleteExpoPushToken(
     .where(eq(expoPushTokensTable.token, token))
     .catch(() => {});
 }
+
+/**
+ * Send a new-order alert to the seller AND their store manager (if one exists).
+ * Use this in all purchase-completion paths so the manager is always in the loop.
+ */
+export async function sendNewOrderAlertsForSeller(
+  sellerId: number,
+  payload: ExpoPushPayload,
+): Promise<void> {
+  // Send to seller
+  void sendExpoPushToUser(sellerId, payload);
+
+  // Look up store manager linked to this seller
+  try {
+    const [mgr] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq((usersTable as any).managedSellerId, sellerId))
+      .limit(1);
+
+    if (mgr) {
+      void sendExpoPushToUser(mgr.id, {
+        ...payload,
+        title: `🏪 [Manager] ${payload.title}`,
+      });
+    }
+  } catch {
+    // Non-fatal — manager lookup failure must never block order flow
+  }
+}

@@ -82,6 +82,9 @@ export const usersTable = pgTable("users", {
   // Seller pickup availability schedule — array of {day,openTime,closeTime}
   // day: 0=Sun…6=Sat, openTime/closeTime: "HH:MM" 24h strings
   pickupSchedule: jsonb("pickup_schedule"),
+  // Store manager: a trusted local person who acts on behalf of this seller.
+  // A user with managedSellerId set is the store manager for that seller.
+  managedSellerId: integer("managed_seller_id").references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -2156,6 +2156,12 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "deliveries.tracking_number", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS tracking_number TEXT" });
   // Seller pickup schedule — JSON array of {day:0-6, openTime:"HH:MM", closeTime:"HH:MM"}
   migrations.push({ name: "users.pickup_schedule", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS pickup_schedule jsonb" });
+  // Store manager — FK to users.id; user with this set is manager for that seller
+  migrations.push({ name: "users.managed_seller_id", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS managed_seller_id integer REFERENCES users(id)" });
+  migrations.push({ name: "users.managed_seller_id_idx", sql: "CREATE INDEX IF NOT EXISTS users_managed_seller_id_idx ON users(managed_seller_id) WHERE managed_seller_id IS NOT NULL" });
+  // Package ready flag on deliveries
+  migrations.push({ name: "deliveries.package_ready", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS package_ready boolean NOT NULL DEFAULT false" });
+  migrations.push({ name: "deliveries.package_ready_at", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS package_ready_at timestamptz" });
 
   let applied = 0;
   let failed = 0;

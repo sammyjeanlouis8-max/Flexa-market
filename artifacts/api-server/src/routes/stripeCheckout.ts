@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, boostsTable, notificationsTable, sellerPayoutAccountsTable, offersTable } from "@workspace/db";
 import { sendPushToUser } from "../lib/push";
-import { sendExpoPushToUser } from "../lib/expo-push";
+import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { sendEmail } from "../lib/email";
 import { orderPlacedBuyerEmail, orderSoldSellerEmail } from "../lib/emailTemplates";
 import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, handleSubscriptionDeleted, handleSubscriptionPaymentFailed, handleSubscriptionUpdated } from "./subscription";
@@ -912,7 +912,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       url: updatedTx ? `/orders/${updatedTx.id}` : "/sales",
       tag: `new-order-${sessionId}`,
     });
-    void sendExpoPushToUser(sellerUserId, {
+    void sendNewOrderAlertsForSeller(sellerUserId, {
       title: "🛍️ New Order Received!",
       body: `You received a new order. Get the package ready!${sellerCardPayoutMethod === "fm_wallet" ? " Payment added to your FM Wallet." : ""}`,
       data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/sales" },

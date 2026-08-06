@@ -13,7 +13,7 @@ import { getDisplayRate } from "../lib/exchange-rate";
 import { notificationsTable } from "@workspace/db";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
-import { sendExpoPushToUser } from "../lib/expo-push";
+import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { emitListingEngagement } from "../lib/socketServer";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
@@ -1270,14 +1270,14 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     { userId: req.userId!, actorId: listing.sellerId, type: "order_confirmed", listingId: id },
   ]).catch((e) => { req.log.error({ err: e }, "[purchase] notification insert failed"); });
 
-  // Urgent push alert to seller (direct wallet purchase)
+  // Urgent push alert to seller + their store manager (direct wallet purchase)
   void sendPushToUser(listing.sellerId, {
     title: "🛍️ New Order Received!",
     body: `You received a new order for "${listing.title}". Get the package ready!`,
     url: insertedTxId ? `/orders/${insertedTxId}` : "/sales",
     tag: `new-order-${insertedTxId ?? Date.now()}`,
   });
-  void sendExpoPushToUser(listing.sellerId, {
+  void sendNewOrderAlertsForSeller(listing.sellerId, {
     title: "🛍️ New Order Received!",
     body: `You received a new order for "${listing.title}". Get the package ready!`,
     data: { url: insertedTxId ? `/orders/${insertedTxId}` : "/sales" },

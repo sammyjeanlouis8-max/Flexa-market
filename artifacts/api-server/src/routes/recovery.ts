@@ -98,11 +98,22 @@ router.post("/recovery/start", async (req, res): Promise<void> => {
   const ip = getClientIp(req);
   const ua = req.headers["user-agent"];
 
-  // Find user by email only
-  const emailLower = identifier.toLowerCase();
-  const [found] = await db.select().from(usersTable)
-    .where(sql`lower(${usersTable.email}) = ${emailLower}`);
-  const user = found;
+  // Find user by email OR phone number
+  const isPhone = /^\+?[\d\s\-().]{7,}$/.test(identifier);
+  let user: typeof usersTable.$inferSelect | undefined;
+  if (isPhone) {
+    // Normalize: ensure leading +
+    const normalized = identifier.startsWith("+") ? identifier : "+" + identifier.replace(/\D/g, "");
+    const [byPhone] = await db.select().from(usersTable).where(eq(usersTable.phone, normalized));
+    user = byPhone;
+  }
+  if (!user) {
+    // Fallback: search by email
+    const emailLower = identifier.toLowerCase();
+    const [byEmail] = await db.select().from(usersTable)
+      .where(sql`lower(${usersTable.email}) = ${emailLower}`);
+    user = byEmail;
+  }
 
   if (!user) {
     // Always succeed to prevent account enumeration
@@ -135,9 +146,9 @@ router.post("/recovery/start", async (req, res): Promise<void> => {
   const sessionToken = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-  // Always deliver via email
+  // Always deliver via email (even when found by phone)
   const sentVia = "email";
-  const maskedDestination = maskEmail(user.email);
+  const maskedDestination = user.email ? maskEmail(user.email) : maskPhone(user.phone ?? "");
   const isDev = process.env["NODE_ENV"] !== "production";
 
   const emailText = `Bonjou ${user.name},\n\nKòd rekiperasyon kont FLEXA MARKET ou: ${otpCode}\n\nKòd la ekspire nan 10 minit. Pa pataje li ak pèsonn.\n\nSi ou pa t'ap mande kòd sa a, inyore mesaj sa a.`;

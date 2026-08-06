@@ -324,7 +324,7 @@ export default function ForgotPassword() {
                 <label className="text-sm font-medium block mb-1">{t("recovery.emailOrPhone")}</label>
                 <Input
                   type="text"
-                  inputMode="email"
+                  inputMode="text"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}

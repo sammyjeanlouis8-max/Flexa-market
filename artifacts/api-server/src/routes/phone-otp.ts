@@ -113,8 +113,8 @@ router.post("/otp/send", optionalAuth, async (req, res): Promise<void> => {
   try {
     emailSent = await sendEmail({
       to: email,
-      subject: "FLEXA MARKET – Kòd Verifikasyon Ou",
-      text: `Kòd verifikasyon ou: ${otpCode}\n\nKòd la ekspire nan 5 minit. Pa pataje li ak pèsonn.`,
+      subject: "FLEXA MARKET – Your Verification Code",
+      text: `Your verification code: ${otpCode}\n\nThis code expires in 5 minutes. Do not share it with anyone.`,
       html: otpEmailHtml(otpCode),
     });
 

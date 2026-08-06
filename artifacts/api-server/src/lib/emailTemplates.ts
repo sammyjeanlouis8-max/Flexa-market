@@ -464,3 +464,101 @@ export function kycStatusEmail(opts: {
     : `KYC declined: ${opts.rejectionReason ?? "Documents not clear enough"}. Submit again at https://flexamarket.com/kyc`;
   return { subject, html, text };
 }
+
+// ─── BROADCAST (ADMIN MASS EMAIL) ─────────────────────────────────────────────
+/**
+ * Wraps an admin-composed HTML body in the branded Flexa Market email shell.
+ * The admin writes the inner content; this function adds the header, footer,
+ * and inline resets so the email renders correctly in all major clients.
+ */
+export function broadcastEmail(opts: {
+  subject: string;
+  /** Raw HTML written by the admin — injected verbatim inside a white content card */
+  contentHtml: string;
+}): { subject: string; html: string; text: string } {
+  // Sanitise plain-text fallback: strip tags, collapse whitespace
+  const text = opts.contentHtml
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // Wrap admin content in a white card for dark-background email clients
+  const contentCard = `
+    <div style="background:#ffffff;border-radius:8px;padding:28px 24px;color:#1e293b;font-size:15px;line-height:1.7;">
+      ${opts.contentHtml}
+    </div>`;
+
+  // Professional footer with branding + unsubscribe notice
+  const footerExtra = `
+    <tr>
+      <td style="background:#0f172a;border-radius:0 0 12px 12px;padding:24px 32px;text-align:center;">
+        <p style="margin:0 0 8px;font-size:13px;color:#f97316;font-weight:700;letter-spacing:0.05em;">FLEXA MARKET</p>
+        <p style="margin:0 0 6px;font-size:12px;color:#64748b;">
+          <a href="https://flexamarket.com" style="color:#94a3b8;text-decoration:none;">flexamarket.com</a>
+          &nbsp;·&nbsp; Haiti &amp; République Dominicaine
+        </p>
+        <p style="margin:8px 0 0;font-size:11px;color:#475569;line-height:1.5;">
+          Ou resevwa email sa paske ou gen yon kont sou Flexa Market.<br/>
+          Si ou pa vle resevwa mesaj konsa ankò, kontakte nou nan
+          <a href="mailto:support@flexamarket.com" style="color:#64748b;">support@flexamarket.com</a>.
+        </p>
+      </td>
+    </tr>`;
+
+  // Build full branded HTML — re-use the internal base() helper layout manually
+  // (base() appends its own footer; we supply a custom one here)
+  const html = `<!DOCTYPE html>
+<html lang="ht">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="x-apple-disable-message-reformatting"/>
+  <title>${opts.subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+        <!-- ── Brand header ── -->
+        <tr>
+          <td style="background:#1e293b;border-radius:12px 12px 0 0;padding:24px 32px;border-bottom:2px solid #f97316;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <span style="font-size:22px;font-weight:900;color:#f97316;letter-spacing:-0.5px;">FLEXA</span>
+                  <span style="font-size:22px;font-weight:900;color:#f1f5f9;letter-spacing:-0.5px;">MARKET</span>
+                </td>
+                <td align="right">
+                  <span style="font-size:11px;color:#64748b;font-weight:500;text-transform:uppercase;letter-spacing:0.08em;">Message Ofisyèl</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- ── Admin content ── -->
+        <tr>
+          <td style="background:#1e293b;padding:28px 32px;">
+            ${contentCard}
+          </td>
+        </tr>
+        <!-- ── CTA to platform ── -->
+        <tr>
+          <td style="background:#1e293b;padding:0 32px 28px;text-align:center;">
+            <a href="https://flexamarket.com" style="display:inline-block;padding:12px 28px;background:#f97316;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:8px;letter-spacing:0.02em;">
+              Vizite Flexa Market →
+            </a>
+          </td>
+        </tr>
+        <!-- ── Footer ── -->
+        ${footerExtra}
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject: opts.subject, html, text };
+}

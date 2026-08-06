@@ -6,7 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 import { sendEmailBatch, sendEmail } from "../lib/email";
-import { accountRestrictedEmail } from "../lib/emailTemplates";
+import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 
 const router = Router();
 
@@ -2428,12 +2428,12 @@ router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promi
   if (!subject?.trim()) { res.status(400).json({ error: "subject obligatwa" }); return; }
   if (!htmlBody?.trim()) { res.status(400).json({ error: "kò mesaj obligatwa" }); return; }
 
-  // Plain-text fallback: strip HTML tags
-  const textBody = htmlBody.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+  // Wrap admin HTML in the branded Flexa Market email shell
+  const branded = broadcastEmail({ subject, contentHtml: htmlBody });
 
   // ── Test mode: send to one address only ──
   if (testEmail?.trim()) {
-    const ok = await sendEmail({ to: testEmail.trim(), subject: `[TEST] ${subject}`, text: textBody, html: htmlBody });
+    const ok = await sendEmail({ to: testEmail.trim(), subject: `[TEST] ${branded.subject}`, text: branded.text, html: branded.html });
     if (!ok) { res.status(500).json({ error: "Email pa voye — verifye konfigirasyon Resend" }); return; }
     res.json({ ok: true, mode: "test", sent: 1 });
     return;
@@ -2458,7 +2458,7 @@ router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promi
     return;
   }
 
-  const sent = await sendEmailBatch(recipients, subject, textBody, htmlBody);
+  const sent = await sendEmailBatch(recipients, branded.subject, branded.text, branded.html);
 
   await db.insert(adminLogsTable).values({
     adminId: req.userId!,

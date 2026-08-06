@@ -1995,15 +1995,15 @@ export default function ListingDetail() {
               {payStep === "promo" && (
                 <div className="space-y-3">
                   <DialogHeader className="px-0 pb-0">
-                    <DialogTitle className="flex items-center gap-2 text-base"><span>🎟</span> Kat Promo</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2 text-base"><span>🎟</span> {t("listing.checkoutStepPromo")}</DialogTitle>
                   </DialogHeader>
                   <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
-                    <p className="text-sm font-bold">Èske ou gen yon kòd promo?</p>
+                    <p className="text-sm font-bold">{t("listing.promoQuestion")}</p>
                     {promoValidation ? (
                       <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/30 border border-green-300 dark:border-green-700 rounded-lg px-3 py-2">
                         <Ticket className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-green-700 dark:text-green-400">{promoValidation.code} — économize ${promoValidation.discountAmount.toFixed(2)}</p>
+                          <p className="text-sm font-bold text-green-700 dark:text-green-400">{promoValidation.code} — {t("listing.promoSaved", { amount: promoValidation.discountAmount.toFixed(2) })}</p>
                         </div>
                         <button onClick={clearPromo} className="text-xs text-muted-foreground hover:text-foreground shrink-0 p-1">✕</button>
                       </div>
@@ -2018,7 +2018,7 @@ export default function ListingDetail() {
                               className="pl-8 text-sm font-mono h-9" data-testid="input-promo-code" />
                           </div>
                           <Button size="sm" onClick={validatePromoCode} disabled={!promoCode.trim() || promoValidating} className="shrink-0 h-9 px-3" data-testid="button-apply-promo">
-                            {promoValidating ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Aplike"}
+                            {promoValidating ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : t("listing.promoApply")}
                           </Button>
                         </div>
                         {promoError && <p className="text-xs text-destructive">{promoError}</p>}
@@ -2027,11 +2027,11 @@ export default function ListingDetail() {
                   </div>
                   {!promoValidation && (
                     <div className="space-y-1.5">
-                      <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">Promo ki disponib pou ou</p>
+                      <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{t("listing.promoAvailableTitle")}</p>
                       {[
-                        { code: "FLEXA10", badge: "10% RABÈ", desc: "10% sou kòmand >$50", color: "orange" as const },
-                        { code: "LIVRES",  badge: "$5 RABÈ",  desc: "$5 sou frè livrezon", color: "green" as const },
-                        { code: "NEWUSER", badge: "15% RABÈ", desc: "15% — nouvo itilizatè sèlman", color: "blue" as const },
+                        { code: "FLEXA10", badge: t("listing.promoFlexa10Badge"), desc: t("listing.promoFlexa10Desc"), color: "orange" as const },
+                        { code: "LIVRES",  badge: t("listing.promoLivresBadge"),  desc: t("listing.promoLivresDesc"),  color: "green" as const },
+                        { code: "NEWUSER", badge: t("listing.promoNewuserBadge"), desc: t("listing.promoNewuserDesc"), color: "blue" as const },
                       ].map(p => (
                         <button key={p.code} type="button" onClick={() => { setPromoCode(p.code); setPromoError(null); }}
                           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-all text-left">
@@ -2047,7 +2047,7 @@ export default function ListingDetail() {
                           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         </button>
                       ))}
-                      <p className="text-[10px] text-muted-foreground px-0.5">⚠️ Yon kòd promo ka itilize yon sèl fwa sèlman.</p>
+                      <p className="text-[10px] text-muted-foreground px-0.5">{t("listing.promoOnceWarning")}</p>
                     </div>
                   )}
                   <div className="rounded-lg border border-amber-200 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-950/20 px-2.5 py-2 flex items-center gap-2">
@@ -2056,15 +2056,15 @@ export default function ListingDetail() {
                   </div>
                   <div className="rounded-lg border border-border bg-card px-3 py-2.5 flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-[10px] text-muted-foreground">Pri pwodwi (livrezon pa enkli)</p>
+                      <p className="text-[10px] text-muted-foreground">{t("listing.productPriceLabel")}</p>
                       <p className="text-base font-black">${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)}
                         {promoValidation && <span className="text-sm font-normal text-green-600 dark:text-green-400 ml-1">(-${promoValidation.discountAmount.toFixed(2)})</span>}
                       </p>
                       {offerPriceOverride !== null && (
-                        <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold mt-0.5">✅ Pri ofè ou a</p>
+                        <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold mt-0.5">{t("listing.yourOfferPrice")}</p>
                       )}
                     </div>
-                    <Button size="sm" className="font-bold shrink-0 h-9" onClick={() => setPayStep("address")}>Kontinye <ChevronRight className="h-4 w-4 ml-1" /></Button>
+                    <Button size="sm" className="font-bold shrink-0 h-9" onClick={() => setPayStep("address")}>{t("listing.continueBtn")} <ChevronRight className="h-4 w-4 ml-1" /></Button>
                   </div>
                   <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1">{t("buttons.cancel")}</button>
                 </div>

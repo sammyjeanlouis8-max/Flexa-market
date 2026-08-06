@@ -322,8 +322,8 @@ router.get("/admin/flex-card/users", requireFinanceAdmin, async (req, res): Prom
   if (blockedOnly) {
     conditions.push(eq(usersTable.flexCardBlocked, true));
   }
-  // Hide deleted/banned accounts
-  conditions.push(eq(usersTable.isDeleted, false));
+  // Hide banned accounts
+  conditions.push(eq(usersTable.isBanned, false));
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

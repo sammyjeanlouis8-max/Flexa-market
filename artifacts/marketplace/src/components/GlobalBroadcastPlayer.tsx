@@ -253,6 +253,14 @@ export default function GlobalBroadcastPlayer() {
     audioCtxRef.current = null;
   }, [isActive]);
 
+  // Computed early so the slotConnecting useEffect below can reference it without
+  // causing a Rollup TDZ crash (was previously declared after the early return).
+  const slotVisible =
+    isOnViewerTV &&
+    slotRect !== null &&
+    slotRect.top >= -10 &&
+    slotRect.top + slotRect.height <= (typeof window !== "undefined" ? window.innerHeight : 800) + 10;
+
   // Show "connecting" branded overlay for 5 s every time slot mode becomes visible.
   // This prevents a raw YouTube "Ce contenu n'est plus disponible" error page from
   // appearing instantly when the stream URL is dead or still buffering.
@@ -304,11 +312,7 @@ export default function GlobalBroadcastPlayer() {
   const embed = buildEmbedUrl(effectiveVideoUrl, effectiveVideoKey);
 
   // ── Compute iframe position ──────────────────────────────────────────────────
-  const slotVisible =
-    isOnViewerTV &&
-    slotRect !== null &&
-    slotRect.top >= -10 &&
-    slotRect.top + slotRect.height <= window.innerHeight + 10;
+  // (slotVisible declared earlier, before the slotConnecting useEffect)
 
   // Whether we're in mini-player mode (not slot, not admin)
   const isMiniMode = !slotVisible && !isOnAdminTV;

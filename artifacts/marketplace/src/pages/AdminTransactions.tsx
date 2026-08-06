@@ -53,10 +53,11 @@ export default function AdminTransactions() {
     setLoading(true);
     setError(null);
     try {
+      const tk = localStorage.getItem("flexamarket_token");
       const res = await fetch("/api/wallet/admin/all", {
         method: "GET",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(tk ? { Authorization: `Bearer ${tk}` } : {}) },
       });
       if (!res.ok) {
         setError(`Erè ${res.status}: ${res.statusText}`);
@@ -78,8 +79,10 @@ export default function AdminTransactions() {
     setDetailData(null);
     setDetailLoading(true);
     try {
+      const tk = localStorage.getItem("flexamarket_token");
       const res = await fetch(`/api/wallet/admin/user/${userId}`, {
         credentials: "include",
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
       });
       if (!res.ok) { setDetailData(null); return; }
       setDetailData(await res.json());

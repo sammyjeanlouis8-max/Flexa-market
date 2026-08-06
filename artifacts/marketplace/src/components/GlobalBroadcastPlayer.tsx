@@ -442,29 +442,53 @@ export default function GlobalBroadcastPlayer() {
           </div>
         )}
 
-        {/* ── Mini-mode poster overlay ─────────────────────────────────────────
-            TRANSPARENT background so the underlying iframe/video is always visible.
-            Old solid "#0a0a0a" completely hid the video — removed.
-            Film mode: show thumbnail at ~85% opacity on top of the playing video.
-            Live mode: just top + bottom gradient for control readability. */}
+        {/* ── Mini-mode poster — OPAQUE cover over the iframe ─────────────────
+            The iframe MUST stay hidden in mini mode because:
+            - Facebook/Instagram embeds show a prominent error card ("Ce contenu
+              n'est plus disponible") when the URL is geo-blocked or removed.
+            - YouTube shows a white preload flash before the player loads.
+            The poster is the authoritative visual; the iframe provides audio only.
+            Priority: film thumbnail → branded gradient → logo.                  */}
         {isMiniMode && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden" }}
+            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden", background: "#0a0a0a" }}
           >
-            {/* Film thumbnail full-cover */}
-            {isFilmMode && filmPlayer?.thumbnailUrl && (
-              <img
-                src={filmPlayer.thumbnailUrl}
-                alt={filmPlayer.title}
-                className="w-full h-full object-cover"
-                style={{ opacity: 0.88 }}
-              />
+            {isFilmMode ? (
+              filmPlayer?.thumbnailUrl ? (
+                /* Film with thumbnail — show it full-size */
+                <img
+                  src={filmPlayer.thumbnailUrl}
+                  alt={filmPlayer.title ?? "Film"}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                /* Film without thumbnail — gradient + title */
+                <>
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#1e0a3c 0%,#2d1657 50%,#0f0f1a 100%)" }} />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center mb-1"
+                      style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
+                      <Film size={16} className="text-white" />
+                    </div>
+                    <p className="text-white text-[10px] font-bold text-center leading-tight line-clamp-2 opacity-90">
+                      {filmPlayer?.title ?? "Flexa TV"}
+                    </p>
+                  </div>
+                </>
+              )
+            ) : (
+              /* Live broadcast — animated gradient + logo */
+              <>
+                <div className="absolute inset-0" style={{ background: "linear-gradient(135deg,#0f0f1a 0%,#1a0a2e 60%,#0a0a0a 100%)" }} />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-12 h-12 object-contain opacity-30" />
+                </div>
+              </>
             )}
-            {/* Top gradient — header legibility */}
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 42%)" }} />
-            {/* Bottom gradient — readability */}
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)" }} />
+            {/* Top + bottom gradients for header/title legibility */}
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.70) 0%, transparent 45%)" }} />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.60) 0%, transparent 45%)" }} />
           </div>
         )}
 

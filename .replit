@@ -47,3 +47,5 @@ channel = "stable-25_05"
 
 [userenv.shared]
 WASABI_PUBLIC = "false"
+RESEND_DOMAIN_VERIFIED = "1"
+RESEND_FROM_EMAIL = "noreply@flexamarket.com"

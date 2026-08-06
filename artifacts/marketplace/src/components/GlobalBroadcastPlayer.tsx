@@ -105,9 +105,6 @@ const MINI_H      = 72;
 const MINI_THUMB  = 128; // 16:9 at 72px height
 const MINI_BOT    = 76;  // above bottom nav bar
 const MINI_MARGIN = 8;
-// MINI_W kept for drag-handler math (drag is dormant in current design but
-// removing the const causes a Rollup TDZ crash in the minified bundle).
-const MINI_W      = typeof window !== "undefined" ? Math.max(200, window.innerWidth - MINI_MARGIN * 2) : 340;
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
@@ -148,19 +145,6 @@ export default function GlobalBroadcastPlayer() {
     };
   }, [isEitherActive]);
 
-  // ── Mini-player 2-axis drag ──────────────────────────────────────────────────
-  const [miniLeft, setMiniLeft]     = useState<number | null>(null);
-  const [miniTop,  setMiniTop]      = useState<number | null>(null);
-  const miniLeftRef = useRef<number | null>(null);
-  const miniTopRef  = useRef<number | null>(null);
-  // drag tracking — all mutable, no re-render during move
-  const dragStartX    = useRef(0);
-  const dragStartY    = useRef(0);
-  const dragStartLeft = useRef(0);
-  const dragStartTop  = useRef(0);
-  const dragging      = useRef(false);
-  const wasDragRef    = useRef(false); // survives into onClick after touchEnd
-
   const iframeRef   = useRef<HTMLIFrameElement>(null);
   const videoRef    = useRef<HTMLVideoElement>(null);
   const wrapperRef  = useRef<HTMLDivElement>(null);
@@ -172,67 +156,6 @@ export default function GlobalBroadcastPlayer() {
   const isOnViewerTV = location === "/tv";
   const isOnAdminTV  = location.startsWith("/admin");
 
-  const resolvedMiniLeft = () =>
-    miniLeftRef.current ??
-    (typeof window !== "undefined" ? window.innerWidth - MINI_MARGIN - MINI_W : 0);
-
-  // Default top = just above the bottom nav bar
-  const resolvedMiniTop = () =>
-    miniTopRef.current ??
-    (typeof window !== "undefined" ? window.innerHeight - MINI_BOT - MINI_H : 300);
-
-  const applyLeft = useCallback((left: number) => {
-    miniLeftRef.current = left;
-    if (wrapperRef.current) {
-      wrapperRef.current.style.left  = left + "px";
-      wrapperRef.current.style.right = "auto";
-    }
-  }, []);
-
-  const applyTop = useCallback((top: number) => {
-    miniTopRef.current = top;
-    if (wrapperRef.current) {
-      wrapperRef.current.style.top    = top + "px";
-      wrapperRef.current.style.bottom = "auto";
-    }
-  }, []);
-
-  const handleMiniTouchStart = useCallback((e: React.TouchEvent) => {
-    dragging.current   = false;
-    wasDragRef.current = false;
-    dragStartX.current    = e.touches[0].clientX;
-    dragStartY.current    = e.touches[0].clientY;
-    dragStartLeft.current = resolvedMiniLeft();
-    dragStartTop.current  = resolvedMiniTop();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleMiniTouchMove = useCallback((e: React.TouchEvent) => {
-    const dx = e.touches[0].clientX - dragStartX.current;
-    const dy = e.touches[0].clientY - dragStartY.current;
-    if (!dragging.current && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) dragging.current = true;
-    if (!dragging.current) return;
-    const w = typeof window !== "undefined" ? window.innerWidth  : 400;
-    const h = typeof window !== "undefined" ? window.innerHeight : 800;
-    const maxLeft = w - MINI_MARGIN - MINI_W;
-    const minTop  = 60;               // below the sticky header
-    const maxTop  = h - MINI_H - 80; // above bottom nav
-    applyLeft(Math.max(MINI_MARGIN, Math.min(maxLeft, dragStartLeft.current + dx)));
-    applyTop(Math.max(minTop, Math.min(maxTop, dragStartTop.current + dy)));
-  }, [applyLeft, applyTop]);
-
-  const handleMiniTouchEnd = useCallback((_e: React.TouchEvent) => {
-    if (!dragging.current) return;
-    wasDragRef.current = true; // tell onClick to skip navigation
-    dragging.current   = false;
-    // Snap left/right to nearest edge; keep vertical position as-is
-    const w       = typeof window !== "undefined" ? window.innerWidth : 400;
-    const cur     = miniLeftRef.current ?? (w - MINI_MARGIN - MINI_W);
-    const snapped = cur + MINI_W / 2 < w / 2 ? MINI_MARGIN : w - MINI_MARGIN - MINI_W;
-    applyLeft(snapped);
-    setMiniLeft(snapped);
-    setMiniTop(miniTopRef.current);
-  }, [applyLeft]);
 
   // ── Slot tracking: poll every 200ms ─────────────────────────────────────────
   useEffect(() => {

@@ -14,6 +14,45 @@ function fmtDur(s: number) {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+/** Animated equalizer bars — shown when music is playing */
+function EqBars() {
+  return (
+    <div className="flex items-end gap-[3px] h-5" aria-hidden>
+      {[1, 2, 3, 4].map(i => (
+        <span
+          key={i}
+          style={{
+            width: 3,
+            borderRadius: 2,
+            background: "linear-gradient(180deg,#c026d3,#7c3aed)",
+            animationName: "eq-bounce",
+            animationDuration: `${0.5 + i * 0.12}s`,
+            animationTimingFunction: "ease-in-out",
+            animationIterationCount: "infinite",
+            animationDirection: "alternate",
+            animationDelay: `${i * 0.07}s`,
+          }}
+          className="inline-block"
+        />
+      ))}
+      <style>{`
+        @keyframes eq-bounce {
+          from { height: 4px; }
+          to   { height: 18px; }
+        }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes ring-pulse {
+          0%   { transform: scale(1);   opacity: 0.6; }
+          100% { transform: scale(1.22); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function MusicPublicPlayer() {
   const [, params]   = useRoute("/music/play/:id");
   const [, setLocation] = useLocation();
@@ -36,12 +75,10 @@ export default function MusicPublicPlayer() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // ── Set document title
   useEffect(() => {
     if (track) document.title = `${track.title} — ${track.artist} · Flexa Music`;
   }, [track]);
 
-  // ── Audio events
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -66,7 +103,13 @@ export default function MusicPublicPlayer() {
   const toggle = () => {
     const a = audioRef.current;
     if (!a) return;
-    a.paused ? a.play().catch(() => {}) : a.pause();
+    if (a.paused) {
+      // iOS Safari: must call load() if src just set
+      if (!a.src || a.readyState === 0) a.load();
+      a.play().catch(() => {});
+    } else {
+      a.pause();
+    }
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -78,7 +121,6 @@ export default function MusicPublicPlayer() {
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // ── Loading
   if (loading) return (
     <div style={{ background: "#0a0a0a", minHeight: "100dvh" }}
       className="flex items-center justify-center">
@@ -86,7 +128,6 @@ export default function MusicPublicPlayer() {
     </div>
   );
 
-  // ── Error / not found
   if (error || !track) return (
     <div style={{ background: "#0a0a0a", minHeight: "100dvh", color: "#fff" }}
       className="flex flex-col items-center justify-center gap-4 px-6 text-center">
@@ -111,19 +152,33 @@ export default function MusicPublicPlayer() {
           <Music2 size={14} className="text-white" />
         </div>
         <span className="text-white font-black text-sm tracking-tight">Flexa Music</span>
+        {playing && <div className="ml-auto"><EqBars /></div>}
       </div>
 
-      {/* ── Cover art ── */}
-      <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-2xl mb-8 relative"
-        style={{ background: "linear-gradient(135deg,#2d1b4e,#4b0082)" }}>
+      {/* ── Cover art — rotates while playing ── */}
+      <div
+        className="w-full aspect-square rounded-3xl overflow-hidden shadow-2xl mb-8 relative"
+        style={{
+          background: "linear-gradient(135deg,#2d1b4e,#4b0082)",
+          animation: playing ? "spin-slow 12s linear infinite" : "none",
+          borderRadius: playing ? "50%" : "1.5rem",
+          transition: "border-radius 0.6s ease",
+        }}
+      >
         {track.cover_url
           ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
           : <div className="w-full h-full flex items-center justify-center">
               <Music2 size={80} className="text-white/15" />
             </div>}
-        {/* Vinyl overlay */}
+        {/* Vinyl vignette */}
         <div className="absolute inset-0 pointer-events-none"
           style={{ background: "radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0,0,0,0.35) 100%)" }} />
+        {/* Center dot for vinyl effect */}
+        {playing && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-8 h-8 rounded-full border-2 border-white/20 bg-black/60" />
+          </div>
+        )}
       </div>
 
       {/* ── Track info ── */}
@@ -142,7 +197,6 @@ export default function MusicPublicPlayer() {
           onClick={seek}>
           <div className="absolute left-0 top-0 h-full rounded-full"
             style={{ width: `${pct}%`, background: "linear-gradient(90deg,#7c3aed,#c026d3)", transition: "width 0.25s linear" }} />
-          {/* Thumb */}
           {pct > 0 && (
             <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md"
               style={{ left: `calc(${pct}% - 7px)` }} />
@@ -154,15 +208,39 @@ export default function MusicPublicPlayer() {
         </div>
       </div>
 
-      {/* ── Play/Pause ── */}
+      {/* ── Play/Pause button with pulse ring ── */}
       <div className="flex justify-center mb-10">
-        <button onClick={toggle}
-          className="w-20 h-20 rounded-full flex items-center justify-center shadow-2xl"
-          style={{ background: "#ffffff" }}>
-          {playing
-            ? <Pause size={32} className="text-black" />
-            : <Play  size={32} className="text-black ml-1" />}
-        </button>
+        <div className="relative flex items-center justify-center">
+          {/* Pulsing ring — only when playing */}
+          {playing && (
+            <>
+              <span className="absolute w-20 h-20 rounded-full"
+                style={{
+                  background: "radial-gradient(circle, #c026d3 0%, transparent 70%)",
+                  animation: "ring-pulse 1.2s ease-out infinite",
+                }} />
+              <span className="absolute w-20 h-20 rounded-full"
+                style={{
+                  background: "radial-gradient(circle, #7c3aed 0%, transparent 70%)",
+                  animation: "ring-pulse 1.2s ease-out infinite",
+                  animationDelay: "0.4s",
+                }} />
+            </>
+          )}
+          <button
+            onClick={toggle}
+            className="relative w-20 h-20 rounded-full flex items-center justify-center shadow-2xl transition-transform active:scale-95"
+            style={{
+              background: playing
+                ? "linear-gradient(135deg,#7c3aed,#c026d3)"
+                : "#ffffff",
+            }}
+          >
+            {playing
+              ? <Pause size={32} className="text-white" />
+              : <Play  size={32} className="text-black ml-1" />}
+          </button>
+        </div>
       </div>
 
       {/* ── CTA ── */}

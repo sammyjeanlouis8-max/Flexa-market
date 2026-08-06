@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { db, listingsTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql as dsql } from "drizzle-orm";
 import { logger } from "../lib/logger";
+
+async function rawQ<T = Record<string, unknown>>(text: string): Promise<T[]> {
+  const result = await db.execute(dsql.raw(text));
+  return ((result as any).rows ?? result) as T[];
+}
 
 const router = Router();
 
@@ -142,6 +147,90 @@ router.get("/og/:id", async (req, res) => {
 </html>`);
   } catch (err) {
     logger.error({ err }, "OG preview endpoint error");
+    res.status(500).send("Server error");
+  }
+});
+
+/**
+ * GET /api/og/music/:id
+ *
+ * Open Graph preview for music share links.
+ * WhatsApp/Telegram/iMessage bots read the OG tags and show the song cover.
+ * Real users are immediately redirected to /music/play/:id in the SPA.
+ */
+router.get("/og/music/:id", async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).send("Invalid track ID"); return; }
+
+  try {
+    const [row] = await rawQ<{
+      id: number; title: string; artist: string;
+      cover_url: string | null; play_count: number;
+    }>(`SELECT id, title, artist, cover_url, play_count
+        FROM music_tracks WHERE id = ${id} AND is_active = TRUE LIMIT 1`);
+
+    if (!row) { res.status(404).send("Track not found"); return; }
+
+    const host     = req.get("host") ?? "flexamarket.com";
+    const protocol = host.startsWith("localhost") ? "http" : "https";
+    const baseUrl  = `${protocol}://${host}`;
+    const trackUrl = `${baseUrl}/music/play/${id}`;
+
+    const coverUrl = row.cover_url
+      ? (row.cover_url.startsWith("http") ? row.cover_url : `${baseUrl}${row.cover_url}`)
+      : `${baseUrl}/favicon.svg`;
+
+    const ogTitle = escapeHtml(`${row.title} — ${row.artist}`);
+    const ogDesc  = escapeHtml(
+      `${row.play_count > 0 ? `${row.play_count.toLocaleString()} jwe • ` : ""}Koute sou Flexa Music`
+    );
+    const ogImg   = escapeHtml(coverUrl);
+    const urlSafe = escapeHtml(trackUrl);
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=600");
+
+    res.send(`<!DOCTYPE html>
+<html lang="ht">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${ogTitle} · Flexa Music</title>
+
+  <!-- Open Graph — WhatsApp, Facebook, Telegram, iMessage -->
+  <meta property="og:type"              content="music.song" />
+  <meta property="og:site_name"         content="Flexa Music" />
+  <meta property="og:url"               content="${urlSafe}" />
+  <meta property="og:title"             content="${ogTitle}" />
+  <meta property="og:description"       content="${ogDesc}" />
+  <meta property="og:image"             content="${ogImg}" />
+  <meta property="og:image:width"       content="1200" />
+  <meta property="og:image:height"      content="1200" />
+  <meta property="og:image:alt"         content="${ogTitle}" />
+  <meta property="og:locale"            content="ht_HT" />
+
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card"             content="summary_large_image" />
+  <meta name="twitter:title"            content="${ogTitle}" />
+  <meta name="twitter:description"      content="${ogDesc}" />
+  <meta name="twitter:image"            content="${ogImg}" />
+
+  <meta name="description" content="${ogDesc}" />
+
+  <!-- Instant redirect for real users -->
+  <meta http-equiv="refresh" content="0;url=${urlSafe}" />
+  <script>window.location.replace("${urlSafe}");</script>
+</head>
+<body style="margin:0;padding:2rem;font-family:system-ui,sans-serif;background:#0a0a0a;color:#fff;text-align:center">
+  <p style="color:#aaa;font-size:13px;margin-bottom:12px">Ap redirijé ou sou Flexa Music…</p>
+  <a href="${urlSafe}" style="color:#c026d3;font-size:20px;font-weight:700;text-decoration:none;display:block">
+    ${ogTitle}
+  </a>
+  <p style="color:#888;font-size:13px;margin-top:8px">${ogDesc}</p>
+</body>
+</html>`);
+  } catch (err) {
+    logger.error({ err }, "OG music preview error");
     res.status(500).send("Server error");
   }
 });

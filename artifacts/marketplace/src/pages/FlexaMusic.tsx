@@ -238,7 +238,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
           { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
           ...(isPaidLocked ? [] : [{ icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
           { icon: "🔗", label: t("music.shareTrack"),  action: () => {
-            const url = `${window.location.origin}/music/play/${track.id}`;
+            const url = `${window.location.origin}/api/og/music/${track.id}`;
             if (navigator.share) {
               navigator.share({ title: track.title, text: `${track.title} — ${track.artist}`, url }).catch(() => {});
             } else {

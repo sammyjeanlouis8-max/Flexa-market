@@ -2786,6 +2786,8 @@ export default {
     vipNoResult: "Pa gen rezilta",
     vipNone: "Pa gen abòne ankò.",
     vipRevoke: "Revoké",
+    flexCardHubTitle: "Dèt Flex Card",
+    flexCardHubSubtitle: "Bloke, jere & swiv dèt kat FM pa itilizatè",
     txHubTitle: "Tranzaksyon",
     txHubSubtitle: "Wè balans & tout istwa tranzaksyon pa itilizatè",
     txHubRefresh: "Rafraîchi",

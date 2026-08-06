@@ -2785,6 +2785,8 @@ export default {
     vipNoResult: "Aucun résultat",
     vipNone: "Aucun abonné pour l'instant.",
     vipRevoke: "Révoquer",
+    flexCardHubTitle: "Dettes Flex Card",
+    flexCardHubSubtitle: "Bloquer, gérer & suivre les dettes FM par utilisateur",
     txHubTitle: "Transactions",
     txHubSubtitle: "Voir soldes & historique complet par utilisateur",
     txHubRefresh: "Actualiser",

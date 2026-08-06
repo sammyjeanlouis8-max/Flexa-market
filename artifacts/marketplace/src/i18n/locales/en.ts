@@ -2738,6 +2738,8 @@ export default {
     vipNoResult: "No results",
     vipNone: "No subscribers yet.",
     vipRevoke: "Revoke",
+    flexCardHubTitle: "Flex Card Debt",
+    flexCardHubSubtitle: "Block, manage & track FM card debts per user",
     txHubTitle: "Transactions",
     txHubSubtitle: "View balances & full transaction history per user",
     txHubRefresh: "Refresh",

@@ -100,11 +100,6 @@ function ytUnmuteAndPlay(iframeEl: HTMLIFrameElement | null) {
 
 type SlotRect = { top: number; left: number; width: number; height: number };
 
-// Mini-player dimensions — YouTube-style full-width bottom bar
-const MINI_H      = 72;
-const MINI_THUMB  = 128; // 16:9 at 72px height
-const MINI_BOT    = 76;  // above bottom nav bar
-const MINI_MARGIN = 8;
 
 export default function GlobalBroadcastPlayer() {
   const bs = useBroadcast();
@@ -314,14 +309,13 @@ export default function GlobalBroadcastPlayer() {
   // ── Compute iframe position ──────────────────────────────────────────────────
   // (slotVisible declared earlier, before the slotConnecting useEffect)
 
-  // Whether we're in mini-player mode (not slot, not admin)
-  const isMiniMode = !slotVisible && !isOnAdminTV;
+  // Mini-player removed — hide completely when not in slot or admin view
+  if (!slotVisible && !isOnAdminTV) return null;
 
   // Iframe container geometry
   const iframeStyle: React.CSSProperties = isOnAdminTV
     ? { position: "fixed", left: -9999, top: 0, width: 1, height: 1, opacity: 0, zIndex: -1, pointerEvents: "none" }
-    : slotVisible
-    ? {
+    : {
         position: "fixed",
         top:    slotRect!.top    + "px",
         left:   slotRect!.left   + "px",
@@ -331,20 +325,6 @@ export default function GlobalBroadcastPlayer() {
         background: "black",
         borderRadius: "12px",
         overflow: "hidden",
-      }
-    : {
-        // YouTube-style: full-width bar pinned at bottom above the nav
-        position: "fixed",
-        bottom:  MINI_BOT + "px",
-        left:    MINI_MARGIN + "px",
-        right:   MINI_MARGIN + "px",
-        height:  MINI_H + "px",
-        zIndex: 9000,
-        background: "#161622",
-        borderRadius: "12px",
-        overflow: "hidden",
-        boxShadow: "0 -4px 32px rgba(0,0,0,0.75)",
-        border: "1px solid rgba(255,255,255,0.06)",
       };
 
   return (
@@ -361,8 +341,7 @@ export default function GlobalBroadcastPlayer() {
               className="w-full h-full object-contain"
               style={{
                 borderRadius: "12px",
-                // Mini mode: disable pointer events so overlay inside can receive touches
-                pointerEvents: isMiniMode ? "none" : "auto",
+                pointerEvents: "auto",
               }}
             />
           ) : (
@@ -376,11 +355,7 @@ export default function GlobalBroadcastPlayer() {
               style={{
                 border: "none",
                 borderRadius: "12px",
-                // KEY FIX: iOS Safari iframes steal ALL touch events from overlaying
-                // elements regardless of z-index. Disabling pointer events on the
-                // iframe in mini mode lets our overlay reliably receive touches.
-                // In slot/fullscreen mode the iframe needs its own controls.
-                pointerEvents: isMiniMode ? "none" : "auto",
+                pointerEvents: "auto",
               }}
             />
           )
@@ -444,138 +419,6 @@ export default function GlobalBroadcastPlayer() {
           </div>
         )}
 
-        {/* ── Mini-player — YouTube-style full-width bottom bar ────────────────
-            Layout: [thumbnail zone | info + controls]
-            The iframe stays behind everything (audio only in mini mode).
-            Left zone shows thumbnail / branded gradient; right shows title + buttons. */}
-        {isMiniMode && (
-          <div className="absolute inset-0 flex" style={{ zIndex: 5 }}>
-
-            {/* LEFT: thumbnail / brand visual (16:9 at 72 px height = 128 px wide) */}
-            <div
-              className="relative shrink-0 cursor-pointer"
-              style={{ width: MINI_THUMB, height: MINI_H }}
-              onClick={() => {
-                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
-                goToTV();
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
-                goToTV();
-              }}
-            >
-              {isFilmMode && filmPlayer?.thumbnailUrl ? (
-                <img
-                  src={filmPlayer.thumbnailUrl}
-                  alt={filmPlayer.title ?? "Film"}
-                  className="w-full h-full object-cover"
-                />
-              ) : isFilmMode ? (
-                /* Film without thumbnail */
-                <div className="w-full h-full flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg,#1e0a3c,#2d1657)" }}>
-                  <Film size={24} className="text-purple-300 opacity-60" />
-                </div>
-              ) : (
-                /* Live broadcast */
-                <div className="w-full h-full flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg,#0f0f1a,#1a0a2e)" }}>
-                  <img src="/flexa-tv-logo.png" alt="Flexa TV"
-                    className="w-9 h-9 object-contain opacity-40" />
-                </div>
-              )}
-              {/* Hairline right separator */}
-              <div className="absolute inset-y-0 right-0 w-px"
-                style={{ background: "rgba(255,255,255,0.07)" }} />
-            </div>
-
-            {/* RIGHT: info + controls */}
-            <div
-              className="flex-1 flex items-center gap-2 px-3 min-w-0 cursor-pointer"
-              style={{ background: "#161622" }}
-              onClick={() => {
-                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
-                goToTV();
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                if (isFilmMode) window.dispatchEvent(new CustomEvent("flexa:resume-film"));
-                goToTV();
-              }}
-            >
-              {/* Badge + title */}
-              <div className="flex-1 min-w-0">
-                {isFilmMode ? (
-                  <span style={{
-                    display: "inline-block", fontSize: 8, background: "#7c3aed",
-                    color: "#fff", padding: "1px 5px", borderRadius: 3,
-                    fontWeight: 700, lineHeight: 1.5, marginBottom: 2,
-                  }}>FILM</span>
-                ) : (
-                  <span className="animate-pulse" style={{
-                    display: "inline-block", fontSize: 8, background: "#dc2626",
-                    color: "#fff", padding: "1px 5px", borderRadius: 3,
-                    fontWeight: 700, lineHeight: 1.5, marginBottom: 2,
-                  }}>● LIVE</span>
-                )}
-                <p className="text-white font-semibold truncate"
-                  style={{ fontSize: 12, lineHeight: 1.25 }}>
-                  {effectiveTitle}
-                </p>
-              </div>
-
-              {/* 🔊 Sound toggle */}
-              <button
-                onTouchStart={(e) => e.stopPropagation()}
-                onTouchEnd={(e) => {
-                  e.stopPropagation(); e.preventDefault();
-                  initBackgroundAudio();
-                  ytUnmuteAndPlay(iframeRef.current);
-                  setIsMuted(false);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  initBackgroundAudio();
-                  ytUnmuteAndPlay(iframeRef.current);
-                  setIsMuted(false);
-                }}
-                style={{
-                  width: 40, height: 40, flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: isMuted ? "rgba(167,139,250,1)" : "rgba(255,255,255,0.75)",
-                  cursor: "pointer",
-                }}
-                title={isMuted ? "Aktive son" : "Son aktif"}
-              >
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-              </button>
-
-              {/* ✕ Close */}
-              <button
-                onTouchStart={(e) => e.stopPropagation()}
-                onTouchEnd={(e) => {
-                  e.stopPropagation(); e.preventDefault();
-                  isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-                }}
-                style={{
-                  width: 40, height: 40, flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "rgba(255,255,255,0.4)",
-                  cursor: "pointer",
-                }}
-                title="Fèmen"
-                aria-label="Fèmen"
-              >
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── Slot-mode UI overlay (controls layered on top of iframe on /tv) ── */}

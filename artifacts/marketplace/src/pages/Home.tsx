@@ -1165,19 +1165,16 @@ export default function Home() {
           </section>
         ) : null}
 
-        {/* === FLEXA VIP SECTION — visible to all users === */}
+        {/* === FLEXA VIP SECTION — grid, tier-sorted (VIP > Premium > Standard) === */}
         {stats?.flexaFamilyListings && stats.flexaFamilyListings.length > 0 && (
           <section>
             <div className="flex items-center gap-1.5 mb-3">
               <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
               <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
             </div>
-            <div
-              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
+            <div className="grid grid-cols-2 gap-3">
               {stats.flexaFamilyListings.map((l: NormalListing) => (
-                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52 relative">
+                <div key={l.id} className="relative">
                   <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
                     <Crown className="h-2.5 w-2.5" />
                     VIP

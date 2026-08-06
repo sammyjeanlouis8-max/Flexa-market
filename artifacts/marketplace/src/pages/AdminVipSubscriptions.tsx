@@ -97,6 +97,17 @@ export default function AdminVipSubscriptions() {
     }
   };
 
+  const activate = async (subscriptionId: number, name: string) => {
+    if (!confirm(`Aktive abònman #${subscriptionId} pou ${name}?`)) return;
+    try {
+      await apiFetch("/api/admin/subscriptions/activate", "POST", { subscriptionId });
+      toast({ title: "✅ Abònman aktive!" });
+      await load();
+    } catch (e: any) {
+      toast({ title: e.message ?? "Echèk", variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
     if (user?.isAdmin || user?.isSuperAdmin) load();
   }, [user?.id]);
@@ -366,17 +377,31 @@ export default function AdminVipSubscriptions() {
                       </div>
                     </div>
 
-                    {/* Revoke button */}
-                    {(isActive || isGrace) && sub?.plan !== "basic" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs shrink-0 text-red-500 border-red-500/30 hover:bg-red-500/10 mt-0.5"
-                        onClick={() => revoke(sub.userId, u?.name ?? `#${sub.userId}`)}
-                      >
-                        {t("adminBanner.vipRevoke")}
-                      </Button>
-                    )}
+                    {/* Action buttons */}
+                    <div className="flex flex-col gap-1 shrink-0">
+                      {/* Activate button for pending subscriptions */}
+                      {sub?.status === "pending" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs shrink-0 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                          onClick={() => activate(sub.id, u?.name ?? `#${sub.userId}`)}
+                        >
+                          ✅ Aktive
+                        </Button>
+                      )}
+                      {/* Revoke button */}
+                      {(isActive || isGrace) && sub?.plan !== "basic" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs shrink-0 text-red-500 border-red-500/30 hover:bg-red-500/10"
+                          onClick={() => revoke(sub.userId, u?.name ?? `#${sub.userId}`)}
+                        >
+                          {t("adminBanner.vipRevoke")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

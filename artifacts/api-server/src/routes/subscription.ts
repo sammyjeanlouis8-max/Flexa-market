@@ -557,6 +557,42 @@ router.post("/admin/subscriptions/revoke", requireAuth, async (req: any, res: an
   }
 });
 
+// ── Admin: POST /api/admin/subscriptions/activate ───────────────────────────
+// Manually activates a pending subscription record (e.g. Stripe never confirmed).
+router.post("/admin/subscriptions/activate", requireAuth, async (req: any, res: any) => {
+  try {
+    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) return res.status(403).json({ error: "Forbidden" });
+    const { subscriptionId } = req.body as { subscriptionId: number };
+    if (!subscriptionId) return res.status(400).json({ error: "subscriptionId required" });
+
+    const [sub] = await db.select().from(vendorSubscriptionsTable)
+      .where(eq(vendorSubscriptionsTable.id, Number(subscriptionId)));
+    if (!sub) return res.status(404).json({ error: "Subscription not found" });
+
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+    await db.update(vendorSubscriptionsTable)
+      .set({ status: "active", expiresAt, startedAt: new Date(), updatedAt: new Date() })
+      .where(eq(vendorSubscriptionsTable.id, sub.id));
+
+    await db.update(usersTable)
+      .set({ subscriptionPlan: sub.plan as SubscriptionPlan, subscriptionExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(eq(usersTable.id, sub.userId));
+
+    // Unhide any listings hidden by expired subscription
+    await db.update(listingsTable)
+      .set({ status: "available" })
+      .where(and(eq(listingsTable.sellerId, sub.userId), eq(listingsTable.status, "subscription_hidden")));
+
+    logger.info({ subscriptionId: sub.id, userId: sub.userId, plan: sub.plan, expiresAt }, "Subscription manually activated by admin");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "POST /admin/subscriptions/activate error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── Webhook helper (called from stripeCheckout.ts) ───────────────────────────
 
 export async function handleSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {

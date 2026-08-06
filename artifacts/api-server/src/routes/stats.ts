@@ -94,15 +94,13 @@ router.get("/stats/home", optionalAuth, async (req, res): Promise<void> => {
     ELSE 0
   END)`;
 
-  // Flexa VIP: country-scoped (each subscriber sees VIP sellers from their own country only).
-  // isNull(subscriptionExpiresAt) intentionally removed — must have a real future expiry.
+  // Flexa VIP: global (no country filter) — paying VIP sellers get max visibility to ALL users.
   const familyOnlyWhere = and(
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)),
     inArray(usersTable.subscriptionPlan, ['standard', 'premium', 'vip']),
     gt(usersTable.subscriptionExpiresAt, new Date()),
-    ...(country ? [eq(listingsTable.country, country)] : []),
   );
 
   const flexaFamilyRows = await db.select().from(listingsTable)

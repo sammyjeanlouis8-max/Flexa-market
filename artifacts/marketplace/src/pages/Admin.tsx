@@ -52,6 +52,210 @@ async function adminFetch(path: string, method = "POST", body?: object) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+// ─── Broadcast Email Panel ─────────────────────────────────────────────────────
+function BroadcastEmailPanel() {
+  const { toast } = useToast();
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  const token = () => localStorage.getItem("flexamarket_token");
+
+  const [subject, setSubject] = useState("");
+  const [htmlBody, setHtmlBody] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [sending, setSending] = useState<"idle" | "test" | "broadcast">("idle");
+  const [result, setResult] = useState<{ mode: string; sent: number; total?: number } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const send = async (mode: "test" | "broadcast") => {
+    if (!subject.trim() || !htmlBody.trim()) {
+      toast({ title: "Ranpli tit ak kò mesaj la", variant: "destructive" });
+      return;
+    }
+    if (mode === "test" && !testEmail.trim()) {
+      toast({ title: "Mete yon email pou tès", variant: "destructive" });
+      return;
+    }
+    setSending(mode);
+    setResult(null);
+    try {
+      const body: any = { subject, htmlBody };
+      if (mode === "test") body.testEmail = testEmail.trim();
+      const r = await fetch(`${BASE}/api/admin/broadcast-email`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Erè");
+      setResult(d);
+      toast({ title: mode === "test" ? "✅ Tès voye!" : `✅ ${d.sent} / ${d.total} email voye!` });
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    } finally {
+      setSending("idle");
+      setConfirmOpen(false);
+    }
+  };
+
+  const QUICK_VARS = [
+    { label: "Bold", tag: (t: string) => `<strong>${t}</strong>` },
+    { label: "Koulè wouj", tag: (t: string) => `<span style="color:#e53e3e">${t}</span>` },
+    { label: "Lyen", tag: () => `<a href="https://flexamarket.com" style="color:#3182ce">Klike la</a>` },
+    { label: "Separatè", tag: () => `<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0">` },
+  ];
+
+  const insertAt = (text: string) => {
+    const ta = document.getElementById("broadcast-body") as HTMLTextAreaElement | null;
+    if (!ta) { setHtmlBody(prev => prev + text); return; }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = htmlBody.slice(start, end);
+    const insert = text.includes("{{}}") ? text.replace("{{}}", selected) : text;
+    setHtmlBody(htmlBody.slice(0, start) + insert + htmlBody.slice(end));
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6 py-2">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center">
+          <Send className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+        </div>
+        <div>
+          <h2 className="font-bold text-foreground text-lg">Broadcast Email</h2>
+          <p className="text-xs text-muted-foreground">Voye yon mesaj pa email tout itilizatè ki gen adrès email sou Flexa Market.</p>
+        </div>
+      </div>
+
+      {/* Warning banner */}
+      <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+        <span>Fè yon tès an premye anvan voye a tout moun. Email yo pa ka retire apre yo voye.</span>
+      </div>
+
+      {/* Subject */}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-semibold">Tit / Sijè</Label>
+        <Input
+          value={subject}
+          onChange={e => setSubject(e.target.value)}
+          placeholder="Egz: Nouvo fonksyon sou Flexa Market 🎉"
+          className="h-10"
+        />
+      </div>
+
+      {/* HTML body */}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-semibold">Kò Mesaj (HTML)</Label>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {QUICK_VARS.map(v => (
+            <button
+              key={v.label}
+              onClick={() => insertAt(v.tag("{{}}").includes("{{}}") ? v.tag("") : v.tag(""))}
+              className="text-[10px] font-medium bg-muted hover:bg-muted/80 border border-border rounded-md px-2 py-1 transition-colors"
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <Textarea
+          id="broadcast-body"
+          value={htmlBody}
+          onChange={e => setHtmlBody(e.target.value)}
+          placeholder={`<p>Bonjou <strong>{{name}}</strong>,</p>\n<p>Nou gen yon bèl nouvèl pou ou...</p>`}
+          className="font-mono text-xs min-h-[200px] resize-y"
+        />
+        <p className="text-[10px] text-muted-foreground">HTML valab. Itilize &lt;p&gt;, &lt;strong&gt;, &lt;a href="..."&gt;, &lt;ul&gt;&lt;li&gt;.</p>
+      </div>
+
+      {/* Live preview */}
+      {htmlBody.trim() && (
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold">Aperçu</Label>
+          <div
+            className="border border-border rounded-xl p-4 bg-white dark:bg-zinc-900 text-sm prose prose-sm dark:prose-invert max-w-none"
+            dangerouslySetInnerHTML={{ __html: htmlBody }}
+          />
+        </div>
+      )}
+
+      {/* Test email */}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-semibold">Email Tès (opsyonèl)</Label>
+        <div className="flex gap-2">
+          <Input
+            value={testEmail}
+            onChange={e => setTestEmail(e.target.value)}
+            placeholder="admin@example.com"
+            type="email"
+            className="h-9"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 px-4 shrink-0"
+            onClick={() => send("test")}
+            disabled={sending !== "idle"}
+          >
+            {sending === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
+            Voye Tès
+          </Button>
+        </div>
+      </div>
+
+      {/* Send to all */}
+      <div className="flex items-center justify-between pt-2 border-t border-border">
+        <p className="text-xs text-muted-foreground">Voye a <strong>tout itilizatè</strong> ki gen email valab sou platfòm nan.</p>
+        <Button
+          className="bg-rose-600 hover:bg-rose-700 text-white h-9 px-5"
+          onClick={() => setConfirmOpen(true)}
+          disabled={sending !== "idle" || !subject.trim() || !htmlBody.trim()}
+        >
+          {sending === "broadcast" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+          Voye a Tout Moun
+        </Button>
+      </div>
+
+      {/* Result */}
+      {result && (
+        <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {result.mode === "test"
+            ? `Tès voye ✓`
+            : `${result.sent} email voye sou ${result.total} itilizatè.`
+          }
+        </div>
+      )}
+
+      {/* Confirm dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-5 w-5" /> Konfime Broadcast
+            </DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground space-y-2 py-2">
+            <p>Ou pral voye email sa a <strong className="text-foreground">tout itilizatè</strong> ki gen adrès email valab sou Flexa Market.</p>
+            <p className="font-medium text-foreground">Sijè: <span className="text-muted-foreground font-normal">{subject}</span></p>
+            <p className="text-amber-600 dark:text-amber-400 text-xs font-medium">⚠️ Aksyon sa pa ka ranvèse. Asire ou tès la reyisi an premye.</p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Anile</Button>
+            <Button
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+              onClick={() => send("broadcast")}
+              disabled={sending !== "idle"}
+            >
+              {sending === "broadcast" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Wi, voye a tout moun
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function StatCard({
   icon: Icon, label, value, color, bg, alert = false, onClick,
 }: {
@@ -2838,6 +3042,7 @@ export default function Admin() {
             )}
             <TabsTrigger value="returns" className="text-xs" onClick={() => loadReturns(returnsFilter)} data-testid="tab-returns"><RotateCcw className="h-3 w-3 mr-1" />Retou</TabsTrigger>
             <TabsTrigger value="referrals" className="text-xs font-bold text-amber-600 dark:text-amber-400" data-testid="tab-referrals"><Trophy className="h-3 w-3 mr-1" />Referrals</TabsTrigger>
+            {isSuperAdmin && <TabsTrigger value="broadcast" className="text-xs font-bold text-rose-600 dark:text-rose-400" data-testid="tab-broadcast"><Send className="h-3 w-3 mr-1" />Broadcast Email</TabsTrigger>}
             {isSuperAdmin && (
               <TabsTrigger value="veye-kont" className="text-xs font-bold text-red-600 dark:text-red-400" data-testid="tab-veye-kont">
                 <ShieldAlert className="h-3 w-3 mr-1" />Veye Kont
@@ -8261,6 +8466,13 @@ export default function Admin() {
         <TabsContent value="referrals">
           <AdminReferralPanel />
         </TabsContent>
+
+        {/* ══ Broadcast Email (super-admin only) ══ */}
+        {isSuperAdmin && (
+          <TabsContent value="broadcast">
+            <BroadcastEmailPanel />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* ── Security Dialog ── */}

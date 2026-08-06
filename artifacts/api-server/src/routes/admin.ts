@@ -2416,4 +2416,58 @@ router.put("/admin/platform-fees", requireSuperAdmin, async (req: any, res): Pro
   res.json({ ok: true, key, value });
 });
 
+// ─── POST /api/admin/broadcast-email ─────────────────────────────────────────
+// Super-admin only. Send a custom email to all users (or a single test address).
+router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promise<void> => {
+  const { subject, htmlBody, testEmail } = req.body as {
+    subject?: string;
+    htmlBody?: string;
+    testEmail?: string;
+  };
+
+  if (!subject?.trim()) { res.status(400).json({ error: "subject obligatwa" }); return; }
+  if (!htmlBody?.trim()) { res.status(400).json({ error: "kò mesaj obligatwa" }); return; }
+
+  // Plain-text fallback: strip HTML tags
+  const textBody = htmlBody.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+
+  // ── Test mode: send to one address only ──
+  if (testEmail?.trim()) {
+    const ok = await sendEmail({ to: testEmail.trim(), subject: `[TEST] ${subject}`, text: textBody, html: htmlBody });
+    if (!ok) { res.status(500).json({ error: "Email pa voye — verifye konfigirasyon Resend" }); return; }
+    res.json({ ok: true, mode: "test", sent: 1 });
+    return;
+  }
+
+  // ── Broadcast mode: send to all users who have an email address ──
+  const users = await db
+    .select({ email: usersTable.email, name: usersTable.name })
+    .from(usersTable)
+    .where(and(
+      sql`${usersTable.email} IS NOT NULL`,
+      sql`${usersTable.email} != ''`,
+      eq(usersTable.isBanned, false),
+    ));
+
+  const recipients = users
+    .filter(u => u.email && u.email.includes("@"))
+    .map(u => ({ email: u.email!, name: u.name ?? undefined }));
+
+  if (recipients.length === 0) {
+    res.status(400).json({ error: "Pa gen itilizatè ak email" });
+    return;
+  }
+
+  const sent = await sendEmailBatch(recipients, subject, textBody, htmlBody);
+
+  await db.insert(adminLogsTable).values({
+    adminId: req.userId!,
+    action: "broadcast_email",
+    targetId: null,
+    note: `subject="${subject}" | recipients=${recipients.length} | sent=${sent}`,
+  } as any).catch(() => {});
+
+  res.json({ ok: true, mode: "broadcast", total: recipients.length, sent });
+});
+
 export default router;

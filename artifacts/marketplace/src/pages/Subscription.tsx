@@ -134,12 +134,35 @@ export default function Subscription() {
   const [showReturnApp, setShowReturnApp] = useState(false);
 
   useEffect(() => {
-    if (successPlan) {
+    const sessionId = params.get("session_id");
+
+    // Auto-activate Stripe subscription when redirected back with session_id
+    if (successPlan && sessionId) {
+      const tk = localStorage.getItem("flexamarket_token");
+      fetch("/api/subscription/checkout/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(tk ? { Authorization: `Bearer ${tk}` } : {}) },
+        body: JSON.stringify({ sessionId }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.ok) {
+            toast({
+              title: t("subscription.planActivated", { plan: successPlan }),
+              description: t("subscription.planActivatedDesc"),
+            });
+            // Reload subscription status so the page reflects the new plan
+            setTimeout(() => load(), 800);
+          }
+        })
+        .catch(() => {/* non-fatal */});
+    } else if (successPlan) {
       toast({
         title: t("subscription.planActivated", { plan: successPlan }),
         description: t("subscription.planActivatedDesc"),
       });
     }
+
     if (returnApp) {
       setShowReturnApp(true);
       window.history.replaceState({}, "", window.location.pathname);

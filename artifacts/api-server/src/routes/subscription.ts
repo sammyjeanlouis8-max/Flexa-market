@@ -214,7 +214,7 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
         plan,
         subscriptionRecordId: String(pending.id),
       },
-      success_url: `${BASE_URL}/subscription?success=1&plan=${plan}&return_app=1`,
+      success_url: `${BASE_URL}/subscription?success=1&plan=${plan}&return_app=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/subscription?cancelled=1&return_app=1`,
     });
 
@@ -554,6 +554,78 @@ router.post("/admin/subscriptions/revoke", requireAuth, async (req: any, res: an
   } catch (err) {
     logger.error({ err }, "POST /admin/subscriptions/revoke error");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── POST /api/subscription/checkout/verify ───────────────────────────────────
+// Called by the frontend after Stripe redirects back with ?session_id=...
+// Idempotent: safe to call multiple times — skips if already activated.
+router.post("/subscription/checkout/verify", async (req: any, res: any): Promise<void> => {
+  try {
+    const { sessionId } = req.body as { sessionId?: string };
+    if (!sessionId) { res.status(400).json({ error: "sessionId required" }); return; }
+
+    const stripe = await getStripeClient();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+
+    if (session.payment_status !== "paid") {
+      res.json({ ok: false, reason: "not_paid" }); return;
+    }
+
+    const meta = session.metadata ?? {};
+    const userId = meta.userId ? Number(meta.userId) : null;
+    const plan = meta.plan as SubscriptionPlan | undefined;
+    const recordId = meta.subscriptionRecordId ? Number(meta.subscriptionRecordId) : null;
+
+    if (!userId || !plan || !PLAN_CONFIG[plan]) {
+      res.status(400).json({ error: "Missing metadata in session" }); return;
+    }
+
+    // Idempotency: check if already activated
+    const [existing] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+    if (
+      existing?.subscriptionPlan === plan &&
+      existing?.subscriptionExpiresAt &&
+      existing.subscriptionExpiresAt > new Date()
+    ) {
+      res.json({ ok: true, alreadyActive: true }); return;
+    }
+
+    // Determine expiry from Stripe subscription
+    const stripeSubscriptionId = typeof session.subscription === "string"
+      ? session.subscription
+      : (session.subscription as any)?.id ?? null;
+
+    let expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    if (stripeSubscriptionId) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+        expiresAt = new Date((sub as any).current_period_end * 1000);
+      } catch { /* fallback already set */ }
+    }
+
+    // Activate the pending subscription record
+    if (recordId) {
+      await db.update(vendorSubscriptionsTable)
+        .set({ status: "active", expiresAt, stripeSubscriptionId, startedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(vendorSubscriptionsTable.id, recordId), eq(vendorSubscriptionsTable.status, "pending")));
+    }
+
+    // Update user plan
+    await db.update(usersTable)
+      .set({ subscriptionPlan: plan, subscriptionExpiresAt: expiresAt, updatedAt: new Date() })
+      .where(eq(usersTable.id, userId));
+
+    // Unhide any subscription-hidden listings
+    await db.update(listingsTable)
+      .set({ status: "available" })
+      .where(and(eq(listingsTable.sellerId, userId), eq(listingsTable.status, "subscription_hidden")));
+
+    logger.info({ userId, plan, expiresAt, sessionId }, "Subscription auto-activated via checkout verify");
+    res.json({ ok: true, plan, expiresAt });
+  } catch (err: any) {
+    logger.error({ err }, "POST /subscription/checkout/verify error");
+    res.status(500).json({ error: "Verify failed" });
   }
 });
 

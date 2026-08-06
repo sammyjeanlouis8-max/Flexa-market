@@ -2076,18 +2076,18 @@ export default function ListingDetail() {
                   <DialogHeader className="px-0 pb-3">
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={() => setPayStep("promo")} className="p-1.5 rounded-lg hover:bg-muted shrink-0 transition-colors"><ChevronLeft className="h-5 w-5" /></button>
-                      <DialogTitle className="text-base font-bold">Adrès livrezon</DialogTitle>
+                      <DialogTitle className="text-base font-bold">{t("listing.checkoutStepAddress")}</DialogTitle>
                     </div>
                   </DialogHeader>
 
                   <div className="space-y-4">
                     {/* ── Contact Info ── */}
                     <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">Enfòmasyon kontak</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">{t("listing.contactInfo")}</p>
 
                       {/* Full Name */}
                       <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Non konplè <span className="text-destructive">*</span></label>
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.fullName")} <span className="text-destructive">*</span></label>
                         <input
                           type="text"
                           value={shipName}
@@ -2100,7 +2100,7 @@ export default function ListingDetail() {
 
                       {/* Phone */}
                       <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Telefòn <span className="text-destructive">*</span></label>
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.phoneLabel")} <span className="text-destructive">*</span></label>
                         <input
                           type="tel"
                           value={shipPhone}
@@ -2113,7 +2113,7 @@ export default function ListingDetail() {
 
                       {/* Email */}
                       <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Imèl <span className="text-muted-foreground font-normal">(opsyonèl)</span></label>
+                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.emailLabel")} <span className="text-muted-foreground font-normal">{t("listing.optionalLabel")}</span></label>
                         <input
                           type="email"
                           value={shipEmail}
@@ -2127,12 +2127,12 @@ export default function ListingDetail() {
 
                     {/* ── Delivery Address ── */}
                     <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">Adrès livrezon</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">{t("listing.checkoutDeliveryAddress")}</p>
 
                       {/* Street — with autocomplete */}
                       <div className="relative px-4 py-3">
                         <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                          Adrès lari <span className="text-destructive">*</span>
+                          {t("listing.streetAddress")} <span className="text-destructive">*</span>
                           {suggestLoading && <span className="ml-2 text-[10px] text-primary font-normal normal-case">Ap chèche…</span>}
                         </label>
                         <input
@@ -2172,7 +2172,7 @@ export default function ListingDetail() {
                       {/* City + Region */}
                       <div className="grid grid-cols-2 divide-x divide-border">
                         <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Vil <span className="text-destructive">*</span></label>
+                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.cityLabel")} <span className="text-destructive">*</span></label>
                           <input
                             type="text"
                             value={shipCity}
@@ -2183,7 +2183,7 @@ export default function ListingDetail() {
                           />
                         </div>
                         <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Depatman / Eta <span className="text-destructive">*</span></label>
+                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.regionLabel")} <span className="text-destructive">*</span></label>
                           <input
                             type="text"
                             value={shipRegion}
@@ -2198,7 +2198,7 @@ export default function ListingDetail() {
                       {/* ZIP — international only */}
                       {!isLocalDelivery && (
                         <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">Kòd postal / ZIP <span className="text-muted-foreground font-normal">(opsyonèl)</span></label>
+                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.zipLabel")} <span className="text-muted-foreground font-normal">{t("listing.optionalLabel")}</span></label>
                           <input
                             type="text"
                             value={shipZip}
@@ -2301,8 +2301,8 @@ export default function ListingDetail() {
                   {/* Custom delivery price input */}
                   {isLocalDelivery && deliverySpeedTier === "custom" && (
                     <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3 space-y-2">
-                      <p className="text-xs font-bold text-primary flex items-center gap-1.5">✏️ Propoze yon pri livrezon</p>
-                      <p className="text-[11px] text-muted-foreground">Chwazi yon pri ou vle oswa antre youn oumenm. Chofè ap resevwa 85%.</p>
+                      <p className="text-xs font-bold text-primary flex items-center gap-1.5">✏️ {t("listing.customDeliveryTitle")}</p>
+                      <p className="text-[11px] text-muted-foreground">{t("listing.customDeliveryDesc")}</p>
                       {/* Quick-pick buttons */}
                       <div className="flex gap-2">
                         {[10, 15, 25].map(amt => (
@@ -2335,7 +2335,7 @@ export default function ListingDetail() {
                             setDeliveryFeeUsd(!isNaN(v) && v >= 0 ? parseFloat(v.toFixed(2)) : 0);
                           }}
                           className="w-full h-10 pl-7 pr-3 rounded-xl border-2 border-primary/30 focus:border-primary bg-background text-sm font-mono focus:outline-none"
-                          placeholder="Antre yon lòt pri..."
+                          placeholder={t("listing.customDeliveryPlaceholder")}
                         />
                       </div>
                     </div>
@@ -2366,7 +2366,7 @@ export default function ListingDetail() {
                         <button type="button" onClick={() => { setShowCustomTip(true); setTipUsd(0); }}
                           className={cn("flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all duration-150 active:scale-95",
                             showCustomTip ? "border-rose-400 bg-rose-400/15 text-rose-700 dark:text-rose-400" : "border-border bg-background hover:border-rose-300"
-                          )}>Lòt</button>
+                          )}>{t("listing.tipOther")}</button>
                       </div>
                       {showCustomTip && (
                         <div className="flex gap-2 items-center animate-in slide-in-from-top-1 duration-150">
@@ -2382,7 +2382,7 @@ export default function ListingDetail() {
                         </div>
                       )}
                       <p className="text-[10px] text-muted-foreground italic text-center">
-                        {tipUsd >= 5 ? "🌟 Mèsi paske w ap sipòte chofè lokal yo!" : tipUsd > 0 ? "💚 Chofè yo livre pi rapid lè yo resevwa bon tip." : "✨ Tip ou ede amelyore sèvis livrezon an."}
+                        {tipUsd >= 5 ? t("listing.tipMsg5") : tipUsd > 0 ? t("listing.tipMsg1") : t("listing.tipMsg0")}
                       </p>
                     </div>
                   )}
@@ -2390,22 +2390,22 @@ export default function ListingDetail() {
                     <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/50 rounded-xl px-3 py-2.5">
                       <span className="text-lg shrink-0">🚚</span>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                        {shipCity.trim().length < 2 ? "Retounen sou etap Adrès pou antre vil ou." : "Vil ou pa jwenn. Verifye epi eseye ankò."}
-                        {" "}Livrezon pa gratis — chofè yo ap touche nan kont FM yo.
+                        {shipCity.trim().length < 2 ? t("listing.returnToAddress") : t("listing.cityNotFound")}
+                        {" "}{t("listing.deliveryNotFree")}
                       </p>
                     </div>
                   )}
                   {/* Live price summary */}
                   <div className="rounded-xl border border-border bg-card p-3.5 space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">Rezime pri</p>
+                    <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">{t("listing.priceSummary")}</p>
                     <div className="space-y-1.5 text-sm">
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">🛍 Pri pwodwi</span>
+                        <span className="text-muted-foreground">🛍 {t("listing.productPrice")}</span>
                         <span className="font-semibold">${effectiveListingPriceUsd.toFixed(2)}</span>
                       </div>
                       {(promoValidation?.discountAmount ?? 0) > 0 && (
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">🎟 Rabè ({promoValidation!.code})</span>
+                          <span className="text-muted-foreground">🎟 {t("listing.deliveryDiscountLabel")} ({promoValidation!.code})</span>
                           <span className="font-semibold text-green-600 dark:text-green-400">−${promoValidation!.discountAmount.toFixed(2)}</span>
                         </div>
                       )}
@@ -2416,9 +2416,9 @@ export default function ListingDetail() {
                         ) : deliverySpeedTier === "custom" ? (
                           deliveryFeeUsd > 0
                             ? <span className="font-semibold text-blue-600 dark:text-blue-400">+${deliveryFeeUsd.toFixed(2)}</span>
-                            : <span className="text-muted-foreground text-xs italic">Antre pri…</span>
+                            : <span className="text-muted-foreground text-xs italic">{t("listing.enterPricePlaceholder")}</span>
                         ) : deliveryFeeLoading ? (
-                          <span className="text-muted-foreground text-xs italic">Kalkil...</span>
+                          <span className="text-muted-foreground text-xs italic">{t("listing.calculating")}</span>
                         ) : effectiveDeliveryFee > 0 ? (
                           <span className="font-semibold text-blue-600 dark:text-blue-400">+${effectiveDeliveryFee.toFixed(2)}</span>
                         ) : (
@@ -2427,7 +2427,7 @@ export default function ListingDetail() {
                       </div>
                       {effectiveTip > 0 && (
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">💝 Tip chofè</span>
+                          <span className="text-muted-foreground">{t("listing.tipLabel")}</span>
                           <span className="font-semibold text-rose-500">+${effectiveTip.toFixed(2)}</span>
                         </div>
                       )}
@@ -2444,7 +2444,7 @@ export default function ListingDetail() {
                   <Button className="w-full font-bold"
                     disabled={deliveryFeeLoading || (isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && deliveryFeeUsd === 0) || (isLocalDelivery && deliverySpeedTier === "custom" && deliveryFeeUsd === 0) || (!isLocalDelivery && !selectedCarrier)}
                     onClick={() => setPayStep("select")}>
-                    {deliveryFeeLoading ? "Kalkil frè livrezon..." : <>Kontinye <ChevronRight className="h-4 w-4 ml-1" /></>}
+                    {deliveryFeeLoading ? t("listing.calcDeliveryFee") : <>{t("listing.continueBtn")} <ChevronRight className="h-4 w-4 ml-1" /></>}
                   </Button>
                   <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-muted-foreground hover:text-foreground">{t("buttons.cancel")}</button>
                 </div>
@@ -2479,16 +2479,16 @@ export default function ListingDetail() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="font-semibold">Kat FM</p>
-                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">Otomatik ⚡</span>
+                            <p className="font-semibold">{t("listing.fmCard")}</p>
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">{t("listing.autoLabel")}</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {walletData ? `Balans: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} promo` : ""} = $${walletTotal.toFixed(2)}` : "Chaje balans…"}
+                            {walletData ? `Balans: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} promo` : ""} = $${walletTotal.toFixed(2)}` : t("listing.loadingBalance")}
                           </p>
-                          <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">Dédwi dirèkteman — pa bezwen antre nimewo</p>
+                          <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">{t("listing.directDeduction")}</p>
                           {walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip) - 0.001 && walletData && (
                             <p className="text-xs text-destructive mt-0.5">
-                              Balans pa ase — ou bezwen ${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip).toFixed(2)}
+                              {t("listing.insufficientBalance", { amount: (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip).toFixed(2) })}
                               {effectiveDeliveryFee > 0 ? ` (atik $${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)} + liv. $${effectiveDeliveryFee.toFixed(2)})` : ""}
                             </p>
                           )}

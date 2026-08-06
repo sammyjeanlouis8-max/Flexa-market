@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import {
   Loader2, CreditCard, User, ShieldCheck, AlertTriangle, Clock, CheckCircle,
-  Wallet, Pencil, RefreshCw, Search, Banknote,
+  Wallet, Pencil, RefreshCw, Search, Banknote, ShieldBan, Calendar,
 } from "lucide-react";
 
 interface DebtRow {
@@ -86,6 +86,67 @@ export default function AdminFlexCardPanel() {
   const [cashAmt, setCashAmt] = useState("");
   const [cashMethod, setCashMethod] = useState("cash");
   const [cashNotes, setCashNotes] = useState("");
+
+  // Block new card dialog
+  const [blockOpen, setBlockOpen] = useState(false);
+  const [blockSearchQuery, setBlockSearchQuery] = useState("");
+  const [blockSearchResults, setBlockSearchResults] = useState<{id: number; name: string; email: string; avatar: string | null}[]>([]);
+  const [blockSearching, setBlockSearching] = useState(false);
+  const [blockUser, setBlockUser] = useState<{id: number; name: string; email: string} | null>(null);
+  const [blockAmount, setBlockAmount] = useState("");
+  const [blockReason, setBlockReason] = useState("debt");
+  const [blockNotes, setBlockNotes] = useState("");
+  const [blockDeadline, setBlockDeadline] = useState("");
+  const [blocking, setBlocking] = useState(false);
+
+  // Search users for block dialog
+  const searchUsers = useCallback(async (q: string) => {
+    if (!q.trim()) { setBlockSearchResults([]); return; }
+    setBlockSearching(true);
+    try {
+      const res = await fetch(`/api/admin/users?q=${encodeURIComponent(q.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: any[] = await res.json();
+        setBlockSearchResults(data.slice(0, 8).map((u: any) => ({
+          id: u.id, name: u.name, email: u.email, avatar: u.avatar ?? null,
+        })));
+      }
+    } finally {
+      setBlockSearching(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    const t = setTimeout(() => searchUsers(blockSearchQuery), 350);
+    return () => clearTimeout(t);
+  }, [blockSearchQuery, searchUsers]);
+
+  const handleBlock = async () => {
+    if (!blockUser) { toast({ title: "Chwazi yon user anvan.", variant: "destructive" }); return; }
+    const amt = parseFloat(blockAmount);
+    if (!Number.isFinite(amt) || amt <= 0) { toast({ title: "Montan dèt la dwe pi gran pase 0.", variant: "destructive" }); return; }
+    setBlocking(true);
+    try {
+      await apiPost("/api/admin/flex-card/block", {
+        userId: blockUser.id,
+        amountUsd: amt,
+        reason: blockReason,
+        notes: blockNotes || null,
+        deadline: blockDeadline || null,
+      });
+      toast({ title: `✅ Flex Card ${blockUser.name} bloke — dèt $${amt.toFixed(2)}.` });
+      setBlockOpen(false);
+      setBlockUser(null); setBlockSearchQuery(""); setBlockSearchResults([]);
+      setBlockAmount(""); setBlockReason("debt"); setBlockNotes(""); setBlockDeadline("");
+      load();
+    } catch (e: any) {
+      toast({ title: e.message ?? "Erè: pa kapab bloke kat la.", variant: "destructive" });
+    } finally {
+      setBlocking(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -221,6 +282,14 @@ export default function AdminFlexCardPanel() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="h-9 bg-red-600 hover:bg-red-700 text-white gap-1.5"
+            onClick={() => setBlockOpen(true)}
+          >
+            <ShieldBan className="h-4 w-4" />
+            Bloke Kat
+          </Button>
           <Button variant="outline" size="sm" onClick={() => load()} disabled={loading} className="h-9">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
@@ -527,6 +596,151 @@ export default function AdminFlexCardPanel() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelected(null)}>Fèmen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Block new card dialog ── */}
+      <Dialog open={blockOpen} onOpenChange={(v) => { if (!v) { setBlockOpen(false); setBlockUser(null); setBlockSearchQuery(""); setBlockSearchResults([]); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <ShieldBan className="h-5 w-5" />
+              Bloke Flex Card yon User
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            {/* Step 1: pick user */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                1. Rechèche user (non oswa imèl)
+              </label>
+              {blockUser ? (
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl px-3 py-2">
+                  {blockUser.name && (
+                    <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center shrink-0">
+                      <User className="h-4 w-4 text-red-600" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold truncate">{blockUser.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{blockUser.email}</p>
+                  </div>
+                  <Button size="sm" variant="ghost" className="text-xs h-7 shrink-0" onClick={() => { setBlockUser(null); setBlockSearchQuery(""); setBlockSearchResults([]); }}>
+                    Chanje
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={blockSearchQuery}
+                    onChange={e => setBlockSearchQuery(e.target.value)}
+                    placeholder="Imèl, non…"
+                    className="pl-9"
+                  />
+                  {blockSearching && (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                  {blockSearchResults.length > 0 && !blockUser && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-popover border border-border rounded-xl shadow-lg overflow-hidden">
+                      {blockSearchResults.map(u => (
+                        <button
+                          key={u.id}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-left transition-colors"
+                          onClick={() => { setBlockUser({ id: u.id, name: u.name, email: u.email }); setBlockSearchResults([]); }}
+                        >
+                          {u.avatar ? (
+                            <img src={u.avatar} className="h-7 w-7 rounded-full object-cover shrink-0" />
+                          ) : (
+                            <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+                              <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{u.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: amount + reason */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">2. Montan Dèt (USD)</label>
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={blockAmount}
+                  onChange={e => setBlockAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Rezon</label>
+                <Select value={blockReason} onValueChange={setBlockReason}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="debt">💸 Dèt</SelectItem>
+                    <SelectItem value="merchant_complaint">🏪 Plent Machann</SelectItem>
+                    <SelectItem value="chargeback">↩️ Chargeback</SelectItem>
+                    <SelectItem value="fraud_investigation">🔍 Fwòd</SelectItem>
+                    <SelectItem value="policy_violation">📋 Vyolasyon Règ</SelectItem>
+                    <SelectItem value="manual_review">👀 Revizyon</SelectItem>
+                    <SelectItem value="other">➕ Lòt</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Deadline */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" /> Dat Limit Ranbousman (opsyonèl)
+              </label>
+              <Input
+                type="date"
+                value={blockDeadline}
+                onChange={e => setBlockDeadline(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Nòt (opsyonèl)</label>
+              <Textarea
+                value={blockNotes}
+                onChange={e => setBlockNotes(e.target.value)}
+                rows={2}
+                placeholder="Nimewo kòmand, detay plent…"
+              />
+            </div>
+
+            {/* Warning */}
+            <div className="flex items-start gap-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 rounded-xl p-3 text-xs text-red-700 dark:text-red-400">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>Aksyon sa a <strong>bloke Flex Card</strong> user a touswit. Yo resevwa yon notifikasyon epi yo pa ka fè achè ak kat jiskaske dèt la regle.</span>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setBlockOpen(false)} disabled={blocking}>Anile</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleBlock}
+              disabled={blocking || !blockUser}
+            >
+              {blocking ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ShieldBan className="h-4 w-4 mr-1" />}
+              Bloke Kat
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

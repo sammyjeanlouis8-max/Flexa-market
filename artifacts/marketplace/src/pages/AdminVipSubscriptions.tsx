@@ -7,6 +7,7 @@ import { ArrowLeft, Crown, RefreshCw, Search, Plus, AlertCircle, X } from "lucid
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -43,6 +44,7 @@ export default function AdminVipSubscriptions() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const [subs, setSubs]           = useState<any[]>([]);
   const [loading, setLoading]     = useState(false);
@@ -150,12 +152,12 @@ export default function AdminVipSubscriptions() {
           </div>
           <div>
             <h1 className="text-sm font-black leading-none">👑 Flexa VIP</h1>
-            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">Tout abòne ki ap peye chak mwa</p>
+            <p className="text-[11px] text-muted-foreground leading-none mt-0.5">{t("adminBanner.vipHubSubtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => setGrantOpen(true)}>
-            <Plus className="h-3 w-3 mr-1" />Ba Plan
+            <Plus className="h-3 w-3 mr-1" />{t("adminBanner.vipGrantBtn")}
           </Button>
           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={load} disabled={loading}>
             <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
@@ -169,19 +171,19 @@ export default function AdminVipSubscriptions() {
         <div className="grid grid-cols-2 gap-2">
           <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-3 text-center">
             <p className="text-2xl font-black text-green-500 tabular-nums">{activeCount}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">✓ Aktif</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">✓ {t("adminBanner.vipStatActive")}</p>
           </div>
           <div className={`rounded-xl border p-3 text-center ${graceCount > 0 ? "border-amber-500/40 bg-amber-500/10" : "border-border bg-muted/40"}`}>
             <p className={`text-2xl font-black tabular-nums ${graceCount > 0 ? "text-amber-500" : "text-muted-foreground"}`}>{graceCount}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">⚠ Tan Gras (5j)</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">⚠ {t("adminBanner.vipStatGrace")}</p>
           </div>
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-center">
             <p className="text-2xl font-black text-amber-500 tabular-nums">{vipCount}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">👑 VIP Aktif</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">👑 {t("adminBanner.vipStatVip")}</p>
           </div>
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-center">
             <p className="text-2xl font-black text-emerald-500 tabular-nums">${totalRevenue.toFixed(0)}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">💰 Revni/mwa</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">💰 {t("adminBanner.vipStatRevenue")}</p>
           </div>
         </div>
 
@@ -199,7 +201,7 @@ export default function AdminVipSubscriptions() {
           <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-950/20 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-sm flex items-center gap-2">
-                <Crown className="h-4 w-4 text-amber-500" />Ba Abònman Manyèlman
+                <Crown className="h-4 w-4 text-amber-500" />{t("adminBanner.vipGrantTitle")}
               </h3>
               <button onClick={() => setGrantOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <X className="h-4 w-4" />
@@ -232,7 +234,7 @@ export default function AdminVipSubscriptions() {
               />
             </div>
             <Button size="sm" onClick={grant} disabled={grantSaving || !grantForm.userId} className="bg-amber-500 hover:bg-amber-600 text-white">
-              {grantSaving ? "Ap sove…" : <><Plus className="h-3.5 w-3.5 mr-1" />Ba Abònman</>}
+              {grantSaving ? "…" : <><Plus className="h-3.5 w-3.5 mr-1" />{t("adminBanner.vipGrantTitle")}</>}
             </Button>
           </div>
         )}
@@ -243,7 +245,7 @@ export default function AdminVipSubscriptions() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              placeholder="Chèche non, email, ID…"
+              placeholder={t("adminBanner.txHubSearch")}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full h-9 rounded-xl border border-border bg-background pl-8 pr-3 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -254,10 +256,10 @@ export default function AdminVipSubscriptions() {
             onChange={e => setFilter(e.target.value as any)}
             className="h-9 rounded-xl border border-border bg-background px-2 text-xs shrink-0"
           >
-            <option value="all">Tout</option>
-            <option value="active">Aktif</option>
-            <option value="vip">VIP sèlman</option>
-            <option value="grace">Tan Gras</option>
+            <option value="all">{t("adminBanner.vipStatActive") === "Active" ? "All" : "Tout"}</option>
+            <option value="active">{t("adminBanner.vipStatActive")}</option>
+            <option value="vip">VIP</option>
+            <option value="grace">{t("adminBanner.vipStatGrace")}</option>
           </select>
         </div>
 
@@ -271,17 +273,17 @@ export default function AdminVipSubscriptions() {
             <div className="h-14 w-14 rounded-full bg-amber-500/10 flex items-center justify-center">
               <Crown className="h-7 w-7 text-amber-400" />
             </div>
-            <p className="text-sm text-muted-foreground">Pa gen abòne ankò.</p>
+            <p className="text-sm text-muted-foreground">{t("adminBanner.vipNone")}</p>
             <Button size="sm" variant="outline" onClick={load}>
               <RefreshCw className="h-3 w-3 mr-1" />Refresh
             </Button>
           </div>
         ) : !error && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">{filtered.length} abòne</p>
+            <p className="text-xs text-muted-foreground">{filtered.length} {t("adminBanner.vipSubscribers")}</p>
 
             {filtered.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Pa gen rezilta</p>
+              <p className="text-sm text-muted-foreground text-center py-8">{t("adminBanner.vipNoResult")}</p>
             ) : filtered.map((row: any) => {
               const sub = row.sub;
               const u   = row.user;
@@ -372,7 +374,7 @@ export default function AdminVipSubscriptions() {
                         className="h-7 text-xs shrink-0 text-red-500 border-red-500/30 hover:bg-red-500/10 mt-0.5"
                         onClick={() => revoke(sub.userId, u?.name ?? `#${sub.userId}`)}
                       >
-                        Revoké
+                        {t("adminBanner.vipRevoke")}
                       </Button>
                     )}
                   </div>

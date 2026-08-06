@@ -2500,7 +2500,7 @@ export default function Admin() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-black text-amber-900 dark:text-amber-100">👑 Flexa VIP</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Tout abòne ki ap peye chak mwa</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t("adminBanner.vipHubSubtitle")}</p>
           </div>
           <ArrowRight className="h-4 w-4 text-amber-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>

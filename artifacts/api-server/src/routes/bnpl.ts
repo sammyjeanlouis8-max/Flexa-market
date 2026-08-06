@@ -197,6 +197,10 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
       buyerFeeRate: quote.buyerFeeRate,
       buyerFeeAmount: quote.buyerFeeAmount,
       stripeSessionId: session.id,
+      // Must mirror stripeCheckoutSessionId so the shared Stripe completion
+      // handler (handleCheckoutCompleted / /stripe/checkout/activate) can
+      // locate this transaction by session_id on webhook or return.
+      stripeCheckoutSessionId: session.id,
     } as any);
 
     res.json({ sessionUrl: session.url, sessionId: session.id });

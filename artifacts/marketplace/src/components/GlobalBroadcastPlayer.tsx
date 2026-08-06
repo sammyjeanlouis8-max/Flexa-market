@@ -442,29 +442,29 @@ export default function GlobalBroadcastPlayer() {
           </div>
         )}
 
-        {/* ── Mini-mode dark poster — hides white iframe error pages (Facebook "Ce contenu
-            n'est plus disponible") that bleed through as a pale background on mobile.
-            Sits above the iframe (z-index 5) but below the controls overlay (z-index 10).
-            Shows thumbnail for film entries; Flexa TV logo for live broadcasts. */}
+        {/* ── Mini-mode poster overlay ─────────────────────────────────────────
+            TRANSPARENT background so the underlying iframe/video is always visible.
+            Old solid "#0a0a0a" completely hid the video — removed.
+            Film mode: show thumbnail at ~85% opacity on top of the playing video.
+            Live mode: just top + bottom gradient for control readability. */}
         {isMiniMode && (
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden", background: "#0a0a0a" }}
+            style={{ zIndex: 5, borderRadius: "14px", overflow: "hidden" }}
           >
-            {/* Thumbnail image (film) or logo (live) */}
-            {isFilmMode && filmPlayer?.thumbnailUrl ? (
+            {/* Film thumbnail full-cover */}
+            {isFilmMode && filmPlayer?.thumbnailUrl && (
               <img
                 src={filmPlayer.thumbnailUrl}
                 alt={filmPlayer.title}
-                className="w-full h-full object-cover opacity-70"
+                className="w-full h-full object-cover"
+                style={{ opacity: 0.88 }}
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-10 h-10 object-contain opacity-25" />
-              </div>
             )}
-            {/* Bottom vignette so title strip stays readable */}
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 60%)" }} />
+            {/* Top gradient — header legibility */}
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 42%)" }} />
+            {/* Bottom gradient — readability */}
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)" }} />
           </div>
         )}
 
@@ -477,10 +477,10 @@ export default function GlobalBroadcastPlayer() {
             className="absolute inset-0"
             style={{ zIndex: 10, borderRadius: "14px", touchAction: "none" }}
           >
-            {/* ── Body area: drag + tap to open TV ──────────────────────────── */}
+            {/* ── Body area: drag + tap to open TV (excludes top 44px header) ── */}
             <div
               className="absolute inset-x-0 bottom-0 cursor-pointer"
-              style={{ top: 34 }}
+              style={{ top: 44 }}
               onTouchStart={handleMiniTouchStart}
               onTouchMove={handleMiniTouchMove}
               onTouchEnd={handleMiniTouchEnd}
@@ -491,16 +491,15 @@ export default function GlobalBroadcastPlayer() {
               }}
             />
 
-            {/* ── Header strip: LIVE badge · title · buttons ──────────────── */}
+            {/* ── Header strip: badge · title · sound · expand ─────────────── */}
             <div
               className="absolute top-0 inset-x-0 flex items-center gap-1 px-2"
               style={{
-                height: 34,
-                background: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%)",
+                height: 44,
                 borderRadius: "14px 14px 0 0",
               }}
             >
-              {/* Left: LIVE + title (draggable + tap-to-TV) */}
+              {/* Left: badge + title (draggable + tap-to-TV) */}
               <div
                 className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
                 onTouchStart={handleMiniTouchStart}
@@ -515,102 +514,112 @@ export default function GlobalBroadcastPlayer() {
                 }}
               >
                 {isFilmMode ? (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-purple-600 text-white px-1 py-0.5 rounded font-bold shrink-0">
+                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-purple-600 text-white px-1.5 py-0.5 rounded font-bold shrink-0">
                     <Film size={7} /> Film
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold animate-pulse shrink-0">
+                  <span className="inline-flex items-center gap-0.5 text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold animate-pulse shrink-0">
                     <Radio size={7} /> LIVE
                   </span>
                 )}
-                <p className="text-white text-[10px] font-semibold truncate">
+                <p className="text-white text-[10px] font-semibold truncate drop-shadow">
                   {effectiveTitle}
                 </p>
               </div>
 
-              {/* Right: unmute · expand · close
-                  These are siblings of the drag div (not children), so their
-                  onClick fires independently. onPointerDown stopPropagation
-                  prevents the drag handler from seeing the touch first. */}
+              {/* Right: sound · expand */}
               <div className="flex items-center gap-1 shrink-0">
-                {/* 🔊 Unmute / sound toggle */}
+                {/* 🔊 Unmute */}
                 <button
                   onTouchStart={(e) => e.stopPropagation()}
                   onTouchEnd={(e) => {
                     e.stopPropagation();
-                    e.preventDefault(); // block synthesized click — we handle it here
+                    e.preventDefault();
                     initBackgroundAudio();
                     ytUnmuteAndPlay(iframeRef.current);
                     setIsMuted(false);
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {           // fallback for desktop/mouse
+                  onClick={(e) => {
                     e.stopPropagation();
                     initBackgroundAudio();
                     ytUnmuteAndPlay(iframeRef.current);
                     setIsMuted(false);
                   }}
                   style={{
-                    width: 30, height: 30,
+                    width: 34, height: 34,
                     borderRadius: "50%",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: isMuted ? "rgba(139,92,246,0.9)" : "rgba(0,0,0,0.7)",
+                    background: isMuted ? "rgba(139,92,246,0.95)" : "rgba(0,0,0,0.6)",
                     color: "white",
                     border: isMuted ? "1.5px solid rgba(255,255,255,0.6)" : "none",
                     flexShrink: 0,
                   }}
                   title={isMuted ? "Aktive son" : "Son aktif"}
                 >
-                  {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                  {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
 
-                {/* ↗ Expand to /tv */}
+                {/* ↗ Expand */}
                 <button
                   onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    goToTV();
-                  }}
+                  onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); goToTV(); }}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); goToTV(); }}
                   style={{
-                    width: 30, height: 30,
+                    width: 34, height: 34,
                     borderRadius: "50%",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(0,0,0,0.7)",
+                    background: "rgba(0,0,0,0.6)",
                     color: "white",
                     flexShrink: 0,
                   }}
                   title="Ouvri Flexa TV"
                 >
-                  <Maximize2 size={12} />
-                </button>
-
-                {/* ✕ Dismiss — primary fix target */}
-                <button
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault(); // critical: prevents re-show from synthesized click
-                    isFilmMode ? setFilmPlayer(null) : setDismissed(true);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); isFilmMode ? setFilmPlayer(null) : setDismissed(true); }}
-                  style={{
-                    width: 30, height: 30,
-                    borderRadius: "50%",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(180,0,0,0.75)",
-                    color: "white",
-                    flexShrink: 0,
-                  }}
-                  title="Fèmen"
-                >
-                  <X size={13} />
+                  <Maximize2 size={13} />
                 </button>
               </div>
             </div>
+
+            {/* ── ✕ Close button — large floating pill at top-right ─────────────
+                Positioned as an absolute overlay OUTSIDE the cramped header row
+                so it has a large independent touch target (44×44 minimum).
+                onTouchEnd with preventDefault() prevents the synthesized click
+                from re-triggering the body tap-to-TV handler below it. */}
+            <button
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                isFilmMode ? setFilmPlayer(null) : setDismissed(true);
+              }}
+              style={{
+                position: "absolute",
+                top: -10,
+                right: -10,
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "#dc2626",
+                color: "white",
+                border: "2px solid #fff",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                zIndex: 20,
+                flexShrink: 0,
+                padding: 0,
+                cursor: "pointer",
+              }}
+              title="Fèmen"
+              aria-label="Fèmen"
+            >
+              <X size={14} strokeWidth={3} />
+            </button>
           </div>
         )}
       </div>

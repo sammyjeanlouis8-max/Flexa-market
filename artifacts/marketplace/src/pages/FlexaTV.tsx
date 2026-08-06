@@ -878,6 +878,8 @@ export default function FlexaTV() {
   // ── Suppress broadcast mini-player while a film is playing in VideoPlayer ────
   // When the user selects a film, the broadcast goes to mini mode and competes
   // with the film. Dismiss it so only the film plays. Restore when film closes.
+  // Cleanup runs on unmount (back-navigation) so the live broadcast mini-player
+  // re-appears correctly after the user leaves the TV page.
   useEffect(() => {
     if (!broadcastActive) return;
     if (playing) {
@@ -885,6 +887,10 @@ export default function FlexaTV() {
     } else {
       bs.setDismissed(false);
     }
+    return () => {
+      // Page unmounting (back nav) — always restore so mini-player can re-show
+      bs.setDismissed(false);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, broadcastActive]);
 

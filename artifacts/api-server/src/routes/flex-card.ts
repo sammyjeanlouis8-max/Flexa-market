@@ -303,6 +303,71 @@ router.get("/admin/flex-card/:userId", requireFinanceAdmin, async (req, res): Pr
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ADMIN: list ALL users with wallet balance + flex-card status (for block hub)
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/admin/flex-card/users", requireFinanceAdmin, async (req, res): Promise<void> => {
+  const q      = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const page   = Math.max(1, Number(req.query.page ?? 1));
+  const limit  = Math.min(50, Math.max(1, Number(req.query.limit ?? 30)));
+  const offset = (page - 1) * limit;
+  const blockedOnly = req.query.blocked === "1";
+
+  // Build WHERE clause
+  const conditions: any[] = [];
+  if (q) {
+    const like = `%${q.toLowerCase()}%`;
+    conditions.push(sql`(lower(${usersTable.name}) like ${like} OR lower(${usersTable.email}) like ${like} OR ${usersTable.phone} like ${like})`);
+  }
+  if (blockedOnly) {
+    conditions.push(eq(usersTable.flexCardBlocked, true));
+  }
+  // Hide deleted/banned accounts
+  conditions.push(eq(usersTable.isDeleted, false));
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)` })
+    .from(usersTable)
+    .where(whereClause);
+
+  const users = await db
+    .select({
+      id:              usersTable.id,
+      name:            usersTable.name,
+      email:           usersTable.email,
+      phone:           usersTable.phone,
+      avatar:          usersTable.avatar,
+      country:         usersTable.country,
+      flexCardBlocked: usersTable.flexCardBlocked,
+      flexCardDebtUsd: usersTable.flexCardDebtUsd,
+      createdAt:       usersTable.createdAt,
+    })
+    .from(usersTable)
+    .where(whereClause)
+    .orderBy(desc(usersTable.flexCardBlocked), desc(usersTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Batch-fetch wallet balances for returned users
+  const userIds = users.map(u => u.id);
+  const wallets = userIds.length
+    ? await db.select({ userId: promoWalletTable.userId, balanceUsd: promoWalletTable.balanceUsd })
+        .from(promoWalletTable)
+        .where(inArray(promoWalletTable.userId, userIds))
+    : [];
+  const walletMap = new Map(wallets.map(w => [w.userId, w.balanceUsd]));
+
+  const items = users.map(u => ({
+    ...u,
+    walletBalanceUsd: walletMap.get(u.id) ?? 0,
+  }));
+
+  res.json({ items, total: Number(total), page, limit });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // USER: status + repayment (repayment is the ONE allowed outgoing while blocked)
 // ─────────────────────────────────────────────────────────────────────────────
 

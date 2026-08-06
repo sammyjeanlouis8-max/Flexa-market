@@ -2508,7 +2508,7 @@ export default function Admin() {
         {/* Dèt Flex Card */}
         <button
           type="button"
-          onClick={() => { setAdminTab("flex-card"); setTimeout(() => tabsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }}
+          onClick={() => setLocation("/admin/flex-card")}
           className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-violet-200 dark:border-violet-800 bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/20 hover:from-violet-100 hover:to-purple-100 dark:hover:from-violet-900/40 dark:hover:to-purple-900/30 transition-all text-left group shadow-sm hover:shadow-md"
         >
           <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center shrink-0 shadow shadow-violet-200 dark:shadow-violet-900/50">

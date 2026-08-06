@@ -30,10 +30,22 @@ const YT_PARAMS =
     typeof window !== "undefined" ? window.location.origin : "https://flexamarket.com"
   );
 
+function isBlockedHost(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h.includes("facebook.com") || h.includes("instagram.com") ||
+           h.includes("fb.watch") || h.includes("fb.com");
+  } catch { return false; }
+}
+
 function buildEmbedUrl(
   videoUrl: string | null,
   videoKey: string | null
 ): { url: string; isDirect: boolean } | null {
+  // Facebook/Instagram block cross-origin iframe embedding — return null so the
+  // player shows the branded "no signal" fallback instead of an error page.
+  if (isBlockedHost(videoUrl)) return null;
   if (videoUrl) {
     try {
       const u = new URL(videoUrl);
@@ -107,6 +119,10 @@ export default function GlobalBroadcastPlayer() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   // isMuted: true until user taps 🔊 (iOS forces mute on autoplay)
   const [isMuted, setIsMuted]       = useState(true);
+  // slotConnecting: branded "Kap konekte..." overlay shown for 5 s after entering
+  // slot mode — prevents raw YouTube/iframe error pages from appearing on first load.
+  const [slotConnecting, setSlotConnecting] = useState(false);
+  const slotConnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Grace period — mini-player stays 10 s after broadcast stops ─────────────
   // Prevents flicker from 5-second poll glitches where stopped/playing bounces.
@@ -311,6 +327,24 @@ export default function GlobalBroadcastPlayer() {
     audioCtxRef.current = null;
   }, [isActive]);
 
+  // Show "connecting" branded overlay for 5 s every time slot mode becomes visible.
+  // This prevents a raw YouTube "Ce contenu n'est plus disponible" error page from
+  // appearing instantly when the stream URL is dead or still buffering.
+  const prevSlotVisibleRef = useRef(false);
+  useEffect(() => {
+    const entering = slotVisible && !prevSlotVisibleRef.current;
+    prevSlotVisibleRef.current = slotVisible;
+    if (!entering) return;
+    setSlotConnecting(true);
+    if (slotConnTimerRef.current) clearTimeout(slotConnTimerRef.current);
+    slotConnTimerRef.current = setTimeout(() => setSlotConnecting(false), 5_000);
+    return () => {
+      if (slotConnTimerRef.current) { clearTimeout(slotConnTimerRef.current); slotConnTimerRef.current = null; }
+    };
+  // slotVisible changes whenever we navigate to/from /tv or the slot DOM element appears
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotVisible]);
+
   const goToTV = useCallback(() => navigate("/tv"), [navigate]);
 
   const goFullscreen = useCallback(async () => {
@@ -425,6 +459,46 @@ export default function GlobalBroadcastPlayer() {
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-16 h-16 object-contain opacity-40" />
+          </div>
+        )}
+
+        {/* ── Slot "connecting" overlay ─────────────────────────────────────────
+            Shows for 5 s when the user first enters /tv while a broadcast is active.
+            Prevents raw YouTube / iframe error pages ("Ce contenu n'est plus
+            disponible") from appearing on-screen before the stream loads.
+            In mini mode this overlay is already replaced by the opaque poster. */}
+        {slotConnecting && slotVisible && (
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-30"
+            style={{
+              background: "linear-gradient(135deg,#0d0918 0%,#180a30 50%,#0a0a12 100%)",
+              borderRadius: "12px",
+            }}
+          >
+            {/* Pulsing logo */}
+            <div className="relative flex items-center justify-center">
+              <div
+                className="absolute rounded-full animate-ping"
+                style={{ width: 80, height: 80, background: "rgba(139,92,246,0.2)" }}
+              />
+              <div
+                className="w-16 h-16 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(139,92,246,0.15)", border: "1.5px solid rgba(139,92,246,0.4)" }}
+              >
+                <img src="/flexa-tv-logo.png" alt="Flexa TV" className="w-10 h-10 object-contain" />
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <p className="text-white font-semibold text-sm">Flexa TV</p>
+              <p className="text-white/50 text-xs">Kap konekte sou signal la…</p>
+            </div>
+            {/* Skip button — lets user dismiss overlay immediately */}
+            <button
+              onClick={() => setSlotConnecting(false)}
+              className="mt-1 text-white/30 text-[11px] underline"
+            >
+              Montre dirèkteman
+            </button>
           </div>
         )}
 

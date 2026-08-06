@@ -135,7 +135,7 @@ router.get("/tv/broadcast", async (_req, res): Promise<void> => {
       .orderBy(desc(tvProgramsTable.isFeatured), asc(tvProgramsTable.id))
       .limit(1);
 
-    if (live && (live.videoUrl || live.videoKey)) {
+    if (live && (live.videoUrl || live.videoKey) && !isBlockedEmbedHost(live.videoUrl)) {
       res.json({
         broadcast: {
           state: "playing",

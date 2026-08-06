@@ -2979,7 +2979,7 @@ export default function Admin() {
                         {can("bans") && u.isVerified && (
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-muted-foreground" onClick={() => handleUnverify(u.id)} disabled={actioning === `unverify-${u.id}`} data-testid={`button-unverify-user-${u.id}`} title="Remove verification"><BadgeCheck className="h-3 w-3 opacity-50" /></Button>
                         )}
-                        {can("resetPasswords") && !u.isSuperAdmin && (
+                        {can("resetPasswords") && u.id !== user?.id && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-purple-600 border-purple-300" onClick={() => handleResetPassword(u)} disabled={actioning === `resetpw-${u.id}`} data-testid={`button-reset-password-${u.id}`} title="Reset password"><KeyRound className="h-3 w-3" /></Button>
                         )}
                         {isLocked && (

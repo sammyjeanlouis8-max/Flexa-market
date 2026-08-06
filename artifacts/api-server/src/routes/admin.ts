@@ -1846,8 +1846,8 @@ router.post("/admin/users/:id/reset-password", requireSuperAdmin, async (req, re
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (target.isSuperAdmin && target.id !== req.userId) {
-    res.status(403).json({ error: "Cannot reset another super admin's password" }); return;
+  if (target.id === req.userId) {
+    res.status(403).json({ error: "Cannot reset your own password this way" }); return;
   }
   const tempPassword = crypto.randomBytes(8).toString("base64url");
   await db.update(usersTable).set({ passwordHash: hashPassword(tempPassword) }).where(eq(usersTable.id, id));

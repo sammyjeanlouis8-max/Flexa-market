@@ -213,6 +213,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | null }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [slots, setSlots] = useState<PickupSlot[]>(() => initialSchedule ?? []);
   const [saving, setSaving] = useState(false);
 
@@ -242,6 +243,9 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
         body: JSON.stringify({ schedule: slots }),
       });
       if (!res.ok) throw new Error();
+      // Sync saved schedule back into the auth user cache so the card
+      // reflects the correct state on the next render / page reload.
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
       toast({ title: "Pickup hours saved ✓" });
     } catch {
       toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" });

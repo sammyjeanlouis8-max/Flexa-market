@@ -2489,6 +2489,22 @@ export default function Admin() {
           <ArrowRight className="h-4 w-4 text-fuchsia-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
+        {/* Flexa VIP Subscriptions */}
+        <button
+          type="button"
+          onClick={() => setLocation("/admin/vip-subscriptions")}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/20 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/40 dark:hover:to-yellow-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center shrink-0 shadow shadow-amber-200 dark:shadow-amber-900/50">
+            <Crown className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-amber-900 dark:text-amber-100">👑 Flexa VIP</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Tout abòne ki ap peye chak mwa</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-amber-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+
         {/* Transactions */}
         <button
           type="button"

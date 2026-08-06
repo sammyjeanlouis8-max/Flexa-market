@@ -3,6 +3,7 @@ import { db, transactionsTable, usersTable, listingsTable, notificationsTable, p
 import { eq, desc, and, or, sql, notInArray, inArray } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
+import { sendExpoPushToUser } from "../lib/expo-push";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
@@ -2217,14 +2218,23 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       feeLocal: Math.round(itemDeliveryFeeUsd * cartDisplayRate),
     } as any).catch(() => {});
 
-    // Notify seller
+    // Notify seller — DB record + urgent mobile push
     await db.insert(notificationsTable).values({
       userId: listing.sellerId,
       type: "new_order",
       actorId: userId,
       listingId: listing.id,
-      message: `💰 Nouvo kòmand "${listing.title}" — $${itemTotal.toFixed(2)} + livrezon $${itemDeliveryFeeUsd.toFixed(2)} (panye). Peman nan escrow.`,
+      message: `You received a new cart order for "${listing.title}" — $${itemTotal.toFixed(2)} + delivery $${itemDeliveryFeeUsd.toFixed(2)}. Payment held in escrow.`,
     } as any).catch(() => {});
+    void sendExpoPushToUser(listing.sellerId, {
+      title: "🛍️ New Order Received!",
+      body: `Cart order for "${listing.title}" — $${itemTotal.toFixed(2)}. Get the package ready!`,
+      data: { url: `/orders/${txRow.id}` },
+      sound: "default",
+      channelId: "orders",
+      priority: "high",
+      ttl: 300,
+    });
 
     orders.push({ txId: txRow.id, sellerId: listing.sellerId, amount: itemTotal, deliveryFee: itemDeliveryFeeUsd, title: listing.title });
   }

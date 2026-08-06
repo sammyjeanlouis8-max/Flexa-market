@@ -1270,6 +1270,23 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     { userId: req.userId!, actorId: listing.sellerId, type: "order_confirmed", listingId: id },
   ]).catch((e) => { req.log.error({ err: e }, "[purchase] notification insert failed"); });
 
+  // Urgent push alert to seller (direct wallet purchase)
+  void sendPushToUser(listing.sellerId, {
+    title: "🛍️ New Order Received!",
+    body: `You received a new order for "${listing.title}". Get the package ready!`,
+    url: insertedTxId ? `/orders/${insertedTxId}` : "/sales",
+    tag: `new-order-${insertedTxId ?? Date.now()}`,
+  });
+  void sendExpoPushToUser(listing.sellerId, {
+    title: "🛍️ New Order Received!",
+    body: `You received a new order for "${listing.title}". Get the package ready!`,
+    data: { url: insertedTxId ? `/orders/${insertedTxId}` : "/sales" },
+    sound: "default",
+    channelId: "orders",
+    priority: "high",
+    ttl: 300,
+  });
+
   // Congratulatory push notification to buyer (best-effort).
   void sendPushToUser(req.userId!, {
     title: "Felisitasyon pou achte ou! 🎉",

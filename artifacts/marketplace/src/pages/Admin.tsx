@@ -2492,7 +2492,7 @@ export default function Admin() {
         {/* Transactions */}
         <button
           type="button"
-          onClick={() => { loadWalletAdmin(); setAdminTab("transactions-hub"); }}
+          onClick={() => setLocation("/admin/transactions")}
           className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 hover:from-emerald-100 hover:to-teal-100 dark:hover:from-emerald-900/40 dark:hover:to-teal-900/30 transition-all text-left group shadow-sm hover:shadow-md"
         >
           <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center shrink-0 shadow shadow-emerald-200 dark:shadow-emerald-900/50">

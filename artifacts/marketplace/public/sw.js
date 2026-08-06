@@ -38,8 +38,30 @@ self.addEventListener("push", (event) => {
     tag: data.tag || undefined,
     data: { url: data.url || "/" },
     renotify: !!data.tag,
+    // Mobile vibration pattern: buzz–pause–buzz
+    vibrate: [200, 80, 200],
+    // silent: false is the default but we make it explicit so the OS
+    // always emits its notification sound in addition to our custom tone.
+    silent: false,
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+
+  event.waitUntil((async () => {
+    // 1. Show the OS notification (triggers system sound + vibration)
+    await self.registration.showNotification(title, options);
+
+    // 2. Tell every open tab to play our custom notification tone.
+    //    This fires even when the page is in the background but still open,
+    //    giving a reliable in-page sound on desktop browsers.
+    try {
+      const clients = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        client.postMessage({ type: "FLEXA_PLAY_NOTIFICATION_SOUND" });
+      }
+    } catch (_) { /* non-critical */ }
+  })());
 });
 
 self.addEventListener("notificationclick", (event) => {

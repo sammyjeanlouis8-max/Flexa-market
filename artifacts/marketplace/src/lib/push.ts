@@ -138,6 +138,74 @@ export async function enablePush(): Promise<{ ok: true } | { ok: false; reason: 
   return { ok: true };
 }
 
+// ── Notification sound via Web Audio API ────────────────────────────────────
+// Plays a pleasant 2-tone "ding" directly in the browser tab.
+// Called from the SW message listener set up by initNotificationSound().
+// No audio file needed — synthesised on the fly so it always loads instantly.
+function playNotificationSound(): void {
+  try {
+    const Ctx = window.AudioContext ?? (window as any).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+
+    // Resume the context in case browser auto-suspended it (common on Chrome).
+    const play = () => {
+      // Tone 1: 880 Hz (A5) — sharp attack, fast decay
+      const osc1  = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.type = "sine";
+      osc1.frequency.value = 880;
+      gain1.gain.setValueAtTime(0, ctx.currentTime);
+      gain1.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.01);
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc1.start(ctx.currentTime);
+      osc1.stop(ctx.currentTime + 0.2);
+
+      // Tone 2: 1174 Hz (D6) — slightly higher, follows after 120 ms
+      const osc2  = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = "sine";
+      osc2.frequency.value = 1174;
+      gain2.gain.setValueAtTime(0, ctx.currentTime + 0.12);
+      gain2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.13);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.30);
+      osc2.start(ctx.currentTime + 0.12);
+      osc2.stop(ctx.currentTime + 0.32);
+
+      osc1.onended = () => { try { ctx.close(); } catch { /* ignore */ } };
+    };
+
+    if (ctx.state === "suspended") {
+      ctx.resume().then(play).catch(() => {});
+    } else {
+      play();
+    }
+  } catch { /* unsupported — silent fail */ }
+}
+
+let _notifSoundInited = false;
+
+/**
+ * Call once on app startup (e.g. in App.tsx useEffect).
+ * Registers a service-worker message listener so any push notification
+ * received while the tab is open triggers the in-page notification sound.
+ */
+export function initNotificationSound(): void {
+  if (_notifSoundInited) return;
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  _notifSoundInited = true;
+
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event?.data?.type === "FLEXA_PLAY_NOTIFICATION_SOUND") {
+      playNotificationSound();
+    }
+  });
+}
+
 export async function disablePush(): Promise<void> {
   if (!isPushSupported()) return;
   try {

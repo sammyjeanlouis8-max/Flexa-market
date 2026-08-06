@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { useExpoPushToken } from "@/hooks/useExpoPushToken";
+import { initNotificationSound } from "@/lib/push";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -302,6 +303,9 @@ function Router() {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
   useExpoPushToken();
+
+  // Register SW message listener so push notifications play a sound in-tab.
+  useEffect(() => { initNotificationSound(); }, []);
 
   // Handle push notification tap from the native iOS/Android WebView wrapper.
   // The native layer calls window.__handlePushUrl(url) when the user taps a

@@ -48,6 +48,7 @@ const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications")
 const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
 const Support            = lazy(() => import("@/pages/Support"));
+const NotFound           = lazy(() => import("@/pages/NotFound"));
 const Chatbot            = lazy(() => import("@/pages/Chatbot"));
 const CalculatorPage     = lazy(() => import("@/pages/Calculator"));
 const WalletPage         = lazy(() => import("@/pages/Wallet"));
@@ -234,6 +235,7 @@ function LayoutRoutes() {
           <Route path="/settings/stripe-refresh" component={StripeOnboardReturn} />
           <Route path="/privacy-policy" component={PrivacyPolicy} />
           <Route path="/terms" component={TermsOfService} />
+          <Route path="/terms-of-service" component={TermsOfService} />
           <Route path="/about" component={About} />
           <Route path="/contact" component={Contact} />
           <Route path="/delete-account" component={DeleteAccount} />
@@ -283,7 +285,7 @@ function LayoutRoutes() {
           <Route path="/admin/tv" component={AdminTV} />
           <Route path="/admin/tv/programs/new" component={AdminTVProgramForm} />
           <Route path="/admin/tv/programs/:id/edit" component={AdminTVProgramForm} />
-          <Route component={RedirectHome} />
+          <Route component={NotFound} />
         </Switch>
       </Suspense>
     </Layout>

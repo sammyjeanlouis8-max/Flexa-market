@@ -3752,7 +3752,7 @@ export default function WalletPage() {
       {cashoutRequests.length > 0 && (
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
-            <ArrowDownCircle className="h-3.5 w-3.5 text-violet-500" /> Retrait Mwen
+            <ArrowDownCircle className="h-3.5 w-3.5 text-violet-500" /> {t("wallet.myWithdrawals")}
           </p>
           <div className="space-y-1.5">
             {cashoutRequests.slice(0, 3).map((r: any) => (

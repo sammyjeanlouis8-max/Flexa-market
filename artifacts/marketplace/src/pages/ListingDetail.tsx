@@ -2264,12 +2264,12 @@ export default function ListingDetail() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className={cn("text-sm font-semibold", selected && "text-primary")}>
-                                  {opt.key === "custom" ? "Propoze pri ou" : t(opt.labelKey)}
+                                  {opt.key === "custom" ? t("listing.deliveryCustomLabel") : t(opt.labelKey)}
                                 </span>
                                 {(opt as any).popular && <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-primary text-white">{t("listing.deliveryPopular")}</span>}
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                {opt.key === "custom" ? "Antre yon pri livrezon ou menm" : t(opt.subKey)}
+                                {opt.key === "custom" ? t("listing.deliveryCustomHint") : t(opt.subKey)}
                               </p>
                             </div>
                             <div className="text-right shrink-0">
@@ -2341,7 +2341,7 @@ export default function ListingDetail() {
                     </div>
                   )}
                   {deliveryFeeIsEstimate && effectiveDeliveryFee > 0 && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-500 px-1">⚠️ Pri estime — chofè ka ajiste selon distans reyèl</p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-500 px-1">{t("listing.deliveryEstimate")}</p>
                   )}
                   {/* Driver tip — local only, not for pickup or custom */}
                   {isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && baseFeeUsd > 0 && (
@@ -2503,7 +2503,7 @@ export default function ListingDetail() {
                         {stripeLoading ? <div className="h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-5 w-5 text-blue-600" />}
                       </div>
                       <div>
-                        <p className="font-semibold">{stripeLoading ? "Redirecting to Stripe…" : t("payment.cardPayment")}</p>
+                        <p className="font-semibold">{stripeLoading ? t("listing.redirectingStripe") : t("payment.cardPayment")}</p>
                         <p className="text-xs text-muted-foreground">{t("payment.cardSubtitle")}</p>
                       </div>
                     </button>

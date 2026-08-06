@@ -4,17 +4,21 @@
  * Visible only to users whose managedSellerId is set (store managers).
  * Shows the linked seller's active orders and lets the manager mark a
  * package as physically ready for driver pickup.
+ *
+ * Auth gate: we call /api/manager/me directly instead of reading
+ * user.managedSellerId from the stale auth cache. This means an invited
+ * manager can open /manager immediately after being invited, without
+ * needing a full page reload to refresh their JWT.
  */
 
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Package, CheckCircle2, Clock, MapPin, User, Phone,
-  RefreshCw, ChevronRight, Store, ShoppingBag, AlertTriangle,
+  RefreshCw, ChevronRight, Store, ShoppingBag,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -84,23 +88,35 @@ export default function ManagerDashboard() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [markingReady, setMarkingReady] = useState<number | null>(null);
-  const [initialized, setInitialized] = useState(false);
+  // Three states: "checking" (fetching /manager/me), "manager" (confirmed), "not_manager"
+  const [accessState, setAccessState] = useState<"checking" | "manager" | "not_manager">("checking");
 
-  // Redirect if not a manager
-  const managedSellerId = (user as any)?.managedSellerId ?? null;
+  // Redirect unauthenticated users immediately; for auth users, verify manager
+  // status via the API (not the stale JWT/auth cache) so an invited user can
+  // open the dashboard the moment they receive the invite notification.
   useEffect(() => {
     if (authLoading) return;
     if (!user) { setLocation("/login"); return; }
-    if (!managedSellerId) { setLocation("/"); return; }
-  }, [user, authLoading, managedSellerId, setLocation]);
 
-  // Load seller info
+    apiFetch("/manager/me").then(async r => {
+      if (r.ok) {
+        const d = await r.json();
+        if (d?.seller) {
+          setSeller(d.seller);
+          setAccessState("manager");
+        } else {
+          setAccessState("not_manager");
+        }
+      } else {
+        setAccessState("not_manager");
+      }
+    }).catch(() => setAccessState("not_manager"));
+  }, [user, authLoading, setLocation]);
+
+  // Redirect confirmed non-managers back to home
   useEffect(() => {
-    if (!managedSellerId) return;
-    apiFetch("/manager/me").then(r => r.ok ? r.json() : null).then(d => {
-      if (d?.seller) setSeller(d.seller);
-    });
-  }, [managedSellerId]);
+    if (accessState === "not_manager") setLocation("/");
+  }, [accessState, setLocation]);
 
   // Load orders
   const loadOrders = useCallback(async (p = 1, reset = false) => {
@@ -116,13 +132,12 @@ export default function ManagerDashboard() {
       toast({ title: "Erè pou chaje kòmand yo", variant: "destructive" });
     } finally {
       setLoadingOrders(false);
-      setInitialized(true);
     }
   }, [toast]);
 
   useEffect(() => {
-    if (managedSellerId) loadOrders(1, true);
-  }, [managedSellerId, loadOrders]);
+    if (accessState === "manager") loadOrders(1, true);
+  }, [accessState, loadOrders]);
 
   const handleMarkReady = async (orderId: number) => {
     setMarkingReady(orderId);
@@ -142,7 +157,7 @@ export default function ManagerDashboard() {
     }
   };
 
-  if (authLoading || !initialized) {
+  if (authLoading || accessState === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -150,7 +165,7 @@ export default function ManagerDashboard() {
     );
   }
 
-  if (!managedSellerId) return null;
+  if (accessState !== "manager") return null;
 
   return (
     <div className="max-w-lg mx-auto pb-24 px-4 pt-4">
@@ -186,7 +201,7 @@ export default function ManagerDashboard() {
       )}
 
       {/* ── Orders list ── */}
-      {orders.length === 0 ? (
+      {!loadingOrders && orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <ShoppingBag className="h-12 w-12 text-muted-foreground/40" />
           <p className="text-sm text-muted-foreground font-medium">Pa gen kòmand aktif pou kounye a.</p>
@@ -202,14 +217,18 @@ export default function ManagerDashboard() {
               marking={markingReady === order.id}
             />
           ))}
-          {hasMore && (
+          {loadingOrders && (
+            <div className="flex justify-center py-4">
+              <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {hasMore && !loadingOrders && (
             <Button
               variant="outline"
               className="w-full rounded-xl"
               onClick={() => loadOrders(page + 1)}
-              disabled={loadingOrders}
             >
-              {loadingOrders ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Chaje plis…"}
+              Chaje plis…
             </Button>
           )}
         </div>

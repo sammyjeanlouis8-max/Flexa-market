@@ -13,7 +13,7 @@
 
 import { Router } from "express";
 import { db, usersTable, transactionsTable, listingsTable, notificationsTable, deliveriesTable } from "@workspace/db";
-import { eq, and, desc, or, inArray } from "drizzle-orm";
+import { eq, and, desc, or, inArray, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { sendPushToUser } from "../lib/push";
@@ -25,9 +25,45 @@ async function getManagerForSeller(sellerId: number) {
   const [mgr] = await db
     .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone })
     .from(usersTable)
-    .where(eq(usersTable.managedSellerId as any, sellerId))
+    .where(eq(usersTable.managedSellerId, sellerId))
     .limit(1);
   return mgr ?? null;
+}
+
+// ─── Helper: invite finalisation (DRY) ───────────────────────────────────────
+async function assignManager(person: { id: number; name: string; email: string | null; phone: string | null }, sellerId: number, res: any) {
+  if (person.id === sellerId) {
+    res.status(400).json({ error: "You cannot assign yourself as a store manager." });
+    return;
+  }
+
+  // Clear any existing manager for this seller
+  await db.update(usersTable)
+    .set({ managedSellerId: null })
+    .where(eq(usersTable.managedSellerId, sellerId));
+
+  await db.update(usersTable)
+    .set({ managedSellerId: sellerId })
+    .where(eq(usersTable.id, person.id));
+
+  const [seller] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, sellerId));
+  const sellerName = seller?.name ?? "A seller";
+
+  await db.insert(notificationsTable).values({
+    userId: person.id,
+    actorId: sellerId,
+    type: "manager_invite",
+    message: `${sellerName} a chwazi ou kòm manadjè boutik yo. Ale nan /manager pou jere kòmand yo.`,
+  } as any).catch(() => {});
+
+  void sendExpoPushToUser(person.id, {
+    title: "🏪 Manadjè Boutik!",
+    body: `${sellerName} mande ou jere boutik yo. Klike pou wè kòmand yo.`,
+    data: { url: "/manager" },
+    sound: "default",
+  });
+
+  res.json({ ok: true, manager: { id: person.id, name: person.name, email: person.email, phone: person.phone } });
 }
 
 // ─── POST /api/seller/manager/invite ─────────────────────────────────────────
@@ -42,100 +78,52 @@ router.post("/seller/manager/invite", requireAuth, async (req, res): Promise<voi
     return;
   }
 
-  const raw = identifier.trim().toLowerCase();
+  const raw = identifier.trim();
+  const rawLower = raw.toLowerCase();
 
-  // Find the invitee — match by email or phone (either raw or normalized)
-  const candidates = await db
+  // 1. Try exact email match (case-insensitive via lower())
+  const [byEmail] = await db
     .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone, isBanned: usersTable.isBanned })
     .from(usersTable)
-    .limit(5);
+    .where(eq(sql`lower(${usersTable.email})`, rawLower))
+    .limit(1);
 
-  // Use a simple filter since we can't do OR across different columns cleanly
-  const target = candidates.find(u =>
-    (u.email ?? "").toLowerCase() === raw ||
-    (u.phone ?? "").replace(/\D/g, "") === raw.replace(/\D/g, "")
-  ) ?? (
-    // Fallback: direct single-column queries
-    await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone, isBanned: usersTable.isBanned })
-      .from(usersTable)
-      .where(eq(usersTable.email, raw))
-      .limit(1)
-      .then(r => r[0] ?? null)
-  );
-
-  if (!target) {
-    // Try by phone
-    const byPhone = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone, isBanned: usersTable.isBanned })
-      .from(usersTable)
-      .where(eq(usersTable.phone, identifier.trim()))
-      .limit(1);
-    if (!byPhone[0]) {
-      res.status(404).json({ error: "User not found. The person must already have a Flexa account." });
-      return;
-    }
-    // Fall through using byPhone[0]
-    const person = byPhone[0];
-    if (person.isBanned) { res.status(403).json({ error: "This user account is suspended." }); return; }
-    if (person.id === sellerId) { res.status(400).json({ error: "You cannot assign yourself as a store manager." }); return; }
-
-    // Clear any existing manager for this seller first
-    await db.update(usersTable)
-      .set({ managedSellerId: null } as any)
-      .where(eq(usersTable.managedSellerId as any, sellerId));
-
-    await db.update(usersTable)
-      .set({ managedSellerId: sellerId } as any)
-      .where(eq(usersTable.id, person.id));
-
-    const [seller] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, sellerId));
-
-    await db.insert(notificationsTable).values({
-      userId: person.id,
-      actorId: sellerId,
-      type: "manager_invite",
-      message: `${seller?.name ?? "A seller"} a chwazi ou kòm manadjè boutik yo. Ale nan /manager pou jere kòmand yo.`,
-    } as any).catch(() => {});
-
-    void sendExpoPushToUser(person.id, {
-      title: "🏪 Manadjè Boutik!",
-      body: `${seller?.name ?? "Yon vandè"} mande ou jere boutik yo. Klike pou wè kòmand yo.`,
-      data: { url: "/manager" },
-      sound: "default",
-    });
-
-    res.json({ ok: true, manager: { id: person.id, name: person.name, email: person.email, phone: person.phone } });
+  if (byEmail) {
+    if (byEmail.isBanned) { res.status(403).json({ error: "This user account is suspended." }); return; }
+    await assignManager(byEmail, sellerId, res);
     return;
   }
 
-  if (target.isBanned) { res.status(403).json({ error: "This user account is suspended." }); return; }
-  if (target.id === sellerId) { res.status(400).json({ error: "You cannot assign yourself as a store manager." }); return; }
+  // 2. Try exact phone match (stored format), then digits-only normalised match
+  const [byPhone] = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone, isBanned: usersTable.isBanned })
+    .from(usersTable)
+    .where(eq(usersTable.phone, raw))
+    .limit(1);
 
-  // Clear any existing manager for this seller
-  await db.update(usersTable)
-    .set({ managedSellerId: null } as any)
-    .where(eq(usersTable.managedSellerId as any, sellerId));
+  if (byPhone) {
+    if (byPhone.isBanned) { res.status(403).json({ error: "This user account is suspended." }); return; }
+    await assignManager(byPhone, sellerId, res);
+    return;
+  }
 
-  await db.update(usersTable)
-    .set({ managedSellerId: sellerId } as any)
-    .where(eq(usersTable.id, target.id));
+  // 3. Digits-only fallback: compare stored phone stripped of non-digits
+  const digitsOnly = raw.replace(/\D/g, "");
+  if (digitsOnly.length >= 7) {
+    const [byDigits] = await db
+      .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, phone: usersTable.phone, isBanned: usersTable.isBanned })
+      .from(usersTable)
+      .where(eq(sql`regexp_replace(${usersTable.phone}, '[^0-9]', '', 'g')`, digitsOnly))
+      .limit(1);
 
-  const [seller] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, sellerId));
+    if (byDigits) {
+      if (byDigits.isBanned) { res.status(403).json({ error: "This user account is suspended." }); return; }
+      await assignManager(byDigits, sellerId, res);
+      return;
+    }
+  }
 
-  await db.insert(notificationsTable).values({
-    userId: target.id,
-    actorId: sellerId,
-    type: "manager_invite",
-    message: `${seller?.name ?? "A seller"} a chwazi ou kòm manadjè boutik yo. Ale nan /manager pou jere kòmand yo.`,
-  } as any).catch(() => {});
-
-  void sendExpoPushToUser(target.id, {
-    title: "🏪 Manadjè Boutik!",
-    body: `${seller?.name ?? "Yon vandè"} mande ou jere boutik yo. Klike pou wè kòmand yo.`,
-    data: { url: "/manager" },
-    sound: "default",
-  });
-
-  res.json({ ok: true, manager: { id: target.id, name: target.name, email: target.email, phone: target.phone } });
+  res.status(404).json({ error: "User not found. The person must already have a Flexa account." });
 });
 
 // ─── DELETE /api/seller/manager ───────────────────────────────────────────────
@@ -144,8 +132,8 @@ router.delete("/seller/manager", requireAuth, async (req, res): Promise<void> =>
   const sellerId = req.userId!;
 
   const result = await db.update(usersTable)
-    .set({ managedSellerId: null } as any)
-    .where(eq(usersTable.managedSellerId as any, sellerId))
+    .set({ managedSellerId: null })
+    .where(eq(usersTable.managedSellerId, sellerId))
     .returning({ id: usersTable.id });
 
   if (result.length === 0) {
@@ -165,9 +153,10 @@ router.get("/seller/manager", requireAuth, async (req, res): Promise<void> => {
 
 // ─── GET /api/manager/me ──────────────────────────────────────────────────────
 // Returns the seller info for the current manager's linked seller.
+// Used by the dashboard to verify manager status without relying on the JWT cache.
 router.get("/manager/me", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const sellerId = (user as any).managedSellerId as number | null;
+  const sellerId = user.managedSellerId as number | null;
   if (!sellerId) {
     res.status(403).json({ error: "You are not a store manager." });
     return;
@@ -183,7 +172,7 @@ router.get("/manager/me", requireAuth, async (req, res): Promise<void> => {
 // Manager sees their linked seller's active/pending orders.
 router.get("/manager/orders", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const sellerId = (user as any).managedSellerId as number | null;
+  const sellerId = user.managedSellerId as number | null;
   if (!sellerId) {
     res.status(403).json({ error: "You are not a store manager." });
     return;
@@ -193,7 +182,6 @@ router.get("/manager/orders", requireAuth, async (req, res): Promise<void> => {
   const limit = 20;
   const offset = (page - 1) * limit;
 
-  // Fetch orders for this seller, not completed/cancelled, most recent first
   const rows = await db
     .select({
       tx: transactionsTable,
@@ -217,7 +205,13 @@ router.get("/manager/orders", requireAuth, async (req, res): Promise<void> => {
   const txIds = rows.map(r => r.tx.id);
   const deliveries = txIds.length > 0
     ? await db
-        .select({ transactionId: deliveriesTable.transactionId, packageReady: (deliveriesTable as any).packageReady, packageReadyAt: (deliveriesTable as any).packageReadyAt, driverUserId: deliveriesTable.driverUserId, status: deliveriesTable.status })
+        .select({
+          transactionId: deliveriesTable.transactionId,
+          packageReady: deliveriesTable.packageReady,
+          packageReadyAt: deliveriesTable.packageReadyAt,
+          driverUserId: deliveriesTable.driverUserId,
+          status: deliveriesTable.status,
+        })
         .from(deliveriesTable)
         .where(inArray(deliveriesTable.transactionId, txIds))
     : [];
@@ -255,7 +249,7 @@ router.get("/manager/orders", requireAuth, async (req, res): Promise<void> => {
 // Triggers a push to the assigned driver (if any) or to the seller.
 router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<void> => {
   const user = req.user!;
-  const sellerId = (user as any).managedSellerId as number | null;
+  const sellerId = user.managedSellerId as number | null;
   if (!sellerId) {
     res.status(403).json({ error: "You are not a store manager." });
     return;
@@ -273,7 +267,7 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
 
   if (!tx) { res.status(404).json({ error: "Order not found." }); return; }
 
-  // Mark delivery as package_ready
+  // Mark delivery as package_ready using typed columns (no as any)
   const [delivery] = await db
     .select()
     .from(deliveriesTable)
@@ -281,7 +275,7 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
 
   if (delivery) {
     await db.update(deliveriesTable)
-      .set({ packageReady: true, packageReadyAt: new Date() } as any)
+      .set({ packageReady: true, packageReadyAt: new Date() })
       .where(eq(deliveriesTable.id, delivery.id));
   }
 
@@ -291,7 +285,6 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
   const productName = listing?.title ?? `Order #${orderId}`;
   const orderUrl = `/orders/${orderId}`;
 
-  // Notify: assigned driver first, then seller as fallback
   const driverUserId = delivery?.driverUserId ?? null;
   if (driverUserId) {
     void sendExpoPushToUser(driverUserId, {
@@ -325,7 +318,6 @@ router.post("/manager/orders/:id/ready", requireAuth, async (req, res): Promise<
     });
   }
 
-  // DB notification to seller
   await db.insert(notificationsTable).values({
     userId: sellerId,
     actorId: req.userId!,

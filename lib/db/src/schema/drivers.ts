@@ -162,6 +162,9 @@ export const deliveriesTable = pgTable("deliveries", {
   buyerAbsentAt: timestamp("buyer_absent_at", { withTimezone: true }),
   buyerRescheduleDeadline: timestamp("buyer_reschedule_deadline", { withTimezone: true }),
   rescheduleCount: integer("reschedule_count").notNull().default(0),
+  // Store-manager package-ready flag: set by the local manager before driver pickup
+  packageReady: boolean("package_ready").notNull().default(false),
+  packageReadyAt: timestamp("package_ready_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

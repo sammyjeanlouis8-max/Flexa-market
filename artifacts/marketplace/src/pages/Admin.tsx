@@ -2719,6 +2719,7 @@ export default function Admin() {
             <TabsTrigger value="users" className="text-xs">Users</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="admins" className="text-xs font-bold text-purple-700 dark:text-purple-400"><Crown className="h-3 w-3 mr-1" />Ekip Admin</TabsTrigger>}
             <TabsTrigger value="orders" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-orders"><Package className="h-3 w-3 mr-1" />Òd</TabsTrigger>
+            <TabsTrigger value="flex-card" className="text-xs font-bold text-violet-700 dark:text-violet-400" data-testid="tab-flex-card"><CreditCard className="h-3 w-3 mr-1" />Dèt Flex</TabsTrigger>
             <TabsTrigger value="flagged" className="text-xs relative">
               Flagged {flaggedUsers.length > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{flaggedUsers.length}</span>}
             </TabsTrigger>
@@ -2781,7 +2782,6 @@ export default function Admin() {
                 <span className="ml-1 bg-emerald-600 text-white text-[9px] font-black rounded-full px-1 leading-none animate-pulse">{loanAdminPending}</span>
               )}
             </TabsTrigger>
-            <TabsTrigger value="flex-card" className="text-xs" data-testid="tab-flex-card"><CreditCard className="h-3 w-3 mr-1" />Dèt Flex</TabsTrigger>
             <TabsTrigger value="employer-apps" className="text-xs relative" onClick={() => loadEmployerApps()} data-testid="tab-employer-apps">
               <Briefcase className="h-3 w-3 mr-1" />Anplwayè
               {employerApps.filter((a: any) => a.status === "pending").length > 0 && (

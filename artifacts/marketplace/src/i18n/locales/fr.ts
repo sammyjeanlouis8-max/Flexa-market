@@ -4506,5 +4506,7 @@ export default {
     noRecipients: "Sélectionnez au moins un destinataire",
     testSent: "Test envoyé ✓",
     broadcastSent: "{{sent}} emails envoyés sur {{total}} utilisateurs.",
+    clear: "Effacer",
+    useTemplate: "Modèle professionnel",
   },
 } as const;

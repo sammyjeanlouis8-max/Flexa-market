@@ -4507,5 +4507,7 @@ export default {
     noRecipients: "Chwazi omwen yon destinatè",
     testSent: "Tès voye ✓",
     broadcastSent: "{{sent}} email voye sou {{total}} itilizatè.",
+    clear: "Efase",
+    useTemplate: "Modèl Pwofesyonèl",
   },
 } as const;

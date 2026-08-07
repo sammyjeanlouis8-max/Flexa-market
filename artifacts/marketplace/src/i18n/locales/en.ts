@@ -4511,5 +4511,7 @@ export default {
     noRecipients: "Select at least one recipient",
     testSent: "Test sent ✓",
     broadcastSent: "{{sent}} emails sent to {{total}} users.",
+    clear: "Clear",
+    useTemplate: "Professional Template",
   },
 } as const;

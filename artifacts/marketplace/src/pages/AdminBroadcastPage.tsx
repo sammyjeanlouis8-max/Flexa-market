@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Send, Loader2, AlertTriangle, CheckCircle2, Search, Users, Mail,
+  ArrowLeft, Send, Loader2, AlertTriangle, CheckCircle2, Search, Users, Mail, Trash2, Sparkles,
 } from "lucide-react";
 
 interface Recipient {
@@ -21,6 +21,20 @@ interface Recipient {
   email: string;
   country: string | null;
 }
+
+const STARTER_TEMPLATE = `<h2 style="color:#f97316;margin:0 0 12px;font-size:20px;">Bonjou, kominote Flexa Market! 👋</h2>
+
+<p style="margin:0 0 12px;line-height:1.7;">Ekri mesaj prensipal ou la. Ou ka pale de yon nouvo fonksyon, yon pwomo, oswa yon enfòmasyon enpòtan pou tout moun.</p>
+
+<ul style="margin:0 0 16px;padding-left:20px;line-height:2;">
+  <li>✅ <strong>Premye pwen enpòtan</strong></li>
+  <li>✅ <strong>Dezyèm pwen enpòtan</strong></li>
+  <li>✅ <strong>Twazyèm pwen enpòtan</strong></li>
+</ul>
+
+<p style="margin:0 0 16px;line-height:1.7;">Pou nenpòt kesyon, kontakte nou nan <a href="mailto:support@flexamarket.com" style="color:#f97316;">support@flexamarket.com</a>.</p>
+
+<p style="margin:0;color:#64748b;font-size:13px;">Mèsi pou konfyans ou,<br/><strong>Ekip Flexa Market</strong></p>`;
 
 const QUICK_VARS = [
   { label: "Bold",       tag: () => `<strong>{{}}</strong>` },
@@ -99,6 +113,13 @@ export default function AdminBroadcastPage() {
     setTimeout(() => { ta.selectionStart = ta.selectionEnd = s + insert.length; ta.focus(); }, 0);
   };
 
+  const resetForm = () => {
+    setSubject("");
+    setHtmlBody("");
+    setTestEmail("");
+    setResult(null);
+  };
+
   const send = async (mode: "test" | "broadcast") => {
     if (!subject.trim() || !htmlBody.trim()) {
       toast({ title: t("broadcastPage.fillBoth"), variant: "destructive" }); return;
@@ -128,6 +149,12 @@ export default function AdminBroadcastPage() {
           ? "✅ Tès voye!"
           : `✅ ${d.sent} / ${d.total} email voye!`,
       });
+      // Clear the compose form after a successful broadcast (not after test)
+      if (mode === "broadcast") {
+        setSubject("");
+        setHtmlBody("");
+        setTestEmail("");
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Erè";
       toast({ title: msg, variant: "destructive" });
@@ -154,6 +181,16 @@ export default function AdminBroadcastPage() {
           <h1 className="font-bold text-sm text-foreground">{t("broadcastPage.title")}</h1>
           <p className="text-[11px] text-muted-foreground truncate">{t("broadcastPage.subtitle")}</p>
         </div>
+        {/* Clear button — visible only when there's content */}
+        {(subject || htmlBody) && (
+          <button
+            onClick={resetForm}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded-lg hover:bg-muted"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t("broadcastPage.clear")}
+          </button>
+        )}
       </div>
 
       <div className="max-w-2xl mx-auto px-4 pt-5 space-y-5">
@@ -176,7 +213,16 @@ export default function AdminBroadcastPage() {
 
         {/* HTML Body */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">{t("broadcastPage.body")}</Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-semibold">{t("broadcastPage.body")}</Label>
+            <button
+              onClick={() => setHtmlBody(STARTER_TEMPLATE)}
+              className="flex items-center gap-1 text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline"
+            >
+              <Sparkles className="h-3 w-3" />
+              {t("broadcastPage.useTemplate")}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {QUICK_VARS.map(v => (
               <button

@@ -1172,7 +1172,7 @@ export default function Home() {
               <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
               <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {stats.flexaFamilyListings.map((l: NormalListing) => (
                 <div key={l.id} className="relative">
                   <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">

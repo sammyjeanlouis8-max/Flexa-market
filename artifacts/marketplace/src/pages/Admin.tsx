@@ -2741,6 +2741,24 @@ export default function Admin() {
           <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
+        {/* Broadcast Email — super admin only */}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setAdminTab("broadcast")}
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-rose-200 dark:border-rose-800 bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/20 hover:from-rose-100 hover:to-pink-100 dark:hover:from-rose-900/40 dark:hover:to-pink-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+          >
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shrink-0 shadow shadow-rose-200 dark:shadow-rose-900/50">
+              <Send className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black text-rose-900 dark:text-rose-100">📧 Broadcast Email</p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">Voye mesaj pa email tout itilizatè yo</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-rose-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
       </div>
 
       {/* Super Admin shortcut — Add Admin */}

@@ -61,9 +61,10 @@ const VIEWPORT_FIX = `
 })();
 `.trim();
 
-// SafeAreaView edges — identical pattern to the main tab WebView
+// SafeAreaView edges — include "top" on both platforms so the native close
+// button is never hidden behind the status bar (Android) or Dynamic Island (iOS).
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top", "bottom"] : [];
+  Platform.OS === "ios" ? ["top", "bottom"] : ["top"];
 
 /**
  * Build the same injection script used for the main WebView's conversation

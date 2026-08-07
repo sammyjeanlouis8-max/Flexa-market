@@ -1,8 +1,11 @@
+import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Platform,
+  Pressable,
   StyleSheet,
   View,
 } from "react-native";
@@ -41,23 +44,59 @@ function isInternal(url: string): boolean {
 
 interface SafeWebViewProps {
   uri: string;
+  /** Show a native back button header. Default: true. Pass false for tab screens. */
+  showBack?: boolean;
 }
 
 // SafeAreaView edges:
-//   iOS   — "top" only: positions content below Dynamic Island / notch automatically.
-//            "bottom" is omitted so the web page's own CSS (env(safe-area-inset-bottom))
-//            handles the home-indicator gap — adding native bottom padding would double it.
-//   Android — no edges: the OS + web page manage the status bar independently.
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top"] : [];
+//   iOS   — "top": content starts below notch / Dynamic Island.
+//   Android — "top": content starts below the status bar (needed for the native header).
+const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] = ["top"];
 
-export default function SafeWebView({ uri }: SafeWebViewProps) {
+export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) {
   const router = useRouter();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  const handleBack = () => {
+    if (canGoBack) {
+      webRef.current?.goBack();
+    } else {
+      router.back();
+    }
+  };
+
+  // Android hardware back button — mirror the same logic
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (canGoBack) {
+        webRef.current?.goBack();
+        return true;
+      }
+      return false; // let Expo Router pop the stack
+    });
+    return () => sub.remove();
+  }, [canGoBack]);
 
   return (
-    <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
+    <SafeAreaView style={styles.container} edges={showBack ? SAFE_EDGES : []}>
+      {/* Native back button — only shown for non-tab screens */}
+      {showBack && (
+        <View style={styles.header}>
+          <Pressable
+            onPress={handleBack}
+            style={styles.backBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Retounen"
+          >
+            <Feather name="chevron-left" size={26} color="#F97316" />
+          </Pressable>
+        </View>
+      )}
+
       {loading && (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#F97316" />
@@ -79,6 +118,7 @@ export default function SafeWebView({ uri }: SafeWebViewProps) {
         mediaPlaybackRequiresUserAction={false}
         overScrollMode="never"
         userAgent="FlexaMarket/1.0 (Mobile App)"
+        onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
         onShouldStartLoadWithRequest={(request) => {
@@ -111,6 +151,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0F172A",
+  },
+  header: {
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    backgroundColor: "#0F172A",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#1e293b",
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   webview: {
     flex: 1,

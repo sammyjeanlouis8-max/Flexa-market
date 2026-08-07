@@ -12,3 +12,4 @@
 - [iOS Safari audio pitfalls](ios-safari-audio.md) — load() required after src change; listen to "playing" not "play"; confirm via play() promise; 250ms poll reconciles frozen UI; never gate poll on readyState.
 - [Flexa build discipline](flexa-build-discipline.md) — always run vite build locally before pushing; TDZ crash if useEffect deps reference a const declared later in the component; double-fragment nesting breaks Rollup chunk graph.
 - [Expo EAS build setup](expo-eas-build.md) — mobile node_modules has 41 hollow stubs; must fix them + expo-modules-autolinking/exports.js before EAS tooling runs; always use `eas build` (cloud), not `eas update` (needs local Metro).
+- [Flexa auth token pattern](flexa-auth-token.md) — useAuth() returns token as a string, NOT a function; calling token() crashes at runtime (TypeError in prod).

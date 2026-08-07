@@ -2745,7 +2745,7 @@ export default function Admin() {
         {isSuperAdmin && (
           <button
             type="button"
-            onClick={() => setAdminTab("broadcast")}
+            onClick={() => setLocation("/admin/broadcast")}
             className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-rose-200 dark:border-rose-800 bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/20 hover:from-rose-100 hover:to-pink-100 dark:hover:from-rose-900/40 dark:hover:to-pink-900/30 transition-all text-left group shadow-sm hover:shadow-md"
           >
             <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center shrink-0 shadow shadow-rose-200 dark:shadow-rose-900/50">

@@ -50,7 +50,8 @@ const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
-const AdminFlexCardUsers = lazy(() => import("@/pages/AdminFlexCardUsers"));
+const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
+const AdminBroadcastPage    = lazy(() => import("@/pages/AdminBroadcastPage"));
 const Chatbot            = lazy(() => import("@/pages/Chatbot"));
 const CalculatorPage     = lazy(() => import("@/pages/Calculator"));
 const WalletPage         = lazy(() => import("@/pages/Wallet"));
@@ -290,6 +291,7 @@ function LayoutRoutes() {
           <Route path="/admin/tv/programs/new" component={AdminTVProgramForm} />
           <Route path="/admin/tv/programs/:id/edit" component={AdminTVProgramForm} />
           <Route path="/admin/flex-card" component={AdminFlexCardUsers} />
+          <Route path="/admin/broadcast" component={AdminBroadcastPage} />
           <Route component={NotFound} />
         </Switch>
       </Suspense>

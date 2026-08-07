@@ -2416,13 +2416,37 @@ router.put("/admin/platform-fees", requireSuperAdmin, async (req: any, res): Pro
   res.json({ ok: true, key, value });
 });
 
+// ─── GET /api/admin/broadcast-recipients ─────────────────────────────────────
+// Super-admin only. Returns all non-banned users with a valid email address.
+router.get("/admin/broadcast-recipients", requireSuperAdmin, async (req, res): Promise<void> => {
+  const users = await db
+    .select({
+      id:      usersTable.id,
+      name:    usersTable.name,
+      email:   usersTable.email,
+      country: usersTable.country,
+    })
+    .from(usersTable)
+    .where(and(
+      sql`${usersTable.email} IS NOT NULL`,
+      sql`${usersTable.email} != ''`,
+      eq(usersTable.isBanned, false),
+    ))
+    .orderBy(usersTable.name);
+
+  const filtered = users.filter(u => u.email?.includes("@"));
+  res.json({ users: filtered, total: filtered.length });
+});
+
 // ─── POST /api/admin/broadcast-email ─────────────────────────────────────────
 // Super-admin only. Send a custom email to all users (or a single test address).
+// Accepts optional recipientIds[] to restrict the send to a subset of users.
 router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promise<void> => {
-  const { subject, htmlBody, testEmail } = req.body as {
+  const { subject, htmlBody, testEmail, recipientIds } = req.body as {
     subject?: string;
     htmlBody?: string;
     testEmail?: string;
+    recipientIds?: number[];
   };
 
   if (!subject?.trim()) { res.status(400).json({ error: "subject obligatwa" }); return; }
@@ -2439,15 +2463,20 @@ router.post("/admin/broadcast-email", requireSuperAdmin, async (req, res): Promi
     return;
   }
 
-  // ── Broadcast mode: send to all users who have an email address ──
+  // ── Broadcast mode: send to selected (or all) users with valid emails ──
+  const whereClause = and(
+    sql`${usersTable.email} IS NOT NULL`,
+    sql`${usersTable.email} != ''`,
+    eq(usersTable.isBanned, false),
+    ...(Array.isArray(recipientIds) && recipientIds.length > 0
+      ? [sql`${usersTable.id} = ANY(ARRAY[${sql.join(recipientIds.map(id => sql`${id}`), sql`, `)}]::int[])`]
+      : []),
+  );
+
   const users = await db
     .select({ email: usersTable.email, name: usersTable.name })
     .from(usersTable)
-    .where(and(
-      sql`${usersTable.email} IS NOT NULL`,
-      sql`${usersTable.email} != ''`,
-      eq(usersTable.isBanned, false),
-    ));
+    .where(whereClause);
 
   const recipients = users
     .filter(u => u.email && u.email.includes("@"))

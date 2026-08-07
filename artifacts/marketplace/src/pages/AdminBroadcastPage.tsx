@@ -50,6 +50,8 @@ export default function AdminBroadcastPage() {
   const { t }        = useTranslation();
   const BASE         = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
+  const authHeader = token ? `Bearer ${token}` : "";
+
   const [subject,     setSubject]     = useState("");
   const [htmlBody,    setHtmlBody]    = useState("");
   const [testEmail,   setTestEmail]   = useState("");
@@ -66,7 +68,7 @@ export default function AdminBroadcastPage() {
   useEffect(() => {
     setLoadingRecipients(true);
     fetch(`${BASE}/api/admin/broadcast-recipients`, {
-      headers: { Authorization: `Bearer ${token()}` },
+      headers: { Authorization: authHeader },
     })
       .then(r => r.json())
       .then(d => {
@@ -138,7 +140,7 @@ export default function AdminBroadcastPage() {
       if (mode === "broadcast") body.recipientIds = [...selected];
       const r = await fetch(`${BASE}/api/admin/broadcast-email`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json" },
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const d = await r.json();

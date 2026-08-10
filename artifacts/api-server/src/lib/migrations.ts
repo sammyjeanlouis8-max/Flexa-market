@@ -2205,6 +2205,65 @@ export async function runStartupMigrations(): Promise<void> {
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
 
+  // One-time: backfill name-based referral codes for users still holding old random "FX…" codes.
+  // Old pattern: exactly 8 chars, starts with "FX" (e.g. FXBJU2EZ). Name-based codes don't match this.
+  try {
+    const { rows: oldCodeUsers } = await db.execute(dsql.raw(
+      `SELECT id, name, referral_code FROM users
+       WHERE referral_code ~ '^FX[A-Z0-9]{6}$'
+       ORDER BY id`
+    ));
+
+    if (oldCodeUsers.length > 0) {
+      logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
+
+      // Helper: name → base slug (first name, letters only, max 6 chars, uppercase)
+      const nameBase = (name: string): string => {
+        const b = String(name ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z\s]/g, "").trim()
+          .split(/\s+/)[0].toUpperCase().slice(0, 6);
+        return b.length >= 2 ? b : "FX";
+      };
+
+      // Collect all existing codes so we can avoid collisions in-memory during the loop
+      const { rows: existingRows } = await db.execute(dsql.raw(
+        `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
+      ));
+      const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
+
+      let updated = 0;
+      for (const row of oldCodeUsers as any[]) {
+        const base = nameBase(row.name ?? "");
+        let newCode: string | null = null;
+
+        // Try up to 20 random suffixes before giving up
+        for (let i = 0; i < 20; i++) {
+          const suffix = String(Math.floor(100 + Math.random() * 900));
+          const candidate = base + suffix;
+          if (!usedCodes.has(candidate)) { newCode = candidate; break; }
+        }
+
+        if (!newCode) {
+          // Absolute fallback: base + timestamp fragment
+          newCode = base + Date.now().toString(36).toUpperCase().slice(-3);
+          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).toUpperCase().slice(-4);
+        }
+
+        // Atomic update — only touches this user, only if they still have the old code
+        await db.execute(dsql.raw(
+          `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
+        ));
+        usedCodes.delete(row.referral_code as string);
+        usedCodes.add(newCode);
+        updated++;
+      }
+      logger.info({ updated }, "Migration: name-based referral code backfill complete");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err?.message }, "Migration: name-based referral code backfill failed (non-fatal)");
+  }
+
   logger.info({ applied, failed }, "Startup migrations complete");
 }
 

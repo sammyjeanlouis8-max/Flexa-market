@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
+import { useToast } from "@/hooks/use-toast";
 import {
   Truck, RefreshCw, DollarSign, MapPin, Bike, Car, Clock,
   CheckCircle, XCircle, Loader2, TrendingUp, Package, Navigation,
@@ -90,6 +91,7 @@ interface TipStats {
 export default function AdminDeliveryPanel() {
   const { token } = useAuth();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -160,7 +162,11 @@ export default function AdminDeliveryPanel() {
       if (res.ok) {
         const data = await res.json();
         setDeliveries(data.deliveries ?? []);
+      } else {
+        toast({ title: t("admin.loadError"), variant: "destructive" });
       }
+    } catch {
+      toast({ title: t("admin.loadError"), variant: "destructive" });
     } finally { setLoading(false); }
   };
 
@@ -171,6 +177,9 @@ export default function AdminDeliveryPanel() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setTipStats(await res.json());
+      else toast({ title: t("admin.loadError"), variant: "destructive" });
+    } catch {
+      toast({ title: t("admin.loadError"), variant: "destructive" });
     } finally { setTipsLoading(false); }
   };
 
@@ -181,6 +190,9 @@ export default function AdminDeliveryPanel() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setRatingsData(await res.json());
+      else toast({ title: t("admin.loadError"), variant: "destructive" });
+    } catch {
+      toast({ title: t("admin.loadError"), variant: "destructive" });
     } finally { setRatingsLoading(false); }
   };
 

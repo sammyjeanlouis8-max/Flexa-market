@@ -860,7 +860,10 @@ export default function Admin() {
     try {
       const data = await adminFetch(`/api/admin/users/${u.id}/activity`, "GET");
       setActivityData(data);
-    } catch { setActivityData(null); }
+    } catch {
+      setActivityData(null);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
   };
 
   const loadSecurity = async (u: any) => {
@@ -871,7 +874,10 @@ export default function Admin() {
     try {
       const data = await adminFetch(`/api/admin/users/${u.id}/security`, "GET");
       setSecurityData(data);
-    } catch { setSecurityData(null); }
+    } catch {
+      setSecurityData(null);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
   };
 
   const handlePhoneOverride = async () => {
@@ -910,7 +916,10 @@ export default function Admin() {
       const data = await adminFetch(`/api/admin/logs${qs ? `?${qs}` : ""}`, "GET");
       setLogs(data);
     }
-    catch { setLogs([]); }
+    catch {
+      setLogs([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
   };
 
   const buildLogsParams = (dateRange: typeof logsDateRange, dateFrom: string, dateTo: string) => {
@@ -1094,6 +1103,7 @@ export default function Admin() {
     } catch {
       setSellerPayouts([]);
       setSellerPayoutAccounts([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
     } finally {
       setSellerPayoutsLoading(false);
       setSellerAccountsLoading(false);
@@ -1158,7 +1168,10 @@ export default function Admin() {
   const loadCashout = async () => {
     setCashoutLoading(true);
     try { const data = await adminFetch("/api/cashout/admin/all", "GET"); setCashoutRequests(Array.isArray(data) ? data : []); }
-    catch { setCashoutRequests([]); }
+    catch {
+      setCashoutRequests([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
     finally { setCashoutLoading(false); }
   };
 
@@ -1176,7 +1189,10 @@ export default function Admin() {
   const loadAgents = async () => {
     setAgentsLoading(true);
     try { const data = await adminFetch("/api/cashout/admin/agents", "GET"); setAgentsList(Array.isArray(data) ? data : []); }
-    catch { setAgentsList([]); }
+    catch {
+      setAgentsList([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
     finally { setAgentsLoading(false); }
   };
 
@@ -1187,7 +1203,10 @@ export default function Admin() {
       const qs = statusFilter !== "all" ? `?status=${statusFilter}` : "";
       const data = await adminFetch(`/api/admin/delivery/applications${qs}`, "GET");
       setDriverApps(Array.isArray(data?.applications) ? data.applications : []);
-    } catch { setDriverApps([]); }
+    } catch {
+      setDriverApps([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
     finally { setDriverAppsLoading(false); }
   };
 
@@ -1566,7 +1585,10 @@ export default function Admin() {
 
   const loadBoostRecords = async () => {
     try { const data = await adminFetch("/api/admin/boosts", "GET"); setBoostRecords(data); }
-    catch { setBoostRecords([]); }
+    catch {
+      setBoostRecords([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
   };
 
   const loadWalletAdmin = async () => {
@@ -1583,7 +1605,10 @@ export default function Admin() {
         setWalletBonusInput(String(settings.bonusPct));
         setWalletMoncashNumber(settings.moncashPlatformNumber ?? "");
       }
-    } catch { setWalletRecharges([]); setWalletBalances([]); }
+    } catch {
+      setWalletRecharges([]); setWalletBalances([]);
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    }
     // Also load scoped transaction history
     loadAdminTxHistory({});
   };
@@ -1682,6 +1707,7 @@ export default function Admin() {
     const amt = parseFloat(rcGenAmount);
     const qty = parseInt(rcGenQty, 10);
     if (!amt || amt <= 0 || !qty || qty <= 0) { alert("Antre valè ak kantite valid"); return; }
+    if (!confirm(t("admin.confirmGenerateCards", { qty, amount: amt.toFixed(2) }))) return;
     setRcGenLoading(true);
     setRcGenResult(null);
     try {
@@ -1690,9 +1716,11 @@ export default function Admin() {
         ...(rcGenExpiry ? { expiresAt: rcGenExpiry } : {}),
       });
       setRcGenResult({ batchId: data.batchId, codes: data.codes ?? [] });
+      toast({ title: `✅ ${qty} kat jenere — $${amt.toFixed(2)} chak` });
       await loadRechargeCards();
-    } catch (e: any) { alert(e?.message ?? "Erè"); }
-    finally { setRcGenLoading(false); }
+    } catch (e: any) {
+      toast({ title: e?.message ?? t("admin.loadError"), variant: "destructive" });
+    } finally { setRcGenLoading(false); }
   };
 
   const downloadCardsCSV = (codes: string[], amountUsd: number, batchId: string) => {
@@ -1748,17 +1776,20 @@ export default function Admin() {
 
   const handleWalletCredit = async () => {
     if (!walletCreditUserId || !walletCreditAmount) return;
+    const amt = parseFloat(walletCreditAmount);
+    if (!confirm(t("admin.confirmWalletCredit", { amount: amt.toFixed(2), userId: walletCreditUserId }))) return;
     setWalletCreditSaving(true);
     try {
       await adminFetch("/api/wallet/admin/credit", "POST", {
         userId: parseInt(walletCreditUserId),
-        amountUsd: parseFloat(walletCreditAmount),
+        amountUsd: amt,
         note: walletCreditNote || "Admin credit",
       });
+      toast({ title: `✅ $${amt.toFixed(2)} kredite nan kont #${walletCreditUserId}` });
       setWalletCreditUserId(""); setWalletCreditAmount(""); setWalletCreditNote("");
       await loadWalletAdmin();
     } catch (e: any) {
-      alert(e?.error ?? "Erè");
+      toast({ title: e?.error ?? t("admin.loadError"), variant: "destructive" });
     } finally { setWalletCreditSaving(false); }
   };
 
@@ -1776,20 +1807,29 @@ export default function Admin() {
     setEditForm({ title: l.title, description: l.description, price: String(l.price), condition: l.condition, status: l.status });
   };
 
-  const handleBan = (id: number) => act(`ban-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/ban`);
-    toast({ title: "🚫 Itilizatè a sipande avèk siksè." });
-  });
+  const handleBan = (id: number) => {
+    if (!confirm(t("admin.confirmBan"))) return;
+    act(`ban-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/ban`);
+      toast({ title: "🚫 Itilizatè a sipande avèk siksè." });
+    });
+  };
 
-  const handleUnban = (id: number) => act(`unban-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/unban`);
-    toast({ title: "✅ Kont itilizatè a deblokel avèk siksè." });
-  });
+  const handleUnban = (id: number) => {
+    if (!confirm(t("admin.confirmUnban"))) return;
+    act(`unban-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/unban`);
+      toast({ title: "✅ Kont itilizatè a debloke avèk siksè." });
+    });
+  };
 
-  const handleUnflag = (id: number) => act(`unflag-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/unflag`);
-    toast({ title: "Account cleared" });
-  });
+  const handleUnflag = (id: number) => {
+    if (!confirm(t("admin.confirmUnflag"))) return;
+    act(`unflag-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/unflag`);
+      toast({ title: t("admin.accountCleared") });
+    });
+  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -1799,7 +1839,7 @@ export default function Admin() {
     await act(key, async () => {
       if (deleteTarget.type === "user") await adminFetch(path!, "DELETE");
       else removeListing.mutate({ id: deleteTarget.id });
-      toast({ title: `${deleteTarget.type === "user" ? "User" : "Listing"} deleted` });
+      toast({ title: t("admin.deleted", { type: deleteTarget.type === "user" ? t("admin.tabUsers") : t("admin.tabListings") }) });
     });
   };
 
@@ -1808,22 +1848,24 @@ export default function Admin() {
     const days = parseInt(boostDays, 10);
     await act(`boost-${boostModal.id}`, async () => {
       await adminFetch(`/api/admin/listings/${boostModal.id}/boost`, "POST", { days });
-      toast({ title: `Listing boosted for ${days} day(s)` });
+      toast({ title: t("admin.listingBoosted", { days }) });
     });
     setBoostModal(null);
   };
 
   const handleRemoveBoost = async (id: number) => {
+    if (!confirm(t("admin.confirmRemoveBoost"))) return;
     await act(`rboost-${id}`, async () => {
       await adminFetch(`/api/admin/listings/${id}/boost`, "DELETE");
-      toast({ title: "Boost removed" });
+      toast({ title: t("admin.boostRemoved") });
     });
   };
 
   const handleFeature = async (id: number, featured: boolean) => {
+    if (!confirm(featured ? t("admin.confirmFeature") : t("admin.confirmUnfeature"))) return;
     await act(`feat-${id}`, async () => {
       await adminFetch(`/api/admin/listings/${id}/feature`, "POST", { featured });
-      toast({ title: featured ? "Listing marked as featured" : "Feature removed" });
+      toast({ title: featured ? t("admin.featured") : t("admin.unfeatured") });
     });
   };
 
@@ -1834,28 +1876,34 @@ export default function Admin() {
         title: editForm.title, description: editForm.description,
         price: parseFloat(editForm.price), condition: editForm.condition, status: editForm.status,
       });
-      toast({ title: "Listing updated" });
+      toast({ title: t("admin.listingUpdated") });
     });
     setEditListing(null);
   };
 
-  const handleTrustUser = (id: number) => act(`trust-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/trust`, "POST");
-    toast({ title: "User marked as trusted — risk cleared" });
-    if (securityUser?.id === id) {
-      const data = await adminFetch(`/api/admin/users/${id}/security`, "GET");
-      setSecurityData(data);
-    }
-  });
+  const handleTrustUser = (id: number) => {
+    if (!confirm(t("admin.confirmTrust"))) return;
+    act(`trust-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/trust`, "POST");
+      toast({ title: t("admin.trusted") });
+      if (securityUser?.id === id) {
+        const data = await adminFetch(`/api/admin/users/${id}/security`, "GET");
+        setSecurityData(data);
+      }
+    });
+  };
 
-  const handleUntrustUser = (id: number) => act(`untrust-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/untrust`, "POST");
-    toast({ title: "Trusted status removed" });
-    if (securityUser?.id === id) {
-      const data = await adminFetch(`/api/admin/users/${id}/security`, "GET");
-      setSecurityData(data);
-    }
-  });
+  const handleUntrustUser = (id: number) => {
+    if (!confirm(t("admin.confirmUntrust"))) return;
+    act(`untrust-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/untrust`, "POST");
+      toast({ title: t("admin.untrusted") });
+      if (securityUser?.id === id) {
+        const data = await adminFetch(`/api/admin/users/${id}/security`, "GET");
+        setSecurityData(data);
+      }
+    });
+  };
 
   const handleRestrictConfirm = async () => {
     if (!restrictTarget) return;
@@ -1872,19 +1920,25 @@ export default function Admin() {
     setRestrictNotes("");
   };
 
-  const handleUnrestrict = (id: number, name: string) => act(`unrestrict-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/unrestrict`, "POST");
-    toast({ title: `Restriksyon ${name} retire` });
-  });
+  const handleUnrestrict = (id: number, name: string) => {
+    if (!confirm(t("admin.confirmUnrestrict", { name }))) return;
+    act(`unrestrict-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/unrestrict`, "POST");
+      toast({ title: `Restriksyon ${name} retire` });
+    });
+  };
 
-  const handleResetCountryLock = (id: number) => act(`reset-country-${id}`, async () => {
-    await adminFetch(`/api/admin/users/${id}/reset-country-lock`, "POST");
-    toast({ title: "Country lock reset — user can change country now" });
-  });
+  const handleResetCountryLock = (id: number) => {
+    if (!confirm(t("admin.confirmResetCountryLock"))) return;
+    act(`reset-country-${id}`, async () => {
+      await adminFetch(`/api/admin/users/${id}/reset-country-lock`, "POST");
+      toast({ title: t("admin.countryLockReset") });
+    });
+  };
 
   const handleSetCountry = (id: number, country: string) => act(`set-country-${id}`, async () => {
     await adminFetch(`/api/admin/users/${id}/set-country`, "POST", { country });
-    toast({ title: `Country set to ${country}` });
+    toast({ title: t("admin.countrySet", { country }) });
   });
 
   const getUserRiskLevel = (u: any) => {
@@ -2986,21 +3040,21 @@ export default function Admin() {
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <div className="overflow-x-auto pb-1 mb-5">
           <TabsList className="flex w-max gap-1 h-auto p-1">
-            <TabsTrigger value="users" className="text-xs">Users</TabsTrigger>
+            <TabsTrigger value="users" className="text-xs">{t("admin.tabUsers")}</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="admins" className="text-xs font-bold text-purple-700 dark:text-purple-400"><Crown className="h-3 w-3 mr-1" />Ekip Admin</TabsTrigger>}
             <TabsTrigger value="orders" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-orders"><Package className="h-3 w-3 mr-1" />Òd</TabsTrigger>
             <TabsTrigger value="flex-card" className="text-xs font-bold text-violet-700 dark:text-violet-400" data-testid="tab-flex-card"><CreditCard className="h-3 w-3 mr-1" />Dèt Flex</TabsTrigger>
             <TabsTrigger value="flagged" className="text-xs relative">
-              Flagged {flaggedUsers.length > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{flaggedUsers.length}</span>}
+              {t("admin.tabFlagged")} {flaggedUsers.length > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{flaggedUsers.length}</span>}
             </TabsTrigger>
-            <TabsTrigger value="banned" className="text-xs">Banned</TabsTrigger>
+            <TabsTrigger value="banned" className="text-xs">{t("admin.tabBanned")}</TabsTrigger>
             <TabsTrigger value="restricted" className="text-xs">
-              Restricted {allUsers.filter((u: any) => u.isRestricted).length > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{allUsers.filter((u: any) => u.isRestricted).length}</span>}
+              {t("admin.tabRestricted")} {allUsers.filter((u: any) => u.isRestricted).length > 0 && <span className="ml-1 bg-amber-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{allUsers.filter((u: any) => u.isRestricted).length}</span>}
             </TabsTrigger>
-            <TabsTrigger value="listings" className="text-xs">Listings</TabsTrigger>
+            <TabsTrigger value="listings" className="text-xs">{t("admin.tabListings")}</TabsTrigger>
             <TabsTrigger value="jobs" className="text-xs" onClick={loadAdminJobs} data-testid="tab-jobs"><Briefcase className="h-3 w-3 mr-1" />Travay</TabsTrigger>
             <TabsTrigger value="moderation" className="text-xs relative" onClick={() => loadModerationQueue()}>
-              <ShieldAlert className="h-3 w-3 mr-1" />Moderation
+              <ShieldAlert className="h-3 w-3 mr-1" />{t("admin.tabModeration")}
               {moderationQueue.filter((m: any) => m.moderationStatus === "pending").length > 0 && (
                 <span className="ml-1 bg-amber-500 text-white text-[9px] font-black rounded-full px-1 leading-none">
                   {moderationQueue.filter((m: any) => m.moderationStatus === "pending").length}
@@ -3008,25 +3062,25 @@ export default function Admin() {
               )}
             </TabsTrigger>
             <TabsTrigger value="fraud" className="text-xs font-bold text-red-600 dark:text-red-400" onClick={() => setLocation("/admin/fraud")} data-testid="tab-fraud">
-              <Shield className="h-3 w-3 mr-1" />Fraud
+              <Shield className="h-3 w-3 mr-1" />{t("admin.tabFraud")}
             </TabsTrigger>
-            <TabsTrigger value="boosts" className="text-xs" onClick={loadBoostRecords}><Zap className="h-3 w-3 mr-1" />Boosts</TabsTrigger>
+            <TabsTrigger value="boosts" className="text-xs" onClick={loadBoostRecords}><Zap className="h-3 w-3 mr-1" />{t("admin.tabBoosts")}</TabsTrigger>
             {can("payments") && (
-              <TabsTrigger value="payments" className="text-xs" onClick={loadPayments} data-testid="tab-payments"><CreditCard className="h-3 w-3 mr-1" />Payments</TabsTrigger>
+              <TabsTrigger value="payments" className="text-xs" onClick={loadPayments} data-testid="tab-payments"><CreditCard className="h-3 w-3 mr-1" />{t("admin.tabPayments")}</TabsTrigger>
             )}
             {can("payments") && (
-              <TabsTrigger value="stripe" className="text-xs" onClick={loadStripeData} data-testid="tab-stripe"><CreditCard className="h-3 w-3 mr-1" />Stripe</TabsTrigger>
+              <TabsTrigger value="stripe" className="text-xs" onClick={loadStripeData} data-testid="tab-stripe"><CreditCard className="h-3 w-3 mr-1" />{t("admin.tabStripe")}</TabsTrigger>
             )}
             {isSuperAdmin && (
               <TabsTrigger value="commission" className="text-xs" onClick={loadCommission} data-testid="tab-commission">% Commission</TabsTrigger>
             )}
             {isSuperAdmin && <TabsTrigger value="payment-apis" className="text-xs" onClick={() => { loadPaymentProviders(); loadUsdtWallet(); }} data-testid="tab-payment-apis"><KeyRound className="h-3 w-3 mr-1" />{t("adminBanner.tabPaymentApis")}</TabsTrigger>}
-            <TabsTrigger value="reports" className="text-xs">Reports</TabsTrigger>
+            <TabsTrigger value="reports" className="text-xs">{t("admin.tabReports")}</TabsTrigger>
             {/* Admin Team moved to top — hidden here to avoid duplicate */}
             <TabsTrigger value="support" className="text-xs relative" data-testid="tab-support"><MessageSquare className="h-3 w-3 mr-1" />Sipò{supportUnread > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-red-600 hover:bg-red-600">{supportUnread}</Badge>}</TabsTrigger>
-            <TabsTrigger value="adminchat" className="text-xs relative" onClick={loadAdminChatAdmins} data-testid="tab-adminchat"><MessageSquare className="h-3 w-3 mr-1" />Admin Chat{adminChatUnread > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-blue-600 hover:bg-blue-600">{adminChatUnread}</Badge>}</TabsTrigger>
+            <TabsTrigger value="adminchat" className="text-xs relative" onClick={loadAdminChatAdmins} data-testid="tab-adminchat"><MessageSquare className="h-3 w-3 mr-1" />{t("admin.tabAdminChat")}{adminChatUnread > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-blue-600 hover:bg-blue-600">{adminChatUnread}</Badge>}</TabsTrigger>
             {can("payments") && (
-              <TabsTrigger value="wallet" className="text-xs" onClick={loadWalletAdmin}><Wallet className="h-3 w-3 mr-1" />Wallet</TabsTrigger>
+              <TabsTrigger value="wallet" className="text-xs" onClick={loadWalletAdmin}><Wallet className="h-3 w-3 mr-1" />{t("admin.tabWallet")}</TabsTrigger>
             )}
             {can("payments") && (
               <TabsTrigger value="cashout" className="text-xs" onClick={loadCashout} data-testid="tab-cashout"><ArrowDownCircle className="h-3 w-3 mr-1" />Retrait{cashoutRequests.filter((r: any) => r.status === "pending").length > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-amber-600 hover:bg-amber-600">{cashoutRequests.filter((r: any) => r.status === "pending").length}</Badge>}</TabsTrigger>

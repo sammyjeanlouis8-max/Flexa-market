@@ -20,7 +20,7 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
     const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
     // Commission rows + referral stats + user's own code in parallel
-    const [rows, [referralStats], [buyerStats], [me]] = await Promise.all([
+    const [rows, [referralStats], [buyerStats], meRow] = await Promise.all([
       db
         .select()
         .from(promoPurchaseCommissionsTable)
@@ -47,6 +47,9 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
         .where(eq(usersTable.id, userId))
         .limit(1),
     ]);
+
+    // Extract as mutable so we can update it if the code gets regenerated
+    let me = meRow[0];
 
     // Auto-convert old-format codes on page load:
     //   - Old random FX codes:  ^FX[A-Z0-9]+   (e.g. FXBJU2EZ)

@@ -5,6 +5,7 @@ import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "dri
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
+import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
 import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 
@@ -838,6 +839,7 @@ router.post("/admin/users/:id/ban", requireAdmin, async (req, res): Promise<void
   await db.update(usersTable).set({ isBanned: true, isFlagged: false }).where(eq(usersTable.id, id));
   await db.update(listingsTable).set({ status: "removed" }).where(and(eq(listingsTable.sellerId, id), eq(listingsTable.status, "available")));
   await log(req.userId!, "ban_user", "user", id, `Banned user: ${target.name} (${target.email})`);
+  await logAdminAction(req, { actionType: "user_ban", actionCategory: "user", description: `Bann itilizatè: ${target.name} (${target.email})`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "critical" });
   res.json({ message: "User banned" });
 });
 
@@ -849,6 +851,7 @@ router.post("/admin/users/:id/unban", requireAdmin, async (req, res): Promise<vo
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
   await db.update(usersTable).set({ isBanned: false }).where(eq(usersTable.id, id));
   await log(req.userId!, "unban_user", "user", id, `Unbanned user: ${target.name}`);
+  await logAdminAction(req, { actionType: "user_unban", actionCategory: "user", description: `Leve bann sou itilizatè: ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
   res.json({ message: "User unbanned" });
 });
 
@@ -895,6 +898,7 @@ router.post("/admin/users/:id/restrict", requireAdmin, async (req, res): Promise
 
   const durLabel = durationDays ? `${durationDays} days` : "permanent";
   await log(req.userId!, "restrict_user", "user", id, `Restricted ${target.name} — reason: ${reason}, duration: ${durLabel}`);
+  await logAdminAction(req, { actionType: "user_suspend", actionCategory: "user", description: `Restriksyon sou ${target.name} — rezon: ${reason}, dire: ${durLabel}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
 
   // Fire-and-forget email to restricted user
   void (async () => {
@@ -915,6 +919,7 @@ router.post("/admin/users/:id/unrestrict", requireAdmin, async (req, res): Promi
   await db.update(userRestrictionsTable).set({ isActive: false })
     .where(and(eq(userRestrictionsTable.userId, id), eq(userRestrictionsTable.isActive, true)));
   await log(req.userId!, "unrestrict_user", "user", id, `Lifted restriction on ${target.name}`);
+  await logAdminAction(req, { actionType: "user_unrestrict", actionCategory: "user", description: `Leve restriksyon sou ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "medium" });
   res.json({ message: "User unrestricted" });
 });
 
@@ -994,6 +999,7 @@ router.post("/admin/users/:id/unflag", requireAdmin, async (req, res): Promise<v
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
   await db.update(usersTable).set({ isFlagged: false, flagReason: null }).where(eq(usersTable.id, id));
   await log(req.userId!, "unflag_user", "user", id, `Cleared flag on: ${target.name}`);
+  await logAdminAction(req, { actionType: "user_unflag", actionCategory: "user", description: `Retire flag sou ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "low" });
   res.json({ message: "User cleared" });
 });
 
@@ -1008,6 +1014,7 @@ router.delete("/admin/users/:id", requireAdmin, async (req, res): Promise<void> 
   await db.update(listingsTable).set({ status: "removed" }).where(eq(listingsTable.sellerId, id));
   await db.delete(usersTable).where(eq(usersTable.id, id));
   await log(req.userId!, "delete_user", "user", id, `Deleted user: ${target.name} (${target.email})`);
+  await logAdminAction(req, { actionType: "user_delete", actionCategory: "user", description: `Efase kont itilizatè: ${target.name} (${target.email})`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "critical" });
   res.json({ message: "User deleted" });
 });
 
@@ -1097,6 +1104,7 @@ router.post("/admin/users/:id/set-role", requireSuperAdmin, async (req, res): Pr
   const [updated] = await db.update(usersTable).set({ ...roleFields, ...scopeFields }).where(eq(usersTable.id, id)).returning();
   const scopeStr = scopeFields.adminScopeCity ?? scopeFields.adminScopeDepartment ?? scopeFields.adminScopeCountries ?? scopeFields.adminScopeCountry ?? "global";
   await log(req.userId!, "set_role", "user", id, `Set role of ${target.name} to "${role}" (scope: ${scopeStr})`);
+  await logAdminAction(req, { actionType: "privilege_change", actionCategory: "security", description: `Chanje wòl ${target.name}: "${role}" (scope: ${scopeStr})`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "critical" });
   res.json(formatUser(updated));
 });
 
@@ -1154,6 +1162,7 @@ router.post("/admin/users/add-admin-by-email", requireSuperAdmin, async (req, re
   const [updated] = await db.update(usersTable).set({ ...roleFields, ...scopeFields }).where(eq(usersTable.id, target.id)).returning();
   const scopeStr = scopeFields.adminScopeCountries ?? scopeFields.adminScopeCity ?? scopeFields.adminScopeDepartment ?? scopeFields.adminScopeCountry ?? "global";
   await log(req.userId!, "add_admin", "user", target.id, `Added ${target.name} as ${role} (scope: ${scopeStr})`);
+  await logAdminAction(req, { actionType: "admin_create", actionCategory: "security", description: `Ajoute ${target.name} kòm ${role} (scope: ${scopeStr})`, targetType: "user", targetId: target.id, targetName: target.name, riskLevel: "critical" });
   res.json(formatUser(updated));
 });
 

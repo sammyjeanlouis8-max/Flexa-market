@@ -122,6 +122,7 @@ const FlexaMusicUpload               = lazy(() => import("@/pages/FlexaMusicUplo
 const AdminTV                        = lazy(() => import("@/pages/AdminTV"));
 const AdminTVProgramForm             = lazy(() => import("@/pages/AdminTVProgramForm"));
 const AdminActivityPage              = lazy(() => import("@/pages/AdminActivityPage"));
+const AdminActionsPage               = lazy(() => import("@/pages/AdminActionsPage"));
 
 
 // ── Query client ──────────────────────────────────────────────────────────────
@@ -296,6 +297,7 @@ function LayoutRoutes() {
           <Route path="/admin/flex-card" component={AdminFlexCardUsers} />
           <Route path="/admin/broadcast" component={AdminBroadcastPage} />
           <Route path="/admin/activity" component={AdminActivityPage} />
+          <Route path="/admin/actions" component={AdminActionsPage} />
           <Route component={NotFound} />
         </Switch>
       </Suspense>

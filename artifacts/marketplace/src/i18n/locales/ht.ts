@@ -2800,6 +2800,17 @@ export default {
     escalateBody: "Itilizatè a t ap pale ak FlexaBot epi li bezwen yon ajan reyèl.\n\nKonvèsasyon an:\n{{context}}",
     escalateBodyEmpty: "Itilizatè a bezwen sipò yon ajan reyèl.",
   },
+  adminActions: {
+    hubTitle: "Aksyon Admin",
+    hubSubtitle: "Fil dirèk tout aksyon admin ak moderatè yo",
+    title: "Fil Aksyon Admin",
+    totalActions: "aksyon",
+    autoRefresh: "aktyalize chak 30 s",
+    searchPlaceholder: "Chèche pa aktè, deskripsyon, tip aksyon…",
+    noActions: "Pa gen aksyon jwenn",
+    loadMore: "Chaje plis",
+    remaining: "rete",
+  },
   adminActivity: {
     hubTitle: "Aktivite",
     hubSubtitle: "Wè tout aktivite itilizatè yo — pase ak kounye a",

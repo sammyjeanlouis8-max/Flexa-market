@@ -2799,6 +2799,17 @@ export default {
     escalateBody: "L'utilisateur discutait avec FlexaBot et a besoin d'un vrai agent.\n\nConversation :\n{{context}}",
     escalateBodyEmpty: "L'utilisateur a besoin d'un support d'un vrai agent.",
   },
+  adminActions: {
+    hubTitle: "Actions Admin",
+    hubSubtitle: "Fil en direct de toutes les actions admin & modérateur",
+    title: "Fil des Actions Admin",
+    totalActions: "actions",
+    autoRefresh: "actualisation toutes les 30 s",
+    searchPlaceholder: "Rechercher par acteur, description, type…",
+    noActions: "Aucune action trouvée",
+    loadMore: "Charger plus",
+    remaining: "restants",
+  },
   adminActivity: {
     hubTitle: "Activité",
     hubSubtitle: "Voir toute l'activité des utilisateurs — passée et en temps réel",

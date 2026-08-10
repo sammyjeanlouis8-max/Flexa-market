@@ -61,18 +61,30 @@ function mergeActivity(data: any): ActivityItem[] {
   return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-const KIND_META = {
-  login:    { icon: LogIn,       color: "bg-blue-100 dark:bg-blue-900/40",   iconColor: "text-blue-600 dark:text-blue-400",    label: "Koneksyon" },
-  purchase: { icon: ShoppingBag, color: "bg-orange-100 dark:bg-orange-900/40", iconColor: "text-orange-600 dark:text-orange-400", label: "Acha" },
-  sale:     { icon: Tag,         color: "bg-emerald-100 dark:bg-emerald-900/40", iconColor: "text-emerald-600 dark:text-emerald-400", label: "Vant" },
-  listing:  { icon: Package,     color: "bg-violet-100 dark:bg-violet-900/40",  iconColor: "text-violet-600 dark:text-violet-400",  label: "Lis" },
+// Labels injected per-render via useKindMeta() below
+const KIND_COLORS = {
+  login:    { icon: LogIn,       color: "bg-blue-100 dark:bg-blue-900/40",      iconColor: "text-blue-600 dark:text-blue-400"    },
+  purchase: { icon: ShoppingBag, color: "bg-orange-100 dark:bg-orange-900/40",  iconColor: "text-orange-600 dark:text-orange-400"},
+  sale:     { icon: Tag,         color: "bg-emerald-100 dark:bg-emerald-900/40",iconColor: "text-emerald-600 dark:text-emerald-400"},
+  listing:  { icon: Package,     color: "bg-violet-100 dark:bg-violet-900/40",  iconColor: "text-violet-600 dark:text-violet-400" },
 };
+
+function useKindMeta() {
+  const { t } = useTranslation();
+  return {
+    login:    { ...KIND_COLORS.login,    label: t("adminActivity.eventLogin")    },
+    purchase: { ...KIND_COLORS.purchase, label: t("adminActivity.eventPurchase") },
+    sale:     { ...KIND_COLORS.sale,     label: t("adminActivity.eventSale")     },
+    listing:  { ...KIND_COLORS.listing,  label: t("adminActivity.statListings")  },
+  };
+}
 
 type FilterKind = "all" | "login" | "purchase" | "sale" | "listing";
 
 /* ── Activity detail panel ── */
 function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => void }) {
   const { t } = useTranslation();
+  const kindMeta = useKindMeta();
   const [data, setData]       = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -159,7 +171,7 @@ function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => vo
                 : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            {k === "all" ? t("adminActivity.filterAll") : KIND_META[k].label}
+            {k === "all" ? t("adminActivity.filterAll") : kindMeta[k as keyof typeof kindMeta].label}
           </button>
         ))}
       </div>
@@ -177,7 +189,7 @@ function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => vo
         ) : (
           <div className="divide-y divide-border">
             {items.map((item, i) => {
-              const meta = KIND_META[item.kind];
+              const meta = kindMeta[item.kind];
               const Icon = meta.icon;
               return (
                 <div key={`${item.kind}-${i}`} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
@@ -253,7 +265,10 @@ export default function AdminActivityPage() {
 
   const loadUsers = async () => {
     setLoading(true); setError(null);
-    try { setUsers((await apiFetch("/api/admin/users")).users ?? []); }
+    try {
+      const data = await apiFetch("/api/admin/users");
+      setUsers(Array.isArray(data) ? data : (data.users ?? []));
+    }
     catch (e: any) { setError(e.message); }
     finally { setLoading(false); }
   };

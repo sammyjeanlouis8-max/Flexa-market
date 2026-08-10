@@ -522,6 +522,11 @@ export default {
     selectCountryTitle: "Sélectionnez votre pays",
     flexaFamily: "Flexa VIP",
     flexaFamilyDesc: "Vendeurs de confiance avec un abonnement mensuel",
+    basedOnSearches: "Basé sur vos recherches",
+    basedOnSearchesDesc: "Produits que vous pourriez aimer — selon vos recherches",
+    yourSearches: "Vos recherches",
+    locked: "Verrouillé",
+    countries: "pays",
   },
   sell: {
     pageTitle: "Vendre quelque chose",

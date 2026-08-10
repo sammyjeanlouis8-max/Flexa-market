@@ -594,6 +594,17 @@ export default function Home() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Personalised feed — listings matching the user's top search terms
+  const { data: personalizedData } = useQuery({
+    queryKey: ["personalized-feed", user?.id],
+    queryFn: () =>
+      apiFetch<{ listings: NormalListing[]; searches: string[] }>("/api/listings/personalized"),
+    enabled: !!user?.id && !isAdmin,
+    staleTime: 3 * 60 * 1000,
+  });
+  const personalizedListings = personalizedData?.listings ?? [];
+  const personalizedSearches = personalizedData?.searches ?? [];
+
   const boostedListings = useMemo(
     () => (boostedFeedData?.listings ?? []).filter(l =>
       !activeCategory || l.categorySlug === activeCategory
@@ -1188,6 +1199,51 @@ export default function Home() {
 
         {/* === VIDEO PROMO SECTION === */}
         <VideoPromoSection />
+
+        {/* === PERSONALISED SECTION — only for logged-in non-admin users who have search history === */}
+        {user && !isAdmin && personalizedListings.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <Search className="h-4 w-4 text-primary" />
+                <h2 className="text-base font-bold text-foreground">
+                  {t("home.basedOnSearches")}
+                </h2>
+              </div>
+              <button
+                onClick={() => setLocation("/search")}
+                className="flex items-center gap-0.5 text-xs text-primary font-semibold"
+              >
+                {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
+              </button>
+            </div>
+            {/* Search term chips */}
+            {personalizedSearches.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none mb-3">
+                {personalizedSearches.map(term => (
+                  <button
+                    key={term}
+                    onClick={() => setLocation(`/search?q=${encodeURIComponent(term)}`)}
+                    className="flex-shrink-0 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold border border-primary/20 hover:bg-primary/20 transition-colors whitespace-nowrap"
+                  >
+                    🔍 {term}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Horizontal listing carousel */}
+            <div
+              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
+              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+            >
+              {personalizedListings.slice(0, 12).map(l => (
+                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52">
+                  <ListingCard listing={l} compact />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* === MAIN FEED (city-first, boosted interleaved) === */}
         <section>

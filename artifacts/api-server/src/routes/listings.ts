@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable } from "@workspace/db";
-import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray } from "drizzle-orm";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable } from "@workspace/db";
+import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, optionalAuth, requireNotRestricted } from "../middlewares/auth";
@@ -1523,6 +1523,160 @@ router.patch("/listings/:id/restock", requireAuth, requireNotRestricted, async (
     .returning();
 
   res.json({ ok: true, stockQuantity: updated.stockQuantity, status: updated.status });
+});
+
+// ─── Search History ────────────────────────────────────────────────────────────
+
+/**
+ * POST /listings/search-history
+ * Upsert a search term for the authenticated user.
+ * Body: { query: string, category?: string }
+ * Called silently from the Search page whenever the user types a meaningful query.
+ */
+router.post("/listings/search-history", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const { query, category } = req.body as { query?: string; category?: string };
+    if (!query || query.trim().length < 2) {
+      res.status(400).json({ error: "query too short" });
+      return;
+    }
+    const q = query.trim().toLowerCase().slice(0, 120);
+
+    await db
+      .insert(searchHistoryTable)
+      .values({
+        userId: req.userId!,
+        query: q,
+        searchCount: 1,
+        lastSearchedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [searchHistoryTable.userId, searchHistoryTable.query],
+        set: {
+          searchCount: sql`${searchHistoryTable.searchCount} + 1`,
+          lastSearchedAt: new Date(),
+        },
+      });
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "POST search-history ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to save search" });
+  }
+});
+
+/**
+ * GET /listings/search-history
+ * Returns the user's top recent searches (max 10), ordered by frequency then recency.
+ */
+router.get("/listings/search-history", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const rows = await db
+      .select({ query: searchHistoryTable.query, count: searchHistoryTable.searchCount })
+      .from(searchHistoryTable)
+      .where(eq(searchHistoryTable.userId, req.userId!))
+      .orderBy(desc(searchHistoryTable.searchCount), desc(searchHistoryTable.lastSearchedAt))
+      .limit(10);
+    res.json({ searches: rows });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "GET search-history ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to load search history" });
+  }
+});
+
+/**
+ * GET /listings/personalized
+ * Returns up to 20 listings that match the user's top search terms.
+ * Falls back to an empty list if the user has no search history.
+ */
+router.get("/listings/personalized", requireAuth, async (req, res): Promise<void> => {
+  try {
+    // 1. Fetch user's top 5 search terms (most frequent first)
+    const historyRows = await db
+      .select({ query: searchHistoryTable.query })
+      .from(searchHistoryTable)
+      .where(eq(searchHistoryTable.userId, req.userId!))
+      .orderBy(desc(searchHistoryTable.searchCount), desc(searchHistoryTable.lastSearchedAt))
+      .limit(5);
+
+    if (historyRows.length === 0) {
+      res.json({ listings: [], searches: [] });
+      return;
+    }
+
+    const topTerms = historyRows.map(r => r.query);
+
+    // 2. Build OR conditions — title or description matches any top term
+    const termConditions = topTerms.map(term =>
+      or(
+        ilike(listingsTable.title, `%${term}%`),
+        ilike(listingsTable.description, `%${term}%`)
+      )!
+    );
+
+    const baseConditions = [
+      eq(listingsTable.status, "available"),
+      eq(listingsTable.moderationStatus, "approved"),
+      or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0))!,
+      or(...termConditions)!,
+      // Exclude the user's own listings
+      ne(listingsTable.sellerId, req.userId!),
+    ];
+
+    // 3. Scope to the user's country (same rule as the main feed)
+    const userCountry = req.user?.country ?? null;
+    const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+    if (userCountry && !isAdmin) {
+      baseConditions.push(eq(listingsTable.country!, userCountry));
+    }
+
+    const geoUserP: GeoUser | null = req.user
+      ? {
+          country: req.user.country ?? null,
+          state: (req.user as any).state ?? null,
+          neighborhood: (req.user as any).neighborhood ?? null,
+          location: req.user.location ?? null,
+          latitude: (req.user as any).latitude ?? null,
+          longitude: (req.user as any).longitude ?? null,
+        }
+      : null;
+
+    const proximitySqlP = geoUserP ? buildProximitySql(geoUserP) : sql<number>`(0)::int`;
+    const distanceSqlP  = geoUserP ? buildDistanceSql(geoUserP)  : sql<number | null>`NULL::real`;
+
+    const rows = await db
+      .select({
+        listings: listingsTable,
+        users: usersTable,
+        categories: categoriesTable,
+        subcategories: subcategoriesTable,
+        proximity: proximitySqlP,
+        distanceKm: distanceSqlP,
+      })
+      .from(listingsTable)
+      .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+      .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
+      .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
+      .where(and(...baseConditions))
+      .orderBy(
+        desc(listingsTable.isBoosted),
+        sql`${distanceSqlP} ASC NULLS LAST`,
+        desc(proximitySqlP),
+        desc(listingsTable.createdAt),
+      )
+      .limit(20);
+
+    res.json({
+      listings: rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
+        distanceKm: r.distanceKm,
+        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+      })),
+      searches: topTerms,
+    });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "GET personalized ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to load personalized listings" });
+  }
 });
 
 export default router;

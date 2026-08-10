@@ -522,6 +522,11 @@ export default {
     selectCountryTitle: "Chwazi peyi ou",
     flexaFamily: "Flexa VIP",
     flexaFamilyDesc: "Vandè serye ki gen yon abonman mansyèl",
+    basedOnSearches: "Baze sou rechèch ou",
+    basedOnSearchesDesc: "Pwodwi ou ta renmen — baze sou sa ou te chèche",
+    yourSearches: "Rechèch ou yo",
+    locked: "Vèrouye",
+    countries: "peyi",
   },
   sell: {
     pageTitle: "Vann yon bagay",

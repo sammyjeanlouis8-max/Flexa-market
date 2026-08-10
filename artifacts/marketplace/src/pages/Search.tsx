@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
+import { apiFetch } from "@/lib/api";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
 
@@ -313,6 +314,16 @@ export default function SearchPage() {
   // Debounce free-text inputs so the API is called only after the user pauses
   const debouncedQ = useDebounce(q, 300);
   const debouncedCity = useDebounce(city, 300);
+
+  // ── Silently persist search history so the home page can personalise results ──
+  useEffect(() => {
+    if (!user?.id || debouncedQ.trim().length < 2) return;
+    // Fire-and-forget — never blocks or alerts on failure
+    apiFetch("/api/listings/search-history", {
+      method: "POST",
+      body: JSON.stringify({ query: debouncedQ.trim(), category: category || undefined }),
+    }).catch(() => {});
+  }, [debouncedQ, user?.id]); // category intentionally omitted — one history row per term
 
   const { data: categories } = useGetCategories();
 

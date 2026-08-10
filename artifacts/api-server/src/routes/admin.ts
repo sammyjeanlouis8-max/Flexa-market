@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable } from "@workspace/db";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
@@ -615,9 +615,59 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
   const scopeErr = assertUserInScope(req.user!, user);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  const listings = await db.select({ id: listingsTable.id, title: listingsTable.title, status: listingsTable.status, createdAt: listingsTable.createdAt, price: listingsTable.price })
-    .from(listingsTable).where(eq(listingsTable.sellerId, id)).orderBy(desc(listingsTable.createdAt)).limit(20);
-  res.json({ user: formatUser(user), listings });
+
+  const [listings, purchases, sales, loginLogs, wallet] = await Promise.all([
+    // Listings created by user
+    db.select({ id: listingsTable.id, title: listingsTable.title, status: listingsTable.status, createdAt: listingsTable.createdAt, price: listingsTable.price, currency: sql<string>`${listingsTable}.currency` })
+      .from(listingsTable).where(eq(listingsTable.sellerId, id)).orderBy(desc(listingsTable.createdAt)).limit(30),
+
+    // Purchases made by user
+    db.select({
+      id: transactionsTable.id,
+      listingId: transactionsTable.listingId,
+      amount: transactionsTable.amount,
+      currency: transactionsTable.currency,
+      paymentMethod: transactionsTable.paymentMethod,
+      paymentStatus: transactionsTable.paymentStatus,
+      description: transactionsTable.description,
+      createdAt: transactionsTable.createdAt,
+    }).from(transactionsTable)
+      .where(and(eq(transactionsTable.userId, id), eq(transactionsTable.type, "purchase")))
+      .orderBy(desc(transactionsTable.createdAt)).limit(30),
+
+    // Sales made by user (as seller)
+    db.select({
+      id: transactionsTable.id,
+      listingId: transactionsTable.listingId,
+      amount: transactionsTable.amount,
+      currency: transactionsTable.currency,
+      paymentMethod: transactionsTable.paymentMethod,
+      paymentStatus: transactionsTable.paymentStatus,
+      description: transactionsTable.description,
+      commissionAmount: transactionsTable.commissionAmount,
+      sellerEarnings: transactionsTable.sellerEarnings,
+      createdAt: transactionsTable.createdAt,
+    }).from(transactionsTable)
+      .where(eq(transactionsTable.sellerUserId, id))
+      .orderBy(desc(transactionsTable.createdAt)).limit(30),
+
+    // Login history
+    db.select({ id: loginLogsTable.id, action: loginLogsTable.action, ip: loginLogsTable.ip, userAgent: loginLogsTable.userAgent, createdAt: loginLogsTable.createdAt })
+      .from(loginLogsTable).where(eq(loginLogsTable.userId, id)).orderBy(desc(loginLogsTable.createdAt)).limit(30),
+
+    // Wallet balance
+    db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
+      .from(promoWalletTable).where(eq(promoWalletTable.userId, id)).limit(1),
+  ]);
+
+  res.json({
+    user: formatUser(user),
+    listings,
+    purchases,
+    sales,
+    loginLogs: loginLogs.map(l => ({ ...l, ...parseUserAgent(l.userAgent) })),
+    wallet: wallet[0] ?? null,
+  });
 });
 
 // Parse a user-agent string into human-readable device/OS/browser info

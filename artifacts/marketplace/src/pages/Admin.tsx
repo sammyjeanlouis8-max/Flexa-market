@@ -2741,6 +2741,22 @@ export default function Admin() {
           <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
+        {/* Aktivite — User Activity Hub */}
+        <button
+          type="button"
+          onClick={() => setLocation("/admin/activity")}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-gradient-to-br from-cyan-50 to-sky-50 dark:from-cyan-950/30 dark:to-sky-950/20 hover:from-cyan-100 hover:to-sky-100 dark:hover:from-cyan-900/40 dark:hover:to-sky-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-cyan-500 to-sky-600 flex items-center justify-center shrink-0 shadow shadow-cyan-200 dark:shadow-cyan-900/50">
+            <Activity className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-cyan-900 dark:text-cyan-100">{t("adminActivity.hubTitle")}</p>
+            <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-0.5">{t("adminActivity.hubSubtitle")}</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-cyan-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+
         {/* Broadcast Email — super admin only */}
         {isSuperAdmin && (
           <button

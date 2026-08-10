@@ -10,23 +10,43 @@ import { sendEmail } from "../lib/email";
 import { welcomeEmail } from "../lib/emailTemplates";
 
 // ── Referral code generator ───────────────────────────────────────────────────
-// Produces a unique 8-char uppercase alphanumeric code (e.g. "FX3KP9MZ").
-// Retries on collision (extremely rare with 36^8 ≈ 2.8 trillion combos).
-const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/I/1 to avoid confusion
-function makeReferralCode(): string {
+// Name-based: "Jean Pierre" → "JEAN" + 3 random digits → e.g. "JEAN247"
+// Falls back to random FX code if name is missing or all attempts collide.
+function makeNameBasedCode(name?: string): string {
+  if (name) {
+    // Remove accents, keep letters only, take first word (first name), uppercase, max 6 chars
+    const base = name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z\s]/g, "")
+      .trim()
+      .split(/\s+/)[0]
+      .toUpperCase()
+      .slice(0, 6);
+    if (base.length >= 2) {
+      const suffix = String(Math.floor(100 + Math.random() * 900)); // 3 digits
+      return base + suffix;
+    }
+  }
+  // Fallback: random FX code
+  const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "FX";
   for (let i = 0; i < 6; i++) code += CHARSET[Math.floor(Math.random() * CHARSET.length)];
   return code;
 }
-async function generateUniqueReferralCode(): Promise<string> {
+
+async function generateUniqueReferralCode(name?: string): Promise<string> {
   for (let attempt = 0; attempt < 10; attempt++) {
-    const code = makeReferralCode();
+    const code = makeNameBasedCode(name);
     const [conflict] = await db.select({ id: usersTable.id }).from(usersTable)
       .where(eq(usersTable.referralCode, code));
     if (!conflict) return code;
   }
-  // Fallback: timestamp-based (collision-proof)
-  return "FX" + Date.now().toString(36).toUpperCase().slice(-6);
+  // Fallback: name prefix + timestamp suffix (collision-proof)
+  const prefix = name
+    ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 4)
+    : "FX";
+  return (prefix || "FX") + Date.now().toString(36).toUpperCase().slice(-4);
 }
 
 const router = Router();
@@ -200,8 +220,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     }
   }
 
-  // ── Generate unique referral code for this new user ───────────────────────
-  const referralCode = await generateUniqueReferralCode();
+  // ── Generate unique referral code for this new user (name-based) ─────────
+  const referralCode = await generateUniqueReferralCode(name);
 
   const [user] = await db
     .insert(usersTable)

@@ -1316,7 +1316,7 @@ router.post("/wallet/admin/settings", requireAuth, async (req, res): Promise<voi
 // they referred + how many bonuses were earned).
 router.get("/wallet/referral", requireAuth, async (req, res): Promise<void> => {
   let [me] = await db
-    .select({ referralCode: usersTable.referralCode, referredByUserId: usersTable.referredByUserId })
+    .select({ referralCode: usersTable.referralCode, referredByUserId: usersTable.referredByUserId, name: usersTable.name })
     .from(usersTable)
     .where(eq(usersTable.id, req.userId!));
 
@@ -1324,17 +1324,21 @@ router.get("/wallet/referral", requireAuth, async (req, res): Promise<void> => {
 
   // Back-fill referral code for users who registered before this feature was added
   if (!me.referralCode) {
-    const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const makeCode = () => {
-      let c = "FX";
-      for (let i = 0; i < 6; i++) c += CHARSET[Math.floor(Math.random() * CHARSET.length)];
-      return c;
+    // Name-based code: e.g. "Jean" → "JEAN247"
+    const makeName = (n?: string | null) => {
+      if (n) {
+        const base = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z\s]/g, "")
+          .trim().split(/\s+/)[0].toUpperCase().slice(0, 6);
+        if (base.length >= 2) return base + String(Math.floor(100 + Math.random() * 900));
+      }
+      const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let c = "FX"; for (let i = 0; i < 6; i++) c += CHARSET[Math.floor(Math.random() * CHARSET.length)]; return c;
     };
-    let newCode = makeCode();
+    let newCode = makeName(me.name);
     for (let attempt = 0; attempt < 10; attempt++) {
       const [conflict] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.referralCode, newCode));
       if (!conflict) break;
-      newCode = makeCode();
+      newCode = makeName(me.name);
     }
     const [updated] = await db.update(usersTable)
       .set({ referralCode: newCode })

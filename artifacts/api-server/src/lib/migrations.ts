@@ -2205,27 +2205,31 @@ export async function runStartupMigrations(): Promise<void> {
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
 
-  // Ongoing: backfill name-based referral codes for users still holding any old "FX…" random code.
-  // Old pattern: any code starting with "FX" followed by uppercase/digits (e.g. FXBJU2EZ, FX247).
-  // Name-based codes start with the user's first name (letters), so they don't match ^FX[^a-z]*.
-  // Runs every startup — idempotent because the WHERE clause only matches unconverted codes.
+  // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
+  // Converts two old formats:
+  //   1. Random FX codes:       ^FX[A-Z0-9]+      (e.g. FXBJU2EZ)
+  //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
+  // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
   try {
     const { rows: oldCodeUsers } = await db.execute(dsql.raw(
       `SELECT id, name, referral_code FROM users
        WHERE referral_code ~ '^FX[A-Z0-9]+'
+          OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
        ORDER BY id`
     ));
 
     if (oldCodeUsers.length > 0) {
       logger.info({ count: oldCodeUsers.length }, "Migration: regenerating name-based referral codes");
 
-      // Helper: name → base slug (first name, letters only, max 6 chars, uppercase)
+      // Helper: name → base slug — proper case, e.g. "Samuel" (max 8 chars)
       const nameBase = (name: string): string => {
-        const b = String(name ?? "")
+        const raw = String(name ?? "")
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
           .replace(/[^a-zA-Z\s]/g, "").trim()
-          .split(/\s+/)[0].toUpperCase().slice(0, 6);
-        return b.length >= 2 ? b : "FX";
+          .split(/\s+/)[0].slice(0, 8);
+        return raw.length >= 2
+          ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase()
+          : "Fm";
       };
 
       // Collect all existing codes so we can avoid collisions in-memory during the loop
@@ -2239,17 +2243,17 @@ export async function runStartupMigrations(): Promise<void> {
         const base = nameBase(row.name ?? "");
         let newCode: string | null = null;
 
-        // Try up to 20 random suffixes before giving up
+        // Try up to 20 random 2-digit suffixes (10–99) → e.g. "Samuel37"
         for (let i = 0; i < 20; i++) {
-          const suffix = String(Math.floor(100 + Math.random() * 900));
+          const suffix = String(Math.floor(10 + Math.random() * 90));
           const candidate = base + suffix;
           if (!usedCodes.has(candidate)) { newCode = candidate; break; }
         }
 
         if (!newCode) {
           // Absolute fallback: base + timestamp fragment
-          newCode = base + Date.now().toString(36).toUpperCase().slice(-3);
-          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).toUpperCase().slice(-4);
+          newCode = base + Date.now().toString(36).slice(-2);
+          while (usedCodes.has(newCode)) newCode = base + Date.now().toString(36).slice(-3);
         }
 
         // Atomic update — only touches this user, only if they still have the old code

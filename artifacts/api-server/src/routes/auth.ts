@@ -12,19 +12,20 @@ import { welcomeEmail } from "../lib/emailTemplates";
 // ── Referral code generator ───────────────────────────────────────────────────
 // Name-based: "Jean Pierre" → "JEAN" + 3 random digits → e.g. "JEAN247"
 // Falls back to random FX code if name is missing or all attempts collide.
+/** Build a name-based referral code: e.g. "Samuel37" (proper case + 2 digits). */
 function makeNameBasedCode(name?: string): string {
   if (name) {
-    // Remove accents, keep letters only, take first word (first name), uppercase, max 6 chars
-    const base = name
+    // Strip accents, keep letters, take first word, proper-case, max 8 chars
+    const raw = name
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-zA-Z\s]/g, "")
       .trim()
       .split(/\s+/)[0]
-      .toUpperCase()
-      .slice(0, 6);
-    if (base.length >= 2) {
-      const suffix = String(Math.floor(100 + Math.random() * 900)); // 3 digits
+      .slice(0, 8);
+    if (raw.length >= 2) {
+      const base = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      const suffix = String(Math.floor(10 + Math.random() * 90)); // 2 digits: 10–99
       return base + suffix;
     }
   }
@@ -43,10 +44,13 @@ async function generateUniqueReferralCode(name?: string): Promise<string> {
     if (!conflict) return code;
   }
   // Fallback: name prefix + timestamp suffix (collision-proof)
-  const prefix = name
-    ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z]/g, "").toUpperCase().slice(0, 4)
-    : "FX";
-  return (prefix || "FX") + Date.now().toString(36).toUpperCase().slice(-4);
+  const rawPfx = name
+    ? name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z]/g, "").slice(0, 4)
+    : "Fm";
+  const pfx = rawPfx.length >= 2
+    ? rawPfx.charAt(0).toUpperCase() + rawPfx.slice(1).toLowerCase()
+    : "Fm";
+  return pfx + Date.now().toString(36).slice(-4);
 }
 
 const router = Router();

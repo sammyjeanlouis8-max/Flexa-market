@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import { ArrowLeft, Clock, CheckCircle, TrendingUp, Info, Loader2, Users, ShoppingBag, Copy, Share2 } from "lucide-react";
+import { ArrowLeft, Clock, CheckCircle, TrendingUp, Loader2, Users, ShoppingBag, Copy, Share2 } from "lucide-react";
 
 interface CommissionSummary {
   currentMonth: string;
@@ -104,14 +104,6 @@ export default function CommissionPromo() {
       )}
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
-        {/* How it works */}
-        <div className="bg-slate-900 rounded-2xl p-4 flex gap-3">
-          <Info size={18} className="text-orange-400 mt-0.5 flex-shrink-0" />
-          <p className="text-sm text-slate-300 leading-relaxed">
-            {t("commissionPromo.howItWorks")}
-          </p>
-        </div>
-
         {/* ─── Referral code card ─── */}
         {(data?.referralCode || loading) && (
           <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-4 space-y-3 border border-slate-600">

@@ -40,13 +40,36 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
         .from(promoPurchaseCommissionsTable)
         .where(eq(promoPurchaseCommissionsTable.referrerUserId, userId)),
 
-      // This user's own referral code
+      // This user's own referral code + name
       db
         .select({ referralCode: usersTable.referralCode, name: usersTable.name })
         .from(usersTable)
         .where(eq(usersTable.id, userId))
         .limit(1),
     ]);
+
+    // If user still has an old-style random "FX…" code, regenerate it from their name right now
+    if (me && /^FX[A-Z0-9]{6}$/.test(me.referralCode ?? "")) {
+      const nameBase = (n: string) => {
+        const b = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z\s]/g, "")
+          .trim().split(/\s+/)[0].toUpperCase().slice(0, 6);
+        return b.length >= 2 ? b : "FX";
+      };
+      const base = nameBase(me.name ?? "");
+      let newCode: string | null = null;
+      for (let i = 0; i < 20; i++) {
+        const candidate = base + String(Math.floor(100 + Math.random() * 900));
+        const [conflict] = await db.select({ id: usersTable.id }).from(usersTable)
+          .where(eq(usersTable.referralCode, candidate)).limit(1);
+        if (!conflict) { newCode = candidate; break; }
+      }
+      if (newCode) {
+        await db.update(usersTable)
+          .set({ referralCode: newCode })
+          .where(eq(usersTable.id, userId));
+        me = { ...me, referralCode: newCode };
+      }
+    }
 
     const pendingRows    = rows.filter(r => r.status === "pending" && r.cycleMonth === currentMonth);
     const availableRows  = rows.filter(r => r.status === "pending" && r.cycleMonth < currentMonth);

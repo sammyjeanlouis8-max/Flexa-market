@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   Truck, RefreshCw, DollarSign, MapPin, Bike, Car, Clock,
   CheckCircle, XCircle, Loader2, TrendingUp, Package, Navigation,
-  Heart, Star, Trophy, ChevronRight, Ban,
+  Heart, Star, Trophy, ChevronRight, Ban, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -100,8 +100,9 @@ export default function AdminDeliveryPanel() {
   const [ratingsData, setRatingsData] = useState<any | null>(null);
   const [ratingsLoading, setRatingsLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [forceCompletingId, setForceCompletingId] = useState<number | null>(null);
 
-  /** Admin force-cancel — only for waiting / driver_assigned (not yet picked up) */
+  /** Admin force-cancel — refunds buyer automatically */
   const handleCancel = async (id: number) => {
     if (!confirm(t("adminDelivery.cancelConfirm"))) return;
     setCancellingId(id);
@@ -111,13 +112,39 @@ export default function AdminDeliveryPanel() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        // Optimistic update — flip status locally so user sees result immediately
+        const data = await res.json().catch(() => ({}));
         setDeliveries(prev =>
           prev.map(d => d.id === id ? { ...d, status: "cancelled" } : d),
         );
+        if (data.refundedAmount) {
+          alert(t("adminDelivery.cancelRefundSuccess", { amount: Number(data.refundedAmount).toFixed(2) }));
+        }
       }
     } finally {
       setCancellingId(null);
+    }
+  };
+
+  /** Admin force-complete — finishes delivery driver couldn't complete */
+  const handleForceComplete = async (id: number) => {
+    if (!confirm(t("adminDelivery.forceCompleteConfirm"))) return;
+    setForceCompletingId(id);
+    try {
+      const res = await fetch(`/api/admin/deliveries/${id}/force-complete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setDeliveries(prev =>
+          prev.map(d => d.id === id ? { ...d, status: "delivered" } : d),
+        );
+        alert(t("adminDelivery.forceCompleteSuccess"));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error ?? t("adminDelivery.forceCompleteError"));
+      }
+    } finally {
+      setForceCompletingId(null);
     }
   };
 
@@ -481,10 +508,10 @@ export default function AdminDeliveryPanel() {
 
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={Truck}       label="Total"          value={String(total)}                bg="bg-blue-50 dark:bg-blue-950/30"    color="text-blue-600" />
-        <StatCard icon={CheckCircle} label="Livre"          value={String(delivered)}            bg="bg-emerald-50 dark:bg-emerald-950/30" color="text-emerald-600" />
-        <StatCard icon={Clock}       label="En cours"       value={String(active)}               bg="bg-orange-50 dark:bg-orange-950/30" color="text-orange-600" />
-        <StatCard icon={DollarSign}  label="Revni Platfòm"  value={`$${totalRevenue.toFixed(2)}`} sub="20% frè livrezon" bg="bg-primary/5" color="text-primary" />
+        <StatCard icon={Truck}       label={t("adminDelivery.statTotal")}    value={String(total)}                bg="bg-blue-50 dark:bg-blue-950/30"    color="text-blue-600" />
+        <StatCard icon={CheckCircle} label={t("adminDelivery.statDelivered")} value={String(delivered)}            bg="bg-emerald-50 dark:bg-emerald-950/30" color="text-emerald-600" />
+        <StatCard icon={Clock}       label={t("adminDelivery.statActive")}   value={String(active)}               bg="bg-orange-50 dark:bg-orange-950/30" color="text-orange-600" />
+        <StatCard icon={DollarSign}  label={t("adminDelivery.statRevenue")}  value={`$${totalRevenue.toFixed(2)}`} sub={t("adminDelivery.statRevenueSub")} bg="bg-primary/5" color="text-primary" />
       </div>
 
       {/* ── Filters ────────────────────────────────────────────────────── */}
@@ -502,7 +529,7 @@ export default function AdminDeliveryPanel() {
                 }`}
               >
                 <Icon className="h-3 w-3" />
-                {s === "all" ? "Tout" : STATUS_LABEL[s] ?? s}
+                {s === "all" ? t("adminDelivery.filterAll") : STATUS_LABEL[s] ?? s}
               </button>
             );
           })}
@@ -517,7 +544,7 @@ export default function AdminDeliveryPanel() {
                   : "border-border hover:bg-accent"
               }`}
             >
-              {c === "all" ? "🌍 Tout peyi" : c === "Haiti" ? "🇭🇹 Haiti" : "🇩🇴 DR"}
+              {c === "all" ? `🌍 ${t("adminDelivery.countryAll")}` : c === "Haiti" ? "🇭🇹 Haiti" : "🇩🇴 DR"}
             </button>
           ))}
         </div>
@@ -612,11 +639,11 @@ export default function AdminDeliveryPanel() {
                               <AvatarFallback className="text-[8px] bg-primary/10 text-primary">{d.driverName[0]}</AvatarFallback>
                             </Avatar>
                             <span className="text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground">{d.driverName}</span> (chauffè)
+                              <span className="font-medium text-foreground">{d.driverName}</span> ({t("adminDelivery.driverLabel")})
                             </span>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground italic">Pa gen chauffè</span>
+                          <span className="text-xs text-muted-foreground italic">{t("adminDelivery.noDriver")}</span>
                         )}
                       </div>
 
@@ -650,21 +677,21 @@ export default function AdminDeliveryPanel() {
                       {d.feeUsd != null && d.feeUsd > 0 ? (
                         <>
                           <p className="font-black text-base text-primary">${parseFloat(String(d.feeUsd)).toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground">frè livrezon</p>
+                          <p className="text-[10px] text-muted-foreground">{t("adminDelivery.deliveryFeeLabel")}</p>
                           <p className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-md">
-                            +${platformFee.toFixed(2)} platfòm
+                            +${platformFee.toFixed(2)} {t("adminDelivery.platformLabel")}
                           </p>
                         </>
                       ) : d.driverEarnings ? (
                         <>
                           <p className="font-black text-base text-primary">${parseFloat(String(d.driverEarnings)).toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground">chauffè</p>
+                          <p className="text-[10px] text-muted-foreground">{t("adminDelivery.driverLabel")}</p>
                         </>
                       ) : (
                         <p className="text-xs text-muted-foreground">—</p>
                       )}
 
-                      {/* Cancel — only if driver hasn't picked up yet */}
+                      {/* Cancel — only if driver hasn't picked up yet, refunds buyer */}
                       {(d.status === "waiting" || d.status === "driver_assigned") && (
                         <button
                           type="button"
@@ -675,6 +702,20 @@ export default function AdminDeliveryPanel() {
                           {cancellingId === d.id
                             ? <><Loader2 className="h-3 w-3 animate-spin" /> {t("adminDelivery.cancellingLabel")}</>
                             : <><Ban className="h-3 w-3" /> {t("adminDelivery.cancelBtn")}</>}
+                        </button>
+                      )}
+
+                      {/* Force Complete — for stuck deliveries (driver can't finish) */}
+                      {(["picked_up", "on_the_way", "arrived", "buyer_absent"].includes(d.status)) && (
+                        <button
+                          type="button"
+                          onClick={() => handleForceComplete(d.id)}
+                          disabled={forceCompletingId === d.id}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-emerald-700 border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50 ml-auto"
+                        >
+                          {forceCompletingId === d.id
+                            ? <><Loader2 className="h-3 w-3 animate-spin" /> {t("adminDelivery.forceCompletingLabel")}</>
+                            : <><CheckCheck className="h-3 w-3" /> {t("adminDelivery.forceCompleteBtn")}</>}
                         </button>
                       )}
                     </div>

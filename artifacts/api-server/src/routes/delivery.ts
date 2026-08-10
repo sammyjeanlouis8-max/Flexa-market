@@ -2429,7 +2429,7 @@ router.get("/admin/deliveries", requireAdmin, async (req, res): Promise<void> =>
   res.json({ deliveries });
 });
 
-// POST /api/admin/deliveries/:id/cancel — admin force-cancels any delivery
+// POST /api/admin/deliveries/:id/cancel — admin force-cancels any delivery + refunds buyer
 router.post("/admin/deliveries/:id/cancel", requireAdmin, async (req, res): Promise<void> => {
   const deliveryId = Number(req.params.id);
   if (!deliveryId) { res.status(400).json({ error: "Invalid delivery id" }); return; }
@@ -2440,12 +2440,145 @@ router.post("/admin/deliveries/:id/cancel", requireAdmin, async (req, res): Prom
     res.status(400).json({ error: `Delivery is already ${delivery.status}` }); return;
   }
 
+  // Cancel the delivery
+  const now = new Date();
   await db.update(deliveriesTable)
-    .set({ status: "cancelled" })
+    .set({ status: "cancelled", updatedAt: now })
     .where(eq(deliveriesTable.id, deliveryId));
 
-  req.log.info({ deliveryId, adminId: req.userId }, "Admin force-cancelled delivery");
-  res.json({ success: true, deliveryId, status: "cancelled" });
+  // ── Refund buyer if there is a linked transaction with escrow not yet released ──
+  let refundedAmount: number | null = null;
+  if (delivery.transactionId) {
+    const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, delivery.transactionId)).limit(1);
+    if (tx && !tx.escrowReleased && tx.userId) {
+      const refundAmt = tx.amount ?? 0;
+      // Mark transaction as cancelled
+      await db.update(transactionsTable)
+        .set({ orderStatus: "return_refunded", updatedAt: now })
+        .where(and(eq(transactionsTable.id, delivery.transactionId), eq(transactionsTable.escrowReleased, false)));
+
+      // Credit buyer FM wallet
+      const [existing] = await db.select({ id: promoWalletTable.id })
+        .from(promoWalletTable).where(eq(promoWalletTable.userId, tx.userId)).limit(1);
+      if (existing) {
+        await db.update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmt}`, updatedAt: now })
+          .where(eq(promoWalletTable.userId, tx.userId));
+      } else {
+        await db.insert(promoWalletTable).values({ userId: tx.userId, balanceUsd: refundAmt });
+      }
+      // Audit log for buyer
+      await db.insert(walletTransactionsTable).values({
+        userId: tx.userId,
+        type: "refund",
+        amountUsd: refundAmt,
+        paymentRef: `delivery-cancel-refund-${deliveryId}`,
+        status: "completed",
+        note: `Admin anile livrezon #FL-${deliveryId} — $${refundAmt.toFixed(2)} retounen nan Kat FM ou`,
+      }).catch(() => {});
+      // Notify buyer
+      await db.insert(notificationsTable).values({
+        userId: tx.userId,
+        type: "order_update",
+        isRead: false,
+        message: `Livrezon #FL-${deliveryId} anile pa admin. $${refundAmt.toFixed(2)} retounen nan Kat FM ou imedyatman.`,
+      } as any).catch(() => {});
+      refundedAmount = refundAmt;
+    }
+  }
+
+  req.log.info({ deliveryId, adminId: req.userId, refundedAmount }, "Admin force-cancelled delivery");
+  res.json({ success: true, deliveryId, status: "cancelled", refundedAmount });
+});
+
+// POST /api/admin/deliveries/:id/force-complete — admin completes a delivery the driver couldn't finish
+// Releases escrow to seller + credits driver FM wallet exactly like the verify-code flow
+router.post("/admin/deliveries/:id/force-complete", requireAdmin, async (req, res): Promise<void> => {
+  const deliveryId = Number(req.params.id);
+  if (!deliveryId) { res.status(400).json({ error: "Invalid delivery id" }); return; }
+
+  const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
+  if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
+  if (delivery.status === "delivered") {
+    res.status(409).json({ error: "Already delivered" }); return;
+  }
+  if (delivery.status === "cancelled") {
+    res.status(400).json({ error: "Cannot complete a cancelled delivery" }); return;
+  }
+
+  const now = new Date();
+
+  // 1. Mark delivery complete
+  await db.update(deliveriesTable).set({
+    status: "delivered",
+    deliveredAt: now,
+    codeVerifiedAt: now,
+    paymentHeldUntil: now,
+    sellerPaymentReleased: true,
+    sellerPaymentReleasedAt: now,
+    updatedAt: now,
+  }).where(eq(deliveriesTable.id, deliveryId));
+
+  // 2. Release product escrow to seller
+  if (delivery.transactionId) {
+    await releaseEscrow(delivery.transactionId, "buyer").catch((err: unknown) => {
+      req.log.error({ err, deliveryId }, "Force-complete: escrow release failed");
+    });
+  }
+
+  // 3. Credit driver FM wallet (80% of fee + tip if any)
+  if (delivery.driverUserId) {
+    const baseFee =
+      delivery.driverEarnings ??
+      (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
+    const tipAmt = delivery.tipUsd != null && delivery.tipUsd > 0 ? delivery.tipUsd : 0;
+    const driverPay = Math.round((baseFee + tipAmt) * 100) / 100;
+
+    if (driverPay > 0) {
+      const [existing] = await db.select({ id: promoWalletTable.id })
+        .from(promoWalletTable).where(eq(promoWalletTable.userId, delivery.driverUserId)).limit(1);
+      if (existing) {
+        await db.update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${driverPay}`, updatedAt: now })
+          .where(eq(promoWalletTable.userId, delivery.driverUserId));
+      } else {
+        await db.insert(promoWalletTable).values({ userId: delivery.driverUserId, balanceUsd: driverPay });
+      }
+      await db.insert(walletTransactionsTable).values({
+        userId: delivery.driverUserId,
+        type: "delivery_earnings",
+        amountUsd: driverPay,
+        paymentRef: `delivery-force-${deliveryId}`,
+        status: "completed",
+        note: `Peman chauffè — livrezon #FL-${deliveryId} (fini pa admin)`,
+      }).catch(() => {});
+      // Update driver lifetime stats
+      await db.update(driversTable).set({
+        deliveryCount: sql`${driversTable.deliveryCount} + 1`,
+        earningsTotal: sql`${driversTable.earningsTotal} + ${driverPay}`,
+      }).where(eq(driversTable.userId, delivery.driverUserId)).catch(() => {});
+      // Notify driver
+      await db.insert(notificationsTable).values({
+        userId: delivery.driverUserId,
+        type: "delivery_paid",
+        isRead: false,
+        message: `💰 $${driverPay.toFixed(2)} kredite nan Kat FM ou — livrezon #FL-${deliveryId} fini pa admin.`,
+      } as any).catch(() => {});
+    }
+  }
+
+  // 4. Notify buyer
+  if (delivery.buyerId) {
+    await db.insert(notificationsTable).values({
+      userId: delivery.buyerId,
+      type: "order_update",
+      isRead: false,
+      message: `Livrezon #FL-${deliveryId} ou a fini avèk siksè (konfime pa admin). Mèsi pou konfyans ou!`,
+    } as any).catch(() => {});
+  }
+
+  req.log.info({ deliveryId, adminId: req.userId }, "Admin force-completed delivery");
+  res.json({ success: true, deliveryId, status: "delivered" });
 });
 
 // ── Driver GPS / Online Status ─────────────────────────────────────────────────

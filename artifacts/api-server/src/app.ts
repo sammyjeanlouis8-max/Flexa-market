@@ -1,6 +1,8 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import compression from "compression";
+import path from "path";
+import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { stripeWebhookHandler } from "./routes/stripeCheckout";
@@ -43,10 +45,33 @@ app.use("/api/categories", (_req: Request, res: Response, next: NextFunction) =>
 
 app.use("/api", router);
 
-// ─── Root health check (DigitalOcean / load-balancers check GET /) ────────────
-app.get("/", (_req: Request, res: Response) => {
-  res.json({ status: "ok" });
-});
+// ─── Serve built marketplace frontend (production single-server deployment) ───
+// During the production build, the marketplace SPA is copied into dist/public/.
+// We serve those static assets and fall back to index.html for any path that
+// isn't an /api/ route so the React router can handle client-side navigation.
+// In development the marketplace runs on its own Vite dev server, so this
+// block is a no-op (the public dir won't exist).
+const publicDir = path.join(__dirname, "public");
+if (fs.existsSync(publicDir)) {
+  // Immutable hashed assets (JS/CSS chunks) — cache aggressively
+  app.use(
+    express.static(publicDir, {
+      maxAge: "1y",
+      immutable: true,
+      index: false, // don't auto-serve index.html here — let the catch-all below handle it
+    }),
+  );
+
+  // SPA catch-all: every non-API route serves index.html so React Router works
+  app.get("*", (_req: Request, res: Response) => {
+    res.sendFile(path.join(publicDir, "index.html"));
+  });
+} else {
+  // Health check for load-balancers when running without the frontend bundle
+  app.get("/", (_req: Request, res: Response) => {
+    res.json({ status: "ok" });
+  });
+}
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

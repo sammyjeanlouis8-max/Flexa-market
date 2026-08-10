@@ -32,6 +32,30 @@ export function isCloudinaryConfigured(): boolean {
   return !!(process.env["CLOUDINARY_API_KEY"] && process.env["CLOUDINARY_API_SECRET"]);
 }
 
+/**
+ * Delete Cloudinary assets by public_id.
+ * Used for orphan cleanup when DB registration fails after upload.
+ * Best-effort — errors are swallowed so they never block the error path.
+ */
+export async function deleteCloudinaryAssets(
+  audioPublicId: string | null,
+  coverPublicId: string | null,
+): Promise<void> {
+  if (!isCloudinaryConfigured()) return;
+  const tasks: Promise<unknown>[] = [];
+  if (audioPublicId) {
+    tasks.push(
+      cloudinary.uploader.destroy(audioPublicId, { resource_type: "video" }).catch(() => {}),
+    );
+  }
+  if (coverPublicId) {
+    tasks.push(
+      cloudinary.uploader.destroy(coverPublicId, { resource_type: "image" }).catch(() => {}),
+    );
+  }
+  await Promise.all(tasks);
+}
+
 export interface CloudinaryUploadResult {
   /** Cloudinary secure URL — ready for streaming */
   url: string;

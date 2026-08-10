@@ -29,6 +29,7 @@ import {
   uploadAudioToCloudinary,
   uploadCoverToCloudinary,
   isCloudinaryConfigured,
+  deleteCloudinaryAssets,
 } from "../lib/cloudinary";
 import { createHash } from "crypto";
 import { logger } from "../lib/logger";
@@ -2003,5 +2004,21 @@ export async function runMusicMonthlyReminder(): Promise<void> {
     logger.error({ err }, "[music-reminder] Failed to send monthly reminders");
   }
 }
+
+// ── Orphan cleanup — called by client if DB registration fails after upload ───
+router.post("/music/cleanup-orphan", requireAuth, async (req: any, res: any) => {
+  const { audioPublicId, coverPublicId } = req.body ?? {};
+  if (!audioPublicId) return res.status(400).json({ error: "audioPublicId required" });
+  try {
+    await deleteCloudinaryAssets(
+      typeof audioPublicId === "string" ? audioPublicId : null,
+      typeof coverPublicId === "string" ? coverPublicId : null,
+    );
+    res.json({ ok: true });
+  } catch (err: any) {
+    logger.warn({ err }, "[music] cleanup-orphan failed");
+    res.status(500).json({ error: "Cleanup failed" });
+  }
+});
 
 export default router;

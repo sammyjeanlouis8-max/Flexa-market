@@ -213,6 +213,12 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
       });
       if (!regRes.ok) {
         const d = await regRes.json().catch(() => ({}));
+        // Clean up orphaned Cloudinary files — registration failed after upload
+        fetch("/api/music/cleanup-orphan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ audioPublicId: audio.publicId, coverPublicId: cover?.publicId ?? null }),
+        }).catch(() => {}); // best-effort, do not block error path
         if (d.error === "ARTIST_PLAN_REQUIRED") {
           setState(IDLE);
           onPlanRequired?.(d.count ?? 0);

@@ -40,6 +40,10 @@ export async function apiFetch<T = unknown>(
     }
   }
   if (!res.ok) {
+    // Notify the auth context so it can log the user out and redirect to login
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
     const message =
       (body && typeof body === "object" && "error" in body && body.error) ||
       `Request failed (${res.status})`;

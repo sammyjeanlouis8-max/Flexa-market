@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 
@@ -32,7 +33,7 @@ const client = baseURL && apiKey ? new Anthropic({ baseURL, apiKey }) : null;
  * Response:
  *   { keywords: string, description: string, confidence: "high"|"medium"|"low" }
  */
-router.post("/listings/visual-search", upload.single("image"), async (req: Request, res: Response) => {
+router.post("/listings/visual-search", requireAuth, upload.single("image"), async (req: Request, res: Response) => {
   if (!req.file) {
     res.status(400).json({ error: "No image provided. Send the image in a multipart field named 'image'." });
     return;

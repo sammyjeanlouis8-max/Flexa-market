@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { ShoppingBag, ChevronLeft, Package, Truck, CheckCircle2, Clock, Eye, ShieldCheck, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import { ShoppingBag, ChevronLeft, Package, Truck, CheckCircle2, Clock, Eye, ShieldCheck, XCircle, Loader2, AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,30 @@ export default function Orders() {
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   // Inline confirm: holds the order id awaiting tap-to-confirm
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
+
+  const downloadCSV = () => {
+    if (!orders || orders.length === 0) return;
+    const header = ["ID", "Title", "Seller", "Amount", "Currency", "Status", "Country", "Date", "Tracking"].join(",");
+    const rows = orders.map(o => [
+      `#BZH-${String(o.id).padStart(6, "0")}`,
+      `"${(o.listingTitle ?? "").replace(/"/g, '""')}"`,
+      `"${(o.sellerName ?? "").replace(/"/g, '""')}"`,
+      o.amount.toFixed(2),
+      o.currency,
+      o.orderStatus,
+      o.listingCountry ?? "",
+      new Date(o.createdAt).toLocaleDateString(),
+      o.trackingNumber ?? "",
+    ].join(","));
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const statusLabel = (key: string) => {
     const map: Record<string, string> = {
@@ -151,10 +175,15 @@ export default function Orders() {
         <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
           <ShoppingBag className="h-5 w-5 text-primary" />
         </div>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-extrabold">{t("orders.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("orders.subtitle")}</p>
         </div>
+        {orders && orders.length > 0 && (
+          <Button variant="outline" size="sm" onClick={downloadCSV} className="gap-1.5 text-xs">
+            <Download className="h-3.5 w-3.5" /> CSV
+          </Button>
+        )}
       </div>
 
       {error && (
@@ -193,6 +222,7 @@ export default function Orders() {
                 >
                   <img
                     src={img} alt=""
+                    loading="lazy"
                     className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
                     onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/120x120/f97316/white?text=Item"; }}
                   />

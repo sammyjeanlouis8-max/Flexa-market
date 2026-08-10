@@ -173,6 +173,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => setToken(null);
 
+  // ── Global 401 handler ─────────────────────────────────────────────────────
+  // Any page that calls apiFetch() and gets a 401 dispatches "auth:unauthorized".
+  // We listen here and redirect to login so the user never sees a broken screen.
+  useEffect(() => {
+    const handle = () => {
+      if (!token) return; // already logged out
+      localStorage.removeItem("flexamarket_token");
+      localStorage.removeItem(PASSWORD_UPGRADE_KEY);
+      clearCookieToken();
+      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+      const currentPath = window.location.pathname + window.location.search;
+      const isAuthPage = currentPath.includes("/auth/");
+      const nextParam = (!isAuthPage && currentPath !== "/" && currentPath !== (import.meta.env.BASE_URL ?? "/"))
+        ? `?next=${encodeURIComponent(currentPath)}`
+        : "";
+      window.location.replace(`${base}/auth/login${nextParam}`);
+    };
+    window.addEventListener("auth:unauthorized", handle);
+    return () => window.removeEventListener("auth:unauthorized", handle);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Silent token refresh ────────────────────────────────────────────────────
   // Decode JWT exp from base64 (no crypto needed in browser).
   // If the token will expire within 60 days, exchange it for a fresh 365d one.

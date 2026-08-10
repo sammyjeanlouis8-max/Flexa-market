@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
 
@@ -29,7 +30,7 @@ const VEHICLE_LABELS: Record<string, string> = {
  * Note: if AI is unavailable the endpoint returns valid:true so the
  * application is never blocked by a missing API key.
  */
-router.post("/driver/verify-vehicle-photo", async (req: Request, res: Response): Promise<void> => {
+router.post("/driver/verify-vehicle-photo", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const { imageUrl, vehicleType } = req.body as { imageUrl?: string; vehicleType?: string };
 
   if (!imageUrl || !vehicleType) {

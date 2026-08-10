@@ -46,7 +46,11 @@ async function adminFetch(path: string, method = "POST", body?: object) {
     headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error ?? "Request failed"); }
+  if (!res.ok) {
+    if (res.status === 401) window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? "Request failed");
+  }
   return res.json();
 }
 
@@ -553,6 +557,9 @@ export default function Admin() {
   );
   const [userSearch, setUserSearch] = useState("");
   const [listingCountryFilter, setListingCountryFilter] = useState("all");
+  const [usersPage, setUsersPage] = useState(0);
+  const [listingsPage, setListingsPage] = useState(0);
+  const ADMIN_PAGE_SIZE = 50;
 
   // ── Multi-country admin view switcher (super admin only) ──────────────────
   // Persisted in localStorage so the preference survives page refreshes.
@@ -1964,7 +1971,12 @@ export default function Admin() {
     }
     return true;
   });
+  // reset page when filters change
+  useEffect(() => { setUsersPage(0); }, [userCountryFilter, riskFilter, userSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pagedUsers = filteredUsers.slice(usersPage * ADMIN_PAGE_SIZE, (usersPage + 1) * ADMIN_PAGE_SIZE);
   const filteredListings = listingCountryFilter === "all" ? allListings : allListings.filter((l: any) => l.country === listingCountryFilter);
+  useEffect(() => { setListingsPage(0); }, [listingCountryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pagedListings = filteredListings.slice(listingsPage * ADMIN_PAGE_SIZE, (listingsPage + 1) * ADMIN_PAGE_SIZE);
   const filteredBoostedListings = filteredListings.filter((l: any) => l.isBoosted);
 
   const handleSetRole = async (id: number, role: string, scopeCountry?: string, scopeDepartment?: string, scopeCity?: string) => {
@@ -3219,7 +3231,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((u: any) => {
+                {pagedUsers.map((u: any) => {
                   const countryLocked = u.countryChangedAt && !u.isAdmin && !u.isSuperAdmin
                     ? Math.ceil(30 - (Date.now() - new Date(u.countryChangedAt).getTime()) / (1000 * 60 * 60 * 24))
                     : 0;
@@ -3318,6 +3330,15 @@ export default function Admin() {
               </tbody>
             </table>
           </div>
+          {filteredUsers.length > ADMIN_PAGE_SIZE && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border text-xs text-muted-foreground">
+              <span>Paj {usersPage + 1} / {Math.ceil(filteredUsers.length / ADMIN_PAGE_SIZE)} ({filteredUsers.length} total)</span>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="h-7 px-3 text-xs" disabled={usersPage === 0} onClick={() => setUsersPage(p => p - 1)}>← Prev</Button>
+                <Button size="sm" variant="outline" className="h-7 px-3 text-xs" disabled={(usersPage + 1) * ADMIN_PAGE_SIZE >= filteredUsers.length} onClick={() => setUsersPage(p => p + 1)}>Next →</Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* ── Flagged ── */}
@@ -3484,7 +3505,7 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {filteredListings.map((l: any) => (
+                {pagedListings.map((l: any) => (
                   <tr key={l.id} className="border-t border-border hover:bg-accent/50" data-testid={`admin-listing-${l.id}`}>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
@@ -3515,6 +3536,15 @@ export default function Admin() {
               </tbody>
             </table>
           </div>
+          {filteredListings.length > ADMIN_PAGE_SIZE && (
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border text-xs text-muted-foreground">
+              <span>Paj {listingsPage + 1} / {Math.ceil(filteredListings.length / ADMIN_PAGE_SIZE)} ({filteredListings.length} total)</span>
+              <div className="flex gap-1">
+                <Button size="sm" variant="outline" className="h-7 px-3 text-xs" disabled={listingsPage === 0} onClick={() => setListingsPage(p => p - 1)}>← Prev</Button>
+                <Button size="sm" variant="outline" className="h-7 px-3 text-xs" disabled={(listingsPage + 1) * ADMIN_PAGE_SIZE >= filteredListings.length} onClick={() => setListingsPage(p => p + 1)}>Next →</Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* ── Jobs (admin can edit / close / delete any job) ── */}

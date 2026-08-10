@@ -961,6 +961,12 @@ router.post("/music/register", requireAuth, async (req, res) => {
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
   if (!audioPublicId)   return res.status(400).json({ error: "audioPublicId required" });
 
+  // Duration guard: max 60 minutes (3600 s) for non-admin uploads
+  const durationSeconds = req.body.duration_seconds ? Number(req.body.duration_seconds) : null;
+  if (durationSeconds !== null && durationSeconds > 3600) {
+    return res.status(400).json({ error: "DURATION_TOO_LONG", maxSeconds: 3600, got: durationSeconds });
+  }
+
   const {
     monetization_type = "stream",
     price_usd: priceUsdRaw,

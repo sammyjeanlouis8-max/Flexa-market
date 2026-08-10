@@ -22,9 +22,20 @@ const GENRES = [
 const AUDIO_ACCEPT = "audio/mpeg,audio/mp4,audio/ogg,audio/wav,audio/x-m4a,audio/aac,audio/webm,audio/*";
 const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,image/*";
 
+const MAX_DURATION_SECONDS = 3600;  // 60 min — hard block
+const WARN_DURATION_SECONDS = 900;  // 15 min — yellow warning
+
 function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m ${String(s).padStart(2, "0")}s`;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export default function FlexaMusicUpload() {
@@ -40,6 +51,7 @@ export default function FlexaMusicUpload() {
 
   // File state
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioDuration, setAudioDuration] = useState<number | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
@@ -57,7 +69,23 @@ export default function FlexaMusicUpload() {
     const f = e.target.files?.[0];
     if (!f) return;
     setAudioFile(f);
+    setAudioDuration(null);
     setError("");
+
+    // Detect duration via a temporary Audio element (browser-side, no upload needed)
+    const objectUrl = URL.createObjectURL(f);
+    const audio = new window.Audio();
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(objectUrl);
+      const dur = Math.round(audio.duration);
+      setAudioDuration(isFinite(dur) ? dur : null);
+      if (isFinite(dur) && dur > MAX_DURATION_SECONDS) {
+        setError(t("upload.errDurationMax"));
+      }
+    };
+    audio.onerror = () => URL.revokeObjectURL(objectUrl);
+    audio.src = objectUrl;
   };
 
   const onCoverPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,6 +112,10 @@ export default function FlexaMusicUpload() {
     if (!title.trim())  { setError(t("upload.errTitle"));  return; }
     if (!artist.trim()) { setError(t("upload.errArtist")); return; }
     if (!audioFile)     { setError(t("upload.errAudio"));  return; }
+    if (audioDuration !== null && audioDuration > MAX_DURATION_SECONDS) {
+      setError(t("upload.errDurationMax"));
+      return;
+    }
 
     setUploading(true);
     setProgress(5);
@@ -152,6 +184,7 @@ export default function FlexaMusicUpload() {
           album: album.trim() || "", genre: genre || "", type: "free",
           audioPublicId: audioResult.publicId, audioUrl: audioResult.secureUrl,
           coverPublicId: coverResult?.publicId ?? null, coverUrl: coverResult?.secureUrl ?? null,
+          duration_seconds: audioDuration !== null ? String(audioDuration) : undefined,
         }),
       });
       if (!regRes.ok) { const d = await regRes.json().catch(()=>({})); throw new Error(d.error ?? "Register failed"); }
@@ -163,7 +196,7 @@ export default function FlexaMusicUpload() {
     } finally {
       setUploading(false);
     }
-  }, [title, artist, album, genre, audioFile, coverFile, t]);
+  }, [title, artist, album, genre, audioFile, audioDuration, coverFile, t]);
 
   // ── Success screen ───────────────────────────────────────────────────────────
   if (done) {
@@ -252,29 +285,54 @@ export default function FlexaMusicUpload() {
             id="audio-pick"
           />
           {audioFile ? (
-            <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shrink-0">
-                <FileMusic size={18} className="text-white" />
+            <div className="space-y-2">
+              <div className={`flex items-center gap-3 p-3.5 rounded-2xl border ${audioDuration !== null && audioDuration > MAX_DURATION_SECONDS ? "border-red-400 bg-red-50 dark:bg-red-950/20" : "border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/30"}`}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${audioDuration !== null && audioDuration > MAX_DURATION_SECONDS ? "bg-red-500" : "bg-gradient-to-br from-violet-500 to-fuchsia-600"}`}>
+                  <FileMusic size={18} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate text-violet-900 dark:text-violet-100">{audioFile.name}</p>
+                  <p className="text-xs text-violet-600 dark:text-violet-400">
+                    {fmtSize(audioFile.size)}
+                    {audioDuration !== null && <span className="ml-2 font-semibold">· ⏱ {fmtDuration(audioDuration)}</span>}
+                  </p>
+                </div>
+                <button type="button" onClick={() => { setAudioFile(null); setAudioDuration(null); setError(""); if (audioInputRef.current) audioInputRef.current.value = ""; }}
+                  className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-violet-200 dark:hover:bg-violet-800 transition-colors">
+                  <X size={14} className="text-violet-500" />
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate text-violet-900 dark:text-violet-100">{audioFile.name}</p>
-                <p className="text-xs text-violet-600 dark:text-violet-400">{fmtSize(audioFile.size)}</p>
-              </div>
-              <button type="button" onClick={() => { setAudioFile(null); if (audioInputRef.current) audioInputRef.current.value = ""; }}
-                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-violet-200 dark:hover:bg-violet-800 transition-colors">
-                <X size={14} className="text-violet-500" />
-              </button>
+              {/* Duration warnings */}
+              {audioDuration !== null && audioDuration > MAX_DURATION_SECONDS && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-red-100 dark:bg-red-950/30 border border-red-300 dark:border-red-800">
+                  <AlertCircle size={14} className="text-red-600 mt-0.5 shrink-0" />
+                  <p className="text-xs text-red-700 dark:text-red-400 font-semibold">{t("upload.errDurationMax")}</p>
+                </div>
+              )}
+              {audioDuration !== null && audioDuration > WARN_DURATION_SECONDS && audioDuration <= MAX_DURATION_SECONDS && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-700">
+                  <AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-400">{t("upload.warnDurationLong")}</p>
+                </div>
+              )}
             </div>
           ) : (
-            <label htmlFor="audio-pick" className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors">
-              <div className="w-14 h-14 rounded-2xl bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center">
-                <FileMusic size={26} className="text-violet-500" />
+            <div className="space-y-2">
+              <label htmlFor="audio-pick" className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-dashed border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors">
+                <div className="w-14 h-14 rounded-2xl bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center">
+                  <FileMusic size={26} className="text-violet-500" />
+                </div>
+                <div className="text-center">
+                  <p className="font-bold text-sm text-violet-700 dark:text-violet-300">{t("upload.tapToPickAudio")}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t("upload.audioFormats")}</p>
+                </div>
+              </label>
+              {/* Duration limit info */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800">
+                <span className="text-xs text-slate-500">⏱</span>
+                <p className="text-xs text-slate-500">{t("upload.durationLimits")}</p>
               </div>
-              <div className="text-center">
-                <p className="font-bold text-sm text-violet-700 dark:text-violet-300">{t("upload.tapToPickAudio")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{t("upload.audioFormats")}</p>
-              </div>
-            </label>
+            </div>
           )}
         </div>
 

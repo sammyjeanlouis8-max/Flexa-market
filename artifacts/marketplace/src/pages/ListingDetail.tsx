@@ -1023,10 +1023,11 @@ export default function ListingDetail() {
   const handleWalletPayment = async () => {
     if (!token) { setLocation("/auth/login"); return; }
     const effectivePrice = listing ? effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) : 0;
-    const walletRequired = effectivePrice + effectiveDeliveryFee + effectiveTip;
+    const referralFeeForWallet = quote?.referralFee ?? 0;
+    const walletRequired = effectivePrice + effectiveDeliveryFee + effectiveTip + referralFeeForWallet;
     if (walletTotal < walletRequired - 0.001) {
       const desc = effectiveDeliveryFee > 0
-        ? `Ou bezwen $${walletRequired.toFixed(2)} (atik + livrezon${effectiveTip > 0 ? ` + $${effectiveTip.toFixed(2)} tip` : ""}) men ou gen $${walletTotal.toFixed(2)}.`
+        ? `Ou bezwen $${walletRequired.toFixed(2)} (atik + livrezon${effectiveTip > 0 ? ` + $${effectiveTip.toFixed(2)} tip` : ""}${referralFeeForWallet > 0 ? ` + $${referralFeeForWallet.toFixed(2)} referans` : ""}) men ou gen $${walletTotal.toFixed(2)}.`
         : `Ou bezwen $${walletRequired.toFixed(2)} men ou gen $${walletTotal.toFixed(2)} nan wallet ou.`;
       toast({ title: "Balans pa ase", description: desc, variant: "destructive" });
       return;
@@ -2431,13 +2432,19 @@ export default function ListingDetail() {
                           <span className="font-semibold text-rose-500">+${effectiveTip.toFixed(2)}</span>
                         </div>
                       )}
+                      {(quote?.referralFee ?? 0) > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground flex items-center gap-1">🔗 {t("listing.referralFeeLabel", "Frè referans")}</span>
+                          <span className="font-semibold text-orange-500">+${(quote!.referralFee as number).toFixed(2)}</span>
+                        </div>
+                      )}
                     </div>
                     <div className="border-t border-border pt-2 flex items-center justify-between">
                       <span className="font-black text-sm">💰 Total aktyèl</span>
                       <span className="text-xl font-black text-primary">
                         {(deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && isLocalDelivery && effectiveDeliveryFee === 0 && !deliveryFeeLoading)
-                          ? `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)} + liv.`
-                          : `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip).toFixed(2)}`}
+                          ? `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + (quote?.referralFee ?? 0)).toFixed(2)} + liv.`
+                          : `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)).toFixed(2)}`}
                       </span>
                     </div>
                   </div>
@@ -2471,7 +2478,7 @@ export default function ListingDetail() {
                     {/* ── Kat FM (FIRST) ── */}
                     {user && (
                       <button onClick={handleWalletPayment}
-                        disabled={walletPayLoading || walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip) - 0.001}
+                        disabled={walletPayLoading || walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)) - 0.001}
                         className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-violet-400 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/20 hover:border-violet-500 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                         data-testid="button-pay-wallet">
                         <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
@@ -2486,10 +2493,10 @@ export default function ListingDetail() {
                             {walletData ? `Balans: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} promo` : ""} = $${walletTotal.toFixed(2)}` : t("listing.loadingBalance")}
                           </p>
                           <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">{t("listing.directDeduction")}</p>
-                          {walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip) - 0.001 && walletData && (
+                          {walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)) - 0.001 && walletData && (
                             <p className="text-xs text-destructive mt-0.5">
-                              {t("listing.insufficientBalance", { amount: (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip).toFixed(2) })}
-                              {effectiveDeliveryFee > 0 ? ` (atik $${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)} + liv. $${effectiveDeliveryFee.toFixed(2)})` : ""}
+                              {t("listing.insufficientBalance", { amount: (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)).toFixed(2) })}
+                              {effectiveDeliveryFee > 0 ? ` (atik $${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)} + liv. $${effectiveDeliveryFee.toFixed(2)}${(quote?.referralFee ?? 0) > 0 ? ` + referans $0.50` : ""})` : ""}
                             </p>
                           )}
                         </div>

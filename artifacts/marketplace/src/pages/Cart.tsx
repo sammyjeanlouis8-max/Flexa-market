@@ -104,7 +104,9 @@ function CheckoutModal({
 
   const groups = groupBySeller(selectedItems);
   const deliveryTotal = deliveryFees.reduce((s, d) => s + d.feeUsd, 0);
-  const grandTotal = total + deliveryTotal;
+  // $0.50 referral surcharge for referred buyers on orders > $14.99
+  const cartReferralFee = (user as any)?.referredByUserId && total > 14.99 ? 0.50 : 0;
+  const grandTotal = total + deliveryTotal + cartReferralFee;
 
   const handleConfirm = async () => {
     if (!name.trim() || !phone.trim() || !city.trim()) {
@@ -230,6 +232,12 @@ function CheckoutModal({
                 </div>
               );
             })}
+            {cartReferralFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 text-xs flex items-center gap-1">🔗 Frè referans</span>
+                <span className="font-bold text-orange-500">+${cartReferralFee.toFixed(2)}</span>
+              </div>
+            )}
             <div className="border-t pt-2 mt-1 flex justify-between" style={{ borderColor: border }}>
               <span className="font-black text-gray-900 text-sm">💰 Total</span>
               <span className="font-black text-lg" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>

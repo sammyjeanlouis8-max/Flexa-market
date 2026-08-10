@@ -392,7 +392,14 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
     quotePrice = parseFloat((quotePrice / dopRate).toFixed(2));
   }
   const q = await quoteForListing({ ...listing, price: quotePrice }, method, deliveryFeeUsd);
-  res.json(q);
+  // Referral surcharge: $0.50 added to purchases > $14.99 for buyers who were referred
+  let referralFee = 0;
+  if (quotePrice > 14.99) {
+    const [buyerRef] = await db.select({ referredByUserId: usersTable.referredByUserId })
+      .from(usersTable).where(eq(usersTable.id, req.userId!));
+    if (buyerRef?.referredByUserId) referralFee = 0.50;
+  }
+  res.json({ ...q, referralFee });
 });
 
 // ─── Sales summary ────────────────────────────────────────────────────────────
@@ -2114,29 +2121,38 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
   totalDeliveryFees = Math.round(totalDeliveryFees * 100) / 100;
   const grandTotalWithDelivery = Math.round((grandTotal + totalDeliveryFees) * 100) / 100;
 
-  // Check wallet — must cover product total + all delivery fees
+  // Referral surcharge: $0.50 if buyer was referred AND cart total > $14.99
+  let cartReferralFee = 0;
+  if (grandTotal > 14.99) {
+    const [buyerRef] = await db.select({ referredByUserId: usersTable.referredByUserId })
+      .from(usersTable).where(eq(usersTable.id, userId));
+    if (buyerRef?.referredByUserId) cartReferralFee = 0.50;
+  }
+  const grandTotalFinal = Math.round((grandTotalWithDelivery + cartReferralFee) * 100) / 100;
+
+  // Check wallet — must cover product total + delivery fees + referral surcharge
   const [wallet] = await db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
     .from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
   const available = Math.round(((wallet?.balanceUsd ?? 0) + (wallet?.promoBalance ?? 0)) * 100) / 100;
-  if (available < grandTotalWithDelivery) {
+  if (available < grandTotalFinal) {
     res.status(402).json({
-      error: `Balans ensifizan. Ou bezwen $${grandTotalWithDelivery.toFixed(2)} (atik $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}), ou gen $${available.toFixed(2)}`,
+      error: `Balans ensifizan. Ou bezwen $${grandTotalFinal.toFixed(2)} (atik $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}), ou gen $${available.toFixed(2)}`,
     }); return;
   }
 
-  // Deduct wallet upfront — products + delivery (refund per-item if listing already sold)
+  // Deduct wallet upfront — products + delivery + referral surcharge
   const now = new Date();
   if (wallet) {
     await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${grandTotalWithDelivery}`, updatedAt: now })
+      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${grandTotalFinal}`, updatedAt: now })
       .where(eq(promoWalletTable.userId, userId));
   } else {
-    await db.insert(promoWalletTable).values({ userId, balanceUsd: -grandTotalWithDelivery });
+    await db.insert(promoWalletTable).values({ userId, balanceUsd: -grandTotalFinal });
   }
   await db.insert(walletTransactionsTable).values({
-    userId, type: "purchase", amountUsd: -grandTotalWithDelivery,
+    userId, type: "purchase", amountUsd: -grandTotalFinal,
     paymentRef: `CART-${Date.now()}`,
-    note: `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}`,
+    note: `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`,
   }).catch(() => {});
 
   const orders: { txId: number; sellerId: number; amount: number; deliveryFee: number; title: string }[] = [];

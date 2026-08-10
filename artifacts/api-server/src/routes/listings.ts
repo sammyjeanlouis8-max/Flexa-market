@@ -1115,6 +1115,17 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   const deliveryTypeForTx = typeof req.body?.deliveryType === "string" ? req.body.deliveryType : "delivery";
   const buyerProposedFeeForTx = typeof req.body?.buyerProposedDeliveryFee === "number" && req.body.buyerProposedDeliveryFee > 0 ? req.body.buyerProposedDeliveryFee : null;
 
+  // ── Referral surcharge — $0.50 charged to referred buyers on purchases > $14.99 ─
+  const REFERRAL_SURCHARGE = 0.50;
+  let referralFee = 0;
+  let buyerReferredByUserId: number | null = null;
+  if (productPrice > 14.99) {
+    const [buyerRef] = await db.select({ referredByUserId: usersTable.referredByUserId })
+      .from(usersTable).where(eq(usersTable.id, req.userId!));
+    buyerReferredByUserId = buyerRef?.referredByUserId ?? null;
+    if (buyerReferredByUserId) referralFee = REFERRAL_SURCHARGE;
+  }
+
   // Commission breakdown — computed authoritatively on the server using
   // current rules (new-seller promo / category override / platform default).
   // Delivery fee is passed through so buyerTotal correctly includes it.
@@ -1129,12 +1140,12 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   let walletDeducted = false;
   if (paymentMethod === "wallet") {
     const effectivePrice = productPrice - discountAmount;
-    // Buyer pays product price + delivery fee from their wallet
-    const walletChargeTotal = effectivePrice + safeDeliveryFee;
+    // Buyer pays product price + delivery fee + referral surcharge (if applicable)
+    const walletChargeTotal = effectivePrice + safeDeliveryFee + referralFee;
     const result = await deductWalletHybrid(
       req.userId!,
       walletChargeTotal,
-      `Purchase listing #${id} — "${listing.title}"${safeDeliveryFee > 0 ? ` + livrezon $${safeDeliveryFee.toFixed(2)}` : ""}`,
+      `Purchase listing #${id} — "${listing.title}"${safeDeliveryFee > 0 ? ` + livrezon $${safeDeliveryFee.toFixed(2)}` : ""}${referralFee > 0 ? ` + frè referans $${referralFee.toFixed(2)}` : ""}`,
       "purchase_debit",
       req.userId!,
     );
@@ -1264,25 +1275,19 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   }
 
   // Award $0.40 referral purchase commission (best-effort, non-fatal).
-  // Triggered when buyer was referred by another user AND purchase > $15.
-  if (productPrice > 15) {
+  // Reuses buyerReferredByUserId already fetched above (avoids a second DB query).
+  if (productPrice > 14.99 && buyerReferredByUserId) {
     (async () => {
       try {
-        const [buyer] = await db
-          .select({ referredByUserId: usersTable.referredByUserId })
-          .from(usersTable)
-          .where(eq(usersTable.id, req.userId!));
-        if (buyer?.referredByUserId) {
-          const cycleMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-          await db.insert(promoPurchaseCommissionsTable).values({
-            referrerUserId: buyer.referredByUserId,
-            buyerUserId: req.userId!,
-            transactionId: insertedTxId,
-            purchaseAmount: productPrice,
-            commissionAmount: 0.40,
-            cycleMonth,
-          });
-        }
+        const cycleMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+        await db.insert(promoPurchaseCommissionsTable).values({
+          referrerUserId: buyerReferredByUserId!,
+          buyerUserId: req.userId!,
+          transactionId: insertedTxId,
+          purchaseAmount: productPrice,
+          commissionAmount: 0.40,
+          cycleMonth,
+        });
       } catch (commErr) {
         req.log.error({ err: commErr }, "[purchase] commission award failed (non-fatal)");
       }

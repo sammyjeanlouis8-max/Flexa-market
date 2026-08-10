@@ -2166,6 +2166,23 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "deliveries.package_ready", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS package_ready boolean NOT NULL DEFAULT false" });
   migrations.push({ name: "deliveries.package_ready_at", sql: "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS package_ready_at timestamptz" });
 
+  // Referral purchase commission table
+  migrations.push({
+    name: "promo_purchase_commissions.create",
+    sql: `CREATE TABLE IF NOT EXISTS promo_purchase_commissions (
+      id SERIAL PRIMARY KEY,
+      referrer_user_id INTEGER NOT NULL,
+      buyer_user_id INTEGER NOT NULL,
+      transaction_id INTEGER,
+      purchase_amount REAL NOT NULL,
+      commission_amount REAL NOT NULL DEFAULT 0.40,
+      cycle_month TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
+
   let applied = 0;
   let failed = 0;
 

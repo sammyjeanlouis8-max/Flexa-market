@@ -4,7 +4,7 @@ import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift,
+  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
@@ -300,6 +300,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         ...(user ? [
           { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem,
           { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: walletBal.promo, realBalance: walletBal.real },
+          { icon: Coins, label: t("nav.commissionPromo"), href: "/commission-promo" } as DrawerItem,
         ] : []),
       ] as DrawerItem[],
     },
@@ -686,6 +687,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         ...(user ? [
           { href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" },
           { href: "/wallet",    icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
+          { href: "/commission-promo", icon: Coins, label: t("nav.commissionPromo"), key: "commission-promo" },
         ] : []),
       ],
     },

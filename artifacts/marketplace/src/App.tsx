@@ -52,6 +52,7 @@ const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
 const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
 const AdminBroadcastPage    = lazy(() => import("@/pages/AdminBroadcastPage"));
+const CommissionPromo       = lazy(() => import("@/pages/CommissionPromo"));
 const Chatbot            = lazy(() => import("@/pages/Chatbot"));
 const CalculatorPage     = lazy(() => import("@/pages/Calculator"));
 const WalletPage         = lazy(() => import("@/pages/Wallet"));
@@ -229,6 +230,7 @@ function LayoutRoutes() {
           <Route path="/support" component={Support} />
           <Route path="/support/:id" component={Support} />
           <Route path="/wallet" component={WalletPage} />
+          <Route path="/commission-promo" component={CommissionPromo} />
           <Route path="/wallet/history" component={WalletHistory} />
           <Route path="/subscription" component={SubscriptionPage} />
           <Route path="/agent" component={AgentDashboard} />

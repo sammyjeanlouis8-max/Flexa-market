@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable } from "@workspace/db";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable } from "@workspace/db";
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
@@ -1261,6 +1261,32 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
         .set({ usesCount: sql`${promoCodesTable.usesCount} + 1` })
         .where(eq(promoCodesTable.id, appliedPromoCode.id)),
     ]).catch(e => req.log.error({ err: e }, "[purchase] promo code recording failed"));
+  }
+
+  // Award $0.40 referral purchase commission (best-effort, non-fatal).
+  // Triggered when buyer was referred by another user AND purchase > $15.
+  if (productPrice > 15) {
+    (async () => {
+      try {
+        const [buyer] = await db
+          .select({ referredByUserId: usersTable.referredByUserId })
+          .from(usersTable)
+          .where(eq(usersTable.id, req.userId!));
+        if (buyer?.referredByUserId) {
+          const cycleMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+          await db.insert(promoPurchaseCommissionsTable).values({
+            referrerUserId: buyer.referredByUserId,
+            buyerUserId: req.userId!,
+            transactionId: insertedTxId,
+            purchaseAmount: productPrice,
+            commissionAmount: 0.40,
+            cycleMonth,
+          });
+        }
+      } catch (commErr) {
+        req.log.error({ err: commErr }, "[purchase] commission award failed (non-fatal)");
+      }
+    })();
   }
 
   // Best-effort notifications (non-critical).

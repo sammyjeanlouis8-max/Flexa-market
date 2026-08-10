@@ -59,68 +59,93 @@ export async function releaseEscrow(
     !!sellerRecord?.stripeAccountId &&
     sellerRecord.stripeAccountStatus === "active";
 
-  // Atomic gate: mark escrow released first using WHERE escrowReleased=false.
-  // If another concurrent call already flipped the flag, rowsAffected=0 → bail out
-  // before any wallet credit, preventing double-payment.
-  const marked = await db
-    .update(transactionsTable)
-    .set({
-      escrowReleased: true,
-      escrowReleasedAt: new Date(),
-      orderStatus: "completed",
-      deliveredAt: tx.deliveredAt ?? new Date(),
-    })
-    .where(and(
-      eq(transactionsTable.id, txId),
-      eq(transactionsTable.escrowReleased, false),
-    ))
-    .returning({ id: transactionsTable.id });
-
-  if (marked.length === 0) {
-    logger.warn({ txId, triggeredBy }, "releaseEscrow: already released (concurrent call) — skipping wallet credit");
-    return;
+  // For non-Connect Stripe orders: check if seller was already credited at checkout
+  // (fm_wallet payout path) to prevent double-payment.
+  let sellerAlreadyPaidAtCheckout = false;
+  if (tx.paymentMethod === "stripe" && !isStripeConnectRouted) {
+    const [prePaid] = await db
+      .select({ id: walletTransactionsTable.id })
+      .from(walletTransactionsTable)
+      .where(and(
+        eq(walletTransactionsTable.userId, tx.sellerUserId),
+        eq(walletTransactionsTable.type, "sale_earnings"),
+        eq(walletTransactionsTable.paymentRef, `order-${txId}`),
+      ));
+    if (prePaid) {
+      sellerAlreadyPaidAtCheckout = true;
+      logger.info({ txId }, "releaseEscrow: seller pre-credited at Stripe checkout (fm_wallet) — skipping duplicate wallet credit");
+    }
   }
 
-  if (!isStripeConnectRouted) {
-    // Credit seller's promo wallet (platform holds the funds)
-    const [existing] = await db
-      .select()
-      .from(promoWalletTable)
-      .where(eq(promoWalletTable.userId, tx.sellerUserId));
+  // Atomic gate + wallet credit in a single DB transaction.
+  // If the server crashes between marking escrow released and crediting the wallet,
+  // the whole transaction rolls back so the seller is never silently shortchanged.
+  const committed = await db.transaction(async (dbtx) => {
+    // Mark escrow released using WHERE escrowReleased=false.
+    // If another concurrent call already flipped the flag, rowsAffected=0 → bail out.
+    const marked = await dbtx
+      .update(transactionsTable)
+      .set({
+        escrowReleased: true,
+        escrowReleasedAt: new Date(),
+        orderStatus: "completed",
+        deliveredAt: tx.deliveredAt ?? new Date(),
+      })
+      .where(and(
+        eq(transactionsTable.id, txId),
+        eq(transactionsTable.escrowReleased, false),
+      ))
+      .returning({ id: transactionsTable.id });
 
-    if (existing) {
-      await db
-        .update(promoWalletTable)
-        .set({
-          balanceUsd: sql`${promoWalletTable.balanceUsd} + ${sellerEarnings}`,
-          updatedAt: new Date(),
-        })
+    if (marked.length === 0) return false; // already released
+
+    const shouldCreditWallet = !isStripeConnectRouted && !sellerAlreadyPaidAtCheckout;
+
+    if (shouldCreditWallet) {
+      // Credit seller's promo wallet (platform holds the funds)
+      const [existing] = await dbtx
+        .select({ id: promoWalletTable.id })
+        .from(promoWalletTable)
         .where(eq(promoWalletTable.userId, tx.sellerUserId));
+
+      if (existing) {
+        await dbtx
+          .update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${sellerEarnings}`, updatedAt: new Date() })
+          .where(eq(promoWalletTable.userId, tx.sellerUserId));
+      } else {
+        await dbtx.insert(promoWalletTable).values({ userId: tx.sellerUserId, balanceUsd: sellerEarnings });
+      }
+
+      await dbtx.insert(walletTransactionsTable).values({
+        userId: tx.sellerUserId,
+        type: "sale_earnings",
+        amountUsd: sellerEarnings,
+        paymentRef: `order-${txId}`,
+        status: "completed",
+        note: `Sale earnings — order #${txId} (released by: ${triggeredBy})`,
+      }).onConflictDoNothing();
     } else {
-      await db
-        .insert(promoWalletTable)
-        .values({ userId: tx.sellerUserId, balanceUsd: sellerEarnings });
+      // Stripe Connect or pre-credited: audit-only, no wallet credit
+      const note = isStripeConnectRouted
+        ? `Stripe Connect transfer — order #${txId} (released by: ${triggeredBy}) — wallet NOT credited (funds sent via Stripe Connect)`
+        : `Stripe fm_wallet — order #${txId} — seller pre-credited at checkout, escrow mark only`;
+      await dbtx.insert(walletTransactionsTable).values({
+        userId: tx.sellerUserId,
+        type: "sale_earnings",
+        amountUsd: sellerEarnings,
+        paymentRef: `order-${txId}-escrow-mark`,
+        status: "completed",
+        note,
+      }).onConflictDoNothing();
     }
 
-    // Audit log
-    await db.insert(walletTransactionsTable).values({
-      userId: tx.sellerUserId,
-      type: "sale_earnings",
-      amountUsd: sellerEarnings,
-      paymentRef: `order-${txId}`,
-      status: "completed",
-      note: `Sale earnings — order #${txId} (released by: ${triggeredBy})`,
-    });
-  } else {
-    // Stripe Connect: log only for audit trail — no wallet credit (funds already with seller)
-    await db.insert(walletTransactionsTable).values({
-      userId: tx.sellerUserId,
-      type: "sale_earnings",
-      amountUsd: sellerEarnings,
-      paymentRef: `order-${txId}`,
-      status: "completed",
-      note: `Stripe Connect transfer — order #${txId} (released by: ${triggeredBy}) — wallet NOT credited (funds sent via Stripe Connect)`,
-    });
+    return true;
+  });
+
+  if (!committed) {
+    logger.warn({ txId, triggeredBy }, "releaseEscrow: already released (concurrent call) — skipping wallet credit");
+    return;
   }
 
   // Notify seller
@@ -315,7 +340,7 @@ async function runAutoRelease(): Promise<void> {
 
         // d) Credit driver 2× delivery fee (original trip + auto-return trip)
         if (d.driverUserId) {
-          const driverFeePerTrip = d.driverEarnings ?? (d.feeUsd != null ? Math.round(d.feeUsd * 0.85 * 100) / 100 : 0);
+          const driverFeePerTrip = d.driverEarnings ?? (d.feeUsd != null ? Math.round(d.feeUsd * 0.80 * 100) / 100 : 0);
           const driverFee = Math.round(driverFeePerTrip * 2 * 100) / 100;
           if (driverFee > 0) {
             const [dw] = await db.select({ id: promoWalletTable.id })

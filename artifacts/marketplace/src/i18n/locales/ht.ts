@@ -4014,6 +4014,7 @@ export default {
     historyTitle: "Istwa Ranbousman",
     remaining: "Rete",
     contactSupport: "Kontakte sipò",
+    confirmPay: "Konfime peman ${{amount}}?",
   },
   tv: {
     pageTitle: "Flexa TV",

@@ -4013,6 +4013,7 @@ export default {
     historyTitle: "Historique des remboursements",
     remaining: "Restant",
     contactSupport: "Contacter le support",
+    confirmPay: "Confirmer le paiement de ${{amount}} ?",
   },
   tv: {
     pageTitle: "Flexa TV",

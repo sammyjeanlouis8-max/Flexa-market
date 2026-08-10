@@ -326,43 +326,49 @@ export async function deductWalletHybrid(
   const promoUsed = parseFloat(promoToUse.toFixed(4));
   const realUsed = parseFloat(realToUse.toFixed(4));
 
-  // Atomic deductions: WHERE clauses prevent negative balances under concurrent load
-  if (promoUsed > 0) {
-    const updatedPromo = await db.update(promoWalletTable)
-      .set({ promoBalance: sql`${promoWalletTable.promoBalance} - ${promoUsed}`, updatedAt: new Date() })
-      .where(and(
-        eq(promoWalletTable.userId, userId),
-        sql`${promoWalletTable.promoBalance} >= ${promoUsed - 0.001}`,
-      ))
-      .returning({ id: promoWalletTable.id });
-    if (updatedPromo.length === 0) {
-      return { ok: false, error: "Balans promo pa ase (race condition)", promoBalance: promoAvail, realBalance: realAvail };
+  // Both deductions run inside a single DB transaction so that if the real-balance
+  // deduction fails after the promo deduction succeeds, the whole thing rolls back —
+  // preventing a partial charge where promo is spent but the purchase never completes.
+  const result = await db.transaction(async (dbtx) => {
+    if (promoUsed > 0) {
+      const updatedPromo = await dbtx.update(promoWalletTable)
+        .set({ promoBalance: sql`${promoWalletTable.promoBalance} - ${promoUsed}`, updatedAt: new Date() })
+        .where(and(
+          eq(promoWalletTable.userId, userId),
+          sql`${promoWalletTable.promoBalance} >= ${promoUsed - 0.001}`,
+        ))
+        .returning({ id: promoWalletTable.id });
+      if (updatedPromo.length === 0) {
+        return { ok: false as const, error: "Balans promo pa ase (race condition)", promoBalance: promoAvail, realBalance: realAvail };
+      }
+      const promoTxType = txType === "purchase_debit" ? "promo_purchase_debit"
+        : txType === "vendor_subscription" ? "promo_subscription_debit"
+        : "promo_boost_debit";
+      await dbtx.insert(walletTransactionsTable).values({
+        userId, type: promoTxType, amountUsd: -promoUsed, status: "completed", note: `[Promo] ${note}`,
+      });
     }
-    const promoTxType = txType === "purchase_debit" ? "promo_purchase_debit"
-      : txType === "vendor_subscription" ? "promo_subscription_debit"
-      : "promo_boost_debit";
-    await db.insert(walletTransactionsTable).values({
-      userId, type: promoTxType, amountUsd: -promoUsed, status: "completed", note: `[Promo] ${note}`,
-    });
-  }
 
-  if (realUsed > 0) {
-    const updatedReal = await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${realUsed}`, updatedAt: new Date() })
-      .where(and(
-        eq(promoWalletTable.userId, userId),
-        sql`${promoWalletTable.balanceUsd} >= ${realUsed + minBal - 0.001}`,
-      ))
-      .returning({ id: promoWalletTable.id });
-    if (updatedReal.length === 0) {
-      return { ok: false, error: "Balans reyèl pa ase (race condition)", promoBalance: promoAvail, realBalance: realAvail };
+    if (realUsed > 0) {
+      const updatedReal = await dbtx.update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${realUsed}`, updatedAt: new Date() })
+        .where(and(
+          eq(promoWalletTable.userId, userId),
+          sql`${promoWalletTable.balanceUsd} >= ${realUsed + minBal - 0.001}`,
+        ))
+        .returning({ id: promoWalletTable.id });
+      if (updatedReal.length === 0) {
+        return { ok: false as const, error: "Balans reyèl pa ase (race condition)", promoBalance: promoAvail, realBalance: realAvail };
+      }
+      await dbtx.insert(walletTransactionsTable).values({
+        userId, type: txType, amountUsd: -realUsed, status: "completed", note: `[Real] ${note}`,
+      });
     }
-    await db.insert(walletTransactionsTable).values({
-      userId, type: txType, amountUsd: -realUsed, status: "completed", note: `[Real] ${note}`,
-    });
-  }
 
-  return { ok: true, promoUsed, realUsed };
+    return { ok: true as const, promoUsed, realUsed };
+  });
+
+  return result;
 }
 
 // ─── Referral bonus logic ─────────────────────────────────────────────────────
@@ -913,32 +919,42 @@ router.post("/wallet/topup/confirm", requireAuth, async (req, res): Promise<void
     return;
   }
 
-  const [tx] = await db.select().from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.paymentRef, paymentRef));
-  if (!tx) { res.status(404).json({ error: "Transaksyon pa jwenn" }); return; }
-  if (tx.status !== "pending") { res.status(400).json({ error: "Transaksyon sa a deja tretman" }); return; }
-
   if (action === "confirm") {
-    await db.update(walletTransactionsTable).set({
-      status: "completed",
-      confirmedBy: req.userId!,
-      confirmedAt: new Date(),
-    }).where(eq(walletTransactionsTable.id, tx.id));
+    // Atomic conditional update: only succeeds if still pending.
+    // Two admins clicking simultaneously → only one succeeds; the other gets 409.
+    const [confirmed] = await db.update(walletTransactionsTable)
+      .set({ status: "completed", confirmedBy: req.userId!, confirmedAt: new Date() })
+      .where(and(
+        eq(walletTransactionsTable.paymentRef, paymentRef),
+        eq(walletTransactionsTable.status, "pending"),
+      ))
+      .returning();
+
+    if (!confirmed) {
+      res.status(409).json({ error: "Transaksyon sa a deja konfime oswa rejte pa yon lòt admin" });
+      return;
+    }
 
     // Apply recharge credits: 2.5% fee deducted, security lock on first recharge
-    await applyRechargeCredits(tx.userId, tx.amountUsd ?? 0, tx.paymentRef);
+    await applyRechargeCredits(confirmed.userId, confirmed.amountUsd ?? 0, confirmed.paymentRef);
 
-    // Pay $1 referral bonus to referrer (+ $1 to new user inside that function)
-    await payReferralBonusIfEligible(tx.userId, tx.amountUsd ?? 0);
+    // Pay referral bonus to referrer (+ $1 to new user inside that function)
+    await payReferralBonusIfEligible(confirmed.userId, confirmed.amountUsd ?? 0);
 
-    logger.info({ adminId: req.userId, paymentRef, amountUsd: tx.amountUsd }, "Wallet topup confirmed");
-    res.json({ ok: true, amountUsd: tx.amountUsd });
+    logger.info({ adminId: req.userId, paymentRef, amountUsd: confirmed.amountUsd }, "Wallet topup confirmed");
+    res.json({ ok: true, amountUsd: confirmed.amountUsd });
   } else {
-    await db.update(walletTransactionsTable).set({
-      status: "rejected",
-      confirmedBy: req.userId!,
-      confirmedAt: new Date(),
-    }).where(eq(walletTransactionsTable.id, tx.id));
+    const [rejected] = await db.update(walletTransactionsTable)
+      .set({ status: "rejected", confirmedBy: req.userId!, confirmedAt: new Date() })
+      .where(and(
+        eq(walletTransactionsTable.paymentRef, paymentRef),
+        eq(walletTransactionsTable.status, "pending"),
+      ))
+      .returning();
+    if (!rejected) {
+      res.status(409).json({ error: "Transaksyon sa a deja tretman" });
+      return;
+    }
     res.json({ ok: true, rejected: true });
   }
 });

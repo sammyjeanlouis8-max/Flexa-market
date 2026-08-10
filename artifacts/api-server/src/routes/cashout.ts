@@ -375,12 +375,24 @@ router.post("/cashout/agent/verify", requireAuth, requireAgent, async (req, res)
     res.status(400).json({ error: "Kòd sekrè a pa kòrèk" }); return;
   }
 
-  await db.update(cashoutRequestsTable)
+  // Atomic conditional update: WHERE status='approved' AND otp_used=false
+  // prevents two concurrent agent verifications from both succeeding.
+  const [completed] = await db.update(cashoutRequestsTable)
     .set({ status: "paid", otpUsed: true, agentId: req.userId!, updatedAt: new Date() })
-    .where(eq(cashoutRequestsTable.id, request.id));
+    .where(and(
+      eq(cashoutRequestsTable.id, request.id),
+      eq(cashoutRequestsTable.status, "approved"),
+      eq(cashoutRequestsTable.otpUsed, false),
+    ))
+    .returning({ id: cashoutRequestsTable.id, amountUsd: cashoutRequestsTable.amountUsd });
 
-  logger.info({ agentId: req.userId, requestId: request.id, amountUsd: request.amountUsd }, "Cashout verified by agent");
-  res.json({ ok: true, amountUsd: request.amountUsd, userName: "" });
+  if (!completed) {
+    res.status(409).json({ error: "Kòd sa a deja itilize oswa demand lan chanje — pa peye de fwa" });
+    return;
+  }
+
+  logger.info({ agentId: req.userId, requestId: request.id, amountUsd: completed.amountUsd }, "Cashout verified by agent");
+  res.json({ ok: true, amountUsd: completed.amountUsd, userName: "" });
 });
 
 // ── GET /api/cashout/admin/all ────────────────────────────────────────────────
@@ -435,21 +447,29 @@ router.post("/cashout/admin/review", requireFinanceAdmin, async (req, res): Prom
       .where(eq(cashoutRequestsTable.id, request.id));
     res.json({ ok: true });
   } else if (action === "reject") {
-    if (!["rejected", "paid"].includes(request.status)) {
+    // Atomic: only proceed if not already rejected/paid — prevents double-refund
+    // if two admins click reject simultaneously.
+    const [atomicReject] = await db.update(cashoutRequestsTable)
+      .set({ status: "rejected", adminNote: adminNote ?? null, updatedAt: new Date() })
+      .where(and(
+        eq(cashoutRequestsTable.id, request.id),
+        sql`${cashoutRequestsTable.status} NOT IN ('rejected', 'paid')`,
+      ))
+      .returning({ userId: cashoutRequestsTable.userId, amountUsd: cashoutRequestsTable.amountUsd });
+
+    if (atomicReject) {
+      // Only refund now that we've atomically claimed the status transition
       await db.update(promoWalletTable)
-        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${request.amountUsd}`, updatedAt: new Date() })
-        .where(eq(promoWalletTable.userId, request.userId));
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${atomicReject.amountUsd}`, updatedAt: new Date() })
+        .where(eq(promoWalletTable.userId, atomicReject.userId));
       await db.insert(walletTransactionsTable).values({
-        userId: request.userId,
+        userId: atomicReject.userId,
         type: "refund",
-        amountUsd: request.amountUsd,
+        amountUsd: atomicReject.amountUsd,
         status: "completed",
         note: `Retrait #${requestId} rejte — rembourseman`,
       });
     }
-    await db.update(cashoutRequestsTable)
-      .set({ status: "rejected", adminNote: adminNote ?? null, updatedAt: new Date() })
-      .where(eq(cashoutRequestsTable.id, request.id));
     res.json({ ok: true });
   } else {
     res.status(400).json({ error: "Action invalide" });

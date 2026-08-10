@@ -129,15 +129,6 @@ export default function FlexCardRepay() {
     balance > 0 &&
     !repayMut.isPending;
 
-  const payFull = () => {
-    const full = Math.min(outstanding, balance);
-    if (full <= 0) {
-      toast({ title: t("flexCard.insufficientFunds"), variant: "destructive" });
-      return;
-    }
-    repayMut.mutate(Math.round(full * 100) / 100);
-  };
-
   return (
     <div className="max-w-lg mx-auto px-4 py-6 pb-24 space-y-5">
       {/* Header */}
@@ -220,7 +211,11 @@ export default function FlexCardRepay() {
           <Button
             className="flex-1 rounded-full"
             disabled={!canPay}
-            onClick={() => repayMut.mutate(Math.round(enteredAmount * 100) / 100)}
+            onClick={() => {
+              const amt = Math.round(enteredAmount * 100) / 100;
+              if (!window.confirm(t("flexCard.confirmPay", { amount: amt.toFixed(2) }))) return;
+              repayMut.mutate(amt);
+            }}
           >
             {repayMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("flexCard.pay")}
           </Button>
@@ -228,7 +223,13 @@ export default function FlexCardRepay() {
         <Button
           className="w-full rounded-full bg-red-600 hover:bg-red-700 text-white"
           disabled={repayMut.isPending || balance <= 0}
-          onClick={payFull}
+          onClick={() => {
+            const full = Math.min(outstanding, balance);
+            if (full <= 0) { toast({ title: t("flexCard.insufficientFunds"), variant: "destructive" }); return; }
+            const amt = Math.round(full * 100) / 100;
+            if (!window.confirm(t("flexCard.confirmPay", { amount: amt.toFixed(2) }))) return;
+            repayMut.mutate(amt);
+          }}
         >
           {t("flexCard.payFull", { amount: Math.min(outstanding, balance).toFixed(2) })}
         </Button>

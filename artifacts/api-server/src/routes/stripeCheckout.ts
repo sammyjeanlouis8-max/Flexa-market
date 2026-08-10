@@ -829,7 +829,9 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   // ── Standard listing purchase ────────────────────────────────────────────
   const listingId = meta.listingId ? Number(meta.listingId) : null;
 
-  // Update pending transaction → completed
+  // Update pending transaction → completed.
+  // WHERE paymentStatus='pending' is the idempotency gate: duplicate webhook retries
+  // find the row already 'completed' so .returning() yields nothing → early return.
   const [updatedTx] = await db
     .update(transactionsTable)
     .set({
@@ -838,8 +840,16 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       stripePaymentIntentId: paymentIntentId,
       paymentRef: sessionId,
     })
-    .where(eq(transactionsTable.stripeCheckoutSessionId, sessionId))
+    .where(and(
+      eq(transactionsTable.stripeCheckoutSessionId, sessionId),
+      eq(transactionsTable.paymentStatus, "pending"),
+    ))
     .returning();
+
+  if (!updatedTx) {
+    logger.warn({ sessionId }, "Stripe standard order: transaction already processed or not found — skipping (idempotent)");
+    return;
+  }
 
   // Decrement stock (or mark sold if single-item / stock exhausted)
   if (listingId) {
@@ -875,12 +885,14 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   }
 
   // ── If seller chose "Kat FM" payout → auto-credit their FM wallet ──────────
+  // Also insert a sale_earnings audit record so releaseEscrow can detect this
+  // pre-payment and avoid double-crediting the seller when escrow releases later.
   const sellerCardPayoutMethod = meta.sellerCardPayoutMethod ?? "fm_wallet";
   if (sellerUserId && updatedTx && sellerCardPayoutMethod === "fm_wallet") {
     const sellerEarnings = updatedTx.sellerEarnings ?? 0;
     if (sellerEarnings > 0) {
       const [existingWallet] = await db
-        .select()
+        .select({ id: promoWalletTable.id })
         .from(promoWalletTable)
         .where(eq(promoWalletTable.userId, sellerUserId));
 
@@ -893,7 +905,18 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         await db.insert(promoWalletTable).values({ userId: sellerUserId, balanceUsd: sellerEarnings });
       }
 
-      logger.info({ sellerUserId, sellerEarnings, sessionId }, "Seller FM wallet credited after Stripe purchase (Kat FM payout)");
+      // Audit record with paymentRef='order-{txId}' so releaseEscrow detects the
+      // pre-payment and skips double-crediting (onConflictDoNothing is a safety net).
+      await db.insert(walletTransactionsTable).values({
+        userId: sellerUserId,
+        type: "sale_earnings",
+        amountUsd: sellerEarnings,
+        paymentRef: `order-${updatedTx.id}`,
+        status: "completed",
+        note: `Stripe FM wallet checkout credit — order #${updatedTx.id} (pre-paid at checkout)`,
+      }).onConflictDoNothing();
+
+      logger.info({ sellerUserId, sellerEarnings, sessionId, orderId: updatedTx.id }, "Seller FM wallet credited after Stripe purchase (Kat FM payout)");
     }
   }
 

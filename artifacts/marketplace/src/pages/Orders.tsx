@@ -302,7 +302,7 @@ export default function Orders() {
                   >
                     <p className="text-sm text-red-700 dark:text-red-300 font-medium flex items-center gap-1.5">
                       <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                      Ou sèten ou vle kansele kòmand sa?
+                      Kansele kòmand sa? <span className="font-bold">${o.amount.toFixed(2)}</span> ap retounen nan pòtfèy ou.
                     </p>
                     <div className="flex gap-2 flex-shrink-0">
                       <Button

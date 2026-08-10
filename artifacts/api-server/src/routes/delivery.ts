@@ -1232,7 +1232,9 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
 
   const now = new Date();
 
-  await db.update(deliveriesTable).set({
+  // Idempotency guard: WHERE sellerPaymentReleased=false prevents concurrent calls
+  // from double-crediting the seller if two requests race (e.g. network retry).
+  const [marked] = await db.update(deliveriesTable).set({
     codeVerifiedAt: now,
     status: "delivered",
     deliveredAt: now,
@@ -1240,7 +1242,16 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
     sellerPaymentReleased: true,
     sellerPaymentReleasedAt: now,
     updatedAt: now,
-  }).where(eq(deliveriesTable.id, deliveryId));
+  }).where(and(
+    eq(deliveriesTable.id, deliveryId),
+    eq(deliveriesTable.sellerPaymentReleased, false),
+  )).returning({ id: deliveriesTable.id });
+
+  if (!marked) {
+    // Already processed — return success so client doesn't retry
+    res.json({ ok: true, alreadyProcessed: true });
+    return;
+  }
 
   // 1. Release product escrow to seller
   if (delivery.transactionId) {
@@ -1267,7 +1278,7 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
       paymentRef: `seller-delivery-${deliveryId}`,
       status: "completed",
       note: `Kòb livrezon (machann) — #FL-${deliveryId}`,
-    }).catch(() => {});
+    }).onConflictDoNothing();
   }
 
   // 3. Release $10 buyer hold back to buyer FM wallet
@@ -1286,7 +1297,7 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
       paymentRef: `delivery-hold-${deliveryId}`,
       status: "completed",
       note: `Depo livrezon retounen — #FL-${deliveryId}`,
-    }).catch(() => {});
+    }).onConflictDoNothing();
     await db.update(deliveriesTable).set({ holdReleased: true, holdReleasedAt: now, updatedAt: now }).where(eq(deliveriesTable.id, deliveryId));
   }
 

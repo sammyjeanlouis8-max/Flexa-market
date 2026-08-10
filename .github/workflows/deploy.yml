@@ -1,0 +1,18 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger DigitalOcean deployment
+        run: |
+          curl -s -X POST \
+            "https://api.digitalocean.com/v2/apps/4a94f9b4-6ede-453e-9e8c-f1439d3ade6d/deployments" \
+            -H "Authorization: Bearer ${{ secrets.DO_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{"force_build": true}'

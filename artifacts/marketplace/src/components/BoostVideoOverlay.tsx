@@ -53,6 +53,9 @@ interface BoostListing {
   boostExternalLink: string | null;
   boostWhatsappNumber: string | null;
   boostCtaText: string | null;
+  /** "hidden" for video-only ghost listings — no product page exists */
+  status?: string | null;
+  isVideoOnly?: boolean;
 }
 
 interface Props {
@@ -189,6 +192,13 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   }, [onClose]);
 
   // ── CTA ───────────────────────────────────────────────────────────────────
+  // Video-only boosts (status="hidden") have no product page — never navigate
+  // to /listings/:id for them. Only open external link or WhatsApp if set.
+  const isVideoOnly = listing.isVideoOnly || listing.status === "hidden";
+  const hasExternalCta =
+    (listing.boostCtaType === "link" && !!listing.boostExternalLink) ||
+    (listing.boostCtaType === "whatsapp" && !!listing.boostWhatsappNumber);
+
   const handleCta = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -200,11 +210,15 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     } else if (type === "whatsapp" && listing.boostWhatsappNumber) {
       window.open(`https://wa.me/${listing.boostWhatsappNumber.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
       onClose();
-    } else {
+    } else if (!isVideoOnly) {
+      // Only navigate to product page for real listings
       setLocation(`/listings/${listing.id}?buy=1`);
       onClose();
+    } else {
+      // Video-only, no external CTA → just close the overlay
+      onClose();
     }
-  }, [listing, onClose, setLocation]);
+  }, [listing, onClose, setLocation, isVideoOnly]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   // Split layout: video pinned to TOP, controls bar pinned to BOTTOM.
@@ -293,38 +307,40 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)" }}
       >
-        {/* CTA button */}
-        <button
-          type="button"
-          onClick={handleCta}
-          onTouchEnd={e => { e.preventDefault(); handleCta(e); }}
-          className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
-          data-testid="button-boost-view-listing"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            {listing.thumbnail && (
-              <img
-                src={listing.thumbnail}
-                alt=""
-                loading="eager"
-                className="h-10 w-10 rounded object-cover flex-shrink-0"
-              />
-            )}
-            <div className="text-left min-w-0">
-              <div className="text-sm font-bold truncate">{listing.title}</div>
-              {listing.price > 0 && (
-                <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
+        {/* CTA button — hidden for video-only boosts with no external action */}
+        {(!isVideoOnly || hasExternalCta) && (
+          <button
+            type="button"
+            onClick={handleCta}
+            onTouchEnd={e => { e.preventDefault(); handleCta(e); }}
+            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
+            data-testid="button-boost-view-listing"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              {listing.thumbnail && (
+                <img
+                  src={listing.thumbnail}
+                  alt=""
+                  loading="eager"
+                  className="h-10 w-10 rounded object-cover flex-shrink-0"
+                />
               )}
+              <div className="text-left min-w-0">
+                <div className="text-sm font-bold truncate">{listing.title}</div>
+                {listing.price > 0 && (
+                  <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
+                )}
+              </div>
             </div>
-          </div>
-          <span className="text-sm whitespace-nowrap shrink-0">
-            {listing.boostCtaType === "link"
-              ? <>{t("boostAd.visitLink")} →</>
-              : listing.boostCtaType === "whatsapp"
-                ? <>{t("boostAd.chatWhatsApp")} →</>
-                : <>{t("boostAd.viewListing")} →</>}
-          </span>
-        </button>
+            <span className="text-sm whitespace-nowrap shrink-0">
+              {listing.boostCtaType === "link"
+                ? <>{t("boostAd.visitLink")} →</>
+                : listing.boostCtaType === "whatsapp"
+                  ? <>{t("boostAd.chatWhatsApp")} →</>
+                  : <>{t("boostAd.viewListing")} →</>}
+            </span>
+          </button>
+        )}
 
         {/* Skip / countdown — right-aligned, below CTA */}
         <div className="flex items-center justify-end mt-3 mb-1">

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable } from "@workspace/db";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable } from "@workspace/db";
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
@@ -562,6 +562,46 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     );
   }
 
+  // Age targeting: compute viewer's age from DOB and filter boosts that target
+  // a specific age range. Boosts with no age limits are shown to everyone.
+  const userDateOfBirth = (req.user as any).dateOfBirth ?? null;
+  if (userDateOfBirth) {
+    const todayD = new Date();
+    const dob = new Date(userDateOfBirth);
+    let viewerAge = todayD.getFullYear() - dob.getFullYear();
+    const monthDiff = todayD.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && todayD.getDate() < dob.getDate())) viewerAge--;
+    conditions.push(
+      sql`(
+        ${listingsTable.boostAudienceAgeMin} IS NULL
+        OR (
+          ${listingsTable.boostAudienceAgeMin} <= ${viewerAge}
+          AND ${listingsTable.boostAudienceAgeMax} >= ${viewerAge}
+        )
+      )` as any
+    );
+  }
+
+  // Daily budget cap: exclude boosts that have already exhausted their daily
+  // impression quota. Cap = dailyBudget_USD × 200 impressions/$.
+  // Boosts with no dailyBudget set have no cap and are always included.
+  const IMPRESSIONS_PER_USD = 200;
+  const todayStr = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  conditions.push(
+    sql`(
+      ${listingsTable.boostDailyBudget} IS NULL
+      OR NOT EXISTS (
+        SELECT 1 FROM boosts b
+        JOIN boost_daily_impressions bdi ON bdi.boost_id = b.id
+        WHERE b.listing_id = ${listingsTable.id}
+          AND b.payment_status = 'paid'
+          AND b.expires_at > NOW()
+          AND bdi.date = ${todayStr}
+          AND bdi.impression_count >= FLOOR(${listingsTable.boostDailyBudget} * ${IMPRESSIONS_PER_USD})
+      )
+    )` as any
+  );
+
   const geoUser: GeoUser = {
     country: userCountry,
     state: userState,
@@ -902,6 +942,55 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
     if (existing.sellerId !== req.userId && !req.user?.isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+
+    // ── Prorate-refund any active paid boost before deleting ─────────────────
+    const [activeBoost] = await db
+      .select()
+      .from(boostsTable)
+      .where(and(
+        eq(boostsTable.listingId, id),
+        eq(boostsTable.paymentStatus, "paid"),
+        gt(boostsTable.expiresAt, new Date()),
+      ))
+      .orderBy(desc(boostsTable.createdAt))
+      .limit(1);
+
+    if (activeBoost) {
+      const now = new Date();
+      const startAt = (existing as any).boostStartAt
+        ? new Date((existing as any).boostStartAt)
+        : (activeBoost.createdAt ?? now);
+      const expiresAt = activeBoost.expiresAt!;
+      const totalMs = expiresAt.getTime() - new Date(startAt).getTime();
+      const remainingMs = Math.max(0, expiresAt.getTime() - now.getTime());
+      const refundRatio = totalMs > 0 ? remainingMs / totalMs : 0;
+      const budget = (activeBoost as any).budget ?? 0;
+      const refundUsd = parseFloat((budget * refundRatio).toFixed(2));
+
+      if (refundUsd > 0) {
+        await db
+          .update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundUsd}`, updatedAt: new Date() })
+          .where(eq(promoWalletTable.userId, existing.sellerId));
+
+        await db.insert(walletTransactionsTable).values({
+          userId: existing.sellerId,
+          type: "boost_refund",
+          amountUsd: refundUsd,
+          status: "completed",
+          note: `Rembourseman boost — lis efase: ${existing.title}`,
+        });
+
+        await db.insert(notificationsTable).values({
+          userId: existing.sellerId,
+          actorId: existing.sellerId,
+          type: "boost_refund",
+          listingId: id,
+          message: `$${refundUsd.toFixed(2)} remboursé sou FM Wallet ou — boost pou "${existing.title}" anile akòz efaseman lis la.`,
+          isRead: false,
+        });
+      }
+    }
 
     await db.delete(boostsTable).where(eq(boostsTable.listingId, id));
     await db.delete(listingsTable).where(eq(listingsTable.id, id));
@@ -1467,10 +1556,22 @@ router.post("/listings/:id/impression", optionalAuth, async (req, res): Promise<
       .orderBy(desc(boostsTable.createdAt))
       .limit(1);
     if (boost) {
-      await db
-        .update(boostsTable)
-        .set({ impressions: sql`${boostsTable.impressions} + 1` })
-        .where(eq(boostsTable.id, boost.id));
+      const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+      await Promise.all([
+        // Increment lifetime impressions
+        db
+          .update(boostsTable)
+          .set({ impressions: sql`${boostsTable.impressions} + 1` })
+          .where(eq(boostsTable.id, boost.id)),
+        // Upsert today's daily impression count for budget-cap enforcement
+        db
+          .insert(boostDailyImpressionsTable)
+          .values({ boostId: boost.id, date: today, impressionCount: 1 })
+          .onConflictDoUpdate({
+            target: [boostDailyImpressionsTable.boostId, boostDailyImpressionsTable.date],
+            set: { impressionCount: sql`${boostDailyImpressionsTable.impressionCount} + 1` },
+          }),
+      ]);
     }
     res.json({ ok: true });
   } catch {

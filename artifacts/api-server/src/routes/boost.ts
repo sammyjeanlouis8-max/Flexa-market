@@ -420,6 +420,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       boostExternalLink: listingsTable.boostExternalLink,
       boostWhatsappNumber: listingsTable.boostWhatsappNumber,
       boostCtaText: listingsTable.boostCtaText,
+      status: listingsTable.status,
     })
     .from(listingsTable)
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
@@ -446,6 +447,10 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       boostExternalLink: row.boostExternalLink ?? null,
       boostWhatsappNumber: row.boostWhatsappNumber ?? null,
       boostCtaText: row.boostCtaText ?? null,
+      // Video-only boosts use a ghost listing (status=hidden) so the overlay
+      // knows not to show a "View Product" CTA that leads to a dead page.
+      status: row.status,
+      isVideoOnly: row.status === "hidden",
     },
   });
 });

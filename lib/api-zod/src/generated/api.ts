@@ -237,6 +237,8 @@ export const UpdateUserBody = zod.object({
   location: zod.string().optional(),
   bio: zod.string().optional(),
   avatar: zod.string().optional(),
+  dateOfBirth: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  gender: zod.enum(["male", "female", "other"]).optional().nullable(),
 });
 
 export const UpdateUserResponse = zod.object({

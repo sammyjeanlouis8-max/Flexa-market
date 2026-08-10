@@ -26,11 +26,19 @@ import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY } from "@/lib/phoneCou
 // have their own ISO code so they're never confused despite sharing +1.
 type PhoneIso = string;
 
+const GENDER_OPTIONS = [
+  { value: "male",   label: "Gason" },
+  { value: "female", label: "Fanm" },
+  { value: "other",  label: "Lòt" },
+] as const;
+
 const schema = z.object({
   name: z.string().min(2, "Need at least 2 characters"),
   location: z.string().optional(),
   bio: z.string().max(200, "Keep it under 200 characters").optional(),
   avatar: z.string().optional(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Dat ki valid: JJJJ-MM-AA").optional().or(z.literal("")),
+  gender: z.enum(["male", "female", "other"]).optional().or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -492,6 +500,8 @@ export default function EditProfile() {
       location: user?.location ?? "",
       bio: user?.bio ?? "",
       avatar: user?.avatar ?? "",
+      dateOfBirth: (user as any)?.dateOfBirth ?? "",
+      gender: (user as any)?.gender ?? "",
     },
   });
 
@@ -763,6 +773,46 @@ export default function EditProfile() {
             className="rounded-xl resize-none"
           />
           <p className="text-xs text-muted-foreground mt-1.5 text-right">{bio.length}/200</p>
+        </div>
+
+        {/* Date of Birth */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <label className="text-sm font-semibold text-foreground" htmlFor="dateOfBirth">Dat nesans</label>
+            <span className="text-xs text-muted-foreground font-medium px-1.5 py-0.5 rounded-md border border-border">{t("editProfile.optional")}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">Itilize pou piblisite kap montre tèt yo yon fason ki kòrèk pou ou. Pa janm pataje ak moun.</p>
+          <Input
+            id="dateOfBirth"
+            type="date"
+            {...form.register("dateOfBirth")}
+            data-testid="input-dob"
+            className="rounded-xl"
+            max={new Date().toISOString().slice(0, 10)}
+          />
+          {form.formState.errors.dateOfBirth && (
+            <p className="text-xs text-destructive mt-1">{form.formState.errors.dateOfBirth.message}</p>
+          )}
+        </div>
+
+        {/* Gender */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <label className="text-sm font-semibold text-foreground" htmlFor="gender">Sèks</label>
+            <span className="text-xs text-muted-foreground font-medium px-1.5 py-0.5 rounded-md border border-border">{t("editProfile.optional")}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mb-2">Pou piblisite pèsonalize sèlman. Pa janm pataje.</p>
+          <select
+            id="gender"
+            {...form.register("gender")}
+            data-testid="input-gender"
+            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          >
+            <option value="">— Chwazi —</option>
+            {GENDER_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 

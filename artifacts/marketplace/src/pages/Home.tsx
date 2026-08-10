@@ -428,45 +428,71 @@ function BoostedPostCard({
           </button>
         </div>
 
-        {/* Listing preview — horizontal layout */}
-        <button
-          className="flex gap-3 p-3 w-full text-left hover:bg-muted/40 transition-colors"
-          onClick={() => setLocation(`/listings/${listing.id}`)}
-        >
-          <img
-            src={img}
-            alt={listing.title}
-            className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src =
-                "https://placehold.co/96x96/f97316/white?text=Ad";
-            }}
-          />
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-foreground text-base">
-              {formatPrice(listing.price, listing.country, listing.currency)}
-            </p>
-            <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
-              {listing.title}
-            </p>
-            <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
-              <MapPin className="h-3 w-3 flex-shrink-0" />
-              <span className="text-xs truncate">{listing.city ?? listing.location}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {listing.sellerIsVerified && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 px-1.5 py-0.5 text-xs font-bold">
-                  <BadgeCheck className="h-3 w-3 fill-blue-500 text-white dark:text-blue-950" />
-                  Verifye
-                </span>
-              )}
-              <span className="text-xs text-muted-foreground">
-                pa {listing.sellerName}
-              </span>
+        {/* Listing preview — horizontal layout.
+            Video-only boosts (status="hidden") have no product page — render
+            as a non-interactive div so there is no clickable product link. */}
+        {listing.status === "hidden" ? (
+          <div className="flex gap-3 p-3 w-full text-left">
+            <img
+              src={img}
+              alt={listing.title}
+              className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  "https://placehold.co/96x96/f97316/white?text=Ad";
+              }}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
+                {listing.title}
+              </p>
+              <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
+                <span className="text-xs truncate">{listing.city ?? listing.location}</span>
+              </div>
+              <span className="text-xs text-muted-foreground">pa {listing.sellerName}</span>
             </div>
           </div>
-          <ArrowRight className="h-4 w-4 text-muted-foreground self-center flex-shrink-0" />
-        </button>
+        ) : (
+          <button
+            className="flex gap-3 p-3 w-full text-left hover:bg-muted/40 transition-colors"
+            onClick={() => setLocation(`/listings/${listing.id}`)}
+          >
+            <img
+              src={img}
+              alt={listing.title}
+              className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  "https://placehold.co/96x96/f97316/white?text=Ad";
+              }}
+            />
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-foreground text-base">
+                {formatPrice(listing.price, listing.country, listing.currency)}
+              </p>
+              <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
+                {listing.title}
+              </p>
+              <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
+                <span className="text-xs truncate">{listing.city ?? listing.location}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                {listing.sellerIsVerified && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 px-1.5 py-0.5 text-xs font-bold">
+                    <BadgeCheck className="h-3 w-3 fill-blue-500 text-white dark:text-blue-950" />
+                    Verifye
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  pa {listing.sellerName}
+                </span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground self-center flex-shrink-0" />
+          </button>
+        )}
       </div>
     </div>
   );

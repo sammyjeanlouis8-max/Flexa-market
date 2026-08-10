@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, boolean, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -85,6 +85,10 @@ export const usersTable = pgTable("users", {
   // Store manager: a trusted local person who acts on behalf of this seller.
   // A user with managedSellerId set is the store manager for that seller.
   managedSellerId: integer("managed_seller_id").references(() => usersTable.id),
+  // Audience targeting: used by the boosted-feed to match age/gender filters
+  // that sellers set when buying a boost.
+  dateOfBirth: date("date_of_birth"),            // "YYYY-MM-DD"
+  gender: text("gender"),                         // "male" | "female" | "other" | null
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

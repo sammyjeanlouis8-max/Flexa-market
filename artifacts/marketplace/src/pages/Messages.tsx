@@ -676,11 +676,22 @@ function MsgBubble({
   const mediaW = "min(200px, 72vw)";
   const bubbleMaxW = isAudio ? "160px" : hasMedia && !hasText ? mediaW : "72%";
 
-  const startLongPress = () => {
-    longPressRef.current = setTimeout(() => setShowMenu(true), 380);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const startLongPress = (e: React.PointerEvent) => {
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    longPressRef.current = setTimeout(() => setShowMenu(true), 420);
   };
   const cancelLongPress = () => {
-    if (longPressRef.current) clearTimeout(longPressRef.current);
+    pressStartRef.current = null;
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+  };
+  const onMoveCheck = (e: React.PointerEvent) => {
+    if (!pressStartRef.current) return;
+    const dx = e.clientX - pressStartRef.current.x;
+    const dy = e.clientY - pressStartRef.current.y;
+    // Any scroll-like movement (≥8 px) cancels the long-press so native scroll stays fluid
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) cancelLongPress();
   };
 
   const handleCopy = () => {
@@ -720,8 +731,11 @@ function MsgBubble({
           borderRadius: br,
           background: bubbleBg,
           overflow: isAudio ? "hidden" : "visible",
+          // Allow native vertical scroll even while long-press timer is running
+          touchAction: "pan-y",
         }}
         onPointerDown={startLongPress}
+        onPointerMove={onMoveCheck}
         onPointerUp={cancelLongPress}
         onPointerLeave={cancelLongPress}
         onPointerCancel={cancelLongPress}
@@ -1538,8 +1552,11 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           backgroundPosition: "center top",
           backgroundRepeat: "no-repeat",
           backgroundColor: "#f5e8c0",   /* warm gold fallback while image loads */
-          WebkitOverflowScrolling: "touch",
           position: "relative",
+          // Explicitly tell iOS this container handles vertical pan — prevents
+          // the browser from suspending scroll when a child captures pointerdown
+          touchAction: "pan-y",
+          overscrollBehavior: "contain",
         } as React.CSSProperties}
       >
         {isLoading && (

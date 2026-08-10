@@ -2201,7 +2201,7 @@ export async function runStartupMigrations(): Promise<void> {
 
   // One-time: activate all tracks that were uploaded before auto-approve was enabled
   try {
-    await db.execute(dsql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
+    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
 
@@ -2211,7 +2211,7 @@ export async function runStartupMigrations(): Promise<void> {
   //   2. Old all-caps + 3 dig:  ^[A-Z]{2,8}[0-9]{3}$ (e.g. SAMUEL247)
   // New codes look like Samuel37 — won't match either pattern, so this is idempotent.
   try {
-    const { rows: oldCodeUsers } = await db.execute(dsql.raw(
+    const { rows: oldCodeUsers } = await db.execute(sql.raw(
       `SELECT id, name, referral_code FROM users
        WHERE referral_code ~ '^FX[A-Z0-9]+'
           OR referral_code ~ '^[A-Z]{2,8}[0-9]{3}$'
@@ -2233,7 +2233,7 @@ export async function runStartupMigrations(): Promise<void> {
       };
 
       // Collect all existing codes so we can avoid collisions in-memory during the loop
-      const { rows: existingRows } = await db.execute(dsql.raw(
+      const { rows: existingRows } = await db.execute(sql.raw(
         `SELECT referral_code FROM users WHERE referral_code IS NOT NULL`
       ));
       const usedCodes = new Set(existingRows.map((r: any) => r.referral_code as string));
@@ -2257,7 +2257,7 @@ export async function runStartupMigrations(): Promise<void> {
         }
 
         // Atomic update — only touches this user, only if they still have the old code
-        await db.execute(dsql.raw(
+        await db.execute(sql.raw(
           `UPDATE users SET referral_code = '${newCode}' WHERE id = ${row.id} AND referral_code = '${row.referral_code}'`
         ));
         usedCodes.delete(row.referral_code as string);

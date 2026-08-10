@@ -173,7 +173,13 @@ async function getOrCreateWallet(userId: number): Promise<WalletRow> {
   const [created] = await db.insert(promoWalletTable).values({
     userId, balanceUsd: 0, pendingBalanceUsd: 0, accountNumber: acct,
     promoBalance: 0, unlockedBalance: 0, securityBalance: 0, firstRechargeDone: false,
-  }).returning();
+  }).onConflictDoNothing().returning();
+
+  // If onConflictDoNothing() swallowed a race-concurrent insert, fetch the winner row
+  if (!created) {
+    const [existing] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, userId));
+    return existing;
+  }
   return created;
 }
 
@@ -546,63 +552,93 @@ router.get("/wallet/promo/status", requireAuth, async (req, res): Promise<void> 
 });
 
 // ─── POST /api/wallet/promo/unlock ────────────────────────────────────────────
-// Moves newly-eligible promo from promoBalance → unlockedBalance
+// Moves newly-eligible promo from promoBalance → unlockedBalance.
+// All reads + write are inside a db.transaction() so concurrent requests can't
+// both see the same newUnlockableUsd and double-unlock.
 router.post("/wallet/promo/unlock", requireAuth, async (req, res): Promise<void> => {
-  const wallet = await getOrCreateWallet(req.userId!);
+  const userId = req.userId!;
 
-  const [realSpendRow] = await db
-    .select({ total: sql<number>`coalesce(sum(abs(${walletTransactionsTable.amountUsd})), 0)::float` })
-    .from(walletTransactionsTable)
-    .where(and(
-      eq(walletTransactionsTable.userId, req.userId!),
-      eq(walletTransactionsTable.type, "boost_debit"),
-      eq(walletTransactionsTable.status, "completed"),
-    ));
-  const totalRealBoostSpend = realSpendRow?.total ?? 0;
+  let unlockedUsd = 0;
+  let toNextUnlock = 0;
+  try {
+    unlockedUsd = await db.transaction(async (dbtx) => {
+      const wallet = await getOrCreateWallet(userId);
 
-  const [alreadyUnlockedRow] = await db
-    .select({ total: sql<number>`coalesce(sum(${walletTransactionsTable.amountUsd}), 0)::float` })
-    .from(walletTransactionsTable)
-    .where(and(
-      eq(walletTransactionsTable.userId, req.userId!),
-      eq(walletTransactionsTable.type, "promo_unlock"),
-      eq(walletTransactionsTable.status, "completed"),
-    ));
-  const totalAlreadyUnlocked = alreadyUnlockedRow?.total ?? 0;
+      const [realSpendRow] = await dbtx
+        .select({ total: sql<number>`coalesce(sum(abs(${walletTransactionsTable.amountUsd})), 0)::float` })
+        .from(walletTransactionsTable)
+        .where(and(
+          eq(walletTransactionsTable.userId, userId),
+          eq(walletTransactionsTable.type, "boost_debit"),
+          eq(walletTransactionsTable.status, "completed"),
+        ));
+      const totalRealBoostSpend = realSpendRow?.total ?? 0;
 
-  const eligibleUnlockUsd = Math.floor(totalRealBoostSpend / 20);
-  const newUnlockableUsd = parseFloat(Math.max(0, Math.min(
-    eligibleUnlockUsd - totalAlreadyUnlocked,
-    Math.max(0, wallet.promoBalance),
-  )).toFixed(2));
+      const [alreadyUnlockedRow] = await dbtx
+        .select({ total: sql<number>`coalesce(sum(${walletTransactionsTable.amountUsd}), 0)::float` })
+        .from(walletTransactionsTable)
+        .where(and(
+          eq(walletTransactionsTable.userId, userId),
+          eq(walletTransactionsTable.type, "promo_unlock"),
+          eq(walletTransactionsTable.status, "completed"),
+        ));
+      const totalAlreadyUnlocked = alreadyUnlockedRow?.total ?? 0;
 
-  if (newUnlockableUsd <= 0) {
-    res.status(400).json({ error: "Pa gen promo pou debloke kounye a", toNextUnlock: parseFloat((20 - (totalRealBoostSpend % 20)).toFixed(2)) });
-    return;
+      const eligibleUnlockUsd = Math.floor(totalRealBoostSpend / 20);
+      const newUnlockableUsd = parseFloat(Math.max(0, Math.min(
+        eligibleUnlockUsd - totalAlreadyUnlocked,
+        Math.max(0, wallet.promoBalance),
+      )).toFixed(2));
+
+      toNextUnlock = parseFloat((20 - (totalRealBoostSpend % 20)).toFixed(2));
+
+      if (newUnlockableUsd <= 0) throw Object.assign(new Error("nothing_to_unlock"), { toNextUnlock });
+
+      // WHERE promoBalance guard prevents double-unlock under concurrency
+      const [updated] = await dbtx.update(promoWalletTable).set({
+        promoBalance: sql`${promoWalletTable.promoBalance} - ${newUnlockableUsd}`,
+        unlockedBalance: sql`${promoWalletTable.unlockedBalance} + ${newUnlockableUsd}`,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(promoWalletTable.userId, userId),
+        sql`${promoWalletTable.promoBalance} >= ${newUnlockableUsd - 0.001}`,
+      )).returning({ id: promoWalletTable.id });
+
+      if (!updated) throw new Error("race_condition");
+
+      await dbtx.insert(walletTransactionsTable).values({
+        userId,
+        type: "promo_unlock",
+        amountUsd: newUnlockableUsd,
+        status: "completed",
+        note: `Promo debloke — $${newUnlockableUsd.toFixed(2)} (baze sou $${totalRealBoostSpend.toFixed(2)} depans reyèl)`,
+      });
+
+      return newUnlockableUsd;
+    });
+  } catch (err: any) {
+    if (err.message === "nothing_to_unlock") {
+      res.status(400).json({ error: "Pa gen promo pou debloke kounye a", toNextUnlock: err.toNextUnlock ?? 0 });
+      return;
+    }
+    if (err.message === "race_condition") {
+      res.status(409).json({ error: "Balans promo chanje — eseye ankò" });
+      return;
+    }
+    throw err;
   }
 
-  await db.update(promoWalletTable).set({
-    promoBalance: sql`${promoWalletTable.promoBalance} - ${newUnlockableUsd}`,
-    unlockedBalance: sql`${promoWalletTable.unlockedBalance} + ${newUnlockableUsd}`,
-    updatedAt: new Date(),
-  }).where(eq(promoWalletTable.userId, req.userId!));
-
-  await db.insert(walletTransactionsTable).values({
-    userId: req.userId!,
-    type: "promo_unlock",
-    amountUsd: newUnlockableUsd,
-    status: "completed",
-    note: `Promo debloke — $${newUnlockableUsd.toFixed(2)} (baze sou $${totalRealBoostSpend.toFixed(2)} depans reyèl)`,
-  });
-
-  logger.info({ userId: req.userId, newUnlockableUsd, totalRealBoostSpend }, "Promo balance unlocked");
-  res.json({ ok: true, unlockedUsd: newUnlockableUsd });
+  logger.info({ userId, unlockedUsd }, "Promo balance unlocked");
+  res.json({ ok: true, unlockedUsd });
 });
 
 // ─── POST /api/wallet/promo/convert ──────────────────────────────────────────
-// Converts unlocked promo balance → real balance (balanceUsd)
+// Converts unlocked promo balance → real balance (balanceUsd).
+// Conditional WHERE prevents two concurrent requests from both reading the same
+// unlockedBalance and double-crediting real balance.
 router.post("/wallet/promo/convert", requireAuth, async (req, res): Promise<void> => {
-  const wallet = await getOrCreateWallet(req.userId!);
+  const userId = req.userId!;
+  const wallet = await getOrCreateWallet(userId);
   const convertAmount = parseFloat((Math.max(0, wallet.unlockedBalance)).toFixed(2));
 
   if (convertAmount < 0.01) {
@@ -610,21 +646,31 @@ router.post("/wallet/promo/convert", requireAuth, async (req, res): Promise<void
     return;
   }
 
-  await db.update(promoWalletTable).set({
+  // Atomic: WHERE unlockedBalance >= convertAmount ensures only one concurrent
+  // request succeeds; the second sees 0 unlockedBalance and returns 0 rows.
+  const [updated] = await db.update(promoWalletTable).set({
     unlockedBalance: 0,
     balanceUsd: sql`${promoWalletTable.balanceUsd} + ${convertAmount}`,
     updatedAt: new Date(),
-  }).where(eq(promoWalletTable.userId, req.userId!));
+  }).where(and(
+    eq(promoWalletTable.userId, userId),
+    sql`${promoWalletTable.unlockedBalance} >= ${convertAmount - 0.001}`,
+  )).returning({ id: promoWalletTable.id });
+
+  if (!updated) {
+    res.status(409).json({ error: "Balans debloke chanje — eseye ankò" });
+    return;
+  }
 
   await db.insert(walletTransactionsTable).values({
-    userId: req.userId!,
+    userId,
     type: "promo_convert",
     amountUsd: convertAmount,
     status: "completed",
     note: `Konvèti $${convertAmount.toFixed(2)} promo debloke → balans reyèl`,
   });
 
-  logger.info({ userId: req.userId, convertAmount }, "Promo unlocked balance converted to real balance");
+  logger.info({ userId, convertAmount }, "Promo unlocked balance converted to real balance");
   res.json({ ok: true, convertedUsd: convertAmount });
 });
 

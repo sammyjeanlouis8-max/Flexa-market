@@ -30,6 +30,16 @@ export function getCurrencySymbolByCode(code: "USD" | "HTG" | "DOP" | string): s
   return "$";
 }
 
+/**
+ * Format a USD amount with consistent locale formatting.
+ * Prefer this over `$${n.toFixed(2)}` so locale separators and
+ * rounding are handled uniformly across the app.
+ * e.g. formatUsd(1234.5) → "$1,234.50"
+ */
+export function formatUsd(amount: number): string {
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function formatPrice(
   price: number,
   country: string | null | undefined,

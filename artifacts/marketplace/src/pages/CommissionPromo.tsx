@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import { ArrowLeft, Clock, CheckCircle, TrendingUp, Info, Loader2, Users, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Clock, CheckCircle, TrendingUp, Info, Loader2, Users, ShoppingBag, Copy, Share2 } from "lucide-react";
 
 interface CommissionSummary {
   currentMonth: string;
@@ -12,6 +12,8 @@ interface CommissionSummary {
   availableCount: number;
   totalReferrals: number;
   buyersWhoSpent: number;
+  referralCode: string | null;
+  referralLink: string | null;
   history: {
     id: number;
     commissionAmount: number;
@@ -109,6 +111,68 @@ export default function CommissionPromo() {
             {t("commissionPromo.howItWorks")}
           </p>
         </div>
+
+        {/* ─── Referral code card ─── */}
+        {(data?.referralCode || loading) && (
+          <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-4 space-y-3 border border-slate-600">
+            <div className="flex items-center gap-2">
+              <Share2 size={16} className="text-orange-400" />
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">
+                {t("commissionPromo.yourCode")}
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="h-10 bg-slate-700 rounded-xl animate-pulse" />
+            ) : (
+              <>
+                {/* Code display */}
+                <div className="flex items-center gap-3 bg-slate-950 rounded-xl px-4 py-3">
+                  <span className="flex-1 text-2xl font-black tracking-[0.15em] text-orange-400 font-mono">
+                    {data?.referralCode}
+                  </span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(data?.referralCode ?? "");
+                      showToast(t("commissionPromo.codeCopied"), true);
+                    }}
+                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
+                  >
+                    <Copy size={16} className="text-slate-300" />
+                  </button>
+                </div>
+
+                {/* Share buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => {
+                      const msg = t("commissionPromo.shareMsg", { code: data?.referralCode ?? "" });
+                      navigator.clipboard.writeText(msg);
+                      showToast(t("commissionPromo.linkCopied"), true);
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors"
+                  >
+                    <Copy size={13} /> {t("commissionPromo.copyLink")}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const msg = t("commissionPromo.shareMsg", { code: data?.referralCode ?? "" });
+                      if (navigator.share) {
+                        navigator.share({ text: msg }).catch(() => {});
+                      } else {
+                        navigator.clipboard.writeText(msg);
+                        showToast(t("commissionPromo.linkCopied"), true);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-xs font-bold text-white transition-colors"
+                  >
+                    <Share2 size={13} /> {t("commissionPromo.share")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Referral stats — always visible even while loading */}
         <div className="grid grid-cols-2 gap-3">

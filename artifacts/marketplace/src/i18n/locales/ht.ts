@@ -4535,5 +4535,11 @@ export default {
     statReferralsSub: "Moun ki enskri ak kòd ou",
     statBuyers: "Acheteurs",
     statBuyersSub: "Referans ki fè yon acha",
+    yourCode: "Kòd referans ou",
+    codeCopied: "Kòd kopye!",
+    linkCopied: "Mesaj kopye!",
+    copyLink: "Kopye mesaj",
+    share: "Pataje",
+    shareMsg: "Rantre nan Flexa Market epi jwenn yon rediksyon sou premye kòmand ou! Itilize kòd mwen: {{code}} 👉 https://flexamarket.com/auth/register?ref={{code}}",
   },
 } as const;

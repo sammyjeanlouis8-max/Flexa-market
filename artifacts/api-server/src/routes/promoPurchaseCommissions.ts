@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, promoPurchaseCommissionsTable, promoWalletTable, usersTable } from "@workspace/db";
-import { eq, and, lt, ne, desc, sql, countDistinct, count } from "drizzle-orm";
+import { eq, and, lt, desc, sql, countDistinct, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -19,8 +19,8 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
     const userId = req.userId!;
     const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
-    // Commission rows + referral stats in parallel
-    const [rows, [referralStats], [buyerStats]] = await Promise.all([
+    // Commission rows + referral stats + user's own code in parallel
+    const [rows, [referralStats], [buyerStats], [me]] = await Promise.all([
       db
         .select()
         .from(promoPurchaseCommissionsTable)
@@ -39,6 +39,13 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
         .select({ total: countDistinct(promoPurchaseCommissionsTable.buyerUserId) })
         .from(promoPurchaseCommissionsTable)
         .where(eq(promoPurchaseCommissionsTable.referrerUserId, userId)),
+
+      // This user's own referral code
+      db
+        .select({ referralCode: usersTable.referralCode, name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1),
     ]);
 
     const pendingRows    = rows.filter(r => r.status === "pending" && r.cycleMonth === currentMonth);
@@ -55,6 +62,8 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
       availableCount:   availableRows.length,
       totalReferrals:   referralStats?.total ?? 0,
       buyersWhoSpent:   buyerStats?.total ?? 0,
+      referralCode:     me?.referralCode ?? null,
+      referralLink:     me?.referralCode ? `https://flexamarket.com/auth/register?ref=${me.referralCode}` : null,
       history:          rows.slice(0, 50).map(r => ({
         id: r.id,
         commissionAmount: r.commissionAmount,

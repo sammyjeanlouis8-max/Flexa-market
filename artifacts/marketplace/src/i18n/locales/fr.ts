@@ -4534,5 +4534,11 @@ export default {
     statReferralsSub: "Personnes inscrites avec votre code",
     statBuyers: "Acheteurs",
     statBuyersSub: "Filleuls ayant effectué un achat",
+    yourCode: "Votre code de parrainage",
+    codeCopied: "Code copié !",
+    linkCopied: "Message copié !",
+    copyLink: "Copier le message",
+    share: "Partager",
+    shareMsg: "Rejoignez-moi sur Flexa Market et obtenez une réduction sur votre première commande ! Utilisez mon code : {{code}} 👉 https://flexamarket.com/auth/register?ref={{code}}",
   },
 } as const;

@@ -4539,5 +4539,11 @@ export default {
     statReferralsSub: "People who signed up with your code",
     statBuyers: "Buyers",
     statBuyersSub: "Referrals who made a purchase",
+    yourCode: "Your referral code",
+    codeCopied: "Code copied!",
+    linkCopied: "Message copied!",
+    copyLink: "Copy message",
+    share: "Share",
+    shareMsg: "Join me on Flexa Market and get a discount on your first order! Use my code: {{code}} 👉 https://flexamarket.com/auth/register?ref={{code}}",
   },
 } as const;

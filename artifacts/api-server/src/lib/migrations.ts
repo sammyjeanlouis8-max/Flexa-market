@@ -2205,12 +2205,14 @@ export async function runStartupMigrations(): Promise<void> {
     logger.info("Migration: activated all pending music tracks");
   } catch { /* non-fatal */ }
 
-  // One-time: backfill name-based referral codes for users still holding old random "FX…" codes.
-  // Old pattern: exactly 8 chars, starts with "FX" (e.g. FXBJU2EZ). Name-based codes don't match this.
+  // Ongoing: backfill name-based referral codes for users still holding any old "FX…" random code.
+  // Old pattern: any code starting with "FX" followed by uppercase/digits (e.g. FXBJU2EZ, FX247).
+  // Name-based codes start with the user's first name (letters), so they don't match ^FX[^a-z]*.
+  // Runs every startup — idempotent because the WHERE clause only matches unconverted codes.
   try {
     const { rows: oldCodeUsers } = await db.execute(dsql.raw(
       `SELECT id, name, referral_code FROM users
-       WHERE referral_code ~ '^FX[A-Z0-9]{6}$'
+       WHERE referral_code ~ '^FX[A-Z0-9]+'
        ORDER BY id`
     ));
 

@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import { ArrowLeft, Clock, CheckCircle, TrendingUp, Loader2, Users, ShoppingBag, Copy, Share2 } from "lucide-react";
+import {
+  ArrowLeft, Clock, CheckCircle, TrendingUp, Loader2, Users, ShoppingBag,
+  Copy, Share2, Wallet,
+} from "lucide-react";
 
 interface CommissionSummary {
   currentMonth: string;
@@ -25,23 +28,28 @@ interface CommissionSummary {
   }[];
 }
 
+/** Returns "1 Jiyè 2026", "1 Septanm 2026", etc. — the 1st of the NEXT month */
+function firstOfNextMonth(currentMonth: string): string {
+  const [y, m] = currentMonth.split("-").map(Number);
+  const next = new Date(y, m, 1); // JS months 0-indexed → m = next month
+  return next.toLocaleDateString("fr-HT", { day: "numeric", month: "long", year: "numeric" });
+}
+
 export default function CommissionPromo() {
   const { t } = useTranslation();
   const { token } = useAuth();
   const [, navigate] = useLocation();
 
-  const [data, setData] = useState<CommissionSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]           = useState<CommissionSummary | null>(null);
+  const [loading, setLoading]     = useState(true);
   const [withdrawing, setWithdrawing] = useState(false);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
 
   const authHeader = token ? `Bearer ${token}` : "";
 
   const load = () => {
     setLoading(true);
-    fetch("/api/promo-purchase-commissions/my", {
-      headers: { Authorization: authHeader },
-    })
+    fetch("/api/promo-purchase-commissions/my", { headers: { Authorization: authHeader } })
       .then(r => r.json())
       .then(d => setData(d))
       .catch(() => setData(null))
@@ -52,9 +60,10 @@ export default function CommissionPromo() {
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
+    setTimeout(() => setToast(null), 4000);
   };
 
+  /* ── Withdraw ── */
   const handleWithdraw = async () => {
     if (!data || data.availableAmount <= 0 || withdrawing) return;
     setWithdrawing(true);
@@ -84,10 +93,7 @@ export default function CommissionPromo() {
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-slate-950/95 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center gap-3">
-        <button
-          onClick={() => navigate("/")}
-          className="p-2 rounded-full hover:bg-slate-800 transition-colors"
-        >
+        <button onClick={() => navigate("/")} className="p-2 rounded-full hover:bg-slate-800 transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div>
@@ -98,12 +104,13 @@ export default function CommissionPromo() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold transition-all ${toast.ok ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-xl text-sm font-semibold transition-all max-w-xs text-center ${toast.ok ? "bg-emerald-500 text-white" : "bg-red-500 text-white"}`}>
           {toast.msg}
         </div>
       )}
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+
         {/* ─── Referral code card ─── */}
         {(data?.referralCode || loading) && (
           <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-4 space-y-3 border border-slate-600">
@@ -166,30 +173,22 @@ export default function CommissionPromo() {
           </div>
         )}
 
-        {/* Referral stats — always visible even while loading */}
+        {/* Referral stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-900 rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-slate-400">
               <Users size={15} />
-              <span className="text-xs font-semibold uppercase tracking-wide">
-                {t("commissionPromo.statReferrals")}
-              </span>
+              <span className="text-xs font-semibold uppercase tracking-wide">{t("commissionPromo.statReferrals")}</span>
             </div>
-            <div className="text-3xl font-extrabold text-white">
-              {loading ? "—" : (data?.totalReferrals ?? 0)}
-            </div>
+            <div className="text-3xl font-extrabold text-white">{loading ? "—" : (data?.totalReferrals ?? 0)}</div>
             <p className="text-xs text-slate-500">{t("commissionPromo.statReferralsSub")}</p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-slate-400">
               <ShoppingBag size={15} />
-              <span className="text-xs font-semibold uppercase tracking-wide">
-                {t("commissionPromo.statBuyers")}
-              </span>
+              <span className="text-xs font-semibold uppercase tracking-wide">{t("commissionPromo.statBuyers")}</span>
             </div>
-            <div className="text-3xl font-extrabold text-orange-400">
-              {loading ? "—" : (data?.buyersWhoSpent ?? 0)}
-            </div>
+            <div className="text-3xl font-extrabold text-orange-400">{loading ? "—" : (data?.buyersWhoSpent ?? 0)}</div>
             <p className="text-xs text-slate-500">{t("commissionPromo.statBuyersSub")}</p>
           </div>
         </div>
@@ -202,9 +201,7 @@ export default function CommissionPromo() {
           <>
             {/* ─── Card 1: Pending (current month) ─── */}
             <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-orange-600 to-amber-500 p-5 shadow-lg">
-              <div className="absolute top-3 right-3 opacity-20">
-                <Clock size={64} />
-              </div>
+              <div className="absolute top-3 right-3 opacity-20"><Clock size={64} /></div>
               <div className="flex items-center gap-2 mb-1">
                 <Clock size={16} className="text-white/80" />
                 <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">
@@ -217,16 +214,17 @@ export default function CommissionPromo() {
               <p className="text-sm text-white/75">
                 {t("commissionPromo.pendingCount", { count: data?.pendingCount ?? 0 })}
               </p>
+              {/* Clear unlock date */}
               <div className="mt-4 bg-white/20 rounded-xl px-3 py-2 text-xs text-white/90">
-                🔒 {t("commissionPromo.pendingLocked", { month: formatMonth(data?.currentMonth ?? new Date().toISOString().slice(0, 7)) })}
+                🔒 {t("commissionPromo.pendingLockedUntil", {
+                  date: data?.currentMonth ? firstOfNextMonth(data.currentMonth) : "—",
+                })}
               </div>
             </div>
 
             {/* ─── Card 2: Available (past months) ─── */}
             <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-emerald-700 to-teal-600 p-5 shadow-lg">
-              <div className="absolute top-3 right-3 opacity-20">
-                <CheckCircle size={64} />
-              </div>
+              <div className="absolute top-3 right-3 opacity-20"><CheckCircle size={64} /></div>
               <div className="flex items-center gap-2 mb-1">
                 <CheckCircle size={16} className="text-white/80" />
                 <span className="text-xs font-semibold text-white/80 uppercase tracking-wide">
@@ -239,15 +237,27 @@ export default function CommissionPromo() {
               <p className="text-sm text-white/75">
                 {t("commissionPromo.availableCount", { count: data?.availableCount ?? 0 })}
               </p>
+
+              {/* FM card destination note */}
+              <div className="mt-3 flex items-center gap-2 bg-white/15 rounded-xl px-3 py-2 text-xs text-white/90">
+                <Wallet size={13} className="shrink-0" />
+                {t("commissionPromo.withdrawDestination")}
+              </div>
+
+              {/* Withdraw button */}
               <button
                 onClick={handleWithdraw}
                 disabled={(data?.availableAmount ?? 0) <= 0 || withdrawing}
-                className="mt-4 w-full bg-white text-emerald-800 font-bold py-3 rounded-xl text-sm transition-all hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="mt-3 w-full bg-white text-emerald-800 font-bold py-3 rounded-xl text-sm transition-all hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {withdrawing ? (
                   <><Loader2 size={16} className="animate-spin" /> {t("commissionPromo.withdrawing")}</>
                 ) : (
-                  <>{t("commissionPromo.withdraw")} {(data?.availableAmount ?? 0) > 0 ? `$${data!.availableAmount.toFixed(2)}` : ""}</>
+                  <>
+                    <Wallet size={16} />
+                    {t("commissionPromo.withdraw")}
+                    {(data?.availableAmount ?? 0) > 0 ? ` $${data!.availableAmount.toFixed(2)} → Kat FM` : ""}
+                  </>
                 )}
               </button>
             </div>
@@ -257,7 +267,6 @@ export default function CommissionPromo() {
               <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                 <TrendingUp size={14} /> {t("commissionPromo.history")}
               </h2>
-
               {(data?.history ?? []).length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
                   <div className="text-4xl mb-3">💸</div>
@@ -267,10 +276,7 @@ export default function CommissionPromo() {
               ) : (
                 <div className="space-y-2">
                   {(data?.history ?? []).map(row => (
-                    <div
-                      key={row.id}
-                      className="bg-slate-900 rounded-xl px-4 py-3 flex items-center justify-between"
-                    >
+                    <div key={row.id} className="bg-slate-900 rounded-xl px-4 py-3 flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-white">
                           +${row.commissionAmount.toFixed(2)}

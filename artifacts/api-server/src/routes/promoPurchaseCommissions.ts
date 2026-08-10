@@ -48,16 +48,21 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
         .limit(1),
     ]);
 
-    // If user still has an old-style random "FX…" code, regenerate it from their name right now
-    if (me && /^FX[A-Z0-9]{6}$/.test(me.referralCode ?? "")) {
+    // If user still has an old-style random "FX…" code (any length), regenerate from their name now.
+    // Matches: any code that starts with "FX" followed only by digits/uppercase letters
+    // but does NOT look like a name-based code (name-based codes start with ≥2 letters that
+    // are not just "FX"). We detect old codes as: matches ^FX[A-Z0-9]+$ AND first 2 non-FX
+    // chars contain a digit (name codes are pure letters + 3 digits at the end, not purely random).
+    const isOldFxCode = /^FX[A-Z0-9]{3,8}$/.test(me?.referralCode ?? "");
+    if (me && isOldFxCode) {
       const nameBase = (n: string) => {
         const b = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z\s]/g, "")
           .trim().split(/\s+/)[0].toUpperCase().slice(0, 6);
-        return b.length >= 2 ? b : "FX";
+        return b.length >= 2 ? b : "FM";
       };
       const base = nameBase(me.name ?? "");
       let newCode: string | null = null;
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 30; i++) {
         const candidate = base + String(Math.floor(100 + Math.random() * 900));
         const [conflict] = await db.select({ id: usersTable.id }).from(usersTable)
           .where(eq(usersTable.referralCode, candidate)).limit(1);
@@ -100,6 +105,44 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "[promo-purchase-commissions] fetch failed");
     res.status(500).json({ error: "Failed to fetch commissions" });
+  }
+});
+
+/** POST /promo-purchase-commissions/regenerate-code
+ * Force-regenerate the caller's referral code from their name.
+ * Safe to call any time — generates a unique name-based code.
+ */
+router.post("/promo-purchase-commissions/regenerate-code", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const [me] = await db.select({ name: usersTable.name, referralCode: usersTable.referralCode })
+      .from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!me) { res.status(404).json({ error: "User not found" }); return; }
+
+    const nameBase = (n: string) => {
+      const b = String(n ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z\s]/g, "").trim().split(/\s+/)[0].toUpperCase().slice(0, 6);
+      return b.length >= 2 ? b : "FM";
+    };
+    const base = nameBase(me.name ?? "");
+    let newCode: string | null = null;
+    for (let i = 0; i < 50; i++) {
+      const candidate = base + String(Math.floor(100 + Math.random() * 900));
+      const [conflict] = await db.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.referralCode, candidate)).limit(1);
+      if (!conflict) { newCode = candidate; break; }
+    }
+    if (!newCode) {
+      newCode = base + Date.now().toString(36).toUpperCase().slice(-3);
+    }
+    await db.update(usersTable).set({ referralCode: newCode }).where(eq(usersTable.id, userId));
+    res.json({
+      referralCode: newCode,
+      referralLink: `https://flexamarket.com/auth/register?ref=${newCode}`,
+    });
+  } catch (err) {
+    req.log.error({ err }, "[promo-purchase-commissions] regenerate-code failed");
+    res.status(500).json({ error: "Failed to regenerate code" });
   }
 });
 

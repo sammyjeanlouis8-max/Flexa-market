@@ -549,6 +549,19 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     );
   }
 
+  // Gender targeting: only show to matching gender when the seller specified one.
+  // 'all' / NULL means no gender restriction — shown to everyone.
+  const userGender = (req.user as any).gender ?? null;
+  if (userGender) {
+    conditions.push(
+      sql`(
+        ${listingsTable.boostAudienceGender} IS NULL
+        OR ${listingsTable.boostAudienceGender} = 'all'
+        OR lower(${listingsTable.boostAudienceGender}) = ${userGender.toLowerCase()}
+      )` as any
+    );
+  }
+
   const geoUser: GeoUser = {
     country: userCountry,
     state: userState,

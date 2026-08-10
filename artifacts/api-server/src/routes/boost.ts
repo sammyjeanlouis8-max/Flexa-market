@@ -58,6 +58,27 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
   if (listing.sellerId !== req.userId && !isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
 
+  // Guard against double-submit: if there is already a boost for this listing
+  // in 'processing' state created within the last 2 minutes, reject immediately.
+  // 'processing' is set transiently during wallet activation; it prevents two
+  // concurrent requests from both deducting the wallet and activating the boost.
+  const [inFlight] = await db
+    .select({ id: boostsTable.id })
+    .from(boostsTable)
+    .where(
+      and(
+        eq(boostsTable.listingId, listingId),
+        eq(boostsTable.userId, req.userId!),
+        eq(boostsTable.paymentStatus, "processing"),
+        sql`${boostsTable.createdAt} > NOW() - INTERVAL '2 minutes'`,
+      )
+    )
+    .limit(1);
+  if (inFlight) {
+    res.status(429).json({ error: "Yon boost deja an tren tretman — tann yon ti moman epi eseye ankò." });
+    return;
+  }
+
   const plan = req.body.plan as Plan;
   const paymentMethod = req.body.paymentMethod as PayMethod;
   if (!VALID_PLANS.includes(plan)) { res.status(400).json({ error: "Invalid plan" }); return; }
@@ -170,9 +191,24 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
 
   // ── Wallet instant pay (promo-first, then real balance) ──────────────────
   if (paymentMethod === "wallet") {
+    // Claim the boost slot atomically: transition pending → processing so that
+    // any concurrent request hitting the in-flight guard above returns 429.
+    const [claimed] = await db
+      .update(boostsTable)
+      .set({ paymentStatus: "processing" })
+      .where(and(eq(boostsTable.id, boost.id), eq(boostsTable.paymentStatus, "pending")))
+      .returning({ id: boostsTable.id });
+    if (!claimed) {
+      // Another request already claimed this boost record — bail out safely.
+      res.status(429).json({ error: "Boost deja an tren tretman" });
+      return;
+    }
+
     const result = await deductWalletHybrid(req.userId!, budget, `Boost ${plan} pou lis #${listingId}`, "boost_debit", req.userId!);
 
     if (!result.ok) {
+      // Deduction failed — roll back processing status so the seller can try again
+      await db.update(boostsTable).set({ paymentStatus: "pending" }).where(eq(boostsTable.id, boost.id)).catch(() => {});
       const total = result.promoBalance + result.realBalance;
       res.status(402).json({
         error: "Balans pa ase (promo + reyèl)",
@@ -786,13 +822,19 @@ router.post("/boost/:boostId/cancel", requireAuth, async (req, res): Promise<voi
   const budget = boost.budget ?? boost.price ?? 0;
   const refundUsd = parseFloat((budget * refundRatio).toFixed(2));
 
+  let cancelled = false;
   await db.transaction(async (tx) => {
-    // Mark boost as cancelled
-    await tx.update(boostsTable)
+    // Atomic guard: only cancel if still 'paid' — prevents double-refund from
+    // two concurrent cancel requests that both passed the outer status check.
+    const [claimed] = await tx.update(boostsTable)
       .set({ paymentStatus: "cancelled" })
-      .where(eq(boostsTable.id, boostId));
+      .where(and(eq(boostsTable.id, boostId), eq(boostsTable.paymentStatus, "paid")))
+      .returning({ id: boostsTable.id });
 
-    // Clear all boost fields on the listing
+    if (!claimed) return; // already cancelled by a concurrent request — skip refund
+    cancelled = true;
+
+    // Clear ALL boost-related fields on the listing so no stale targeting remains
     await tx.update(listingsTable)
       .set({
         isBoosted: false,
@@ -801,10 +843,26 @@ router.post("/boost/:boostId/cancel", requireAuth, async (req, res): Promise<voi
         boostVideoUrl: null,
         boostAudienceCountry: null,
         boostAudienceCity: null,
+        boostAudienceCities: null,
+        boostAudienceState: null,
+        boostAudienceNeighborhood: null,
+        boostAudienceRadiusKm: null,
+        boostAudienceAgeMin: null,
+        boostAudienceAgeMax: null,
+        boostAudienceGender: null,
+        boostAudienceObjective: null,
+        boostAudienceType: null,
+        boostAudienceInterests: null,
+        boostDailyBudget: null,
+        boostDurationDays: null,
+        boostCtaType: null,
+        boostExternalLink: null,
+        boostWhatsappNumber: null,
+        boostCtaText: null,
       })
       .where(eq(listingsTable.id, boost.listingId));
 
-    // Credit refund to real wallet if there is anything to refund
+    // Credit refund to wallet if there is anything to refund
     if (refundUsd > 0) {
       await tx.update(promoWalletTable)
         .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundUsd}`, updatedAt: new Date() })
@@ -819,7 +877,7 @@ router.post("/boost/:boostId/cancel", requireAuth, async (req, res): Promise<voi
       });
     }
 
-    // Notification — actorId must equal userId for self-notifications
+    // Notification
     await tx.insert(notificationsTable).values({
       userId,
       actorId: userId,
@@ -833,6 +891,11 @@ router.post("/boost/:boostId/cancel", requireAuth, async (req, res): Promise<voi
     } as any);
   });
 
+  if (!cancelled) {
+    res.status(409).json({ error: "Boost deja anile" });
+    return;
+  }
+
   logger.info({ userId, boostId, refundUsd }, "Boost cancelled with prorated refund");
   res.json({ ok: true, refundUsd });
 });
@@ -845,6 +908,15 @@ router.post("/boost/:boostId/cancel", requireAuth, async (req, res): Promise<voi
  */
 export async function runBoostExpiryJob(): Promise<void> {
   try {
+    // Step 1: find which listings are about to be expired (capture before clearing)
+    const expiring = await db
+      .select({ id: listingsTable.id, sellerId: listingsTable.sellerId, title: listingsTable.title })
+      .from(listingsTable)
+      .where(and(eq(listingsTable.isBoosted, true), sql`${listingsTable.boostExpiresAt} < NOW()`));
+
+    if (expiring.length === 0) return;
+
+    // Step 2: clear ALL boost-related columns so no stale targeting data remains
     const result = await db
       .update(listingsTable)
       .set({
@@ -854,14 +926,41 @@ export async function runBoostExpiryJob(): Promise<void> {
         boostVideoUrl: null,
         boostAudienceCountry: null,
         boostAudienceCity: null,
+        boostAudienceCities: null,
+        boostAudienceState: null,
+        boostAudienceNeighborhood: null,
+        boostAudienceRadiusKm: null,
+        boostAudienceAgeMin: null,
+        boostAudienceAgeMax: null,
+        boostAudienceGender: null,
+        boostAudienceObjective: null,
+        boostAudienceType: null,
+        boostAudienceInterests: null,
+        boostDailyBudget: null,
+        boostDurationDays: null,
+        boostCtaType: null,
+        boostExternalLink: null,
+        boostWhatsappNumber: null,
+        boostCtaText: null,
       })
-      .where(
-        and(
-          eq(listingsTable.isBoosted, true),
-          sql`${listingsTable.boostExpiresAt} < NOW()`,
-        ),
-      );
-    logger.info({ rows: (result as any).rowCount ?? "?" }, "Boost expiry job: expired boosts cleared");
+      .where(and(eq(listingsTable.isBoosted, true), sql`${listingsTable.boostExpiresAt} < NOW()`));
+
+    // Step 3: notify each seller that their boost expired
+    if (expiring.length > 0) {
+      await db.insert(notificationsTable).values(
+        expiring.map(l => ({
+          userId: l.sellerId,
+          actorId: l.sellerId,
+          type: "boost_expired" as const,
+          title: "Boost ekspire",
+          message: `Boost ou a pou "${l.title}" ekspire. Ranfòse lis ou a ankò pou plis vizibilite.`,
+          data: JSON.stringify({ listingId: l.id }),
+          isRead: false,
+        }))
+      ).catch(err => logger.error({ err }, "Boost expiry: failed to insert notifications"));
+    }
+
+    logger.info({ count: expiring.length, rows: (result as any).rowCount ?? "?" }, "Boost expiry job: expired boosts cleared");
   } catch (err) {
     logger.error({ err }, "Boost expiry job failed");
   }

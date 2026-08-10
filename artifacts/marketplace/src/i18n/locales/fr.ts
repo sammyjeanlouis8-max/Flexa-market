@@ -4530,5 +4530,9 @@ export default {
     statusPending: "En attente",
     statusAvailable: "Prêt",
     statusWithdrawn: "Retiré",
+    statReferrals: "Parrainages",
+    statReferralsSub: "Personnes inscrites avec votre code",
+    statBuyers: "Acheteurs",
+    statBuyersSub: "Filleuls ayant effectué un achat",
   },
 } as const;

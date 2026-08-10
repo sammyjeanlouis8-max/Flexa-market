@@ -4535,5 +4535,9 @@ export default {
     statusPending: "Pending",
     statusAvailable: "Ready",
     statusWithdrawn: "Withdrawn",
+    statReferrals: "Referrals",
+    statReferralsSub: "People who signed up with your code",
+    statBuyers: "Buyers",
+    statBuyersSub: "Referrals who made a purchase",
   },
 } as const;

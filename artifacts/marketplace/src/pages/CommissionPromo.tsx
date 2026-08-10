@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import { ArrowLeft, Clock, CheckCircle, TrendingUp, Info, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, CheckCircle, TrendingUp, Info, Loader2, Users, ShoppingBag } from "lucide-react";
 
 interface CommissionSummary {
   currentMonth: string;
@@ -10,6 +10,8 @@ interface CommissionSummary {
   pendingCount: number;
   availableAmount: number;
   availableCount: number;
+  totalReferrals: number;
+  buyersWhoSpent: number;
   history: {
     id: number;
     commissionAmount: number;
@@ -106,6 +108,34 @@ export default function CommissionPromo() {
           <p className="text-sm text-slate-300 leading-relaxed">
             {t("commissionPromo.howItWorks")}
           </p>
+        </div>
+
+        {/* Referral stats — always visible even while loading */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-slate-900 rounded-2xl p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-slate-400">
+              <Users size={15} />
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                {t("commissionPromo.statReferrals")}
+              </span>
+            </div>
+            <div className="text-3xl font-extrabold text-white">
+              {loading ? "—" : (data?.totalReferrals ?? 0)}
+            </div>
+            <p className="text-xs text-slate-500">{t("commissionPromo.statReferralsSub")}</p>
+          </div>
+          <div className="bg-slate-900 rounded-2xl p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-slate-400">
+              <ShoppingBag size={15} />
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                {t("commissionPromo.statBuyers")}
+              </span>
+            </div>
+            <div className="text-3xl font-extrabold text-orange-400">
+              {loading ? "—" : (data?.buyersWhoSpent ?? 0)}
+            </div>
+            <p className="text-xs text-slate-500">{t("commissionPromo.statBuyersSub")}</p>
+          </div>
         </div>
 
         {loading ? (

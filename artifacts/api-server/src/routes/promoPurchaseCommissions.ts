@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, promoPurchaseCommissionsTable, promoWalletTable } from "@workspace/db";
-import { eq, and, lt, ne, desc, sql } from "drizzle-orm";
+import { db, promoPurchaseCommissionsTable, promoWalletTable, usersTable } from "@workspace/db";
+import { eq, and, lt, ne, desc, sql, countDistinct, count } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
 const router = Router();
@@ -19,27 +19,43 @@ router.get("/promo-purchase-commissions/my", requireAuth, async (req, res) => {
     const userId = req.userId!;
     const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
 
-    const rows = await db
-      .select()
-      .from(promoPurchaseCommissionsTable)
-      .where(eq(promoPurchaseCommissionsTable.referrerUserId, userId))
-      .orderBy(desc(promoPurchaseCommissionsTable.createdAt))
-      .limit(100);
+    // Commission rows + referral stats in parallel
+    const [rows, [referralStats], [buyerStats]] = await Promise.all([
+      db
+        .select()
+        .from(promoPurchaseCommissionsTable)
+        .where(eq(promoPurchaseCommissionsTable.referrerUserId, userId))
+        .orderBy(desc(promoPurchaseCommissionsTable.createdAt))
+        .limit(100),
+
+      // Total people who signed up using this user's referral code
+      db
+        .select({ total: count() })
+        .from(usersTable)
+        .where(eq(usersTable.referredByUserId, userId)),
+
+      // Unique buyers among those referrals who actually made a purchase (earned commission)
+      db
+        .select({ total: countDistinct(promoPurchaseCommissionsTable.buyerUserId) })
+        .from(promoPurchaseCommissionsTable)
+        .where(eq(promoPurchaseCommissionsTable.referrerUserId, userId)),
+    ]);
 
     const pendingRows    = rows.filter(r => r.status === "pending" && r.cycleMonth === currentMonth);
     const availableRows  = rows.filter(r => r.status === "pending" && r.cycleMonth < currentMonth);
-    const withdrawnRows  = rows.filter(r => r.status === "withdrawn");
 
     const pendingAmount   = pendingRows.reduce((s, r) => s + (r.commissionAmount ?? 0), 0);
     const availableAmount = availableRows.reduce((s, r) => s + (r.commissionAmount ?? 0), 0);
 
     res.json({
       currentMonth,
-      pendingAmount:   Math.round(pendingAmount * 100) / 100,
-      pendingCount:    pendingRows.length,
-      availableAmount: Math.round(availableAmount * 100) / 100,
-      availableCount:  availableRows.length,
-      history:         rows.slice(0, 50).map(r => ({
+      pendingAmount:    Math.round(pendingAmount * 100) / 100,
+      pendingCount:     pendingRows.length,
+      availableAmount:  Math.round(availableAmount * 100) / 100,
+      availableCount:   availableRows.length,
+      totalReferrals:   referralStats?.total ?? 0,
+      buyersWhoSpent:   buyerStats?.total ?? 0,
+      history:          rows.slice(0, 50).map(r => ({
         id: r.id,
         commissionAmount: r.commissionAmount,
         purchaseAmount:   r.purchaseAmount,

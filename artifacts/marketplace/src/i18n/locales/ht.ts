@@ -4531,5 +4531,9 @@ export default {
     statusPending: "Annatant",
     statusAvailable: "Prè",
     statusWithdrawn: "Retire",
+    statReferrals: "Referans",
+    statReferralsSub: "Moun ki enskri ak kòd ou",
+    statBuyers: "Acheteurs",
+    statBuyersSub: "Referans ki fè yon acha",
   },
 } as const;

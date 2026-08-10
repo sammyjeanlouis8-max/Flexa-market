@@ -6,7 +6,7 @@ import {
   Package, MapPin, CheckCircle, Clock, Truck, User,
   Phone, Loader2, AlertCircle, Star, Copy, ChevronRight,
   Shield, MessageCircle, Navigation2, Bike, Car, ChevronDown,
-  Wifi, Heart,
+  Wifi, Heart, Store, KeyRound,
 } from "lucide-react";
 import TipModal from "@/components/TipModal";
 import DriverRatingModal from "@/components/DriverRatingModal";
@@ -283,32 +283,44 @@ function StatusTimeline({ status }: { status: string }) {
 
 // ── Main Driver Tracking Card ──────────────────────────────────────────────────
 function DriverTrackingCard({
-  driver, delivery, isBuyer, onCopyCode, vehicleImageUrl,
+  driver, delivery, isBuyer, isSeller, onCopyCode, vehicleImageUrl,
   driverLat, driverLng, lastGpsUpdate, onTipOpen,
+  onSellerAccept, onSellerArrived, onSellerVerify,
+  sellerAccepting, sellerUpdating, sellerVerifying,
 }: {
   driver: DriverInfo | null;
   delivery: DeliveryData;
   isBuyer: boolean;
+  isSeller: boolean;
   onCopyCode: () => void;
   vehicleImageUrl?: string | null;
   driverLat: number | null;
   driverLng: number | null;
   lastGpsUpdate: string | null;
   onTipOpen: () => void;
+  onSellerAccept: () => void;
+  onSellerArrived: () => void;
+  onSellerVerify: (code: string) => void;
+  sellerAccepting: boolean;
+  sellerUpdating: boolean;
+  sellerVerifying: boolean;
 }) {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
+  const [sellerCode, setSellerCode] = useState("");
 
   const STATUS_META: Record<string, { label: string; bg: string }> = {
-    waiting:         { label: "LOOKING FOR DRIVER",  bg: "bg-orange-500" },
-    driver_assigned: { label: "DRIVER ASSIGNED",     bg: "bg-green-500"  },
-    arrived_pickup:  { label: "AT PICKUP",           bg: "bg-green-500"  },
-    picked_up:       { label: "PACKAGE PICKED UP",   bg: "bg-green-500"  },
-    on_the_way:      { label: "DRIVER ON THE WAY",   bg: "bg-green-500"  },
-    arrived:         { label: "DRIVER ARRIVED",      bg: "bg-green-500"  },
-    delivered:       { label: "DELIVERED ✓",         bg: "bg-blue-500"   },
-    failed_pickup:   { label: "PICKUP RATE",         bg: "bg-red-500"    },
-    returned:        { label: "RETOUNEN ✓",          bg: "bg-slate-500"  },
+    waiting:            { label: "LOOKING FOR DRIVER",      bg: "bg-orange-500" },
+    driver_assigned:    { label: "DRIVER ASSIGNED",         bg: "bg-green-500"  },
+    arrived_pickup:     { label: "AT PICKUP",               bg: "bg-green-500"  },
+    picked_up:          { label: "PACKAGE PICKED UP",       bg: "bg-green-500"  },
+    on_the_way:         { label: "DRIVER ON THE WAY",       bg: "bg-green-500"  },
+    arrived:            { label: "DRIVER ARRIVED",          bg: "bg-green-500"  },
+    seller_delivering:  { label: "MACHANN AP LIVREZON",     bg: "bg-blue-500"   },
+    seller_arrived:     { label: "MACHANN RIVE — BOT KÒD",  bg: "bg-purple-500" },
+    delivered:          { label: "DELIVERED ✓",             bg: "bg-blue-500"   },
+    failed_pickup:      { label: "PICKUP RATE",             bg: "bg-red-500"    },
+    returned:           { label: "RETOUNEN ✓",              bg: "bg-slate-500"  },
   };
 
   const meta      = STATUS_META[delivery.status] ?? STATUS_META["waiting"];
@@ -437,6 +449,129 @@ function DriverTrackingCard({
               <div className="animate-pulse h-3 bg-gray-100 rounded-lg w-20" />
             </div>
           </div>
+
+          {/* Seller CTA — only visible to the seller */}
+          {isSeller && (
+            <div className="w-full mt-2 rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center shrink-0">
+                  <Store className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <p className="font-black text-sm text-gray-900 dark:text-white">Pa gen chofè toujou?</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Ou ka fè livrezon an ou menm</p>
+                </div>
+              </div>
+              <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
+                Ou ap resevwa <strong>kòb machandiz + kòb livrezon</strong>. Flexa Market ap kenbe komisyon nòmal li.
+              </p>
+              <button
+                onClick={onSellerAccept}
+                disabled={sellerAccepting}
+                className="w-full py-3 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-60 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                {sellerAccepting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Store className="h-4 w-4" />}
+                {sellerAccepting ? "Ap aksepte…" : "Fè Livrezon Mwen Menm"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Seller self-delivery management ── */}
+      {(delivery.status === "seller_delivering" || delivery.status === "seller_arrived") && isSeller && (
+        <div className="mx-5 mb-4 space-y-3">
+          {/* Progress indicator */}
+          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <Store className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="font-black text-sm">Ou ap livrezon ou menm</p>
+                <p className="text-xs opacity-80">
+                  {delivery.deliveryAddress ? `${delivery.deliveryAddress}, ` : ""}{delivery.deliveryCity}
+                </p>
+              </div>
+            </div>
+            {/* Step pills */}
+            <div className="flex items-center gap-2">
+              {[
+                { key: "seller_delivering", label: "En wout" },
+                { key: "seller_arrived",    label: "Rive" },
+                { key: "delivered",         label: "Konfime" },
+              ].map((step, i, arr) => {
+                const statuses = ["seller_delivering", "seller_arrived", "delivered"];
+                const current  = statuses.indexOf(delivery.status);
+                const mine     = statuses.indexOf(step.key);
+                const done     = mine <= current;
+                return (
+                  <div key={step.key} className="flex items-center gap-2 flex-1">
+                    <div className={`flex-1 flex flex-col items-center gap-1`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border-2 ${done ? "bg-white text-blue-600 border-white" : "bg-transparent text-white/60 border-white/40"}`}>
+                        {i + 1}
+                      </div>
+                      <p className={`text-[9px] font-bold whitespace-nowrap ${done ? "text-white" : "text-white/50"}`}>{step.label}</p>
+                    </div>
+                    {i < arr.length - 1 && <div className={`flex-1 h-0.5 mb-3 rounded-full ${mine < current ? "bg-white" : "bg-white/25"}`} />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Navigation button */}
+          {delivery.deliveryCity && (
+            <a
+              href={`https://www.google.com/maps/search/${encodeURIComponent((delivery.deliveryAddress ? delivery.deliveryAddress + " " : "") + delivery.deliveryCity)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700 text-blue-600 dark:text-blue-400 font-bold text-sm flex items-center justify-center gap-2"
+            >
+              <Navigation2 className="h-4 w-4" />
+              Ouvri Google Maps
+            </a>
+          )}
+
+          {/* Mark arrived button */}
+          {delivery.status === "seller_delivering" && (
+            <button
+              onClick={onSellerArrived}
+              disabled={sellerUpdating}
+              className="w-full py-3.5 rounded-xl bg-purple-500 hover:bg-purple-600 disabled:opacity-60 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors"
+            >
+              {sellerUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+              {sellerUpdating ? "Ap mete ajou…" : "Mwen Rive — Mande Kòd"}
+            </button>
+          )}
+
+          {/* Code verification — shown when seller_arrived */}
+          {delivery.status === "seller_arrived" && (
+            <div className="rounded-2xl border-2 border-purple-200 bg-purple-50 dark:bg-purple-900/20 dark:border-purple-700 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-purple-600" />
+                <p className="font-black text-sm text-gray-900 dark:text-white">Mande achte a kòd li</p>
+              </div>
+              <p className="text-xs text-gray-500">Achte a resevwa kòd sekrè li nan SMS. Mande li epi antre l anba.</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={sellerCode}
+                onChange={e => setSellerCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="000000"
+                className="w-full text-center text-3xl font-black tracking-[0.3em] py-3 border-2 border-purple-300 dark:border-purple-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-purple-500"
+              />
+              <button
+                onClick={() => onSellerVerify(sellerCode)}
+                disabled={sellerVerifying || sellerCode.length < 4}
+                className="w-full py-3.5 rounded-xl bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                {sellerVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                {sellerVerifying ? "Ap konfime…" : "Konfime Livrezon"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -821,6 +956,9 @@ export default function DeliveryTracking() {
   const [driver, setDriver]                   = useState<DriverInfo | null>(null);
   const [vehicleImageUrl, setVehicleImageUrl] = useState<string | null>(null);
   const [loading, setLoading]                 = useState(true);
+  const [sellerAccepting, setSellerAccepting] = useState(false);
+  const [sellerUpdating, setSellerUpdating]   = useState(false);
+  const [sellerVerifying, setSellerVerifying] = useState(false);
 
   // Real-time GPS state (updated via Socket.io)
   const [driverLat, setDriverLat]           = useState<number | null>(null);
@@ -914,6 +1052,66 @@ export default function DeliveryTracking() {
     }
   };
 
+  const handleSellerAccept = async () => {
+    if (!delivery || !token) return;
+    setSellerAccepting(true);
+    try {
+      const res = await fetch(`/api/delivery/${delivery.id}/seller-accept`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        toast({ title: "Ou aksepte livrezon an! Ale livrezon kòmand lan." });
+        await fetchTracking();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error ?? "Erè — eseye ankò", variant: "destructive" });
+      }
+    } catch { toast({ title: "Koneksyon echwe", variant: "destructive" }); }
+    finally { setSellerAccepting(false); }
+  };
+
+  const handleSellerArrived = async () => {
+    if (!delivery || !token) return;
+    setSellerUpdating(true);
+    try {
+      const res = await fetch(`/api/delivery/${delivery.id}/seller-status`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "seller_arrived" }),
+      });
+      if (res.ok) {
+        toast({ title: "Bon! Mande achte a kòd sekrè li." });
+        await fetchTracking();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error ?? "Erè", variant: "destructive" });
+      }
+    } catch { toast({ title: "Koneksyon echwe", variant: "destructive" }); }
+    finally { setSellerUpdating(false); }
+  };
+
+  const handleSellerVerify = async (code: string) => {
+    if (!delivery || !token) return;
+    setSellerVerifying(true);
+    try {
+      const res = await fetch(`/api/delivery/${delivery.id}/seller-verify-code`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast({ title: `✅ Livrezon konfime! Kòb livrezon kredite nan FM Wallet ou.` });
+        await fetchTracking();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error ?? "Kòd invalid", variant: "destructive" });
+      }
+    } catch { toast({ title: "Koneksyon echwe", variant: "destructive" }); }
+    finally { setSellerVerifying(false); }
+  };
+
   if (!user) return null;
 
   if (loading) {
@@ -967,12 +1165,19 @@ export default function DeliveryTracking() {
           driver={driver}
           delivery={delivery}
           isBuyer={user.id === delivery.buyerId}
+          isSeller={user.id === delivery.sellerId}
           onCopyCode={handleCopyCode}
           vehicleImageUrl={vehicleImageUrl}
           driverLat={driverLat}
           driverLng={driverLng}
           lastGpsUpdate={lastGpsUpdate}
           onTipOpen={() => setShowTipModal(true)}
+          onSellerAccept={handleSellerAccept}
+          onSellerArrived={handleSellerArrived}
+          onSellerVerify={handleSellerVerify}
+          sellerAccepting={sellerAccepting}
+          sellerUpdating={sellerUpdating}
+          sellerVerifying={sellerVerifying}
         />
       </div>
 

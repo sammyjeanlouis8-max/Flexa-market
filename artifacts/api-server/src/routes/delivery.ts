@@ -633,7 +633,7 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
     }
 
     const conditions: any[] = [
-      inArray(deliveriesTable.status, ["waiting", "driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived"]),
+      inArray(deliveriesTable.status, ["waiting", "driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived", "seller_delivering", "seller_arrived"]),
       or(
         eq(deliveriesTable.deliveryMethod, "motorcycle"),
         eq(deliveriesTable.deliveryMethod, "car"),
@@ -1090,6 +1090,228 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
   );
 
   res.json({ delivery: updated, verificationCode: code });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELLER SELF-DELIVERY — seller delivers their own order when no driver accepts
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/delivery/seller-self — seller's active self-deliveries
+router.get("/delivery/seller-self", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const rows = await db
+    .select()
+    .from(deliveriesTable)
+    .where(and(
+      eq(deliveriesTable.sellerId, userId),
+      inArray(deliveriesTable.status, ["seller_delivering", "seller_arrived"]),
+    ))
+    .orderBy(desc(deliveriesTable.updatedAt))
+    .limit(10);
+  res.json({ deliveries: rows });
+});
+
+// POST /api/delivery/:id/seller-accept — seller accepts their own delivery (self-deliver)
+router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const deliveryId = parseInt(String(req.params.id), 10);
+
+  const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
+  if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
+  if (delivery.sellerId !== userId) { res.status(403).json({ error: "You can only self-deliver your own orders" }); return; }
+  if (delivery.status !== "waiting") { res.status(409).json({ error: "Delivery already taken" }); return; }
+
+  const code = genCode();
+
+  const [updated] = await db
+    .update(deliveriesTable)
+    .set({
+      driverUserId: userId, // seller acts as driver — used for auth on status/verify endpoints
+      status: "seller_delivering",
+      verificationCode: code,
+      acceptedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "waiting")))
+    .returning();
+
+  if (!updated) { res.status(409).json({ error: "Delivery already taken" }); return; }
+
+  // Notify buyer: seller is self-delivering + share code
+  await db.insert(notificationsTable).values({
+    userId: delivery.buyerId,
+    type: "driver_assigned",
+    isRead: false,
+    message: `Machann nan ap fè livrezon li menm. Kòd sekrè ou: ${code}. Montre li kòd sa SÈLMAN lè li rive ba ou kòmand lan.`,
+  } as any).catch(() => {});
+
+  // SMS buyer
+  if (delivery.buyerId) {
+    const [buyer] = await db.select({ phone: usersTable.phone }).from(usersTable).where(eq(usersTable.id, delivery.buyerId)).limit(1);
+    if (buyer?.phone) {
+      await sendSms(buyer.phone, `FLEXA MARKET — Machann nan ap livrezon li menm! Kòd sekrè: ${code}. Montre kòd sa SÈLMAN lè machann rive. Pa pataje.`).catch(() => {});
+    }
+  }
+
+  emitDeliveryStatus(deliveryId, { status: "seller_delivering", verificationCode: code });
+
+  await pushBoth(
+    delivery.buyerId,
+    "Flexa Market 🏪",
+    "Machann nan ap livrezon li menm! Louvri app la pou wè kòd sekrè ou.",
+    { deliveryId, type: "driver_assigned" },
+  );
+
+  res.json({ delivery: updated, verificationCode: code });
+});
+
+// PATCH /api/delivery/:id/seller-status — seller updates their self-delivery status
+router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const deliveryId = parseInt(String(req.params.id), 10);
+  const { status } = req.body;
+
+  const ALLOWED: Record<string, string> = {
+    seller_delivering: "seller_arrived",
+  };
+
+  const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
+  if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
+  if (delivery.sellerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  if (!ALLOWED[delivery.status] || ALLOWED[delivery.status] !== status) {
+    res.status(400).json({ error: "Invalid transition", from: delivery.status, to: status }); return;
+  }
+
+  const [updated] = await db
+    .update(deliveriesTable)
+    .set({ status, updatedAt: new Date(), ...(status === "seller_arrived" ? { arrivedAt: new Date() } : {}) })
+    .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.sellerId, userId)))
+    .returning();
+
+  emitDeliveryStatus(deliveryId, { status });
+
+  for (const uid of [delivery.buyerId, delivery.sellerId]) {
+    await db.insert(notificationsTable).values({
+      userId: uid,
+      type: "delivery_status_update",
+      isRead: false,
+      message: status === "seller_arrived"
+        ? `Machann nan rive nan adrès ou — montre li kòd konfirmasyon an pou finalise livrezon an.`
+        : `Estati livrezon #FL-${deliveryId} mete ajou: ${status}`,
+    } as any).catch(() => {});
+  }
+
+  res.json({ delivery: updated });
+});
+
+// POST /api/delivery/:id/seller-verify-code — seller enters buyer's code → release payment + delivery fee to seller
+router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const deliveryId = parseInt(String(req.params.id), 10);
+  const { code } = req.body;
+
+  const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
+  if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
+  if (delivery.sellerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  if (delivery.status === "delivered" || delivery.codeVerifiedAt !== null) {
+    res.status(409).json({ error: "Delivery already confirmed", alreadyProcessed: true }); return;
+  }
+
+  if (delivery.status !== "seller_arrived") {
+    res.status(400).json({
+      error: "Ou dwe klike 'Mwen rive' anvan ou ka konfime livrezon an.",
+      currentStatus: delivery.status,
+    }); return;
+  }
+
+  if (delivery.verificationCode !== String(code)) {
+    res.status(400).json({ error: "Invalid code" }); return;
+  }
+
+  const now = new Date();
+
+  await db.update(deliveriesTable).set({
+    codeVerifiedAt: now,
+    status: "delivered",
+    deliveredAt: now,
+    paymentHeldUntil: now,
+    sellerPaymentReleased: true,
+    sellerPaymentReleasedAt: now,
+    updatedAt: now,
+  }).where(eq(deliveriesTable.id, deliveryId));
+
+  // 1. Release product escrow to seller
+  if (delivery.transactionId) {
+    await releaseEscrow(delivery.transactionId, "buyer").catch((err: unknown) => {
+      req.log.error({ err, deliveryId }, "Escrow release failed on seller self-delivery confirm");
+    });
+  }
+
+  // 2. Credit seller's FM wallet with delivery fee (80% of feeUsd — Flexa keeps 20%)
+  const deliveryFeeEarnings = delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0;
+  if (deliveryFeeEarnings > 0) {
+    const [existing] = await db.select({ id: promoWalletTable.id }).from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
+    if (existing) {
+      await db.update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${deliveryFeeEarnings}`, updatedAt: now })
+        .where(eq(promoWalletTable.userId, userId));
+    } else {
+      await db.insert(promoWalletTable).values({ userId, balanceUsd: deliveryFeeEarnings });
+    }
+    await db.insert(walletTransactionsTable).values({
+      userId,
+      type: "delivery_earnings",
+      amountUsd: deliveryFeeEarnings,
+      paymentRef: `seller-delivery-${deliveryId}`,
+      status: "completed",
+      note: `Kòb livrezon (machann) — #FL-${deliveryId}`,
+    }).catch(() => {});
+  }
+
+  // 3. Release $10 buyer hold back to buyer FM wallet
+  const holdAmt = delivery.holdAmountUsd ?? 10;
+  if (holdAmt > 0 && delivery.buyerId) {
+    const [buyerWallet] = await db.select({ id: promoWalletTable.id }).from(promoWalletTable).where(eq(promoWalletTable.userId, delivery.buyerId)).limit(1);
+    if (buyerWallet) {
+      await db.update(promoWalletTable).set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${holdAmt}`, updatedAt: now }).where(eq(promoWalletTable.userId, delivery.buyerId));
+    } else {
+      await db.insert(promoWalletTable).values({ userId: delivery.buyerId, balanceUsd: holdAmt });
+    }
+    await db.insert(walletTransactionsTable).values({
+      userId: delivery.buyerId,
+      type: "delivery_hold_release",
+      amountUsd: holdAmt,
+      paymentRef: `delivery-hold-${deliveryId}`,
+      status: "completed",
+      note: `Depo livrezon retounen — #FL-${deliveryId}`,
+    }).catch(() => {});
+    await db.update(deliveriesTable).set({ holdReleased: true, holdReleasedAt: now, updatedAt: now }).where(eq(deliveriesTable.id, deliveryId));
+  }
+
+  // 4. Notify buyer — delivered
+  await db.insert(notificationsTable).values({
+    userId: delivery.buyerId,
+    type: "delivery_completed",
+    isRead: false,
+    message: `✅ Livrezon #FL-${deliveryId} konfime! Machann nan ban ou kòmand lan avèk siksè.`,
+  } as any).catch(() => {});
+
+  // 5. Notify seller — delivery fee credited
+  if (deliveryFeeEarnings > 0) {
+    await db.insert(notificationsTable).values({
+      userId,
+      type: "delivery_paid",
+      isRead: false,
+      message: `💰 $${deliveryFeeEarnings.toFixed(2)} kòb livrezon kredite nan FM Wallet ou — livrezon #FL-${deliveryId} konfime!`,
+    } as any).catch(() => {});
+  }
+
+  emitDeliveryStatus(deliveryId, { status: "delivered" });
+  await pushBoth(delivery.buyerId, "Flexa Market ✅", `Livrezon #FL-${deliveryId} konfime!`, { deliveryId, type: "delivered" });
+
+  res.json({ success: true, deliveryFeeEarned: deliveryFeeEarnings });
 });
 
 // PATCH /api/delivery/:id/status — driver updates status
@@ -2264,7 +2486,7 @@ router.patch("/delivery/driver/location", requireAuth, async (req, res): Promise
       .from(deliveriesTable)
       .where(and(
         eq(deliveriesTable.driverUserId, userId),
-        inArray(deliveriesTable.status, ["driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived"]),
+        inArray(deliveriesTable.status, ["driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived", "seller_delivering", "seller_arrived"]),
       ))
       .limit(1)
       .then(([active]) => {

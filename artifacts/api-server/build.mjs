@@ -3,33 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm, cp } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { rm } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
-const workspaceRoot = path.resolve(artifactDir, "../..");
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
-
-  // ── Step 1: Build the marketplace frontend with BASE_PATH="/" ──────────────
-  // This produces a self-contained SPA in artifacts/marketplace/dist/public/
-  // that calls /api/... on the same origin — perfect for single-server deploy.
-  console.log("⚙️  Building marketplace frontend…");
-  execSync(
-    "pnpm --filter @workspace/marketplace run build",
-    {
-      cwd: workspaceRoot,
-      stdio: "inherit",
-      env: { ...process.env, NODE_ENV: "production", BASE_PATH: "/" },
-    },
-  );
-  console.log("✅ Marketplace frontend built.");
 
   await esbuild({
     entryPoints: [path.resolve(artifactDir, "src/index.ts")],
@@ -136,19 +119,6 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     },
   });
 
-  // ── Step 3: Copy marketplace frontend into dist/public ─────────────────────
-  // The express app serves these static files in production. The path
-  // dist/public/ is resolved at runtime via __dirname so it must sit
-  // alongside dist/index.mjs.
-  const marketplaceDist = path.resolve(workspaceRoot, "artifacts/marketplace/dist/public");
-  const apiPublicDir   = path.resolve(distDir, "public");
-  if (existsSync(marketplaceDist)) {
-    console.log("📦 Copying marketplace build → dist/public/…");
-    await cp(marketplaceDist, apiPublicDir, { recursive: true });
-    console.log("✅ Frontend assets embedded in API server dist.");
-  } else {
-    console.warn("⚠️  Marketplace dist not found — skipping frontend copy.");
-  }
 }
 
 buildAll().catch((err) => {

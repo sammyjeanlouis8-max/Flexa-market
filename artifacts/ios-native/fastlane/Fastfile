@@ -4,6 +4,7 @@ platform :ios do
   lane :build_and_upload do
     keychain_name     = "ci_keychain"
     keychain_password = "Flexa_CI_2026!"
+    keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}")
 
     # 1. Temporary keychain for the CI runner
     create_keychain(
@@ -26,10 +27,11 @@ platform :ios do
     )
 
     # 3. Download/create the iOS Distribution certificate and install it
+    #    Note: get_certificates uses keychain_path, not keychain_name
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
-      keychain_name:     keychain_name,
+      keychain_path:     keychain_path,
       keychain_password: keychain_password,
       platform:          "ios",
       type:              "distribution"
@@ -43,9 +45,8 @@ platform :ios do
       app_store:      true
     )
 
-    # 5. Switch project from Automatic → Manual signing with the Distribution
-    #    profile. This eliminates the "conflicting provisioning settings" error
-    #    caused by combining CODE_SIGN_STYLE=Automatic with Apple Distribution.
+    # 5. Switch project from Automatic → Manual signing
+    #    (eliminates the Automatic+Distribution conflict in Xcode 16.4)
     update_code_signing_settings(
       use_automatic_signing: false,
       path:                  "FlexaMarket.xcodeproj",
@@ -55,15 +56,15 @@ platform :ios do
       code_sign_identity:    "Apple Distribution"
     )
 
-    # 6. Build & archive (no codesigning_identity override — let the project handle it)
+    # 6. Build & archive
     build_ios_app(
-      project:           "FlexaMarket.xcodeproj",
-      scheme:            "FlexaMarket",
-      configuration:     "Release",
-      export_method:     "app-store",
-      output_directory:  "/tmp/ipa_output",
-      output_name:       "FlexaMarket.ipa",
-      clean:             true
+      project:          "FlexaMarket.xcodeproj",
+      scheme:           "FlexaMarket",
+      configuration:    "Release",
+      export_method:    "app-store",
+      output_directory: "/tmp/ipa_output",
+      output_name:      "FlexaMarket.ipa",
+      clean:            true
     )
 
     # 7. Upload to TestFlight

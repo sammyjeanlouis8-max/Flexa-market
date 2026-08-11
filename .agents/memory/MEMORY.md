@@ -13,3 +13,4 @@
 - [Flexa build discipline](flexa-build-discipline.md) — always run vite build locally before pushing; TDZ crash if useEffect deps reference a const declared later in the component; double-fragment nesting breaks Rollup chunk graph.
 - [Expo EAS build setup](expo-eas-build.md) — mobile node_modules has 41 hollow stubs; must fix them + expo-modules-autolinking/exports.js before EAS tooling runs; always use `eas build` (cloud), not `eas update` (needs local Metro).
 - [Flexa auth token pattern](flexa-auth-token.md) — useAuth() returns token as a string, NOT a function; calling token() crashes at runtime (TypeError in prod).
+- [Flexa DO production setup](flexa-do-production.md) — DO managed PostgreSQL needs DATABASE_URL without ?sslmode=require + ssl:{rejectUnauthorized:false} in pg Pool; two-service ingress: /api→flexa-market (Node), /*→flexa-market2 (nginx).

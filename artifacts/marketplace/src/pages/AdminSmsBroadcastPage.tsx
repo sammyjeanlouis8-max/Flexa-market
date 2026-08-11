@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,7 @@ export default function AdminSmsBroadcastPage() {
   const [, nav]      = useLocation();
   const { token }    = useAuth();
   const { toast }    = useToast();
+  const { t }        = useTranslation();
   const BASE         = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   const authHeader   = token ? `Bearer ${token}` : "";
 
@@ -49,7 +51,7 @@ export default function AdminSmsBroadcastPage() {
   const [loadingRecipients, setLoadingRecipients] = useState(true);
   const [search,            setSearch]            = useState("");
   const [selected,          setSelected]          = useState<Set<number>>(new Set());
-  const [countryFilter,     setCountryFilter]     = useState<string>(""); // "" = all
+  const [countryFilter,     setCountryFilter]     = useState<string>("");
 
   const loadRecipients = (country = countryFilter) => {
     setLoadingRecipients(true);
@@ -64,7 +66,7 @@ export default function AdminSmsBroadcastPage() {
         setSelected(new Set(list.map(u => u.id)));
         setTwilioOk(d.twilioConfigured ?? false);
       })
-      .catch(() => toast({ title: "Erè chajman destinatè", variant: "destructive" }))
+      .catch(() => toast({ title: t("smsBroadcastPage.noPhone"), variant: "destructive" }))
       .finally(() => setLoadingRecipients(false));
   };
 
@@ -107,13 +109,13 @@ export default function AdminSmsBroadcastPage() {
 
   const send = async (mode: "test" | "broadcast") => {
     if (!message.trim()) {
-      toast({ title: "Ekri yon mesaj SMS anvan", variant: "destructive" }); return;
+      toast({ title: t("smsBroadcastPage.noMessage"), variant: "destructive" }); return;
     }
     if (mode === "test" && !testPhone.trim()) {
-      toast({ title: "Ekri yon nimewo telefòn tès", variant: "destructive" }); return;
+      toast({ title: t("smsBroadcastPage.noTestPhone"), variant: "destructive" }); return;
     }
     if (mode === "broadcast" && selected.size === 0) {
-      toast({ title: "Chwazi omwen yon destinatè", variant: "destructive" }); return;
+      toast({ title: t("smsBroadcastPage.noRecipients"), variant: "destructive" }); return;
     }
     setSending(mode); setResult(null);
     try {
@@ -128,12 +130,15 @@ export default function AdminSmsBroadcastPage() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Erè");
       setResult(d);
-      toast({
-        title: mode === "test"
-          ? "✅ SMS tès voye!"
-          : `✅ ${d.sent} / ${d.total} SMS voye!`,
-      });
-      if (mode === "broadcast") { setMessage(""); setTestPhone(""); }
+      if (mode === "test") {
+        toast({ title: t("smsBroadcastPage.testSent") });
+      } else {
+        const msg = d.failed
+          ? t("smsBroadcastPage.broadcastSentFailed", { sent: d.sent, total: d.total, failed: d.failed })
+          : t("smsBroadcastPage.broadcastSent", { sent: d.sent, total: d.total });
+        toast({ title: msg });
+        setMessage(""); setTestPhone("");
+      }
     } catch (e: unknown) {
       toast({ title: e instanceof Error ? e.message : "Erè envwaye SMS", variant: "destructive" });
     } finally {
@@ -158,15 +163,15 @@ export default function AdminSmsBroadcastPage() {
           <MessageSquare className="h-4 w-4 text-sky-600 dark:text-sky-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="font-bold text-sm">📱 Broadcast SMS</h1>
-          <p className="text-[11px] text-muted-foreground truncate">Voye SMS a tout itilizatè yo via Twilio</p>
+          <h1 className="font-bold text-sm">📱 {t("smsBroadcastPage.title")}</h1>
+          <p className="text-[11px] text-muted-foreground truncate">{t("smsBroadcastPage.subtitle")}</p>
         </div>
         {message && (
           <button
             onClick={resetForm}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1 rounded-lg hover:bg-muted"
           >
-            <Trash2 className="h-3.5 w-3.5" /> Efase
+            <Trash2 className="h-3.5 w-3.5" /> {t("smsBroadcastPage.clear")}
           </button>
         )}
       </div>
@@ -177,47 +182,42 @@ export default function AdminSmsBroadcastPage() {
         {twilioOk === false && (
           <div className="flex items-start gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 text-xs text-red-700 dark:text-red-300">
             <XCircle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>
-              <strong>Twilio pa konfigiré.</strong> Ajoute <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>,
-              ak <code>TWILIO_FROM_NUMBER</code> nan Secrets pou ka voye SMS.
-            </span>
+            <span>{t("smsBroadcastPage.twilioNotConfigured")}</span>
           </div>
         )}
 
         {/* Warning */}
         <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>Aksyon sa a ap voye SMS a tout itilizatè ou chwazi yo. Chak SMS gen yon frè Twilio. Verifye mesaj ou anvan ou voye.</span>
+          <span>{t("smsBroadcastPage.warning")}</span>
         </div>
 
         {/* Message composer */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-semibold">Mesaj SMS</Label>
+            <Label className="text-sm font-semibold">{t("smsBroadcastPage.message")}</Label>
             <span className={`text-[10px] font-mono ${charCount > MAX_CHARS ? "text-red-500" : "text-muted-foreground"}`}>
-              {charCount}/{MAX_CHARS} · {smsCount} SMS{smsCount > 1 ? "" : ""}
+              {t("smsBroadcastPage.charCount", { count: charCount, sms: smsCount })}
             </span>
           </div>
           <Textarea
             value={message}
             onChange={e => setMessage(e.target.value)}
-            placeholder={"Bonjou! Flexa Market gen yon nouvèl pou ou. Vizite flexamarket.com pou plis enfòmasyon."}
+            placeholder="Bonjou! Flexa Market gen yon nouvèl pou ou. Vizite flexamarket.com pou plis enfòmasyon."
             className="min-h-[120px] resize-y text-sm"
             maxLength={MAX_CHARS}
           />
-          <p className="text-[10px] text-muted-foreground">
-            Tèks sèlman. 1 SMS = 160 karaktè. Yo envwaye plizyè SMS si mesaj la pi long.
-          </p>
+          <p className="text-[10px] text-muted-foreground">{t("smsBroadcastPage.textOnly")}</p>
         </div>
 
         {/* Test SMS */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">SMS Tès</Label>
+          <Label className="text-sm font-semibold">{t("smsBroadcastPage.testSms")}</Label>
           <div className="flex gap-2">
             <Input
               value={testPhone}
               onChange={e => setTestPhone(e.target.value)}
-              placeholder="+50912345678"
+              placeholder={t("smsBroadcastPage.testPlaceholder")}
               type="tel"
               className="h-9"
             />
@@ -230,15 +230,15 @@ export default function AdminSmsBroadcastPage() {
               {sending === "test"
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Send className="h-4 w-4 mr-1.5" />}
-              Voye Tès
+              {t("smsBroadcastPage.sendTest")}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground">Fòma entènasyonal: +509xxxxxxxx (Ayiti), +1809xxxxxxx (Dom Rep)</p>
+          <p className="text-[10px] text-muted-foreground">{t("smsBroadcastPage.testHint")}</p>
         </div>
 
         {/* Country filter */}
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">Filtre pa Peyi</Label>
+          <Label className="text-sm font-semibold">{t("smsBroadcastPage.countryFilter")}</Label>
           <div className="flex flex-wrap gap-1.5">
             {["", ...countries].map(c => (
               <button
@@ -250,7 +250,7 @@ export default function AdminSmsBroadcastPage() {
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}
               >
-                {c ? `${COUNTRY_FLAGS[c] ?? "🌍"} ${c}` : "🌍 Tout Peyi"}
+                {c ? `${COUNTRY_FLAGS[c] ?? "🌍"} ${c}` : t("smsBroadcastPage.allCountries")}
               </button>
             ))}
           </div>
@@ -261,10 +261,10 @@ export default function AdminSmsBroadcastPage() {
           <div className="flex items-center justify-between">
             <Label className="text-sm font-semibold flex items-center gap-1.5">
               <Users className="h-4 w-4" />
-              Destinatè
+              {t("smsBroadcastPage.recipients")}
               {!loadingRecipients && (
                 <span className="text-xs font-normal text-muted-foreground ml-1">
-                  ({selected.size} / {recipients.length} chwazi)
+                  ({t("smsBroadcastPage.selectedCount", { selected: selected.size, total: recipients.length })})
                 </span>
               )}
             </Label>
@@ -272,7 +272,7 @@ export default function AdminSmsBroadcastPage() {
               onClick={toggleAll}
               className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline"
             >
-              {allFilteredSelected ? "Deseleksyone Tout" : "Seleksyone Tout"}
+              {allFilteredSelected ? t("smsBroadcastPage.deselectAll") : t("smsBroadcastPage.selectAll")}
             </button>
           </div>
 
@@ -281,7 +281,7 @@ export default function AdminSmsBroadcastPage() {
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Chèche pa non oswa nimewo…"
+              placeholder={t("smsBroadcastPage.searchPlaceholder")}
               className="h-9 pl-8 text-sm"
             />
           </div>
@@ -289,12 +289,14 @@ export default function AdminSmsBroadcastPage() {
           <div className="border border-border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
             {loadingRecipients ? (
               <div className="flex items-center justify-center h-20 gap-2 text-muted-foreground text-sm">
-                <Loader2 className="h-4 w-4 animate-spin" /> Chajman…
+                <Loader2 className="h-4 w-4 animate-spin" /> {t("smsBroadcastPage.loading")}
               </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-20 gap-1 text-muted-foreground text-sm">
                 <Phone className="h-5 w-5 opacity-40" />
-                Pa gen itilizatè ak nimewo telefòn{countryFilter ? ` nan ${countryFilter}` : ""}
+                {countryFilter
+                  ? t("smsBroadcastPage.noPhoneCountry", { country: countryFilter })
+                  : t("smsBroadcastPage.noPhone")}
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -329,7 +331,7 @@ export default function AdminSmsBroadcastPage() {
         {/* Send row */}
         <div className="flex items-center justify-between pt-2 border-t border-border">
           <p className="text-xs text-muted-foreground">
-            <strong className="text-foreground">{selected.size}</strong> moun pral resevwa SMS a
+            {t("smsBroadcastPage.willReceive", { count: selected.size })}
           </p>
           <Button
             className="bg-sky-600 hover:bg-sky-700 text-white h-9 px-5"
@@ -339,7 +341,7 @@ export default function AdminSmsBroadcastPage() {
             {sending === "broadcast"
               ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
               : <Send className="h-4 w-4 mr-2" />}
-            Voye SMS ({selected.size})
+            {t("smsBroadcastPage.sendBtn", { count: selected.size })}
           </Button>
         </div>
 
@@ -348,8 +350,10 @@ export default function AdminSmsBroadcastPage() {
           <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             {result.mode === "test"
-              ? "SMS tès voye avèk siksè!"
-              : `${result.sent} / ${result.total} SMS voye avèk siksè${result.failed ? ` (${result.failed} echwe)` : ""}!`}
+              ? t("smsBroadcastPage.testSent")
+              : result.failed
+                ? t("smsBroadcastPage.broadcastSentFailed", { sent: result.sent, total: result.total, failed: result.failed })
+                : t("smsBroadcastPage.broadcastSent", { sent: result.sent, total: result.total })}
           </div>
         )}
       </div>
@@ -360,30 +364,29 @@ export default function AdminSmsBroadcastPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base text-sky-700 dark:text-sky-400">
               <MessageSquare className="h-5 w-5" />
-              Konfime Broadcast SMS
+              {t("smsBroadcastPage.confirmTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="text-sm text-muted-foreground space-y-3 py-2">
-            <p>
-              Ou pral voye SMS bay{" "}
-              <strong className="text-foreground">{selected.size} itilizatè</strong>.
-            </p>
+            <p>{t("smsBroadcastPage.confirmTo", { count: selected.size })}</p>
             <div className="bg-muted rounded-lg px-3 py-2 text-xs font-mono text-foreground whitespace-pre-wrap break-words">
               {message}
             </div>
             <p className="text-amber-600 dark:text-amber-400 text-xs font-medium">
-              ⚠️ Aksyon sa a pa kapab defèt. Chak SMS gen yon frè Twilio.
+              {t("smsBroadcastPage.irreversible")}
             </p>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmOpen(false)}>Anile</Button>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              {t("smsBroadcastPage.cancel")}
+            </Button>
             <Button
               className="bg-sky-600 hover:bg-sky-700 text-white"
               onClick={() => send("broadcast")}
               disabled={sending !== "idle"}
             >
               {sending === "broadcast" && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Wi, Voye SMS
+              {t("smsBroadcastPage.confirmSend")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -47,13 +47,22 @@ platform :ios do
 
     # 5. Switch project from Automatic → Manual signing
     #    (eliminates the Automatic+Distribution conflict in Xcode 16.4)
-    # SIGH_PROFILE_NAME doesn't exist in fastlane 2.237. Omit profile_name —
-    # Xcode resolves the installed profile automatically via bundle_id + team_id.
+    # SIGH_PROFILE_NAME is absent in fastlane 2.237 — read name from the file.
+    profile_path = lane_context[SharedValues::SIGH_PROFILE_PATHS]&.first
+    profile_name = sh(
+      "security cms -D -i '#{profile_path}' | " \
+      "grep -A1 '<key>Name</key>' | grep '<string>' | " \
+      "sed 's/.*<string>//;s/<\\/string>//'",
+      log: false
+    ).strip
+    UI.message "Using provisioning profile: #{profile_name}"
+
     update_code_signing_settings(
       use_automatic_signing: false,
       path:                  "FlexaMarket.xcodeproj",
       team_id:               "D782MM56VY",
       bundle_identifier:     "com.flexamarket.mobile",
+      profile_name:          profile_name,
       code_sign_identity:    "Apple Distribution"
     )
 

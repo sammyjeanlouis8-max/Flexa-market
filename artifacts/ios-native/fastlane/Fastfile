@@ -74,15 +74,6 @@ platform :ios do
       xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO"
     )
 
-    # 6a. Diagnostic: verify Assets.car + CFBundleIconName in compiled bundle
-    archive_path = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
-    app_bundle   = "#{archive_path}/Products/Applications/FlexaMarket.app"
-    UI.message "=== DIAGNOSTIC: compiled bundle ==="
-    sh "/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' '#{app_bundle}/Info.plist' 2>&1 || echo 'CFBundleIconName MISSING'"
-    sh "ls -lh '#{app_bundle}/Assets.car' 2>/dev/null && echo 'Assets.car EXISTS' || echo 'Assets.car MISSING'"
-    sh "ls '#{app_bundle}'/*.png 2>/dev/null | head -5 || echo 'no PNG at root'"
-    # Verify asset catalog size to confirm icon content
-    sh "assetutil --info '#{app_bundle}/Assets.car' 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); [print(e.get('Scale'),e.get('SizeOnDisk'),e.get('Name','?')) for e in d if e.get('AssetType')=='Icon']\" 2>/dev/null || true"
 
     # 7. Upload to TestFlight
     upload_to_testflight(

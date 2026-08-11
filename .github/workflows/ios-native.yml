@@ -108,15 +108,6 @@ jobs:
                   print(f"  ✗ {cid}: {e.code} {e.reason}")
           PYEOF
 
-      # ── 7a. Diagnostic: dump relevant build settings from generated project ──
-      - name: Dump asset-catalog build settings
-        working-directory: artifacts/ios-native
-        run: |
-          echo "=== xcodebuild build settings ===" 
-          xcodebuild -project FlexaMarket.xcodeproj -scheme FlexaMarket \
-            -showBuildSettings 2>/dev/null | \
-            grep -E "ASSETCATALOG|GENERATE_INFOPLIST|INFOPLIST_FILE|INFOPLIST_KEY|CFBundleIconName|APPICON" || true
-
       # ── 7. Build + sign + upload via fastlane ────────────────────────────
       - name: Build & Upload to TestFlight
         working-directory: artifacts/ios-native

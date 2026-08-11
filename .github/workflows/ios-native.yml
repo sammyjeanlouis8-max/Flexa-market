@@ -70,11 +70,13 @@ jobs:
           token = make_jwt()
           headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-          # List IOS_DISTRIBUTION certs
-          url = "https://api.appstoreconnect.apple.com/v1/certificates?filter[certificateType]=IOS_DISTRIBUTION&limit=20"
-          req = urllib.request.Request(url, headers=headers)
-          with urllib.request.urlopen(req) as r:
-              certs = json.loads(r.read()).get("data", [])
+          # List both IOS_DISTRIBUTION (legacy) and DISTRIBUTION (Apple Distribution, newer)
+          certs = []
+          for cert_type in ["IOS_DISTRIBUTION", "DISTRIBUTION"]:
+              url = f"https://api.appstoreconnect.apple.com/v1/certificates?filter[certificateType]={cert_type}&limit=20"
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req) as r:
+                  certs += json.loads(r.read()).get("data", [])
 
           print(f"Found {len(certs)} IOS_DISTRIBUTION certificate(s)")
           for cert in certs:

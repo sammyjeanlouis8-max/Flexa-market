@@ -17,11 +17,10 @@ jobs:
       # ── 2. Generate all required icon sizes from the source 1024×1024 ──────
       - name: Generate app icons
         run: |
+          # Xcode 26 auto-scaling=unified generates all sizes from 1024x1024
           SRC=artifacts/mobile/assets/images/icon.png
           DEST=artifacts/ios-native/Assets.xcassets/AppIcon.appiconset
-          for SIZE in 20 29 40 58 60 76 80 87 120 152 167 180 1024; do
-            sips -z $SIZE $SIZE "$SRC" --out "$DEST/icon-${SIZE}.png"
-          done
+          sips -z 1024 1024 "$SRC" --out "$DEST/icon-1024.png"
 
       # ── 3. Install xcodegen ───────────────────────────────────────────────
       - name: Install xcodegen

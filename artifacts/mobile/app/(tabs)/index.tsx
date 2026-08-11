@@ -1,242 +1,139 @@
-import { Feather } from "@expo/vector-icons";
+/**
+ * 100% WebView shell — loads flexamarket.com with native push notifications.
+ *
+ * Features:
+ *  - Full-screen WebView (no native navigation screens)
+ *  - Push notifications injected into the web page via usePushNotifications
+ *  - Stripe checkout opens inside the same WebView (fixes missing buttons)
+ *  - iOS video file-input interceptor (WKWebView can't open camera for video)
+ *  - Android hardware-back navigates the WebView history
+ *  - External links open in the device browser
+ *  - Safe-area insets injected as CSS variables (--sat / --sab)
+ */
+
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
-import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionSheetIOS,
-  ActivityIndicator,
   BackHandler,
+  Linking,
   Platform,
-  Pressable,
   StyleSheet,
-  Text,
-  View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const WEBSITE = "https://flexamarket.com";
+const MAX_BRIDGE_BYTES = 40 * 1024 * 1024; // 40 MB
 
-const INTERNAL_HOSTS = [
-  "flexamarket.com",
-  "www.flexamarket.com",
-  "bonjour-tool.replit.app",
-  "stripe.com",
-  "checkout.stripe.com",
-  "js.stripe.com",
-  "hooks.stripe.com",
-  "m.stripe.com",
-  "m.stripe.network",
-];
+// On iOS wrap content inside safe-area; Android manages its own insets.
+const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
+  Platform.OS === "ios" ? ["top", "bottom"] : [];
 
+// ─── URL helpers ──────────────────────────────────────────────────────────────
+
+/** Returns true for URLs that must stay inside the WebView. */
 function isInternal(url: string): boolean {
   try {
-    const { hostname } = new URL(url);
-    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+    const { hostname, protocol } = new URL(url);
+    if (protocol === "mailto:" || protocol === "tel:" || protocol === "sms:") {
+      return false; // handled by Linking below
+    }
+    if (
+      hostname === "flexamarket.com" ||
+      hostname.endsWith(".flexamarket.com")
+    ) return true;
+    // Keep ALL Stripe domains inside so payment buttons render correctly.
+    if (
+      hostname === "stripe.com" ||
+      hostname.endsWith(".stripe.com") ||
+      hostname.endsWith(".stripe.network")
+    ) return true;
+    return false;
   } catch {
     return true;
   }
 }
 
-// Returns true for any Stripe payment/checkout/billing hostname that should be
-// opened in the native stripe-checkout screen (with Dynamic Island safe area).
-function isStripePayment(hostname: string): boolean {
-  const STRIPE_PAYMENT_HOSTS = [
-    "checkout.stripe.com",
-    "buy.stripe.com",       // Stripe payment links (subscriptions, one-time)
-    "billing.stripe.com",   // Stripe customer portal
-    "invoice.stripe.com",   // Stripe invoice pages
-  ];
-  return STRIPE_PAYMENT_HOSTS.some(
-    (h) => hostname === h || hostname.endsWith("." + h)
-  );
-}
-
-// Max file size we can safely pass through the postMessage bridge (40 MB)
-const MAX_BRIDGE_BYTES = 40 * 1024 * 1024;
+// ─── Injected scripts ─────────────────────────────────────────────────────────
 
 /**
- * Injected into the WebView on iOS to intercept <input type="file" accept="video*">
- * clicks before they open the native iOS file picker (which silently drops
- * camera-recorded videos in WKWebView).  Instead we post a message to React Native,
- * let it open expo-image-picker, and receive the video back as base64 via
- * window.__flexaReceiveVideo().
- *
- * On Android the WebView file picker works correctly, so we skip the intercept.
+ * Script injected on every page load (injectedJavaScript — runs before page JS).
+ * - Blocks the long-press context menu.
+ * - On iOS: intercepts <input type="file" accept="video*"> clicks and routes
+ *   them through the React Native bridge (WKWebView silently drops camera video).
  */
-const BLOCK_CONTEXT_MENU_SCRIPT = `
-(function() {
-  if (window.__flexaCtxBlocked) return;
-  window.__flexaCtxBlocked = true;
-  document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; }, true);
-})();
-`;
-
-function buildVideoInterceptorScript(isIOS: boolean): string {
-  if (!isIOS) return BLOCK_CONTEXT_MENU_SCRIPT + "\ntrue;";
-  return BLOCK_CONTEXT_MENU_SCRIPT + `
-(function() {
-  if (window.__flexaVideoInterceptInit) return;
-  window.__flexaVideoInterceptInit = true;
-
-  var _pendingInput = null;
-
-  function _isVideoInput(el) {
-    if (!el || el.tagName !== 'INPUT' || el.type !== 'file') return false;
-    return /video/i.test(el.accept || '');
+const INIT_SCRIPT = `
+(function(){
+  // Block context menu (long-press)
+  if(!window.__flexaCtxBlocked){
+    window.__flexaCtxBlocked=true;
+    document.addEventListener('contextmenu',function(e){e.preventDefault();},true);
   }
 
-  function _intercept(el) {
-    if (!el || el.__flexaIntercepted) return;
-    if (!_isVideoInput(el)) return;
-    el.__flexaIntercepted = true;
-    el.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      _pendingInput = el;
-      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(
-        JSON.stringify({ type: 'PICK_VIDEO' })
-      );
-    }, true);
+  ${Platform.OS === "ios" ? `
+  // Video-input interceptor (iOS only)
+  if(!window.__flexaVideoInterceptInit){
+    window.__flexaVideoInterceptInit=true;
+    var _pi=null;
+    function _isVid(el){return el&&el.tagName==='INPUT'&&el.type==='file'&&/video/i.test(el.accept||'');}
+    function _hook(el){
+      if(!el||el.__fxh||!_isVid(el))return;
+      el.__fxh=true;
+      el.addEventListener('click',function(e){
+        e.preventDefault();e.stopImmediatePropagation();
+        _pi=el;
+        window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));
+      },true);
+    }
+    document.querySelectorAll('input[type="file"]').forEach(_hook);
+    new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
+      if(!n||n.nodeType!==1)return;
+      if(n.tagName==='INPUT')_hook(n);
+      if(n.querySelectorAll)n.querySelectorAll('input[type="file"]').forEach(_hook);
+    });});}).observe(document.body,{childList:true,subtree:true});
+    var _oc=HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click=function(){
+      if(_isVid(this)&&window.ReactNativeWebView){_pi=this;window.ReactNativeWebView.postMessage(JSON.stringify({type:'PICK_VIDEO'}));return;}
+      _oc.call(this);
+    };
+    window.__flexaReceiveVideo=function(b64,mime,name){
+      var inp=_pi;_pi=null;if(!inp)return;
+      try{
+        var bs=atob(b64),bytes=new Uint8Array(bs.length);
+        for(var i=0;i<bs.length;i++)bytes[i]=bs.charCodeAt(i);
+        var f=new File([new Blob([bytes],{type:mime})],name,{type:mime,lastModified:Date.now()});
+        var dt=new DataTransfer();dt.items.add(f);
+        inp.files=dt.files;
+        inp.dispatchEvent(new Event('change',{bubbles:true}));
+      }catch(e){console.error('[FxVid]',e);}
+    };
+    window.__flexaVideoCancel=function(){_pi=null;};
   }
+  ` : ""}
+})();true;
+`.trim();
 
-  // Intercept inputs already in the DOM
-  document.querySelectorAll('input[type="file"]').forEach(_intercept);
-
-  // Intercept future inputs added by the SPA router
-  new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-      m.addedNodes.forEach(function(node) {
-        if (!node || node.nodeType !== 1) return;
-        if (node.tagName === 'INPUT') _intercept(node);
-        if (node.querySelectorAll) {
-          node.querySelectorAll('input[type="file"]').forEach(_intercept);
-        }
-      });
-    });
-  }).observe(document.body, { childList: true, subtree: true });
-
-  // Intercept programmatic .click() calls (e.g. videoFileInputRef.current?.click())
-  var _origClick = HTMLInputElement.prototype.click;
-  HTMLInputElement.prototype.click = function() {
-    if (_isVideoInput(this) && window.ReactNativeWebView) {
-      _pendingInput = this;
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'PICK_VIDEO' }));
-      return;
-    }
-    _origClick.call(this);
-  };
-
-  // Called by React Native with the base64-encoded video to inject into the input
-  window.__flexaReceiveVideo = function(b64, mimeType, fileName) {
-    var inp = _pendingInput;
-    _pendingInput = null;
-    if (!inp) return;
-    try {
-      var byteStr = atob(b64);
-      var bytes = new Uint8Array(byteStr.length);
-      for (var i = 0; i < byteStr.length; i++) bytes[i] = byteStr.charCodeAt(i);
-      var blob = new Blob([bytes], { type: mimeType });
-      var file = new File([blob], fileName, { type: mimeType, lastModified: Date.now() });
-      var dt = new DataTransfer();
-      dt.items.add(file);
-      inp.files = dt.files;
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-    } catch(err) {
-      console.error('[FlexaVideo] inject error', err);
-    }
-  };
-
-  // Called when RN encounters an error or cancellation
-  window.__flexaVideoCancel = function() {
-    _pendingInput = null;
-  };
-
-  true;
-})();
-  `.trim();
-}
-
-type PermStatus = "checking" | "granted" | "denied" | "undetermined";
-
-// SafeAreaView edges — iOS only (top = Dynamic Island / notch, bottom = home indicator).
-// Android manages its own status bar through the OS and web page layout.
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top", "bottom"] : [];
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function HomeTab() {
   const webRef = useRef<any>(null);
-  const [navState, setNavState] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState(0);
-  const [offline, setOffline] = useState(false);
-  const [permStatus, setPermStatus] = useState<PermStatus>("checking");
-
-  // Real native safe-area insets — injected into the WebView before page load
-  // so the web page knows the exact Dynamic Island / notch height even though
-  // the custom UA ("FlexaMarket/...") doesn't contain "iPhone".
+  const [canGoBack, setCanGoBack] = useState(false);
   const insets = useSafeAreaInsets();
-  const SAT_INJECT = `
-(function(){
-  window.__flexaNativeSafeTop    = ${Math.round(insets.top)};
-  window.__flexaNativeSafeBottom = ${Math.round(insets.bottom)};
-  document.documentElement.style.setProperty('--sat', '${Math.round(insets.top)}px');
-  document.documentElement.style.setProperty('--sab', '${Math.round(insets.bottom)}px');
-})();
-true;`.trim();
 
+  // ── Push notifications ──────────────────────────────────────────────────────
   const injectJs = useCallback((script: string) => {
     webRef.current?.injectJavaScript(script);
   }, []);
 
-  // tokenRef holds the Expo push token once it arrives. We pass injectJs so
-  // the hook injects it into the WebView immediately on first arrival.
-  // We also re-inject it on every onLoadEnd (see below) so that full-page
-  // reloads and SPA navigations that destroy the window object don't lose it.
   const tokenRef = usePushNotifications(injectJs);
 
-  const canGoBack = navState?.canGoBack ?? false;
-
-  useEffect(() => {
-    checkAndRequestPermission();
-  }, []);
-
-  async function checkAndRequestPermission() {
-    try {
-      // Race against a 5-second safety valve so the app NEVER hangs on this check.
-      // We deliberately do NOT call requestPermissionsAsync() here — that is handled
-      // exclusively by usePushNotifications to avoid a race condition where two
-      // concurrent requestPermissionsAsync() calls on Android cause the OS dialog to
-      // freeze and leave permStatus stuck at "checking" forever.
-      const result = await Promise.race<{ status: string }>([
-        Notifications.getPermissionsAsync(),
-        new Promise<{ status: string }>((resolve) =>
-          setTimeout(() => resolve({ status: "undetermined" }), 5000)
-        ),
-      ]);
-
-      if (result.status === "granted") {
-        setPermStatus("granted");
-      } else if (result.status === "denied") {
-        // "denied" on iOS means the user explicitly blocked in Settings — show gate.
-        // On Android it may just mean the runtime dialog hasn't appeared yet;
-        // usePushNotifications will request it in the background, so show the app.
-        setPermStatus(Platform.OS === "ios" ? "denied" : "granted");
-      } else {
-        // undetermined — show the app on both platforms; the notification hook will
-        // ask for permission in the background without blocking the UI.
-        setPermStatus("granted");
-      }
-    } catch {
-      // Any unexpected error must never freeze the app.
-      setPermStatus("granted");
-    }
-  }
-
+  // ── Android hardware back button ────────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -246,282 +143,184 @@ true;`.trim();
     return () => sub.remove();
   }, [canGoBack]);
 
-  // ── Native video picker bridge (iOS only) ──────────────────────────────────
+  // ── Re-inject safe-area insets + push token on every page load ──────────────
+  const onLoadEnd = useCallback(() => {
+    // Safe-area CSS variables
+    injectJs(
+      `(function(){
+        window.__flexaNativeSafeTop=${Math.round(insets.top)};
+        window.__flexaNativeSafeBottom=${Math.round(insets.bottom)};
+        document.documentElement.style.setProperty('--sat','${Math.round(insets.top)}px');
+        document.documentElement.style.setProperty('--sab','${Math.round(insets.bottom)}px');
+      })();true;`
+    );
+    // Re-inject push token (SPA navigations destroy the window object)
+    const token = tokenRef.current;
+    if (token) {
+      const p = Platform.OS;
+      injectJs(
+        `(function(){
+          window.__expoPushToken=${JSON.stringify(token)};
+          window.__expoPushPlatform=${JSON.stringify(p)};
+          if(typeof window.__onExpoPushToken==='function')
+            window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(p)});
+        })();true;`
+      );
+    }
+  }, [insets, injectJs, tokenRef]);
 
-  const cancelVideoPick = useCallback(() => {
-    webRef.current?.injectJavaScript("window.__flexaVideoCancel && window.__flexaVideoCancel(); true;");
+  // ── Navigation guard ────────────────────────────────────────────────────────
+  const onShouldStartLoadWithRequest = useCallback((req: any) => {
+    const { url } = req;
+    if (isInternal(url)) return true; // stay in WebView
+    // Open everything else in the system browser
+    Linking.openURL(url).catch(() => {});
+    return false;
   }, []);
 
-  const deliverVideoToWebView = useCallback(async (uri: string) => {
-    try {
-      // Check size before reading
-      const info = await FileSystem.getInfoAsync(uri, { size: true });
-      const fileSize = (info as any).size ?? 0;
+  // Handle target="_blank" / window.open — keep inside WebView
+  const onOpenWindow = useCallback((event: any) => {
+    const url = event.nativeEvent?.targetUrl;
+    if (!url) return;
+    if (isInternal(url)) {
+      webRef.current?.injectJavaScript(
+        `window.location.href=${JSON.stringify(url)};true;`
+      );
+    } else {
+      Linking.openURL(url).catch(() => {});
+    }
+  }, []);
 
-      if (fileSize > MAX_BRIDGE_BYTES) {
-        webRef.current?.injectJavaScript(`
-          window.__flexaVideoCancel && window.__flexaVideoCancel();
-          alert('Vidéo a twò gwo (limite: 40 MB). Tanpri chwazi yon vidéo pi kout oswa konprese l dabò.');
-          true;
-        `);
+  // ── Bridge messages from the web page ───────────────────────────────────────
+  const handleMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "PICK_VIDEO") handleNativeVideoPick();
+    } catch { /* ignore non-JSON messages */ }
+  }, []);
+
+  // ── Video picker (iOS — WKWebView drops camera video) ──────────────────────
+  const cancelVideoPick = useCallback(() => {
+    injectJs("window.__flexaVideoCancel&&window.__flexaVideoCancel();true;");
+  }, [injectJs]);
+
+  const deliverVideo = useCallback(async (uri: string) => {
+    try {
+      const info = await FileSystem.getInfoAsync(uri, { size: true });
+      if (((info as any).size ?? 0) > MAX_BRIDGE_BYTES) {
+        injectJs(
+          `window.__flexaVideoCancel&&window.__flexaVideoCancel();
+           alert('Vidéo a twò gwo (limit: 40 MB).');true;`
+        );
         return;
       }
-
       const ext = (uri.split(".").pop() ?? "mp4").toLowerCase().split("?")[0];
-      const mimeType =
+      const mime =
         ext === "mov" ? "video/quicktime" :
         ext === "webm" ? "video/webm" : "video/mp4";
-      const fileName = `video_${Date.now()}.${ext}`;
-
-      const base64 = await FileSystem.readAsStringAsync(uri, {
+      const name = `video_${Date.now()}.${ext}`;
+      const b64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-
-      // Inject in chunks to stay well under WKWebView script-size limits
-      const CHUNK = 256 * 1024; // 256 KB per chunk
-      const chunks = [];
-      for (let i = 0; i < base64.length; i += CHUNK) {
-        chunks.push(base64.slice(i, i + CHUNK));
+      const CHUNK = 256 * 1024;
+      injectJs("window.__flexaB64=[];true;");
+      for (let i = 0; i < b64.length; i += CHUNK) {
+        injectJs(`window.__flexaB64.push(${JSON.stringify(b64.slice(i, i + CHUNK))});true;`);
       }
-
-      webRef.current?.injectJavaScript("window.__flexaB64=[];true;");
-      for (const chunk of chunks) {
-        webRef.current?.injectJavaScript(
-          `window.__flexaB64.push(${JSON.stringify(chunk)});true;`
-        );
-      }
-      webRef.current?.injectJavaScript(
-        `window.__flexaReceiveVideo(window.__flexaB64.join(''),${JSON.stringify(mimeType)},${JSON.stringify(fileName)});window.__flexaB64=null;true;`
+      injectJs(
+        `window.__flexaReceiveVideo(window.__flexaB64.join(''),${JSON.stringify(mime)},${JSON.stringify(name)});
+         window.__flexaB64=null;true;`
       );
-    } catch (err) {
-      console.error("[FlexaVideo] deliverVideoToWebView error:", err);
+    } catch {
       cancelVideoPick();
     }
-  }, [cancelVideoPick]);
+  }, [injectJs, cancelVideoPick]);
 
   const pickVideoFromCamera = useCallback(async () => {
     const { granted } = await ImagePicker.requestCameraPermissionsAsync();
     if (!granted) { cancelVideoPick(); return; }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: "videos",
-      videoMaxDuration: 180,
-    });
-    if (result.canceled || !result.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideoToWebView(result.assets[0].uri);
-  }, [cancelVideoPick, deliverVideoToWebView]);
+    const r = await ImagePicker.launchCameraAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
+    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
+    await deliverVideo(r.assets[0].uri);
+  }, [cancelVideoPick, deliverVideo]);
 
   const pickVideoFromLibrary = useCallback(async () => {
     const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!granted) { cancelVideoPick(); return; }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: "videos",
-      videoMaxDuration: 180,
-    });
-    if (result.canceled || !result.assets?.[0]?.uri) { cancelVideoPick(); return; }
-    await deliverVideoToWebView(result.assets[0].uri);
-  }, [cancelVideoPick, deliverVideoToWebView]);
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
+    if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
+    await deliverVideo(r.assets[0].uri);
+  }, [cancelVideoPick, deliverVideo]);
 
   const handleNativeVideoPick = useCallback(() => {
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Anile", "Anrejistre yon Vidéo", "Chwazi nan Galeri"],
-          cancelButtonIndex: 0,
-          title: "Ajoute Vidéo",
-        },
-        (idx) => {
-          if (idx === 1) pickVideoFromCamera();
-          else if (idx === 2) pickVideoFromLibrary();
+        { options: ["Anile", "Anrejistre Vidéo", "Chwazi nan Galeri"], cancelButtonIndex: 0 },
+        (i) => {
+          if (i === 1) pickVideoFromCamera();
+          else if (i === 2) pickVideoFromLibrary();
           else cancelVideoPick();
         }
       );
     } else {
-      // Android WebView handles file inputs natively; this path is not reached
       pickVideoFromLibrary();
     }
   }, [pickVideoFromCamera, pickVideoFromLibrary, cancelVideoPick]);
 
-  const handleMessage = useCallback((event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "PICK_VIDEO") {
-        handleNativeVideoPick();
-        return;
-      }
-    } catch {
-      // Not our message — ignore
-    }
-  }, [handleNativeVideoPick]);
-
-  // ── Render ─────────────────────────────────────────────────────────────────
-
-  if (permStatus === "checking") {
-    return (
-      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <ActivityIndicator size="large" color="#F97316" />
-      </SafeAreaView>
-    );
-  }
-
-  if (permStatus === "denied") {
-    return (
-      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <View style={[styles.logoBox, { backgroundColor: "#F97316" }]}>
-          <Text style={styles.logoText}>FM</Text>
-        </View>
-        <Text style={styles.gateTitle}>Aktive Notifikasyon</Text>
-        <Text style={styles.gateSub}>
-          FlexaMarket itilize notifikasyon pou voye mesaj, lòd, ak alèt enpòtan ba ou.{"\n\n"}
-          Notifikasyon yo obligatwa pou itilize app la.
-        </Text>
-        <View style={styles.iconRow}>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>💬</Text>
-            <Text style={styles.iconLabel}>Mesaj</Text>
-          </View>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>📦</Text>
-            <Text style={styles.iconLabel}>Lòd</Text>
-          </View>
-          <View style={styles.iconItem}>
-            <Text style={styles.iconEmoji}>💰</Text>
-            <Text style={styles.iconLabel}>Peman</Text>
-          </View>
-        </View>
-        <Pressable
-          style={[styles.settingsBtn, { backgroundColor: "#F97316" }]}
-          onPress={() => Linking.openSettings()}
-        >
-          <Feather name="settings" size={18} color="#fff" />
-          <Text style={styles.settingsBtnText}>Ouvri Paramèt</Text>
-        </Pressable>
-        <Pressable
-          style={styles.recheckBtn}
-          onPress={async () => {
-            setPermStatus("checking");
-            const { status } = await Notifications.getPermissionsAsync();
-            setPermStatus(status === "granted" ? "granted" : "denied");
-          }}
-        >
-          <Text style={styles.recheckText}>M aktive li — kontinye</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
-
-  if (offline) {
-    return (
-      <SafeAreaView style={[styles.center, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-        <Text style={{ fontSize: 56 }}>📡</Text>
-        <Text style={[styles.offlineTitle, { color: "#fff" }]}>Pa gen entènèt</Text>
-        <Text style={[styles.offlineSub, { color: "#94a3b8" }]}>Verifye koneksyon ou epi eseye ankò.</Text>
-        <Pressable
-          style={[styles.retryBtn, { backgroundColor: "#F97316" }]}
-          onPress={() => { setOffline(false); setLoading(true); webRef.current?.reload(); }}
-        >
-          <Feather name="refresh-cw" size={16} color="#fff" />
-          <Text style={styles.retryText}>Eseye Ankò</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
-
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: "#0F172A" }]} edges={SAFE_EDGES}>
-      {loading && (
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
-        </View>
-      )}
+    <SafeAreaView style={styles.container} edges={SAFE_EDGES}>
       <WebView
         ref={webRef}
         source={{ uri: WEBSITE }}
-        style={{ flex: 1 }}
+        style={styles.webview}
+
+        // ── JavaScript & storage ──────────────────────────────────────────────
         javaScriptEnabled
         domStorageEnabled
-        sharedCookiesEnabled
         thirdPartyCookiesEnabled
-        allowsBackForwardNavigationGestures
+        allowUniversalAccessFromFileURLs
+        allowFileAccessFromFileURLs
+
+        // ── Initial injected script (runs before page JS) ─────────────────────
+        injectedJavaScript={INIT_SCRIPT}
+        injectedJavaScriptBeforeContentLoaded={INIT_SCRIPT}
+
+        // ── User-Agent: include "Safari" so Stripe renders payment buttons ─────
+        applicationNameForUserAgent="FlexaMarket/1.0 Safari/605.1.15"
+
+        // ── Media ─────────────────────────────────────────────────────────────
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        overScrollMode="never"
-        onNavigationStateChange={setNavState}
-        onLoadStart={() => { setLoading(true); setOffline(false); }}
-        onLoadEnd={() => {
-          setLoading(false);
-          // Re-inject the push token on every page load (covers full reloads and
-          // SPA navigations that destroy window). If the token hasn't arrived yet
-          // the hook's own injectJs callback will fire once it does.
-          const token = tokenRef.current;
-          if (token) {
-            const platform = Platform.OS;
-            webRef.current?.injectJavaScript(
-              `(function(){` +
-              `window.__expoPushToken=${JSON.stringify(token)};` +
-              `window.__expoPushPlatform=${JSON.stringify(platform)};` +
-              `if(typeof window.__onExpoPushToken==='function')` +
-              `window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
-              `})();true;`
-            );
-          }
-        }}
-        onLoadProgress={({ nativeEvent }: any) => setProgress(nativeEvent.progress)}
-        onError={() => { setOffline(true); setLoading(false); }}
-        onHttpError={({ nativeEvent }: any) => { if (nativeEvent.statusCode >= 500) setOffline(true); }}
-        userAgent="FlexaMarket/1.0 (Mobile App)"
-        injectedJavaScriptBeforeContentLoaded={SAT_INJECT}
-        injectedJavaScript={buildVideoInterceptorScript(Platform.OS === "ios")}
-        injectedJavaScriptForMainFrameOnly
+        allowsFullscreenVideo
+
+        // ── iOS gestures ──────────────────────────────────────────────────────
+        allowsBackForwardNavigationGestures={Platform.OS === "ios"}
+
+        // ── Popups (Stripe window.open) ───────────────────────────────────────
+        setSupportMultipleWindows={false}
+
+        // ── Callbacks ─────────────────────────────────────────────────────────
+        onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
+        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+        onOpenWindow={onOpenWindow}
+        onLoadEnd={onLoadEnd}
         onMessage={handleMessage}
-        onShouldStartLoadWithRequest={(request) => {
-          const url = request.url;
-          try {
-            const { hostname } = new URL(url);
-            // Redirect ALL Stripe payment/checkout pages to the native stripe-checkout
-            // screen which has proper Dynamic Island safe area handling.
-            // This covers: checkout.stripe.com, buy.stripe.com (payment links),
-            // billing.stripe.com (customer portal), and any subdomain variants.
-            if (isStripePayment(hostname)) {
-              setTimeout(() => router.push(`/stripe-checkout?url=${encodeURIComponent(url)}`), 0);
-              return false;
-            }
-          } catch {}
-          if (isInternal(url)) return true;
-          return false;
-        }}
-        onOpenWindow={(syntheticEvent) => {
-          const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? "";
-          try {
-            const { hostname } = new URL(targetUrl);
-            if (isStripePayment(hostname)) {
-              router.push(`/stripe-checkout?url=${encodeURIComponent(targetUrl)}`);
-            }
-          } catch {}
-        }}
+
+        // ── Rendering ─────────────────────────────────────────────────────────
+        renderToHardwareTextureAndroid
+        startInLoadingState
+        originWhitelist={["*"]}
+        mixedContentMode="always"
+        cacheEnabled
+        pullToRefreshEnabled={false}
+        keyboardDisplayRequiresUserAction={false}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
-  progressTrack: { position: "absolute", top: 0, left: 0, right: 0, height: 3, zIndex: 10, backgroundColor: "#1e293b" },
-  progressFill: { height: 3, backgroundColor: "#F97316" },
-  logoBox: { width: 80, height: 80, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  logoText: { color: "#fff", fontSize: 32, fontWeight: "700" },
-  offlineTitle: { fontSize: 22, fontWeight: "700" },
-  offlineSub: { fontSize: 14, textAlign: "center" },
-  retryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 14 },
-  retryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
-  gateTitle: { fontSize: 26, fontWeight: "800", color: "#fff", textAlign: "center" },
-  gateSub: { fontSize: 14, color: "#94a3b8", textAlign: "center", lineHeight: 22 },
-  iconRow: { flexDirection: "row", gap: 24, marginVertical: 8 },
-  iconItem: { alignItems: "center", gap: 4 },
-  iconEmoji: { fontSize: 32 },
-  iconLabel: { color: "#94a3b8", fontSize: 12, fontWeight: "600" },
-  settingsBtn: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 14, width: "100%" },
-  settingsBtnText: { color: "#fff", fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
-  recheckBtn: { paddingVertical: 12 },
-  recheckText: { color: "#F97316", fontSize: 14, fontWeight: "600" },
+  container: { flex: 1, backgroundColor: "#000" },
+  webview:   { flex: 1 },
 });

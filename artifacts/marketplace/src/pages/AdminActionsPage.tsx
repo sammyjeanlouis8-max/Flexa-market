@@ -42,11 +42,11 @@ function fmtFull(date: string | Date) {
 
 // ── risk badges ──────────────────────────────────────────────────────────────
 
-const RISK: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
-  low:      { label: "Bas",      cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",             icon: <Shield className="h-2.5 w-2.5" /> },
-  medium:   { label: "Mwayen",   cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",          icon: <ShieldAlert className="h-2.5 w-2.5" /> },
-  high:     { label: "Wo",       cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400",      icon: <ShieldAlert className="h-2.5 w-2.5" /> },
-  critical: { label: "Kritik",   cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 font-black",       icon: <AlertTriangle className="h-2.5 w-2.5" /> },
+const RISK_CLS: Record<string, { cls: string; icon: React.ReactNode }> = {
+  low:      { cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",             icon: <Shield className="h-2.5 w-2.5" /> },
+  medium:   { cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",          icon: <ShieldAlert className="h-2.5 w-2.5" /> },
+  high:     { cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400",      icon: <ShieldAlert className="h-2.5 w-2.5" /> },
+  critical: { cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 font-black",       icon: <AlertTriangle className="h-2.5 w-2.5" /> },
 };
 
 // ── action-type icons & colours ───────────────────────────────────────────────
@@ -90,7 +90,12 @@ function RoleBadge({ role }: { role: string | null }) {
 
 function LogRow({ log }: { log: any }) {
   const [expanded, setExpanded] = useState(false);
-  const risk   = RISK[log.riskLevel] ?? RISK.low;
+  const { t } = useTranslation();
+  const riskCls = RISK_CLS[log.riskLevel] ?? RISK_CLS.low;
+  const riskLabel: Record<string, string> = {
+    low: t("adminActions.riskLow"), medium: t("adminActions.riskMedium"),
+    high: t("adminActions.riskHigh"), critical: t("adminActions.riskCritical"),
+  };
   const { Icon, bg, fg } = actionMeta(log.actionType);
 
   return (
@@ -129,8 +134,8 @@ function LogRow({ log }: { log: any }) {
 
         {/* Right side */}
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${risk.cls}`}>
-            {risk.icon} {risk.label}
+          <span className={`flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${riskCls.cls}`}>
+            {riskCls.icon} {riskLabel[log.riskLevel] ?? log.riskLevel}
           </span>
           <span className="text-[10px] text-muted-foreground">{timeAgo(log.createdAt)}</span>
           {expanded ? <ChevronUp className="h-3 w-3 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -140,10 +145,10 @@ function LogRow({ log }: { log: any }) {
       {/* Expanded detail */}
       {expanded && (
         <div className="px-4 pb-3 ml-12 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground border-t border-border/50 pt-2">
-          <div><span className="font-bold text-foreground/70">Kategori:</span> {log.actionCategory}</div>
-          <div><span className="font-bold text-foreground/70">Tip aksyon:</span> {log.actionType}</div>
-          {log.ipAddress && <div><span className="font-bold text-foreground/70">IP:</span> {log.ipAddress}</div>}
-          <div className="col-span-2"><span className="font-bold text-foreground/70">Lè:</span> {fmtFull(log.createdAt)}</div>
+          <div><span className="font-bold text-foreground/70">{t("adminActions.detailCategory")}:</span> {log.actionCategory}</div>
+          <div><span className="font-bold text-foreground/70">{t("adminActions.detailActionType")}:</span> {log.actionType}</div>
+          {log.ipAddress && <div><span className="font-bold text-foreground/70">{t("adminActions.detailIp")}:</span> {log.ipAddress}</div>}
+          <div className="col-span-2"><span className="font-bold text-foreground/70">{t("adminActions.detailDate")}:</span> {fmtFull(log.createdAt)}</div>
           {log.auditId && <div className="col-span-2 font-mono text-[9px] opacity-50">{log.auditId}</div>}
         </div>
       )}
@@ -155,6 +160,7 @@ function LogRow({ log }: { log: any }) {
 
 function StatsBar() {
   const [stats, setStats] = useState<any>(null);
+  const { t } = useTranslation();
   useEffect(() => {
     apiFetch("/api/admin/audit-stats").then(setStats).catch(() => {});
   }, []);
@@ -162,10 +168,10 @@ function StatsBar() {
   return (
     <div className="grid grid-cols-4 border-b border-border shrink-0 bg-card">
       {[
-        { label: "Total", value: stats.total,    color: "text-foreground" },
-        { label: "24h",   value: stats.last24h,  color: "text-blue-600" },
-        { label: "Wo/Kritik", value: stats.highRisk, color: "text-orange-600" },
-        { label: "Flagged",   value: stats.flagged,  color: "text-red-600" },
+        { label: t("adminActions.statTotal"),    value: stats.total,    color: "text-foreground" },
+        { label: t("adminActions.statLast24h"),  value: stats.last24h,  color: "text-blue-600" },
+        { label: t("adminActions.statHighRisk"), value: stats.highRisk, color: "text-orange-600" },
+        { label: t("adminActions.statFlagged"),  value: stats.flagged,  color: "text-red-600" },
       ].map(s => (
         <div key={s.label} className="flex flex-col items-center py-2.5 border-r last:border-r-0 border-border">
           <span className={`text-base font-black ${s.color}`}>{s.value}</span>
@@ -179,13 +185,7 @@ function StatsBar() {
 // ── categories ────────────────────────────────────────────────────────────────
 
 const CATEGORIES = ["", "user", "security", "wallet", "agent", "driver", "subscription", "delivery", "escrow", "fintech"] as const;
-const CAT_LABELS: Record<string, string> = {
-  "": "Tout", user: "Itilizatè", security: "Sekirite", wallet: "Wallet",
-  agent: "Ajan", driver: "Chofe", subscription: "Abònman", delivery: "Livrezon",
-  escrow: "Eskwo", fintech: "Fintech",
-};
 const RISKS_FILTER = ["", "low", "medium", "high", "critical"] as const;
-const RISK_LABELS: Record<string, string> = { "": "Tout risk", low: "Bas", medium: "Mwayen", high: "Wo", critical: "Kritik" };
 
 // ── main page ─────────────────────────────────────────────────────────────────
 
@@ -204,6 +204,17 @@ export default function AdminActionsPage() {
   const [category, setCategory] = useState("");
   const [riskLevel, setRisk]    = useState("");
   const [flaggedOnly, setFlagged] = useState(false);
+
+  const CAT_LABELS: Record<string, string> = {
+    "": t("adminActions.catAll"), user: t("adminActions.catUser"), security: t("adminActions.catSecurity"),
+    wallet: t("adminActions.catWallet"), agent: t("adminActions.catAgent"), driver: t("adminActions.catDriver"),
+    subscription: t("adminActions.catSubscription"), delivery: t("adminActions.catDelivery"),
+    escrow: t("adminActions.catEscrow"), fintech: t("adminActions.catFintech"),
+  };
+  const RISK_LABELS: Record<string, string> = {
+    "": t("adminActions.riskAll"), low: t("adminActions.riskLow"), medium: t("adminActions.riskMedium"),
+    high: t("adminActions.riskHigh"), critical: t("adminActions.riskCritical"),
+  };
 
   const LIMIT = 50;
 
@@ -318,7 +329,7 @@ export default function AdminActionsPage() {
               flaggedOnly ? "bg-red-600 text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
             }`}
           >
-            <AlertTriangle className="h-2.5 w-2.5" /> Flagged
+            <AlertTriangle className="h-2.5 w-2.5" /> {t("adminActions.flaggedOnly")}
           </button>
         </div>
       </div>

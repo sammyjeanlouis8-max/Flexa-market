@@ -14,81 +14,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Write ASC API key (needed for automatic signing + upload) ───────
-      - name: Write ASC API key
-        env:
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
-
-      # ── 3. Copy app icon from the existing mobile project ─────────────────
+      # ── 2. Copy app icon from the existing mobile project ─────────────────
       - name: Copy app icon
         run: |
           cp artifacts/mobile/assets/images/icon.png \
              artifacts/ios-native/Assets.xcassets/AppIcon.appiconset/icon-1024.png
 
-      # ── 4. Install xcodegen ───────────────────────────────────────────────
+      # ── 3. Install xcodegen ───────────────────────────────────────────────
       - name: Install xcodegen
         run: brew install xcodegen
 
-      # ── 5. Generate .xcodeproj from project.yml ──────────────────────────
+      # ── 4. Generate .xcodeproj from project.yml ──────────────────────────
       - name: Generate Xcode project
         working-directory: artifacts/ios-native
         run: xcodegen generate
 
-      # ── 6. Archive (automatic code signing via ASC API key) ──────────────
-      - name: Archive
+      # ── 5. Install fastlane ───────────────────────────────────────────────
+      - name: Install fastlane
+        run: gem install fastlane --no-document
+
+      # ── 6. Build + sign + upload via fastlane ────────────────────────────
+      - name: Build & Upload to TestFlight
         working-directory: artifacts/ios-native
         env:
-          ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
-        run: |
-          set -o pipefail
-          xcodebuild archive \
-            -project FlexaMarket.xcodeproj \
-            -scheme FlexaMarket \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/FlexaMarket.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            DEVELOPMENT_TEAM=D782MM56VY \
-            2>&1 | tee /tmp/xcodebuild-archive.log
-          echo "Exit code: ${PIPESTATUS[0]}"
-          if grep -q "ARCHIVE FAILED" /tmp/xcodebuild-archive.log; then
-            echo "=== ERRORS ==="
-            grep -A3 "error:" /tmp/xcodebuild-archive.log | head -60
-            exit 1
-          fi
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8:    ${{ secrets.ASC_KEY_P8 }}
+          FASTLANE_HIDE_TIMESTAMP: "true"
+          FASTLANE_SKIP_UPDATE_CHECK: "true"
+        run: fastlane build_and_upload
 
-      # ── 7. Export IPA + upload to TestFlight ─────────────────────────────
-      - name: Export & Upload to TestFlight
-        working-directory: artifacts/ios-native
-        env:
-          ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
-        run: |
-          set -eo pipefail
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/FlexaMarket.xcarchive" \
-            -exportOptionsPlist ExportOptions.plist \
-            -exportPath "$RUNNER_TEMP/FlexaMarket-export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            2>&1 | tee /tmp/xcodebuild-export.log
-
-      # ── 8. Save IPA as artifact (backup — TestFlight upload is in step 7) ─
+      # ── 7. Save IPA as artifact (backup) ──────────────────────────────────
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: FlexaMarket-iOS
-          path: ${{ runner.temp }}/FlexaMarket-export/*.ipa
+          path: /tmp/ipa_output/FlexaMarket.ipa
           retention-days: 7

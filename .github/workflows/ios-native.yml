@@ -92,6 +92,15 @@ jobs:
                   print(f"  ✗ {cid}: {e.code} {e.reason}")
           PYEOF
 
+      # ── 7a. Diagnostic: dump relevant build settings from generated project ──
+      - name: Dump asset-catalog build settings
+        working-directory: artifacts/ios-native
+        run: |
+          echo "=== xcodebuild build settings ===" 
+          xcodebuild -project FlexaMarket.xcodeproj -scheme FlexaMarket \
+            -showBuildSettings 2>/dev/null | \
+            grep -E "ASSETCATALOG|GENERATE_INFOPLIST|INFOPLIST_FILE|INFOPLIST_KEY|CFBundleIconName|APPICON" || true
+
       # ── 7. Build + sign + upload via fastlane ────────────────────────────
       - name: Build & Upload to TestFlight
         working-directory: artifacts/ios-native
@@ -103,10 +112,13 @@ jobs:
           FASTLANE_SKIP_UPDATE_CHECK: "true"
         run: fastlane build_and_upload
 
-      # ── 8. Save IPA as artifact (backup) ──────────────────────────────────
-      - name: Upload IPA artifact
+      # ── 8. Upload gym raw build log + IPA as artifacts ────────────────────
+      - name: Upload build artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FlexaMarket-iOS
-          path: /tmp/ipa_output/FlexaMarket.ipa
-          retention-days: 7
+          name: FlexaMarket-iOS-logs
+          path: |
+            ~/Library/Logs/gym/
+            /tmp/ipa_output/FlexaMarket.ipa
+          retention-days: 3

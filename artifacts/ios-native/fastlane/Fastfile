@@ -67,6 +67,8 @@ platform :ios do
     )
 
     # 6. Build & archive → produces /tmp/ipa_output/FlexaMarket.ipa
+    #    xcargs explicitly force asset-catalog icon name so it survives
+    #    update_code_signing_settings rewriting build settings
     build_ios_app(
       project:          "FlexaMarket.xcodeproj",
       scheme:           "FlexaMarket",
@@ -74,8 +76,20 @@ platform :ios do
       export_method:    "app-store",
       output_directory: "/tmp/ipa_output",
       output_name:      "FlexaMarket.ipa",
-      clean:            true
+      clean:            true,
+      xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO"
     )
+
+    # 6a. Diagnostic: dump compiled Info.plist + list bundle root files
+    archive_path_diag = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+    app_bundle_diag   = "#{archive_path_diag}/Products/Applications/FlexaMarket.app"
+    UI.message "=== ARCHIVE: #{archive_path_diag} ==="
+    UI.message "=== Compiled Info.plist CFBundleIconName ==="
+    sh "/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' '#{app_bundle_diag}/Info.plist' 2>&1 || echo 'KEY MISSING'"
+    UI.message "=== App bundle root files (PNG) ==="
+    sh "ls '#{app_bundle_diag}'/*.png 2>/dev/null || echo 'no PNG at root'"
+    UI.message "=== Assets.car size ==="
+    sh "ls -lh '#{app_bundle_diag}/Assets.car' 2>/dev/null || echo 'no Assets.car'"
 
     # 6b. Patch the IPA:
     #  • inject CFBundleIconName into Info.plist (altool 90713)

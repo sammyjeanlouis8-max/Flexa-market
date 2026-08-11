@@ -45,6 +45,7 @@ jobs:
           ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          set -o pipefail
           xcodebuild archive \
             -project FlexaMarket.xcodeproj \
             -scheme FlexaMarket \
@@ -57,7 +58,13 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM=D782MM56VY \
-            | xcpretty || true
+            2>&1 | tee /tmp/xcodebuild-archive.log
+          echo "Exit code: ${PIPESTATUS[0]}"
+          if grep -q "ARCHIVE FAILED" /tmp/xcodebuild-archive.log; then
+            echo "=== ERRORS ==="
+            grep -A3 "error:" /tmp/xcodebuild-archive.log | head -60
+            exit 1
+          fi
 
       # ── 7. Export IPA + upload to TestFlight ─────────────────────────────
       - name: Export & Upload to TestFlight
@@ -66,6 +73,7 @@ jobs:
           ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          set -eo pipefail
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/FlexaMarket.xcarchive" \
             -exportOptionsPlist ExportOptions.plist \
@@ -74,7 +82,7 @@ jobs:
             -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            | xcpretty || true
+            2>&1 | tee /tmp/xcodebuild-export.log
 
       # ── 8. Save IPA as artifact (backup — TestFlight upload is in step 7) ─
       - name: Upload IPA artifact

@@ -50,3 +50,11 @@ Use fastlane with these steps in order:
 
 ## xcpretty pitfall
 `| xcpretty || true` in GitHub Actions silently swallows xcodebuild errors and reports success even when the archive fails. Always use `2>&1 | tee /tmp/xcode.log` and check for `ARCHIVE FAILED` explicitly.
+
+## xcodegen: Assets.xcassets must be in `sources`, not `resources`
+In xcodegen, listing `Assets.xcassets` under `resources` puts it in the "Copy Bundle Resources" phase — actool never runs, no Assets.car is produced, and altool rejects the upload with errors 90713 (CFBundleIconName), 90022 (120×120 missing), 90023 (152×152 missing).
+**Fix:** Put `Assets.xcassets` under `sources` in project.yml. xcodegen auto-detects `.xcassets` extension and adds it to "Compile Asset Catalogs" → actool runs → Assets.car is produced correctly.
+**Symptom to diagnose:** `grep "actool" ~/Library/Logs/gym/*.log` returns zero hits — actool was never invoked.
+
+## Icon generation for CI
+Generate all icon sizes on the macOS CI runner using `sips` (not pre-committed ImageMagick/Linux PNGs). All sizes go into `Assets.xcassets/AppIcon.appiconset/` matching the filenames in Contents.json. The multi-size `"idiom":"iphone"/"ipad"` Contents.json format works correctly once actool actually runs.

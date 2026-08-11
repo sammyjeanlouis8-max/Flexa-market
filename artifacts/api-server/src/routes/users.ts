@@ -4,6 +4,15 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { UpdateUserBody } from "@workspace/api-zod";
 import { verifyPassword } from "../lib/auth";
+import { sendEmail } from "../lib/email";
+
+// ── In-memory phone-change OTP store ─────────────────────────────────────────
+// { userId → { code, phone, expiresAt } }
+const phoneOtpStore = new Map<number, { code: string; phone: string; expiresAt: number }>();
+
+function generateOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 const router = Router();
 
@@ -258,6 +267,64 @@ router.patch("/me/location", requireAuth, async (req, res): Promise<void> => {
   if (typeof location === "string" && location.trim()) updates.location = location.trim().slice(0, 200);
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid location fields provided" }); return; }
   const [user] = await db.update(usersTable).set(updates).where(eq(usersTable.id, req.userId!)).returning();
+  res.json(formatUser(user));
+});
+
+// POST /api/users/me/phone-change-request — send 6-digit OTP to user's email
+router.post("/me/phone-change-request", requireAuth, async (req, res): Promise<void> => {
+  const { phone } = req.body as { phone?: string };
+  if (!phone?.trim() || phone.trim().length < 6) {
+    res.status(400).json({ error: "Nimewo telefòn pa valid" }); return;
+  }
+  const normalizedPhone = phone.trim();
+
+  // Check uniqueness — allow the user to re-verify their own number
+  const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.phone, normalizedPhone));
+  if (existing && existing.id !== req.userId!) {
+    res.status(409).json({ error: "Nimewo sa a deja itilize pa yon lòt kont" }); return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+  if (!user?.email) { res.status(400).json({ error: "Pa gen email sou kont ou" }); return; }
+
+  const code = generateOtp();
+  phoneOtpStore.set(req.userId!, { code, phone: normalizedPhone, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+  await sendEmail({
+    to: user.email,
+    subject: "Kòd konfirmasyon nimewo telefòn ou — Flexa Market",
+    text: `Kòd konfirmasyon ou se: ${code}\n\nLi valid pou 10 minit. Pa pataje li ak pèsòn.`,
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+      <h2 style="color:#f97316;margin:0 0 16px">📱 Chanje Nimewo Telefòn</h2>
+      <p style="margin:0 0 12px;color:#374151">Kòd konfirmasyon ou se:</p>
+      <div style="background:#f3f4f6;border-radius:12px;padding:20px;text-align:center;font-size:32px;font-weight:bold;letter-spacing:8px;color:#111827;margin:0 0 16px">${code}</div>
+      <p style="margin:0 0 8px;color:#6b7280;font-size:14px">Kòd sa a valid pou <strong>10 minit</strong>.</p>
+      <p style="margin:0;color:#6b7280;font-size:13px">Si ou pa te mande chanjman sa a, inore mesaj sa a.</p>
+    </div>`,
+  });
+
+  res.json({ ok: true, maskedEmail: user.email.replace(/(.{2}).+(@.+)/, "$1***$2") });
+});
+
+// POST /api/users/me/phone-change-confirm — validate OTP, update phone
+router.post("/me/phone-change-confirm", requireAuth, async (req, res): Promise<void> => {
+  const { code } = req.body as { code?: string };
+  if (!code?.trim()) { res.status(400).json({ error: "Kòd obligatwa" }); return; }
+
+  const entry = phoneOtpStore.get(req.userId!);
+  if (!entry) { res.status(400).json({ error: "Pa gen kòd annatant. Mande yon nouvo kòd." }); return; }
+  if (Date.now() > entry.expiresAt) {
+    phoneOtpStore.delete(req.userId!);
+    res.status(400).json({ error: "Kòd ekspire — mande yon nouvo kòd" }); return;
+  }
+  if (entry.code !== code.trim()) { res.status(400).json({ error: "Kòd pa kòrèk" }); return; }
+
+  phoneOtpStore.delete(req.userId!);
+  const [user] = await db.update(usersTable)
+    .set({ phone: entry.phone, isPhoneVerified: true })
+    .where(eq(usersTable.id, req.userId!))
+    .returning();
   res.json(formatUser(user));
 });
 

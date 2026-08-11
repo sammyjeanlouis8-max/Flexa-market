@@ -491,6 +491,65 @@ export default function EditProfile() {
   const [otp, setOtp] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
 
+  // ── Phone-change state (email OTP flow) ────────────────────────────────────
+  const [phoneEditOpen, setPhoneEditOpen]       = useState(false);
+  const [phoneStep, setPhoneStep]               = useState<"input" | "otp">("input");
+  const [newPhoneInput, setNewPhoneInput]        = useState("");
+  const [phoneOtp, setPhoneOtp]                 = useState("");
+  const [phoneSending, setPhoneSending]          = useState(false);
+  const [phoneConfirming, setPhoneConfirming]    = useState(false);
+  const [maskedEmail, setMaskedEmail]            = useState("");
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  const authHeader = token ? `Bearer ${token}` : "";
+
+  const handlePhoneRequestCode = async () => {
+    if (!newPhoneInput.trim() || newPhoneInput.trim().length < 6) {
+      toast({ title: "Ekri yon nimewo telefòn valid", variant: "destructive" }); return;
+    }
+    setPhoneSending(true);
+    try {
+      const r = await fetch(`${BASE}/api/users/me/phone-change-request`, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: newPhoneInput.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Erè");
+      setMaskedEmail(d.maskedEmail ?? "");
+      setPhoneStep("otp");
+      toast({ title: "✅ Kòd voye pa email!" });
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Erè", variant: "destructive" });
+    } finally {
+      setPhoneSending(false);
+    }
+  };
+
+  const handlePhoneConfirm = async () => {
+    if (!phoneOtp.trim()) {
+      toast({ title: "Ekri kòd ou te resevwa a", variant: "destructive" }); return;
+    }
+    setPhoneConfirming(true);
+    try {
+      const r = await fetch(`${BASE}/api/users/me/phone-change-confirm`, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: phoneOtp.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? "Erè");
+      toast({ title: "✅ Nimewo telefòn aktualize!" });
+      queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      setPhoneEditOpen(false);
+      setPhoneStep("input");
+      setNewPhoneInput(""); setPhoneOtp(""); setMaskedEmail("");
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Erè", variant: "destructive" });
+    } finally {
+      setPhoneConfirming(false);
+    }
+  };
+
   useEffect(() => { if (!user) setLocation("/auth/login"); }, [user]);
 
   const form = useForm<FormValues>({
@@ -864,6 +923,99 @@ export default function EditProfile() {
             {countryLocked ? t("editProfile.lockedBtn") : t("editProfile.changeBtn")}
           </Button>
         </div>
+      </div>
+
+      {/* ── Phone Number card ── */}
+      <div className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <h2 className="font-bold text-foreground text-base">📱 Nimewo Telefòn</h2>
+            </div>
+            {user?.phone ? (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 shrink-0" />
+                {user.phone}
+                {user.isPhoneVerified && (
+                  <span className="ml-1 flex items-center gap-0.5 text-green-500 text-xs font-medium">
+                    <CheckCircle className="h-3 w-3" /> Verifye
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Pa gen nimewo. Ajoute yon nimewo pou resevwa notifikasyon SMS.</p>
+            )}
+          </div>
+          {!phoneEditOpen && (
+            <Button variant="outline" size="sm" onClick={() => setPhoneEditOpen(true)} className="rounded-xl shrink-0">
+              <Phone className="h-3.5 w-3.5 mr-1.5" />
+              {user?.phone ? "Chanje" : "Ajoute"}
+            </Button>
+          )}
+        </div>
+
+        {phoneEditOpen && (
+          <div className="mt-4 space-y-3 border-t border-border pt-4">
+            {phoneStep === "input" ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Ekri nimewo ou a. Yon kòd 6 chif ap voye nan <strong>email</strong> ou pou konfirme.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={newPhoneInput}
+                    onChange={e => setNewPhoneInput(e.target.value)}
+                    placeholder="+50912345678"
+                    type="tel"
+                    className="h-9 rounded-xl"
+                  />
+                  <Button
+                    size="sm" className="h-9 shrink-0 rounded-xl"
+                    onClick={handlePhoneRequestCode}
+                    disabled={phoneSending || !newPhoneInput.trim()}
+                  >
+                    {phoneSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Voye kòd"}
+                  </Button>
+                </div>
+                <button onClick={() => setPhoneEditOpen(false)} className="text-xs text-muted-foreground hover:underline">Anile</button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Kòd 6 chif voye nan <strong>{maskedEmail}</strong>. Antre li anba pou konfime.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={phoneOtp}
+                    onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="123456"
+                    maxLength={6}
+                    inputMode="numeric"
+                    className="h-9 rounded-xl font-mono tracking-widest text-center"
+                  />
+                  <Button
+                    size="sm" className="h-9 shrink-0 rounded-xl"
+                    onClick={handlePhoneConfirm}
+                    disabled={phoneConfirming || phoneOtp.length < 6}
+                  >
+                    {phoneConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { setPhoneStep("input"); setPhoneOtp(""); }}
+                    className="text-xs text-muted-foreground hover:underline"
+                  >← Tounen</button>
+                  <button
+                    onClick={handlePhoneRequestCode}
+                    disabled={phoneSending}
+                    className="text-xs text-primary hover:underline disabled:opacity-50"
+                  >Voye kòd ankò</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Change password card ── */}

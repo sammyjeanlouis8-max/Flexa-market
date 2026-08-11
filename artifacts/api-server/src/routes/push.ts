@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { requireAuth } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
 import { upsertExpoPushToken, deleteExpoPushToken } from "../lib/expo-push";
+import { isApnsToken } from "../lib/expo-push";
 
 // Strict bounds for the encryption keys the browser supplies. The real
 // values are short fixed-length base64url blobs; anything wildly outside
@@ -80,6 +81,27 @@ router.post("/push/unsubscribe", requireAuth, async (req, res): Promise<void> =>
  * Body: { token, platform?, deviceId? }
  * Registers an Expo push token for the authenticated user.
  */
+/**
+ * POST /api/push/apns-token  (auth)
+ * Body: { token }  — raw hex APNs device token from native Swift app.
+ * Stored with "apns:" prefix so the sending layer can distinguish it.
+ */
+router.post("/push/apns-token", requireAuth, async (req, res): Promise<void> => {
+  const { token, deviceId } = req.body ?? {};
+  if (typeof token !== "string" || !/^[0-9a-f]{32,}$/i.test(token)) {
+    res.status(400).json({ error: "Invalid APNs device token" });
+    return;
+  }
+  const stored = `apns:${token.toLowerCase()}`;
+  await upsertExpoPushToken({
+    userId: req.userId!,
+    token: stored,
+    platform: "ios",
+    deviceId: typeof deviceId === "string" ? deviceId : null,
+  });
+  res.json({ ok: true });
+});
+
 router.post("/push/expo-token", requireAuth, async (req, res): Promise<void> => {
   const { token, platform, deviceId } = req.body ?? {};
   if (typeof token !== "string" || !token.startsWith("Expo")) {

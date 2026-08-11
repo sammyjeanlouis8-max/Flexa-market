@@ -31,6 +31,25 @@ async function registerToken(token: string, platform: string) {
   }
 }
 
+/** Register a raw APNs device token sent by the native Swift iOS app. */
+async function registerApnsToken(token: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/push/apns-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) {
+      console.warn("[apns] token registration failed:", res.status);
+    }
+  } catch (err) {
+    console.warn("[apns] network error:", err);
+  }
+}
+
 /**
  * Listens for an Expo push token sent by the native WebView wrapper.
  *
@@ -57,15 +76,29 @@ export function useExpoPushToken() {
       registerToken(token, platform ?? "ios");
     };
 
+    // APNs token handler — raw hex token from native Swift app
+    const handleApnsToken = (token: string) => {
+      if (typeof token !== "string" || !/^[0-9a-f]{32,}$/i.test(token)) return;
+      registerApnsToken(token);
+    };
+
     const w = window as any;
 
+    // ── Expo push token (React Native / Expo managed) ──────────────────────
     // Pattern 1: token was injected before React mounted
     if (typeof w.__expoPushToken === "string") {
       handleToken(w.__expoPushToken, w.__expoPushPlatform);
     }
-
     // Pattern 2: native calls window.__onExpoPushToken(token, platform) after load
     w.__onExpoPushToken = handleToken;
+
+    // ── APNs token (native Swift app) ──────────────────────────────────────
+    // Pattern 1: already present before React mounted
+    if (typeof w.__apnsToken === "string") {
+      handleApnsToken(w.__apnsToken);
+    }
+    // Pattern 2: Swift app calls window.__onApnsToken(token) after load
+    w.__onApnsToken = handleApnsToken;
 
     // Pattern 3: native posts a JSON message via ReactNativeWebView.postMessage
     const onMessage = (event: MessageEvent) => {
@@ -74,12 +107,16 @@ export function useExpoPushToken() {
         if (data?.type === "EXPO_PUSH_TOKEN" && typeof data.token === "string") {
           handleToken(data.token, data.platform ?? "ios");
         }
+        if (data?.type === "APNS_TOKEN" && typeof data.token === "string") {
+          handleApnsToken(data.token);
+        }
       } catch { /* not our message */ }
     };
     window.addEventListener("message", onMessage);
 
     return () => {
       w.__onExpoPushToken = undefined;
+      w.__onApnsToken = undefined;
       window.removeEventListener("message", onMessage);
     };
   }, [user]);

@@ -1,6 +1,7 @@
 import { db, expoPushTokensTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
+import { sendApnsToTokens, type ApnsPayload } from "./apns";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -22,6 +23,11 @@ function isExpoPushToken(token: string): boolean {
     token.startsWith("ExponentPushToken[") ||
     token.startsWith("ExpoPushToken[")
   );
+}
+
+/** Raw APNs device tokens are stored with an "apns:" prefix. */
+export function isApnsToken(token: string): boolean {
+  return token.startsWith("apns:");
 }
 
 /**
@@ -48,6 +54,27 @@ export async function sendExpoPushToUser(
 
     if (user && user.notifyPush === false) return;
 
+    // ── APNs (native Swift app) ────────────────────────────────────────────
+    const apnsRows = rows.filter((r) => isApnsToken(r.token));
+    if (apnsRows.length > 0) {
+      const apnsPayload: ApnsPayload = {
+        title: payload.title,
+        body: payload.body,
+        badge: payload.badge,
+        sound: payload.sound ?? "default",
+        data: payload.data,
+        collapseId: payload.channelId,
+      };
+      const rawTokens = apnsRows.map((r) => r.token.slice("apns:".length));
+      const dead = await sendApnsToTokens(rawTokens, apnsPayload);
+      for (const t of dead) {
+        await db.delete(expoPushTokensTable)
+          .where(eq(expoPushTokensTable.token, `apns:${t}`))
+          .catch(() => {});
+      }
+    }
+
+    // ── Expo push (managed / React Native app) ─────────────────────────────
     const validTokens = rows.filter((r) => isExpoPushToken(r.token));
     if (validTokens.length === 0) return;
 
@@ -116,7 +143,7 @@ export async function upsertExpoPushToken(opts: {
   deviceId?: string | null;
   platform?: string | null;
 }): Promise<void> {
-  if (!isExpoPushToken(opts.token)) return;
+  if (!isExpoPushToken(opts.token) && !isApnsToken(opts.token)) return;
 
   const existing = await db
     .select()

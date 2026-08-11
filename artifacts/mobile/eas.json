@@ -15,7 +15,7 @@
       },
       "env": {
         "NODE_ENV": "production",
-        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app"
+        "EXPO_PUBLIC_DOMAIN": "flexamarket.com"
       }
     },
     "production": {
@@ -29,7 +29,7 @@
       },
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "lionfish-app-feohg.ondigitalocean.app",
+        "EXPO_PUBLIC_DOMAIN": "flexamarket.com",
         "EXPO_ROUTER_APP_ROOT": "app"
       }
     }

@@ -27,12 +27,14 @@ targets:
           - "**/.DS_Store"
     resources:
       - path: Assets.xcassets
-      - path: Icons          # legacy icon files embedded directly in the bundle
+      - path: Icons
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.flexamarket.mobile
       DEVELOPMENT_TEAM: D782MM56VY
       CODE_SIGN_STYLE: Automatic
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      # Explicitly inject CFBundleIconName so Xcode 26 doesn't strip it
+      INFOPLIST_KEY_CFBundleIconName: AppIcon
       INFOPLIST_FILE: Sources/Info.plist
       SWIFT_VERSION: "5.9"
       IPHONEOS_DEPLOYMENT_TARGET: "15.1"

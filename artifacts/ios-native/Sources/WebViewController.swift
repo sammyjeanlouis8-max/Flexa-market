@@ -20,6 +20,24 @@ final class WebViewController: UIViewController {
         setupSpinner()
         requestPushPermission()
         loadSite()
+
+        // APNs token often arrives AFTER the first page load completes.
+        // Listen for it here so we can inject it whenever it appears.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApnsTokenNotification(_:)),
+            name: .apnsTokenReceived,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleApnsTokenNotification(_ notification: Notification) {
+        guard let token = notification.object as? String else { return }
+        injectPushToken(token)
     }
 
     // MARK: – Setup

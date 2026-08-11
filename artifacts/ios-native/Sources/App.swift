@@ -1,5 +1,12 @@
 import UIKit
 
+// Fired on the main thread once Apple returns the APNs device token.
+// WebViewController listens for this to inject the token even when
+// it arrives after the initial page load finishes.
+extension Notification.Name {
+    static let apnsTokenReceived = Notification.Name("apnsTokenReceived")
+}
+
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -31,6 +38,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
         NotificationDelegate.shared.apnsToken = token
+        // Notify WebViewController — the page may have already loaded before
+        // Apple returned this token, so we push it via NotificationCenter.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .apnsTokenReceived, object: token)
+        }
     }
 
     func application(_ application: UIApplication,

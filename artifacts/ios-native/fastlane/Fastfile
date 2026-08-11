@@ -4,7 +4,7 @@ platform :ios do
   lane :build_and_upload do
     keychain_name     = "ci_keychain"
     keychain_password = "Flexa_CI_2026!"
-    keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}")
+    keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}-db")
 
     # 1. Temporary keychain for the CI runner
     create_keychain(

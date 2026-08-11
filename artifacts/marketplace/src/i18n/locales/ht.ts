@@ -4667,6 +4667,8 @@ export default {
     broadcastSent: "{{sent}} email voye sou {{total}} itilizatè.",
     clear: "Efase",
     useTemplate: "Modèl Pwofesyonèl",
+    countryFilter: "Filtre pa Peyi",
+    allCountries: "🌍 Tout Peyi",
   },
   commissionPromo: {
     title: "Komisyon Promo",

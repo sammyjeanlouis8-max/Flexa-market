@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -64,6 +64,7 @@ export default function AdminBroadcastPage() {
   const [loadingRecipients, setLoadingRecipients] = useState(true);
   const [search,            setSearch]            = useState("");
   const [selected,          setSelected]          = useState<Set<number>>(new Set());
+  const [countryFilter,     setCountryFilter]     = useState<string>("");
 
   useEffect(() => {
     setLoadingRecipients(true);
@@ -81,11 +82,17 @@ export default function AdminBroadcastPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = recipients.filter(u => {
+  const countries = useMemo(() => {
+    const set = new Set(recipients.map(u => u.country).filter(Boolean) as string[]);
+    return Array.from(set).sort();
+  }, [recipients]);
+
+  const filtered = useMemo(() => recipients.filter(u => {
+    if (countryFilter && u.country !== countryFilter) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (u.name ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
+  }), [recipients, countryFilter, search]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every(u => selected.has(u.id));
 
@@ -283,6 +290,31 @@ export default function AdminBroadcastPage() {
             </Button>
           </div>
         </div>
+
+        {/* Country filter */}
+        {countries.length > 1 && (
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">{t("broadcastPage.countryFilter")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {["", ...countries].map(c => {
+                const FLAG: Record<string, string> = { HT: "🇭🇹", DO: "🇩🇴", US: "🇺🇸", CA: "🇨🇦", FR: "🇫🇷" };
+                return (
+                  <button
+                    key={c || "all"}
+                    onClick={() => setCountryFilter(c)}
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${
+                      countryFilter === c
+                        ? "bg-rose-600 text-white"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }`}
+                  >
+                    {c ? `${FLAG[c] ?? "🌍"} ${c}` : t("broadcastPage.allCountries")}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Recipients list */}
         <div className="space-y-2">

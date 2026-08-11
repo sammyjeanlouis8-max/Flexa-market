@@ -4666,6 +4666,8 @@ export default {
     broadcastSent: "{{sent}} emails envoyés sur {{total}} utilisateurs.",
     clear: "Effacer",
     useTemplate: "Modèle professionnel",
+    countryFilter: "Filtrer par pays",
+    allCountries: "🌍 Tous les pays",
   },
   commissionPromo: {
     title: "Commission Promo",

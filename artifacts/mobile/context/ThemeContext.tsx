@@ -23,9 +23,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeMode] = useState<ThemeMode>("system");
 
   useEffect(() => {
-    AsyncStorage.getItem(THEME_KEY).then((v) => {
-      if (v === "dark" || v === "light") setThemeMode(v);
-    });
+    AsyncStorage.getItem(THEME_KEY)
+      .then((v) => { if (v === "dark" || v === "light") setThemeMode(v); })
+      .catch(() => { /* keep system default */ });
   }, []);
 
   const isDark =
@@ -35,7 +35,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const toggleDark = useCallback(async () => {
     const next: ThemeMode = isDark ? "light" : "dark";
     setThemeMode(next);
-    await AsyncStorage.setItem(THEME_KEY, next);
+    AsyncStorage.setItem(THEME_KEY, next).catch(() => {});
   }, [isDark]);
 
   return (

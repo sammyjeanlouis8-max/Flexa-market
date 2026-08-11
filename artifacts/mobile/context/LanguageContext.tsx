@@ -897,14 +897,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("en");
 
   useEffect(() => {
-    AsyncStorage.getItem(LANG_KEY).then((v) => {
-      if (v && ALL_LANGS.has(v)) setLangState(v as Lang);
-    });
+    AsyncStorage.getItem(LANG_KEY)
+      .then((v) => { if (v && ALL_LANGS.has(v)) setLangState(v as Lang); })
+      .catch(() => { /* keep default language */ });
   }, []);
 
   const setLang = useCallback(async (l: Lang) => {
     setLangState(l);
-    await AsyncStorage.setItem(LANG_KEY, l);
+    AsyncStorage.setItem(LANG_KEY, l).catch(() => {});
   }, []);
 
   const t = useCallback(

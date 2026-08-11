@@ -68,13 +68,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(TOKEN_KEY).then(async (stored) => {
-      if (stored) {
-        setToken(stored);
-        await fetchUser(stored);
-      }
-      setIsLoading(false);
-    });
+    AsyncStorage.getItem(TOKEN_KEY)
+      .then(async (stored) => {
+        if (stored) {
+          setToken(stored);
+          await fetchUser(stored);
+        }
+      })
+      .catch(() => { /* storage unavailable — proceed as logged-out */ })
+      .finally(() => setIsLoading(false));
   }, [fetchUser]);
 
   const login = useCallback(

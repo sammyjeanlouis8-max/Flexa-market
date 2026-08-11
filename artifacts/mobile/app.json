@@ -103,13 +103,8 @@
         "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
     "updates": {
-      "url": "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
-      "checkOnLaunch": "NEVER",
-      "fallbackToCacheTimeout": 10000
+      "enabled": false
     }
   }
 }

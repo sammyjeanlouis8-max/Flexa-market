@@ -66,7 +66,7 @@ platform :ios do
       code_sign_identity:    "Apple Distribution"
     )
 
-    # 6. Build & archive
+    # 6. Build & archive → produces /tmp/ipa_output/FlexaMarket.ipa
     build_ios_app(
       project:          "FlexaMarket.xcodeproj",
       scheme:           "FlexaMarket",
@@ -77,10 +77,46 @@ platform :ios do
       clean:            true
     )
 
+    # 6b. Patch the IPA:
+    #  • inject CFBundleIconName into Info.plist (altool 90713)
+    #  • copy legacy icon PNGs to bundle root (altool 90022/90023)
+    #  • re-sign the bundle to restore a valid signature
+    #  • repack the IPA in-place so upload_to_testflight uses the fixed file
+    original_ipa = "/tmp/ipa_output/FlexaMarket.ipa"
+    patch_dir    = "/tmp/ipa_patch_#{Time.now.to_i}"
+    icons_src    = File.expand_path("../../Icons", __FILE__)
+
+    sh "rm -rf '#{patch_dir}' && mkdir -p '#{patch_dir}'"
+    sh "unzip -q '#{original_ipa}' -d '#{patch_dir}'"
+
+    app_bundle = "#{patch_dir}/Payload/FlexaMarket.app"
+    info_plist = "#{app_bundle}/Info.plist"
+
+    # Add key (ignore error if already present), then set value
+    sh "/usr/libexec/PlistBuddy -c 'Add :CFBundleIconName string AppIcon' '#{info_plist}' 2>/dev/null; true"
+    sh "/usr/libexec/PlistBuddy -c 'Set :CFBundleIconName AppIcon' '#{info_plist}'"
+    UI.success "CFBundleIconName injected into #{info_plist}"
+
+    # Copy every PNG from Icons/ to the app bundle root
+    Dir.glob("#{icons_src}/*.png").each do |icon_file|
+      dest = "#{app_bundle}/#{File.basename(icon_file)}"
+      FileUtils.cp(icon_file, dest)
+    end
+    UI.success "Icon PNGs copied to bundle root"
+
+    # Re-sign: preserve entitlements from original signature
+    sh "codesign --force --sign 'Apple Distribution' " \
+       "--preserve-metadata=identifier,entitlements,flags '#{app_bundle}'"
+    UI.success "Re-signed app bundle"
+
+    # Repack IPA (overwrite original path so upload step finds it)
+    sh "cd '#{patch_dir}' && zip -qr '#{original_ipa}' Payload"
+    UI.success "Patched IPA repacked at #{original_ipa}"
+
     # 7. Upload to TestFlight
     upload_to_testflight(
       api_key:                           api_key,
-      ipa:                               "/tmp/ipa_output/FlexaMarket.ipa",
+      ipa:                               original_ipa,
       skip_waiting_for_build_processing: true
     )
 

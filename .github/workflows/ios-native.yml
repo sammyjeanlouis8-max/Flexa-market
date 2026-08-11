@@ -14,13 +14,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Generate all required icon sizes from the source 1024×1024 ──────
+      # ── 2. Generate app icons (asset catalog 1024 + legacy bundle sizes) ────
       - name: Generate app icons
         run: |
-          # Xcode 26 auto-scaling=unified generates all sizes from 1024x1024
           SRC=artifacts/mobile/assets/images/icon.png
           DEST=artifacts/ios-native/Assets.xcassets/AppIcon.appiconset
+          ICONS=artifacts/ios-native/Icons
+          mkdir -p "$ICONS"
+          # Asset catalog: 1024×1024 only (Xcode 26 auto-scaling=unified)
           sips -z 1024 1024 "$SRC" --out "$DEST/icon-1024.png"
+          # Legacy bundle icons required by altool validation (CFBundleIconFiles)
+          sips -z 120 120 "$SRC" --out "$ICONS/AppIcon60x60@2x.png"
+          sips -z 180 180 "$SRC" --out "$ICONS/AppIcon60x60@3x.png"
+          sips -z 152 152 "$SRC" --out "$ICONS/AppIcon76x76@2x.png"
+          sips -z 167 167 "$SRC" --out "$ICONS/AppIcon83.5x83.5@2x.png"
+          sips -z 58  58  "$SRC" --out "$ICONS/AppIcon29x29@2x.png"
+          sips -z 87  87  "$SRC" --out "$ICONS/AppIcon29x29@3x.png"
+          sips -z 80  80  "$SRC" --out "$ICONS/AppIcon40x40@2x.png"
+          sips -z 120 120 "$SRC" --out "$ICONS/AppIcon40x40@3x.png"
 
       # ── 3. Install xcodegen ───────────────────────────────────────────────
       - name: Install xcodegen

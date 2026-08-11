@@ -81,6 +81,8 @@ platform :ios do
     sh "/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' '#{app_bundle}/Info.plist' 2>&1 || echo 'CFBundleIconName MISSING'"
     sh "ls -lh '#{app_bundle}/Assets.car' 2>/dev/null && echo 'Assets.car EXISTS' || echo 'Assets.car MISSING'"
     sh "ls '#{app_bundle}'/*.png 2>/dev/null | head -5 || echo 'no PNG at root'"
+    # Verify asset catalog size to confirm icon content
+    sh "assetutil --info '#{app_bundle}/Assets.car' 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); [print(e.get('Scale'),e.get('SizeOnDisk'),e.get('Name','?')) for e in d if e.get('AssetType')=='Icon']\" 2>/dev/null || true"
 
     # 7. Upload to TestFlight
     upload_to_testflight(

@@ -25,7 +25,6 @@ targets:
       - path: Sources
         excludes:
           - "**/.DS_Store"
-    resources:
       - path: Assets.xcassets
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.flexamarket.mobile

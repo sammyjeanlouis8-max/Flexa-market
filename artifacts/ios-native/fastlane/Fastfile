@@ -28,13 +28,13 @@ platform :ios do
 
     # 3. Download/create the iOS Distribution certificate and install it
     #    Note: get_certificates uses keychain_path, not keychain_name
-    # For iOS, omit `type` (mac-only param). Default is Distribution cert.
+    # Omit both `type` and `platform` — both trigger internal type validation
+    # bugs in recent fastlane. Default: iOS Distribution cert.
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
       keychain_path:     keychain_path,
-      keychain_password: keychain_password,
-      platform:          "ios"
+      keychain_password: keychain_password
     )
 
     # 4. Download/create the App Store provisioning profile

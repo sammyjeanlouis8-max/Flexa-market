@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable } from "@workspace/db";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
@@ -617,7 +617,9 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
   const scopeErr = assertUserInScope(req.user!, user);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
 
-  const [listings, purchases, sales, loginLogs, wallet] = await Promise.all([
+  const ACTIVE_DELIVERY_STATUSES = ["waiting", "accepted", "picked_up", "in_transit", "arrived", "seller_delivering", "seller_arrived"];
+
+  const [listings, purchases, sales, loginLogs, wallet, activeDeliveriesBuyer, activeDeliveriesSeller, activeDebts, subscription] = await Promise.all([
     // Listings created by user
     db.select({ id: listingsTable.id, title: listingsTable.title, status: listingsTable.status, createdAt: listingsTable.createdAt, price: listingsTable.price, currency: sql<string>`${listingsTable}.currency` })
       .from(listingsTable).where(eq(listingsTable.sellerId, id)).orderBy(desc(listingsTable.createdAt)).limit(30),
@@ -659,7 +661,53 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
     // Wallet balance
     db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
       .from(promoWalletTable).where(eq(promoWalletTable.userId, id)).limit(1),
+
+    // Active deliveries where user is buyer
+    db.select({
+      id: deliveriesTable.id, status: deliveriesTable.status, deliveryMethod: deliveriesTable.deliveryMethod,
+      deliveryCity: deliveriesTable.deliveryCity, totalAmount: deliveriesTable.totalAmount,
+      currency: deliveriesTable.currency, createdAt: deliveriesTable.createdAt, updatedAt: deliveriesTable.updatedAt,
+      role: sql<string>`'buyer'`,
+    }).from(deliveriesTable)
+      .where(and(eq(deliveriesTable.buyerId, id), inArray(deliveriesTable.status, ACTIVE_DELIVERY_STATUSES)))
+      .orderBy(desc(deliveriesTable.updatedAt)).limit(15),
+
+    // Active deliveries where user is seller
+    db.select({
+      id: deliveriesTable.id, status: deliveriesTable.status, deliveryMethod: deliveriesTable.deliveryMethod,
+      deliveryCity: deliveriesTable.deliveryCity, totalAmount: deliveriesTable.totalAmount,
+      currency: deliveriesTable.currency, createdAt: deliveriesTable.createdAt, updatedAt: deliveriesTable.updatedAt,
+      role: sql<string>`'seller'`,
+    }).from(deliveriesTable)
+      .where(and(eq(deliveriesTable.sellerId, id), inArray(deliveriesTable.status, ACTIVE_DELIVERY_STATUSES)))
+      .orderBy(desc(deliveriesTable.updatedAt)).limit(15),
+
+    // Active debts
+    db.select({
+      id: flexCardDebtsTable.id, reason: flexCardDebtsTable.reason, referenceCode: flexCardDebtsTable.referenceCode,
+      originalAmountUsd: flexCardDebtsTable.originalAmountUsd, outstandingUsd: flexCardDebtsTable.outstandingUsd,
+      status: flexCardDebtsTable.status, deadline: flexCardDebtsTable.deadline, createdAt: flexCardDebtsTable.createdAt,
+    }).from(flexCardDebtsTable)
+      .where(and(eq(flexCardDebtsTable.userId, id), eq(flexCardDebtsTable.status, "active")))
+      .orderBy(desc(flexCardDebtsTable.createdAt)).limit(10),
+
+    // Current subscription
+    db.select({
+      id: vendorSubscriptionsTable.id, plan: vendorSubscriptionsTable.plan, status: vendorSubscriptionsTable.status,
+      startedAt: vendorSubscriptionsTable.startedAt, expiresAt: vendorSubscriptionsTable.expiresAt,
+      amountUsd: vendorSubscriptionsTable.amountUsd, interval: vendorSubscriptionsTable.interval,
+      createdAt: vendorSubscriptionsTable.createdAt,
+    }).from(vendorSubscriptionsTable)
+      .where(eq(vendorSubscriptionsTable.userId, id))
+      .orderBy(desc(vendorSubscriptionsTable.createdAt)).limit(1),
   ]);
+
+  // Merge buyer/seller active deliveries, deduplicate by id
+  const seenDeliveries = new Set<number>();
+  const activeDeliveries: typeof activeDeliveriesBuyer = [];
+  for (const d of [...activeDeliveriesBuyer, ...activeDeliveriesSeller]) {
+    if (!seenDeliveries.has(d.id)) { seenDeliveries.add(d.id); activeDeliveries.push(d); }
+  }
 
   res.json({
     user: formatUser(user),
@@ -668,6 +716,9 @@ router.get("/admin/users/:id/activity", requireAdmin, async (req, res): Promise<
     sales,
     loginLogs: loginLogs.map(l => ({ ...l, ...parseUserAgent(l.userAgent) })),
     wallet: wallet[0] ?? null,
+    activeDeliveries,
+    activeDebts,
+    subscription: subscription[0] ?? null,
   });
 });
 

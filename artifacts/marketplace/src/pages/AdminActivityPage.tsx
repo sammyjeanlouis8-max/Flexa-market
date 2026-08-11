@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft, Search, RefreshCw, ShoppingBag, Tag,
   LogIn, Package, Wallet, Clock, ChevronRight, X,
-  User, ShieldAlert, Ban,
+  User, ShieldAlert, Ban, Truck, AlertTriangle, Star,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
@@ -39,10 +39,13 @@ function fmt(date: string | Date) {
 }
 
 type ActivityItem =
-  | { kind: "login";   createdAt: string; action: string; ip: string; device: string; browser: string }
-  | { kind: "purchase"; createdAt: string; id: number; description: string; amount: number; currency: string; paymentMethod: string }
-  | { kind: "sale";    createdAt: string; id: number; description: string; amount: number; sellerEarnings: number; currency: string }
-  | { kind: "listing"; createdAt: string; id: number; title: string; status: string; price: number };
+  | { kind: "login";    createdAt: string; action: string; ip: string; device: string; browser: string }
+  | { kind: "purchase"; createdAt: string; id: number; description: string; amount: number; currency: string; paymentMethod: string; paymentStatus: string }
+  | { kind: "sale";     createdAt: string; id: number; description: string; amount: number; sellerEarnings: number; currency: string; paymentStatus: string }
+  | { kind: "listing";  createdAt: string; id: number; title: string; status: string; price: number }
+  | { kind: "delivery"; createdAt: string; id: number; status: string; deliveryMethod: string; deliveryCity: string | null; totalAmount: number | null; currency: string; role: string; active: true }
+  | { kind: "debt";     createdAt: string; id: number; reason: string; referenceCode: string; originalAmountUsd: number; outstandingUsd: number; deadline: string | null; active: true }
+  | { kind: "subscription"; createdAt: string; id: number; plan: string; status: string; expiresAt: string | null; amountUsd: number | null; interval: string | null };
 
 function mergeActivity(data: any): ActivityItem[] {
   const items: ActivityItem[] = [];
@@ -50,36 +53,52 @@ function mergeActivity(data: any): ActivityItem[] {
     items.push({ kind: "login", createdAt: l.createdAt, action: l.action, ip: l.ip ?? "—", device: l.device ?? "—", browser: l.browser ?? "—" });
   }
   for (const p of data.purchases ?? []) {
-    items.push({ kind: "purchase", createdAt: p.createdAt, id: p.id, description: p.description ?? "Acha", amount: p.amount, currency: p.currency, paymentMethod: p.paymentMethod });
+    items.push({ kind: "purchase", createdAt: p.createdAt, id: p.id, description: p.description ?? "Acha", amount: p.amount, currency: p.currency, paymentMethod: p.paymentMethod, paymentStatus: p.paymentStatus ?? "completed" });
   }
   for (const s of data.sales ?? []) {
-    items.push({ kind: "sale", createdAt: s.createdAt, id: s.id, description: s.description ?? "Vant", amount: s.amount, sellerEarnings: s.sellerEarnings ?? 0, currency: s.currency });
+    items.push({ kind: "sale", createdAt: s.createdAt, id: s.id, description: s.description ?? "Vant", amount: s.amount, sellerEarnings: s.sellerEarnings ?? 0, currency: s.currency, paymentStatus: s.paymentStatus ?? "completed" });
   }
   for (const li of data.listings ?? []) {
     items.push({ kind: "listing", createdAt: li.createdAt, id: li.id, title: li.title, status: li.status, price: li.price });
+  }
+  for (const d of data.activeDeliveries ?? []) {
+    items.push({ kind: "delivery", createdAt: d.updatedAt ?? d.createdAt, id: d.id, status: d.status, deliveryMethod: d.deliveryMethod, deliveryCity: d.deliveryCity, totalAmount: d.totalAmount, currency: d.currency, role: d.role, active: true });
+  }
+  for (const debt of data.activeDebts ?? []) {
+    items.push({ kind: "debt", createdAt: debt.createdAt, id: debt.id, reason: debt.reason, referenceCode: debt.referenceCode, originalAmountUsd: debt.originalAmountUsd, outstandingUsd: debt.outstandingUsd, deadline: debt.deadline, active: true });
+  }
+  if (data.subscription) {
+    const s = data.subscription;
+    items.push({ kind: "subscription", createdAt: s.startedAt ?? s.createdAt, id: s.id, plan: s.plan, status: s.status, expiresAt: s.expiresAt, amountUsd: s.amountUsd, interval: s.interval });
   }
   return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // Labels injected per-render via useKindMeta() below
 const KIND_COLORS = {
-  login:    { icon: LogIn,       color: "bg-blue-100 dark:bg-blue-900/40",      iconColor: "text-blue-600 dark:text-blue-400"    },
-  purchase: { icon: ShoppingBag, color: "bg-orange-100 dark:bg-orange-900/40",  iconColor: "text-orange-600 dark:text-orange-400"},
-  sale:     { icon: Tag,         color: "bg-emerald-100 dark:bg-emerald-900/40",iconColor: "text-emerald-600 dark:text-emerald-400"},
-  listing:  { icon: Package,     color: "bg-violet-100 dark:bg-violet-900/40",  iconColor: "text-violet-600 dark:text-violet-400" },
+  login:        { icon: LogIn,          color: "bg-blue-100 dark:bg-blue-900/40",      iconColor: "text-blue-600 dark:text-blue-400"     },
+  purchase:     { icon: ShoppingBag,    color: "bg-orange-100 dark:bg-orange-900/40",  iconColor: "text-orange-600 dark:text-orange-400" },
+  sale:         { icon: Tag,            color: "bg-emerald-100 dark:bg-emerald-900/40",iconColor: "text-emerald-600 dark:text-emerald-400"},
+  listing:      { icon: Package,        color: "bg-violet-100 dark:bg-violet-900/40",  iconColor: "text-violet-600 dark:text-violet-400"  },
+  delivery:     { icon: Truck,          color: "bg-sky-100 dark:bg-sky-900/40",        iconColor: "text-sky-600 dark:text-sky-400"        },
+  debt:         { icon: AlertTriangle,  color: "bg-red-100 dark:bg-red-900/40",        iconColor: "text-red-600 dark:text-red-400"        },
+  subscription: { icon: Star,           color: "bg-amber-100 dark:bg-amber-900/40",    iconColor: "text-amber-600 dark:text-amber-400"    },
 };
 
 function useKindMeta() {
   const { t } = useTranslation();
   return {
-    login:    { ...KIND_COLORS.login,    label: t("adminActivity.eventLogin")    },
-    purchase: { ...KIND_COLORS.purchase, label: t("adminActivity.eventPurchase") },
-    sale:     { ...KIND_COLORS.sale,     label: t("adminActivity.eventSale")     },
-    listing:  { ...KIND_COLORS.listing,  label: t("adminActivity.statListings")  },
+    login:        { ...KIND_COLORS.login,        label: t("adminActivity.eventLogin")    },
+    purchase:     { ...KIND_COLORS.purchase,     label: t("adminActivity.eventPurchase") },
+    sale:         { ...KIND_COLORS.sale,         label: t("adminActivity.eventSale")     },
+    listing:      { ...KIND_COLORS.listing,      label: t("adminActivity.statListings")  },
+    delivery:     { ...KIND_COLORS.delivery,     label: "Livrezon"                       },
+    debt:         { ...KIND_COLORS.debt,         label: "Dèt"                            },
+    subscription: { ...KIND_COLORS.subscription, label: "Abònman"                        },
   };
 }
 
-type FilterKind = "all" | "login" | "purchase" | "sale" | "listing";
+type FilterKind = "all" | "login" | "purchase" | "sale" | "listing" | "delivery" | "debt" | "subscription";
 
 /* ── Activity detail panel ── */
 function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => void }) {
@@ -161,7 +180,7 @@ function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => vo
 
       {/* Filter chips */}
       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border overflow-x-auto shrink-0">
-        {(["all", "purchase", "sale", "login", "listing"] as FilterKind[]).map(k => (
+        {(["all", "purchase", "sale", "listing", "delivery", "debt", "subscription", "login"] as FilterKind[]).map(k => (
           <button
             key={k}
             onClick={() => setFilter(k)}
@@ -207,14 +226,28 @@ function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => vo
                     )}
                     {item.kind === "purchase" && (
                       <>
-                        <p className="text-sm font-bold">{t("adminActivity.eventPurchase")}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold">{t("adminActivity.eventPurchase")}</p>
+                          {item.paymentStatus !== "completed" && (
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                              {item.paymentStatus}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground truncate">{item.description} · {item.paymentMethod}</p>
                         <span className="text-xs font-black text-orange-600">−${item.amount.toFixed(2)}</span>
                       </>
                     )}
                     {item.kind === "sale" && (
                       <>
-                        <p className="text-sm font-bold">{t("adminActivity.eventSale")}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold">{t("adminActivity.eventSale")}</p>
+                          {item.paymentStatus !== "completed" && (
+                            <span className="text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                              {item.paymentStatus}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground truncate">{item.description}</p>
                         <span className="text-xs font-black text-emerald-600">+${(item.sellerEarnings || item.amount).toFixed(2)}</span>
                       </>
@@ -228,6 +261,57 @@ function ActivityDetail({ userId, onClose }: { userId: number; onClose: () => vo
                             item.status === "available" ? "text-emerald-600" :
                             item.status === "sold" ? "text-blue-600" : "text-amber-600"
                           }>{item.status}</span>
+                        </p>
+                      </>
+                    )}
+                    {item.kind === "delivery" && (
+                      <>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold">Livrezon #{item.id}</p>
+                          <span className="text-[10px] font-bold bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-400 px-1.5 py-0.5 rounded-full animate-pulse">
+                            🔄 {item.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {item.role === "buyer" ? "Kòm Akatè" : "Kòm Vandè"} · {item.deliveryMethod}
+                          {item.deliveryCity ? ` · ${item.deliveryCity}` : ""}
+                        </p>
+                        {item.totalAmount != null && (
+                          <span className="text-xs font-black text-sky-600">${item.totalAmount.toFixed(2)}</span>
+                        )}
+                      </>
+                    )}
+                    {item.kind === "debt" && (
+                      <>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold text-red-600">Dèt Aktif — {item.referenceCode}</p>
+                          <span className="text-[10px] font-bold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 px-1.5 py-0.5 rounded-full">
+                            ⚠ active
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{item.reason}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-red-600">Rès: ${item.outstandingUsd.toFixed(2)}</span>
+                          <span className="text-xs text-muted-foreground">/ ${item.originalAmountUsd.toFixed(2)}</span>
+                          {item.deadline && (
+                            <span className="text-xs text-amber-600 font-bold">· Limit: {fmt(item.deadline)}</span>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    {item.kind === "subscription" && (
+                      <>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-bold capitalize">Abònman {item.plan}</p>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                            item.status === "active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" :
+                            item.status === "grace_period" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" :
+                            "bg-muted text-muted-foreground"
+                          }`}>{item.status}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {item.amountUsd != null ? `$${item.amountUsd.toFixed(2)}/${item.interval ?? "mwa"}` : ""}
+                          {item.expiresAt ? ` · Ekspire: ${fmt(item.expiresAt)}` : ""}
                         </p>
                       </>
                     )}

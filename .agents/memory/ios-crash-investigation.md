@@ -34,7 +34,20 @@ Android (same codebase) works perfectly.
 4. Provisioning profile entitlement mismatch
 5. react-native-webview iOS compatibility
 
-## Next Steps If Build 60 Crashes
+## Build 62 — Definitive Final Build (Expo free plan exhausted after this)
+- newArchEnabled: false (most likely JS-layer crash cause)
+- aps-environment: production entitlement explicit
+- expo-notifications plugin back (profile/binary match)
+- expo-image-picker + expo-location plugins restored
+- Full usePushNotifications hook + video camera bridge restored
+- expo-updates: { enabled: false }
+- No audio background mode, no expo-router origin
+- Simplified _layout.tsx (no fonts/GestureHandler)
+
+**Key insight discovered mid-session:** Splash screen showed on build 59 → crash is in JS layer,
+not native module init. newArchEnabled: true (default in SDK 54) likely caused JS-layer instability.
+
+## Next Steps If Build 62 Crashes
 - Get actual crash log (user taps "Partager" → email to samueljeanlouis37@icloud.com)
 - Try removing expo-router and using a plain RootLayout
 - Check provisioning profile entitlements vs binary entitlements

@@ -2857,6 +2857,24 @@ export default function Admin() {
           </button>
         )}
 
+        {/* Broadcast SMS — super admin only */}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setLocation("/admin/broadcast-sms")}
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-sky-200 dark:border-sky-800 bg-gradient-to-br from-sky-50 to-cyan-50 dark:from-sky-950/30 dark:to-cyan-950/20 hover:from-sky-100 hover:to-cyan-100 dark:hover:from-sky-900/40 dark:hover:to-cyan-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+          >
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-sky-500 to-cyan-600 flex items-center justify-center shrink-0 shadow shadow-sky-200 dark:shadow-sky-900/50">
+              <MessageSquare className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black text-sky-900 dark:text-sky-100">📱 Broadcast SMS</p>
+              <p className="text-xs text-sky-600 dark:text-sky-400 mt-0.5">Voye SMS a tout itilizatè via Twilio</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-sky-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
       </div>
 
       {/* Super Admin shortcut — Add Admin */}

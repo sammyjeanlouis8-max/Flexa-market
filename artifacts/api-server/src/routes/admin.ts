@@ -2527,6 +2527,88 @@ router.put("/admin/platform-fees", requireSuperAdmin, async (req: any, res): Pro
 });
 
 // ─── GET /api/admin/broadcast-recipients ─────────────────────────────────────
+// ─── SMS Broadcast ────────────────────────────────────────────────────────────
+import { sendSms, sendSmsBatch, isTwilioConfigured } from "../lib/sms";
+
+// GET /api/admin/broadcast-sms-recipients — users with valid phone, optionally filtered by country
+router.get("/admin/broadcast-sms-recipients", requireSuperAdmin, async (req, res): Promise<void> => {
+  const country = (req.query.country as string) || "";
+  const conditions: any[] = [
+    sql`${usersTable.phone} IS NOT NULL`,
+    sql`${usersTable.phone} != ''`,
+    eq(usersTable.isBanned, false),
+  ];
+  if (country) conditions.push(eq(usersTable.country, country));
+
+  const users = await db
+    .select({ id: usersTable.id, name: usersTable.name, phone: usersTable.phone, country: usersTable.country })
+    .from(usersTable)
+    .where(and(...conditions))
+    .orderBy(usersTable.name);
+
+  res.json({ users, total: users.length, twilioConfigured: isTwilioConfigured() });
+});
+
+// POST /api/admin/broadcast-sms — send SMS to selected recipients or a test number
+router.post("/admin/broadcast-sms", requireSuperAdmin, async (req, res): Promise<void> => {
+  const { message, testPhone, recipientIds } = req.body as {
+    message?: string;
+    testPhone?: string;
+    recipientIds?: number[];
+  };
+
+  if (!message?.trim()) { res.status(400).json({ error: "Mesaj SMS obligatwa" }); return; }
+  if (message.trim().length > 1600) { res.status(400).json({ error: "Mesaj twò long (maks 1600 karaktè)" }); return; }
+
+  if (!isTwilioConfigured()) {
+    res.status(503).json({ error: "Twilio pa konfigiré — ajoute TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER" });
+    return;
+  }
+
+  // ── Test mode ──
+  if (testPhone?.trim()) {
+    const ok = await sendSms(testPhone.trim(), message.trim());
+    if (!ok) { res.status(500).json({ error: "SMS pa voye — verifye konfigirasyon Twilio" }); return; }
+    res.json({ ok: true, mode: "test", sent: 1 });
+    return;
+  }
+
+  // ── Broadcast mode ──
+  const whereClause = and(
+    sql`${usersTable.phone} IS NOT NULL`,
+    sql`${usersTable.phone} != ''`,
+    eq(usersTable.isBanned, false),
+    ...(Array.isArray(recipientIds) && recipientIds.length > 0
+      ? [sql`${usersTable.id} = ANY(ARRAY[${sql.join(recipientIds.map(id => sql`${id}`), sql`, `)}]::int[])`]
+      : []),
+  );
+
+  const users = await db
+    .select({ phone: usersTable.phone, name: usersTable.name })
+    .from(usersTable)
+    .where(whereClause);
+
+  const recipients = users
+    .filter(u => u.phone && u.phone.trim().length > 5)
+    .map(u => ({ phone: u.phone!, name: u.name }));
+
+  if (recipients.length === 0) {
+    res.status(400).json({ error: "Pa gen itilizatè ak nimewo telefòn" });
+    return;
+  }
+
+  const { sent, failed } = await sendSmsBatch(recipients, message.trim());
+
+  await db.insert(adminLogsTable).values({
+    adminId: req.userId!,
+    action: "broadcast_sms",
+    targetId: null,
+    note: `recipients=${recipients.length} | sent=${sent} | failed=${failed}`,
+  } as any).catch(() => {});
+
+  res.json({ ok: true, mode: "broadcast", total: recipients.length, sent, failed });
+});
+
 // Super-admin only. Returns all non-banned users with a valid email address.
 router.get("/admin/broadcast-recipients", requireSuperAdmin, async (req, res): Promise<void> => {
   const users = await db

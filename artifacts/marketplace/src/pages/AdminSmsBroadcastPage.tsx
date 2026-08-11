@@ -42,7 +42,7 @@ export default function AdminSmsBroadcastPage() {
   const [message,     setMessage]     = useState("");
   const [testPhone,   setTestPhone]   = useState("");
   const [sending,     setSending]     = useState<"idle" | "test" | "broadcast">("idle");
-  const [result,      setResult]      = useState<{ mode: string; sent: number; failed?: number; total?: number } | null>(null);
+  const [result,      setResult]      = useState<{ mode: string; sent: number; failed?: number; total?: number; firstError?: string } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [twilioOk,    setTwilioOk]    = useState<boolean | null>(null);
 
@@ -347,13 +347,26 @@ export default function AdminSmsBroadcastPage() {
 
         {/* Result */}
         {result && (
-          <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            {result.mode === "test"
-              ? t("smsBroadcastPage.testSent")
-              : result.failed
-                ? t("smsBroadcastPage.broadcastSentFailed", { sent: result.sent, total: result.total, failed: result.failed })
-                : t("smsBroadcastPage.broadcastSent", { sent: result.sent, total: result.total })}
+          <div className={`rounded-xl px-4 py-3 text-sm border space-y-1.5 ${
+            result.sent > 0
+              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300"
+              : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300"
+          }`}>
+            <div className="flex items-center gap-2">
+              {result.sent > 0
+                ? <CheckCircle2 className="h-4 w-4 shrink-0" />
+                : <XCircle className="h-4 w-4 shrink-0" />}
+              <span>
+                {result.mode === "test"
+                  ? t("smsBroadcastPage.testSent")
+                  : result.failed
+                    ? t("smsBroadcastPage.broadcastSentFailed", { sent: result.sent, total: result.total, failed: result.failed })
+                    : t("smsBroadcastPage.broadcastSent", { sent: result.sent, total: result.total })}
+              </span>
+            </div>
+            {result.firstError && (
+              <p className="text-xs font-medium pl-6">{result.firstError}</p>
+            )}
           </div>
         )}
       </div>

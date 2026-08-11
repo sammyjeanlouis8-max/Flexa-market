@@ -2567,8 +2567,11 @@ router.post("/admin/broadcast-sms", requireSuperAdmin, async (req, res): Promise
 
   // ── Test mode ──
   if (testPhone?.trim()) {
-    const ok = await sendSms(testPhone.trim(), message.trim());
-    if (!ok) { res.status(500).json({ error: "SMS pa voye — verifye konfigirasyon Twilio" }); return; }
+    const { ok, error } = await sendSms(testPhone.trim(), message.trim());
+    if (!ok) {
+      res.status(500).json({ error: error ?? "SMS pa voye — verifye konfigirasyon Twilio" });
+      return;
+    }
     res.json({ ok: true, mode: "test", sent: 1 });
     return;
   }
@@ -2597,16 +2600,16 @@ router.post("/admin/broadcast-sms", requireSuperAdmin, async (req, res): Promise
     return;
   }
 
-  const { sent, failed } = await sendSmsBatch(recipients, message.trim());
+  const { sent, failed, firstError } = await sendSmsBatch(recipients, message.trim());
 
   await db.insert(adminLogsTable).values({
     adminId: req.userId!,
     action: "broadcast_sms",
     targetId: null,
-    note: `recipients=${recipients.length} | sent=${sent} | failed=${failed}`,
+    note: `recipients=${recipients.length} | sent=${sent} | failed=${failed}${firstError ? ` | err=${firstError.slice(0, 120)}` : ""}`,
   } as any).catch(() => {});
 
-  res.json({ ok: true, mode: "broadcast", total: recipients.length, sent, failed });
+  res.json({ ok: true, mode: "broadcast", total: recipients.length, sent, failed, firstError });
 });
 
 // Super-admin only. Returns all non-banned users with a valid email address.

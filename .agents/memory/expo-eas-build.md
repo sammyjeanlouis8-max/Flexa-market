@@ -16,19 +16,31 @@ Key stubs manually created:
 node /home/runner/workspace/node_modules/.pnpm/eas-cli@19.1.0_.../node_modules/eas-cli/bin/run
 ```
 
-## Required env vars for iOS builds (non-interactive)
+## iOS build — EXPO_TOKEN only needed (credentials are remote)
 ```
-EXPO_TOKEN=<from secret>
-EXPO_ASC_API_KEY_PATH=/tmp/AuthKey_2PT7VT62LY.p8
-EXPO_ASC_KEY_ID=2PT7VT62LY
-EXPO_ASC_ISSUER_ID=747bde63-c170-4c5d-aaf2-098c45831671
-EXPO_APPLE_TEAM_TYPE=INDIVIDUAL
-EXPO_APPLE_TEAM_ID=D782MM56VY
+EXPO_TOKEN=<from session/secret>
 ```
+Build uses `credentialsSource: "remote"` — no p8 file needed for `eas build`.
 
-**Why:** EAS non-interactive mode requires all these; missing any one causes an interactive prompt that crashes in Replit.
-**The .p8 file** must be written to disk first: `cat > /tmp/AuthKey_2PT7VT62LY.p8 << 'EOF' ... EOF`
-The p8 content is stored as Replit secret `EXPO_ASC_KEY_P8`.
+## iOS submit — ASC API key required
+For `eas submit --platform ios`, the key must be written to disk first:
+```
+cat > /tmp/AuthKey_JR8LBAM37G.p8 << 'EOF'
+-----BEGIN PRIVATE KEY-----
+MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgmgRey4PzfsmKlxdn
+zhxo3wSVGgaJ663kHpkAaCWt+/CgCgYIKoZIzj0DAQehRANCAAQjwaH9CP+sShpO
+ixwFWFe7/20W2Gv35gekFztrKl2gC+bLqNJKASjn0yHPyS1f9dcx8eDR0xK43LtB
+5QMYywEa
+-----END PRIVATE KEY-----
+EOF
+```
+Key details (also in eas.json submit.production.ios):
+- Key ID: `JR8LBAM37G`  (name: "EAS Submit 2026", App Manager)
+- Issuer ID: `747bde63-c170-4c5d-aaf2-098c45831671`
+- Apple Team: `D782MM56VY` (samuel jean louis, Individual)
+- ASC App ID: `6754947270`
+
+**Why:** EAS submit non-interactive mode requires a local p8 file path; the key is not stored on EAS servers.
 
 ## Provisioning profile management
 - Old stale profile (no Push Notifications): deleted via EAS GraphQL mutation `deleteAppleProvisioningProfiles`

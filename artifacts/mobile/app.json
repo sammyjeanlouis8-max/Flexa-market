@@ -38,7 +38,6 @@
         "NSMicrophoneUsageDescription": "Flexa Market uses your microphone to record short video clips of items you want to sell, so buyers can get a better view of your products.",
         "NSFaceIDUsageDescription": "Flexa Market uses Face ID so you can sign in quickly and securely without typing your password.",
         "UIBackgroundModes": [
-          "audio",
           "remote-notification"
         ]
       }
@@ -72,12 +71,7 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://flexamarket.com"
-        }
-      ],
+      "expo-router",
       "expo-font",
       [
         "expo-notifications",

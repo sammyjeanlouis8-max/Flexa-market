@@ -36,6 +36,13 @@ function createDb() {
       idleTimeoutMillis: 0,
       connectionTimeoutMillis: 10000,
       max: 10,
+      // DigitalOcean managed PostgreSQL uses a self-signed CA certificate that
+      // is not in the default Node.js trust store. We require SSL but skip
+      // hostname/chain verification so the connection works without bundling
+      // the DO CA cert into the Docker image.
+      ssl: DATABASE_URL.includes("ondigitalocean.com")
+        ? { rejectUnauthorized: false }
+        : undefined,
     });
     pool.on("error", (_err) => {
       // Prevent crash on idle client errors; pool reconnects automatically

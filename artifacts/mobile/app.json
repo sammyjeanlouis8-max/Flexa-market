@@ -73,33 +73,8 @@
     "web": {
       "favicon": "./assets/images/icon.png"
     },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/images/icon.png",
-          "color": "#F97316",
-          "sounds": []
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Flexa Market uses your photo library so you can choose photos of items you want to sell and add them to your listings.",
-          "cameraPermission": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Flexa Market uses your location to show you nearby listings and to set the location for items you are selling, helping local buyers find your products."
-        }
-      ]
-    ],
-    "experiments": {
-      "typedRoutes": true
-    },
+    "plugins": [],
+    "experiments": {},
     "extra": {
       "eas": {
         "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"

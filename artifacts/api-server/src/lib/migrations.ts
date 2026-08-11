@@ -2183,6 +2183,25 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // ── Seed extra Haitian test users with phone numbers ────────────────────────
+  // These accounts let super-admins see a realistic SMS-broadcast recipient list
+  // without needing real buyers. Emails & phones are fake; password is a bcrypt
+  // hash of "TestPass123" (cost 10) — never used in production.
+  migrations.push({
+    name: "seed.haiti_test_phone_users_v1",
+    sql: `
+      INSERT INTO users (email, name, phone, is_phone_verified, country, password_hash, role, created_at)
+      VALUES
+        ('marie.jean@test.flexa',    'Marie Jean',    '+50944100001', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW()),
+        ('pierre.louis@test.flexa',  'Pierre Louis',  '+50944100002', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW()),
+        ('roseline.paul@test.flexa', 'Roseline Paul', '+50944100003', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW()),
+        ('johny.valcin@test.flexa',  'Johny Valcin',  '+50944100004', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW()),
+        ('claudette.joseph@test.flexa', 'Claudette Joseph', '+50944100005', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW()),
+        ('wilner.etienne@test.flexa','Wilner Etienne', '+50944100006', TRUE, 'HT', '$2b$10$Kd1YtVMKIa/CdEd7JwLXEOvVH9YLmA6T2yrC.JeSqKw5CbfGLNvNy', 'buyer', NOW())
+      ON CONFLICT (email) DO NOTHING
+    `,
+  });
+
   let applied = 0;
   let failed = 0;
 

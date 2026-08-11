@@ -3,54 +3,50 @@ import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
 import { Platform } from "react-native";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// NOTE: setNotificationHandler and channel creation are intentionally
+// inside the hook (not at module level) to avoid calling iOS notification
+// APIs before native modules finish initializing — which caused a startup crash.
 
-// Create the Android notification channel unconditionally at module load time.
-// This must exist before any notification can be delivered on Android 8+.
-// We create it here (not inside registerForPushNotifications) so it is always
-// present even if the user has not yet granted permission.
-if (Platform.OS === "android") {
-  // Default notification channel for general alerts
-  Notifications.setNotificationChannelAsync("default", {
-    name: "Flexa Market",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: "#F97316",
-    sound: "default",
-  }).catch(() => {
-    // Non-fatal — channel creation can fail on some emulators
+async function setupNotifications() {
+  // Set how notifications are handled when app is foregrounded
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
   });
 
-  // High-priority channel for new orders — bypasses DND, max vibration
-  Notifications.setNotificationChannelAsync("orders", {
-    name: "New Orders",
-    description: "Urgent alerts when you receive a new order",
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 500, 500, 500, 500, 500],
-    lightColor: "#F97316",
-    sound: "default",
-    bypassDnd: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    showBadge: true,
-  }).catch(() => {
-    // Non-fatal
-  });
+  // Create Android channels (no-op on iOS)
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Flexa Market",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#F97316",
+      sound: "default",
+    }).catch(() => {});
+
+    await Notifications.setNotificationChannelAsync("orders", {
+      name: "New Orders",
+      description: "Urgent alerts when you receive a new order",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 500, 500, 500, 500],
+      lightColor: "#F97316",
+      sound: "default",
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      showBadge: true,
+    }).catch(() => {});
+  }
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) return null;
 
   try {
-    // ── 1. Check / request permission ────────────────────────────────────────
-    // Note: checkAndRequestPermission() in index.tsx deliberately does NOT call
-    // requestPermissionsAsync() to avoid a race condition where two simultaneous
-    // requests freeze Android.  This is the ONLY place we call it.
+    await setupNotifications();
+
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -61,7 +57,6 @@ async function registerForPushNotifications(): Promise<string | null> {
 
     if (finalStatus !== "granted") return null;
 
-    // ── 2. Get Expo push token (with timeout) ─────────────────────────────────
     const tokenResult = await Promise.race<Notifications.ExpoPushToken | null>([
       Notifications.getExpoPushTokenAsync({
         projectId: "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
@@ -92,9 +87,7 @@ export function usePushNotifications(
           `})();true;`
         );
       }
-    }).catch(() => {
-      // Silent failure — push notifications unavailable
-    });
+    }).catch(() => {});
 
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {

@@ -28,9 +28,6 @@
           }
         ]
       },
-      "entitlements": {
-        "aps-environment": "production"
-      },
       "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -87,8 +84,7 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#F97316",
-          "sounds": [],
-          "mode": "production"
+          "sounds": []
         }
       ],
       [
@@ -118,7 +114,7 @@
     },
     "updates": {
       "url": "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
-      "checkOnLaunch": "ALWAYS",
+      "checkOnLaunch": "NEVER",
       "fallbackToCacheTimeout": 10000
     }
   }

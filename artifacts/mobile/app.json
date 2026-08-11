@@ -28,6 +28,9 @@
           }
         ]
       },
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -71,7 +74,15 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#F97316",
+          "sounds": []
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

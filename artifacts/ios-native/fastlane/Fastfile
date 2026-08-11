@@ -27,9 +27,6 @@ platform :ios do
     )
 
     # 3. Download/create the iOS Distribution certificate and install it
-    #    Note: get_certificates uses keychain_path, not keychain_name
-    # Certs were already revoked in the workflow step before this lane runs.
-    # A fresh slot is now available; create one new Distribution cert.
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
@@ -38,7 +35,6 @@ platform :ios do
     )
 
     # 4. Download/create the App Store provisioning profile
-    # app_store is the DEFAULT when adhoc/development/developer_id are all false
     get_provisioning_profile(
       api_key:        api_key,
       app_identifier: "com.flexamarket.mobile",
@@ -46,8 +42,6 @@ platform :ios do
     )
 
     # 5. Switch project from Automatic → Manual signing
-    #    (eliminates the Automatic+Distribution conflict in Xcode 16.4)
-    # SIGH_PROFILE_NAME is absent in fastlane 2.237 — read name from the file.
     profile_path = lane_context[SharedValues::SIGH_PROFILE_PATHS]&.first
     profile_name = sh(
       "security cms -D -i '#{profile_path}' | " \
@@ -66,9 +60,9 @@ platform :ios do
       code_sign_identity:    "Apple Distribution"
     )
 
-    # 6. Build & archive → produces /tmp/ipa_output/FlexaMarket.ipa
-    #    xcargs explicitly force asset-catalog icon name so it survives
-    #    update_code_signing_settings rewriting build settings
+    # 6. Build & archive
+    #    xcargs explicitly force asset-catalog icon name in case
+    #    update_code_signing_settings disturbs build settings
     build_ios_app(
       project:          "FlexaMarket.xcodeproj",
       scheme:           "FlexaMarket",
@@ -80,57 +74,18 @@ platform :ios do
       xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO"
     )
 
-    # 6a. Diagnostic: dump compiled Info.plist + list bundle root files
-    archive_path_diag = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
-    app_bundle_diag   = "#{archive_path_diag}/Products/Applications/FlexaMarket.app"
-    UI.message "=== ARCHIVE: #{archive_path_diag} ==="
-    UI.message "=== Compiled Info.plist CFBundleIconName ==="
-    sh "/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' '#{app_bundle_diag}/Info.plist' 2>&1 || echo 'KEY MISSING'"
-    UI.message "=== App bundle root files (PNG) ==="
-    sh "ls '#{app_bundle_diag}'/*.png 2>/dev/null || echo 'no PNG at root'"
-    UI.message "=== Assets.car size ==="
-    sh "ls -lh '#{app_bundle_diag}/Assets.car' 2>/dev/null || echo 'no Assets.car'"
-
-    # 6b. Patch the IPA:
-    #  • inject CFBundleIconName into Info.plist (altool 90713)
-    #  • copy legacy icon PNGs to bundle root (altool 90022/90023)
-    #  • re-sign the bundle to restore a valid signature
-    #  • repack the IPA in-place so upload_to_testflight uses the fixed file
-    original_ipa = "/tmp/ipa_output/FlexaMarket.ipa"
-    patch_dir    = "/tmp/ipa_patch_#{Time.now.to_i}"
-    icons_src    = File.expand_path("../../Icons", __FILE__)
-
-    sh "rm -rf '#{patch_dir}' && mkdir -p '#{patch_dir}'"
-    sh "unzip -q '#{original_ipa}' -d '#{patch_dir}'"
-
-    app_bundle = "#{patch_dir}/Payload/FlexaMarket.app"
-    info_plist = "#{app_bundle}/Info.plist"
-
-    # Add key (ignore error if already present), then set value
-    sh "/usr/libexec/PlistBuddy -c 'Add :CFBundleIconName string AppIcon' '#{info_plist}' 2>/dev/null; true"
-    sh "/usr/libexec/PlistBuddy -c 'Set :CFBundleIconName AppIcon' '#{info_plist}'"
-    UI.success "CFBundleIconName injected into #{info_plist}"
-
-    # Copy every PNG from Icons/ to the app bundle root
-    Dir.glob("#{icons_src}/*.png").each do |icon_file|
-      dest = "#{app_bundle}/#{File.basename(icon_file)}"
-      FileUtils.cp(icon_file, dest)
-    end
-    UI.success "Icon PNGs copied to bundle root"
-
-    # Re-sign: preserve entitlements from original signature
-    sh "codesign --force --sign 'Apple Distribution' " \
-       "--preserve-metadata=identifier,entitlements,flags '#{app_bundle}'"
-    UI.success "Re-signed app bundle"
-
-    # Repack IPA (overwrite original path so upload step finds it)
-    sh "cd '#{patch_dir}' && zip -qr '#{original_ipa}' Payload"
-    UI.success "Patched IPA repacked at #{original_ipa}"
+    # 6a. Diagnostic: verify Assets.car + CFBundleIconName in compiled bundle
+    archive_path = lane_context[SharedValues::XCODEBUILD_ARCHIVE]
+    app_bundle   = "#{archive_path}/Products/Applications/FlexaMarket.app"
+    UI.message "=== DIAGNOSTIC: compiled bundle ==="
+    sh "/usr/libexec/PlistBuddy -c 'Print CFBundleIconName' '#{app_bundle}/Info.plist' 2>&1 || echo 'CFBundleIconName MISSING'"
+    sh "ls -lh '#{app_bundle}/Assets.car' 2>/dev/null && echo 'Assets.car EXISTS' || echo 'Assets.car MISSING'"
+    sh "ls '#{app_bundle}'/*.png 2>/dev/null | head -5 || echo 'no PNG at root'"
 
     # 7. Upload to TestFlight
     upload_to_testflight(
       api_key:                           api_key,
-      ipa:                               original_ipa,
+      ipa:                               "/tmp/ipa_output/FlexaMarket.ipa",
       skip_waiting_for_build_processing: true
     )
 

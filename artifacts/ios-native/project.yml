@@ -27,32 +27,6 @@ targets:
           - "**/.DS_Store"
     resources:
       - path: Assets.xcassets
-      # Individual file refs → each PNG lands at the bundle ROOT (not a subdirectory)
-      # altool checks the bundle root for legacy icon sizes
-      - path: Icons/AppIcon120.png
-      - path: Icons/AppIcon180.png
-      - path: Icons/AppIcon152.png
-      - path: Icons/AppIcon167.png
-      - path: Icons/AppIcon87.png
-      - path: Icons/AppIcon80.png
-      - path: Icons/AppIcon58.png
-      - path: Icons/AppIcon40.png
-      - path: Icons/AppIcon76.png
-      - path: Icons/AppIcon60.png
-      - path: Icons/AppIcon29.png
-      - path: Icons/AppIcon20.png
-      # @2x/@3x named aliases for CFBundleIconFiles resolution
-      - path: Icons/AppIcon60x60@2x.png
-      - path: Icons/AppIcon60x60@3x.png
-      - path: Icons/AppIcon76x76@2x.png
-      - path: Icons/AppIcon83.5x83.5@2x.png
-      - path: Icons/AppIcon29x29@2x.png
-      - path: Icons/AppIcon29x29@3x.png
-      - path: Icons/AppIcon40x40@2x.png
-      - path: Icons/AppIcon40x40@3x.png
-      - path: Icons/AppIcon20x20@2x.png
-      - path: Icons/AppIcon20x20@3x.png
-      - path: Icons/AppIcon76x76@1x.png
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.flexamarket.mobile
       DEVELOPMENT_TEAM: D782MM56VY

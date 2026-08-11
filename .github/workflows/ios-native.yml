@@ -14,11 +14,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Refresh 1024×1024 from mobile source (all other sizes pre-committed) ─
-      - name: Refresh app icon 1024
+      # ── 2. Generate all icon sizes on macOS CI using sips (avoids Linux/ImageMagick format issues) ──
+      - name: Generate app icons with sips
         run: |
-          sips -z 1024 1024 artifacts/mobile/assets/images/icon.png \
-            --out artifacts/ios-native/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+          SRC=artifacts/mobile/assets/images/icon.png
+          D=artifacts/ios-native/Assets.xcassets/AppIcon.appiconset
+          # All sizes referenced in Contents.json — must match exactly
+          sips -z 1024 1024 "$SRC" --out "$D/icon-1024.png"
+          sips -z 180  180  "$SRC" --out "$D/AppIcon180.png"
+          sips -z 167  167  "$SRC" --out "$D/AppIcon167.png"
+          sips -z 152  152  "$SRC" --out "$D/AppIcon152.png"
+          sips -z 120  120  "$SRC" --out "$D/AppIcon120.png"
+          sips -z 87   87   "$SRC" --out "$D/AppIcon87.png"
+          sips -z 80   80   "$SRC" --out "$D/AppIcon80.png"
+          sips -z 76   76   "$SRC" --out "$D/AppIcon76.png"
+          sips -z 60   60   "$SRC" --out "$D/AppIcon60.png"
+          sips -z 58   58   "$SRC" --out "$D/AppIcon58.png"
+          sips -z 40   40   "$SRC" --out "$D/AppIcon40.png"
+          sips -z 29   29   "$SRC" --out "$D/AppIcon29.png"
+          sips -z 20   20   "$SRC" --out "$D/AppIcon20.png"
+          echo "Icons generated:"
+          ls -la "$D/"
 
       # ── 3. Install xcodegen ───────────────────────────────────────────────
       - name: Install xcodegen

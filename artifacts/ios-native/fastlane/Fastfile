@@ -28,15 +28,13 @@ platform :ios do
 
     # 3. Download/create the iOS Distribution certificate and install it
     #    Note: get_certificates uses keychain_path, not keychain_name
-    # force:true revokes any existing Distribution certs (Apple allows max 2) and
-    # creates a fresh one. Required because each CI run has a clean keychain so
-    # previous certs' private keys are gone and Apple won't issue a 3rd one.
+    # Certs were already revoked in the workflow step before this lane runs.
+    # A fresh slot is now available; create one new Distribution cert.
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
       keychain_path:     keychain_path,
-      keychain_password: keychain_password,
-      force:             true
+      keychain_password: keychain_password
     )
 
     # 4. Download/create the App Store provisioning profile

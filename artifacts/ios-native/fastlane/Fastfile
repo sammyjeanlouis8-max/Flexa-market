@@ -2,20 +2,21 @@ default_platform(:ios)
 
 platform :ios do
   lane :build_and_upload do
-    # 1. Temporary keychain so certificates can be installed on the CI runner
     keychain_name     = "ci_keychain"
     keychain_password = "Flexa_CI_2026!"
+
+    # 1. Temporary keychain for the CI runner
     create_keychain(
-      name:              keychain_name,
-      password:          keychain_password,
-      default_keychain:  true,
-      unlock:            true,
-      timeout:           3600,
+      name:               keychain_name,
+      password:           keychain_password,
+      default_keychain:   true,
+      unlock:             true,
+      timeout:            3600,
       add_to_search_list: true,
-      lock_when_sleeps:  false
+      lock_when_sleeps:   false
     )
 
-    # 2. Load ASC API key (used for cert/profile management + TestFlight upload)
+    # 2. ASC API key (cert + profile management + TestFlight upload)
     api_key = app_store_connect_api_key(
       key_id:      ENV["ASC_KEY_ID"],
       issuer_id:   ENV["ASC_ISSUER_ID"],
@@ -24,48 +25,55 @@ platform :ios do
       in_house:    false
     )
 
-    # 3. Fetch (or create) an iOS Distribution certificate and install it
+    # 3. Download/create the iOS Distribution certificate and install it
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
       keychain_name:     keychain_name,
       keychain_password: keychain_password,
       platform:          "ios",
-      type:              "distribution"      # App Store / Ad Hoc
+      type:              "distribution"
     )
 
-    # 4. Fetch (or create) the App Store provisioning profile
+    # 4. Download/create the App Store provisioning profile
     get_provisioning_profile(
-      api_key:         api_key,
-      app_identifier:  "com.flexamarket.mobile",
-      output_path:     "/tmp/profiles",
-      provisioning_name: "FlexaMarket AppStore",
-      ignore_profiles_with_different_name: false,
-      app_store:       true,                 # Distribution, not Development
-      force:           false
+      api_key:        api_key,
+      app_identifier: "com.flexamarket.mobile",
+      output_path:    "/tmp/profiles",
+      app_store:      true
     )
 
-    # 5. Build & archive
+    # 5. Switch project from Automatic → Manual signing with the Distribution
+    #    profile. This eliminates the "conflicting provisioning settings" error
+    #    caused by combining CODE_SIGN_STYLE=Automatic with Apple Distribution.
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path:                  "FlexaMarket.xcodeproj",
+      team_id:               "D782MM56VY",
+      bundle_identifier:     "com.flexamarket.mobile",
+      profile_name:          lane_context[SharedValues::SIGH_PROFILE_NAME],
+      code_sign_identity:    "Apple Distribution"
+    )
+
+    # 6. Build & archive (no codesigning_identity override — let the project handle it)
     build_ios_app(
-      project:            "FlexaMarket.xcodeproj",
-      scheme:             "FlexaMarket",
-      configuration:      "Release",
-      export_method:      "app-store",
-      output_directory:   "/tmp/ipa_output",
-      output_name:        "FlexaMarket.ipa",
-      clean:              true,
-      codesigning_identity: "Apple Distribution",
-      xcargs:             "DEVELOPMENT_TEAM=D782MM56VY"
+      project:           "FlexaMarket.xcodeproj",
+      scheme:            "FlexaMarket",
+      configuration:     "Release",
+      export_method:     "app-store",
+      output_directory:  "/tmp/ipa_output",
+      output_name:       "FlexaMarket.ipa",
+      clean:             true
     )
 
-    # 6. Upload to TestFlight (skip waiting so the job doesn't time out)
+    # 7. Upload to TestFlight
     upload_to_testflight(
-      api_key:                            api_key,
-      ipa:                                "/tmp/ipa_output/FlexaMarket.ipa",
-      skip_waiting_for_build_processing:  true
+      api_key:                           api_key,
+      ipa:                               "/tmp/ipa_output/FlexaMarket.ipa",
+      skip_waiting_for_build_processing: true
     )
 
-    # 7. Clean up keychain
+    # 8. Clean up
     delete_keychain(name: keychain_name)
   end
 end

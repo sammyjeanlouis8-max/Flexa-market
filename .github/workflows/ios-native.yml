@@ -1,0 +1,85 @@
+name: iOS Native — Build & TestFlight
+
+# Trigger manually from GitHub → Actions tab
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Upload to TestFlight
+    runs-on: macos-15          # Xcode 16, arm64 runner
+
+    steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Write ASC API key (needed for automatic signing + upload) ───────
+      - name: Write ASC API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
+
+      # ── 3. Copy app icon from the existing mobile project ─────────────────
+      - name: Copy app icon
+        run: |
+          cp artifacts/mobile/assets/images/icon.png \
+             artifacts/ios-native/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+
+      # ── 4. Install xcodegen ───────────────────────────────────────────────
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      # ── 5. Generate .xcodeproj from project.yml ──────────────────────────
+      - name: Generate Xcode project
+        working-directory: artifacts/ios-native
+        run: xcodegen generate
+
+      # ── 6. Archive (automatic code signing via ASC API key) ──────────────
+      - name: Archive
+        working-directory: artifacts/ios-native
+        env:
+          ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild archive \
+            -project FlexaMarket.xcodeproj \
+            -scheme FlexaMarket \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/FlexaMarket.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=D782MM56VY \
+            | xcpretty || true
+
+      # ── 7. Export IPA + upload to TestFlight ─────────────────────────────
+      - name: Export & Upload to TestFlight
+        working-directory: artifacts/ios-native
+        env:
+          ASC_KEY_ID:     ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:  ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/FlexaMarket.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath "$RUNNER_TEMP/FlexaMarket-export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | xcpretty || true
+
+      # ── 8. Save IPA as artifact (backup — TestFlight upload is in step 7) ─
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FlexaMarket-iOS
+          path: ${{ runner.temp }}/FlexaMarket-export/*.ipa
+          retention-days: 7

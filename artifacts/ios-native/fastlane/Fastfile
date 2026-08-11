@@ -38,11 +38,11 @@ platform :ios do
     )
 
     # 4. Download/create the App Store provisioning profile
+    # app_store is the DEFAULT when adhoc/development/developer_id are all false
     get_provisioning_profile(
       api_key:        api_key,
       app_identifier: "com.flexamarket.mobile",
-      output_path:    "/tmp/profiles",
-      app_store:      true
+      output_path:    "/tmp/profiles"
     )
 
     # 5. Switch project from Automatic → Manual signing

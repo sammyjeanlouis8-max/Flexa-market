@@ -1,41 +1,260 @@
 import UIKit
 import WebKit
+import UserNotifications
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
 final class WebViewController: UIViewController {
 
+    // MARK: – Properties
+
     private var webView: WKWebView!
+    private let spinner = UIActivityIndicatorView(style: .large)
+    private var offlineView: OfflineView?
+
+    // MARK: – Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
+        setupWebView()
+        setupSpinner()
+        requestPushPermission()
+        loadSite()
 
-        let webView = WKWebView(frame: view.bounds)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApnsTokenNotification(_:)),
+            name: .apnsTokenReceived,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleApnsTokenNotification(_ notification: Notification) {
+        guard let token = notification.object as? String else { return }
+        injectPushToken(token)
+    }
+
+    // MARK: – Setup
+
+    private func setupWebView() {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        // NOTE: mediaTypesRequiringUserActionForPlayback removed — API may be gone in iOS 26
+
+        let script = WKUserScript(
+            source: "window.__iosWebView = true;",
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+        config.userContentController.addUserScript(script)
+
+        webView = WKWebView(frame: view.bounds, configuration: config)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
-        self.webView = webView
-        view.addSubview(webView)
+        webView.scrollView.contentInsetAdjustmentBehavior = .always
 
-        webView.load(URLRequest(url: kWebsite))
+        webView.customUserAgent =
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+            "FlexaMarket/1.0 Mobile/15E148 Safari/604.1"
+
+        view.addSubview(webView)
+        view.backgroundColor = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
+    }
+
+    private func setupSpinner() {
+        spinner.color = .white
+        spinner.hidesWhenStopped = true
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+        spinner.startAnimating()
+    }
+
+    // MARK: – Loading
+
+    private func loadSite() {
+        offlineView?.removeFromSuperview()
+        offlineView = nil
+        var request = URLRequest(url: kWebsite)
+        request.cachePolicy = .useProtocolCachePolicy
+        webView.load(request)
+    }
+
+    // MARK: – Push Notifications
+
+    private func requestPushPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .badge, .sound]
+        ) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
+    }
+
+    func injectPushToken(_ token: String) {
+        let js = """
+        (function(){
+          window.__apnsToken = \(jsonString(token));
+          if (typeof window.__onApnsToken === 'function')
+            window.__onApnsToken(\(jsonString(token)));
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func jsonString(_ s: String) -> String {
+        let data = try? JSONSerialization.data(withJSONObject: s)
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\(s)\""
+    }
+
+    // MARK: – Offline UI
+
+    private func showOffline() {
+        guard offlineView == nil else { return }
+        let ov = OfflineView { [weak self] in self?.loadSite() }
+        ov.frame = view.bounds
+        ov.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.addSubview(ov)
+        offlineView = ov
     }
 }
 
+// MARK: – WKNavigationDelegate
+
 extension WebViewController: WKNavigationDelegate {
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        spinner.startAnimating()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        spinner.stopAnimating()
+        if let token = NotificationDelegate.shared.apnsToken {
+            injectPushToken(token)
+        }
+    }
+
     func webView(_ webView: WKWebView,
                  didFailProvisionalNavigation navigation: WKNavigation!,
                  withError error: Error) {
-        // offline — show simple label, no crash risk
-        let label = UILabel()
-        label.text = "Pa gen koneksyon entènèt"
-        label.textColor = .white
-        label.textAlignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
+        spinner.stopAnimating()
+        showOffline()
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        spinner.stopAnimating()
+        showOffline()
+    }
+
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        let host = url.host ?? ""
+        let inApp = host == "flexamarket.com"
+            || host.hasSuffix(".flexamarket.com")
+            || host == "stripe.com"
+            || host.hasSuffix(".stripe.com")
+            || url.scheme == "about"
+            || url.scheme == "blob"
+        if inApp || (navigationAction.targetFrame != nil && navigationAction.targetFrame!.isMainFrame) {
+            decisionHandler(.allow)
+        } else {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            decisionHandler(.cancel)
+        }
+    }
+}
+
+// MARK: – WKUIDelegate
+
+extension WebViewController: WKUIDelegate {
+    func webView(_ webView: WKWebView,
+                 createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction,
+                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            webView.load(URLRequest(url: url))
+        }
+        return nil
+    }
+}
+
+// MARK: – Offline View
+
+private final class OfflineView: UIView {
+    private let retry: () -> Void
+
+    init(retry: @escaping () -> Void) {
+        self.retry = retry
+        super.init(frame: .zero)
+        setup()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setup() {
+        backgroundColor = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
+
+        let emoji = UILabel()
+        emoji.text = "📵"
+        emoji.font = .systemFont(ofSize: 64)
+        emoji.textAlignment = .center
+
+        let title = UILabel()
+        title.text = "Pa gen koneksyon"
+        title.font = .boldSystemFont(ofSize: 22)
+        title.textColor = .white
+        title.textAlignment = .center
+
+        let sub = UILabel()
+        sub.text = "Vérifye koneksyon entènèt ou epi eseye ankò."
+        sub.font = .systemFont(ofSize: 15)
+        sub.textColor = UIColor.white.withAlphaComponent(0.6)
+        sub.textAlignment = .center
+        sub.numberOfLines = 0
+
+        var btnConfig = UIButton.Configuration.filled()
+        btnConfig.title = "Eseye ankò"
+        btnConfig.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32)
+        btnConfig.cornerStyle = .fixed
+        btnConfig.background.cornerRadius = 12
+        btnConfig.baseBackgroundColor = UIColor(red: 0.98, green: 0.45, blue: 0.09, alpha: 1)
+        btnConfig.baseForegroundColor = .white
+        btnConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { att in
+            var out = att; out.font = .boldSystemFont(ofSize: 17); return out
+        }
+        let btn = UIButton(configuration: btnConfig)
+        btn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
+
+        let stack = UIStackView(arrangedSubviews: [emoji, title, sub, btn])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+
         NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -40),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -32),
         ])
     }
+
+    @objc private func retryTapped() { retry() }
 }

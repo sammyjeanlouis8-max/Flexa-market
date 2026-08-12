@@ -14,8 +14,6 @@ final class WebViewController: UIViewController {
         super.viewDidLoad()
         setupWebView()
         setupSpinner()
-        // NOTE: requestPushPermission() intentionally skipped in build 72
-        // Testing whether crash is in NotificationDelegate init or in requestAuthorization()
         loadSite()
 
         NotificationCenter.default.addObserver(
@@ -24,6 +22,16 @@ final class WebViewController: UIViewController {
             name: .apnsTokenReceived,
             object: nil
         )
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Request push permission AFTER the window is visible and key.
+        // iOS 26 crashes if requestAuthorization() is called during viewDidLoad
+        // before the scene window becomes key.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.requestPushPermission()
+        }
     }
 
     deinit {
@@ -77,6 +85,17 @@ final class WebViewController: UIViewController {
         offlineView?.removeFromSuperview()
         offlineView = nil
         webView.load(URLRequest(url: kWebsite))
+    }
+
+    private func requestPushPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .badge, .sound]
+        ) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
     }
 
     func injectPushToken(_ token: String) {

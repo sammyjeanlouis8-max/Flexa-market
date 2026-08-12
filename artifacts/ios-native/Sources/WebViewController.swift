@@ -1,41 +1,19 @@
 import UIKit
 import WebKit
-import UserNotifications
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
 final class WebViewController: UIViewController {
 
-    // MARK: – Properties
-
     private var webView: WKWebView!
     private let spinner = UIActivityIndicatorView(style: .large)
     private var offlineView: OfflineView?
-
-    // MARK: – Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupWebView()
         setupSpinner()
-        requestPushPermission()
         loadSite()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleApnsTokenNotification(_:)),
-            name: .apnsTokenReceived,
-            object: nil
-        )
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    @objc private func handleApnsTokenNotification(_ notification: Notification) {
-        guard let token = notification.object as? String else { return }
-        injectPushToken(token)
     }
 
     // MARK: – Setup
@@ -43,7 +21,6 @@ final class WebViewController: UIViewController {
     private func setupWebView() {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
-        // NOTE: mediaTypesRequiringUserActionForPlayback removed — API may be gone in iOS 26
 
         let script = WKUserScript(
             source: "window.__iosWebView = true;",
@@ -58,7 +35,6 @@ final class WebViewController: UIViewController {
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .always
-
         webView.customUserAgent =
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
@@ -80,46 +56,11 @@ final class WebViewController: UIViewController {
         spinner.startAnimating()
     }
 
-    // MARK: – Loading
-
     private func loadSite() {
         offlineView?.removeFromSuperview()
         offlineView = nil
-        var request = URLRequest(url: kWebsite)
-        request.cachePolicy = .useProtocolCachePolicy
-        webView.load(request)
+        webView.load(URLRequest(url: kWebsite))
     }
-
-    // MARK: – Push Notifications
-
-    private func requestPushPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .badge, .sound]
-        ) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                UIApplication.shared.registerForRemoteNotifications()
-            }
-        }
-    }
-
-    func injectPushToken(_ token: String) {
-        let js = """
-        (function(){
-          window.__apnsToken = \(jsonString(token));
-          if (typeof window.__onApnsToken === 'function')
-            window.__onApnsToken(\(jsonString(token)));
-        })();
-        """
-        webView.evaluateJavaScript(js, completionHandler: nil)
-    }
-
-    private func jsonString(_ s: String) -> String {
-        let data = try? JSONSerialization.data(withJSONObject: s)
-        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\(s)\""
-    }
-
-    // MARK: – Offline UI
 
     private func showOffline() {
         guard offlineView == nil else { return }
@@ -141,9 +82,6 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         spinner.stopAnimating()
-        if let token = NotificationDelegate.shared.apnsToken {
-            injectPushToken(token)
-        }
     }
 
     func webView(_ webView: WKWebView,
@@ -162,8 +100,7 @@ extension WebViewController: WKNavigationDelegate {
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else {
-            decisionHandler(.allow)
-            return
+            decisionHandler(.allow); return
         }
         let host = url.host ?? ""
         let inApp = host == "flexamarket.com"

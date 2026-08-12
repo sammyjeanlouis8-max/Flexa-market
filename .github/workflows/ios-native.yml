@@ -2,12 +2,16 @@ name: iOS Native — Build & TestFlight
 
 # Trigger manually from GitHub → Actions tab
 on:
+  schedule:
+    - cron: '10 7 * * *'  # 07:10 UTC = midnight Pacific (auto-upload when Apple limit resets)
   workflow_dispatch:
 
 jobs:
   build:
     name: Build & Upload to TestFlight
-    runs-on: macos-latest      # Xcode 26+ with iOS 26 SDK (required by App Store)
+    runs-on:
+  schedule:
+    - cron: '10 7 * * *'  # 07:10 UTC = midnight Pacific (auto-upload when Apple limit resets) macos-latest      # Xcode 26+ with iOS 26 SDK (required by App Store)
 
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────────

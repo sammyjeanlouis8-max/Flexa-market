@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
-import { upsertExpoPushToken, deleteExpoPushToken } from "../lib/expo-push";
+import { upsertExpoPushToken, deleteExpoPushToken, sendExpoPushToUser } from "../lib/expo-push";
 import { isApnsToken } from "../lib/expo-push";
 import { sendApnsNotification, getApnsConfig } from "../lib/apns";
-import { db, expoPushTokensTable } from "@workspace/db";
+import { db, expoPushTokensTable, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 // Strict bounds for the encryption keys the browser supplies. The real
 // values are short fixed-length base64url blobs; anything wildly outside
@@ -168,7 +169,60 @@ router.get("/push/tokens", requireAdmin, async (_req, res): Promise<void> => {
     total: rows.length,
     apns: rows.filter(r => r.token.startsWith("apns:")).length,
     expo: rows.filter(r => r.token.startsWith("Expo") || r.token.startsWith("ExponentPushToken")).length,
+    android: rows.filter(r => r.platform === "android").length,
+    ios: rows.filter(r => r.platform === "ios").length,
+    unknown: rows.filter(r => !r.platform).length,
   });
+});
+
+/**
+ * GET /api/push/tokens/detail  (admin only)
+ * Returns all tokens with user info — useful for diagnosing missing Android tokens.
+ */
+router.get("/push/tokens/detail", requireAdmin, async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      userId: expoPushTokensTable.userId,
+      token: expoPushTokensTable.token,
+      platform: expoPushTokensTable.platform,
+      deviceId: expoPushTokensTable.deviceId,
+      updatedAt: expoPushTokensTable.updatedAt,
+      userName: usersTable.name,
+    })
+    .from(expoPushTokensTable)
+    .leftJoin(usersTable, eq(usersTable.id, expoPushTokensTable.userId))
+    .orderBy(expoPushTokensTable.updatedAt);
+
+  res.json(rows.map(r => ({
+    userId: r.userId,
+    userName: r.userName,
+    platform: r.platform,
+    tokenPrefix: r.token.slice(0, 45) + "…",
+    deviceId: r.deviceId,
+    updatedAt: r.updatedAt,
+  })));
+});
+
+/**
+ * POST /api/push/test-expo  (admin only)
+ * Body: { userId }
+ * Sends a test Expo push directly to a specific user — shows errors in server logs.
+ */
+router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => {
+  const { userId } = req.body ?? {};
+  if (!userId || typeof userId !== "number") {
+    res.status(400).json({ error: "userId (number) required" });
+    return;
+  }
+  await sendExpoPushToUser(userId, {
+    title: "🔔 Test Flexa Push",
+    body: "Si ou wè sa — Android push fonksyone!",
+    sound: "default",
+    channelId: "default",
+    priority: "high",
+    data: { url: "/" },
+  });
+  res.json({ ok: true, message: "Push sent — check server logs for errors" });
 });
 
 export default router;

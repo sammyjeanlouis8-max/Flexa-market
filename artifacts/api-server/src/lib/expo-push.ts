@@ -90,6 +90,11 @@ export async function sendExpoPushToUser(
       ...(payload.ttl !== undefined ? { ttl: payload.ttl } : {}),
     }));
 
+    logger.info(
+      { userId, tokenCount: messages.length, tokens: validTokens.map(r => r.token.slice(0, 30)) },
+      "[expo-push] Sending push notification",
+    );
+
     const res = await fetch(EXPO_PUSH_URL, {
       method: "POST",
       headers: {
@@ -101,24 +106,35 @@ export async function sendExpoPushToUser(
     });
 
     if (!res.ok) {
+      const body = await res.text().catch(() => "");
       logger.warn(
-        { status: res.status, userId },
+        { status: res.status, userId, body },
         "[expo-push] HTTP error from Expo push service",
       );
       return;
     }
 
     const json: any = await res.json().catch(() => null);
+    logger.info({ userId, expoResponse: json }, "[expo-push] Expo push send response");
+
     if (!json?.data) return;
 
     const toDelete: string[] = [];
+    const ticketIds: string[] = [];
+
     for (let i = 0; i < json.data.length; i++) {
-      const receipt = json.data[i];
-      if (
-        receipt?.status === "error" &&
-        receipt?.details?.error === "DeviceNotRegistered"
-      ) {
-        toDelete.push(validTokens[i].token);
+      const ticket = json.data[i];
+      if (ticket?.status === "ok" && ticket?.id) {
+        ticketIds.push(ticket.id);
+      } else if (ticket?.status === "error") {
+        const errCode = ticket?.details?.error;
+        logger.warn(
+          { userId, token: validTokens[i]?.token?.slice(0, 40), errCode, ticket },
+          "[expo-push] Ticket error from Expo",
+        );
+        if (errCode === "DeviceNotRegistered") {
+          toDelete.push(validTokens[i].token);
+        }
       }
     }
 
@@ -132,8 +148,74 @@ export async function sendExpoPushToUser(
         "[expo-push] Pruned dead token",
       );
     }
+
+    // ── Async receipt check (3 min later) ────────────────────────────────────
+    // Expo delivers tickets immediately, but the actual FCM/APNs delivery
+    // status (e.g. InvalidRegistration, MessageRateExceeded) only appears
+    // in receipts ~1-5 minutes later.  We check in the background so we
+    // can log FCM-level failures without blocking the request.
+    if (ticketIds.length > 0) {
+      setTimeout(() => {
+        checkExpoReceipts(ticketIds, validTokens.map(r => r.token), userId).catch(() => {});
+      }, 3 * 60 * 1000);
+    }
   } catch (err) {
     logger.error({ err, userId }, "[expo-push] sendExpoPushToUser unexpected failure");
+  }
+}
+
+const EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts";
+
+/**
+ * Check Expo push receipts ~3 minutes after sending.
+ * Receipts reveal FCM/APNs-level delivery errors (InvalidRegistration,
+ * MessageRateExceeded, etc.) that are not visible in the initial ticket.
+ */
+async function checkExpoReceipts(
+  ticketIds: string[],
+  tokens: string[],
+  userId: number,
+): Promise<void> {
+  try {
+    const res = await fetch(EXPO_RECEIPTS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ ids: ticketIds }),
+    });
+    if (!res.ok) {
+      logger.warn({ status: res.status, userId }, "[expo-push] receipt HTTP error");
+      return;
+    }
+    const json: any = await res.json().catch(() => null);
+    if (!json?.data) return;
+
+    const toDelete: string[] = [];
+    for (const [id, receipt] of Object.entries(json.data as Record<string, any>)) {
+      if (receipt?.status === "ok") {
+        logger.info({ userId, ticketId: id }, "[expo-push] FCM delivery confirmed ✓");
+      } else if (receipt?.status === "error") {
+        const errCode = receipt?.details?.error;
+        logger.error(
+          { userId, ticketId: id, errCode, receipt },
+          "[expo-push] FCM delivery FAILED",
+        );
+        // Find the token that matches this ticket position
+        const idx = ticketIds.indexOf(id);
+        if (idx >= 0 && errCode === "DeviceNotRegistered") {
+          toDelete.push(tokens[idx]);
+        }
+      }
+    }
+
+    for (const token of toDelete) {
+      await db
+        .delete(expoPushTokensTable)
+        .where(eq(expoPushTokensTable.token, token))
+        .catch(() => {});
+      logger.info({ userId, token: token.slice(0, 40) }, "[expo-push] Pruned dead token (receipt)");
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, "[expo-push] receipt check failed");
   }
 }
 

@@ -19,14 +19,36 @@ import { usePushNotifications } from "./hooks/usePushNotifications";
 const WEBSITE = "https://flexamarket.com";
 
 // Heartbeat interval while app is in background (ms).
-// 25 s is short enough to keep the socket alive before the server's
-// ~30 s ping timeout, and long enough not to drain the battery.
 const BACKGROUND_HEARTBEAT_MS = 25_000;
+
+/** Register an Expo push token directly from native (bypasses WebView timing). */
+async function registerPushTokenDirect(token: string, jwt: string): Promise<void> {
+  try {
+    const res = await fetch(`${WEBSITE}/api/push/expo-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({ token, platform: "android", deviceId: null }),
+    });
+    if (!res.ok) {
+      console.warn("[push-reg] token save failed:", res.status);
+    } else {
+      console.log("[push-reg] token saved to DB ✓");
+    }
+  } catch (e) {
+    console.warn("[push-reg] network error:", e);
+  }
+}
 
 export default function App() {
   const webRef = useRef<any>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
+  const jwtRef = useRef<string | null>(null);
 
   // Holds an injection script that arrived before the WebView was ready
   const pendingScript = useRef<string | null>(null);
@@ -95,7 +117,36 @@ export default function App() {
     }
   }, []);
 
-  const tokenRef = usePushNotifications(injectJs);
+  const tokenRef = usePushNotifications(
+    injectJs,
+    () => jwtRef.current,
+    // Called by usePushNotifications when token arrives and JWT is already known
+    (pushToken) => {
+      const jwt = jwtRef.current;
+      if (jwt) registerPushTokenDirect(pushToken, jwt).catch(() => {});
+    },
+  );
+
+  // ── onMessage: receive JWT + trigger direct token save ─────────────────
+  // The marketplace sends { type: "AUTH_TOKEN", token: jwt } after the user
+  // loads.  We store it and, if we already have an Expo push token, call the
+  // registration API immediately — no WebView injection timing issues.
+  const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+
+      if (msg?.type === "AUTH_TOKEN" && typeof msg.token === "string") {
+        jwtRef.current = msg.token;
+        // If we already have the push token, save it now
+        const pushToken = tokenRef.current;
+        if (pushToken) {
+          registerPushTokenDirect(pushToken, msg.token).catch(() => {});
+        }
+      }
+    } catch {
+      // not our message
+    }
+  }, []);
 
   // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
@@ -172,6 +223,7 @@ export default function App() {
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
           onLoadEnd={onLoadEnd}
+          onMessage={onMessage}
         />
       </SafeAreaView>
     </SafeAreaProvider>

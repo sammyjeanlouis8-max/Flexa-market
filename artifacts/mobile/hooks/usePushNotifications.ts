@@ -91,6 +91,10 @@ async function registerForPushNotifications(): Promise<string | null> {
 
 export function usePushNotifications(
   injectJs?: (script: string) => void,
+  /** Optional: returns the current JWT so the token can be registered directly */
+  getJwt?: () => string | null,
+  /** Optional: called directly when the API saves the token (fallback path) */
+  onTokenSaved?: (token: string) => void,
 ) {
   const tokenRef = useRef<string | null>(null);
 
@@ -98,6 +102,8 @@ export function usePushNotifications(
     registerForPushNotifications().then((token) => {
       if (!token) return;
       tokenRef.current = token;
+
+      // Path 1 — inject into WebView (existing mechanism)
       if (injectJs) {
         const platform = Platform.OS;
         injectJs(
@@ -105,6 +111,13 @@ export function usePushNotifications(
           `if(typeof window.__onExpoPushToken==='function')window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
           `})();true;`
         );
+      }
+
+      // Path 2 — register directly via native fetch if we already have a JWT
+      // This fires even when the WebView injection timing window is missed.
+      const jwt = getJwt?.();
+      if (jwt) {
+        onTokenSaved?.(token);
       }
     }).catch(() => {});
 

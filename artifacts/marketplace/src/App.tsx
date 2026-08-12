@@ -314,9 +314,23 @@ function LayoutRoutes() {
 // Auth state loads in the background; pages handle the unauthenticated state
 // gracefully (show skeleton / guest view) until the user data arrives.
 function Router() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, token: authToken } = useAuth();
   const [location, setLocation] = useLocation();
   useExpoPushToken();
+
+  // ── Send JWT to the native WebView shell ───────────────────────────────────
+  // The native app (App.tsx) listens for AUTH_TOKEN messages so it can call
+  // /api/push/expo-token directly — bypassing the window.__onExpoPushToken
+  // timing window that caused the push token to never reach the database.
+  useEffect(() => {
+    if (!authToken) return;
+    const w = window as any;
+    if (typeof w.ReactNativeWebView?.postMessage === "function") {
+      w.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: "AUTH_TOKEN", token: authToken }),
+      );
+    }
+  }, [authToken]);
 
   // Register SW message listener so push notifications play a sound in-tab.
   useEffect(() => { initNotificationSound(); }, []);

@@ -1,21 +1,40 @@
 /**
- * Flexa Market — bare-minimum WebView shell.
- * No expo-router, no file-based routing.
- * One screen, one WebView, flexamarket.com.
+ * Flexa Market — WebView shell with Android push notifications.
+ * Requests FCM permission on startup, gets Expo push token,
+ * and injects it into the WebView so the website can register it.
  */
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { BackHandler, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import { useEffect } from "react";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
 
 export default function App() {
   const webRef = useRef<any>(null);
   const [canGoBack, setCanGoBack] = useState(false);
+  // Holds an injection script that arrived before the WebView was ready
+  const pendingScript = useRef<string | null>(null);
 
-  // Android hardware back
+  // Called by usePushNotifications when the Expo push token is ready.
+  // If the WebView is already loaded we inject immediately; otherwise we
+  // stash the script and inject it once the page finishes loading.
+  const injectJs = useCallback((script: string) => {
+    if (webRef.current) {
+      webRef.current.injectJavaScript(script);
+    } else {
+      pendingScript.current = script;
+    }
+  }, []);
+
+  // Wire up push notification registration (Android FCM + iOS APNs).
+  // The hook requests permission, obtains the Expo push token, and
+  // calls injectJs so the website receives it via window.__expoPushToken.
+  const tokenRef = usePushNotifications(injectJs);
+
+  // Android hardware back button
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -27,6 +46,29 @@ export default function App() {
     });
     return () => sub.remove();
   }, [canGoBack]);
+
+  // Re-inject the push token on every page load so the website always has it,
+  // regardless of navigation order vs. token arrival order.
+  const onLoadEnd = useCallback(() => {
+    // Drain any script that arrived before the page was ready
+    if (pendingScript.current) {
+      webRef.current?.injectJavaScript(pendingScript.current);
+      pendingScript.current = null;
+    }
+    // Always re-inject the token after each page navigation
+    const token = tokenRef.current;
+    if (token) {
+      const platform = Platform.OS;
+      webRef.current?.injectJavaScript(
+        `(function(){` +
+          `window.__expoPushToken=${JSON.stringify(token)};` +
+          `window.__expoPushPlatform=${JSON.stringify(platform)};` +
+          `if(typeof window.__onExpoPushToken==='function')` +
+          `window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
+        `})();true;`
+      );
+    }
+  }, []);
 
   return (
     <SafeAreaProvider>
@@ -50,6 +92,7 @@ export default function App() {
           cacheEnabled
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
+          onLoadEnd={onLoadEnd}
         />
       </SafeAreaView>
     </SafeAreaProvider>

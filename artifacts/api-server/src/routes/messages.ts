@@ -266,7 +266,7 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
       sound: "default",
       badge: badgeCount,
-      channelId: "flexa-messages",
+      channelId: "default",
     });
   } catch {}
 

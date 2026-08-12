@@ -25,7 +25,7 @@ jobs:
           corepack prepare pnpm@10.26.1 --activate
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install
 
       # ── 3. EAS Build + Submit Android ─────────────────────────────────────
       # google-play-key.json is already in artifacts/mobile/ (checked in).

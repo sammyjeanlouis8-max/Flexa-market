@@ -48,7 +48,7 @@
     "android": {
       "package": "com.flexa.market",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 2,
+      "versionCode": 3,
       "compileSdkVersion": 35,
       "targetSdkVersion": 35,
       "minSdkVersion": 24,
@@ -73,7 +73,17 @@
     "web": {
       "favicon": "./assets/images/icon.png"
     },
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#F97316",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ]
+    ],
     "experiments": {},
     "extra": {
       "eas": {

@@ -4,7 +4,11 @@ import { io, Socket } from "socket.io-client";
 let globalSocket: Socket | null = null;
 
 function getSocket(): Socket {
-  if (!globalSocket || !globalSocket.connected) {
+  // Never recreate the socket if it already exists — socket.io's built-in
+  // reconnection will bring it back when internet returns.  Creating a new
+  // instance while the old one is still alive causes TWO sockets to connect
+  // at the same time, doubling every event and freezing the React tree.
+  if (!globalSocket) {
     globalSocket = io("/", {
       path: "/api/socket.io",
       transports: ["websocket", "polling"],
@@ -12,6 +16,8 @@ function getSocket(): Socket {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 8000,
+      randomizationFactor: 0.5,
     });
   }
   return globalSocket;

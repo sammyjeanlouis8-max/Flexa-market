@@ -1,5 +1,6 @@
 import UIKit
 import WebKit
+import UserNotifications
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
@@ -13,10 +14,26 @@ final class WebViewController: UIViewController {
         super.viewDidLoad()
         setupWebView()
         setupSpinner()
+        // NOTE: requestPushPermission() intentionally skipped in build 72
+        // Testing whether crash is in NotificationDelegate init or in requestAuthorization()
         loadSite()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApnsTokenNotification(_:)),
+            name: .apnsTokenReceived,
+            object: nil
+        )
     }
 
-    // MARK: – Setup
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleApnsTokenNotification(_ notification: Notification) {
+        guard let token = notification.object as? String else { return }
+        injectPushToken(token)
+    }
 
     private func setupWebView() {
         let config = WKWebViewConfiguration()
@@ -62,6 +79,22 @@ final class WebViewController: UIViewController {
         webView.load(URLRequest(url: kWebsite))
     }
 
+    func injectPushToken(_ token: String) {
+        let js = """
+        (function(){
+          window.__apnsToken = \(jsonString(token));
+          if (typeof window.__onApnsToken === 'function')
+            window.__onApnsToken(\(jsonString(token)));
+        })();
+        """
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func jsonString(_ s: String) -> String {
+        let data = try? JSONSerialization.data(withJSONObject: s)
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\(s)\""
+    }
+
     private func showOffline() {
         guard offlineView == nil else { return }
         let ov = OfflineView { [weak self] in self?.loadSite() }
@@ -72,8 +105,6 @@ final class WebViewController: UIViewController {
     }
 }
 
-// MARK: – WKNavigationDelegate
-
 extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
@@ -82,6 +113,9 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         spinner.stopAnimating()
+        if let token = NotificationDelegate.shared.apnsToken {
+            injectPushToken(token)
+        }
     }
 
     func webView(_ webView: WKWebView,
@@ -118,8 +152,6 @@ extension WebViewController: WKNavigationDelegate {
     }
 }
 
-// MARK: – WKUIDelegate
-
 extension WebViewController: WKUIDelegate {
     func webView(_ webView: WKWebView,
                  createWebViewWith configuration: WKWebViewConfiguration,
@@ -131,8 +163,6 @@ extension WebViewController: WKUIDelegate {
         return nil
     }
 }
-
-// MARK: – Offline View
 
 private final class OfflineView: UIView {
     private let retry: () -> Void

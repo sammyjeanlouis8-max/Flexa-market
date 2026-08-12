@@ -100,6 +100,15 @@ export function useExpoPushToken() {
     // Pattern 2: Swift app calls window.__onApnsToken(token) after load
     w.__onApnsToken = handleApnsToken;
 
+    // ── iOS native push permission request ─────────────────────────────────
+    // When running inside the WKWebView wrapper, the website triggers the
+    // native push permission dialog by messaging Swift.  Swift calls
+    // UNUserNotificationCenter.requestAuthorization() + registerForRemoteNotifications()
+    // and then delivers the APNs token back via window.__onApnsToken above.
+    if (w.__iosWebView && w.webkit?.messageHandlers?.requestPushPermission) {
+      w.webkit.messageHandlers.requestPushPermission.postMessage({});
+    }
+
     // Pattern 3: native posts a JSON message via ReactNativeWebView.postMessage
     const onMessage = (event: MessageEvent) => {
       try {

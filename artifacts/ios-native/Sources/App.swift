@@ -13,6 +13,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        // iOS 26: call registerForRemoteNotifications unconditionally on every launch.
+        // didRegisterForRemoteNotificationsWithDeviceToken may not fire after first grant,
+        // so we re-register each launch to ensure a fresh token is delivered.
+        application.registerForRemoteNotifications()
         return true
     }
 

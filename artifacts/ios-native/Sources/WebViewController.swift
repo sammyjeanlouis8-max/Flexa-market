@@ -9,6 +9,7 @@ final class WebViewController: UIViewController {
     private var webView: WKWebView!
     private let spinner = UIActivityIndicatorView(style: .large)
     private var offlineView: OfflineView?
+    private var pushPermissionRequested = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -26,9 +27,13 @@ final class WebViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Request push permission AFTER the window is visible and key.
-        // iOS 26 crashes if requestAuthorization() is called during viewDidLoad
-        // before the scene window becomes key.
+        // Request push permission once, after window is key and visible.
+        // iOS 26 fix: use Task { @MainActor in } so the entire async flow runs
+        // on the main actor — avoids the libdispatch background-thread assertion
+        // crash that triggers when closure-based requestAuthorization callbacks
+        // run off the main queue (Swift 6 / iOS 26 enforcement).
+        guard !pushPermissionRequested else { return }
+        pushPermissionRequested = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.requestPushPermission()
         }
@@ -42,6 +47,8 @@ final class WebViewController: UIViewController {
         guard let token = notification.object as? String else { return }
         injectPushToken(token)
     }
+
+    // MARK: – Setup
 
     private func setupWebView() {
         let config = WKWebViewConfiguration()
@@ -81,19 +88,30 @@ final class WebViewController: UIViewController {
         spinner.startAnimating()
     }
 
+    // MARK: – Loading
+
     private func loadSite() {
         offlineView?.removeFromSuperview()
         offlineView = nil
         webView.load(URLRequest(url: kWebsite))
     }
 
+    // MARK: – Push Notifications
+
     private func requestPushPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .badge, .sound]
-        ) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                UIApplication.shared.registerForRemoteNotifications()
+        // Use async/await on the MainActor — iOS 26 / Swift 6 require the
+        // requestAuthorization completion to run on the main thread.
+        // The old closure-based approach crashes with:
+        //   "BUG IN CLIENT OF LIBDISPATCH: Block was expected on main-thread queue"
+        Task { @MainActor in
+            do {
+                let granted = try await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .badge, .sound])
+                if granted {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            } catch {
+                print("[Push] Auth error: \(error)")
             }
         }
     }
@@ -114,6 +132,8 @@ final class WebViewController: UIViewController {
         return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\(s)\""
     }
 
+    // MARK: – Offline UI
+
     private func showOffline() {
         guard offlineView == nil else { return }
         let ov = OfflineView { [weak self] in self?.loadSite() }
@@ -123,6 +143,8 @@ final class WebViewController: UIViewController {
         offlineView = ov
     }
 }
+
+// MARK: – WKNavigationDelegate
 
 extension WebViewController: WKNavigationDelegate {
 
@@ -171,6 +193,8 @@ extension WebViewController: WKNavigationDelegate {
     }
 }
 
+// MARK: – WKUIDelegate
+
 extension WebViewController: WKUIDelegate {
     func webView(_ webView: WKWebView,
                  createWebViewWith configuration: WKWebViewConfiguration,
@@ -182,6 +206,8 @@ extension WebViewController: WKUIDelegate {
         return nil
     }
 }
+
+// MARK: – Offline View
 
 private final class OfflineView: UIView {
     private let retry: () -> Void

@@ -27,14 +27,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ── 3. Write Google Play service-account key ───────────────────────────
-      - name: Write Google Play key
-        working-directory: artifacts/mobile
-        env:
-          GOOGLE_PLAY_KEY_JSON: ${{ secrets.GOOGLE_PLAY_KEY_JSON }}
-        run: echo "$GOOGLE_PLAY_KEY_JSON" > google-play-key.json
-
-      # ── 4. EAS build + submit Android ─────────────────────────────────────
+      # ── 3. EAS Build + Submit Android ─────────────────────────────────────
+      # google-play-key.json is already in artifacts/mobile/ (checked in).
+      # eas.json production profile: buildType=app-bundle, track=internal.
       - name: EAS Build & Submit (Android production)
         working-directory: artifacts/mobile
         env:

@@ -190,15 +190,26 @@ extension WebViewController: WKNavigationDelegate {
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.allow); return }
         let host = url.host ?? ""
-        let inApp = host == "flexamarket.com"
+        let isInApp = host == "flexamarket.com"
             || host.hasSuffix(".flexamarket.com")
             || host == "stripe.com" || host.hasSuffix(".stripe.com")
             || url.scheme == "about" || url.scheme == "blob"
-        if inApp || action.targetFrame?.isMainFrame == true {
-            decisionHandler(.allow)
-        } else {
+
+        // Always allow in-app URLs regardless of frame.
+        if isInApp { decisionHandler(.allow); return }
+
+        // External URL: only open Safari for deliberate MAIN-FRAME or new-window
+        // navigations (user tapped a link). Sub-frame requests (iframes, embedded
+        // video players like Dailymotion, ads, etc.) must load inside the WebView —
+        // sending them to Safari breaks the page and opens unwanted browser tabs.
+        let frame = action.targetFrame
+        let isMainOrNewWindow = frame == nil || frame!.isMainFrame
+
+        if isMainOrNewWindow {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
             decisionHandler(.cancel)
+        } else {
+            decisionHandler(.allow)   // sub-frame / iframe — allow in-WebView
         }
     }
 }

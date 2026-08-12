@@ -17,25 +17,44 @@ async function setupNotifications() {
     }),
   });
 
-  // Create Android channels (no-op on iOS)
   if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "Flexa Market",
+    // ── "flexa-messages" channel ───────────────────────────────────────────
+    // IMPORTANT: Android notification channel settings are IMMUTABLE after
+    // first creation. The old "default" channel was created without a
+    // vibration pattern, so we create a new channel with a distinct ID so
+    // the OS picks up our settings fresh.
+    // Pattern: [delay, vibrate, pause, vibrate] in ms → two clear buzzes.
+    await Notifications.setNotificationChannelAsync("flexa-messages", {
+      name: "Messages",
+      description: "Nouvo mesaj Flexa Market",
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
+      vibrationPattern: [0, 500, 200, 500],   // two distinct 500 ms buzzes
       lightColor: "#F97316",
       sound: "default",
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     }).catch(() => {});
 
+    // ── "orders" channel ───────────────────────────────────────────────────
     await Notifications.setNotificationChannelAsync("orders", {
       name: "New Orders",
       description: "Urgent alerts when you receive a new order",
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 500, 500, 500, 500, 500],
+      vibrationPattern: [0, 500, 200, 500, 200, 500],  // three buzzes for orders
       lightColor: "#F97316",
       sound: "default",
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      showBadge: true,
+    }).catch(() => {});
+
+    // Keep "default" channel alive for other notification types
+    await Notifications.setNotificationChannelAsync("default", {
+      name: "Flexa Market",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 300, 200, 300],
+      lightColor: "#F97316",
+      sound: "default",
       showBadge: true,
     }).catch(() => {});
   }

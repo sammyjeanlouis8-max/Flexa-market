@@ -1,14 +1,16 @@
 /**
  * Flexa Market — WebView shell with Android push notifications.
- * Requests FCM permission on startup, gets Expo push token,
- * and injects it into the WebView so the website can register it.
  *
- * Cold-start fix: when the app is launched by tapping a notification
- * (app was fully killed), getLastNotificationResponseAsync() captures
- * the URL before the WebView has loaded, then onLoadEnd injects it.
+ * Key behaviors:
+ * 1. Push token registration (FCM/APNs) — injected into WebView on load.
+ * 2. Cold-start navigation — notification URL captured before WebView loads,
+ *    injected in onLoadEnd (fixes the double-tap bug).
+ * 3. Background keepalive — when the app goes to background, a periodic
+ *    heartbeat is injected into the WebView every 25 s to keep the
+ *    socket.io connection alive (Android kills idle WebViews aggressively).
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
-import { BackHandler, Platform, StyleSheet } from "react-native";
+import { AppState, AppStateStatus, BackHandler, Platform, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import * as Notifications from "expo-notifications";
@@ -16,9 +18,15 @@ import { usePushNotifications } from "./hooks/usePushNotifications";
 
 const WEBSITE = "https://flexamarket.com";
 
+// Heartbeat interval while app is in background (ms).
+// 25 s is short enough to keep the socket alive before the server's
+// ~30 s ping timeout, and long enough not to drain the battery.
+const BACKGROUND_HEARTBEAT_MS = 25_000;
+
 export default function App() {
   const webRef = useRef<any>(null);
   const [canGoBack, setCanGoBack] = useState(false);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Holds an injection script that arrived before the WebView was ready
   const pendingScript = useRef<string | null>(null);
@@ -27,9 +35,7 @@ export default function App() {
   // Stored here, then consumed in onLoadEnd once the WebView is ready.
   const pendingNotifUrl = useRef<string | null>(null);
 
-  // On mount: check if the app was launched by tapping a notification
-  // while it was completely killed (cold start). If so, stash the URL
-  // so onLoadEnd can navigate to it once the WebView finishes loading.
+  // ── Cold-start: notification that launched the app ─────────────────────
   useEffect(() => {
     Notifications.getLastNotificationResponseAsync()
       .then((response) => {
@@ -37,16 +43,50 @@ export default function App() {
         const url = response.notification.request.content.data?.url as
           | string
           | undefined;
-        if (url) {
-          pendingNotifUrl.current = url;
-        }
+        if (url) pendingNotifUrl.current = url;
       })
       .catch(() => {});
   }, []);
 
-  // Called by usePushNotifications when the Expo push token is ready.
-  // If the WebView is already loaded we inject immediately; otherwise we
-  // stash the script and inject it once the page finishes loading.
+  // ── Background keepalive ───────────────────────────────────────────────
+  // When the user switches away from the app, start injecting a heartbeat
+  // script every BACKGROUND_HEARTBEAT_MS. The script calls the website's
+  // socket keepalive function (if it exists) so the connection stays open.
+  // Stop the heartbeat when the app returns to foreground.
+  useEffect(() => {
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === "background") {
+        if (heartbeatRef.current) return; // already running
+        heartbeatRef.current = setInterval(() => {
+          if (!webRef.current) return;
+          webRef.current.injectJavaScript(
+            `(function(){` +
+              // Ping socket.io if present
+              `try{if(window.__socket&&window.__socket.connected)window.__socket.emit("heartbeat");}catch(e){}` +
+              // Fallback: hit the health endpoint silently so the OS sees network activity
+              `try{fetch("/api/health",{method:"GET",cache:"no-store"}).catch(function(){});}catch(e){}` +
+            `})();true;`
+          );
+        }, BACKGROUND_HEARTBEAT_MS);
+      } else if (nextState === "active") {
+        if (heartbeatRef.current) {
+          clearInterval(heartbeatRef.current);
+          heartbeatRef.current = null;
+        }
+      }
+    };
+
+    const sub = AppState.addEventListener("change", handleAppState);
+    return () => {
+      sub.remove();
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    };
+  }, []);
+
+  // ── Push token registration ────────────────────────────────────────────
   const injectJs = useCallback((script: string) => {
     if (webRef.current) {
       webRef.current.injectJavaScript(script);
@@ -55,10 +95,9 @@ export default function App() {
     }
   }, []);
 
-  // Wire up push notification registration (Android FCM + iOS APNs).
   const tokenRef = usePushNotifications(injectJs);
 
-  // Android hardware back button
+  // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -71,9 +110,7 @@ export default function App() {
     return () => sub.remove();
   }, [canGoBack]);
 
-  // Re-inject push token and handle any pending notification URL on every
-  // page load, so the website always receives the token and deep-link
-  // regardless of navigation order vs. token/notification arrival order.
+  // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
     // Drain any script that arrived before the page was ready
     if (pendingScript.current) {
@@ -81,7 +118,7 @@ export default function App() {
       pendingScript.current = null;
     }
 
-    // Always re-inject the token after each page navigation
+    // Always re-inject the token after each navigation
     const token = tokenRef.current;
     if (token) {
       const platform = Platform.OS;
@@ -96,7 +133,7 @@ export default function App() {
     }
 
     // Navigate to URL from the notification that cold-started the app.
-    // Consumed once — subsequent loads (user navigating) must not re-fire.
+    // Consumed once — subsequent loads must not re-fire.
     const notifUrl = pendingNotifUrl.current;
     if (notifUrl) {
       pendingNotifUrl.current = null;

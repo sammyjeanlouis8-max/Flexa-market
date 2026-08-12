@@ -86,7 +86,7 @@ export async function sendExpoPushToUser(
       sound: payload.sound ?? "default",
       badge: payload.badge,
       channelId: payload.channelId ?? "default",
-      priority: payload.priority ?? "default",
+      priority: payload.priority ?? "high",
       ...(payload.ttl !== undefined ? { ttl: payload.ttl } : {}),
     }));
 

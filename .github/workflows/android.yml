@@ -1,0 +1,47 @@
+name: Android — EAS Build & Google Play
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Submit Android
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Node + pnpm ────────────────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── 3. Write Google Play service-account key ───────────────────────────
+      - name: Write Google Play key
+        working-directory: artifacts/mobile
+        env:
+          GOOGLE_PLAY_KEY_JSON: ${{ secrets.GOOGLE_PLAY_KEY_JSON }}
+        run: echo "$GOOGLE_PLAY_KEY_JSON" > google-play-key.json
+
+      # ── 4. EAS build + submit Android ─────────────────────────────────────
+      - name: EAS Build & Submit (Android production)
+        working-directory: artifacts/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli build \
+            --platform android \
+            --profile production \
+            --non-interactive \
+            --auto-submit

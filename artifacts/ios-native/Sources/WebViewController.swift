@@ -46,8 +46,6 @@ final class WebViewController: UIViewController {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
-        // Allow file/camera pickers to work inside WKWebView
-        config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
 
         // Intercept console.log for debugging
         let script = WKUserScript(
@@ -240,13 +238,18 @@ private final class OfflineView: UIView {
         sub.textAlignment = .center
         sub.numberOfLines = 0
 
-        let btn = UIButton(type: .system)
-        btn.setTitle("Eseye ankò", for: .normal)
-        btn.titleLabel?.font = .boldSystemFont(ofSize: 17)
-        btn.setTitleColor(.white, for: .normal)
-        btn.backgroundColor = UIColor(red: 0.98, green: 0.45, blue: 0.09, alpha: 1)
-        btn.layer.cornerRadius = 12
-        btn.contentEdgeInsets = UIEdgeInsets(top: 14, left: 32, bottom: 14, right: 32)
+        // UIButton.Configuration replaces deprecated contentEdgeInsets (removed iOS 26)
+        var btnConfig = UIButton.Configuration.filled()
+        btnConfig.title = "Eseye ankò"
+        btnConfig.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32)
+        btnConfig.cornerStyle = .fixed
+        btnConfig.background.cornerRadius = 12
+        btnConfig.baseBackgroundColor = UIColor(red: 0.98, green: 0.45, blue: 0.09, alpha: 1)
+        btnConfig.baseForegroundColor = .white
+        btnConfig.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { att in
+            var out = att; out.font = .boldSystemFont(ofSize: 17); return out
+        }
+        let btn = UIButton(configuration: btnConfig)
         btn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
 
         let stack = UIStackView(arrangedSubviews: [emoji, title, sub, btn])

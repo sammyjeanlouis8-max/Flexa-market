@@ -1,8 +1,10 @@
 import { Router, type IRouter } from "express";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
 import { upsertExpoPushToken, deleteExpoPushToken } from "../lib/expo-push";
 import { isApnsToken } from "../lib/expo-push";
+import { sendApnsNotification, getApnsConfig } from "../lib/apns";
+import { db, expoPushTokensTable } from "@workspace/db";
 
 // Strict bounds for the encryption keys the browser supplies. The real
 // values are short fixed-length base64url blobs; anything wildly outside
@@ -130,6 +132,43 @@ router.delete("/push/expo-token", requireAuth, async (req, res): Promise<void> =
   }
   await deleteExpoPushToken(req.userId!, token);
   res.json({ ok: true });
+});
+
+/**
+ * POST /api/push/test-apns  (admin only)
+ * Body: { token }  — raw hex APNs token to send a test notification to.
+ * Useful for verifying the APNs pipeline without a real event.
+ */
+router.post("/push/test-apns", requireAdmin, async (req, res): Promise<void> => {
+  const { token } = req.body ?? {};
+  if (typeof token !== "string" || !/^[0-9a-f]{32,}$/i.test(token)) {
+    res.status(400).json({ error: "Invalid APNs device token" });
+    return;
+  }
+  const config = getApnsConfig();
+  if (!config) {
+    res.status(503).json({ error: "APNs not configured (APNS_KEY_ID / APNS_KEY_P8 missing)" });
+    return;
+  }
+  const result = await sendApnsNotification(token, {
+    title: "Flexa Market — Test 🔔",
+    body: "Push notifications fonksyone!",
+    sound: "default",
+  }, config);
+  res.json({ ok: result.ok, error: result.error ?? null, gone: result.gone ?? false });
+});
+
+/**
+ * GET /api/push/tokens  (admin only)
+ * Returns registered push token counts (for debugging).
+ */
+router.get("/push/tokens", requireAdmin, async (_req, res): Promise<void> => {
+  const rows = await db.select().from(expoPushTokensTable);
+  res.json({
+    total: rows.length,
+    apns: rows.filter(r => r.token.startsWith("apns:")).length,
+    expo: rows.filter(r => r.token.startsWith("Expo") || r.token.startsWith("ExponentPushToken")).length,
+  });
 });
 
 export default router;

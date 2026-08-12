@@ -9,6 +9,8 @@ final class WebViewController: UIViewController {
     private var webView: WKWebView!
     private let spinner = UIActivityIndicatorView(style: .large)
     private var offlineView: OfflineView?
+    /// Prevents repeat permission requests within one app session.
+    private var pushHandled = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -17,38 +19,25 @@ final class WebViewController: UIViewController {
         loadSite()
 
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleApnsTokenNotification(_:)),
-            name: .apnsTokenReceived,
-            object: nil
-        )
+            self, selector: #selector(handleApnsToken(_:)),
+            name: .apnsTokenReceived, object: nil)
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleOpenURL(_:)),
-            name: .openURL,
-            object: nil
-        )
+            self, selector: #selector(handleOpenURL(_:)),
+            name: .openURL, object: nil)
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        // Avoid WKWebView retain cycle with message handler
-        webView?.configuration.userContentController
-            .removeScriptMessageHandler(forName: "requestPushPermission")
     }
 
-    // MARK: – APNs token received from AppDelegate
-
-    @objc private func handleApnsTokenNotification(_ notification: Notification) {
-        guard let token = notification.object as? String else { return }
-        injectPushToken(token)
+    @objc private func handleApnsToken(_ n: Notification) {
+        if let token = n.object as? String { injectPushToken(token) }
     }
 
-    // MARK: – Deep-link URL from NotificationDelegate
-
-    @objc private func handleOpenURL(_ notification: Notification) {
-        guard let url = notification.userInfo?["url"] as? URL else { return }
-        webView?.load(URLRequest(url: url))
+    @objc private func handleOpenURL(_ n: Notification) {
+        if let url = n.userInfo?["url"] as? URL {
+            webView?.load(URLRequest(url: url))
+        }
     }
 
     // MARK: – WebView setup
@@ -57,14 +46,9 @@ final class WebViewController: UIViewController {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
 
-        let controller = config.userContentController
-
-        // ── Inject flags BEFORE any page script runs ──────────────────────
-        // 1. Mark this as the iOS native WebView so the website disables its
-        //    own web-push path (isPushSupported returns false).
-        // 2. Unregister any cached service workers that might have been left
-        //    from a previous web-push session — avoids implicit permission
-        //    conflicts with the native APNs flow.
+        // Inject before any page script:
+        //  1. __iosWebView flag → website disables its own web-push path
+        //  2. Unregister any cached service workers to avoid implicit APNs conflicts
         let bootstrap = WKUserScript(source: """
             window.__iosWebView = true;
             if ('serviceWorker' in navigator) {
@@ -73,15 +57,7 @@ final class WebViewController: UIViewController {
                 });
             }
         """, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        controller.addUserScript(bootstrap)
-
-        // ── Message handler: website asks Swift to request push permission ─
-        // The website calls:
-        //   window.webkit.messageHandlers.requestPushPermission.postMessage({})
-        // Swift receives it here and calls requestAuthorization + registerForRemoteNotifications.
-        // This ensures only ONE party triggers the native permission dialog.
-        controller.add(ScriptMessageProxy(delegate: self),
-                       name: "requestPushPermission")
+        config.userContentController.addUserScript(bootstrap)
 
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -110,7 +86,7 @@ final class WebViewController: UIViewController {
         spinner.startAnimating()
     }
 
-    // MARK: – Loading
+    // MARK: – Navigation
 
     private func loadSite() {
         offlineView?.removeFromSuperview()
@@ -118,22 +94,57 @@ final class WebViewController: UIViewController {
         webView.load(URLRequest(url: kWebsite))
     }
 
-    // MARK: – Push token injection
+    // MARK: – Push
 
-    func injectPushToken(_ token: String) {
-        guard let js = try? JSONSerialization.data(withJSONObject: token),
-              let tokenJson = String(data: js, encoding: .utf8) else { return }
-        let script = """
-        (function(){
-          window.__apnsToken = \(tokenJson);
-          if (typeof window.__onApnsToken === 'function')
-            window.__onApnsToken(\(tokenJson));
-        })();
-        """
-        webView?.evaluateJavaScript(script, completionHandler: nil)
+    /// Called once per session, after the first page load completes.
+    /// By this point the injected JS has already unregistered any cached
+    /// service workers, so there is no implicit APNs conflict.
+    private func handlePushPermission() {
+        guard !pushHandled else { return }
+        pushHandled = true
+
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                // Show the system permission dialog
+                let granted = (try? await center.requestAuthorization(
+                    options: [.alert, .badge, .sound])) ?? false
+                if granted {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+
+            case .authorized, .provisional, .ephemeral:
+                // Permission already granted — just ensure we have a token
+                UIApplication.shared.registerForRemoteNotifications()
+
+            case .denied:
+                // User previously denied — can't prompt again; they must go to Settings
+                break
+
+            @unknown default:
+                break
+            }
+        }
     }
 
-    // MARK: – Offline UI
+    // MARK: – Token injection
+
+    func injectPushToken(_ token: String) {
+        guard let data = try? JSONSerialization.data(withJSONObject: token),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript("""
+        (function(){
+          window.__apnsToken = \(json);
+          if (typeof window.__onApnsToken === 'function')
+            window.__onApnsToken(\(json));
+        })();
+        """, completionHandler: nil)
+    }
+
+    // MARK: – Offline
 
     private func showOffline() {
         guard offlineView == nil else { return }
@@ -145,89 +156,45 @@ final class WebViewController: UIViewController {
     }
 }
 
-// MARK: – Push permission (triggered by website JS)
-
-extension WebViewController: WKScriptMessageHandler {
-    func userContentController(_ userContentController: WKUserContentController,
-                               didReceive message: WKScriptMessage) {
-        guard message.name == "requestPushPermission" else { return }
-
-        // Use async/await + @MainActor — correct way for Swift 6 runtime on iOS 26
-        Task { @MainActor in
-            let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-            // Only show dialog if the user hasn't decided yet
-            guard settings.authorizationStatus == .notDetermined else {
-                // Already decided — if granted, just register for token
-                if settings.authorizationStatus == .authorized {
-                    UIApplication.shared.registerForRemoteNotifications()
-                }
-                return
-            }
-            guard let granted = try? await center.requestAuthorization(
-                options: [.alert, .badge, .sound]) else { return }
-            if granted {
-                UIApplication.shared.registerForRemoteNotifications()
-            }
-        }
-    }
-}
-
-// MARK: – WKScriptMessageHandler proxy (breaks retain cycle)
-
-/// WKUserContentController retains its message handlers strongly.
-/// This lightweight proxy holds a weak reference to the real delegate.
-private final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
-    weak var delegate: WKScriptMessageHandler?
-    init(delegate: WKScriptMessageHandler) { self.delegate = delegate }
-    func userContentController(_ c: WKUserContentController,
-                               didReceive message: WKScriptMessage) {
-        delegate?.userContentController(c, didReceive: message)
-    }
-}
-
 // MARK: – WKNavigationDelegate
 
 extension WebViewController: WKNavigationDelegate {
 
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView,
+                 didStartProvisionalNavigation _: WKNavigation!) {
         spinner.startAnimating()
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
         spinner.stopAnimating()
-        // If we already have a token (e.g. user re-opened app), inject it now
+        // Inject token if we already have one (app re-open after token was received)
         if let token = NotificationDelegate.shared.apnsToken {
             injectPushToken(token)
         }
+        // Request push permission now — service workers are cleared by this point
+        handlePushPermission()
     }
 
     func webView(_ webView: WKWebView,
-                 didFailProvisionalNavigation navigation: WKNavigation!,
-                 withError error: Error) {
-        spinner.stopAnimating()
-        showOffline()
+                 didFailProvisionalNavigation _: WKNavigation!, withError _: Error) {
+        spinner.stopAnimating(); showOffline()
     }
 
     func webView(_ webView: WKWebView,
-                 didFail navigation: WKNavigation!,
-                 withError error: Error) {
-        spinner.stopAnimating()
-        showOffline()
+                 didFail _: WKNavigation!, withError _: Error) {
+        spinner.stopAnimating(); showOffline()
     }
 
     func webView(_ webView: WKWebView,
-                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
+        guard let url = action.request.url else { decisionHandler(.allow); return }
         let host = url.host ?? ""
         let inApp = host == "flexamarket.com"
             || host.hasSuffix(".flexamarket.com")
-            || host == "stripe.com"
-            || host.hasSuffix(".stripe.com")
-            || url.scheme == "about"
-            || url.scheme == "blob"
-        if inApp || (navigationAction.targetFrame?.isMainFrame == true) {
+            || host == "stripe.com" || host.hasSuffix(".stripe.com")
+            || url.scheme == "about" || url.scheme == "blob"
+        if inApp || action.targetFrame?.isMainFrame == true {
             decisionHandler(.allow)
         } else {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
@@ -240,21 +207,21 @@ extension WebViewController: WKNavigationDelegate {
 
 extension WebViewController: WKUIDelegate {
     func webView(_ webView: WKWebView,
-                 createWebViewWith configuration: WKWebViewConfiguration,
-                 for navigationAction: WKNavigationAction,
-                 windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = navigationAction.request.url {
-            webView.load(URLRequest(url: url))
-        }
+                 createWebViewWith _: WKWebViewConfiguration,
+                 for action: WKNavigationAction,
+                 windowFeatures _: WKWindowFeatures) -> WKWebView? {
+        if let url = action.request.url { webView.load(URLRequest(url: url)) }
         return nil
     }
 }
 
-// MARK: – Offline View
+// MARK: – Offline view
 
 private final class OfflineView: UIView {
     private let retry: () -> Void
-    init(retry: @escaping () -> Void) { self.retry = retry; super.init(frame: .zero); setup() }
+    init(retry: @escaping () -> Void) {
+        self.retry = retry; super.init(frame: .zero); setup()
+    }
     required init?(coder: NSCoder) { fatalError() }
 
     private func setup() {
@@ -280,8 +247,8 @@ private final class OfflineView: UIView {
         cfg.cornerStyle = .fixed; cfg.background.cornerRadius = 12
         cfg.baseBackgroundColor = UIColor(red: 0.98, green: 0.45, blue: 0.09, alpha: 1)
         cfg.baseForegroundColor = .white
-        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
-            var o = a; o.font = .boldSystemFont(ofSize: 17); return o
+        cfg.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var a = $0; a.font = .boldSystemFont(ofSize: 17); return a
         }
         let btn = UIButton(configuration: cfg)
         btn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)

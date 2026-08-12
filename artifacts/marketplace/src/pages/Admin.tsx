@@ -2879,7 +2879,7 @@ export default function Admin() {
         {isSuperAdmin && (
           <button
             type="button"
-            onClick={() => setLocation("/admin/broadcast")}
+            onClick={() => setLocation("/admin/push-notifications")}
             className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 hover:from-orange-100 hover:to-amber-100 dark:hover:from-orange-900/40 dark:hover:to-amber-900/30 transition-all text-left group shadow-sm hover:shadow-md"
           >
             <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow shadow-orange-200 dark:shadow-orange-900/50">

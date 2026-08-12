@@ -51,8 +51,9 @@ const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
 const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
-const AdminBroadcastPage    = lazy(() => import("@/pages/AdminBroadcastPage"));
-const AdminSmsBroadcastPage = lazy(() => import("@/pages/AdminSmsBroadcastPage"));
+const AdminBroadcastPage          = lazy(() => import("@/pages/AdminBroadcastPage"));
+const AdminSmsBroadcastPage       = lazy(() => import("@/pages/AdminSmsBroadcastPage"));
+const AdminPushNotificationsPage  = lazy(() => import("@/pages/AdminPushNotificationsPage"));
 const CommissionPromo       = lazy(() => import("@/pages/CommissionPromo"));
 const Chatbot            = lazy(() => import("@/pages/Chatbot"));
 const CalculatorPage     = lazy(() => import("@/pages/Calculator"));
@@ -298,6 +299,7 @@ function LayoutRoutes() {
           <Route path="/admin/flex-card" component={AdminFlexCardUsers} />
           <Route path="/admin/broadcast" component={AdminBroadcastPage} />
           <Route path="/admin/broadcast-sms" component={AdminSmsBroadcastPage} />
+          <Route path="/admin/push-notifications" component={AdminPushNotificationsPage} />
           <Route path="/admin/activity" component={AdminActivityPage} />
           <Route path="/admin/actions" component={AdminActionsPage} />
           <Route component={NotFound} />

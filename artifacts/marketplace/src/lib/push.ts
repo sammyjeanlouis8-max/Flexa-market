@@ -34,6 +34,12 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 }
 
 export function isPushSupported(): boolean {
+  // Inside the native iOS WKWebView the Swift layer handles APNs push
+  // natively via UNUserNotificationCenter.  Enabling the web-push path here
+  // would cause two concurrent requestAuthorization calls — one from JS via
+  // Notification.requestPermission(), one from Swift — which crashes iOS.
+  // window.__iosWebView is injected by WebViewController's WKUserScript.
+  if (typeof window !== "undefined" && (window as any).__iosWebView) return false;
   return typeof window !== "undefined"
     && "serviceWorker" in navigator
     && "PushManager" in window

@@ -15,3 +15,4 @@
 - [Flexa auth token pattern](flexa-auth-token.md) — useAuth() returns token as a string, NOT a function; calling token() crashes at runtime (TypeError in prod).
 - [Flexa DO production setup](flexa-do-production.md) — DO managed PostgreSQL needs DATABASE_URL without ?sslmode=require + ssl:{rejectUnauthorized:false} in pg Pool; two-service ingress: /api→flexa-market (Node), /*→flexa-market2 (nginx).
 - [Flexa iOS build signing](flexa-ios-build-signing.md) — Xcode 16.4/macos-15 CI: use fastlane update_code_signing_settings to switch Automatic→Manual before build; xcpretty||true silently hides failures; APNs token race condition fixed via NotificationCenter.
+- [iOS 26 removed APIs](ios26-removed-apis.md) — UIButton.contentEdgeInsets removed in iOS 26 (crashes OfflineView); use UIButton.Configuration instead. WKPreferences private KVC key allowFileAccessFromFileURLs also unsafe — drop it.

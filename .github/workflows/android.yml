@@ -9,11 +9,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Node + pnpm (via corepack — respects packageManager field) ─────
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -25,11 +23,10 @@ jobs:
           corepack prepare pnpm@10.26.1 --activate
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
-      # ── 3. EAS Build + Submit Android ─────────────────────────────────────
-      # google-play-key.json is already in artifacts/mobile/ (checked in).
-      # eas.json production profile: buildType=app-bundle, track=internal.
+      # google-play-key.json is already checked into artifacts/mobile/.
+      # eas.json production: buildType=app-bundle, track=internal.
       - name: EAS Build & Submit (Android production)
         working-directory: artifacts/mobile
         env:

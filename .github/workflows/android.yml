@@ -1,11 +1,11 @@
-name: Android — EAS Build & Google Play
+name: Android — EAS Build
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build & Submit Android
+    name: Build Android (EAS cloud)
     runs-on: ubuntu-latest
 
     steps:
@@ -25,9 +25,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      # google-play-key.json is already checked into artifacts/mobile/.
-      # eas.json production: buildType=app-bundle, track=internal.
-      - name: EAS Build & Submit (Android production)
+      # Builds an Android App Bundle (.aab) on EAS cloud servers.
+      # Download from https://expo.dev/accounts/muelsa89/projects/mobile/builds
+      # then upload to Google Play Console → Internal testing.
+      - name: EAS Build (Android production)
         working-directory: artifacts/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -35,5 +36,4 @@ jobs:
           npx eas-cli build \
             --platform android \
             --profile production \
-            --non-interactive \
-            --auto-submit
+            --non-interactive

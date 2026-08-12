@@ -2875,6 +2875,24 @@ export default function Admin() {
           </button>
         )}
 
+        {/* Push Notifications — super admin only */}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setLocation("/admin/broadcast")}
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-orange-200 dark:border-orange-800 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 hover:from-orange-100 hover:to-amber-100 dark:hover:from-orange-900/40 dark:hover:to-amber-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+          >
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow shadow-orange-200 dark:shadow-orange-900/50">
+              <Bell className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black text-orange-900 dark:text-orange-100">🔔 Push Notifications</p>
+              <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">Tokens APNs iOS — Estatistik ak tès notifikasyon</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-orange-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
       </div>
 
       {/* Super Admin shortcut — Add Admin */}

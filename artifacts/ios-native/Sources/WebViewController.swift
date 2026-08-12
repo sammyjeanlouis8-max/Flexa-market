@@ -27,11 +27,6 @@ final class WebViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // Request push permission once, after window is key and visible.
-        // iOS 26 fix: use Task { @MainActor in } so the entire async flow runs
-        // on the main actor — avoids the libdispatch background-thread assertion
-        // crash that triggers when closure-based requestAuthorization callbacks
-        // run off the main queue (Swift 6 / iOS 26 enforcement).
         guard !pushPermissionRequested else { return }
         pushPermissionRequested = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -99,21 +94,13 @@ final class WebViewController: UIViewController {
     // MARK: – Push Notifications
 
     private func requestPushPermission() {
-        // Use async/await on the MainActor — iOS 26 / Swift 6 require the
-        // requestAuthorization completion to run on the main thread.
-        // The old closure-based approach crashes with:
-        //   "BUG IN CLIENT OF LIBDISPATCH: Block was expected on main-thread queue"
-        Task { @MainActor in
-            do {
-                let granted = try await UNUserNotificationCenter.current()
-                    .requestAuthorization(options: [.alert, .badge, .sound])
-                if granted {
-                    UIApplication.shared.registerForRemoteNotifications()
-                }
-            } catch {
-                print("[Push] Auth error: \(error)")
-            }
-        }
+        // Build 76 isolation test: fire-and-forget with NO action in the handler.
+        // If this crashes → crash is in iOS processing the request itself (entitlement/iOS 26 bug).
+        // If this works → crash was in our handler code (registration / token injection).
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: [.alert, .badge, .sound],
+            completionHandler: { _, _ in }
+        )
     }
 
     func injectPushToken(_ token: String) {

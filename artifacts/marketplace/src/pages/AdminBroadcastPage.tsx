@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ArrowLeft, Send, Loader2, AlertTriangle, CheckCircle2, Search, Users, Mail, Trash2, Sparkles,
+  ArrowLeft, Send, Loader2, AlertTriangle, CheckCircle2, Search, Users, Mail, Trash2, Sparkles, Bell, Smartphone,
 } from "lucide-react";
 
 interface Recipient {
@@ -59,6 +59,12 @@ export default function AdminBroadcastPage() {
   const [result,      setResult]      = useState<{ mode: string; sent: number; total?: number } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  // Push notification test state
+  const [pushTokenCounts, setPushTokenCounts]   = useState<{ total: number; apns: number; expo: number } | null>(null);
+  const [testApnsToken,   setTestApnsToken]      = useState("");
+  const [pushSending,     setPushSending]        = useState(false);
+  const [pushResult,      setPushResult]         = useState<{ ok: boolean; error?: string | null } | null>(null);
+
   // Recipients
   const [recipients,        setRecipients]        = useState<Recipient[]>([]);
   const [loadingRecipients, setLoadingRecipients] = useState(true);
@@ -81,6 +87,37 @@ export default function AdminBroadcastPage() {
       .finally(() => setLoadingRecipients(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch push token counts
+  useEffect(() => {
+    fetch(`${BASE}/api/push/tokens`, { headers: { Authorization: authHeader } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d && setPushTokenCounts(d))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sendTestPush = async () => {
+    if (!/^[0-9a-f]{32,}$/i.test(testApnsToken.trim())) {
+      toast({ title: "Token APNs envalid (32+ karaktè hex)", variant: "destructive" }); return;
+    }
+    setPushSending(true); setPushResult(null);
+    try {
+      const r = await fetch(`${BASE}/api/push/test-apns`, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ token: testApnsToken.trim() }),
+      });
+      const d = await r.json();
+      setPushResult(d);
+      if (d.ok) toast({ title: "✅ Notifikasyon voye!" });
+      else toast({ title: `❌ Echèk: ${d.error ?? "erè enkoni"}`, variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: `Erè rezo: ${e.message}`, variant: "destructive" });
+    } finally {
+      setPushSending(false);
+    }
+  };
 
   const countries = useMemo(() => {
     const set = new Set(recipients.map(u => u.country).filter(Boolean) as string[]);
@@ -412,6 +449,80 @@ export default function AdminBroadcastPage() {
               : t("broadcastPage.broadcastSent", { sent: result.sent, total: result.total })}
           </div>
         )}
+      </div>
+
+      {/* ── Push Notifications (APNs) ─────────────────────────────────────── */}
+      <div className="rounded-2xl border border-border bg-card shadow-sm p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Bell className="h-5 w-5 text-orange-500" />
+          <h2 className="text-base font-semibold">Push Notifications iOS (APNs)</h2>
+        </div>
+
+        {/* Token counts */}
+        <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-2.5 text-sm">
+            <Smartphone className="h-4 w-4 text-blue-500" />
+            <span className="text-muted-foreground">APNs tokens:</span>
+            <strong>{pushTokenCounts?.apns ?? "…"}</strong>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-2.5 text-sm">
+            <Smartphone className="h-4 w-4 text-green-500" />
+            <span className="text-muted-foreground">Expo tokens:</span>
+            <strong>{pushTokenCounts?.expo ?? "…"}</strong>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 rounded-xl px-4 py-2.5 text-sm">
+            <Users className="h-4 w-4 text-slate-400" />
+            <span className="text-muted-foreground">Total:</span>
+            <strong>{pushTokenCounts?.total ?? "…"}</strong>
+          </div>
+          <button
+            className="text-xs text-orange-500 underline underline-offset-2"
+            onClick={() => {
+              fetch(`${BASE}/api/push/tokens`, { headers: { Authorization: authHeader } })
+                .then(r => r.ok ? r.json() : null).then(d => d && setPushTokenCounts(d)).catch(() => {});
+            }}
+          >
+            Aktualize
+          </button>
+        </div>
+
+        {pushTokenCounts?.apns === 0 && (
+          <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>Pa gen token APNs ankò. Enstale <strong>build 66</strong> via TestFlight, louvri app la, aksepte notifikasyon, epi konekte.</span>
+          </div>
+        )}
+
+        {/* Test a specific token */}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Teste yon token APNs espesifik
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Token hex brut (64 karaktè)…"
+              value={testApnsToken}
+              onChange={e => setTestApnsToken(e.target.value)}
+              className="font-mono text-xs"
+            />
+            <Button
+              onClick={sendTestPush}
+              disabled={pushSending || !testApnsToken.trim()}
+              className="bg-orange-500 hover:bg-orange-600 text-white shrink-0"
+            >
+              {pushSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+          {pushResult && (
+            <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${pushResult.ok
+              ? "bg-green-50 dark:bg-green-900/20 border border-green-200 text-green-700 dark:text-green-300"
+              : "bg-red-50 dark:bg-red-900/20 border border-red-200 text-red-700 dark:text-red-300"}`}>
+              {pushResult.ok
+                ? <><CheckCircle2 className="h-4 w-4 shrink-0" /> Notifikasyon voye ak siksè ✅</>
+                : <><AlertTriangle className="h-4 w-4 shrink-0" /> Echèk: {pushResult.error}</>}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Confirm dialog */}

@@ -94,13 +94,16 @@ final class WebViewController: UIViewController {
     // MARK: – Push Notifications
 
     private func requestPushPermission() {
-        // Build 76 isolation test: fire-and-forget with NO action in the handler.
-        // If this crashes → crash is in iOS processing the request itself (entitlement/iOS 26 bug).
-        // If this works → crash was in our handler code (registration / token injection).
         UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .badge, .sound],
-            completionHandler: { _, _ in }
-        )
+            options: [.alert, .badge, .sound]
+        ) { granted, _ in
+            guard granted else { return }
+            // Register with APNs on the main thread so the OS delivers
+            // didRegisterForRemoteNotificationsWithDeviceToken → token injection.
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
     }
 
     func injectPushToken(_ token: String) {

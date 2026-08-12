@@ -130,7 +130,7 @@ export default function AdminPushNotificationsPage() {
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
                 <p className="font-semibold">Pa gen token APNs ankò</p>
-                <p className="text-xs">Enstale <strong>build 66</strong> via TestFlight → louvri app la → aksepte notifikasyon → konekte.</p>
+                <p className="text-xs">Enstale <strong>dènye build</strong> via TestFlight → louvri app la → aksepte notifikasyon → konekte.</p>
               </div>
             </div>
           )}

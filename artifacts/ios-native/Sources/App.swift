@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 
 // Fired on the main thread once Apple returns the APNs device token.
 // WebViewController listens for this to inject the token even when

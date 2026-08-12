@@ -236,6 +236,24 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
   try {
     const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? "🎤 Mesaj vwa" : content.slice(0, 120);
     const pushTitle = sender?.name ? `Mesaj nan men ${sender.name}` : "Nouvo mesaj";
+
+    // Count all unread messages for the recipient across ALL conversations
+    // (including the one we just inserted) so the badge reflects total unread.
+    const recipientConvs = db
+      .select({ id: conversationsTable.id })
+      .from(conversationsTable)
+      .where(or(eq(conversationsTable.buyerId, recipientId), eq(conversationsTable.sellerId, recipientId)));
+
+    const [unreadRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(messagesTable)
+      .where(and(
+        inArray(messagesTable.conversationId, recipientConvs),
+        eq(messagesTable.isRead, false),
+        ne(messagesTable.senderId, recipientId),
+      ));
+    const badgeCount = unreadRow?.count ?? 1;
+
     void sendPushToUser(recipientId, {
       title: pushTitle,
       body: pushBody,
@@ -247,6 +265,8 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       body: pushBody,
       data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
       sound: "default",
+      badge: badgeCount,
+      channelId: "default",
     });
   } catch {}
 

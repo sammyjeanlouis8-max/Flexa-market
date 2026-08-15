@@ -20,6 +20,11 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         // Clear the app icon badge whenever the user opens the app.
-        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
+        // NOTE: do NOT use UNUserNotificationCenter here — any call into the
+        // notification center at launch crashes on this device family (see
+        // builds 73-77 and 81). The deprecated UIApplication API is safe.
+        DispatchQueue.main.async {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+        }
     }
 }

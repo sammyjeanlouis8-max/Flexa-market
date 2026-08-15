@@ -74,6 +74,12 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
     return;
   }
+  // Only sign keys inside the app-owned upload namespace — prevents using this
+  // route as a signing oracle for arbitrary objects the credentials can read.
+  if (!/^uploads\/(images|videos|audio)\/[A-Za-z0-9._-]+$/.test(key)) {
+    res.status(400).json({ error: "Invalid key." });
+    return;
+  }
   try {
     const presignedUrl = await getWasabiPresignedUrl(key);
     // Redirect to the presigned URL — browser/app follows transparently
@@ -151,10 +157,11 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
       const buffer = Buffer.concat(chunks);
       const key = await uploadBufferToWasabi(buffer, contentType);
 
-      // Build the proxy URL using the request's own host so it works in any environment
-      const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
-      const host  = req.headers["x-forwarded-host"] ?? req.get("host");
-      const proxyUrl = `${proto}://${host}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+      // Build the proxy URL. Prefer a configured canonical origin to avoid
+      // host-header poisoning; fall back to the request host in dev.
+      const base = process.env["PUBLIC_BASE_URL"]
+        ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
+      const proxyUrl = `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
 
       req.log.info({ token, key, proxyUrl }, "Wasabi upload complete");
       res.status(200).json({ url: proxyUrl });

@@ -246,7 +246,15 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
     const rows = await db.select().from(expoPushTokensTable);
     const ios = rows.filter(r => r.token.startsWith("apns:"))
       .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime());
-    if (ios.length === 0) { res.json({ error: "no apns tokens registered" }); return; }
+    if (ios.length === 0) {
+      const stats: Record<string, number> = {};
+      for (const r of rows) {
+        const p = r.token.startsWith("apns:") ? "apns" : r.token.startsWith("Expo") ? "expo-old" : r.token.startsWith("Exponent") ? "expo" : "other";
+        stats[p] = (stats[p] ?? 0) + 1;
+      }
+      res.json({ error: "no apns tokens registered", totalTokens: rows.length, byType: stats });
+      return;
+    }
     const results = [];
     for (const row of ios.slice(0, 3)) {
       const out = await sendApnsNotification(row.token.slice(5), {

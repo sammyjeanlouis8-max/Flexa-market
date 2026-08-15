@@ -4,6 +4,16 @@ import UserNotifications
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
+/// Weak proxy to break the retain cycle WKUserContentController creates
+/// when holding a WKScriptMessageHandler strongly.
+final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ c: WKUserContentController, didReceive msg: WKScriptMessage) {
+        delegate?.userContentController(c, didReceive: msg)
+    }
+}
+
 final class WebViewController: UIViewController {
 
     private var webView: WKWebView!
@@ -28,6 +38,8 @@ final class WebViewController: UIViewController {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        webView?.configuration.userContentController
+            .removeScriptMessageHandler(forName: "requestPushPermission")
     }
 
     @objc private func handleApnsToken(_ n: Notification) {
@@ -46,9 +58,11 @@ final class WebViewController: UIViewController {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
 
+        let ucc = config.userContentController
+
         // Inject before any page script:
         //  1. __iosWebView flag → website disables its own web-push path
-        //  2. Unregister any cached service workers to avoid implicit APNs conflicts
+        //  2. Unregister any cached service workers to avoid APNs conflicts
         let bootstrap = WKUserScript(source: """
             window.__iosWebView = true;
             if ('serviceWorker' in navigator) {
@@ -57,7 +71,13 @@ final class WebViewController: UIViewController {
                 });
             }
         """, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        config.userContentController.addUserScript(bootstrap)
+        ucc.addUserScript(bootstrap)
+
+        // Register the reversed-bridge handler.
+        // ScriptMessageProxy breaks the retain cycle WKUserContentController creates.
+        // The website calls window.webkit.messageHandlers.requestPushPermission.postMessage({})
+        // once the user is logged in — this is the ONLY path that requests push permission.
+        ucc.add(ScriptMessageProxy(self), name: "requestPushPermission")
 
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -94,12 +114,13 @@ final class WebViewController: UIViewController {
         webView.load(URLRequest(url: kWebsite))
     }
 
-    // MARK: – Push
+    // MARK: – Push (reversed bridge)
 
-    /// Called once per session, after the first page load completes.
-    /// By this point the injected JS has already unregistered any cached
-    /// service workers, so there is no implicit APNs conflict.
-    private func handlePushPermission() {
+    /// Called by the website JS via webkit.messageHandlers.requestPushPermission.postMessage({})
+    /// This is the ONLY place requestAuthorization is called — never call it directly from Swift.
+    /// Builds 73-77 all crashed when Swift called requestAuthorization directly; routing through
+    /// the WebKit message bridge avoids the iOS 26 conflict with cached service workers.
+    private func handlePushPermissionBridge() {
         guard !pushHandled else { return }
         pushHandled = true
 
@@ -109,7 +130,6 @@ final class WebViewController: UIViewController {
 
             switch settings.authorizationStatus {
             case .notDetermined:
-                // Show the system permission dialog
                 let granted = (try? await center.requestAuthorization(
                     options: [.alert, .badge, .sound])) ?? false
                 if granted {
@@ -117,11 +137,11 @@ final class WebViewController: UIViewController {
                 }
 
             case .authorized, .provisional, .ephemeral:
-                // Permission already granted — just ensure we have a token
+                // Permission already granted — re-register to refresh token
                 UIApplication.shared.registerForRemoteNotifications()
 
             case .denied:
-                // User previously denied — can't prompt again; they must go to Settings
+                // User denied; they must go to Settings manually
                 break
 
             @unknown default:
@@ -156,6 +176,19 @@ final class WebViewController: UIViewController {
     }
 }
 
+// MARK: – WKScriptMessageHandler (reversed push bridge)
+
+extension WebViewController: WKScriptMessageHandler {
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        if message.name == "requestPushPermission" {
+            handlePushPermissionBridge()
+        }
+    }
+}
+
 // MARK: – WKNavigationDelegate
 
 extension WebViewController: WKNavigationDelegate {
@@ -167,12 +200,13 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
         spinner.stopAnimating()
-        // Inject token if we already have one (app re-open after token was received)
+        // Inject APNs token if we already have one (handles app re-open after token was received)
         if let token = NotificationDelegate.shared.apnsToken {
             injectPushToken(token)
         }
-        // Request push permission now — service workers are cleared by this point
-        handlePushPermission()
+        // NOTE: Do NOT call handlePushPermissionBridge() here.
+        // The website calls window.webkit.messageHandlers.requestPushPermission.postMessage({})
+        // after the user logs in — that triggers the bridge above automatically.
     }
 
     func webView(_ webView: WKWebView,
@@ -195,13 +229,8 @@ extension WebViewController: WKNavigationDelegate {
             || host == "stripe.com" || host.hasSuffix(".stripe.com")
             || url.scheme == "about" || url.scheme == "blob"
 
-        // Always allow in-app URLs regardless of frame.
         if isInApp { decisionHandler(.allow); return }
 
-        // External URL: only open Safari for deliberate MAIN-FRAME or new-window
-        // navigations (user tapped a link). Sub-frame requests (iframes, embedded
-        // video players like Dailymotion, ads, etc.) must load inside the WebView —
-        // sending them to Safari breaks the page and opens unwanted browser tabs.
         let frame = action.targetFrame
         let isMainOrNewWindow = frame == nil || frame!.isMainFrame
 
@@ -209,7 +238,7 @@ extension WebViewController: WKNavigationDelegate {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
             decisionHandler(.cancel)
         } else {
-            decisionHandler(.allow)   // sub-frame / iframe — allow in-WebView
+            decisionHandler(.allow)
         }
     }
 }

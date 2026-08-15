@@ -44,6 +44,9 @@ async function registerApnsToken(token: string) {
     });
     if (!res.ok) {
       console.warn("[apns] token registration failed:", res.status);
+      beacon("apns-register-failed", String(res.status));
+    } else {
+      beacon("apns-register-ok");
     }
   } catch (err) {
     console.warn("[apns] network error:", err);
@@ -65,7 +68,17 @@ async function registerApnsToken(token: string) {
  *
  * Registration is deferred until the user is authenticated.
  */
-export function useExpoPushToken() {
+function beacon(stage: string, detail?: string) {
+    try {
+      fetch(`${API_BASE}/api/push/apns-debug`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stage, detail }),
+      });
+    } catch { /* ignore */ }
+    }
+
+    export function useExpoPushToken() {
   const { user } = useAuth();
 
   useEffect(() => {
@@ -78,7 +91,8 @@ export function useExpoPushToken() {
 
     // APNs token handler — raw hex token from native Swift app
     const handleApnsToken = (token: string) => {
-      if (typeof token !== "string" || !/^[0-9a-f]{32,}$/i.test(token)) return;
+      if (typeof token !== "string" || !/^[0-9a-f]{32,}$/i.test(token)) { beacon("apns-token-invalid", String(token).slice(0, 20)); return; }
+      beacon("apns-token-received");
       registerApnsToken(token);
     };
 
@@ -106,7 +120,10 @@ export function useExpoPushToken() {
     // UNUserNotificationCenter.requestAuthorization() + registerForRemoteNotifications()
     // and then delivers the APNs token back via window.__onApnsToken above.
     if (w.__iosWebView && w.webkit?.messageHandlers?.requestPushPermission) {
+      beacon("bridge-posted");
       w.webkit.messageHandlers.requestPushPermission.postMessage({});
+    } else if (w.__iosWebView) {
+      beacon("bridge-missing-handler");
     }
 
     // Pattern 3: native posts a JSON message via ReactNativeWebView.postMessage

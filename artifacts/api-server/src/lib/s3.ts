@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
@@ -144,47 +145,10 @@ export async function uploadBufferToS3(
   return { key, url: publicUrl(key), bucket: BUCKET, region: REGION };
 }
 
-export async function deleteFromS3(key: string): Promise<void> {
-  const client = getClient();
-  await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
-}
+// ── Wasabi ────────────────────────────────────────────────────────────────────
 
-export async function getPresignedUploadUrl(
-  mimeType: string,
-  originalName?: string,
-  expiresInSeconds = 300
-): Promise<{ uploadUrl: string; key: string; fileUrl: string }> {
-  validateMimeType(mimeType);
-
-  const client = getClient();
-  const key = buildKey(mimeType, originalName);
-
-  const command = new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-    ContentType: mimeType,
-  });
-
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: expiresInSeconds });
-
-  return { uploadUrl, key, fileUrl: publicUrl(key) };
-}
-
-// ── Wasabi S3-compatible storage ─────────────────────────────────────────────
-//
-// Wasabi uses the same S3 API as AWS but with a custom endpoint.
-// Set these env vars on your server to enable Wasabi storage:
-//   WASABI_ACCESS_KEY_ID      — from Wasabi console → Access Keys
-//   WASABI_SECRET_ACCESS_KEY  — from Wasabi console → Access Keys
-//   WASABI_BUCKET_NAME        — bucket name you created on Wasabi
-//   WASABI_REGION             — bucket region (e.g. us-east-1, eu-central-1)
-//
-// Make sure the bucket policy allows public reads so images load in browsers.
-
-const WASABI_REGION   = process.env["WASABI_REGION"]      ?? "us-east-1";
+const WASABI_REGION   = process.env["WASABI_REGION"]   ?? "us-east-1";
 const WASABI_BUCKET   = process.env["WASABI_BUCKET_NAME"] ?? "";
-// Wasabi endpoint: https://s3.wasabisys.com works for all regions.
-// Region-specific: https://s3.<region>.wasabisys.com
 const WASABI_ENDPOINT = process.env["WASABI_ENDPOINT"]
   ?? `https://s3.${WASABI_REGION}.wasabisys.com`;
 
@@ -197,11 +161,18 @@ export function isWasabiConfigured(): boolean {
 }
 
 function getWasabiClient(): S3Client {
-  const accessKeyId     = process.env["WASABI_ACCESS_KEY_ID"]!;
-  const secretAccessKey = process.env["WASABI_SECRET_ACCESS_KEY"]!;
+  const accessKeyId     = process.env["WASABI_ACCESS_KEY_ID"];
+  const secretAccessKey = process.env["WASABI_SECRET_ACCESS_KEY"];
+
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Wasabi credentials not configured.");
+  }
+  if (!WASABI_BUCKET) {
+    throw new Error("WASABI_BUCKET_NAME environment variable is not set.");
+  }
 
   return new S3Client({
-    region: WASABI_REGION,
+    region:   WASABI_REGION,
     endpoint: WASABI_ENDPOINT,
     // Wasabi requires path-style addressing (not virtual-hosted-style)
     forcePathStyle: true,
@@ -209,14 +180,25 @@ function getWasabiClient(): S3Client {
   });
 }
 
-function wasabiPublicUrl(key: string): string {
-  // Public URL pattern: https://s3.<region>.wasabisys.com/<bucket>/<key>
-  return `${WASABI_ENDPOINT}/${WASABI_BUCKET}/${key}`;
+/**
+ * Generate a presigned URL for a Wasabi object key.
+ * Valid for 3600 seconds (1 hour). The proxy route calls this on every request
+ * so the URL is always fresh.
+ */
+export async function getWasabiPresignedUrl(key: string): Promise<string> {
+  const client = getWasabiClient();
+  const command = new GetObjectCommand({
+    Bucket: WASABI_BUCKET,
+    Key:    key,
+  });
+  return getSignedUrl(client, command, { expiresIn: 3600 });
 }
 
 /**
  * Upload an image or video buffer to Wasabi.
- * Returns the full public CDN URL so it can be stored directly in the DB.
+ * Returns the Wasabi object key (not a public URL).
+ * Use getWasabiPresignedUrl(key) to generate a temporary access URL,
+ * or expose the /api/storage/wasabi-image?key=... proxy endpoint.
  *
  * Requires:
  *   WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, WASABI_BUCKET_NAME
@@ -245,10 +227,11 @@ export async function uploadBufferToWasabi(
       Key:         key,
       Body:        buffer,
       ContentType: mimeType,
-      // ACL public-read so the image URL works in any browser
-      ACL:         "public-read",
+      // No ACL: "public-read" — Wasabi blocks public access for accounts
+      // created after March 2023. We serve images via presigned URL proxy instead.
     })
   );
 
-  return wasabiPublicUrl(key);
+  // Return the key so the caller can build a proxy URL
+  return key;
 }

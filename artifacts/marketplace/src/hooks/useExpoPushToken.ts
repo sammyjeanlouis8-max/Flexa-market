@@ -119,11 +119,12 @@ function beacon(stage: string, detail?: string) {
     // native push permission dialog by messaging Swift.  Swift calls
     // UNUserNotificationCenter.requestAuthorization() + registerForRemoteNotifications()
     // and then delivers the APNs token back via window.__onApnsToken above.
-    if (w.__iosWebView && w.webkit?.messageHandlers?.requestPushPermission) {
-      beacon("bridge-posted");
-      w.webkit.messageHandlers.requestPushPermission.postMessage({});
-    } else if (w.__iosWebView) {
-      beacon("bridge-missing-handler");
+    // DISABLED 2026-08-15: posting this message makes the native iOS app
+    // crash on launch (UNUserNotificationCenter calls crash on this device
+    // family — see native builds 73-77/81/82). Do not re-enable without a
+    // native fix verified on a real device.
+    if (w.__iosWebView) {
+      beacon("bridge-disabled");
     }
 
     // Pattern 3: native posts a JSON message via ReactNativeWebView.postMessage

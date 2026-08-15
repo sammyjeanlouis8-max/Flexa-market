@@ -236,4 +236,28 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
     });
     });
     
+
+    // TEMP: GET /api/push/test-ios-latest?key=... — send a test APNs push to the
+    // most recently registered iOS device token. Remove after verification.
+    router.get("/push/test-ios-latest", async (req, res): Promise<void> => {
+    if (req.query.key !== "ting94tx92kq") { res.status(404).end(); return; }
+    const cfg = getApnsConfig();
+    if (!cfg) { res.status(500).json({ error: "APNs not configured" }); return; }
+    const rows = await db.select().from(expoPushTokensTable);
+    const ios = rows.filter(r => r.token.startsWith("apns:"))
+      .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime());
+    if (ios.length === 0) { res.json({ error: "no apns tokens registered" }); return; }
+    const results = [];
+    for (const row of ios.slice(0, 3)) {
+      const out = await sendApnsNotification(row.token.slice(5), {
+        title: "Flexa Market 🍏",
+        body: "Tès notifikasyon iPhone — si ou wè sa, tout bagay mache!",
+        badge: 1,
+        sound: "default",
+      }, cfg);
+      results.push({ userId: row.userId, tokenTail: row.token.slice(-8), ...out });
+    }
+    res.json({ tried: results.length, results });
+    });
+    
 export default router;

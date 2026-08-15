@@ -39,8 +39,13 @@ function makeJwt(keyId: string, teamId: string, p8Key: string): string {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 export function getApnsConfig() {
-  const keyId    = process.env.APNS_KEY_ID;
-  const p8Key    = process.env.APNS_KEY_P8;
+  const keyId    = process.env.APNS_KEY_ID?.trim();
+  // Normalize the .p8: strip wrapping quotes and turn literal "\n" into real
+  // newlines (dashboards often mangle multiline env vars when pasting).
+  const p8Key    = process.env.APNS_KEY_P8
+    ?.trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n");
   const teamId   = process.env.APNS_TEAM_ID   ?? "D782MM56VY";
   const bundleId = process.env.APNS_BUNDLE_ID ?? "com.flexamarket.mobile";
   const isProduction = process.env.NODE_ENV === "production";

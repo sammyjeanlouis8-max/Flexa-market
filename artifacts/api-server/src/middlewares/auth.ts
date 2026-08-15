@@ -3,6 +3,27 @@ import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
+// ─── Online presence (in-memory) ─────────────────────────────────────────────
+// Any authenticated request marks the user as "online" for the next 5 minutes.
+const lastSeen = new Map<number, number>();
+const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+export function markSeen(userId: number): void {
+  lastSeen.set(userId, Date.now());
+  // Opportunistic cleanup to keep the map small
+  if (lastSeen.size > 10000) {
+    const cutoff = Date.now() - ONLINE_WINDOW_MS;
+    for (const [id, ts] of lastSeen) if (ts < cutoff) lastSeen.delete(id);
+  }
+}
+
+export function getOnlineUserCount(): number {
+  const cutoff = Date.now() - ONLINE_WINDOW_MS;
+  let n = 0;
+  for (const ts of lastSeen.values()) if (ts >= cutoff) n++;
+  return n;
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -30,6 +51,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
   req.userId = user.id;
   req.user = user;
+  markSeen(user.id);
   next();
 }
 
@@ -43,6 +65,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
         if (!user.tokenInvalidatedAt || payload.iat * 1000 >= new Date(user.tokenInvalidatedAt).getTime()) {
           req.userId = user.id;
           req.user = user;
+          markSeen(user.id);
         }
       }
     }

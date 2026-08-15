@@ -2520,6 +2520,7 @@ export default function Admin() {
       {s && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
           <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => { loadWalletAdmin(); setShowUsersSheet(true); }} />
+          <StatCard icon={Wifi} label="Online Kounye a" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
           <StatCard icon={Package} label="Anons Aktif" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
           <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />
           <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />

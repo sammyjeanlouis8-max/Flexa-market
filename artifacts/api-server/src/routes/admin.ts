@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { requireAdmin, requireSuperAdmin, requireRole, getRole } from "../middlewares/auth";
+import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
@@ -266,6 +266,7 @@ router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
 
   res.json({
     totalUsers: Number(totalUsers.count),
+    onlineUsers: getOnlineUserCount(),
     totalListings: Number(totalListings.count),
     activeListings: Number(activeListings.count),
     boostedListings: Number(boostedListings.count),

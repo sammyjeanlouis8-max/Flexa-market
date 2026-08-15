@@ -225,4 +225,15 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
   res.json({ ok: true, message: "Push sent — check server logs for errors" });
 });
 
+
+    // GET /api/push/apns-status — public, reveals only whether APNs is configured
+    router.get("/push/apns-status", (_req, res) => {
+    const cfg = getApnsConfig();
+    res.json({
+      configured: !!cfg,
+      keyId: cfg ? cfg.keyId.slice(0, 4) + "..." : null,
+      production: cfg?.isProduction ?? null,
+    });
+    });
+    
 export default router;

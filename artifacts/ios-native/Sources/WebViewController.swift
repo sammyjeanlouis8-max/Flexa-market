@@ -124,29 +124,17 @@ final class WebViewController: UIViewController {
         guard !pushHandled else { return }
         pushHandled = true
 
-        Task { @MainActor in
-            let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-
-            switch settings.authorizationStatus {
-            case .notDetermined:
-                let granted = (try? await center.requestAuthorization(
-                    options: [.alert, .badge, .sound])) ?? false
-                if granted {
-                    UIApplication.shared.registerForRemoteNotifications()
-                }
-
-            case .authorized, .provisional, .ephemeral:
-                // Permission already granted — re-register to refresh token
-                UIApplication.shared.registerForRemoteNotifications()
-
-            case .denied:
-                // User denied; they must go to Settings manually
-                break
-
-            @unknown default:
-                break
-            }
+        // CRASH HISTORY (builds 73-77, 81, 82): ANY call into
+        // UNUserNotificationCenter from this path (requestAuthorization,
+        // notificationSettings, even setBadgeCount) crashes the app on this
+        // device family (iOS 26). So we avoid UNUserNotificationCenter
+        // entirely here and only call the UIApplication API, which is safe.
+        // Trade-off: if the user has never been asked for permission, no
+        // prompt appears — they must enable notifications in Settings.
+        // registerForRemoteNotifications still returns a valid APNs token
+        // whenever permission is already granted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            UIApplication.shared.registerForRemoteNotifications()
         }
     }
 

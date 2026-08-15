@@ -1,5 +1,5 @@
-import { db, expoPushTokensTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, expoPushTokensTable, usersTable, notificationsTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendApnsToTokens, type ApnsPayload } from "./apns";
 
@@ -54,13 +54,28 @@ export async function sendExpoPushToUser(
 
     if (user && user.notifyPush === false) return;
 
+    // Badge: default to the user's unread notification count so the app
+    // icon shows a number (like WhatsApp) on every push.
+    let badge = payload.badge;
+    if (badge === undefined) {
+      try {
+        const unread = await db
+          .select({ id: notificationsTable.id })
+          .from(notificationsTable)
+          .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.isRead, false)));
+        badge = unread.length;
+      } catch {
+        /* badge is cosmetic — never block the push */
+      }
+    }
+
     // ── APNs (native Swift app) ────────────────────────────────────────────
     const apnsRows = rows.filter((r) => isApnsToken(r.token));
     if (apnsRows.length > 0) {
       const apnsPayload: ApnsPayload = {
         title: payload.title,
         body: payload.body,
-        badge: payload.badge,
+        badge,
         sound: payload.sound ?? "default",
         data: payload.data,
         collapseId: payload.channelId,
@@ -84,7 +99,7 @@ export async function sendExpoPushToUser(
       body: payload.body,
       data: payload.data ?? {},
       sound: payload.sound ?? "default",
-      badge: payload.badge,
+      badge,
       channelId: payload.channelId ?? "default",
       priority: payload.priority ?? "high",
       ...(payload.ttl !== undefined ? { ttl: payload.ttl } : {}),

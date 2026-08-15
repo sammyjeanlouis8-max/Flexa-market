@@ -268,4 +268,20 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
     res.json({ tried: results.length, results });
     });
     
+
+    // TEMP: APNs registration debug beacon (in-memory, remove after verification)
+    const _apnsDebugEvents: { t: string; stage: string; detail?: string }[] = [];
+    router.post("/push/apns-debug", (req, res) => {
+    const { stage, detail } = req.body ?? {};
+    if (typeof stage === "string" && stage.length < 100) {
+      _apnsDebugEvents.push({ t: new Date().toISOString(), stage, detail: typeof detail === "string" ? detail.slice(0, 200) : undefined });
+      if (_apnsDebugEvents.length > 50) _apnsDebugEvents.shift();
+    }
+    res.json({ ok: true });
+    });
+    router.get("/push/apns-debug", (req, res) => {
+    if (req.query.key !== "ting94tx92kq") { res.status(404).end(); return; }
+    res.json(_apnsDebugEvents);
+    });
+    
 export default router;

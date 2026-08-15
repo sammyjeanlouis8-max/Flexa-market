@@ -11,7 +11,7 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured } from "../lib/s3";
+import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl } from "../lib/s3";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
@@ -62,6 +62,27 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
     stream.end(buffer);
   });
 }
+
+// ── Wasabi image proxy ────────────────────────────────────────────────────────
+// Wasabi accounts created after March 2023 cannot enable public bucket access.
+// Instead, we store the object key and serve images via this proxy, which
+// generates a fresh presigned URL (valid 1 hour) and redirects to it.
+// URL pattern: GET /api/storage/wasabi-image?key=uploads%2Fimages%2F...
+router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
+  const key = req.query["key"];
+  if (!key || typeof key !== "string") {
+    res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
+    return;
+  }
+  try {
+    const presignedUrl = await getWasabiPresignedUrl(key);
+    // Redirect to the presigned URL — browser/app follows transparently
+    res.redirect(302, presignedUrl);
+  } catch (err: any) {
+    req.log.error({ err, key }, "Failed to generate Wasabi presigned URL");
+    res.status(500).json({ error: "Could not retrieve image." });
+  }
+});
 
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
@@ -118,17 +139,25 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     }
 
     // ── 2. Wasabi (S3-compatible) ─────────────────────────────────────────────
-    // Set WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, WASABI_BUCKET_NAME
-    // (and optionally WASABI_REGION, WASABI_ENDPOINT) on your server.
+    // uploadBufferToWasabi returns the object key (not a public URL) because
+    // Wasabi blocks public bucket access for accounts created after March 2023.
+    // We expose a proxy route (/api/storage/wasabi-image?key=...) that generates
+    // a fresh presigned URL on every request, so images always load.
     if (USE_WASABI) {
       const chunks: Buffer[] = [];
       for await (const chunk of req) {
         chunks.push(chunk as Buffer);
       }
       const buffer = Buffer.concat(chunks);
-      const url = await uploadBufferToWasabi(buffer, contentType);
-      req.log.info({ token, url }, "Wasabi upload complete");
-      res.status(200).json({ url });
+      const key = await uploadBufferToWasabi(buffer, contentType);
+
+      // Build the proxy URL using the request's own host so it works in any environment
+      const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
+      const host  = req.headers["x-forwarded-host"] ?? req.get("host");
+      const proxyUrl = `${proto}://${host}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+
+      req.log.info({ token, key, proxyUrl }, "Wasabi upload complete");
+      res.status(200).json({ url: proxyUrl });
       return;
     }
 

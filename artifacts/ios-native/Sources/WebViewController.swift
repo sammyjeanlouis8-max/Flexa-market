@@ -65,6 +65,7 @@ final class WebViewController: UIViewController {
         //  2. Unregister any cached service workers to avoid APNs conflicts
         let bootstrap = WKUserScript(source: """
             window.__iosWebView = true;
+            window.__iosPushBridgeSafe = true; // build 83+: bridge no longer crashes
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.getRegistrations().then(function(rs) {
                     rs.forEach(function(r) { r.unregister(); });

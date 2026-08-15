@@ -121,7 +121,7 @@ function beacon(stage: string, detail?: string) {
     // and then delivers the APNs token back via window.__onApnsToken above.
     // Native build 83+ handles this message safely (no UNUserNotificationCenter).
     // Delay a few seconds after load to keep app startup untouched.
-    if (w.__iosWebView && w.webkit?.messageHandlers?.requestPushPermission) {
+    if (w.__iosWebView && w.__iosPushBridgeSafe && w.webkit?.messageHandlers?.requestPushPermission) {
       setTimeout(() => {
         try {
           beacon("bridge-posted");
@@ -129,7 +129,8 @@ function beacon(stage: string, detail?: string) {
         } catch { /* ignore */ }
       }, 3000);
     } else if (w.__iosWebView) {
-      beacon("bridge-missing-handler");
+      // Old native build (< 83): posting the message crashes the app — skip.
+      beacon(w.webkit?.messageHandlers?.requestPushPermission ? "bridge-skipped-old-build" : "bridge-missing-handler");
     }
 
     // Pattern 3: native posts a JSON message via ReactNativeWebView.postMessage

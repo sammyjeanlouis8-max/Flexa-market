@@ -225,41 +225,4 @@ router.post("/push/test-expo", requireAdmin, async (req, res): Promise<void> => 
   res.json({ ok: true, message: "Push sent — check server logs for errors" });
 });
 
-
-/**
- * GET /api/push/test-android-latest?key=...  (TEMPORARY diagnostic route)
- * Sends a test push to the most recently updated Android Expo token and
- * returns the raw Expo ticket so FCM credential problems are visible.
- * Protected by a random key. Remove after Android push is confirmed.
- */
-router.get("/push/test-android-latest", async (req, res): Promise<void> => {
-  if (req.query["key"] !== "18e8da32eeef97778b92a104456d9988") {
-    res.status(404).end();
-    return;
-  }
-  const rows = await db.select().from(expoPushTokensTable);
-  const expoTokens = rows
-    .filter((r) => r.token.startsWith("Expo") && (r.platform === "android" || r.platform == null))
-    .sort((a, b) => new Date(b.updatedAt ?? 0).getTime() - new Date(a.updatedAt ?? 0).getTime());
-  if (expoTokens.length === 0) {
-    res.json({ ok: false, reason: "no android expo tokens registered", totalTokens: rows.length, platforms: rows.map(r => ({ p: r.platform, t: r.token.slice(0, 20) })) });
-    return;
-  }
-  const target = expoTokens[0]!;
-  const resp = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify([{
-      to: target.token,
-      title: "🔔 Test Flexa Push",
-      body: "Si ou wè sa — Android push fonksyone!",
-      sound: "default",
-      channelId: "default",
-      priority: "high",
-    }]),
-  });
-  const json = await resp.json().catch(() => null);
-  res.json({ ok: true, sentTo: target.token.slice(0, 30), platform: target.platform, updatedAt: target.updatedAt, expoStatus: resp.status, expoResponse: json });
-});
-
 export default router;

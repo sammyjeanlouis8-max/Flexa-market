@@ -179,3 +179,5 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     res.status(status).json({ error: msg });
   }
 });
+
+export default router;

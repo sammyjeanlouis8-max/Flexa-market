@@ -11,7 +11,7 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType } from "../lib/s3";
+import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured } from "../lib/s3";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
@@ -27,10 +27,11 @@ const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.le
   ? rawCloudName           // looks like a real Cloudinary slug (short, no dashes)
   : KNOWN_CLOUD_NAME;      // missing, UUID-shaped, or bucket-ID-shaped → use known good value
 
-// Cloudinary takes priority over GCS/ObjectStorage whenever API key is present.
-// On Render, PRIVATE_OBJECT_DIR may be set in the dashboard but GCS is not
-// available — so we must use Cloudinary regardless of that variable.
+// Storage priority: Cloudinary > Wasabi > GCS/PRIVATE_OBJECT_DIR
+// Set CLOUDINARY_API_KEY for Cloudinary, or WASABI_ACCESS_KEY_ID + WASABI_SECRET_ACCESS_KEY
+// + WASABI_BUCKET_NAME for Wasabi, or PRIVATE_OBJECT_DIR for Replit GCS storage.
 const USE_CLOUDINARY = !!(process.env["CLOUDINARY_API_KEY"]);
+const USE_WASABI     = !USE_CLOUDINARY && isWasabiConfigured();
 
 if (USE_CLOUDINARY) {
   cloudinary.config({
@@ -103,6 +104,7 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
       return;
     }
 
+    // ── 1. Cloudinary ────────────────────────────────────────────────────────
     if (USE_CLOUDINARY) {
       const chunks: Buffer[] = [];
       for await (const chunk of req) {
@@ -115,10 +117,26 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
       return;
     }
 
+    // ── 2. Wasabi (S3-compatible) ─────────────────────────────────────────────
+    // Set WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, WASABI_BUCKET_NAME
+    // (and optionally WASABI_REGION, WASABI_ENDPOINT) on your server.
+    if (USE_WASABI) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(chunk as Buffer);
+      }
+      const buffer = Buffer.concat(chunks);
+      const url = await uploadBufferToWasabi(buffer, contentType);
+      req.log.info({ token, url }, "Wasabi upload complete");
+      res.status(200).json({ url });
+      return;
+    }
+
+    // ── 3. Replit GCS / local PRIVATE_OBJECT_DIR ─────────────────────────────
     if (!process.env["PRIVATE_OBJECT_DIR"]) {
       req.resume();
-      req.log.error({ token }, "Upload failed: no storage configured (set CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET or PRIVATE_OBJECT_DIR)");
-      res.status(503).json({ error: "Storage not configured on this server. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables." });
+      req.log.error({ token }, "Upload failed: no storage configured. Set WASABI_ACCESS_KEY_ID + WASABI_SECRET_ACCESS_KEY + WASABI_BUCKET_NAME (or CLOUDINARY_API_KEY, or PRIVATE_OBJECT_DIR).");
+      res.status(503).json({ error: "Storage not configured on this server. Add WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, and WASABI_BUCKET_NAME environment variables." });
       return;
     }
 
@@ -132,159 +150,3 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     res.status(status).json({ error: msg });
   }
 });
-
-router.get("/storage/objects/*path", async (req: Request, res: Response) => {
-  const raw          = req.params.path;
-  const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-
-  if (wildcardPath.startsWith("https://") || wildcardPath.startsWith("http://")) {
-    res.redirect(302, wildcardPath);
-    return;
-  }
-
-  try {
-    const objectFile = await objectStorage.getObjectEntityFile(`/objects/${wildcardPath}`);
-    const [metadata]  = await objectFile.getMetadata();
-    const totalSize   = parseInt(String(metadata.size ?? "0"), 10);
-    const contentType = String(metadata.contentType ?? "application/octet-stream");
-
-    const rangeHeader = req.headers.range;
-
-    if (rangeHeader) {
-      const [startStr, endStr] = rangeHeader.replace(/bytes=/, "").split("-");
-      const start = parseInt(startStr, 10);
-      const end   = endStr ? parseInt(endStr, 10) : totalSize - 1;
-      const chunkSize = end - start + 1;
-
-      res.writeHead(206, {
-        "Content-Range":  `bytes ${start}-${end}/${totalSize}`,
-        "Accept-Ranges":  "bytes",
-        "Content-Length": chunkSize,
-        "Content-Type":   contentType,
-        "Cache-Control":  "public, max-age=86400",
-      });
-      objectFile.createReadStream({ start, end }).pipe(res);
-    } else {
-      res.writeHead(200, {
-        "Content-Length": totalSize,
-        "Content-Type":   contentType,
-        "Accept-Ranges":  "bytes",
-        "Cache-Control":  "public, max-age=86400",
-      });
-      objectFile.createReadStream().pipe(res);
-    }
-  } catch (err) {
-    if (err instanceof ObjectNotFoundError) {
-      req.log.warn({ path: wildcardPath }, "Object not found in GCS storage");
-      res.status(404).json({ error: "Object not found" });
-    } else {
-      req.log.error({ err, path: wildcardPath }, "Error serving object from storage");
-      res.status(500).json({ error: "Failed to serve object" });
-    }
-  }
-});
-
-router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
-  const raw  = req.params.filePath;
-  const path = Array.isArray(raw) ? raw.join("/") : raw;
-  res.redirect(301, `/api/storage/objects/${path}`);
-});
-
-const CHUNK_DIR_BASE = "/tmp/flexa-chunks";
-const MAX_CHUNK_BYTES = 12 * 1024 * 1024;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isValidUploadId(id: string): boolean {
-  return UUID_RE.test(id);
-}
-
-router.post("/storage/uploads/chunk-init", requireAuth, (req: Request, res: Response) => {
-  const userId     = (req as any).user?.id as number;
-  const uploadId   = randomUUID();
-  const dir        = join(CHUNK_DIR_BASE, uploadId);
-  const objectPath = `/objects/uploads/${uploadId}`;
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "_meta.json"), JSON.stringify({ objectPath, userId }));
-  res.json({ uploadId, objectPath });
-});
-
-router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: Request, res: Response) => {
-  const uploadId = String(req.params["uploadId"]);
-  const index    = Number(req.params["index"]);
-
-  if (!isValidUploadId(uploadId)) { res.status(400).json({ error: "Invalid upload ID" }); return; }
-
-  const dir = join(CHUNK_DIR_BASE, uploadId);
-  if (!existsSync(dir)) { res.status(404).json({ error: "Upload session not found" }); return; }
-
-  const metaRaw = readFileSync(join(dir, "_meta.json"), "utf-8");
-  const meta    = JSON.parse(metaRaw) as { objectPath: string; userId: number };
-  const userId  = (req as any).user?.id as number;
-  if (meta.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
-
-  const clHeader = req.headers["content-length"];
-  if (clHeader && parseInt(clHeader, 10) > MAX_CHUNK_BYTES) {
-    req.resume();
-    res.status(400).json({ error: "Chunk too large" });
-    return;
-  }
-
-  const chunkPath = join(dir, `chunk_${String(index).padStart(6, "0")}`);
-  const ws        = createWriteStream(chunkPath);
-  await new Promise<void>((resolve, reject) => {
-    req.pipe(ws);
-    ws.on("finish", resolve);
-    ws.on("error", reject);
-  });
-  res.json({ ok: true });
-});
-
-router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req: Request, res: Response) => {
-  const uploadId = String(req.params["uploadId"]);
-
-  if (!isValidUploadId(uploadId)) { res.status(400).json({ error: "Invalid upload ID" }); return; }
-
-  const dir = join(CHUNK_DIR_BASE, uploadId);
-  if (!existsSync(dir)) { res.status(404).json({ error: "Upload session not found" }); return; }
-
-  const metaRaw        = readFileSync(join(dir, "_meta.json"), "utf-8");
-  const meta           = JSON.parse(metaRaw) as { objectPath: string; userId: number };
-  const userId         = (req as any).user?.id as number;
-  if (meta.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
-
-  const { objectPath } = meta;
-  const { totalChunks, contentType } = req.body as { totalChunks: number; contentType: string };
-
-  const chunkPaths: string[] = [];
-  for (let i = 0; i < totalChunks; i++) {
-    chunkPaths.push(join(dir, `chunk_${String(i).padStart(6, "0")}`));
-  }
-
-  async function* chunkGen() {
-    for (const p of chunkPaths) {
-      const rs = createReadStream(p);
-      for await (const buf of rs) yield buf as Buffer;
-    }
-  }
-
-  try {
-    if (USE_CLOUDINARY) {
-      const chunks: Buffer[] = [];
-      for await (const buf of chunkGen()) chunks.push(buf);
-      const buffer = Buffer.concat(chunks);
-      const url = await uploadBufferToCloudinary(buffer, contentType ?? "video/mp4");
-      req.log.info({ uploadId, url }, "Chunked Cloudinary upload finalized");
-      res.json({ objectPath: url });
-      return;
-    }
-
-    const assembledStream = Readable.from(chunkGen());
-    await objectStorage.uploadStreamById(uploadId, assembledStream, contentType ?? "video/mp4");
-    req.log.info({ uploadId, objectPath }, "Chunked GCS upload finalized");
-    res.json({ objectPath });
-  } finally {
-    try { rmSync(dir, { recursive: true, force: true }); } catch { }
-  }
-});
-
-export default router;

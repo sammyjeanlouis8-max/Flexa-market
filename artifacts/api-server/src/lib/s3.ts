@@ -169,3 +169,86 @@ export async function getPresignedUploadUrl(
 
   return { uploadUrl, key, fileUrl: publicUrl(key) };
 }
+
+// ── Wasabi S3-compatible storage ─────────────────────────────────────────────
+//
+// Wasabi uses the same S3 API as AWS but with a custom endpoint.
+// Set these env vars on your server to enable Wasabi storage:
+//   WASABI_ACCESS_KEY_ID      — from Wasabi console → Access Keys
+//   WASABI_SECRET_ACCESS_KEY  — from Wasabi console → Access Keys
+//   WASABI_BUCKET_NAME        — bucket name you created on Wasabi
+//   WASABI_REGION             — bucket region (e.g. us-east-1, eu-central-1)
+//
+// Make sure the bucket policy allows public reads so images load in browsers.
+
+const WASABI_REGION   = process.env["WASABI_REGION"]      ?? "us-east-1";
+const WASABI_BUCKET   = process.env["WASABI_BUCKET_NAME"] ?? "";
+// Wasabi endpoint: https://s3.wasabisys.com works for all regions.
+// Region-specific: https://s3.<region>.wasabisys.com
+const WASABI_ENDPOINT = process.env["WASABI_ENDPOINT"]
+  ?? `https://s3.${WASABI_REGION}.wasabisys.com`;
+
+export function isWasabiConfigured(): boolean {
+  return !!(
+    process.env["WASABI_ACCESS_KEY_ID"] &&
+    process.env["WASABI_SECRET_ACCESS_KEY"] &&
+    process.env["WASABI_BUCKET_NAME"]
+  );
+}
+
+function getWasabiClient(): S3Client {
+  const accessKeyId     = process.env["WASABI_ACCESS_KEY_ID"]!;
+  const secretAccessKey = process.env["WASABI_SECRET_ACCESS_KEY"]!;
+
+  return new S3Client({
+    region: WASABI_REGION,
+    endpoint: WASABI_ENDPOINT,
+    // Wasabi requires path-style addressing (not virtual-hosted-style)
+    forcePathStyle: true,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+}
+
+function wasabiPublicUrl(key: string): string {
+  // Public URL pattern: https://s3.<region>.wasabisys.com/<bucket>/<key>
+  return `${WASABI_ENDPOINT}/${WASABI_BUCKET}/${key}`;
+}
+
+/**
+ * Upload an image or video buffer to Wasabi.
+ * Returns the full public CDN URL so it can be stored directly in the DB.
+ *
+ * Requires:
+ *   WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, WASABI_BUCKET_NAME
+ * Optional:
+ *   WASABI_REGION   (default: us-east-1)
+ *   WASABI_ENDPOINT (default: https://s3.<region>.wasabisys.com)
+ */
+export async function uploadBufferToWasabi(
+  buffer: Buffer,
+  mimeType: string,
+  originalName?: string
+): Promise<string> {
+  if (!buffer || buffer.length === 0) {
+    throw new Error("Empty file received — please select a valid image and try again.");
+  }
+
+  validateMimeType(mimeType);
+  validateFileSize(buffer.byteLength);
+
+  const client = getWasabiClient();
+  const key    = buildKey(mimeType, originalName);
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket:      WASABI_BUCKET,
+      Key:         key,
+      Body:        buffer,
+      ContentType: mimeType,
+      // ACL public-read so the image URL works in any browser
+      ACL:         "public-read",
+    })
+  );
+
+  return wasabiPublicUrl(key);
+}

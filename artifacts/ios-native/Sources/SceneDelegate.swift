@@ -1,4 +1,5 @@
 import UIKit
+import UserNotifications
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -15,5 +16,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = WebViewController()
         self.window = window
         window.makeKeyAndVisible()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // Clear the app icon badge whenever the user opens the app.
+        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
     }
 }

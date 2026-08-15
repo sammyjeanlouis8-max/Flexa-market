@@ -30,7 +30,7 @@ async function registerPushTokenDirect(token: string, jwt: string): Promise<void
         "Content-Type": "application/json",
         Authorization: `Bearer ${jwt}`,
       },
-      body: JSON.stringify({ token, platform: "android", deviceId: null }),
+      body: JSON.stringify({ token, platform: Platform.OS, deviceId: null }),
     });
     if (!res.ok) {
       console.warn("[push-reg] token save failed:", res.status);

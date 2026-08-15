@@ -147,3 +147,5 @@ function beacon(stage: string, detail?: string) {
     };
   }, [user]);
 }
+
+// redeploy trigger

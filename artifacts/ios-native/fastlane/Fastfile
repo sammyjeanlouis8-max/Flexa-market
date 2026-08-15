@@ -2,6 +2,7 @@ default_platform(:ios)
 
 platform :ios do
   lane :build_and_upload do
+    begin
     keychain_name     = "ci_keychain"
     keychain_password = "Flexa_CI_2026!"
     keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}-db")
@@ -84,5 +85,22 @@ platform :ios do
 
     # 8. Clean up
     delete_keychain(name: keychain_name)
+    rescue => e
+      # Report the failure reason to our own API so it can be inspected
+      # (Actions log download is not accessible to the deploy token).
+      require 'net/http'
+      require 'json'
+      begin
+        msg = e.message.to_s[0, 4000]
+        uri = URI('https://flexamarket.com/api/push/apns-debug')
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = true
+        req = Net::HTTP::Post.new(uri.path, { 'Content-Type' => 'application/json' })
+        req.body = { stage: 'ci-fastlane-error', detail: msg }.to_json
+        http.request(req)
+      rescue StandardError
+      end
+      raise e
+    end
   end
 end

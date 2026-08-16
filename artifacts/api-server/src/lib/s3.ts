@@ -273,3 +273,28 @@ export async function uploadBufferToWasabi(
   // Return the key so the caller can build a proxy URL
   return key;
 }
+
+    /**
+    * Stream a video/file directly from a Node.js Readable to Wasabi without
+    * buffering the entire body in memory.  The caller MUST pass contentLength
+    * (taken from the HTTP Content-Length header) so S3 knows the size upfront.
+    */
+    export async function streamToWasabi(
+    stream: NodeJS.ReadableStream,
+    mimeType: string,
+    contentLength: number,
+    ): Promise<string> {
+    validateMimeType(mimeType);
+    const client = getWasabiClient();
+    const key = buildKey(mimeType);
+    await client.send(
+      new PutObjectCommand({
+        Bucket:        WASABI_BUCKET,
+        Key:           key,
+        Body:          stream as any,
+        ContentType:   mimeType,
+        ContentLength: contentLength,
+      }),
+    );
+    return key;
+    }

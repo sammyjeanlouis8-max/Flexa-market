@@ -3,6 +3,7 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import { validateMimeType } from "../lib/s3";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { isConfigured as wasabiConfigured, uploadMedia as wasabiUploadMedia } from "../lib/wasabi";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -34,6 +35,14 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
 
   try {
     validateMimeType(mimetype);
+    // Production (DigitalOcean) has no Replit Object Storage sidecar — use
+    // Wasabi whenever it is configured; fall back to Replit storage in dev.
+    if (wasabiConfigured()) {
+      const { url } = await wasabiUploadMedia(buffer, mimetype);
+      req.log.info({ mimetype, url }, "Multipart upload to Wasabi complete");
+      res.status(201).json({ url });
+      return;
+    }
     const objectId = randomUUID();
     await objectStorage.uploadBufferById(objectId, buffer, mimetype);
     const url = `/api/storage/objects/uploads/${objectId}`;

@@ -213,6 +213,21 @@ export async function uploadMusicCover(
   return _upload(buffer, key, mime);
 }
 
+/**
+ * Generic media upload (images, videos, audio, docs) for site features like
+ * boost videos, listing media, avatars. Stores under: uploads/{uuid}.{ext}.
+ * MIME must already be validated by the caller.
+ */
+export async function uploadMedia(
+  buffer: Buffer,
+  rawMime: string,
+): Promise<WasabiUploadResult> {
+  const mime = rawMime.split(";")[0].trim().toLowerCase();
+  const ext  = AUDIO_MIME_MAP[mime] ?? IMAGE_MIME_MAP[mime] ?? mime.split("/")[1]?.replace(/[^a-z0-9]/g, "") ?? "bin";
+  const key  = `uploads/${randomUUID()}.${ext}`;
+  return _upload(buffer, key, mime);
+}
+
 async function _upload(buffer: Buffer, key: string, contentType: string): Promise<WasabiUploadResult> {
   if (!isConfigured()) {
     throw new Error("Wasabi storage is not configured. Check WASABI_ACCESS_KEY, WASABI_SECRET_KEY, and WASABI_BUCKET_NAME.");

@@ -145,18 +145,45 @@ final class WebViewController: UIViewController {
     // MARK: – Token injection
 
     func injectPushToken(_ token: String) {
-        guard let data = try? JSONSerialization.data(withJSONObject: token),
-              let json = String(data: data, encoding: .utf8) else { return }
+        // CRASH FIX (build 84/85 crashed ~5s after open): JSONSerialization
+        // raises an Obj-C NSException (not a Swift error) for a top-level
+        // string fragment — `try?` cannot catch it, so the app died the
+        // moment the APNs token arrived. The token is plain hex, so validate
+        // it and interpolate it directly instead.
+        guard token.range(of: "^[0-9a-fA-F]+$", options: .regularExpression) != nil else {
+            Beacon.send("inject-token-invalid", String(token.prefix(20)))
+            return
+        }
+        Beacon.send("inject-token-start")
         webView?.evaluateJavaScript("""
         (function(){
-          window.__apnsToken = \(json);
+          window.__apnsToken = '\(token)';
           if (typeof window.__onApnsToken === 'function')
-            window.__onApnsToken(\(json));
+            window.__onApnsToken('\(token)');
         })();
-        """, completionHandler: nil)
+        """, completionHandler: { _, err in
+            Beacon.send(err == nil ? "inject-token-done" : "inject-token-jserror", err.map { String(describing: $0).prefix(150).description } ?? "")
+        })
     }
 
     // MARK: – Offline
+
+    /// Auto-retry loading a few times before ever showing the offline page.
+    private var retryCount = 0
+    private let maxAutoRetries = 3
+
+    private func handleLoadFailure() {
+        if retryCount < maxAutoRetries {
+            retryCount += 1
+            let delay = Double(retryCount) * 2.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.loadSite()
+            }
+        } else {
+            retryCount = 0
+            showOffline()
+        }
+    }
 
     private func showOffline() {
         guard offlineView == nil else { return }
@@ -203,12 +230,12 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView,
                  didFailProvisionalNavigation _: WKNavigation!, withError _: Error) {
-        spinner.stopAnimating(); showOffline()
+        spinner.stopAnimating(); handleLoadFailure()
     }
 
     func webView(_ webView: WKWebView,
                  didFail _: WKNavigation!, withError _: Error) {
-        spinner.stopAnimating(); showOffline()
+        spinner.stopAnimating(); handleLoadFailure()
     }
 
     func webView(_ webView: WKWebView,
@@ -259,22 +286,19 @@ private final class OfflineView: UIView {
     private func setup() {
         backgroundColor = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
 
-        let emoji = UILabel(); emoji.text = "📵"
-        emoji.font = .systemFont(ofSize: 64); emoji.textAlignment = .center
-
         let title = UILabel()
-        title.text = "Pa gen koneksyon"
+        title.text = "No connection"
         title.font = .boldSystemFont(ofSize: 22)
         title.textColor = .white; title.textAlignment = .center
 
         let sub = UILabel()
-        sub.text = "Vérifye koneksyon entènèt ou epi eseye ankò."
+        sub.text = "Check your internet connection and try again."
         sub.font = .systemFont(ofSize: 15)
         sub.textColor = UIColor.white.withAlphaComponent(0.6)
         sub.textAlignment = .center; sub.numberOfLines = 0
 
         var cfg = UIButton.Configuration.filled()
-        cfg.title = "Eseye ankò"
+        cfg.title = "Try again"
         cfg.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32)
         cfg.cornerStyle = .fixed; cfg.background.cornerRadius = 12
         cfg.baseBackgroundColor = UIColor(red: 0.98, green: 0.45, blue: 0.09, alpha: 1)
@@ -285,7 +309,7 @@ private final class OfflineView: UIView {
         let btn = UIButton(configuration: cfg)
         btn.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
 
-        let stack = UIStackView(arrangedSubviews: [emoji, title, sub, btn])
+        let stack = UIStackView(arrangedSubviews: [title, sub, btn])
         stack.axis = .vertical; stack.alignment = .center; stack.spacing = 16
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)

@@ -1350,13 +1350,18 @@ export default function Home() {
                 </div>
               ) : null}
             </>
-          ) : stats?.recentListings && stats.recentListings.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {stats.recentListings.map((l: NormalListing) => (
-                <ListingCard key={l.id} listing={l} />
-              ))}
-            </div>
-          ) : (
+          ) : (() => {
+            const recentFiltered = (stats?.recentListings ?? []).filter(
+              (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
+            );
+            return recentFiltered.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {recentFiltered.map((l: NormalListing) => (
+                  <ListingCard key={l.id} listing={l} />
+                ))}
+              </div>
+            ) : null;
+          })() ?? (
             <div className="text-center py-16 bg-muted/30 border border-border rounded-2xl">
               <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-semibold text-foreground">{t("home.noListings")}</p>

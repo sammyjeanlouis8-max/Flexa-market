@@ -246,7 +246,16 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       fr: { from: (n: string) => `Message de ${n}`,    newMsg: "Nouveau message", voice: "🎤 Message vocal" },
       en: { from: (n: string) => `Message from ${n}`,  newMsg: "New message",     voice: "🎤 Voice message" },
     }[lang];
-    const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
+    let pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
+      // Translate the message content into the recipient's preferred language
+      // (reuses the same Anthropic client/config as /messages/:id/translate).
+      if (messageType === "text" && content?.trim()) {
+        try {
+          const { translateForPush } = await import("../lib/pushTranslate");
+          const translated = await translateForPush(content.slice(0, 300), lang);
+          if (translated) pushBody = translated.slice(0, 120);
+        } catch { /* fall back to original content */ }
+      }
     const pushTitle = sender?.name ? L.from(sender.name) : L.newMsg;
 
     // Count all unread messages for the recipient across ALL conversations

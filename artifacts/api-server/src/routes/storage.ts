@@ -89,58 +89,28 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
       res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
       return;
     }
-    // Accept any key under our managed upload prefixes
     if (!/^[a-zA-Z0-9_-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
       res.status(400).json({ error: "Invalid key." });
       return;
     }
     try {
-      // 307 redirect to a 7-day presigned Wasabi URL.
-      //
-      // We previously streamed the file through this server (proxy), but
-      // DigitalOcean's App Platform terminates long-running response streams,
-      // which caused videos longer than ~1 minute to go black mid-playback.
-      // Redirecting the browser directly to Wasabi eliminates that limit:
-      // Wasabi handles ALL Range requests (seek, buffer) natively at full
-      // speed, with no server in the middle.
-      //
-      // 307 (Temporary Redirect) preserves the method and headers on redirect
-      // so iOS Safari correctly forwards Range headers to the Wasabi URL when
-      // seeking inside the video player.
-      //
-      // Cache-Control: private, max-age=3600 lets the browser reuse the same
-      // presigned URL for Range sub-requests during a single playback session
-      // without hitting our server each time.
-      const presignedUrl = await getWasabiPresignedUrl(key, 604800); // 7-day TTL
-      res.setHeader("Cache-Control", "private, max-age=3600");
-      res.redirect(307, presignedUrl);
+      // Generate a 7-day presigned URL and redirect the browser directly to Wasabi.
+      // Wasabi handles Range requests (seek/buffer) natively — no server in the middle.
+      // Using writeHead+end instead of res.redirect() to avoid any Express wrapper issues.
+      const presignedUrl = await getWasabiPresignedUrl(key, 604800);
+      res.writeHead(307, {
+        "Location": presignedUrl,
+        "Cache-Control": "private, max-age=3600",
+      });
+      res.end();
     } catch (err: any) {
       const code = err?.name === "NoSuchKey" ? 404 : 500;
-      req.log.error({ err, key }, "Wasabi proxy error");
-      if (!res.headersSent) res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
+      req.log.error({ err, key, errName: err?.name }, "Wasabi proxy error");
+      if (!res.headersSent) {
+        res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
+      }
     }
     });
-
-// ── POST /api/storage/uploads/request-url ─────────────────────────────────────
-router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
-  const parsed = RequestUploadUrlBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Missing or invalid required fields" });
-    return;
-  }
-  const { name, size, contentType } = parsed.data;
-  try {
-    const token = randomUUID();
-    const uploadURL  = `/api/storage/uploads/put-proxy/${token}`;
-    const objectPath = `/objects/uploads/${token}`;
-    res.json(
-      RequestUploadUrlResponse.parse({ uploadURL, objectPath, metadata: { name, size, contentType } }),
-    );
-  } catch (error) {
-    req.log.error({ err: error }, "Error generating upload URL");
-    res.status(500).json({ error: "Failed to generate upload URL" });
-  }
-});
 
 const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
 

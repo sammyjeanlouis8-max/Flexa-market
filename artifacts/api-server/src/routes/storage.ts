@@ -1,37 +1,33 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
-import {
-  mkdirSync, createWriteStream, createReadStream,
-  existsSync, rmSync, writeFileSync, readFileSync,
-} from "fs";
-import { join } from "path";
-import { Readable } from "stream";
 import { v2 as cloudinary } from "cloudinary";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl } from "../lib/s3";
-import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 
-// Detect when CLOUDINARY_CLOUD_NAME is set to the Replit Object Storage bucket ID
-// instead of the actual Cloudinary cloud name (a common misconfiguration on Render).
-// The bucket IDs look like: "mediaflows_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-const rawCloudName = process.env["CLOUDINARY_CLOUD_NAME"] ?? "";
-const KNOWN_CLOUD_NAME = "dvkbgodbk"; // appears in every public Cloudinary URL
-const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.length < 32
-  ? rawCloudName           // looks like a real Cloudinary slug (short, no dashes)
-  : KNOWN_CLOUD_NAME;      // missing, UUID-shaped, or bucket-ID-shaped → use known good value
+// ── Storage backend selection ──────────────────────────────────────────────────
+// Priority: Wasabi > Cloudinary > Replit GCS.
+// Wasabi is preferred because it works for ALL file types (images AND videos),
+// doesn't have per-account format restrictions, and the user has set it up.
+// Cloudinary is kept as image-only fallback for legacy deployments.
 
-// Storage priority: Cloudinary > Wasabi > GCS/PRIVATE_OBJECT_DIR
-// Set CLOUDINARY_API_KEY for Cloudinary, or WASABI_ACCESS_KEY_ID + WASABI_SECRET_ACCESS_KEY
-// + WASABI_BUCKET_NAME for Wasabi, or PRIVATE_OBJECT_DIR for Replit GCS storage.
-const USE_CLOUDINARY = !!(process.env["CLOUDINARY_API_KEY"]);
-const USE_WASABI     = !USE_CLOUDINARY && isWasabiConfigured();
+// Detect when CLOUDINARY_CLOUD_NAME is set to the Replit Object Storage bucket ID
+const rawCloudName = process.env["CLOUDINARY_CLOUD_NAME"] ?? "";
+const KNOWN_CLOUD_NAME = "dvkbgodbk";
+const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.length < 32
+  ? rawCloudName
+  : KNOWN_CLOUD_NAME;
+
+// Wasabi wins when configured (env vars present), regardless of whether Cloudinary is also set.
+const USE_WASABI     = isWasabiConfigured();
+const USE_CLOUDINARY = !USE_WASABI && !!(process.env["CLOUDINARY_API_KEY"]);
 
 if (USE_CLOUDINARY) {
   cloudinary.config({
@@ -47,8 +43,6 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
   }
   const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
   const resourceType = isVideo ? "video" : "image";
-  // Force JPEG output for images so HEIC/HEIF (iPhone default format) is always
-  // converted to a widely-supported format before storage.
   const uploadOptions: Record<string, unknown> = { resource_type: resourceType, folder: "flexa-market" };
   if (!isVideo) uploadOptions["format"] = "jpg";
   return new Promise<string>((resolve, reject) => {
@@ -63,47 +57,61 @@ async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Pr
   });
 }
 
-// ── Wasabi image proxy ────────────────────────────────────────────────────────
-// Wasabi accounts created after March 2023 cannot enable public bucket access.
-// Instead, we store the object key and serve images via this proxy, which
-// generates a fresh presigned URL (valid 1 hour) and redirects to it.
-// URL pattern: GET /api/storage/wasabi-image?key=uploads%2Fimages%2F...
+// ── Shared: upload buffer to active backend and return public URL ─────────────
+async function uploadBufferAndGetUrl(
+  buffer: Buffer,
+  contentType: string,
+  req: Request,
+): Promise<string> {
+  if (USE_WASABI) {
+    const key = await uploadBufferToWasabi(buffer, contentType);
+    const base = process.env["PUBLIC_BASE_URL"]
+      ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
+    return `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+  }
+  if (USE_CLOUDINARY) {
+    return uploadBufferToCloudinary(buffer, contentType);
+  }
+  throw new Error(
+    "Storage not configured. Add WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, and WASABI_BUCKET_NAME environment variables.",
+  );
+}
+
+// ── Wasabi image/video proxy ──────────────────────────────────────────────────
+// Wasabi blocks public bucket access for accounts created after March 2023.
+// This proxy generates a fresh presigned URL (1 h expiry) and redirects to it.
 router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
   const key = req.query["key"];
   if (!key || typeof key !== "string") {
     res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
     return;
   }
-  // Only sign keys inside the app-owned upload namespace — prevents using this
-  // route as a signing oracle for arbitrary objects the credentials can read.
-  if (!/^uploads\/(images|videos|audio)\/[A-Za-z0-9._-]+$/.test(key)) {
+  // Accept any key under our managed upload prefixes (uploads/, selfies/, kyc/, tv-videos/)
+  if (!/^[a-zA-Z0-9_-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
     res.status(400).json({ error: "Invalid key." });
     return;
   }
   try {
     const presignedUrl = await getWasabiPresignedUrl(key);
-    // Redirect to the presigned URL — browser/app follows transparently
     res.redirect(302, presignedUrl);
   } catch (err: any) {
     req.log.error({ err, key }, "Failed to generate Wasabi presigned URL");
-    res.status(500).json({ error: "Could not retrieve image." });
+    res.status(500).json({ error: "Could not retrieve file." });
   }
 });
 
+// ── POST /api/storage/uploads/request-url ─────────────────────────────────────
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
   const parsed = RequestUploadUrlBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Missing or invalid required fields" });
     return;
   }
-
   const { name, size, contentType } = parsed.data;
-
   try {
     const token = randomUUID();
     const uploadURL  = `/api/storage/uploads/put-proxy/${token}`;
     const objectPath = `/objects/uploads/${token}`;
-
     res.json(
       RequestUploadUrlResponse.parse({ uploadURL, objectPath, metadata: { name, size, contentType } }),
     );
@@ -115,11 +123,11 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 
 const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
 
+// ── PUT /api/storage/uploads/put-proxy/:token ────────────────────────────────
 router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Response) => {
   const token = String(req.params["token"]);
-  // Normalize: strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
   const rawContentType = (req.headers["content-type"] ?? "application/octet-stream") as string;
-  const contentType = rawContentType.split(";")[0].trim() as string;
+  const contentType = rawContentType.split(";")[0].trim();
 
   try {
     validateMimeType(contentType);
@@ -127,58 +135,17 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     const clHeader = req.headers["content-length"];
     if (clHeader && parseInt(clHeader, 10) > MAX_UPLOAD_BYTES) {
       req.resume();
-      res.status(400).json({ error: "File too large. Maximum video size is 350 MB." });
+      res.status(400).json({ error: "File too large. Maximum size is 350 MB." });
       return;
     }
 
-    // ── 1. Cloudinary ────────────────────────────────────────────────────────
-    if (USE_CLOUDINARY) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(chunk as Buffer);
-      }
-      const buffer = Buffer.concat(chunks);
-      const url = await uploadBufferToCloudinary(buffer, contentType);
-      req.log.info({ token, url }, "Cloudinary upload complete");
-      res.status(200).json({ url });
-      return;
-    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const buffer = Buffer.concat(chunks);
 
-    // ── 2. Wasabi (S3-compatible) ─────────────────────────────────────────────
-    // uploadBufferToWasabi returns the object key (not a public URL) because
-    // Wasabi blocks public bucket access for accounts created after March 2023.
-    // We expose a proxy route (/api/storage/wasabi-image?key=...) that generates
-    // a fresh presigned URL on every request, so images always load.
-    if (USE_WASABI) {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(chunk as Buffer);
-      }
-      const buffer = Buffer.concat(chunks);
-      const key = await uploadBufferToWasabi(buffer, contentType);
-
-      // Build the proxy URL. Prefer a configured canonical origin to avoid
-      // host-header poisoning; fall back to the request host in dev.
-      const base = process.env["PUBLIC_BASE_URL"]
-        ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
-      const proxyUrl = `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
-
-      req.log.info({ token, key, proxyUrl }, "Wasabi upload complete");
-      res.status(200).json({ url: proxyUrl });
-      return;
-    }
-
-    // ── 3. Replit GCS / local PRIVATE_OBJECT_DIR ─────────────────────────────
-    if (!process.env["PRIVATE_OBJECT_DIR"]) {
-      req.resume();
-      req.log.error({ token }, "Upload failed: no storage configured. Set WASABI_ACCESS_KEY_ID + WASABI_SECRET_ACCESS_KEY + WASABI_BUCKET_NAME (or CLOUDINARY_API_KEY, or PRIVATE_OBJECT_DIR).");
-      res.status(503).json({ error: "Storage not configured on this server. Add WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, and WASABI_BUCKET_NAME environment variables." });
-      return;
-    }
-
-    const objectPath = await objectStorage.uploadStreamById(token, req, contentType);
-    req.log.info({ token, objectPath }, "GCS stream upload via proxy complete");
-    res.status(200).json({});
+    const url = await uploadBufferAndGetUrl(buffer, contentType, req);
+    req.log.info({ token, url, backend: USE_WASABI ? "wasabi" : "cloudinary" }, "Proxy upload complete");
+    res.status(200).json({ url });
   } catch (err: any) {
     req.log.error({ err, token }, "Proxy upload failed");
     const msg: string = err?.message ?? "Upload failed";
@@ -186,5 +153,66 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
     res.status(status).json({ error: msg });
   }
 });
+
+// ── Chunked upload routes (for files > 50 MB) ─────────────────────────────────
+// In-memory store of chunks (per upload session).
+// DO restarts containers between deploys so this is ephemeral by design — if a
+// deploy happens mid-upload the client gets a 404 on the next chunk and retries.
+const chunkStore = new Map<string, { chunks: Buffer[]; contentType: string }>();
+const CHUNK_TTL_MS = 30 * 60 * 1000; // 30 min before GC
+
+// POST /api/storage/uploads/chunk-init
+router.post("/storage/uploads/chunk-init", requireAuth, (req: Request, res: Response) => {
+  const uploadId = randomUUID();
+  chunkStore.set(uploadId, { chunks: [], contentType: "application/octet-stream" });
+  // Auto-expire the entry to avoid memory leaks on abandoned uploads
+  setTimeout(() => chunkStore.delete(uploadId), CHUNK_TTL_MS).unref();
+  const objectPath = `/objects/uploads/${uploadId}`;
+  res.json({ uploadId, objectPath });
+});
+
+// PUT /api/storage/uploads/chunk/:uploadId/:index
+router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: Request, res: Response) => {
+  const { uploadId } = req.params as { uploadId: string; index: string };
+  const entry = chunkStore.get(uploadId);
+  if (!entry) {
+    res.status(404).json({ error: "Upload session not found or expired." });
+    return;
+  }
+  const rawCT = (req.headers["content-type"] ?? "video/mp4") as string;
+  entry.contentType = rawCT.split(";")[0].trim();
+
+  const pieces: Buffer[] = [];
+  for await (const piece of req) pieces.push(piece as Buffer);
+  entry.chunks.push(Buffer.concat(pieces));
+  res.status(204).end();
+});
+
+// POST /api/storage/uploads/chunk-finalize/:uploadId
+router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req: Request, res: Response) => {
+  const { uploadId } = req.params as { uploadId: string };
+  const entry = chunkStore.get(uploadId);
+  if (!entry) {
+    res.status(404).json({ error: "Upload session not found or expired." });
+    return;
+  }
+  const { contentType: bodyContentType } = (req.body ?? {}) as { totalChunks?: number; contentType?: string };
+  const contentType = (bodyContentType ?? entry.contentType).split(";")[0].trim() || "video/mp4";
+
+  try {
+    validateMimeType(contentType);
+    const buffer = Buffer.concat(entry.chunks);
+    chunkStore.delete(uploadId);
+
+    const url = await uploadBufferAndGetUrl(buffer, contentType, req);
+    req.log.info({ uploadId, bytes: buffer.byteLength, url, backend: USE_WASABI ? "wasabi" : "cloudinary" }, "Chunked upload complete");
+    res.json({ url, objectPath: `/objects/uploads/${uploadId}` });
+  } catch (err: any) {
+    chunkStore.delete(uploadId);
+    req.log.error({ err, uploadId }, "Chunked upload finalize failed");
+    res.status(500).json({ error: err?.message ?? "Upload failed" });
+  }
+});
+
 
 export default router;

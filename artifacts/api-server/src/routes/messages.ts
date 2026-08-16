@@ -9,6 +9,8 @@ import { sendExpoPushToUser } from "../lib/expo-push";
 import { emitNewMessage, emitConvUpdate, emitAudioListened, emitMsgDeleted } from "../lib/socketServer";
 import { z } from "zod";
 
+const SITE_BASE_URL = process.env["PUBLIC_BASE_URL"] ?? "https://flexamarket.com";
+
 const router = Router();
 
 const SendMessageBody = z.object({
@@ -282,13 +284,13 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
         void sendPushToUser(recipientId, {
           title: pushTitle,
           body: finalBody,
-          url: `/messages/${id}`,
+          url: `${SITE_BASE_URL}/messages/${id}`,
           tag: `conv-${id}`,
         });
         void sendExpoPushToUser(recipientId, {
           title: pushTitle,
           body: finalBody,
-          data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
+          data: { url: `${SITE_BASE_URL}/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
           sound: "default",
           badge: badgeCount,
           channelId: "default",

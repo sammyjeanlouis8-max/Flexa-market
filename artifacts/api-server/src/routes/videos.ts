@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, listingsTable, usersTable, commentsTable, followsTable } from "@workspace/db";
 import { eq, and, isNotNull, isNull, sql, desc, lte, or, inArray } from "drizzle-orm";
 import { optionalAuth } from "../middlewares/auth";
-import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
+import { extractWasabiKey } from "../lib/s3";
 
 const router = Router();
 
@@ -10,28 +10,24 @@ const router = Router();
  * Resolve a stored boostVideoUrl to a playable URL.
  *
  * Priority:
- *   1. Wasabi proxy URL  → extract key → generate a direct 7-day presigned URL.
- *      Direct presigned URLs bypass our server proxy, support byte-range
- *      requests natively, and never have the cross-origin redirect issue.
+ *   1. Wasabi proxy URL  → return as-is so the browser hits our same-origin
+ *      /api/storage/wasabi-image proxy. The proxy streams content directly
+ *      (no 302 redirect) with Accept-Ranges: bytes, so iOS Safari Range
+ *      requests work correctly. Presigned cross-origin Wasabi URLs were tried
+ *      but caused spinner/black-screen on iOS (Range request handling issues).
  *   2. Cloudinary URL    → inject H.264/AAC transcoding transform.
  *   3. Anything else     → return as-is.
  */
-async function resolveVideoUrl(raw: string): Promise<string | null> {
+function resolveVideoUrl(raw: string): string | null {
   // Unresolvable objectPath session IDs (e.g. /objects/uploads/<uploadId>) — the
   // Wasabi key is NOT embedded in these paths; the mapping was never persisted, so
   // we return null rather than a 404 URL that produces a black video player.
   if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
     return null;
   }
-  const wasabiKey = extractWasabiKey(raw);
-  if (wasabiKey) {
-    try {
-      // 7 days = 604 800 seconds (Wasabi max is 7 days for presigned URLs)
-      return await getWasabiPresignedUrl(wasabiKey, 604_800);
-    } catch {
-      // Fall through to return the raw proxy URL as a last resort
-      return raw;
-    }
+  // Wasabi proxy URL — serve through our proxy (same-origin, Range-capable)
+  if (extractWasabiKey(raw) !== null) {
+    return raw;
   }
   return toStreamingVideoUrl(raw);
 }
@@ -320,7 +316,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos: await Promise.all(items.map(async r => ({
         id:               r.id,
         videoUrl:         r.boostVideoUrl
-          ? await resolveVideoUrl(r.boostVideoUrl)
+          ? resolveVideoUrl(r.boostVideoUrl)
           : null,
         thumbnailUrl:     (() => {
           if (r.images?.[0]) return r.images[0];

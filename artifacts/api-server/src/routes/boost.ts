@@ -11,19 +11,22 @@ import {
 import { getStripeClient } from "../lib/stripeClient";
 import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
-import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
+import { extractWasabiKey } from "../lib/s3";
 
-/** Resolve a stored boostVideoUrl to a direct 7-day Wasabi presigned URL (if applicable). */
-async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
+/**
+ * Resolve a stored boostVideoUrl to a playable URL.
+ * Wasabi proxy URLs are returned as-is so the browser hits our same-origin
+ * /api/storage/wasabi-image proxy (streams directly, no 302, Range-capable).
+ * Unresolvable objectPath session IDs (/objects/uploads/…) return null.
+ */
+function resolveBoostVideoUrl(raw: string | null): string | null {
   if (!raw) return null;
-  // Unresolvable objectPath session IDs — Wasabi key is not embedded; return null
-  // rather than a broken URL that produces a black video player.
   if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
     return null;
   }
-  const key = extractWasabiKey(raw);
-  if (key) {
-    try { return await getWasabiPresignedUrl(key, 604_800); } catch { /* fallthrough */ }
+  // Wasabi proxy URL — serve through our same-origin proxy
+  if (extractWasabiKey(raw) !== null) {
+    return raw;
   }
   return raw;
 }
@@ -457,7 +460,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       title: row.title,
       price: row.price,
       thumbnail: row.images?.[0] ?? null,
-      boostVideoUrl: await resolveBoostVideoUrl(row.boostVideoUrl),
+      boostVideoUrl: resolveBoostVideoUrl(row.boostVideoUrl),
       sellerName: row.sellerName,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,
@@ -751,22 +754,23 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     )
     .orderBy(desc(listingsTable.boostExpiresAt));
 
-  const resolvedBoosts = await Promise.all(rows.map(async r => ({
-    listingId: r.listingId,
-    title: r.title,
-    price: r.price,
-    thumbnail: r.images?.[0] ?? null,
-    boostVideoUrl: await resolveBoostVideoUrl(r.boostVideoUrl),
-    boostStartAt: r.boostStartAt?.toISOString() ?? null,
-    boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
-    viewCount: r.viewCount,
-    impressions: r.impressions ?? 0,
-    clicks: r.clicks ?? 0,
-    boostId: r.boostId,
-    plan: r.plan,
-    budget: r.budget,
-  })));
-  res.json({ boosts: resolvedBoosts });
+  res.json({
+    boosts: rows.map(r => ({
+      listingId: r.listingId,
+      title: r.title,
+      price: r.price,
+      thumbnail: r.images?.[0] ?? null,
+      boostVideoUrl: resolveBoostVideoUrl(r.boostVideoUrl),
+      boostStartAt: r.boostStartAt?.toISOString() ?? null,
+      boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
+      viewCount: r.viewCount,
+      impressions: r.impressions ?? 0,
+      clicks: r.clicks ?? 0,
+      boostId: r.boostId,
+      plan: r.plan,
+      budget: r.budget,
+    })),
+  });
 });
 
 /**

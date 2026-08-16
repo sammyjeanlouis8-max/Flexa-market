@@ -2203,6 +2203,9 @@ export default function Admin() {
       if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Eseye ankò", variant: "destructive" }); return; }
       setExchangeRateInfo(data);
       toast({ title: `Taux chanje ✓ HTG: ${r} (+${s} spread=${data.displayRate}) · DOP: ${d}` });
+      // Force immediate wallet refresh so the new HTG/DOP amounts show right away
+      queryClient.invalidateQueries({ queryKey: ["/wallet/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/exchange-rate"] });
     } finally { setExchangeRateSaving(false); }
   };
 

@@ -118,10 +118,15 @@ function checkLookupLimit(userId: number): { ok: true } | { ok: false; error: st
 
 async function getWalletSettings(): Promise<{ rateHtgToUsd: number; rateDopToUsd: number; bonusPct: number; moncashPlatformNumber: string }> {
   const rows = await db.select().from(platformSettingsTable)
-    .where(sql`${platformSettingsTable.key} IN ('htg_to_usd_rate', 'dop_to_usd_rate', 'wallet_bonus_pct', 'moncash_platform_number')`);
+    .where(sql`${platformSettingsTable.key} IN ('htg_to_usd_rate', 'exchange_spread', 'dop_to_usd_rate', 'wallet_bonus_pct', 'moncash_platform_number')`);
   const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  const rawRate = parseFloat(map["htg_to_usd_rate"] ?? "130");
+  const spread  = parseFloat(map["exchange_spread"]  ?? "2");
+  // Use the display rate (rate + spread) so the HTG shown in wallets matches
+  // exactly what clients see in the app (the "Afichaj kliyan" value).
+  const displayRate = rawRate + (Number.isFinite(spread) && spread >= 0 ? spread : 0);
   return {
-    rateHtgToUsd: parseFloat(map["htg_to_usd_rate"] ?? "130"),
+    rateHtgToUsd: Number.isFinite(displayRate) && displayRate > 0 ? displayRate : rawRate,
     rateDopToUsd: parseFloat(map["dop_to_usd_rate"] ?? "60"),
     bonusPct: parseFloat(map["wallet_bonus_pct"] ?? "0"),
     moncashPlatformNumber: map["moncash_platform_number"] ?? "",

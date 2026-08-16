@@ -195,6 +195,25 @@ export async function getWasabiPresignedUrl(key: string): Promise<string> {
 }
 
 /**
+ * Fetch a Wasabi object and return its raw SDK response.
+ * Supports an optional Range header for video seeking / partial content.
+ * The caller is responsible for streaming `Body` and closing it.
+ */
+export async function getWasabiObject(
+  key: string,
+  range?: string,
+): Promise<import("@aws-sdk/client-s3").GetObjectCommandOutput> {
+  const client = getWasabiClient();
+  return client.send(
+    new GetObjectCommand({
+      Bucket: WASABI_BUCKET,
+      Key:    key,
+      ...(range ? { Range: range } : {}),
+    })
+  );
+}
+
+/**
  * Upload an image or video buffer to Wasabi.
  * Returns the Wasabi object key (not a public URL).
  * Use getWasabiPresignedUrl(key) to generate a temporary access URL,

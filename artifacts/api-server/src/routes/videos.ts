@@ -2,8 +2,33 @@ import { Router } from "express";
 import { db, listingsTable, usersTable, commentsTable, followsTable } from "@workspace/db";
 import { eq, and, isNotNull, isNull, sql, desc, lte, or, inArray } from "drizzle-orm";
 import { optionalAuth } from "../middlewares/auth";
+import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
 
 const router = Router();
+
+/**
+ * Resolve a stored boostVideoUrl to a playable URL.
+ *
+ * Priority:
+ *   1. Wasabi proxy URL  → extract key → generate a direct 7-day presigned URL.
+ *      Direct presigned URLs bypass our server proxy, support byte-range
+ *      requests natively, and never have the cross-origin redirect issue.
+ *   2. Cloudinary URL    → inject H.264/AAC transcoding transform.
+ *   3. Anything else     → return as-is.
+ */
+async function resolveVideoUrl(raw: string): Promise<string> {
+  const wasabiKey = extractWasabiKey(raw);
+  if (wasabiKey) {
+    try {
+      // 7 days = 604 800 seconds (Wasabi max is 7 days for presigned URLs)
+      return await getWasabiPresignedUrl(wasabiKey, 604_800);
+    } catch {
+      // Fall through to return the raw proxy URL as a last resort
+      return raw;
+    }
+  }
+  return toStreamingVideoUrl(raw);
+}
 
 function toStreamingVideoUrl(url: string): string {
   if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) {
@@ -286,10 +311,10 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     res.json({
       // noCountry is permanently false — we always resolve a country (req #3)
       noCountry: false,
-      videos: items.map(r => ({
+      videos: await Promise.all(items.map(async r => ({
         id:               r.id,
         videoUrl:         r.boostVideoUrl
-          ? toStreamingVideoUrl(r.boostVideoUrl.startsWith("http")
+          ? await resolveVideoUrl(r.boostVideoUrl.startsWith("http")
               ? r.boostVideoUrl
               : `/api/storage/objects/${r.boostVideoUrl.replace(/^\/api\/storage\/objects\//, "").replace(/^\/objects\//, "")}`)
           : null,
@@ -323,7 +348,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         boostStartAt:     r.boostStartAt?.toISOString() ?? null,
         boostEndAt:       r.boostExpiresAt?.toISOString() ?? null,
         createdAt:        r.createdAt,
-      })),
+      }))),
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
       viewingCountry: isSuperAdmin ? null : userCountry,

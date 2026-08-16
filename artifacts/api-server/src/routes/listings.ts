@@ -10,6 +10,7 @@ import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, ty
 import { moderateListing } from "../lib/moderation";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
+import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
 import { notificationsTable } from "@workspace/db";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
@@ -152,11 +153,17 @@ function formatListing(
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
-    boostVideoUrl: listing.boostVideoUrl
-      ? toStreamingVideoUrl(listing.boostVideoUrl.startsWith("http")
-          ? listing.boostVideoUrl
-          : `/api/storage/objects/${listing.boostVideoUrl.replace(/^\/objects\//, "")}`)
-      : null,
+    boostVideoUrl: await (async () => {
+      if (!listing.boostVideoUrl) return null;
+      const raw = listing.boostVideoUrl.startsWith("http")
+        ? listing.boostVideoUrl
+        : `/api/storage/objects/${listing.boostVideoUrl.replace(/^\/objects\//, "")}`;
+      const wasabiKey = extractWasabiKey(raw);
+      if (wasabiKey) {
+        try { return await getWasabiPresignedUrl(wasabiKey, 604_800); } catch {}
+      }
+      return toStreamingVideoUrl(raw);
+    })(),
     boostAudience: listing.isBoosted
       ? {
           country: listing.boostAudienceCountry ?? null,

@@ -185,13 +185,32 @@ function getWasabiClient(): S3Client {
  * Valid for 3600 seconds (1 hour). The proxy route calls this on every request
  * so the URL is always fresh.
  */
-export async function getWasabiPresignedUrl(key: string): Promise<string> {
+export async function getWasabiPresignedUrl(
+  key: string,
+  expiresIn = 3600,
+): Promise<string> {
   const client = getWasabiClient();
   const command = new GetObjectCommand({
     Bucket: WASABI_BUCKET,
     Key:    key,
   });
-  return getSignedUrl(client, command, { expiresIn: 3600 });
+  return getSignedUrl(client, command, { expiresIn });
+}
+
+/**
+ * Extract the Wasabi object key from a proxy URL like
+ * "https://flexamarket.com/api/storage/wasabi-image?key=uploads%2Fvideos%2F..."
+ * Returns null if the URL is not a Wasabi proxy URL.
+ */
+export function extractWasabiKey(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.pathname.endsWith("/storage/wasabi-image")) {
+      const k = u.searchParams.get("key");
+      return k && k.length > 0 ? k : null;
+    }
+  } catch {}
+  return null;
 }
 
 /**

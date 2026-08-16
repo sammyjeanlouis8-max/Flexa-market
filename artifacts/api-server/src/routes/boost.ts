@@ -11,7 +11,7 @@ import {
 import { getStripeClient } from "../lib/stripeClient";
 import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
-import { extractWasabiKey } from "../lib/s3";
+import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
@@ -19,17 +19,25 @@ import { extractWasabiKey } from "../lib/s3";
  * /api/storage/wasabi-image proxy (streams directly, no 302, Range-capable).
  * Unresolvable objectPath session IDs (/objects/uploads/…) return null.
  */
-function resolveBoostVideoUrl(raw: string | null): string | null {
-  if (!raw) return null;
-  if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
-    return null;
-  }
-  // Wasabi proxy URL — serve through our same-origin proxy
-  if (extractWasabiKey(raw) !== null) {
+async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
+    if (!raw) return null;
+    if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
+      return null;
+    }
+    // Wasabi proxy URL → swap for a 7-day presigned URL so the browser connects
+    // directly to Wasabi and gets native Range-request support for long videos.
+    // The old proxy streamed through our DO server (has stream size/timeout limits),
+    // causing videos > 1 minute to go black on iPhone Safari.
+    const wasabiKey = extractWasabiKey(raw);
+    if (wasabiKey !== null) {
+      try {
+        return await getWasabiPresignedUrl(wasabiKey, 604_800); // 7-day TTL
+      } catch {
+        return raw; // fall back to proxy URL if presigning fails
+      }
+    }
     return raw;
-  }
-  return raw;
-}
+    }
 
 const BOOST_BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
@@ -460,7 +468,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       title: row.title,
       price: row.price,
       thumbnail: row.images?.[0] ?? null,
-      boostVideoUrl: resolveBoostVideoUrl(row.boostVideoUrl),
+      boostVideoUrl: await resolveBoostVideoUrl(row.boostVideoUrl),
       sellerName: row.sellerName,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,
@@ -760,7 +768,7 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
       title: r.title,
       price: r.price,
       thumbnail: r.images?.[0] ?? null,
-      boostVideoUrl: resolveBoostVideoUrl(r.boostVideoUrl),
+      boostVideoUrl: await resolveBoostVideoUrl(r.boostVideoUrl),
       boostStartAt: r.boostStartAt?.toISOString() ?? null,
       boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
       viewCount: r.viewCount,

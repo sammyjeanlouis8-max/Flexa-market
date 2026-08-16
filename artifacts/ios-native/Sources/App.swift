@@ -14,7 +14,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         // Build 75: NO registerForRemoteNotifications here
         // Testing whether crash is in Task{@MainActor requestAuthorization} or registerForRemoteNotifications
+        Beacon.send("launch-start")
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        Beacon.send("launch-delegate-set")
         return true
     }
 
@@ -32,6 +34,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Beacon.send("apns-token-received", String(token.prefix(12)))
         NotificationDelegate.shared.apnsToken = token
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .apnsTokenReceived, object: token)
@@ -40,6 +43,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                      didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Beacon.send("apns-register-failed", String(describing: error).prefix(200).description)
         print("[Push] Failed: \(error)")
     }
 }

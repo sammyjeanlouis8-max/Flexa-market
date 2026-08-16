@@ -134,8 +134,11 @@ final class WebViewController: UIViewController {
         // prompt appears — they must enable notifications in Settings.
         // registerForRemoteNotifications still returns a valid APNs token
         // whenever permission is already granted.
+        Beacon.send("bridge-received")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            Beacon.send("before-registerForRemoteNotifications")
             UIApplication.shared.registerForRemoteNotifications()
+            Beacon.send("after-registerForRemoteNotifications")
         }
     }
 

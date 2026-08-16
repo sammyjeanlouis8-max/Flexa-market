@@ -23,8 +23,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // NOTE: do NOT use UNUserNotificationCenter here — any call into the
         // notification center at launch crashes on this device family (see
         // builds 73-77 and 81). The deprecated UIApplication API is safe.
+        Beacon.send("scene-active-before-badge-clear")
         DispatchQueue.main.async {
             UIApplication.shared.applicationIconBadgeNumber = 0
+            Beacon.send("scene-active-badge-cleared")
         }
     }
 }

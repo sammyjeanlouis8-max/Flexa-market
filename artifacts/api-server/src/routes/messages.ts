@@ -246,16 +246,7 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       fr: { from: (n: string) => `Message de ${n}`,    newMsg: "Nouveau message", voice: "🎤 Message vocal" },
       en: { from: (n: string) => `Message from ${n}`,  newMsg: "New message",     voice: "🎤 Voice message" },
     }[lang];
-    let pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
-      // Translate the message content into the recipient's preferred language
-      // (reuses the same Anthropic client/config as /messages/:id/translate).
-      if (messageType === "text" && content?.trim()) {
-        try {
-          const { translateForPush } = await import("../lib/pushTranslate");
-          const translated = await translateForPush(content.slice(0, 300), lang);
-          if (translated) pushBody = translated.slice(0, 120);
-        } catch { /* fall back to original content */ }
-      }
+    const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
     const pushTitle = sender?.name ? L.from(sender.name) : L.newMsg;
 
     // Count all unread messages for the recipient across ALL conversations
@@ -275,20 +266,34 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       ));
     const badgeCount = unreadRow?.count ?? 1;
 
-    void sendPushToUser(recipientId, {
-      title: pushTitle,
-      body: pushBody,
-      url: `/messages/${id}`,
-      tag: `conv-${id}`,
-    });
-    void sendExpoPushToUser(recipientId, {
-      title: pushTitle,
-      body: pushBody,
-      data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
-      sound: "default",
-      badge: badgeCount,
-      channelId: "default",
-    });
+    // Fire-and-forget: translate the body into the recipient's language (only
+      // when sender/recipient languages differ), then send the pushes. Runs off
+      // the request path so message sending is never delayed by translation.
+      void (async () => {
+        let finalBody = pushBody;
+        const senderLang = sender?.preferredLanguage === "en" || sender?.preferredLanguage === "fr" ? sender.preferredLanguage : "ht";
+        if (messageType === "text" && content?.trim() && senderLang !== lang) {
+          try {
+            const { translateForPush } = await import("../lib/pushTranslate");
+            const translated = await translateForPush(content.slice(0, 300), lang);
+            if (translated) finalBody = translated.slice(0, 120);
+          } catch { /* keep original */ }
+        }
+        void sendPushToUser(recipientId, {
+          title: pushTitle,
+          body: finalBody,
+          url: `/messages/${id}`,
+          tag: `conv-${id}`,
+        });
+        void sendExpoPushToUser(recipientId, {
+          title: pushTitle,
+          body: finalBody,
+          data: { url: `/messages/${id}`, screen: "messages", params: { conversationId: String(id) } },
+          sound: "default",
+          badge: badgeCount,
+          channelId: "default",
+        });
+      })();
   } catch {}
 
   res.status(201).json(msgPayload);

@@ -221,10 +221,12 @@ export async function uploadMusicCover(
 export async function uploadMedia(
   buffer: Buffer,
   rawMime: string,
+  keyPrefix?: string,
 ): Promise<WasabiUploadResult> {
-  const mime = rawMime.split(";")[0].trim().toLowerCase();
-  const ext  = AUDIO_MIME_MAP[mime] ?? IMAGE_MIME_MAP[mime] ?? mime.split("/")[1]?.replace(/[^a-z0-9]/g, "") ?? "bin";
-  const key  = `uploads/${randomUUID()}.${ext}`;
+  const mime   = rawMime.split(";")[0].trim().toLowerCase();
+  const ext    = AUDIO_MIME_MAP[mime] ?? IMAGE_MIME_MAP[mime] ?? mime.split("/")[1]?.replace(/[^a-z0-9]/g, "") ?? "bin";
+  const folder = keyPrefix ? keyPrefix.replace(/\/$/, "") : "uploads";
+  const key    = `${folder}/${randomUUID()}.${ext}`;
   return _upload(buffer, key, mime);
 }
 

@@ -2,11 +2,9 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { validateMimeType } from "../lib/s3";
-import { ObjectStorageService } from "../lib/objectStorage";
-import { isConfigured as wasabiConfigured, uploadMedia as wasabiUploadMedia } from "../lib/wasabi";
+import { uploadToStorage } from "../lib/storage";
 
 const router: IRouter = Router();
-const objectStorage = new ObjectStorageService();
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -35,18 +33,8 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
 
   try {
     validateMimeType(mimetype);
-    // Production (DigitalOcean) has no Replit Object Storage sidecar — use
-    // Wasabi whenever it is configured; fall back to Replit storage in dev.
-    if (wasabiConfigured()) {
-      const { url } = await wasabiUploadMedia(buffer, mimetype);
-      req.log.info({ mimetype, url }, "Multipart upload to Wasabi complete");
-      res.status(201).json({ url });
-      return;
-    }
-    const objectId = randomUUID();
-    await objectStorage.uploadBufferById(objectId, buffer, mimetype);
-    const url = `/api/storage/objects/uploads/${objectId}`;
-    req.log.info({ mimetype, url }, "Multipart upload to object storage complete");
+    const { url, backend } = await uploadToStorage(buffer, mimetype);
+    req.log.info({ mimetype, url, backend }, "Multipart upload complete");
     res.status(201).json({ url });
   } catch (err: any) {
     req.log.error({ err }, "Object storage multipart upload failed");

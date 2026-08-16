@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, randomUUID } from "crypto";
 import multer from "multer";
 import { validateMimeType } from "../lib/s3";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadToStorage } from "../lib/storage";
 import { extractToken, verifyToken } from "../lib/auth";
 import { logger } from "../lib/logger";
 
@@ -27,7 +27,6 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 const router: IRouter = Router();
-const objectStorage = new ObjectStorageService();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
@@ -121,9 +120,7 @@ router.post(
     try {
       validateMimeType(file.mimetype);
 
-      const objectId = randomUUID();
-      await objectStorage.uploadBufferById(objectId, file.buffer, file.mimetype);
-      const photoUrl = `/api/storage/objects/uploads/${objectId}`;
+      const { url: photoUrl } = await uploadToStorage(file.buffer, file.mimetype, "selfies");
       session.completed = true;
       session.photoUrl = photoUrl;
 

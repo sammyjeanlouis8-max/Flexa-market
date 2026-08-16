@@ -18,13 +18,12 @@ import { db, usersTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadToStorage } from "../lib/storage";
 import { sendEmail } from "../lib/email";
 import { kycStatusEmail } from "../lib/emailTemplates";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-const objectStorage = new ObjectStorageService();
 
 // ─── GET /api/kyc/status ──────────────────────────────────────────────────────
 
@@ -92,12 +91,12 @@ router.post(
     let selfieUrl: string;
 
     try {
-      const docId = `kyc-${req.userId}-doc-${Date.now()}`;
-      const selfieId = `kyc-${req.userId}-selfie-${Date.now()}`;
-      [docUrl, selfieUrl] = await Promise.all([
-        objectStorage.uploadBufferById(docId, docFile.buffer, "image/jpeg"),
-        objectStorage.uploadBufferById(selfieId, selfieFile.buffer, "image/jpeg"),
+      const [docRes, selfieRes] = await Promise.all([
+        uploadToStorage(docFile.buffer, "image/jpeg", "kyc"),
+        uploadToStorage(selfieFile.buffer, "image/jpeg", "kyc"),
       ]);
+      docUrl = docRes.url;
+      selfieUrl = selfieRes.url;
     } catch (err: unknown) {
       logger.error({ err }, "KYC file upload failed");
       res.status(500).json({ error: "Echèk telechajman foto — eseye ankò" }); return;

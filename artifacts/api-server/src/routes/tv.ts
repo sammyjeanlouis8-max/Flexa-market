@@ -4,11 +4,11 @@ import { eq, and, lte, gte, gt, desc, asc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { uploadToStorage } from "../lib/storage";
 import { sendExpoPushToUser } from "../lib/expo-push";
 
 const router = Router();
-const objectStorage = new ObjectStorageService();
+
 const uploadMiddleware = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 * 1024 } });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -216,10 +216,8 @@ router.post("/admin/tv/upload-video", requireAdmin, uploadMiddleware.single("vid
   try {
     const file = req.file;
     if (!file) return void res.status(400).json({ error: "No file uploaded" });
-    const objectId = `tv-videos/${randomUUID()}`;
-    await objectStorage.uploadBufferById(objectId, file.buffer, file.mimetype);
-    const videoKey = `uploads/${objectId}`;
-    return void res.json({ videoKey, videoUrl: `/api/storage/objects/${videoKey}` });
+    const { url: videoUrl } = await uploadToStorage(file.buffer, file.mimetype, "tv-videos");
+    return void res.json({ videoUrl });
   } catch (err) {
     return void res.status(500).json({ error: "Video upload failed" });
   }

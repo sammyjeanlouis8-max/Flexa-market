@@ -6,7 +6,7 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock'",
     "start": "node index.js",
-    "build": "sh -c 'which pnpm > /dev/null 2>&1 || npm install -g pnpm@10.26.1; pnpm -r --if-present run build'",
+    "build": "pnpm --filter @workspace/api-server run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

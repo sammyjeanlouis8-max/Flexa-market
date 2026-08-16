@@ -9,7 +9,7 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "postbuild": "cp -r ../marketplace/dist/public dist/"
+    "postbuild": "cp -r ../marketplace/dist/public dist/ || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

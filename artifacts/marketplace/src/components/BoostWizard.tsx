@@ -318,8 +318,8 @@ export default function BoostWizard({ open, onClose }: Props) {
     setUploadPercent(100);
     // Prefer the full Wasabi URL (contains the actual object key) over objectPath
     // (which is just a session ID that cannot be resolved server-side).
-    const finalData = await finalRes.json() as { url?: string; objectPath?: string };
-    return (finalData.url && finalData.url.startsWith("http")) ? finalData.url : (finalData.objectPath ?? objectPath);
+    const finalUploadData = await finalRes.json() as { url?: string; objectPath?: string };
+    return (finalUploadData.url && finalUploadData.url.startsWith("http")) ? finalUploadData.url : (finalUploadData.objectPath ?? objectPath);
   }, []);
 
   const handleVideoFile = useCallback(async (file: File) => {

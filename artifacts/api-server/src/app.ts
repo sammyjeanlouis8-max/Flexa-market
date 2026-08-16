@@ -59,6 +59,10 @@ if (fs.existsSync(publicDir)) {
       maxAge: "1y",
       immutable: true,
       index: false, // don't auto-serve index.html here — let the catch-all below handle it
+      setHeaders: (res: import("http").ServerResponse, filePath: string) => {
+        // BoostWizard is always served fresh so a CDN cache bust is never needed again
+        if (filePath.includes("BoostWizard")) res.setHeader("Cache-Control", "no-store");
+      },
     }),
   );
 

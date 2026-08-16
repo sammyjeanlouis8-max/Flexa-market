@@ -53,6 +53,30 @@ app.use("/api", router);
 // block is a no-op (the public dir won't exist).
 const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
+  // Messages auth-fix: intercept before static middleware so no-store header
+  // forces Cloudflare to bypass its immutable cache on this specific chunk.
+  app.get("/assets/Messages-DGDTDrtQ.js", function(_req, res) {
+    var chunkPath = path.join(publicDir, "assets", "Messages-DGDTDrtQ.js");
+    try {
+      var content = fs.readFileSync(chunkPath, "utf8");
+      // fix: timeout-based redirect → localStorage check
+      content = content.replace(
+        /i\.useEffect\(\(\)=>\{const h=setTimeout\(\(\)=>\{t\|\|s\("\/auth\/login"\)\},\d+\);return\(\)=>clearTimeout\(h\)\},\[t\]\)/g,
+        'i.useEffect(()=>{!t&&!localStorage.getItem("flexamarket_token")&&s("/auth/login")},[t])'
+      );
+      // fix: bare redirect (original) → localStorage check
+      content = content.replace(
+        /i\.useEffect\(\(\)=>\{t\|\|s\("\/auth\/login"\)\},\[t\]\)/g,
+        'i.useEffect(()=>{!t&&!localStorage.getItem("flexamarket_token")&&s("/auth/login")},[t])'
+      );
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(content);
+    } catch(err) {
+      res.sendFile(chunkPath);
+    }
+  });
+
   // Immutable hashed assets (JS/CSS chunks) — cache aggressively
   app.use(
     express.static(publicDir, {

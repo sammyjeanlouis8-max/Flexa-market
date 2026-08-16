@@ -92,10 +92,18 @@ async function isBucketPublic(): Promise<boolean> {
   return _bucketPublicCache!;
 }
 
+// ── Credential helpers (accept common DO/AWS naming variants) ─────────────────
+function resolveAccessKey(): string | undefined {
+  return process.env.WASABI_ACCESS_KEY ?? process.env.WASABI_ACCESS_KEY_ID;
+}
+function resolveSecretKey(): string | undefined {
+  return process.env.WASABI_SECRET_KEY ?? process.env.WASABI_SECRET_ACCESS_KEY ?? process.env.WASABI_SECRET_KEY_ID;
+}
+
 // ── S3 client factory ─────────────────────────────────────────────────────────
 function getClient(): S3Client {
-  const accessKeyId     = process.env.WASABI_ACCESS_KEY;
-  const secretAccessKey = process.env.WASABI_SECRET_KEY;
+  const accessKeyId     = resolveAccessKey();
+  const secretAccessKey = resolveSecretKey();
 
   if (!accessKeyId || !secretAccessKey) {
     throw new Error(
@@ -278,8 +286,8 @@ export async function objectExists(key: string): Promise<boolean> {
 // ── Configuration check ───────────────────────────────────────────────────────
 export function isConfigured(): boolean {
   return !!(
-    process.env.WASABI_ACCESS_KEY &&
-    process.env.WASABI_SECRET_KEY &&
+    resolveAccessKey() &&
+    resolveSecretKey() &&
     process.env.WASABI_BUCKET_NAME
   );
 }

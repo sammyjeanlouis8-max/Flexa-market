@@ -414,10 +414,20 @@ router.post("/music/:id/buy/wallet", requireAuth, async (req: any, res) => {
 router.get("/music/diagnose", async (_req, res) => {
   const start = Date.now();
   const env: Record<string, string> = {};
-  for (const v of ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT","WASABI_PUBLIC"]) {
+  // Check primary name + common DO/AWS aliases
+  const checkVar = (primary: string, aliases: string[]): string => {
+    const match = [primary, ...aliases].find(n => process.env[n]);
+    if (!match) return `❌ MISSING (tried: ${[primary,...aliases].join(", ")})`;
+    const v = process.env[match]!;
+    return match === primary
+      ? (primary.includes("KEY") || primary.includes("SECRET") ? `✅ SET (${v.length} chars)` : `✅ ${v}`)
+      : `✅ found as "${match}" (${v.length} chars) — rename to "${primary}"`;
+  };
+  env["WASABI_ACCESS_KEY"]  = checkVar("WASABI_ACCESS_KEY",  ["WASABI_ACCESS_KEY_ID"]);
+  env["WASABI_SECRET_KEY"]  = checkVar("WASABI_SECRET_KEY",  ["WASABI_SECRET_ACCESS_KEY","WASABI_SECRET_KEY_ID"]);
+  for (const v of ["WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT","WASABI_PUBLIC"]) {
     const val = process.env[v];
     if (!val) { env[v] = "❌ MISSING"; }
-    else if (v.includes("KEY") || v.includes("SECRET")) { env[v] = `✅ SET (${val.length} chars)`; }
     else { env[v] = `✅ ${val}`; }
   }
   const preflight = await runPreflight();

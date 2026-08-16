@@ -5,7 +5,7 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl } from "../lib/s3";
+import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, streamToWasabi } from "../lib/s3";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
@@ -130,13 +130,32 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
       return;
     }
 
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    const buffer = Buffer.concat(chunks);
+// For Wasabi: stream request body directly (no memory buffering).
+      // This fixes long-video upload timeouts on DO App Platform.
+      if (USE_WASABI) {
+        const clRaw = req.headers["content-length"];
+        const contentLength = clRaw ? parseInt(clRaw, 10) : 0;
+        if (!contentLength || contentLength <= 0) {
+          res.status(411).json({ error: "Content-Length header is required for video uploads." });
+          return;
+        }
+        const key = await streamToWasabi(req, contentType, contentLength);
+        const base = process.env["PUBLIC_BASE_URL"]
+          ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
+        const url = `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+        req.log.info({ token, key, backend: "wasabi-stream" }, "Proxy upload complete (streamed)");
+        res.status(200).json({ url });
+        return;
+      }
 
-    const url = await uploadBufferAndGetUrl(buffer, contentType, req);
-    req.log.info({ token, url, backend: USE_WASABI ? "wasabi" : "cloudinary" }, "Proxy upload complete");
-    res.status(200).json({ url });
+      // Cloudinary fallback: buffer the file then upload
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      const buffer = Buffer.concat(chunks);
+
+      const url = await uploadBufferAndGetUrl(buffer, contentType, req);
+      req.log.info({ token, url, backend: "cloudinary" }, "Proxy upload complete");
+      res.status(200).json({ url });
   } catch (err: any) {
     req.log.error({ err, token }, "Proxy upload failed");
     const msg: string = err?.message ?? "Upload failed";

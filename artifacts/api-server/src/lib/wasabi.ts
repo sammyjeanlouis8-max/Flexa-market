@@ -336,11 +336,13 @@ export async function runPreflight(): Promise<PreflightResult> {
   const pass = (step: string, detail: string) => { steps.push({ step, ok: true,  detail }); };
   const fail = (step: string, detail: string) => { steps.push({ step, ok: false, detail }); };
 
-  // 1 — env vars
+  // 1 — env vars (accept common DO/AWS naming aliases)
   const missingVars: string[] = [];
-  for (const v of ["WASABI_ACCESS_KEY","WASABI_SECRET_KEY","WASABI_BUCKET_NAME","WASABI_REGION","WASABI_ENDPOINT"]) {
-    if (!process.env[v]) missingVars.push(v);
-  }
+  if (!resolveAccessKey()) missingVars.push("WASABI_ACCESS_KEY");
+  if (!resolveSecretKey()) missingVars.push("WASABI_SECRET_KEY");
+  if (!process.env.WASABI_BUCKET_NAME) missingVars.push("WASABI_BUCKET_NAME");
+  if (!process.env.WASABI_REGION) missingVars.push("WASABI_REGION");
+  if (!process.env.WASABI_ENDPOINT) missingVars.push("WASABI_ENDPOINT");
   if (missingVars.length) {
     fail("env_vars", `Missing: ${missingVars.join(", ")}`);
     return { ok: false, steps };

@@ -16,7 +16,13 @@ const router = Router();
  *   2. Cloudinary URL    → inject H.264/AAC transcoding transform.
  *   3. Anything else     → return as-is.
  */
-async function resolveVideoUrl(raw: string): Promise<string> {
+async function resolveVideoUrl(raw: string): Promise<string | null> {
+  // Unresolvable objectPath session IDs (e.g. /objects/uploads/<uploadId>) — the
+  // Wasabi key is NOT embedded in these paths; the mapping was never persisted, so
+  // we return null rather than a 404 URL that produces a black video player.
+  if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
+    return null;
+  }
   const wasabiKey = extractWasabiKey(raw);
   if (wasabiKey) {
     try {
@@ -314,9 +320,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos: await Promise.all(items.map(async r => ({
         id:               r.id,
         videoUrl:         r.boostVideoUrl
-          ? await resolveVideoUrl(r.boostVideoUrl.startsWith("http")
-              ? r.boostVideoUrl
-              : `/api/storage/objects/${r.boostVideoUrl.replace(/^\/api\/storage\/objects\//, "").replace(/^\/objects\//, "")}`)
+          ? await resolveVideoUrl(r.boostVideoUrl)
           : null,
         thumbnailUrl:     (() => {
           if (r.images?.[0]) return r.images[0];

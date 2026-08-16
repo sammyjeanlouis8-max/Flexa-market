@@ -16,6 +16,11 @@ import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
 /** Resolve a stored boostVideoUrl to a direct 7-day Wasabi presigned URL (if applicable). */
 async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
   if (!raw) return null;
+  // Unresolvable objectPath session IDs — Wasabi key is not embedded; return null
+  // rather than a broken URL that produces a black video player.
+  if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
+    return null;
+  }
   const key = extractWasabiKey(raw);
   if (key) {
     try { return await getWasabiPresignedUrl(key, 604_800); } catch { /* fallthrough */ }

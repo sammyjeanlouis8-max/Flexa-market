@@ -994,7 +994,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
 function MessageThread({ convId, theme, onToggleTheme }: {
   convId: number; theme: (typeof T)[ChatTheme]; onToggleTheme: () => void;
 }) {
-  const { user, token } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const { isRestricted } = useRestriction();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -1824,7 +1824,7 @@ export default function Messages() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [queryClient, convId]);
 
-  useEffect(() => { if (!user) setLocation("/auth/login"); }, [user]);
+  useEffect(() => { if (!authLoading && !user) setLocation("/auth/login"); }, [authLoading, user]);
 
   const c = theme;
 

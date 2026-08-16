@@ -234,8 +234,20 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
   emitConvUpdate(id, { lastMessage: lastMessagePreview, lastMessageAt: msg.createdAt.toISOString() });
 
   try {
-    const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? "🎤 Mesaj vwa" : content.slice(0, 120);
-    const pushTitle = sender?.name ? `Mesaj nan men ${sender.name}` : "Nouvo mesaj";
+    // Localize the push notification to the recipient's preferred language
+    // (en / fr / ht — same set as PATCH /auth/language). Default: Kreyòl.
+    const [recipient] = await db
+      .select({ preferredLanguage: usersTable.preferredLanguage })
+      .from(usersTable)
+      .where(eq(usersTable.id, recipientId));
+    const lang = recipient?.preferredLanguage === "en" || recipient?.preferredLanguage === "fr" ? recipient.preferredLanguage : "ht";
+    const L = {
+      ht: { from: (n: string) => `Mesaj nan men ${n}`, newMsg: "Nouvo mesaj", voice: "🎤 Mesaj vwa" },
+      fr: { from: (n: string) => `Message de ${n}`,    newMsg: "Nouveau message", voice: "🎤 Message vocal" },
+      en: { from: (n: string) => `Message from ${n}`,  newMsg: "New message",     voice: "🎤 Voice message" },
+    }[lang];
+    const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
+    const pushTitle = sender?.name ? L.from(sender.name) : L.newMsg;
 
     // Count all unread messages for the recipient across ALL conversations
     // (including the one we just inserted) so the badge reflects total unread.

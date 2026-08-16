@@ -51,8 +51,37 @@ app.use("/api", router);
 // isn't an /api/ route so the React router can handle client-side navigation.
 // In development the marketplace runs on its own Vite dev server, so this
 // block is a no-op (the public dir won't exist).
+
+// Explicit health check — ensures DO deploy phase passes even if dist/public is missing
+app.get("/", function(req, res, next) {
+  var acceptsHtml = req.headers["accept"] && req.headers["accept"].includes("text/html");
+  if (acceptsHtml) { return next(); } // let catch-all serve SPA for browser requests
+  res.json({ status: "ok" }); // health check bots get JSON
+});
 const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
+  // Messages auth-fix: bypass CF immutable cache with no-store + localStorage check
+  app.get("/assets/Messages-DGDTDrtQ.js", function(_req, res) {
+    var chunkPath = path.join(publicDir, "assets", "Messages-DGDTDrtQ.js");
+    try {
+      var content = fs.readFileSync(chunkPath, "utf8");
+      content = content
+        .replace(
+          /i\.useEffect\(\(\)=>\{const h=setTimeout\(\(\)=>\{t\|\|s\("\/auth\/login"\)\},\d+\);return\(\)=>clearTimeout\(h\)\},\[t\]\)/g,
+          'i.useEffect(()=>{!t&&!localStorage.getItem("flexamarket_token")&&s("/auth/login")},[t])'
+        )
+        .replace(
+          /i\.useEffect\(\(\)=>\{t\|\|s\("\/auth\/login"\)\},\[t\]\)/g,
+          'i.useEffect(()=>{!t&&!localStorage.getItem("flexamarket_token")&&s("/auth/login")},[t])'
+        );
+      res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(content);
+    } catch(err) {
+      res.sendFile(chunkPath);
+    }
+  });
+
   // Messages auth-fix: intercept before static middleware so no-store header
   // forces Cloudflare to bypass its immutable cache on this specific chunk.
   app.get("/assets/Messages-DGDTDrtQ.js", function(_req, res) {

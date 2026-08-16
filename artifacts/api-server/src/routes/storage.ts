@@ -5,7 +5,7 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, getWasabiObject } from "../lib/s3";
+import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl } from "../lib/s3";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
@@ -84,55 +84,42 @@ async function uploadBufferAndGetUrl(
 // headers — some mobile Safari builds silently drop Range when following a
 // cross-origin redirect, causing a black/stuck video player.
 router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
-  const key = req.query["key"];
-  if (!key || typeof key !== "string") {
-    res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
-    return;
-  }
-  // Accept any key under our managed upload prefixes
-  if (!/^[a-zA-Z0-9_-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
-    res.status(400).json({ error: "Invalid key." });
-    return;
-  }
-  try {
-    const rangeHeader = req.headers["range"] as string | undefined;
-    const obj = await getWasabiObject(key, rangeHeader);
-
-    // Status: 206 Partial Content when Range was requested, 200 otherwise
-    const status = rangeHeader && obj.ContentRange ? 206 : 200;
-    res.status(status);
-
-    // Forward content headers the browser needs for video playback
-    if (obj.ContentType)   res.setHeader("Content-Type",   obj.ContentType);
-    if (obj.ContentLength !== undefined) res.setHeader("Content-Length", String(obj.ContentLength));
-    if (obj.ContentRange)  res.setHeader("Content-Range",  obj.ContentRange);
-    // Always advertise Range support so video seekbar works
-    res.setHeader("Accept-Ranges", "bytes");
-    // Allow browser to cache media aggressively (key is immutable — uuid in path)
-    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
-
-    if (obj.Body && typeof (obj.Body as any).pipe === "function") {
-      // Node.js Readable stream (typical in @aws-sdk v3 with node http handler)
-      (obj.Body as any).pipe(res);
-    } else if (obj.Body) {
-      // ReadableStream (web-standard) fallback
-      const reader = (obj.Body as ReadableStream).getReader();
-      const pump = async () => {
-        const { done, value } = await reader.read();
-        if (done) { res.end(); return; }
-        res.write(value);
-        pump();
-      };
-      pump();
-    } else {
-      res.status(404).json({ error: "Object not found." });
+    const key = req.query["key"];
+    if (!key || typeof key !== "string") {
+      res.status(400).json({ error: "Missing or invalid 'key' query parameter." });
+      return;
     }
-  } catch (err: any) {
-    const code = err?.name === "NoSuchKey" ? 404 : 500;
-    req.log.error({ err, key }, "Wasabi proxy error");
-    if (!res.headersSent) res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
-  }
-});
+    // Accept any key under our managed upload prefixes
+    if (!/^[a-zA-Z0-9_-]+\/[A-Za-z0-9._/-]+$/.test(key)) {
+      res.status(400).json({ error: "Invalid key." });
+      return;
+    }
+    try {
+      // 307 redirect to a 7-day presigned Wasabi URL.
+      //
+      // We previously streamed the file through this server (proxy), but
+      // DigitalOcean's App Platform terminates long-running response streams,
+      // which caused videos longer than ~1 minute to go black mid-playback.
+      // Redirecting the browser directly to Wasabi eliminates that limit:
+      // Wasabi handles ALL Range requests (seek, buffer) natively at full
+      // speed, with no server in the middle.
+      //
+      // 307 (Temporary Redirect) preserves the method and headers on redirect
+      // so iOS Safari correctly forwards Range headers to the Wasabi URL when
+      // seeking inside the video player.
+      //
+      // Cache-Control: private, max-age=3600 lets the browser reuse the same
+      // presigned URL for Range sub-requests during a single playback session
+      // without hitting our server each time.
+      const presignedUrl = await getWasabiPresignedUrl(key, 604800); // 7-day TTL
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.redirect(307, presignedUrl);
+    } catch (err: any) {
+      const code = err?.name === "NoSuchKey" ? 404 : 500;
+      req.log.error({ err, key }, "Wasabi proxy error");
+      if (!res.headersSent) res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
+    }
+    });
 
 // ── POST /api/storage/uploads/request-url ─────────────────────────────────────
 router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {

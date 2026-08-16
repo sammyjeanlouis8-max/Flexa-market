@@ -2051,19 +2051,21 @@ export default function Admin() {
   const [dopRateDraft, setDopRateDraft] = useState<string>("59");
   const [exchangeRateSaving, setExchangeRateSaving] = useState(false);
   const [tauxOpen, setTauxOpen] = useState(false);
+  const [tauxLoadState, setTauxLoadState] = useState<"loading" | "ready" | "error">("loading");
   const openTaux = async () => {
     setTauxOpen(true);
+    setTauxLoadState("loading");
     try {
       const tk = localStorage.getItem("flexamarket_token");
       const res = await fetch("/api/admin/exchange-rate", { headers: { Authorization: `Bearer ${tk}` } });
-      if (res.ok) {
-        const e = await res.json();
-        setExchangeRateInfo(e);
-        if (e.rate) setExchangeRateDraft(String(e.rate));
-        if (e.spread !== undefined && e.spread !== null) setSpreadDraft(String(e.spread));
-        if (e.dopRate) setDopRateDraft(String(e.dopRate));
-      }
-    } catch { /* noop */ }
+      if (!res.ok) { setTauxLoadState("error"); return; }
+      const e = await res.json();
+      setExchangeRateInfo(e);
+      if (e.rate) setExchangeRateDraft(String(e.rate));
+      if (e.spread !== undefined && e.spread !== null) setSpreadDraft(String(e.spread));
+      if (e.dopRate) setDopRateDraft(String(e.dopRate));
+      setTauxLoadState("ready");
+    } catch { setTauxLoadState("error"); }
   };
   // Buyer fee rate (card payments)
   const [buyerFeeInfo, setBuyerFeeInfo] = useState<{ buyerFeeRate: number; buyerFeePercent: number } | null>(null);
@@ -2801,6 +2803,16 @@ export default function Admin() {
                 <ArrowLeftRight className="h-5 w-5 text-emerald-600" /> 💱 Taux Chanj
               </DialogTitle>
             </DialogHeader>
+            {tauxLoadState === "loading" && (
+              <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Ap chaje taux aktyèl yo…</p>
+            )}
+            {tauxLoadState === "error" && (
+              <div className="text-sm text-rose-600 dark:text-rose-400 space-y-2">
+                <p>Nou pa t ka chaje taux aktyèl yo. Eseye ankò anvan ou anrejistre.</p>
+                <Button variant="outline" size="sm" onClick={openTaux}>Eseye ankò</Button>
+              </div>
+            )}
+            {tauxLoadState === "ready" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 p-3 space-y-2">
                 <p className="text-sm font-black">🇭🇹 Ayiti — HTG / USD</p>
@@ -2818,9 +2830,10 @@ export default function Admin() {
                 <Input type="number" inputMode="decimal" value={dopRateDraft} onChange={(e) => setDopRateDraft(e.target.value)} data-testid="input-taux-dop" />
               </div>
             </div>
+            )}
             <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setTauxOpen(false)}>Fèmen</Button>
-              <Button onClick={saveExchangeRate} disabled={exchangeRateSaving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-save-taux">
+              <Button onClick={saveExchangeRate} disabled={exchangeRateSaving || tauxLoadState !== "ready"} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-save-taux">
                 {exchangeRateSaving ? "Ap anrejistre…" : "Anrejistre Taux"}
               </Button>
             </DialogFooter>

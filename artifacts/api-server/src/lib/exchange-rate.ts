@@ -27,8 +27,8 @@ async function readSetting(key: string, fallback: number, cacheKey: string): Pro
   return value;
 }
 
-async function writeSetting(key: string, value: number, cacheKey: string): Promise<void> {
-  if (!Number.isFinite(value) || value <= 0) throw new Error("Value must be a positive number");
+async function writeSetting(key: string, value: number, cacheKey: string, allowZero = false): Promise<void> {
+  if (!Number.isFinite(value) || (allowZero ? value < 0 : value <= 0)) throw new Error("Value must be a positive number");
   const str = String(value);
   const existing = await db.select().from(platformSettingsTable).where(eq(platformSettingsTable.key, key));
   if (existing.length === 0) {
@@ -42,7 +42,7 @@ async function writeSetting(key: string, value: number, cacheKey: string): Promi
 export const getExchangeRate = () => readSetting(EXCHANGE_RATE_KEY,  DEFAULT_EXCHANGE_RATE, "rate");
 export const setExchangeRate = (rate: number) => writeSetting(EXCHANGE_RATE_KEY, rate, "rate");
 export const getSpread       = () => readSetting(EXCHANGE_SPREAD_KEY, DEFAULT_SPREAD,        "spread");
-export const setSpread       = (spread: number) => writeSetting(EXCHANGE_SPREAD_KEY, spread, "spread");
+export const setSpread       = (spread: number) => writeSetting(EXCHANGE_SPREAD_KEY, spread, "spread", true);
 export const getDopRate      = () => readSetting(DOP_RATE_KEY,        DEFAULT_DOP_RATE,       "dop");
 export const setDopRate      = (rate: number) => writeSetting(DOP_RATE_KEY, rate, "dop");
 

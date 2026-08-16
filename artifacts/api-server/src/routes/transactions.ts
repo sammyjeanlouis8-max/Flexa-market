@@ -1396,21 +1396,24 @@ router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<
   const rateRaw   = req.body?.rate;
   const spreadRaw = req.body?.spread;
   const dopRaw    = req.body?.dopRate;
+  // Validate the full payload before persisting anything, so a bad field
+  // can't leave a partially-updated rate configuration.
+  let r: number | null = null, s: number | null = null, d: number | null = null;
   if (rateRaw !== undefined && rateRaw !== null) {
-    const r = parseFloat(String(rateRaw));
+    r = parseFloat(String(rateRaw));
     if (!Number.isFinite(r) || r <= 0) { res.status(400).json({ error: "Invalid HTG rate" }); return; }
-    await setExchangeRate(r);
   }
   if (spreadRaw !== undefined && spreadRaw !== null) {
-    const s = parseFloat(String(spreadRaw));
+    s = parseFloat(String(spreadRaw));
     if (!Number.isFinite(s) || s < 0) { res.status(400).json({ error: "Invalid spread" }); return; }
-    await setSpread(s);
   }
   if (dopRaw !== undefined && dopRaw !== null) {
-    const d = parseFloat(String(dopRaw));
+    d = parseFloat(String(dopRaw));
     if (!Number.isFinite(d) || d <= 0) { res.status(400).json({ error: "Invalid DOP rate" }); return; }
-    await setDopRate(d);
   }
+  if (r !== null) await setExchangeRate(r);
+  if (s !== null) await setSpread(s);
+  if (d !== null) await setDopRate(d);
   const all = await getAllRates();
   res.json({
     rate:        all.htg.rate,

@@ -2050,6 +2050,21 @@ export default function Admin() {
   const [spreadDraft, setSpreadDraft] = useState<string>("2");
   const [dopRateDraft, setDopRateDraft] = useState<string>("59");
   const [exchangeRateSaving, setExchangeRateSaving] = useState(false);
+  const [tauxOpen, setTauxOpen] = useState(false);
+  const openTaux = async () => {
+    setTauxOpen(true);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const res = await fetch("/api/admin/exchange-rate", { headers: { Authorization: `Bearer ${tk}` } });
+      if (res.ok) {
+        const e = await res.json();
+        setExchangeRateInfo(e);
+        if (e.rate) setExchangeRateDraft(String(e.rate));
+        if (e.spread !== undefined && e.spread !== null) setSpreadDraft(String(e.spread));
+        if (e.dopRate) setDopRateDraft(String(e.dopRate));
+      }
+    } catch { /* noop */ }
+  };
   // Buyer fee rate (card payments)
   const [buyerFeeInfo, setBuyerFeeInfo] = useState<{ buyerFeeRate: number; buyerFeePercent: number } | null>(null);
   const [buyerFeeDraft, setBuyerFeeDraft] = useState<number>(0.025);
@@ -2759,6 +2774,58 @@ export default function Admin() {
           </div>
           <ArrowRight className="h-4 w-4 text-fuchsia-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
+
+        {/* Taux (exchange rates) */}
+        {isSuperAdmin && (
+        <button
+          type="button"
+          onClick={openTaux}
+          data-testid="button-admin-taux"
+          className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 hover:from-emerald-100 hover:to-teal-100 dark:hover:from-emerald-900/40 dark:hover:to-teal-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+        >
+          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center shrink-0 shadow shadow-emerald-200 dark:shadow-emerald-900/50">
+            <ArrowLeftRight className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">💱 Taux</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Mete taux ajou — 🇭🇹 Ayiti (HTG) & 🇩🇴 St Domingue (DOP)</p>
+          </div>
+          <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+        )}
+
+        <Dialog open={tauxOpen} onOpenChange={setTauxOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <ArrowLeftRight className="h-5 w-5 text-emerald-600" /> 💱 Taux Chanj
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 p-3 space-y-2">
+                <p className="text-sm font-black">🇭🇹 Ayiti — HTG / USD</p>
+                <Label className="text-xs">Taux mache a (HTG pou 1 USD)</Label>
+                <Input type="number" inputMode="decimal" value={exchangeRateDraft} onChange={(e) => setExchangeRateDraft(e.target.value)} data-testid="input-taux-htg" />
+                <Label className="text-xs">Spread (benefis platfòm)</Label>
+                <Input type="number" inputMode="decimal" value={spreadDraft} onChange={(e) => setSpreadDraft(e.target.value)} data-testid="input-taux-spread" />
+                <p className="text-xs text-muted-foreground">
+                  Afichaj kliyan: <strong>{(parseFloat(exchangeRateDraft || "0") + parseFloat(spreadDraft || "0")) || 0} HTG/USD</strong>
+                </p>
+              </div>
+              <div className="rounded-xl border border-blue-200 dark:border-blue-800 p-3 space-y-2">
+                <p className="text-sm font-black">🇩🇴 St Domingue — DOP / USD</p>
+                <Label className="text-xs">Taux (DOP pou 1 USD)</Label>
+                <Input type="number" inputMode="decimal" value={dopRateDraft} onChange={(e) => setDopRateDraft(e.target.value)} data-testid="input-taux-dop" />
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setTauxOpen(false)}>Fèmen</Button>
+              <Button onClick={saveExchangeRate} disabled={exchangeRateSaving} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-save-taux">
+                {exchangeRateSaving ? "Ap anrejistre…" : "Anrejistre Taux"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Flexa VIP Subscriptions */}
         <button

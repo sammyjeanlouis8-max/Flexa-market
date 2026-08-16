@@ -426,7 +426,27 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     await db.update(usersTable).set({ passwordHash: newHash }).where(eq(usersTable.id, user.id));
   }
 
-  const token = generateToken(user.id);
+  // Auto-detect preferred language from Accept-Language header when
+    // the user has never set one (preferredLanguage is null/empty).
+    // This fixes the root cause: the language selector shows BEFORE login
+    // (onboarding), so PATCH /auth/language gets 401 and the frontend
+    // silently swallows it — leaving the user with Kreyòl notifications
+    // despite selecting English in the app. Now, on each login we sync
+    // their language from the browser/device header when not yet set.
+    if (!user.preferredLanguage) {
+      const acceptLang = (req.headers["accept-language"] ?? "").toLowerCase();
+      const detected = acceptLang.startsWith("fr") ? "fr"
+        : acceptLang.startsWith("en") ? "en"
+        : acceptLang.includes(",fr") || acceptLang.includes("-fr") ? "fr"
+        : acceptLang.includes(",en") || acceptLang.includes("-en") || acceptLang.includes("en-") ? "en"
+        : null;
+      if (detected) {
+        await db.update(usersTable).set({ preferredLanguage: detected }).where(eq(usersTable.id, user.id));
+        (user as any).preferredLanguage = detected;
+      }
+    }
+
+    const token = generateToken(user.id);
   res.json({ user: formatUser(user), token, ...(hadLegacyHash ? { requiresPasswordUpgrade: true } : {}) });
 });
 

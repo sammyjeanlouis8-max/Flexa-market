@@ -628,7 +628,16 @@ export default function Home() {
     enabled: !!user?.id && !isAdmin,
     staleTime: 3 * 60 * 1000,
   });
-  const personalizedListings = personalizedData?.listings ?? [];
+  // Respect the selected category in every section (featured, VIP, personalized)
+  const personalizedListings = (personalizedData?.listings ?? []).filter(
+    l => !activeCategory || l.categorySlug === activeCategory
+  );
+  const featuredFiltered = (stats?.featuredListings ?? []).filter(
+    (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
+  );
+  const flexaFamilyFiltered = (stats?.flexaFamilyListings ?? []).filter(
+    (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
+  );
   const personalizedSearches = personalizedData?.searches ?? [];
 
   const boostedListings = useMemo(
@@ -1175,7 +1184,7 @@ export default function Home() {
               ))}
             </div>
           </section>
-        ) : stats?.featuredListings && stats.featuredListings.length > 0 ? (
+        ) : featuredFiltered.length > 0 ? (
           <section>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
@@ -1193,7 +1202,7 @@ export default function Home() {
               className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              {stats.featuredListings.map((l: NormalListing) => (
+              {featuredFiltered.map((l: NormalListing) => (
                 <div key={l.id} className="flex-shrink-0 w-44 sm:w-52">
                   <ListingCard listing={l} compact />
                 </div>
@@ -1203,14 +1212,14 @@ export default function Home() {
         ) : null}
 
         {/* === FLEXA VIP SECTION — grid, tier-sorted (VIP > Premium > Standard) === */}
-        {stats?.flexaFamilyListings && stats.flexaFamilyListings.length > 0 && (
+        {flexaFamilyFiltered.length > 0 && (
           <section>
             <div className="flex items-center gap-1.5 mb-3">
               <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
               <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {stats.flexaFamilyListings.map((l: NormalListing) => (
+              {flexaFamilyFiltered.map((l: NormalListing) => (
                 <div key={l.id} className="relative">
                   <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
                     <Crown className="h-2.5 w-2.5" />

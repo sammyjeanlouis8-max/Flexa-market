@@ -107,7 +107,11 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
       const code = err?.name === "NoSuchKey" ? 404 : 500;
       req.log.error({ err, key, errName: err?.name }, "Wasabi proxy error");
       if (!res.headersSent) {
-        res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
+        req.log.error({ errName: err?.name, errMsg: err?.message?.slice(0,200) }, "WPR_V3_DIAG");
+        res.status(code).json({
+          error: code === 404 ? "File not found." : "Could not retrieve file.",
+          _v: "WPR_V3", _n: err?.name, _m: err?.message?.slice(0,100)
+        });
       }
     }
     });

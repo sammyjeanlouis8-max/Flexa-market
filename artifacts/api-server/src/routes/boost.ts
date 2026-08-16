@@ -11,6 +11,17 @@ import {
 import { getStripeClient } from "../lib/stripeClient";
 import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
+import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
+
+/** Resolve a stored boostVideoUrl to a direct 7-day Wasabi presigned URL (if applicable). */
+async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
+  if (!raw) return null;
+  const key = extractWasabiKey(raw);
+  if (key) {
+    try { return await getWasabiPresignedUrl(key, 604_800); } catch { /* fallthrough */ }
+  }
+  return raw;
+}
 
 const BOOST_BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
@@ -441,7 +452,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       title: row.title,
       price: row.price,
       thumbnail: row.images?.[0] ?? null,
-      boostVideoUrl: row.boostVideoUrl,
+      boostVideoUrl: await resolveBoostVideoUrl(row.boostVideoUrl),
       sellerName: row.sellerName,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,
@@ -735,23 +746,22 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     )
     .orderBy(desc(listingsTable.boostExpiresAt));
 
-  res.json({
-    boosts: rows.map(r => ({
-      listingId: r.listingId,
-      title: r.title,
-      price: r.price,
-      thumbnail: r.images?.[0] ?? null,
-      boostVideoUrl: r.boostVideoUrl,
-      boostStartAt: r.boostStartAt?.toISOString() ?? null,
-      boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
-      viewCount: r.viewCount,
-      impressions: r.impressions ?? 0,
-      clicks: r.clicks ?? 0,
-      boostId: r.boostId,
-      plan: r.plan,
-      budget: r.budget,
-    })),
-  });
+  const resolvedBoosts = await Promise.all(rows.map(async r => ({
+    listingId: r.listingId,
+    title: r.title,
+    price: r.price,
+    thumbnail: r.images?.[0] ?? null,
+    boostVideoUrl: await resolveBoostVideoUrl(r.boostVideoUrl),
+    boostStartAt: r.boostStartAt?.toISOString() ?? null,
+    boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
+    viewCount: r.viewCount,
+    impressions: r.impressions ?? 0,
+    clicks: r.clicks ?? 0,
+    boostId: r.boostId,
+    plan: r.plan,
+    budget: r.budget,
+  })));
+  res.json({ boosts: resolvedBoosts });
 });
 
 /**

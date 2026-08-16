@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postbuild": "cp -r ../marketplace/dist/public dist/"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

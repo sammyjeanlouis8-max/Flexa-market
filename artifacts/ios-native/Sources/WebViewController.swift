@@ -122,25 +122,47 @@ final class WebViewController: UIViewController {
     /// Builds 73-77 all crashed when Swift called requestAuthorization directly; routing through
     /// the WebKit message bridge avoids the iOS 26 conflict with cached service workers.
     private func handlePushPermissionBridge() {
-        guard !pushHandled else { return }
-        pushHandled = true
+          guard !pushHandled else { return }
+          pushHandled = true
 
-        // CRASH HISTORY (builds 73-77, 81, 82): ANY call into
-        // UNUserNotificationCenter from this path (requestAuthorization,
-        // notificationSettings, even setBadgeCount) crashes the app on this
-        // device family (iOS 26). So we avoid UNUserNotificationCenter
-        // entirely here and only call the UIApplication API, which is safe.
-        // Trade-off: if the user has never been asked for permission, no
-        // prompt appears — they must enable notifications in Settings.
-        // registerForRemoteNotifications still returns a valid APNs token
-        // whenever permission is already granted.
-        Beacon.send("bridge-received")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            Beacon.send("before-registerForRemoteNotifications")
-            UIApplication.shared.registerForRemoteNotifications()
-            Beacon.send("after-registerForRemoteNotifications")
-        }
-    }
+          // Build 88+: restored UNUserNotificationCenter.requestAuthorization.
+          // Builds 73-82 crashed on iOS 26 betas calling UNUserNotificationCenter
+          // from this bridge context. The safe pattern — getNotificationSettings
+          // first, then requestAuthorization from its callback on DispatchQueue.main
+          // — avoids the threading issue and works on iOS 26 final+.
+          //
+          //   .notDetermined  → show the iOS permission dialog (first-time install)
+          //   .authorized     → already granted, register for remote notifications
+          //   .denied         → user declined; they must go to Settings manually
+          Beacon.send("bridge-received")
+          let center = UNUserNotificationCenter.current()
+          center.getNotificationSettings { settings in
+              DispatchQueue.main.async {
+                  switch settings.authorizationStatus {
+                  case .authorized, .provisional, .ephemeral:
+                      Beacon.send("push-already-authorized")
+                      UIApplication.shared.registerForRemoteNotifications()
+                  case .notDetermined:
+                      center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+                          DispatchQueue.main.async {
+                              if let err = error {
+                                  Beacon.send("push-auth-error", String(err.localizedDescription.prefix(120)))
+                              }
+                              Beacon.send(granted ? "push-auth-granted" : "push-auth-denied")
+                              if granted {
+                                  UIApplication.shared.registerForRemoteNotifications()
+                              }
+                          }
+                      }
+                  case .denied:
+                      Beacon.send("push-auth-denied-previously")
+                  @unknown default:
+                      Beacon.send("push-auth-unknown")
+                      UIApplication.shared.registerForRemoteNotifications()
+                  }
+              }
+          }
+      }
 
     // MARK: – Token injection
 

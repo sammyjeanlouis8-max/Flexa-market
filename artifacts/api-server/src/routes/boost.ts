@@ -762,21 +762,22 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     )
     .orderBy(desc(listingsTable.boostExpiresAt));
 
-  const boosts = await Promise.all(rows.map(async r => ({
-      listingId: r.listingId,
-      title: r.title,
-      price: r.price,
-      thumbnail: r.images?.[0] ?? null,
-      boostVideoUrl: await resolveBoostVideoUrl(r.boostVideoUrl),
-      boostStartAt: r.boostStartAt?.toISOString() ?? null,
-      boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
-      viewCount: r.viewCount,
-      impressions: r.impressions ?? 0,
-      clicks: r.clicks ?? 0,
-      boostId: r.boostId,
-      plan: r.plan,
-      budget: r.budget,
-  })));
+  const boostVideoUrls = await Promise.all(rows.map(r => resolveBoostVideoUrl(r.boostVideoUrl)));
+  const boosts = rows.map((r, i) => ({
+    listingId: r.listingId,
+    title: r.title,
+    price: r.price,
+    thumbnail: r.images?.[0] ?? null,
+    boostVideoUrl: boostVideoUrls[i],
+    boostStartAt: r.boostStartAt?.toISOString() ?? null,
+    boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
+    viewCount: r.viewCount,
+    impressions: r.impressions ?? 0,
+    clicks: r.clicks ?? 0,
+    boostId: r.boostId,
+    plan: r.plan,
+    budget: r.budget,
+  }));
   res.json({ boosts });
 });
 

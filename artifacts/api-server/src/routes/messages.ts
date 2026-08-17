@@ -242,7 +242,7 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       .select({ preferredLanguage: usersTable.preferredLanguage })
       .from(usersTable)
       .where(eq(usersTable.id, recipientId));
-    const lang = recipient?.preferredLanguage === "en" || recipient?.preferredLanguage === "fr" ? recipient.preferredLanguage : "ht";
+    const lang = (recipient?.preferredLanguage === "en" || recipient?.preferredLanguage === "fr" || recipient?.preferredLanguage === "ht") ? recipient.preferredLanguage : "en";
     const L = {
       ht: { from: (n: string) => `Mesaj nan men ${n}`, newMsg: "Nouvo mesaj", voice: "🎤 Mesaj vwa" },
       fr: { from: (n: string) => `Message de ${n}`,    newMsg: "Nouveau message", voice: "🎤 Message vocal" },

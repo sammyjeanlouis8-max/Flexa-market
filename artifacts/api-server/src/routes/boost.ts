@@ -762,8 +762,7 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     )
     .orderBy(desc(listingsTable.boostExpiresAt));
 
-  res.json({
-    boosts: await Promise.all(rows.map(async r => ({
+  const boosts = await Promise.all(rows.map(async r => ({
       listingId: r.listingId,
       title: r.title,
       price: r.price,
@@ -777,8 +776,8 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
       boostId: r.boostId,
       plan: r.plan,
       budget: r.budget,
-    }))),
-  });
+  })));
+  res.json({ boosts });
 });
 
 /**

@@ -53,6 +53,7 @@ app.use("/api", router);
 // block is a no-op (the public dir won't exist).
 
 // Explicit health check — ensures DO deploy phase passes even if dist/public is missing
+app.get("/api/version", (_req, res) => res.json({ commit: "47ac022", notifLang: "en" }));
 app.get("/", function(req, res, next) {
   var acceptsHtml = req.headers["accept"] && req.headers["accept"].includes("text/html");
   if (acceptsHtml) { return next(); } // let catch-all serve SPA for browser requests

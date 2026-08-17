@@ -269,25 +269,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // Apply the user's saved language when they log in.
-  // Spec §1: user.preferredLanguage is the single source of truth.
-  // It always wins over any locally stored value — instantly, no reload.
+  // Apply the user's saved language when they log in — two-way sync:
+  //   • Server has a preference  → apply it locally (server wins).
+  //   • Server preference is null → push local lang to server so push
+  //     notifications arrive in the right language without logout.
   useEffect(() => {
     if (!user) return;
     const u = user as User;
 
     const stored = localStorage.getItem("flexamarket_lang");
-    if (
-      u.preferredLanguage &&
-      SUPPORTED_LANGUAGES.some(l => l.code === u.preferredLanguage) &&
-      stored !== u.preferredLanguage
-    ) {
-      setLanguage(u.preferredLanguage as SupportedLanguage);
+    if (u.preferredLanguage && SUPPORTED_LANGUAGES.some(l => l.code === u.preferredLanguage)) {
+      // Server wins → update local only when it differs
+      if (stored !== u.preferredLanguage) {
+        setLanguage(u.preferredLanguage as SupportedLanguage);
+      }
+    } else if (stored && SUPPORTED_LANGUAGES.some(l => l.code === stored) && token) {
+      // Local wins → tell the server (fire-and-forget, never blocks UI)
+      void fetch("/api/auth/language", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ language: stored }),
+      }).catch(() => {});
     }
 
     // Language modal is disabled — English is the default, users change via Settings.
     setShowLanguageModal(false);
-  }, [user]);
+  }, [user, token]);
 
   const refreshUser = () => {
     refetch();

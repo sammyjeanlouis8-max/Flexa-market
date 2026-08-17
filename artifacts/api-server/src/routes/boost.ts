@@ -462,13 +462,14 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
   }
 
   res.set("Cache-Control", "no-store");
+  const resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
   res.json({
     listing: {
       id: row.id,
       title: row.title,
       price: row.price,
       thumbnail: row.images?.[0] ?? null,
-      boostVideoUrl: await resolveBoostVideoUrl(row.boostVideoUrl),
+      boostVideoUrl: resolvedBoostVideoUrl,
       sellerName: row.sellerName,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,

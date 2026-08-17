@@ -3,6 +3,7 @@ import { Globe } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { SUPPORTED_LANGUAGES, PUBLIC_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
+import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 
 interface LanguageSwitcherProps {
@@ -24,8 +25,17 @@ export default function LanguageSwitcher({
     (languages as readonly { code: string; flag: string; name: string }[]).find(l => l.code === i18n.language) ??
     languages[0];
 
+  const { token } = useAuth();
   const handleChange = (code: SupportedLanguage) => {
     setLanguage(code);
+    // Sync to server so push notifications use the new language immediately
+    if (token) {
+      void fetch("/api/auth/language", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ language: code }),
+      }).catch(() => {});
+    }
   };
 
   return (

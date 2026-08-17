@@ -51,6 +51,24 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
   req.userId = user.id;
   req.user = user;
+  // Auto-detect preferred language for existing users who never set one.
+  // Same logic as login — fire-and-forget so it never delays the request.
+  if (!user.preferredLanguage) {
+    void (async () => {
+      try {
+        const acceptLang = (req.headers["accept-language"] ?? "").toLowerCase();
+        const detected = acceptLang.startsWith("fr") ? "fr"
+          : acceptLang.startsWith("en") ? "en"
+          : acceptLang.includes(",fr") || acceptLang.includes("-fr") ? "fr"
+          : acceptLang.includes(",en") || acceptLang.includes("-en") || acceptLang.includes("en-") ? "en"
+          : null;
+        if (detected) {
+          await db.update(usersTable).set({ preferredLanguage: detected }).where(eq(usersTable.id, user.id));
+          req.user!.preferredLanguage = detected;
+        }
+      } catch { /* never block the request */ }
+    })();
+  }
   markSeen(user.id);
   next();
 }

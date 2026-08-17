@@ -109,7 +109,7 @@ function enforceAdminCountryScope(conditions: any[], user: any, country?: string
   else if (list.length > 1) conditions.push(inArray(listingsTable.country!, list) as any);
 }
 
-function formatListing(
+async function formatListing(
   listing: typeof listingsTable.$inferSelect,
   seller: typeof usersTable.$inferSelect,
   cat: { name: string; slug: string; icon: string } | null,
@@ -127,7 +127,18 @@ function formatListing(
   const nearYou = proximityLevel === "neighborhood" || proximityLevel === "city" ||
     (distanceKm !== null && distanceKm <= 15);
 
-  return {
+  let resolvedBoostVideoUrl: string | null = null;
+    if (listing.boostVideoUrl) {
+      const _vRaw = listing.boostVideoUrl.startsWith("http")
+        ? listing.boostVideoUrl
+        : ("/api/storage/objects/" + listing.boostVideoUrl.replace(/^\/objects\//, ""));
+      const _vKey = extractWasabiKey(_vRaw);
+      if (_vKey) {
+        try { resolvedBoostVideoUrl = await getWasabiPresignedUrl(_vKey, 604_800); } catch {}
+      }
+      if (!resolvedBoostVideoUrl) resolvedBoostVideoUrl = toStreamingVideoUrl(_vRaw);
+    }
+      return {
     id: listing.id,
     title: listing.title,
     description: listing.description,
@@ -153,17 +164,7 @@ function formatListing(
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
-    boostVideoUrl: await (async () => {
-      if (!listing.boostVideoUrl) return null;
-      const raw = listing.boostVideoUrl.startsWith("http")
-        ? listing.boostVideoUrl
-        : `/api/storage/objects/${listing.boostVideoUrl.replace(/^\/objects\//, "")}`;
-      const wasabiKey = extractWasabiKey(raw);
-      if (wasabiKey) {
-        try { return await getWasabiPresignedUrl(wasabiKey, 604_800); } catch {}
-      }
-      return toStreamingVideoUrl(raw);
-    })(),
+    boostVideoUrl: resolvedBoostVideoUrl,
     boostAudience: listing.isBoosted
       ? {
           country: listing.boostAudienceCountry ?? null,
@@ -337,12 +338,12 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     .where(and(...runConditions));
   const total = Number(countRows[0]?.count ?? 0);
 
-  const listings = rows.map(r =>
+  const listings = await Promise.all(rows.map(r =>
     formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
       distanceKm: r.distanceKm,
       proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
     })
-  );
+  ));
   res.json({
     listings,
     total,
@@ -395,10 +396,10 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
     )
     .limit(12);
 
-  res.json(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserT, {
+  res.json(await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserT, {
     distanceKm: r.distanceKm,
     proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-  })));
+  }))));
   } catch (err: any) {
     req.log.error({ err }, "GET TRENDING ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -456,13 +457,13 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
     )
     .limit(24);
 
-  res.json(rows.map(r => ({
-    ...formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserF, {
+  res.json(await Promise.all(rows.map(async r => ({
+    ...await formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserF, {
       distanceKm: r.distanceKm,
       proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
     }),
     proximityScore: Number(r.proximity ?? 0),
-  })));
+  }))));
   } catch (err: any) {
     req.log.error({ err }, "GET FORYOU ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -505,10 +506,10 @@ router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> =
     )
     .limit(8);
 
-  res.json(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserFeat, {
+  res.json(await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserFeat, {
     distanceKm: r.distanceKm,
     proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-  })));
+  }))));
   } catch (err: any) {
     req.log.error({ err }, "GET FEATURED ERROR");
     if (!res.headersSent) res.status(500).json({ error: "Failed to load listings." });
@@ -645,12 +646,12 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     .limit(20);
 
   res.json({
-    listings: rows.map(r =>
+    listings: await Promise.all(rows.map(r =>
       formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
         distanceKm: r.distanceKm,
         proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
       })
-    ),
+    )),
   });
   } catch (err: any) {
     req.log.error({ err }, "GET BOOSTED FEED ERROR");
@@ -818,7 +819,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
 
-  res.status(201).json(formatListing(listing, seller, cat, subcat));
+  res.status(201).json(await formatListing(listing, seller, cat, subcat));
   } catch (err: any) {
     req.log.error({ err }, "CREATE LISTING ERROR");
     const isSchemaError =
@@ -898,7 +899,7 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .where(eq(sellerPayoutAccountsTable.userId, row.listings.sellerId));
   const sellerMonCashNumber = (payoutAccount?.moncashVerified && payoutAccount?.moncashNumber) ? payoutAccount.moncashNumber : null;
 
-  const base = formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUserD);
+  const base = await formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUserD);
   res.json({ ...base, isFavorited, isOwner: req.userId === row.listings.sellerId, sellerMonCashNumber });
   } catch (err: any) {
     req.log.error({ err }, "GET LISTING BY ID ERROR");
@@ -939,7 +940,7 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.subcategoryId));
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
-  res.json(formatListing(listing, seller, cat ?? null, subcat));
+  res.json(await formatListing(listing, seller, cat ?? null, subcat));
 });
 
 router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
@@ -1029,7 +1030,7 @@ router.delete("/listings/:id/video", requireAuth, async (req, res): Promise<void
       const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, updated.subcategoryId));
       subcat = sc ? { name: sc.name, slug: sc.slug } : null;
     }
-    res.json(formatListing(updated, seller, cat ?? null, subcat));
+    res.json(await formatListing(updated, seller, cat ?? null, subcat));
   } catch (err) {
     req.log.error({ err }, "[listings] remove video failed");
     if (!res.headersSent) res.status(500).json({ error: "Could not remove video. Please try again." });
@@ -1444,7 +1445,7 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, updated!.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, updated!.categoryId));
   res.json({
-    ...formatListing(updated!, seller, cat ?? null, null),
+    ...await formatListing(updated!, seller, cat ?? null, null),
     discountAmount,
     promoCodeApplied: appliedPromoCode?.code ?? null,
   });
@@ -1597,7 +1598,7 @@ router.post("/listings/:id/mark-sold", requireAuth, async (req, res): Promise<vo
   const [listing] = await db.update(listingsTable).set(update).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));
-  res.json(formatListing(listing, seller, cat ?? null, null));
+  res.json(await formatListing(listing, seller, cat ?? null, null));
 });
 
 /**
@@ -1788,10 +1789,10 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
       .limit(20);
 
     res.json({
-      listings: rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
+      listings: await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
         distanceKm: r.distanceKm,
         proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-      })),
+      }))),
       searches: topTerms,
     });
   } catch (err: any) {

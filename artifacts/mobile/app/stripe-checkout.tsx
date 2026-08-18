@@ -115,7 +115,14 @@ ${VIEWPORT_FIX}
 
 export default function StripeCheckoutScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const _rawInsets = useSafeAreaInsets();
+    // Guarantee a safe-area top even on first render before iOS measures the Dynamic Island.
+    // 59pt covers iPhone 14 Pro / 15 Pro Dynamic Island; shorter iPhones will have the
+    // real measurement available immediately.
+    const insets = {
+      ..._rawInsets,
+      top: _rawInsets.top > 0 ? _rawInsets.top : (Platform.OS === 'ios' ? 59 : 0),
+    };
   const { url } = useLocalSearchParams<{ url: string }>();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);

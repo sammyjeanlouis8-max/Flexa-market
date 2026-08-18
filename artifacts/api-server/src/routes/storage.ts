@@ -27,8 +27,6 @@ const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.le
 // Wasabi wins when configured (env vars present), regardless of whether Cloudinary is also set.
 const USE_WASABI     = isWasabiConfigured();
 
-);
-}
 
 async function uploadBufferAndGetUrl(
   buffer: Buffer,

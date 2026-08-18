@@ -83,7 +83,87 @@ if (fs.existsSync(publicDir)) {
     });
     
     
-  // Messages auth-fix: bypass CF immutable cache with no-store + localStorage check
+
+    // ── Page auth-fix: prevent redirect to /auth/login while JWT is still loading ──
+    // Each handler patches the compiled chunk in-flight using exact-string indexOf.
+    // Only redirects if localStorage has NO token (truly unauthenticated).
+
+    // Orders page: useEffect guard "if(!p){b('/auth/login');return}"
+    app.get("/assets/Orders-BnDf09yN.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Orders-BnDf09yN.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        var needle = 'if(!p){b("/auth/login");return}';
+        var replace = 'if(!p){if(!localStorage.getItem("flexamarket_token"))b("/auth/login");return}';
+        var idx = content.indexOf(needle);
+        if (idx !== -1) content = content.slice(0, idx) + replace + content.slice(idx + needle.length);
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(e) { res.sendFile(chunkPath); }
+    });
+
+    // Sales page: useEffect guard "if(!c){d('/auth/login');return}"
+    app.get("/assets/Sales-C9nEXzX5.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Sales-C9nEXzX5.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        var needle = 'if(!c){d("/auth/login");return}';
+        var replace = 'if(!c){if(!localStorage.getItem("flexamarket_token"))d("/auth/login");return}';
+        var idx = content.indexOf(needle);
+        if (idx !== -1) content = content.slice(0, idx) + replace + content.slice(idx + needle.length);
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(e) { res.sendFile(chunkPath); }
+    });
+
+    // Saved page: useEffect guard "e||o('/auth/login')"
+    app.get("/assets/Saved-BeMgiiLI.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Saved-BeMgiiLI.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        var needle = 'e||o("/auth/login")';
+        var replace = '!e&&!localStorage.getItem("flexamarket_token")&&o("/auth/login")';
+        var idx = content.indexOf(needle);
+        if (idx !== -1) content = content.slice(0, idx) + replace + content.slice(idx + needle.length);
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(e) { res.sendFile(chunkPath); }
+    });
+
+    // Offers page: useEffect guard "s||x('/auth/login')"
+    app.get("/assets/Offers-iXcN7-Fi.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Offers-iXcN7-Fi.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        var needle = 's||x("/auth/login")';
+        var replace = '!s&&!localStorage.getItem("flexamarket_token")&&x("/auth/login")';
+        var idx = content.indexOf(needle);
+        if (idx !== -1) content = content.slice(0, idx) + replace + content.slice(idx + needle.length);
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(e) { res.sendFile(chunkPath); }
+    });
+
+    // Cart page: useEffect guard "a||x('/auth/login')"
+    app.get("/assets/Cart-D_xVsvFC.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Cart-D_xVsvFC.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        var needle = 'a||x("/auth/login")';
+        var replace = '!a&&!localStorage.getItem("flexamarket_token")&&x("/auth/login")';
+        var idx = content.indexOf(needle);
+        if (idx !== -1) content = content.slice(0, idx) + replace + content.slice(idx + needle.length);
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(e) { res.sendFile(chunkPath); }
+    });
+
+      // Messages auth-fix: bypass CF immutable cache with no-store + localStorage check
   app.get("/assets/Messages-DGDTDrtQ.js", function(_req, res) {
     var chunkPath = path.join(publicDir, "assets", "Messages-DGDTDrtQ.js");
     try {

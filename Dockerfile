@@ -23,6 +23,7 @@ RUN pnpm --filter @workspace/api-server deploy --prod --legacy /app/deploy
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 
 # node_modules from pnpm deploy (contains @aws-sdk, etc.)

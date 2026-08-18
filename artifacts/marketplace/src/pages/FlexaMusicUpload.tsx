@@ -124,66 +124,68 @@ export default function FlexaMusicUpload() {
       const token = localStorage.getItem("flexamarket_token");
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {} as Record<string,string>;
 
-      // ── Step 1: Get Cloudinary signature ────────────────────────────────
+      // ── Step 1: Get Wasabi upload config ─────────────────────────────────────────────────
       const sigRes = await fetch("/api/music/upload-signature", { headers: authHeader });
       if (!sigRes.ok) { const d = await sigRes.json().catch(()=>({})); throw new Error(d.error ?? "Signature failed"); }
       const sig = await sigRes.json();
       setProgress(10);
 
-      // ── Step 2: Upload audio directly to Cloudinary ──────────────────────
-      const audioResult = await new Promise<{publicId:string;secureUrl:string}>((resolve, reject) => {
-        const fd = new FormData();
-        fd.append("file",      audioFile, audioFile.name);
-        fd.append("api_key",   sig.apiKey);
-        fd.append("timestamp", String(sig.timestamp));
-        fd.append("signature", sig.audio.signature);
-        fd.append("folder",    sig.audio.folder);
+      // ── Step 2: Upload audio via Wasabi proxy ──────────────────────────────────
+      const audioResult = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", `https://api.cloudinary.com/v1_1/${sig.cloudName}/video/upload`);
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) setProgress(10 + Math.round((ev.loaded / ev.total) * 75));
-        };
+        xhr.open("PUT", sig.audio.uploadUrl);
+        xhr.setRequestHeader("Content-Type", audioFile.type || "audio/mpeg");
+        if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+        xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) setProgress(10 + Math.round((ev.loaded / ev.total) * 75)); };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            const d = JSON.parse(xhr.responseText);
-            resolve({ publicId: d.public_id, secureUrl: d.secure_url });
+            const data = JSON.parse(xhr.responseText) as { url: string };
+            const storageKey = new URL(data.url, location.origin).searchParams.get("key") ?? "";
+            resolve({ storageKey, url: data.url });
           } else {
-            let msg = `Cloudinary ${xhr.status}`;
-            try { msg = JSON.parse(xhr.responseText)?.error?.message ?? msg; } catch { /**/ }
+            let msg = "Upload " + xhr.status;
+            try { msg = (JSON.parse(xhr.responseText) as {error?:string}).error ?? msg; } catch { /**/ }
             reject(new Error(msg));
           }
         };
         xhr.onerror = () => reject(new Error(t("upload.errGeneric")));
-        xhr.send(fd);
+        xhr.send(audioFile);
       });
       setProgress(85);
 
-      // ── Step 3: Upload cover directly to Cloudinary (optional) ───────────
-      let coverResult: {publicId:string;secureUrl:string}|null = null;
+      // ── Step 3: Upload cover via Wasabi proxy (optional) ───────────────────────
+      let coverResult: {storageKey:string;url:string}|null = null;
       if (coverFile) {
         try {
-          const cfd = new FormData();
-          cfd.append("file",      coverFile, coverFile.name);
-          cfd.append("api_key",   sig.apiKey);
-          cfd.append("timestamp", String(sig.timestamp));
-          cfd.append("signature", sig.cover.signature);
-          cfd.append("folder",    sig.cover.folder);
-          cfd.append("format",    sig.cover.format);
-          const cr = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, { method: "POST", body: cfd });
-          if (cr.ok) { const d = await cr.json(); coverResult = { publicId: d.public_id, secureUrl: d.secure_url }; }
+          const coverData = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("PUT", sig.cover.uploadUrl);
+            xhr.setRequestHeader("Content-Type", coverFile.type || "image/jpeg");
+            if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const data = JSON.parse(xhr.responseText) as { url: string };
+                const storageKey = new URL(data.url, location.origin).searchParams.get("key") ?? "";
+                resolve({ storageKey, url: data.url });
+              } else { reject(new Error("Cover " + xhr.status)); }
+            };
+            xhr.onerror = () => reject(new Error("Cover network error"));
+            xhr.send(coverFile);
+          });
+          coverResult = coverData;
         } catch { /* cover failure is non-fatal */ }
       }
       setProgress(95);
 
-      // ── Step 4: Register in DB ───────────────────────────────────────────
+      // ── Step 4: Register in DB ───────────────────────────────────────────────
       const regRes = await fetch("/api/music/register", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({
           title: title.trim(), artist: artist.trim(),
           album: album.trim() || "", genre: genre || "", type: "free",
-          audioPublicId: audioResult.publicId, audioUrl: audioResult.secureUrl,
-          coverPublicId: coverResult?.publicId ?? null, coverUrl: coverResult?.secureUrl ?? null,
+          storageKey: audioResult.storageKey, audioUrl: audioResult.url,
+          coverStorageKey: coverResult?.storageKey ?? null, coverUrl: coverResult?.url ?? null,
           duration_seconds: audioDuration !== null ? String(audioDuration) : undefined,
         }),
       });

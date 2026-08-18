@@ -55,7 +55,7 @@ export default function WalletTransfer() {
   const [walletAvailable, setWalletAvailable] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!user) navigate("/auth/login");
+    if (!user) { if (!isLoading) navigate("/auth/login"); return null; }
   }, [user]);
 
   useEffect(() => {

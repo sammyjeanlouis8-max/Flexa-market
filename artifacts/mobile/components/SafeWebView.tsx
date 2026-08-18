@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -21,6 +22,15 @@ const BLOCK_CONTEXT_MENU_SCRIPT = `
 true;
 `;
 
+
+    // Inject the native-app JWT token into the web page's localStorage and cookie
+    // so the Messages component knows which messages belong to the current user.
+    function makeTokenScript(token: string | null): string {
+    if (!token) return 'true;';
+    // Escape the token safely (it's a JWT — base64url chars + dots, no quotes)
+    return `(function(){try{localStorage.setItem("flexamarket_token","${token.replace(/"/g, '')}");document.cookie="fm_token="+encodeURIComponent("${token.replace(/"/g, '')}");try{sessionStorage.setItem("flexamarket_token","${token.replace(/"/g, '')}");}catch(e){}}catch(e){}})();true;`;
+    }
+    
 const INTERNAL_HOSTS = [
   "flexamarket.com",
   "www.flexamarket.com",
@@ -55,6 +65,7 @@ const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] = ["top"];
 
 export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) {
   const router = useRouter();
+  const { token } = useAuth();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -109,6 +120,7 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         javaScriptEnabled
         domStorageEnabled
         sharedCookiesEnabled
+        injectedJavaScriptBeforeContentLoaded={makeTokenScript(token)}
         injectedJavaScript={BLOCK_CONTEXT_MENU_SCRIPT}
         injectedJavaScriptForMainFrameOnly
         thirdPartyCookiesEnabled

@@ -90,7 +90,31 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
 
 const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
 
-// ── PUT /api/storage/uploads/put-proxy/:token ────────────────────────────────
+
+    // ── POST /api/storage/uploads/request-url ─────────────────────────────────────
+    // Step 1 of the two-step upload flow used by useUpload (object-storage-web).
+    // Returns an upload URL (put-proxy) + placeholder objectPath.
+    // uploadToPresignedUrl() will overwrite objectPath with the actual Wasabi URL
+    // returned by the put-proxy response body.
+    router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name = "file", size = 0, contentType = "application/octet-stream" } =
+        (req.body ?? {}) as { name?: string; size?: number; contentType?: string };
+      validateMimeType(contentType);
+      const token = randomUUID();
+      const base =
+        process.env["PUBLIC_BASE_URL"] ??
+        `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
+      const uploadURL = `${base}/api/storage/uploads/put-proxy/${token}`;
+      // Placeholder — overwritten by the actual Wasabi proxy URL from the PUT response.
+      const objectPath = `/objects/uploads/${token}`;
+      res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Bad request" });
+    }
+    });
+
+    // ── PUT /api/storage/uploads/put-proxy/:token ────────────────────────────────
 router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Response) => {
   const token = String(req.params["token"]);
   const rawContentType = (req.headers["content-type"] ?? "application/octet-stream") as string;

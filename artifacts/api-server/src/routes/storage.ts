@@ -94,7 +94,7 @@ const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
     // Returns an upload URL (put-proxy) + placeholder objectPath.
     // uploadToPresignedUrl() will overwrite objectPath with the actual Wasabi URL
     // returned by the put-proxy response body.
-    router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
+    router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
     try {
       const { name = "file", size = 0, contentType = "application/octet-stream" } =
         (req.body ?? {}) as { name?: string; size?: number; contentType?: string };

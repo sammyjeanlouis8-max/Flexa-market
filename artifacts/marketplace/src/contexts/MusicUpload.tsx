@@ -1,27 +1,27 @@
 /**
  * MusicUploadContext — global background upload manager
  *
- * Uploads files DIRECTLY to Cloudinary (browser → Cloudinary, not via server)
- * to avoid DigitalOcean's 30-second request timeout on large audio files.
+ * Uploads files via the Wasabi put-proxy (browser → /api/storage/uploads/put-proxy → Wasabi)
+ * using XHR so upload progress is tracked accurately.
  *
  * Flow:
- *   1. GET /api/music/upload-signature  (fast, <1s)
- *   2. XHR audio → Cloudinary /video/upload  (progress tracked, 0–85%)
- *   3. fetch cover → Cloudinary /image/upload  (85–95%)
- *   4. POST /api/music/register  (DB insert only, <1s)
+ *   1. POST /api/storage/uploads/request-url  → uploadURL + objectPath
+ *   2. XHR PUT audio → /api/storage/uploads/put-proxy/:token  (progress 0–85%)
+ *      Response: { url: '/api/storage/wasabi-image?key=<wasabiKey>' }
+ *   3. POST /api/storage/uploads/request-url  + PUT cover (85–95%)
+ *   4. POST /api/music/register  with storageKey + coverStorageKey  (95–100%)
  *
  * Lives at the App root so uploads survive page navigation.
  */
-import { createContext, useContext, useRef, useState, useCallback, type ReactNode } from "react";
-import { CheckCircle, AlertCircle, Music2, X, Loader2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { createContext, useContext, useRef, useState, useCallback, type ReactNode } from 'react';
+import { CheckCircle, AlertCircle, Music2, X, Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-export type UploadStatus = "idle" | "uploading" | "done" | "error";
+export type UploadStatus = 'idle' | 'uploading' | 'done' | 'error';
 
 export interface UploadState {
   status:       UploadStatus;
-  progress:     number;       // 0–100
+  progress:     number;
   title:        string;
   artist:       string;
   coverPreview: string | null;
@@ -35,29 +35,22 @@ export interface UploadMeta {
   album?:            string;
   genre?:            string;
   type?:             string;
-  monetizationType?: string;  // "stream" | "sale"
-  priceUsd?:         number;  // set when monetizationType === "sale"
+  monetizationType?: string;
+  priceUsd?:         number;
   coverPreview?:     string;
   lyrics?:           string;
 }
 
 interface MusicUploadCtx {
   state:   UploadState;
-  /**
-   * Start a direct-to-Cloudinary upload.
-   * audioFile is required; coverFile is optional.
-   * onPlanRequired is called (with songCount) when the free limit is hit —
-   * the caller should redirect to the Plan Artis upgrade screen.
-   */
   start:   (audioFile: File, coverFile: File | null, meta: UploadMeta,
             onDone?: (track: any) => void,
             onPlanRequired?: (songCount: number) => void) => void;
   dismiss: () => void;
 }
 
-// ── Defaults ───────────────────────────────────────────────────────────────────
 const IDLE: UploadState = {
-  status: "idle", progress: 0, title: "", artist: "",
+  status: 'idle', progress: 0, title: '', artist: '',
   coverPreview: null, error: null, track: null,
 };
 
@@ -67,317 +60,171 @@ const MusicUploadContext = createContext<MusicUploadCtx>({
   dismiss: () => {},
 });
 
-// ── Cloudinary direct-upload helper ───────────────────────────────────────────
-interface CldSig {
-  cloudName: string;
-  apiKey:    string;
-  timestamp: number;
-  audio: { folder: string; signature: string };
-  cover: { folder: string; signature: string; format: string };
+async function requestUploadUrl(file: File): Promise<{ uploadURL: string; objectPath: string }> {
+  const res = await fetch('/api/storage/uploads/request-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'application/octet-stream' }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `Request-URL failed: HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
-/** Upload a file directly to Cloudinary via XHR with progress events. */
-function uploadToCloudinary(
-  file: File,
-  resourceType: "video" | "image",
-  sig: CldSig,
-  params: { folder: string; signature: string; format?: string },
-  onProgress?: (pct: number) => void,
-): Promise<{ publicId: string; secureUrl: string }> {
+function extractKey(proxyUrl: string): string {
+  try {
+    const u = new URL(proxyUrl, window.location.origin);
+    const k = u.searchParams.get('key');
+    if (k) return k;
+  } catch { /* fall through */ }
+  throw new Error('Server returned an unexpected URL: ' + proxyUrl);
+}
+
+function uploadToWasabi(file: File, uploadURL: string, onProgress?: (pct: number) => void): Promise<string> {
   return new Promise((resolve, reject) => {
-    const fd = new FormData();
-    fd.append("file",      file);
-    fd.append("api_key",   sig.apiKey);
-    fd.append("timestamp", String(sig.timestamp));
-    fd.append("signature", params.signature);
-    fd.append("folder",    params.folder);
-    if (params.format) fd.append("format", params.format);
-
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`);
-
+    xhr.open('PUT', uploadURL);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
     if (onProgress) {
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
       };
     }
-
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        const data = JSON.parse(xhr.responseText);
-        resolve({ publicId: data.public_id, secureUrl: data.secure_url });
+        try { resolve(extractKey(JSON.parse(xhr.responseText).url)); }
+        catch { reject(new Error('Unexpected response: ' + xhr.responseText.slice(0, 200))); }
       } else {
-        let msg = `Cloudinary HTTP ${xhr.status}`;
-        try { msg = JSON.parse(xhr.responseText)?.error?.message ?? msg; } catch { /* ignore */ }
+        let msg = `Upload failed: HTTP ${xhr.status}`;
+        try { msg = JSON.parse(xhr.responseText)?.error ?? msg; } catch { /* ignore */ }
         reject(new Error(msg));
       }
     };
-    xhr.onerror = () => reject(new Error("Cloudinary network error"));
-    xhr.send(fd);
+    xhr.onerror  = () => reject(new Error('Network error during upload'));
+    xhr.ontimeout = () => reject(new Error('Upload timed out'));
+    xhr.send(file);
   });
 }
 
-// ── Provider ───────────────────────────────────────────────────────────────────
 export function MusicUploadProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [state, setState] = useState<UploadState>(IDLE);
-  const abortRef = useRef<{ abort: () => void } | null>(null);
-  const doneRef  = useRef<((track: any) => void) | null>(null);
+  const onDoneRef = useRef<((track: any) => void) | undefined>(undefined);
+  const onPlanRef = useRef<((count: number) => void) | undefined>(undefined);
 
   const dismiss = useCallback(() => setState(IDLE), []);
 
-  const start = useCallback((
+  const start = useCallback(async (
     audioFile: File,
     coverFile: File | null,
-    meta:      UploadMeta,
-    onDone?:   (track: any) => void,
+    meta: UploadMeta,
+    onDone?: (track: any) => void,
     onPlanRequired?: (songCount: number) => void,
   ) => {
-    // Cancel any in-flight upload
-    abortRef.current?.abort();
-    doneRef.current = onDone ?? null;
+    onDoneRef.current = onDone;
+    onPlanRef.current = onPlanRequired;
 
-    setState({
-      status: "uploading", progress: 0,
-      title: meta.title, artist: meta.artist,
-      coverPreview: meta.coverPreview ?? null,
-      error: null, track: null,
-    });
+    setState({ status: 'uploading', progress: 0, title: meta.title, artist: meta.artist,
+               coverPreview: meta.coverPreview ?? null, error: null, track: null });
 
-    const token = localStorage.getItem("flexamarket_token");
+    try {
+      const tk = localStorage.getItem('flexamarket_token') ?? '';
 
-    const run = async () => {
-      // ── Step 0: Pre-check plan limit BEFORE wasting Cloudinary bandwidth ──
-      try {
-        const planRes = await fetch("/api/music/artist/plan", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (planRes.ok) {
-          const pd = await planRes.json();
-          if (!pd.isArtistPlan && pd.songCount >= pd.freeSongLimit) {
-            setState(IDLE);
-            onPlanRequired?.(pd.songCount);
-            return;
-          }
-        }
-      } catch { /* ignore — backend enforces at register step */ }
+      const audioReq = await requestUploadUrl(audioFile);
+      const storageKey = await uploadToWasabi(
+        audioFile, audioReq.uploadURL,
+        (pct) => setState(prev => ({ ...prev, progress: Math.round(pct * 0.85) })),
+      );
 
-      // ── Step 1: Get upload signature / backend config ───────────────────
-      const sigRes = await fetch("/api/music/upload-signature", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!sigRes.ok) {
-        const d = await sigRes.json().catch(() => ({}));
-        throw new Error((d as { error?: string }).error ?? `Signature HTTP ${sigRes.status}`);
-      }
-      const sig: CldSig = await sigRes.json();
+      setState(prev => ({ ...prev, progress: 85 }));
 
-      let audioStorageKey: string | undefined;
-      let audioPublicIdUpload: string | undefined;
-      let audioSecureUrl: string | undefined;
       let coverStorageKey: string | undefined;
-      let coverPublicIdUpload: string | undefined;
-      let coverSecureUrl: string | undefined;
-
-      if (sig.backend === "wasabi") {
-        // ── Wasabi: PUT directly to proxy (streams to Wasabi, no server timeout) ───
-        const audioUp = await uploadViaProxy(
-          audioFile, sig.audio.uploadUrl!, token,
-          (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
+      if (coverFile) {
+        const coverReq = await requestUploadUrl(coverFile);
+        coverStorageKey = await uploadToWasabi(
+          coverFile, coverReq.uploadURL,
+          (pct) => setState(prev => ({ ...prev, progress: 85 + Math.round(pct * 0.10) })),
         );
-        audioStorageKey = audioUp.storageKey;
-        audioSecureUrl  = audioUp.url;
+      }
 
-        if (coverFile) {
-          setState(s => ({ ...s, progress: 85 }));
-          try {
-            const coverUp = await uploadViaProxy(coverFile, sig.cover.uploadUrl!, token);
-            coverStorageKey = coverUp.storageKey;
-            coverSecureUrl  = coverUp.url;
-          } catch (err: any) {
-            console.warn("[upload] cover upload failed — continuing without cover", err.message);
-          }
-        }
+      setState(prev => ({ ...prev, progress: 95 }));
 
-      // ── Step 4: Register in DB ──────────────────────────────────────────
-      setState(s => ({ ...s, progress: 95 }));
-      const regRes = await fetch("/api/music/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          title:             meta.title,
-          artist:            meta.artist,
-          album:             meta.album ?? "",
-          genre:             meta.genre ?? "",
-          type:              meta.type ?? "free",
-          monetization_type: meta.monetizationType ?? "stream",
-          price_usd:         meta.priceUsd ?? null,
-          ...(audioStorageKey
-            ? { storageKey: audioStorageKey, audioUrl: audioSecureUrl,
-                coverStorageKey: coverStorageKey ?? null, coverUrl: coverSecureUrl ?? null }
-            : { audioPublicId: audioPublicIdUpload, audioUrl: audioSecureUrl,
-                coverPublicId: coverPublicIdUpload ?? null, coverUrl: coverSecureUrl ?? null }),
-          lyrics:            meta.lyrics ?? null,
-        }),
+      const regBody: Record<string, string | number> = {
+        title: meta.title, artist: meta.artist, storageKey,
+        ...(coverStorageKey       ? { coverStorageKey }                          : {}),
+        ...(meta.album            ? { album: meta.album }                        : {}),
+        ...(meta.genre            ? { genre: meta.genre }                        : {}),
+        ...(meta.type             ? { type: meta.type }                          : {}),
+        ...(meta.monetizationType ? { monetization_type: meta.monetizationType } : {}),
+        ...(meta.priceUsd != null ? { price_usd: meta.priceUsd }                : {}),
+        ...(meta.lyrics           ? { lyrics: meta.lyrics }                      : {}),
+      };
+
+      const regRes = await fetch('/api/music/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` },
+        body: JSON.stringify(regBody),
       });
+
       if (!regRes.ok) {
-      if (!regRes.ok) {
-        const d = await regRes.json().catch(() => ({}));
-        // Clean up orphaned Cloudinary files — registration failed after upload
-        fetch("/api/music/cleanup-orphan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ audioPublicId: audioPublicIdUpload ?? null, coverPublicId: coverPublicIdUpload ?? null }),
-        }).catch(() => {}); // best-effort, do not block error path
-        if (d.error === "ARTIST_PLAN_REQUIRED") {
-          setState(IDLE);
-          onPlanRequired?.(d.count ?? 0);
+        const err = await regRes.json().catch(() => ({}));
+        if (err.error === 'ARTIST_PLAN_REQUIRED') {
+          onPlanRef.current?.(err.count ?? 0);
+          setState(prev => ({ ...prev, status: 'error', error: t('music.planRequired', 'Artist plan required') }));
           return;
         }
-        throw new Error(d.error ?? `Register HTTP ${regRes.status}`);
+        throw new Error(err.error ?? `Register failed: HTTP ${regRes.status}`);
       }
+
       const { track } = await regRes.json();
+      setState(prev => ({ ...prev, status: 'done', progress: 100, track }));
+      onDoneRef.current?.(track);
 
-      setState(s => ({ ...s, status: "done", progress: 100, track }));
-      doneRef.current?.(track);
-      setTimeout(() => setState(IDLE), 8_000);
-    };
+    } catch (err: any) {
+      setState(prev => ({ ...prev, status: 'error', error: err?.message ?? 'Upload failed' }));
+    }
+  }, [t]);
 
-    run().catch((err: Error) => {
-      console.error("[upload] FAILED:", err.message);
-      const isNetwork = err.message.toLowerCase().includes("network");
-      setState(s => ({
-        ...s, status: "error",
-        error: isNetwork ? "__networkError__" : err.message,
-      }));
-    });
-  }, []);
+  const showToast = state.status !== 'idle';
 
   return (
     <MusicUploadContext.Provider value={{ state, start, dismiss }}>
       {children}
-      <FloatingUploadToast state={state} onDismiss={dismiss} />
+      {showToast && (
+        <div className='fixed bottom-20 left-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-black/90 p-3 shadow-lg'>
+          {state.coverPreview ? (
+            <img src={state.coverPreview} alt='' className='h-10 w-10 rounded-md object-cover shrink-0' />
+          ) : (
+            <div className='flex h-10 w-10 items-center justify-center rounded-md bg-white/10 shrink-0'>
+              <Music2 className='h-5 w-5 text-white/70' />
+            </div>
+          )}
+          <div className='min-w-0 flex-1'>
+            <p className='truncate text-sm font-semibold text-white'>{state.title || t('music.uploading', 'Uploading…')}</p>
+            {state.status === 'uploading' && (
+              <div className='mt-1 h-1 w-full overflow-hidden rounded-full bg-white/20'>
+                <div className='h-full rounded-full bg-primary transition-all duration-300' style={{ width: `${state.progress}%` }} />
+              </div>
+            )}
+            {state.status === 'done'  && <p className='text-xs text-green-400'>{t('music.uploadDone', 'Upload complete')}</p>}
+            {state.status === 'error' && <p className='truncate text-xs text-red-400'>{state.error}</p>}
+          </div>
+          {state.status === 'uploading' ? <Loader2 className='h-4 w-4 shrink-0 animate-spin text-white/60' />
+           : state.status === 'done'    ? <CheckCircle className='h-4 w-4 shrink-0 text-green-400' />
+                                        : <AlertCircle className='h-4 w-4 shrink-0 text-red-400' />}
+          {state.status !== 'uploading' && (
+            <button onClick={dismiss} className='ml-1 shrink-0 text-white/40 hover:text-white'>
+              <X className='h-4 w-4' />
+            </button>
+          )}
+        </div>
+      )}
     </MusicUploadContext.Provider>
   );
 }
 
-// ── Hook ───────────────────────────────────────────────────────────────────────
-export function useMusicUpload() {
+export function useMusicUpload(): MusicUploadCtx {
   return useContext(MusicUploadContext);
-}
-
-// ── Floating toast ─────────────────────────────────────────────────────────────
-function FloatingUploadToast({
-  state, onDismiss,
-}: { state: UploadState; onDismiss: () => void }) {
-  const { t } = useTranslation();
-  if (state.status === "idle") return null;
-
-  const isUploading = state.status === "uploading";
-  const isDone      = state.status === "done";
-  const isError     = state.status === "error";
-
-  const errorText = state.error === "__networkError__" ? t("uploadCtx.networkError")
-                  : state.error === "__serverError__"  ? t("uploadCtx.serverError")
-                  : state.error ?? "";
-
-  const borderColor = isDone  ? "rgba(34,197,94,0.4)"
-                    : isError ? "rgba(239,68,68,0.4)"
-                    : "rgba(124,58,237,0.4)";
-
-  return (
-    <div
-      style={{
-        position:     "fixed",
-        bottom:       80,
-        left:         12,
-        right:        12,
-        zIndex:       9999,
-        background:   "#111",
-        border:       `1px solid ${borderColor}`,
-        borderRadius: 16,
-        padding:      "12px 14px",
-        boxShadow:    "0 8px 32px rgba(0,0,0,0.6)",
-        display:      "flex",
-        alignItems:   "center",
-        gap:          12,
-        animation:    "slideUp 0.25s ease",
-      }}
-    >
-      {/* Cover / icon */}
-      <div style={{
-        width: 44, height: 44, borderRadius: 10, overflow: "hidden",
-        flexShrink: 0, background: "#1a1a1a",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
-        {state.coverPreview
-          ? <img src={state.coverPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : isDone
-            ? <CheckCircle size={22} style={{ color: "#22c55e" }} />
-            : isError
-              ? <AlertCircle size={22} style={{ color: "#ef4444" }} />
-              : <Music2 size={22} style={{ color: "#a855f7" }} />
-        }
-      </div>
-
-      {/* Text + progress */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ color: "#fff", fontSize: 13, fontWeight: 700, marginBottom: 2,
-                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {isDone  ? t("uploadCtx.done") :
-           isError ? t("uploadCtx.failed") :
-           `${state.title} · ${state.artist}`}
-        </p>
-        {isUploading && (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-between",
-                          fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />
-                {t("uploadCtx.uploading")}
-              </span>
-              <span>{state.progress}%</span>
-            </div>
-            <div style={{ height: 4, borderRadius: 2, background: "#222", overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 2,
-                width: `${state.progress}%`,
-                background: "linear-gradient(90deg,#7c3aed,#c026d3)",
-                transition: "width 0.3s ease",
-              }} />
-            </div>
-          </>
-        )}
-        {isDone && (
-          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-            {state.title} · {t("uploadCtx.pendingReview")}
-          </p>
-        )}
-        {isError && (
-          <p style={{ fontSize: 11, color: "rgba(239,68,68,0.7)" }}>{errorText}</p>
-        )}
-      </div>
-
-      {/* Dismiss — only when not actively uploading */}
-      {!isUploading && (
-        <button onClick={onDismiss}
-          style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", padding: 4 }}>
-          <X size={16} style={{ color: "rgba(255,255,255,0.4)" }} />
-        </button>
-      )}
-
-      <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(20px); opacity: 0; }
-          to   { transform: translateY(0);    opacity: 1; }
-        }
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-      `}</style>
-    </div>
-  );
 }

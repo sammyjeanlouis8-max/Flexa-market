@@ -299,7 +299,7 @@ export default function ListingDetail() {
     if (sp.get("buy") !== "1") return;
     // Remove the flag from the URL without a full reload
     window.history.replaceState(null, "", `/listings/${id}`);
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     setPayStep("promo");
     setPayDone(false);
     setBuyNowOpen(true);
@@ -317,7 +317,7 @@ export default function ListingDetail() {
     const parsedAmt = parseFloat(oa);
     if (isNaN(parsedId) || isNaN(parsedAmt) || parsedAmt <= 0) return;
     window.history.replaceState(null, "", `/listings/${id}`);
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     setOfferIdForPurchase(parsedId);
     setOfferPriceOverride(parsedAmt);
     setPayStep("promo");
@@ -650,7 +650,7 @@ export default function ListingDetail() {
   };
 
   const handleFav = () => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     const isFav = (listing as any).isFavorited;
     if (isFav) {
       removeFav.mutate({ listingId: id }, {
@@ -664,7 +664,7 @@ export default function ListingDetail() {
   };
 
   const handleChat = () => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     createConv.mutate({ data: { listingId: id, sellerId: listing.sellerId } }, {
       onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
       onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
@@ -672,7 +672,7 @@ export default function ListingDetail() {
   };
 
   const handleOffer = () => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     const raw = offerAmount.trim();
     if (!raw) {
       toast({ title: t("offer.enterValidAmount"), variant: "destructive" });
@@ -723,7 +723,7 @@ export default function ListingDetail() {
   };
 
   const handleSubmitReview = async () => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     if (reviewRating === 0) {
       toast({ title: t("review.chooseStars", { defaultValue: "Please choose a star rating" }), variant: "destructive" });
       return;
@@ -1297,7 +1297,7 @@ export default function ListingDetail() {
           {bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
             <button
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => { if (!user) { setLocation("/auth/login"); return; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
+              onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return null; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
             >
               <span>{t("tr.payToday")} <strong className="text-foreground">${(effectiveListingPriceUsd / 3).toFixed(2)}</strong> {t("tr.payTodayWith")}</span>
               {bnplSettings.affirmEnabled && <span className="font-black text-[#00d647]">Affirm</span>}
@@ -1671,7 +1671,7 @@ export default function ListingDetail() {
 
           {/* Buy Now */}
           <button
-            onClick={() => { if (!user) { setLocation("/auth/login"); return; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
+            onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return null; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
             data-testid="button-buy-now"
             className="flex-[1.6] h-12 flex items-center justify-center gap-2 rounded-xl font-black text-sm text-white active:scale-95 transition-all"
             style={{ background: "linear-gradient(135deg,#fb923c 0%,#f97316 60%,#ea6c08 100%)" }}

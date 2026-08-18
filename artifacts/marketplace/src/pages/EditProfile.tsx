@@ -550,7 +550,7 @@ export default function EditProfile() {
     }
   };
 
-  useEffect(() => { if (!user) setLocation("/auth/login"); }, [user]);
+  useEffect(() => { if (!isLoading && !user) setLocation("/auth/login"); }, [user, isLoading]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

@@ -342,7 +342,7 @@ const LOG_LISTING_ACTIONS = new Set(["boost_listing", "remove_boost", "extend_bo
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -727,7 +727,11 @@ export default function Admin() {
   const [adminSuspendDuration, setAdminSuspendDuration] = useState("30");
   const [adminSuspendActioning, setAdminSuspendActioning] = useState<number | null>(null);
 
-  useEffect(() => { if (user && !user.isAdmin && !(user as any).isSuperAdmin) setLocation("/"); else if (!user) setLocation("/auth/login"); }, [user]);
+  useEffect(() => {
+      if (isLoading) return; // wait for /auth/me to resolve before redirecting
+      if (user && !user.isAdmin && !(user as any).isSuperAdmin) setLocation("/");
+      else if (!user) setLocation("/auth/login");
+    }, [user, isLoading]);
 
   // Poll the support unread badge so admins see new help requests in real time.
   useEffect(() => {

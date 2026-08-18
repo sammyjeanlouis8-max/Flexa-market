@@ -31,7 +31,7 @@ import {
   isCloudinaryConfigured,
   deleteCloudinaryAssets,
 } from "../lib/cloudinary";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -435,31 +435,39 @@ router.get("/music/diagnose", async (_req, res) => {
 });
 
 // GET /api/music/upload-signature — MUST be before /music/:id to avoid NaN wildcard match
-router.get("/music/upload-signature", requireAuth, (req, res) => {
-  const apiKey    = process.env["CLOUDINARY_API_KEY"];
-  const apiSecret = process.env["CLOUDINARY_API_SECRET"];
-  const cloudName = process.env["CLOUDINARY_CLOUD_NAME"]?.replace(/-/g, "") || "dvkbgodbk";
+    router.get("/music/upload-signature", requireAuth, (req, res) => {
+    const apiKey    = process.env["CLOUDINARY_API_KEY"];
+    const apiSecret = process.env["CLOUDINARY_API_SECRET"];
+    const cloudName = process.env["CLOUDINARY_CLOUD_NAME"]?.replace(/-/g, "") || "dvkbgodbk";
 
-  if (!apiKey || !apiSecret) {
-    return res.status(503).json({ error: "Cloudinary not configured" });
-  }
+    // When Cloudinary is not configured, fall back to Wasabi proxy upload.
+    // The client PUTs files directly to the put-proxy endpoint (streams to Wasabi,
+    // no server timeout). The proxy response includes the final Wasabi-backed URL.
+    if (!apiKey || !apiSecret) {
+      const audioToken = randomUUID();
+      const coverToken = randomUUID();
+      return res.json({
+        backend: "wasabi",
+        audio: { uploadUrl: "/api/storage/uploads/put-proxy/" + audioToken },
+        cover: { uploadUrl: "/api/storage/uploads/put-proxy/" + coverToken },
+      });
+    }
 
-  const timestamp = Math.round(Date.now() / 1000);
+    const timestamp = Math.round(Date.now() / 1000);
+    const audioParamStr = "folder=flexa-music/audio&timestamp=" + timestamp;
+    const coverParamStr = "folder=flexa-music/covers&format=jpg&timestamp=" + timestamp;
+    const audioSig = createHash("sha1").update(audioParamStr + apiSecret).digest("hex");
+    const coverSig = createHash("sha1").update(coverParamStr + apiSecret).digest("hex");
 
-  const audioParamStr = `folder=flexa-music/audio&timestamp=${timestamp}`;
-  const coverParamStr = `folder=flexa-music/covers&format=jpg&timestamp=${timestamp}`;
-
-  const audioSig = createHash("sha1").update(audioParamStr + apiSecret).digest("hex");
-  const coverSig = createHash("sha1").update(coverParamStr + apiSecret).digest("hex");
-
-  res.json({
-    cloudName,
-    apiKey,
-    timestamp,
-    audio: { folder: "flexa-music/audio", signature: audioSig },
-    cover: { folder: "flexa-music/covers", signature: coverSig, format: "jpg" },
-  });
-});
+    res.json({
+      backend: "cloudinary",
+      cloudName,
+      apiKey,
+      timestamp,
+      audio: { folder: "flexa-music/audio", signature: audioSig },
+      cover: { folder: "flexa-music/covers", signature: coverSig, format: "jpg" },
+    });
+    });
 
 // GET /api/music/:id/download — authenticated; paid tracks require a purchase record
 // ⚠️ Must be before /music/:id so Express doesn't swallow "download" as an id
@@ -966,11 +974,12 @@ router.post("/music/register", requireAuth, async (req, res) => {
   const {
     title, artist, album, genre, type = "free",
     audioPublicId, audioUrl, coverPublicId, coverUrl, lyrics,
+    storageKey, coverStorageKey,
   } = req.body as Record<string, string | undefined>;
 
   if (!title?.trim())   return res.status(400).json({ error: "Title required" });
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
-  if (!audioPublicId)   return res.status(400).json({ error: "audioPublicId required" });
+  if (!audioPublicId && !storageKey) return res.status(400).json({ error: "audioPublicId or storageKey required" });
 
   // Duration guard: max 60 minutes (3600 s) for non-admin uploads
   const durationSeconds = req.body.duration_seconds ? Number(req.body.duration_seconds) : null;

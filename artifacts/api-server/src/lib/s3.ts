@@ -177,6 +177,9 @@ function getWasabiClient(): S3Client {
     // Wasabi requires path-style addressing (not virtual-hosted-style)
     forcePathStyle: true,
     credentials: { accessKeyId, secretAccessKey },
+    // Buffer the upload stream in 64 KB chunks so AWS SDK v3 never sends
+    // chunks smaller than 8 192 bytes (which Wasabi rejects with a 500).
+    requestStreamBufferSize: 65_536,
   });
 }
 

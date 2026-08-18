@@ -36,7 +36,7 @@ export default function OrderLabel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     if (!orderId) { setError("Invalid order"); return; }
     let cancelled = false;
     (async () => {

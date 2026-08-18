@@ -1,6 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
-import { v2 as cloudinary } from "cloudinary";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -27,37 +26,10 @@ const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.le
 
 // Wasabi wins when configured (env vars present), regardless of whether Cloudinary is also set.
 const USE_WASABI     = isWasabiConfigured();
-const USE_CLOUDINARY = !USE_WASABI && !!(process.env["CLOUDINARY_API_KEY"]);
 
-if (USE_CLOUDINARY) {
-  cloudinary.config({
-    cloud_name: cloudName,
-    api_key:    process.env["CLOUDINARY_API_KEY"],
-    api_secret: process.env["CLOUDINARY_API_SECRET"],
-  });
+);
 }
 
-async function uploadBufferToCloudinary(buffer: Buffer, contentType: string): Promise<string> {
-  if (!buffer || buffer.length === 0) {
-    throw new Error("Empty file received — please select a valid image and try again.");
-  }
-  const isVideo = contentType.startsWith("video/") || contentType.startsWith("audio/");
-  const resourceType = isVideo ? "video" : "image";
-  const uploadOptions: Record<string, unknown> = { resource_type: resourceType, folder: "flexa-market" };
-  if (!isVideo) uploadOptions["format"] = "jpg";
-  return new Promise<string>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      uploadOptions,
-      (error, result) => {
-        if (error || !result) reject(error ?? new Error("Cloudinary upload failed"));
-        else resolve(result.secure_url);
-      }
-    );
-    stream.end(buffer);
-  });
-}
-
-// ── Shared: upload buffer to active backend and return public URL ─────────────
 async function uploadBufferAndGetUrl(
   buffer: Buffer,
   contentType: string,
@@ -69,9 +41,7 @@ async function uploadBufferAndGetUrl(
       ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
     return `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
   }
-  if (USE_CLOUDINARY) {
-    return uploadBufferToCloudinary(buffer, contentType);
-  }
+  
   throw new Error(
     "Storage not configured. Add WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, and WASABI_BUCKET_NAME environment variables.",
   );
@@ -215,7 +185,7 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
     chunkStore.delete(uploadId);
 
     const url = await uploadBufferAndGetUrl(buffer, contentType, req);
-    req.log.info({ uploadId, bytes: buffer.byteLength, url, backend: USE_WASABI ? "wasabi" : "cloudinary" }, "Chunked upload complete");
+    req.log.info({ uploadId, bytes: buffer.byteLength, url, backend: "wasabi" }, "Chunked upload complete");
     res.json({ url, objectPath: `/objects/uploads/${uploadId}` });
   } catch (err: any) {
     chunkStore.delete(uploadId);

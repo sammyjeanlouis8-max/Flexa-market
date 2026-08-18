@@ -390,7 +390,7 @@ export default function Cart() {
   const [deliveryFeesLoading, setDeliveryFeesLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) setLocation("/auth/login");
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
   }, [user, setLocation]);
 
   useEffect(() => {

@@ -27,11 +27,12 @@ import {
   runPreflight,
 } from "../lib/wasabi";
 import { randomUUID } from "crypto";
+import { convertAudioToMp3, needsConversion } from "../lib/audioConvert";
 import { logger } from "../lib/logger";
 
 const router = Router();
 // Support MP3, WAV, FLAC, AAC, M4A + images — up to 500 MB
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1500 * 1024 * 1024 } }); // 1.5 GB — covers WAV ~2 h; ffmpeg then converts to MP3
 
 const CPM_USD           = 1.00;   // $1 per 1 000 valid impressions
 
@@ -459,8 +460,8 @@ router.post("/music/register", requireAuth, async (req, res) => {
 
   // Duration guard: max 60 minutes (3600 s) for non-admin uploads
   const durationSeconds = req.body.duration_seconds ? Number(req.body.duration_seconds) : null;
-  if (durationSeconds !== null && durationSeconds > 3600) {
-    return res.status(400).json({ error: "DURATION_TOO_LONG", maxSeconds: 3600, got: durationSeconds });
+  if (durationSeconds !== null && durationSeconds > 10800) {
+    return res.status(400).json({ error: "DURATION_TOO_LONG", maxSeconds: 10800, got: durationSeconds });
   }
 
   const {
@@ -578,16 +579,33 @@ router.post("/music/upload", requireAuth, upload.fields([
   });
 
   // ── Step 5: Storage configuration check ──────────────────────────────────
-  if (!false) {
-    return fail(5, "storage_config", new Error("Cloudinary pa konfigiré — manke CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET"), 503);
+  if (!wasabiConfigured()) {
+    return fail(5, "storage_config", new Error("Wasabi pa konfigiré — manke WASABI_ACCESS_KEY_ID / WASABI_SECRET_ACCESS_KEY / WASABI_BUCKET_NAME"), 503);
   }
-  log(5, "storage_config", { provider: "cloudinary" });
+  log(5, "storage_config", { provider: "wasabi" });
 
-  // ── Step 6: Audio upload (Cloudinary) ────────────────────────────────────
-  log(6, "audio_upload_start", { mime: audioFile.mimetype, bytes: audioFile.buffer?.byteLength });
+  // ── Step 6: Audio upload (Wasabi — with optional ffmpeg conversion) ───────
+  let uploadBuffer = audioFile.buffer as Buffer;
+  let uploadMime   = audioFile.mimetype as string;
+  let uploadName   = audioFile.originalname as string;
+
+  if (needsConversion(audioFile.mimetype)) {
+    log(6, "audio_convert_start", { mime: audioFile.mimetype, bytes: uploadBuffer?.byteLength });
+    const converted = await convertAudioToMp3(uploadBuffer, audioFile.mimetype, audioFile.originalname);
+    if (converted) {
+      uploadBuffer = converted.buffer;
+      uploadMime   = converted.mime;
+      uploadName   = uploadName.replace(/\.[^.]+$/, "") + ".mp3";
+      log(6, "audio_convert_done", { newBytes: uploadBuffer.byteLength });
+    } else {
+      log(6, "audio_convert_skip", { reason: "ffmpeg unavailable or failed — uploading original" });
+    }
+  }
+
+  log(6, "audio_upload_start", { mime: uploadMime, bytes: uploadBuffer?.byteLength });
   let audioResult: { key: string; url: string };
   try {
-    audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
+    audioResult = await uploadMusicAudio(uploadBuffer, uploadMime, uploadName);
   } catch (err: any) {
     return fail(6, "audio_upload", err);
   }

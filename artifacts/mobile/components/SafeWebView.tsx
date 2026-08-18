@@ -1,7 +1,7 @@
-import { Feather } from "@expo/vector-icons";
-import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import { Feather } from '@expo/vector-icons';
+import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -9,9 +9,9 @@ import {
   Pressable,
   StyleSheet,
   View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import WebView from "react-native-webview";
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import WebView from 'react-native-webview';
 
 const BLOCK_CONTEXT_MENU_SCRIPT = `
 (function() {
@@ -22,31 +22,31 @@ const BLOCK_CONTEXT_MENU_SCRIPT = `
 true;
 `;
 
+// Inject the native-app JWT token into the web page's localStorage and cookie
+// so the Messages component knows which messages belong to the current user.
+function makeTokenScript(token: string | null): string {
+  if (!token) return 'true;';
+  // Escape the token safely (it's a JWT — base64url chars + dots, no quotes)
+  const safe = token.replace(/\"/g, '');
+  return `(function(){try{localStorage.setItem(flexamarket_token,${safe});document.cookie=fm_token=+encodeURIComponent(${safe});try{sessionStorage.setItem(flexamarket_token,${safe});}catch(e){}}catch(e){}})();true;`;
+}
 
-    // Inject the native-app JWT token into the web page's localStorage and cookie
-    // so the Messages component knows which messages belong to the current user.
-    function makeTokenScript(token: string | null): string {
-    if (!token) return 'true;';
-    // Escape the token safely (it's a JWT — base64url chars + dots, no quotes)
-    return `(function(){try{localStorage.setItem("flexamarket_token","${token.replace(/"/g, '')}");document.cookie="fm_token="+encodeURIComponent("${token.replace(/"/g, '')}");try{sessionStorage.setItem("flexamarket_token","${token.replace(/"/g, '')}");}catch(e){}}catch(e){}})();true;`;
-    }
-    
 const INTERNAL_HOSTS = [
-  "flexamarket.com",
-  "www.flexamarket.com",
-  "bonjour-tool.replit.app",
-  "stripe.com",
-  "checkout.stripe.com",
-  "js.stripe.com",
-  "hooks.stripe.com",
-  "m.stripe.com",
-  "m.stripe.network",
+  'flexamarket.com',
+  'www.flexamarket.com',
+  'bonjour-tool.replit.app',
+  'stripe.com',
+  'checkout.stripe.com',
+  'js.stripe.com',
+  'hooks.stripe.com',
+  'm.stripe.com',
+  'm.stripe.network',
 ];
 
 function isInternal(url: string): boolean {
   try {
     const { hostname } = new URL(url);
-    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
   } catch {
     return true;
   }
@@ -59,13 +59,13 @@ interface SafeWebViewProps {
 }
 
 // SafeAreaView edges:
-//   iOS   — "top": content starts below notch / Dynamic Island.
-//   Android — "top": content starts below the status bar (needed for the native header).
-const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] = ["top"];
+//   iOS   — 'top': content starts below notch / Dynamic Island.
+//   Android — 'top': content starts below the status bar (needed for the native header).
+const SAFE_EDGES: ('top' | 'bottom' | 'left' | 'right')[] = ['top'];
 
 export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, isLoading: authLoading } = useAuth();
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -80,8 +80,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
 
   // Android hardware back button — mirror the same logic
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (canGoBack) {
         webRef.current?.goBack();
         return true;
@@ -90,6 +90,40 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
     });
     return () => sub.remove();
   }, [canGoBack]);
+
+  // Safety net: if the WebView finishes loading before the auth token arrives
+  // (race condition), re-inject the token as soon as it becomes available.
+  useEffect(() => {
+    if (token && webRef.current) {
+      webRef.current.injectJavaScript(makeTokenScript(token));
+    }
+  }, [token]);
+
+  // Wait for AsyncStorage to finish loading the token before mounting the WebView.
+  // This ensures injectedJavaScriptBeforeContentLoaded always receives the real token,
+  // not null — which is what caused all messages to appear on the left (isMe = false).
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={showBack ? SAFE_EDGES : []}>
+        {showBack && (
+          <View style={styles.header}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole='button'
+              accessibilityLabel='Retounen'
+            >
+              <Feather name='chevron-left' size={26} color='#F97316' />
+            </Pressable>
+          </View>
+        )}
+        <View style={styles.loader}>
+          <ActivityIndicator size='large' color='#F97316' />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={showBack ? SAFE_EDGES : []}>
@@ -100,17 +134,17 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
             onPress={handleBack}
             style={styles.backBtn}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityRole="button"
-            accessibilityLabel="Retounen"
+            accessibilityRole='button'
+            accessibilityLabel='Retounen'
           >
-            <Feather name="chevron-left" size={26} color="#F97316" />
+            <Feather name='chevron-left' size={26} color='#F97316' />
           </Pressable>
         </View>
       )}
 
       {loading && (
         <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#F97316" />
+          <ActivityIndicator size='large' color='#F97316' />
         </View>
       )}
       <WebView
@@ -128,8 +162,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         allowsFullscreenVideo
         allowsBackgroundMediaPlayback
         mediaPlaybackRequiresUserAction={false}
-        overScrollMode="never"
-        userAgent="FlexaMarket/1.0 (Mobile App)"
+        overScrollMode='never'
+        userAgent='FlexaMarket/1.0 (Mobile App)'
         onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
@@ -139,8 +173,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
           const url = request.url;
           try {
             const { hostname } = new URL(url);
-            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
-              setTimeout(() => router.push(`/stripe-checkout?url=${encodeURIComponent(url)}`), 0);
+            if (hostname === 'checkout.stripe.com' || hostname.endsWith('.checkout.stripe.com')) {
+              setTimeout(() => router.push('/stripe-checkout?url=' + encodeURIComponent(url)), 0);
               return false;
             }
           } catch {}
@@ -148,11 +182,11 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
           return false;
         }}
         onOpenWindow={(syntheticEvent) => {
-          const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? "";
+          const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? '';
           try {
             const { hostname } = new URL(targetUrl);
-            if (hostname === "checkout.stripe.com" || hostname.endsWith(".checkout.stripe.com")) {
-              router.push(`/stripe-checkout?url=${encodeURIComponent(targetUrl)}`);
+            if (hostname === 'checkout.stripe.com' || hostname.endsWith('.checkout.stripe.com')) {
+              router.push('/stripe-checkout?url=' + encodeURIComponent(targetUrl));
             }
           } catch {}
         }}
@@ -164,32 +198,32 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0F172A",
+    backgroundColor: '#0F172A',
   },
   header: {
     height: 48,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
-    backgroundColor: "#0F172A",
+    backgroundColor: '#0F172A',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#1e293b",
+    borderBottomColor: '#1e293b',
   },
   backBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   webview: {
     flex: 1,
   },
   loader: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0F172A",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 10,
   },
 });

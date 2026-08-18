@@ -161,34 +161,64 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
         }
       } catch { /* ignore — backend enforces at register step */ }
 
-      // ── Step 1: Get Cloudinary signature ──────────────────────────────────
+      // ── Step 1: Get upload signature / backend config ───────────────────
       const sigRes = await fetch("/api/music/upload-signature", {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!sigRes.ok) {
         const d = await sigRes.json().catch(() => ({}));
-        throw new Error(d.error ?? `Signature HTTP ${sigRes.status}`);
+        throw new Error((d as { error?: string }).error ?? `Signature HTTP ${sigRes.status}`);
       }
       const sig: CldSig = await sigRes.json();
 
-      // ── Step 2: Upload audio to Cloudinary (progress 0→85) ───────────────
-      const audio = await uploadToCloudinary(
-        audioFile, "video", sig, sig.audio,
-        (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
-      );
+      let audioStorageKey: string | undefined;
+      let audioPublicIdUpload: string | undefined;
+      let audioSecureUrl: string | undefined;
+      let coverStorageKey: string | undefined;
+      let coverPublicIdUpload: string | undefined;
+      let coverSecureUrl: string | undefined;
 
-      // ── Step 3: Upload cover to Cloudinary (progress 85→95) ──────────────
-      let cover: { publicId: string; secureUrl: string } | null = null;
-      if (coverFile) {
-        setState(s => ({ ...s, progress: 85 }));
-        try {
-          cover = await uploadToCloudinary(coverFile, "image", sig, sig.cover);
-        } catch (err: any) {
-          console.warn("[upload] cover upload failed — continuing without cover", err.message);
+      if (sig.backend === "wasabi") {
+        // ── Wasabi: PUT directly to proxy (streams to Wasabi, no server timeout) ───
+        const audioUp = await uploadViaProxy(
+          audioFile, sig.audio.uploadUrl!, token,
+          (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
+        );
+        audioStorageKey = audioUp.storageKey;
+        audioSecureUrl  = audioUp.url;
+
+        if (coverFile) {
+          setState(s => ({ ...s, progress: 85 }));
+          try {
+            const coverUp = await uploadViaProxy(coverFile, sig.cover.uploadUrl!, token);
+            coverStorageKey = coverUp.storageKey;
+            coverSecureUrl  = coverUp.url;
+          } catch (err: any) {
+            console.warn("[upload] cover upload failed — continuing without cover", err.message);
+          }
+        }
+      } else {
+        // ── Cloudinary: direct XHR upload ───────────────────────────────────
+        const audio = await uploadToCloudinary(
+          audioFile, "video", sig as any, sig.audio as any,
+          (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
+        );
+        audioPublicIdUpload = audio.publicId;
+        audioSecureUrl      = audio.secureUrl;
+
+        if (coverFile) {
+          setState(s => ({ ...s, progress: 85 }));
+          try {
+            const cover = await uploadToCloudinary(coverFile, "image", sig as any, sig.cover as any);
+            coverPublicIdUpload = cover.publicId;
+            coverSecureUrl      = cover.secureUrl;
+          } catch (err: any) {
+            console.warn("[upload] cover upload failed — continuing without cover", err.message);
+          }
         }
       }
 
-      // ── Step 4: Register in DB ────────────────────────────────────────────
+      // ── Step 4: Register in DB ──────────────────────────────────────────
       setState(s => ({ ...s, progress: 95 }));
       const regRes = await fetch("/api/music/register", {
         method: "POST",
@@ -204,20 +234,22 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
           type:              meta.type ?? "free",
           monetization_type: meta.monetizationType ?? "stream",
           price_usd:         meta.priceUsd ?? null,
-          audioPublicId:     audio.publicId,
-          audioUrl:          audio.secureUrl,
-          coverPublicId:     cover?.publicId ?? null,
-          coverUrl:          cover?.secureUrl ?? null,
+          ...(audioStorageKey
+            ? { storageKey: audioStorageKey, audioUrl: audioSecureUrl,
+                coverStorageKey: coverStorageKey ?? null, coverUrl: coverSecureUrl ?? null }
+            : { audioPublicId: audioPublicIdUpload, audioUrl: audioSecureUrl,
+                coverPublicId: coverPublicIdUpload ?? null, coverUrl: coverSecureUrl ?? null }),
           lyrics:            meta.lyrics ?? null,
         }),
       });
+      if (!regRes.ok) {
       if (!regRes.ok) {
         const d = await regRes.json().catch(() => ({}));
         // Clean up orphaned Cloudinary files — registration failed after upload
         fetch("/api/music/cleanup-orphan", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ audioPublicId: audio.publicId, coverPublicId: cover?.publicId ?? null }),
+          body: JSON.stringify({ audioPublicId: audioPublicIdUpload ?? null, coverPublicId: coverPublicIdUpload ?? null }),
         }).catch(() => {}); // best-effort, do not block error path
         if (d.error === "ARTIST_PLAN_REQUIRED") {
           setState(IDLE);

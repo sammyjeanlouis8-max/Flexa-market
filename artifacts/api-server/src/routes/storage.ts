@@ -201,4 +201,63 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
 });
 
 
+// ── Video H.264 streaming proxy ──────────────────────────────────────────────
+// In-memory cache: original Wasabi key → transcoded H264 key.
+const videoH264Cache = new Map<string, string>();
+
+// GET /api/storage/video-stream?key=uploads/videos/xxx.mov
+// Serves a 307 to the best available version. Transcodes HEVC/MOV/WebM to
+// H264/MP4 in the background on first request so Chrome + Android can play it.
+router.get("/storage/video-stream", async (req: Request, res: Response) => {
+  const key = req.query["key"];
+  if (!key || typeof key !== "string") {
+    res.status(400).json({ error: "Missing key" }); return;
+  }
+  if (!/^[a-zA-Z0-9_-]+\/[A-Za-z0-9._\/-]+$/.test(key)) {
+    res.status(400).json({ error: "Invalid key" }); return;
+  }
+
+  const ext = (key.split('.').pop() ?? '').toLowerCase();
+  const videoMimes: Record<string, string> = {
+    mov: 'video/quicktime', webm: 'video/webm',
+    avi: 'video/x-msvideo', wmv: 'video/x-ms-wmv', mkv: 'video/x-matroska',
+    mp4: 'video/mp4',
+  };
+  const mime = videoMimes[ext] ?? 'video/mp4';
+
+  try {
+    // Serve cached H264 version if available
+    const cachedKey = videoH264Cache.get(key);
+    if (cachedKey && cachedKey !== '__pending__') {
+      const url = await getWasabiPresignedUrl(cachedKey, 3600);
+      res.writeHead(307, { Location: url, "Cache-Control": "private, max-age=3600" });
+      res.end(); return;
+    }
+
+    // Serve original immediately (may be HEVC on first request)
+    const origUrl = await getWasabiPresignedUrl(key, 3600);
+    res.writeHead(307, { Location: origUrl, "Cache-Control": "private, max-age=60" });
+    res.end();
+
+    // Transcode to H264 in background if needed
+    if (needsVideoConversion(mime) && videoH264Cache.get(key) !== '__pending__') {
+      videoH264Cache.set(key, '__pending__');
+      setImmediate(async () => {
+        try {
+          const buf = Buffer.from(await (await fetch(origUrl)).arrayBuffer());
+          const converted = await convertVideoToH264(buf, mime);
+          if (converted) {
+            const newKey = await uploadBufferToWasabi(converted.buffer, 'video/mp4');
+            videoH264Cache.set(key, newKey);
+          } else { videoH264Cache.delete(key); }
+        } catch { videoH264Cache.delete(key); }
+      });
+    }
+  } catch (err: any) {
+    req.log.error({ err, key }, "video-stream error");
+    if (!res.headersSent) res.status(500).json({ error: "Video stream failed" });
+  }
+});
+
+
 export default router;

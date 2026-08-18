@@ -7,6 +7,7 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, streamToWasabi } from "../lib/s3";
+    import { needsVideoConversion, convertVideoToH264 } from "../lib/videoConvert";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 
@@ -35,6 +36,11 @@ async function uploadBufferAndGetUrl(
   contentType: string,
   req: Request,
 ): Promise<string> {
+  // Transcode non-H264 video to H.264/MP4 so Chrome + Android can play it
+  if (needsVideoConversion(contentType)) {
+    const converted = await convertVideoToH264(buffer, contentType);
+    if (converted) { buffer = converted.buffer; contentType = converted.mime; }
+  }
   if (USE_WASABI) {
     const key = await uploadBufferToWasabi(buffer, contentType);
     const base = process.env["PUBLIC_BASE_URL"]

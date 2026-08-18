@@ -61,6 +61,30 @@ app.get("/", function(req, res, next) {
 });
 const publicDir = path.join(__dirname, "public");
 if (fs.existsSync(publicDir)) {
+    // Admin auth-fix: user is null while /auth/me is loading → do NOT redirect to login
+    // until we know there is truly no token. Fixes auto-logout on admin page open.
+    app.get("/assets/Admin-uYH4qvQD.js", function(_req, res) {
+      var chunkPath = path.join(publicDir, "assets", "Admin-uYH4qvQD.js");
+      try {
+        var content = fs.readFileSync(chunkPath, "utf8");
+        // Old: o&&!o.isAdmin&&!o.isSuperAdmin?u("/"):o||u("/auth/login")
+        // New: only redirect to /auth/login if there is truly no JWT token in storage
+        content = content.replace(
+          /([a-z])&&![a-z].isAdmin&&![a-z].isSuperAdmin?([a-z])("/"):[a-z]||[a-z]("/auth/login")/g,
+          function(match, user, nav) {
+            var navFn = match.match(/?([a-z])("/")/)[1];
+            var userVar = match.match(/^([a-z])&&/)[1];
+            return userVar+'&&!'+userVar+'.isAdmin&&!'+userVar+'.isSuperAdmin?'+navFn+'("/"):!'+userVar+'&&!localStorage.getItem("flexamarket_token")&&'+navFn+'("/auth/login")';
+          }
+        );
+        res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.send(content);
+      } catch(err) {
+        res.sendFile(chunkPath);
+      }
+    });
+    
   // Messages auth-fix: bypass CF immutable cache with no-store + localStorage check
   app.get("/assets/Messages-DGDTDrtQ.js", function(_req, res) {
     var chunkPath = path.join(publicDir, "assets", "Messages-DGDTDrtQ.js");

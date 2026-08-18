@@ -18,6 +18,7 @@ import { sql as dsql, eq } from "drizzle-orm";
 import { requireAdmin, requireAuth, optionalAuth } from "../middlewares/auth";
 import multer from "multer";
 import {
+  uploadMusicAudio,
   uploadMusicCover,
   deleteMusicFile,
   getStreamUrl,
@@ -618,19 +619,19 @@ router.post("/music/upload", requireAuth, upload.fields([
   log(6, "audio_upload_start", { mime: audioFile.mimetype, bytes: audioFile.buffer?.byteLength });
   let audioResult: { key: string; url: string };
   try {
-    audioResult = await uploadAudioToCloudinary(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
+    audioResult = await uploadMusicAudio(audioFile.buffer, audioFile.mimetype, audioFile.originalname);
   } catch (err: any) {
     return fail(6, "audio_upload", err);
   }
   log(7, "audio_upload_complete", { key: audioResult.key, url: audioResult.url });
 
-  // ── Step 6b: Cover upload — Cloudinary (optional) ───────────────────────
+  // ── Step 6b: Cover upload — Wasabi (optional) ──────────────────────────
   let coverResult: { key: string; url: string } | null = null;
   if ((req.files as any).cover?.[0]) {
     const coverFile = (req.files as any).cover[0];
     log(6, "cover_upload_start", { mime: coverFile.mimetype, bytes: coverFile.buffer?.byteLength });
     try {
-      coverResult = await uploadCoverToCloudinary(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
+      coverResult = await uploadMusicCover(coverFile.buffer, coverFile.mimetype, coverFile.originalname);
       log(7, "cover_upload_complete", { key: coverResult.key });
     } catch (err: any) {
       // Cover failure is non-fatal — log and continue without cover
@@ -697,7 +698,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
     }
     if (req.files?.cover?.[0]) {
       const file   = req.files.cover[0];
-      const result = await uploadCoverToCloudinary(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
       coverKey     = result.key;
     }
@@ -805,7 +806,7 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
     if (req.files?.cover?.[0]) {
       // Upload new cover to Cloudinary then clean up the old Wasabi object if any
       const file   = req.files.cover[0];
-      const result = await uploadCoverToCloudinary(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
       const oldKey = (existing.cover_storage_key as string | null) ?? extractKey(existing.cover_url as string | null);
       if (oldKey && !oldKey.startsWith("cld:")) await deleteMusicFile(oldKey);

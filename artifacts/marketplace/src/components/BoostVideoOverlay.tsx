@@ -104,11 +104,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   }, []); // run once on mount
 
   // ── Autoplay with sound ON ────────────────────────────────────────────────
-  // Browsers forbid unmuted autoplay until the user has interacted with the page
-  // at least once. We persist that unlock for the whole session (shared with the
-  // video feed via @/lib/audioUnlocked), so after the very first tap ANYWHERE,
-  // every following ad comes up with sound automatically — no "tap for sound"
-  // prompt is shown again.
+  // Boost ads always START muted to avoid unwanted background audio.
+  // The user taps the speaker icon (or anywhere) to enable sound.
+  // Once unlocked, subsequent ads in the same session start with sound.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -150,7 +148,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       }
     };
 
-    attemptPlay(true); // always try unmuted first
+    attemptPlay(false); // always start muted — user taps to enable sound
 
     // If audio gets unlocked elsewhere (e.g. the video feed) while this ad plays.
     const onUnlocked = (e: Event) => {

@@ -197,26 +197,6 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
             console.warn("[upload] cover upload failed — continuing without cover", err.message);
           }
         }
-      } else {
-        // ── Cloudinary: direct XHR upload ───────────────────────────────────
-        const audio = await uploadToCloudinary(
-          audioFile, "video", sig as any, sig.audio as any,
-          (pct) => setState(s => ({ ...s, progress: Math.round(pct * 0.85) })),
-        );
-        audioPublicIdUpload = audio.publicId;
-        audioSecureUrl      = audio.secureUrl;
-
-        if (coverFile) {
-          setState(s => ({ ...s, progress: 85 }));
-          try {
-            const cover = await uploadToCloudinary(coverFile, "image", sig as any, sig.cover as any);
-            coverPublicIdUpload = cover.publicId;
-            coverSecureUrl      = cover.secureUrl;
-          } catch (err: any) {
-            console.warn("[upload] cover upload failed — continuing without cover", err.message);
-          }
-        }
-      }
 
       // ── Step 4: Register in DB ──────────────────────────────────────────
       setState(s => ({ ...s, progress: 95 }));

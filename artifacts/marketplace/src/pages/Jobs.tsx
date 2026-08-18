@@ -1311,7 +1311,7 @@ export default function Jobs() {
   const [employerStatus, setEmployerStatus] = useState<EmployerStatus | null>(null);
   const [walletBalance, setWalletBalance] = useState<number>(0);
 
-  useEffect(() => { if (!user) setLocation("/auth/login"); }, [user, setLocation]);
+  useEffect(() => { if (!isLoading && !user) setLocation("/auth/login"); }, [user, isLoading, setLocation]);
 
   const isHaitiUser = !user || (user.country ?? "").toLowerCase() === "haiti";
 

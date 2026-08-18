@@ -440,38 +440,6 @@ router.get("/music/diagnose", async (_req, res) => {
     });
     });
 
-    /**/**
- * GET /api/music/upload-signature
- * Returns Cloudinary signed upload params so the browser can POST files
- * directly to Cloudinary without proxying through this server.
- * Eliminates the DigitalOcean 30-second request timeout on large audio files.
- */
-router.get("/music/upload-signature", requireAuth, (req, res) => {
-  const apiKey    = process.env["CLOUDINARY_API_KEY"];
-  const apiSecret = process.env["CLOUDINARY_API_SECRET"];
-  const cloudName = process.env["CLOUDINARY_CLOUD_NAME"]?.replace(/-/g, "") || "dvkbgodbk";
-
-  if (!apiKey || !apiSecret) {
-    return res.status(503).json({ error: "Cloudinary not configured" });
-  }
-
-  const timestamp = Math.round(Date.now() / 1000);
-
-  // Params sorted alphabetically (exclude api_key, file, resource_type, cloud_name)
-  const audioParamStr = `folder=flexa-music/audio&timestamp=${timestamp}`;
-  const coverParamStr = `folder=flexa-music/covers&format=jpg&timestamp=${timestamp}`;
-
-  const audioSig = createHash("sha1").update(audioParamStr + apiSecret).digest("hex");
-  const coverSig = createHash("sha1").update(coverParamStr + apiSecret).digest("hex");
-
-  res.json({
-    cloudName,
-    apiKey,
-    timestamp,
-    audio: { folder: "flexa-music/audio", signature: audioSig },
-    cover: { folder: "flexa-music/covers", signature: coverSig, format: "jpg" },
-  });
-});
 
 /**
  * POST /api/music/register

@@ -1020,7 +1020,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
-          ${nullOr("cld:" + audioPublicId)}, ${coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL"},
+          ${storageKey ? nullOr(storageKey) : nullOr("cld:" + audioPublicId)}, ${coverStorageKey ? nullOr(coverStorageKey) : (coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL")},
           ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
           ${nullOr(lyrics?.trim() || null)},
           TRUE, FALSE,

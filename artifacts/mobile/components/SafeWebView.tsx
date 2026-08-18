@@ -133,6 +133,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
+        onError={() => setLoading(false)}
+        onHttpError={() => setLoading(false)}
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
           try {

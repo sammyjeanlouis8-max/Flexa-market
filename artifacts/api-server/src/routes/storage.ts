@@ -1,13 +1,11 @@
-// Cloudinary uploads permanently disabled — all uploads go to Wasabi.
-    const USE_CLOUDINARY = false;
-    const USE_WASABI     = isWasabiConfigured();import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, streamToWasabi } from "../lib/s3";
-    import { needsVideoConversion, convertVideoToH264 } from "../lib/videoConvert";
+import { needsVideoConversion, convertVideoToH264 } from "../lib/videoConvert";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
 

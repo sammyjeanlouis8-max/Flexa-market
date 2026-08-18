@@ -999,7 +999,7 @@ function VideoCard({
   }, [liked, token, video.id, muted]);
 
   const handleLike = async () => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
     if (isRestricted) { showRestrictionToast(); return; }
     const wasLiked = liked;
     if (wasLiked) {

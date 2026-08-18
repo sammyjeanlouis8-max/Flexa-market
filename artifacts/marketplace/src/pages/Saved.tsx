@@ -13,7 +13,7 @@ export default function Saved() {
   const { t } = useTranslation();
   const { data: favorites, isLoading } = useGetFavorites({ query: { enabled: !!user, queryKey: getGetFavoritesQueryKey() } });
 
-  useEffect(() => { if (!user) setLocation("/auth/login"); }, [user]);
+  useEffect(() => { if (!isLoading && !user) setLocation("/auth/login"); }, [user, isLoading]);
 
   return (
     <div className="w-full px-4 py-6">

@@ -1044,6 +1044,17 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     await db.delete(commentsTable).where(eq(commentsTable.listingId, id)); // commentLikes cascade via DB
     await db.delete(offersTable).where(eq(offersTable.listingId, id));
     await db.delete(favoritesTable).where(eq(favoritesTable.listingId, id));
+    // boost_daily_impressions references boosts; schema declares ON DELETE CASCADE
+    // but the production constraint may predate that — delete explicitly first.
+    const listingBoosts = await db
+      .select({ id: boostsTable.id })
+      .from(boostsTable)
+      .where(eq(boostsTable.listingId, id));
+    if (listingBoosts.length > 0) {
+      await db
+        .delete(boostDailyImpressionsTable)
+        .where(inArray(boostDailyImpressionsTable.boostId, listingBoosts.map((b) => b.id)));
+    }
     await db.delete(boostsTable).where(eq(boostsTable.listingId, id));
 
     // 3. Finally remove the listing itself

@@ -1,16 +1,40 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createReadStream, createWriteStream, mkdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { createReadStream, createWriteStream, mkdirSync, rmSync, statSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType, isWasabiConfigured, getWasabiPresignedUrl, getWasabiObject, getWasabiObjectSize, getBrowserVideoContentType, streamToWasabi } from "../lib/s3";
+import {
+  deleteWasabiObject,
+  getBrowserVideoContentType,
+  getWasabiObject,
+  getWasabiObjectSize,
+  getWasabiPresignedUrl,
+  isWasabiConfigured,
+  putWasabiObject,
+  streamToWasabi,
+  validateMimeType,
+} from "../lib/s3";
 import { convertVideoFileToH264 } from "../lib/videoConvert";
 import { createBoostVideoAssetProof } from "../lib/boostVideoAsset";
+import {
+  claimBoostVideoProcessing,
+  completeBoostVideoProcessing,
+  createBoostVideoUpload,
+  failBoostVideoProcessing,
+  getBoostVideoUpload,
+  getBoostVideoUploadChunk,
+  getBoostVideoUploadChunks,
+  heartbeatBoostVideoProcessing,
+  saveBoostVideoUploadChunk,
+  type BoostVideoUploadStatus,
+} from "../lib/boostVideoUploadStore";
+import { getBoostVideoUploadReadiness } from "../lib/boostVideoUploadReadiness";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { optionalAuth, requireAuth } from "../middlewares/auth";
 import { consumeUploadProxyToken, issueUploadProxyToken } from "../lib/uploadProxyTokens";
@@ -42,15 +66,30 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
       return;
     }
     try {
-      // Generate a 7-day presigned URL and redirect the browser directly to Wasabi.
-      // Wasabi handles Range requests (seek/buffer) natively — no server in the middle.
-      // Using writeHead+end instead of res.redirect() to avoid any Express wrapper issues.
-      const presignedUrl = await getWasabiPresignedUrl(key, 604800);
-      res.writeHead(307, {
-        "Location": presignedUrl,
+      // Stream the object directly through the server with Range passthrough.
+      // A 307 redirect to a presigned Wasabi URL breaks audio/video on iOS
+      // WebView/Safari: those builds silently drop the Range header when
+      // following a cross-origin redirect, so <audio>/<video> never starts.
+      const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
+      const object = await getWasabiObject(key, range);
+      const contentType = getBrowserVideoContentType(key, object.ContentType);
+      const headers: Record<string, string> = {
+        "Content-Type": contentType,
+        "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=3600",
-      });
-      res.end();
+      };
+      if (object.ContentLength !== undefined) headers["Content-Length"] = String(object.ContentLength);
+      if (range && object.ContentRange) {
+        headers["Content-Range"] = object.ContentRange;
+        res.writeHead(206, headers);
+      } else {
+        res.writeHead(200, headers);
+      }
+      const body = object.Body as Readable | undefined;
+      if (!body) { res.end(); return; }
+      body.on("error", () => { res.destroy(); });
+      res.on("close", () => { body.destroy?.(); });
+      body.pipe(res);
     } catch (err: any) {
       const code = err?.name === "NoSuchKey" ? 404 : 500;
       req.log.error({ err, key, errName: err?.name }, "Wasabi proxy error");
@@ -175,120 +214,267 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
   }
 });
 
-// ── Chunked Boost-video upload routes ──────────────────────────────────────────
-// Session metadata is bounded in memory; media bytes are staged on ephemeral
-// disk so legitimate large uploads cannot exhaust the Node heap. If a deploy
-// happens mid-upload the client gets a 404 and can retry from the beginning.
+// ── Durable chunked Boost-video upload routes ─────────────────────────────────
+// PostgreSQL owns session/progress state and Wasabi owns every staged chunk.
+// No request depends on process memory or one instance's ephemeral disk.
 const CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
-const CHUNK_TTL_MS = 30 * 60 * 1000; // 30 min before GC
-const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-uploads");
+const CHUNK_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+const PROCESSING_STALE_MS = 17 * 60 * 1000;
+const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
-type ChunkUploadStatus = "uploading" | "processing" | "complete" | "failed";
-
-interface ChunkUploadSession {
-  ownerId: number;
-  dir: string;
-  contentType: string;
-  totalChunks: number;
-  totalBytes: number;
-  received: Set<number>;
-  receivedBytes: number;
-  status: ChunkUploadStatus;
-  url?: string;
-  error?: string;
-}
+const RETRYABLE_PROCESSING_ERRORS = new Set([
+  "UPLOAD_ASSEMBLY_FAILED",
+  "VIDEO_STORAGE_FAILED",
+  "UPLOAD_PROCESSING_INTERRUPTED",
+]);
 
 interface UploadLogger {
   info: (...args: any[]) => void;
+  warn: (...args: any[]) => void;
   error: (...args: any[]) => void;
 }
 
-const chunkStore = new Map<string, ChunkUploadSession>();
-
-function cleanupChunkSession(uploadId: string, removeMetadata = true): void {
-  const entry = chunkStore.get(uploadId);
-  if (entry) rmSync(entry.dir, { recursive: true, force: true });
-  if (removeMetadata) chunkStore.delete(uploadId);
+function completionUrl(key: string, ownerId: number): string {
+  const proof = createBoostVideoAssetProof(key, ownerId);
+  return `/api/storage/wasabi-image?key=${encodeURIComponent(key)}&asset=${encodeURIComponent(proof)}`;
 }
 
-function scheduleChunkSessionCleanup(uploadId: string, delay = CHUNK_TTL_MS): void {
-  const timer = setTimeout(() => {
-    const entry = chunkStore.get(uploadId);
-    if (!entry) return;
-    // Never remove files beneath an active ffmpeg/Wasabi job. Check again
-    // later; completed, failed, and abandoned-upload sessions can expire.
-    if (entry.status === "processing") {
-      scheduleChunkSessionCleanup(uploadId, 10 * 60 * 1000);
-      return;
-    }
-    cleanupChunkSession(uploadId);
-  }, delay);
-  timer.unref();
+function stagingChunkKey(uploadId: string, index: number, contentSha256: string): string {
+  return `uploads/boost-staging/${uploadId}/${String(index).padStart(4, "0")}-${contentSha256}.part`;
 }
 
-function publicRequestBase(req: Request): string {
-  return process.env["PUBLIC_BASE_URL"]
-    ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
+function isExpired(expiresAt: Date): boolean {
+  return expiresAt.getTime() <= Date.now();
+}
+
+function processingIsStale(heartbeat: Date | null): boolean {
+  return !heartbeat || heartbeat.getTime() < Date.now() - PROCESSING_STALE_MS;
+}
+
+async function readBoundedChunk(req: Request, expectedBytes: number): Promise<Buffer> {
+  const pieces: Buffer[] = [];
+  let actualBytes = 0;
+  for await (const rawPiece of req) {
+    const piece = Buffer.isBuffer(rawPiece) ? rawPiece : Buffer.from(rawPiece);
+    actualBytes += piece.length;
+    if (actualBytes > expectedBytes) throw new Error("Chunk exceeds expected size");
+    pieces.push(piece);
+  }
+  if (actualBytes !== expectedBytes) throw new Error("Chunk is incomplete");
+  return Buffer.concat(pieces, actualBytes);
 }
 
 async function processChunkUpload(
   uploadId: string,
-  baseUrl: string,
+  processingToken: string,
   log: UploadLogger,
 ): Promise<void> {
-  const entry = chunkStore.get(uploadId);
-  if (!entry || entry.status !== "processing") return;
-  const session = entry;
-  const sourcePath = join(session.dir, "source.upload");
-  const normalizedPath = join(session.dir, "normalized.mp4");
+  const session = await getBoostVideoUpload(uploadId);
+  if (
+    !session ||
+    session.status !== "processing" ||
+    session.processingToken !== processingToken
+  ) {
+    return;
+  }
+
+  const processingDir = join(CHUNK_ROOT, `${uploadId}-${processingToken}`);
+  const sourcePath = join(processingDir, "source.upload");
+  const normalizedPath = join(processingDir, "normalized.mp4");
+  mkdirSync(processingDir, { recursive: false });
+  let stage: "assembly" | "conversion" | "storage" = "assembly";
+  let finalKey: string | null = null;
+  let leaseLost = false;
+  let heartbeatInFlight = false;
+  let activeStream: ReturnType<typeof createReadStream> | null = null;
+  const conversionAbort = new AbortController();
+  const heartbeatTimer = setInterval(() => {
+    if (heartbeatInFlight || leaseLost) return;
+    heartbeatInFlight = true;
+    void heartbeatBoostVideoProcessing(uploadId, processingToken)
+      .then((stillOwned) => {
+        if (stillOwned) return;
+        leaseLost = true;
+        conversionAbort.abort();
+        activeStream?.destroy(new Error("Boost video processing lease was replaced"));
+      })
+      .catch((error) => {
+        log.warn({ err: error, uploadId }, "Boost video processing heartbeat failed");
+      })
+      .finally(() => {
+        heartbeatInFlight = false;
+      });
+  }, 30_000);
+  heartbeatTimer.unref();
 
   try {
+    const chunks = await getBoostVideoUploadChunks(uploadId);
+    const completeChunkSet =
+      chunks.length === session.totalChunks &&
+      chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0) === session.totalBytes &&
+      chunks.every((chunk, index) => chunk.chunkIndex === index);
+    if (!completeChunkSet) throw new Error("Durable chunk manifest is incomplete");
+
     async function* chunksInOrder(): AsyncGenerator<Buffer> {
-      for (let index = 0; index < session.totalChunks; index += 1) {
-        for await (const piece of createReadStream(join(session.dir, `${index}.part`))) {
-          yield piece as Buffer;
+      for (const chunk of chunks) {
+        const object = await getWasabiObject(chunk.storageKey);
+        if (object.ContentLength !== undefined && object.ContentLength !== chunk.sizeBytes) {
+          throw new Error(`Staged chunk ${chunk.chunkIndex} size does not match its manifest`);
+        }
+        const body = object.Body as AsyncIterable<Uint8Array> | undefined;
+        if (!body || !(Symbol.asyncIterator in body)) {
+          throw new Error(`Staged chunk ${chunk.chunkIndex} body is unavailable`);
+        }
+        let readBytes = 0;
+        const chunkHash = createHash("sha256");
+        for await (const rawPiece of body) {
+          const piece = Buffer.from(rawPiece);
+          readBytes += piece.length;
+          if (readBytes > chunk.sizeBytes) {
+            throw new Error(`Staged chunk ${chunk.chunkIndex} exceeds its manifest size`);
+          }
+          chunkHash.update(piece);
+          yield piece;
+        }
+        if (readBytes !== chunk.sizeBytes) {
+          throw new Error(`Staged chunk ${chunk.chunkIndex} is incomplete`);
+        }
+        const actualSha256 = chunkHash.digest("hex");
+        if (
+          chunk.contentSha256 !== "legacy-unverified" &&
+          actualSha256 !== chunk.contentSha256
+        ) {
+          throw new Error(`Staged chunk ${chunk.chunkIndex} hash does not match its manifest`);
+        }
+        if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) {
+          throw new Error("Boost video processing claim was replaced");
         }
       }
     }
 
     await pipeline(Readable.from(chunksInOrder()), createWriteStream(sourcePath, { flags: "wx" }));
     if (statSync(sourcePath).size !== session.totalBytes) {
-      throw new Error("Staged upload size does not match declared size");
+      throw new Error("Assembled upload size does not match declared size");
     }
+    if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
 
-    await convertVideoFileToH264(sourcePath, normalizedPath);
+    stage = "conversion";
+    await convertVideoFileToH264(sourcePath, normalizedPath, {
+      signal: conversionAbort.signal,
+    });
+    if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
+
+    stage = "storage";
     const normalizedBytes = statSync(normalizedPath).size;
-    const key = await streamToWasabi(
-      createReadStream(normalizedPath),
+    activeStream = createReadStream(normalizedPath);
+    finalKey = await streamToWasabi(
+      activeStream,
       "video/mp4",
       normalizedBytes,
     );
-    const proof = createBoostVideoAssetProof(key, session.ownerId);
-    session.url = `${baseUrl}/api/storage/wasabi-image?key=${encodeURIComponent(key)}&asset=${encodeURIComponent(proof)}`;
-    session.status = "complete";
+    activeStream = null;
+    if (leaseLost || !await heartbeatBoostVideoProcessing(uploadId, processingToken)) {
+      await deleteWasabiObject(finalKey).catch(() => {});
+      return;
+    }
+    const completed = await completeBoostVideoProcessing(uploadId, processingToken, finalKey);
+    if (!completed) {
+      await deleteWasabiObject(finalKey).catch(() => {});
+      return;
+    }
+
+    for (const chunk of chunks) {
+      await deleteWasabiObject(chunk.storageKey).catch((error) => {
+        log.warn({ err: error, uploadId, key: chunk.storageKey }, "Completed Boost chunk cleanup failed");
+      });
+    }
     log.info(
-      { uploadId, sourceBytes: session.totalBytes, normalizedBytes, key, ownerId: session.ownerId },
+      { uploadId, sourceBytes: session.totalBytes, normalizedBytes, key: finalKey, ownerId: session.ownerId },
       "Boost video normalized and uploaded to Wasabi",
     );
   } catch (error) {
-    session.status = "failed";
-    session.error = "Video conversion or storage upload failed";
-    log.error({ err: error, uploadId, ownerId: session.ownerId }, "Boost video processing failed");
+    if (leaseLost) {
+      if (finalKey) await deleteWasabiObject(finalKey).catch(() => {});
+      log.warn({ uploadId, ownerId: session.ownerId }, "Boost video processor stopped after losing its lease");
+      return;
+    }
+    const errorCode = stage === "conversion"
+      ? "VIDEO_CONVERSION_FAILED"
+      : stage === "storage"
+        ? "VIDEO_STORAGE_FAILED"
+        : "UPLOAD_ASSEMBLY_FAILED";
+    const errorMessage = errorCode === "VIDEO_CONVERSION_FAILED"
+      ? "This video could not be converted. Try exporting it as MP4 or MOV."
+      : errorCode === "VIDEO_STORAGE_FAILED"
+        ? "The video could not be saved. Please retry."
+        : "The uploaded video chunks could not be read. Please retry.";
+    await failBoostVideoProcessing(uploadId, processingToken, errorCode, errorMessage).catch(() => {});
+    log.error({ err: error, uploadId, ownerId: session.ownerId, stage }, "Boost video processing failed");
   } finally {
-    rmSync(session.dir, { recursive: true, force: true });
+    clearInterval(heartbeatTimer);
+    activeStream?.destroy();
+    rmSync(processingDir, { recursive: true, force: true });
   }
 }
 
+async function startProcessingIfClaimable(
+  uploadId: string,
+  ownerId: number,
+  log: UploadLogger,
+): Promise<boolean> {
+  const claimed = await claimBoostVideoProcessing(
+    uploadId,
+    ownerId,
+    new Date(Date.now() - PROCESSING_STALE_MS),
+  );
+  if (!claimed) return false;
+  void processChunkUpload(uploadId, claimed.processingToken, log).catch(async (error) => {
+    await failBoostVideoProcessing(
+      uploadId,
+      claimed.processingToken,
+      "UPLOAD_PROCESSING_INTERRUPTED",
+      "Video processing was interrupted. Please retry.",
+    ).catch(() => {});
+    log.error({ err: error, uploadId, ownerId }, "Boost video background processor crashed");
+  });
+  return true;
+}
+
+function sendMissingSession(res: Response): void {
+  res.status(404).json({
+    errorCode: "UPLOAD_SESSION_NOT_FOUND",
+    error: "Upload session was not found.",
+  });
+}
+
+function sendExpiredSession(res: Response): void {
+  res.status(410).json({
+    errorCode: "UPLOAD_SESSION_EXPIRED",
+    error: "Upload session expired. Please select the video again.",
+  });
+}
+
+function requireBoostUploadReady(res: Response): boolean {
+  if (getBoostVideoUploadReadiness().ready) return true;
+  res.status(503).json({
+    errorCode: "UPLOAD_SERVICE_STARTING",
+    error: "Video uploads are starting. Please retry in a moment.",
+    retryable: true,
+  });
+  return false;
+}
+
 // POST /api/storage/uploads/chunk-init
-router.post("/storage/uploads/chunk-init", requireAuth, (req: Request, res: Response) => {
+router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res: Response) => {
+  if (!requireBoostUploadReady(res)) return;
   if (!USE_WASABI) {
-    res.status(503).json({ error: "Wasabi storage is not configured." });
+    res.status(503).json({ errorCode: "VIDEO_STORAGE_UNAVAILABLE", error: "Video storage is unavailable." });
     return;
   }
   const totalChunks = Number(req.body?.totalChunks);
   const totalBytes = Number(req.body?.totalBytes);
-  const contentType = String(req.body?.contentType ?? "").split(";")[0].trim();
+  const contentType = String(req.body?.contentType ?? "").split(";")[0].trim().toLowerCase();
   const expectedChunks = Math.ceil(totalBytes / CHUNK_SIZE_BYTES);
   if (
     !Number.isInteger(totalChunks) ||
@@ -299,161 +485,281 @@ router.post("/storage/uploads/chunk-init", requireAuth, (req: Request, res: Resp
     totalBytes > MAX_UPLOAD_BYTES ||
     !contentType.startsWith("video/")
   ) {
-    res.status(400).json({ error: "Invalid Boost video upload metadata." });
+    res.status(400).json({
+      errorCode: "UPLOAD_METADATA_INVALID",
+      error: "Invalid Boost video upload metadata.",
+    });
     return;
   }
   try {
     validateMimeType(contentType);
-  } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid video type." });
+  } catch {
+    res.status(400).json({
+      errorCode: "VIDEO_TYPE_UNSUPPORTED",
+      error: "This video type is not supported. Try MP4 or MOV.",
+    });
     return;
   }
 
   const uploadId = randomUUID();
-  const dir = join(CHUNK_ROOT, uploadId);
-  mkdirSync(dir, { recursive: false });
-  chunkStore.set(uploadId, {
-    ownerId: req.userId!,
-    dir,
-    contentType,
-    totalChunks,
-    totalBytes,
-    received: new Set(),
-    receivedBytes: 0,
-    status: "uploading",
-  });
-  // Auto-expire the entry to avoid memory leaks on abandoned uploads
-  scheduleChunkSessionCleanup(uploadId);
-  const objectPath = `/objects/uploads/${uploadId}`;
-  res.json({ uploadId, objectPath });
+  try {
+    await createBoostVideoUpload({
+      id: uploadId,
+      ownerId: req.userId!,
+      contentType,
+      totalChunks,
+      totalBytes,
+      expiresAt: new Date(Date.now() + CHUNK_SESSION_TTL_MS),
+    });
+    res.json({ uploadId, objectPath: `/objects/uploads/${uploadId}` });
+  } catch (error) {
+    (req as any).log.error({ err: error, uploadId, ownerId: req.userId }, "Boost upload session creation failed");
+    res.status(500).json({
+      errorCode: "UPLOAD_SESSION_CREATE_FAILED",
+      error: "The video upload could not start. Please retry.",
+    });
+  }
 });
 
 // PUT /api/storage/uploads/chunk/:uploadId/:index
 router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: Request, res: Response) => {
+  if (!requireBoostUploadReady(res)) return;
   const { uploadId, index: rawIndex } = req.params as { uploadId: string; index: string };
-  const entry = chunkStore.get(uploadId);
-  if (!entry) {
-    res.status(404).json({ error: "Upload session not found or expired." });
-    return;
-  }
-  if (entry.ownerId !== req.userId) {
-    res.status(403).json({ error: "Upload session belongs to another user." });
-    return;
-  }
-  if (entry.status !== "uploading") {
-    res.status(409).json({ error: `Upload is already ${entry.status}.` });
-    return;
-  }
-  const index = Number(rawIndex);
-  if (!Number.isInteger(index) || index < 0 || index >= entry.totalChunks) {
-    res.status(400).json({ error: "Invalid chunk index." });
-    return;
-  }
-  if (entry.received.has(index)) {
-    res.status(409).json({ error: "Chunk already uploaded." });
-    return;
-  }
+  try {
+    const session = await getBoostVideoUpload(uploadId);
+    if (!session) {
+      sendMissingSession(res);
+      return;
+    }
+    if (session.ownerId !== req.userId) {
+      res.status(403).json({ errorCode: "UPLOAD_OWNER_MISMATCH", error: "Upload belongs to another account." });
+      return;
+    }
+    if (isExpired(session.expiresAt)) {
+      sendExpiredSession(res);
+      return;
+    }
 
-  const expectedBytes = index === entry.totalChunks - 1
-    ? entry.totalBytes - CHUNK_SIZE_BYTES * (entry.totalChunks - 1)
-    : CHUNK_SIZE_BYTES;
-  const declaredBytes = Number(req.headers["content-length"]);
-  if (Number.isFinite(declaredBytes) && declaredBytes !== expectedBytes) {
-    req.resume();
-    res.status(400).json({ error: "Chunk size does not match upload metadata." });
-    return;
-  }
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 0 || index >= session.totalChunks) {
+      res.status(400).json({ errorCode: "CHUNK_INDEX_INVALID", error: "Invalid video chunk index." });
+      return;
+    }
+    const expectedBytes = index === session.totalChunks - 1
+      ? session.totalBytes - CHUNK_SIZE_BYTES * (session.totalChunks - 1)
+      : CHUNK_SIZE_BYTES;
+    const existing = await getBoostVideoUploadChunk(uploadId, index);
+    if (!existing && session.status !== "uploading") {
+      req.resume();
+      res.status(409).json({
+        errorCode: "UPLOAD_NOT_ACCEPTING_CHUNKS",
+        error: `Upload is already ${session.status}.`,
+      });
+      return;
+    }
 
-  const tempPath = join(entry.dir, `${index}.uploading`);
-  const finalPath = join(entry.dir, `${index}.part`);
-  let actualBytes = 0;
-  const sizeGuard = new Transform({
-    transform(piece, _encoding, callback) {
-      actualBytes += piece.length;
-      if (actualBytes > expectedBytes) {
-        callback(new Error("Chunk exceeds expected size"));
+    const declaredBytes = Number(req.headers["content-length"]);
+    if (Number.isFinite(declaredBytes) && declaredBytes !== expectedBytes) {
+      req.resume();
+      res.status(400).json({ errorCode: "CHUNK_SIZE_INVALID", error: "Video chunk size is incorrect." });
+      return;
+    }
+    const chunk = await readBoundedChunk(req, expectedBytes);
+    const contentSha256 = createHash("sha256").update(chunk).digest("hex");
+    if (existing) {
+      const storedBytes = await getWasabiObjectSize(existing.storageKey).catch(() => undefined);
+      if (
+        existing.sizeBytes === expectedBytes &&
+        existing.contentSha256 === contentSha256 &&
+        storedBytes === expectedBytes
+      ) {
+        res.status(204).end();
+      } else {
+        res.status(409).json({
+          errorCode: "CHUNK_CONFLICT",
+          error: "Stored chunk does not match this upload.",
+        });
+      }
+      return;
+    }
+
+    const storageKey = stagingChunkKey(uploadId, index, contentSha256);
+    await putWasabiObject(storageKey, chunk, "application/octet-stream", chunk.byteLength);
+    const storedBytes = await getWasabiObjectSize(storageKey);
+    if (storedBytes !== expectedBytes) {
+      await deleteWasabiObject(storageKey).catch(() => {});
+      throw new Error("Wasabi chunk size verification failed");
+    }
+    const currentSession = await getBoostVideoUpload(uploadId);
+    if (!currentSession || currentSession.status === "deleting" || isExpired(currentSession.expiresAt)) {
+      await deleteWasabiObject(storageKey).catch(() => {});
+      sendExpiredSession(res);
+      return;
+    }
+    if (currentSession.status !== "uploading") {
+      const recorded = await getBoostVideoUploadChunk(uploadId, index);
+      if (
+        recorded?.storageKey === storageKey &&
+        recorded.contentSha256 === contentSha256
+      ) {
+        res.status(204).end();
         return;
       }
-      callback(null, piece);
-    },
-  });
-
-  try {
-    await pipeline(req, sizeGuard, createWriteStream(tempPath, { flags: "wx" }));
-    if (actualBytes !== expectedBytes) throw new Error("Chunk is incomplete");
-    renameSync(tempPath, finalPath);
-    entry.received.add(index);
-    entry.receivedBytes += actualBytes;
+      await deleteWasabiObject(storageKey).catch(() => {});
+      res.status(409).json({
+        errorCode: "UPLOAD_NOT_ACCEPTING_CHUNKS",
+        error: `Upload is already ${currentSession.status}.`,
+      });
+      return;
+    }
+    const saved = await saveBoostVideoUploadChunk({
+      uploadId,
+      chunkIndex: index,
+      storageKey,
+      sizeBytes: chunk.byteLength,
+      contentSha256,
+    });
+    if (
+      saved.storageKey !== storageKey ||
+      saved.sizeBytes !== chunk.byteLength ||
+      saved.contentSha256 !== contentSha256
+    ) {
+      await deleteWasabiObject(storageKey).catch(() => {});
+      res.status(409).json({
+        errorCode: "CHUNK_CONFLICT",
+        error: "Stored chunk does not match this upload.",
+      });
+      return;
+    }
     res.status(204).end();
   } catch (error) {
-    try { unlinkSync(tempPath); } catch {}
-    (req as any).log.warn({ err: error, uploadId, index }, "Boost video chunk rejected");
-    if (!res.headersSent) res.status(400).json({ error: "Invalid or incomplete chunk." });
+    (req as any).log.warn({ err: error, uploadId, index: rawIndex }, "Boost video chunk upload failed");
+    if (!res.headersSent) {
+      const invalidChunk = error instanceof Error &&
+        (error.message.includes("incomplete") || error.message.includes("exceeds expected"));
+      res.status(invalidChunk ? 400 : 503).json({
+        errorCode: invalidChunk ? "CHUNK_SIZE_INVALID" : "CHUNK_STORAGE_FAILED",
+        error: invalidChunk
+          ? "The video chunk was incomplete."
+          : "A video chunk could not be saved. Please retry.",
+      });
+    }
   }
 });
 
 // POST /api/storage/uploads/chunk-finalize/:uploadId
 router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req: Request, res: Response) => {
-  const { uploadId } = req.params as { uploadId: string };
-  const entry = chunkStore.get(uploadId);
-  if (!entry) {
-    res.status(404).json({ error: "Upload session not found or expired." });
-    return;
-  }
-  if (entry.ownerId !== req.userId) {
-    res.status(403).json({ error: "Upload session belongs to another user." });
-    return;
-  }
-  if (entry.status === "complete") {
-    res.json({ status: entry.status, url: entry.url });
-    return;
-  }
-  if (entry.status === "processing") {
-    res.status(202).json({ status: entry.status });
-    return;
-  }
-  if (entry.status === "failed") {
-    res.status(422).json({ status: entry.status, error: entry.error });
-    return;
-  }
-  if (
-    entry.received.size !== entry.totalChunks ||
-    entry.receivedBytes !== entry.totalBytes ||
-    Array.from({ length: entry.totalChunks }, (_, index) => index)
-      .some((index) => !entry.received.has(index))
-  ) {
-    res.status(409).json({
-      error: "Upload is incomplete.",
-      receivedChunks: entry.received.size,
-      totalChunks: entry.totalChunks,
-    });
-    return;
-  }
+  if (!requireBoostUploadReady(res)) return;
+  const uploadId = String(req.params["uploadId"]);
+  try {
+    let session = await getBoostVideoUpload(uploadId);
+    if (!session) {
+      sendMissingSession(res);
+      return;
+    }
+    if (session.ownerId !== req.userId) {
+      res.status(403).json({ errorCode: "UPLOAD_OWNER_MISMATCH", error: "Upload belongs to another account." });
+      return;
+    }
+    if (isExpired(session.expiresAt)) {
+      sendExpiredSession(res);
+      return;
+    }
+    if (session.status === "complete" && session.finalStorageKey) {
+      res.json({ status: session.status, url: completionUrl(session.finalStorageKey, session.ownerId) });
+      return;
+    }
 
-  entry.status = "processing";
-  void processChunkUpload(uploadId, publicRequestBase(req), (req as any).log);
-  res.status(202).json({ status: entry.status });
+    const chunks = await getBoostVideoUploadChunks(uploadId);
+    const receivedBytes = chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0);
+    const completeChunkSet =
+      chunks.length === session.totalChunks &&
+      receivedBytes === session.totalBytes &&
+      chunks.every((chunk, index) => chunk.chunkIndex === index);
+    if (!completeChunkSet) {
+      res.status(409).json({
+        errorCode: "UPLOAD_INCOMPLETE",
+        error: "The video upload is incomplete.",
+        receivedChunks: chunks.length,
+        totalChunks: session.totalChunks,
+      });
+      return;
+    }
+
+    const canAttemptClaim =
+      session.status === "uploading" ||
+      (session.status === "processing" && processingIsStale(session.processingHeartbeatAt)) ||
+      (session.status === "failed" && RETRYABLE_PROCESSING_ERRORS.has(session.errorCode ?? ""));
+    if (canAttemptClaim) {
+      await startProcessingIfClaimable(uploadId, session.ownerId, (req as any).log);
+      session = await getBoostVideoUpload(uploadId) ?? session;
+    }
+    if (session.status === "failed") {
+      res.status(422).json({
+        status: session.status,
+        errorCode: session.errorCode ?? "VIDEO_PROCESSING_FAILED",
+        error: session.errorMessage ?? "Video processing failed.",
+        retryable: RETRYABLE_PROCESSING_ERRORS.has(session.errorCode ?? ""),
+      });
+      return;
+    }
+    res.status(202).json({ status: "processing" });
+  } catch (error) {
+    (req as any).log.error({ err: error, uploadId, ownerId: req.userId }, "Boost video finalization failed");
+    res.status(500).json({
+      errorCode: "VIDEO_FINALIZE_FAILED",
+      error: "Video processing could not start. Please retry.",
+    });
+  }
 });
 
 // GET /api/storage/uploads/chunk-status/:uploadId
-router.get("/storage/uploads/chunk-status/:uploadId", requireAuth, (req: Request, res: Response) => {
+router.get("/storage/uploads/chunk-status/:uploadId", requireAuth, async (req: Request, res: Response) => {
+  if (!requireBoostUploadReady(res)) return;
   const uploadId = String(req.params["uploadId"]);
-  const entry = chunkStore.get(uploadId);
-  if (!entry) {
-    res.status(404).json({ error: "Upload session not found or expired." });
-    return;
+  try {
+    let session = await getBoostVideoUpload(uploadId);
+    if (!session) {
+      sendMissingSession(res);
+      return;
+    }
+    if (session.ownerId !== req.userId) {
+      res.status(403).json({ errorCode: "UPLOAD_OWNER_MISMATCH", error: "Upload belongs to another account." });
+      return;
+    }
+    if (isExpired(session.expiresAt)) {
+      sendExpiredSession(res);
+      return;
+    }
+
+    if (session.status === "processing" && processingIsStale(session.processingHeartbeatAt)) {
+      await startProcessingIfClaimable(uploadId, session.ownerId, (req as any).log);
+      session = await getBoostVideoUpload(uploadId) ?? session;
+    }
+    const chunks = await getBoostVideoUploadChunks(uploadId);
+    const status = session.status as BoostVideoUploadStatus;
+    res.json({
+      status,
+      receivedChunks: chunks.length,
+      totalChunks: session.totalChunks,
+      ...(status === "complete" && session.finalStorageKey
+        ? { url: completionUrl(session.finalStorageKey, session.ownerId) }
+        : {}),
+      ...(status === "failed"
+        ? {
+            errorCode: session.errorCode ?? "VIDEO_PROCESSING_FAILED",
+            error: session.errorMessage ?? "Video processing failed.",
+            retryable: RETRYABLE_PROCESSING_ERRORS.has(session.errorCode ?? ""),
+          }
+        : {}),
+    });
+  } catch (error) {
+    (req as any).log.error({ err: error, uploadId, ownerId: req.userId }, "Boost upload status failed");
+    res.status(500).json({
+      errorCode: "UPLOAD_STATUS_UNAVAILABLE",
+      error: "Video status is temporarily unavailable.",
+    });
   }
-  if (entry.ownerId !== req.userId) {
-    res.status(403).json({ error: "Upload session belongs to another user." });
-    return;
-  }
-  res.json({
-    status: entry.status,
-    receivedChunks: entry.received.size,
-    totalChunks: entry.totalChunks,
-    ...(entry.status === "complete" ? { url: entry.url } : {}),
-    ...(entry.status === "failed" ? { error: entry.error } : {}),
-  });
 });
 
 

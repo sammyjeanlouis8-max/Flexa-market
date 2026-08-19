@@ -34,7 +34,8 @@ export const gAudio: HTMLAudioElement = typeof window !== "undefined"
   ? (() => {
       const a = new Audio();
       a.preload = "metadata";
-      a.crossOrigin = "anonymous";
+       // Do not opt in to CORS. Playback never needs canvas access, and iOS can
+       // reject a signed Wasabi redirect when an anonymous CORS request is used.
       // Keep it hidden in the DOM — required for iOS background playback
       a.style.cssText = "position:absolute;width:0;height:0;opacity:0;pointer-events:none;";
       a.setAttribute("playsinline", "");        // iOS: play inline, not fullscreen
@@ -181,6 +182,22 @@ if (typeof window !== "undefined") {
     // (FlexaMusic handles it locally via its own "ended" listener when mounted)
     if (!_flexaMounted) musicPlayNext();
   });
+
+  // Safari may throttle timeupdate after the Music screen unmounts. The
+  // persistent mini-player reads this store directly, so it needs its own
+  // reconciliation loop rather than depending on FlexaMusic being mounted.
+  // Deliberately do not gate on readyState: iOS can report useful currentTime
+  // while readyState is transiently zero during a range refill.
+  window.setInterval(() => {
+    if (!_s.track) return;
+    const actuallyPlaying = !gAudio.paused && !gAudio.ended;
+    const nextTime = Number.isFinite(gAudio.currentTime) ? gAudio.currentTime : _s.currentTime;
+    if (_s.playing === actuallyPlaying && (!actuallyPlaying || _s.currentTime === nextTime)) return;
+    _s.playing = actuallyPlaying;
+    if (actuallyPlaying) _s.currentTime = nextTime;
+    _fns.forEach(f => f());
+    if (actuallyPlaying) syncPositionState();
+  }, 250);
 
   // MediaSession action handlers — persist globally
   if ("mediaSession" in navigator) {

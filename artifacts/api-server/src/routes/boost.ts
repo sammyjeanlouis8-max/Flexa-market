@@ -379,8 +379,9 @@ router.post("/listings/:id/boost/confirm", requireAuth, async (req, res): Promis
 router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> => {
   const isSuperAdmin = !!req.user?.isSuperAdmin;
   const isAdmin      = !!req.user?.isAdmin && !isSuperAdmin;
-  // Super-admins see all videos; regular admins see only their scope country.
-  const skipCountryFilter = isSuperAdmin;
+  // All admins see the full boost-video inventory; marketplace users stay scoped
+  // to the boost's audience country, state, and city.
+  const skipCountryFilter = isSuperAdmin || isAdmin;
   const adminScopeCountry = (req.user as any)?.adminScopeCountry as string | null | undefined;
   const viewerCountry = isAdmin
     ? (adminScopeCountry ?? req.user?.country ?? null)

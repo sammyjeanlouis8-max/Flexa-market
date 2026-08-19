@@ -570,11 +570,18 @@ function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; on
 // ── Main Admin TV Page ────────────────────────────────────────────────────────
 export default function AdminTV() {
   const { t } = useTranslation();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, token, isLoading: authLoading, refreshUser } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const hasAdminAccess = Boolean(user?.isAdmin || user?.isSuperAdmin);
+  const normalizedRole = (user?.role ?? "").toLowerCase().replace(/[_\s-]/g, "");
+  const hasAdminAccess = Boolean(
+    user?.isAdmin ||
+    user?.isSuperAdmin ||
+    normalizedRole === "admin" ||
+    normalizedRole === "superadmin",
+  );
+  const retriedSessionRef = useRef(false);
   const [tab, setTab] = useState<"programs" | "series" | "import">("programs");
   const [editProgram, setEditProgram] = useState<TvProgram | null | "new">(null);
   const [editSeries, setEditSeries] = useState<TvSeries | null | "new">(null);
@@ -650,14 +657,15 @@ export default function AdminTV() {
   const [epLoading, setEpLoading]               = useState(false);
   const [epImportedIds, setEpImportedIds]       = useState<Set<string>>(new Set());
 
-  // Wait for /auth/me before deciding whether to leave the admin page.
-  // Redirecting while `user` is still null sends valid admins to Home during
-  // a slow API response and also makes the hook order change between renders.
+  // AuthProvider deliberately stops reporting "loading" after 9 seconds so
+  // the rest of the app is never blocked by a slow mobile connection. Do not
+  // interpret that timeout as a failed admin check: doing so sent valid admins
+  // from this control panel straight back to Home.
   useEffect(() => {
-    if (!authLoading && !hasAdminAccess) {
-      setLocation("/");
-    }
-  }, [authLoading, hasAdminAccess, setLocation]);
+    if (authLoading || user || !token || retriedSessionRef.current) return;
+    retriedSessionRef.current = true;
+    refreshUser();
+  }, [authLoading, refreshUser, token, user]);
 
   const { data: programs, isLoading: loadingP } = useQuery<TvProgram[]>({
     queryKey: ["/admin/tv/programs"],
@@ -1096,7 +1104,42 @@ export default function AdminTV() {
     );
   }
 
-  if (!hasAdminAccess) return null;
+  if (!hasAdminAccess) {
+    const needsSessionRetry = Boolean(token && !user);
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+          <Tv size={28} />
+        </div>
+        <h1 className="text-lg font-bold">
+          {needsSessionRetry ? "Nou poko rive verifye sesyon admin ou" : "Aksè admin obligatwa"}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {needsSessionRetry
+            ? "Rete sou paj sa a epi eseye ankò. Flexa TV pa pral voye ou tounen Home."
+            : "Ou bezwen yon kont admin pou jere pwogram Flexa TV yo."}
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          {needsSessionRetry && (
+            <button
+              type="button"
+              onClick={refreshUser}
+              className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-700"
+            >
+              Eseye ankò
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setLocation("/admin")}
+            className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+          >
+            Retounen nan panel admin
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-3 py-4 pb-24">

@@ -135,6 +135,10 @@ export default function ListingDetail() {
   const [shipZip,    setShipZip]    = useState<string>(saved.shipZip    ?? "");
   const [displayViewCount, setDisplayViewCount] = useState<number | null>(null);
   const [videoMuted, setVideoMuted] = useState(true);
+  // Must stay above every loading/not-found return. Safari can briefly put the
+  // cached listing query back into a loading state during browser back/forward
+  // navigation; declaring this hook below that return changes the hook count.
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(new Set());
 
   // Reset mute state whenever the user swipes to a different media item.
   // Guarantees every boost video starts muted (browsers require muted for autoplay).
@@ -547,7 +551,6 @@ export default function ListingDetail() {
 
   // Track all failed image URLs as a Set so navigating away and back doesn't
   // retry a broken URL from scratch (previously a single string, now a Set).
-  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(new Set());
   const addFailedUrl = (url: string) =>
     setFailedMediaUrls(prev => { const s = new Set(prev); s.add(url); return s; });
 

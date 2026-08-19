@@ -112,6 +112,20 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { listingId, sellerId } = parsed.data;
 
+  const [listingOwner] = await db
+    .select({ sellerId: listingsTable.sellerId })
+    .from(listingsTable)
+    .where(eq(listingsTable.id, listingId))
+    .limit(1);
+  if (!listingOwner?.sellerId) {
+    res.status(404).json({ error: "Listing not found" });
+    return;
+  }
+  if (listingOwner.sellerId !== sellerId) {
+    res.status(400).json({ error: "Seller does not own this listing" });
+    return;
+  }
+
   if (req.userId === sellerId) { res.status(400).json({ error: "Cannot chat with yourself" }); return; }
 
   const [existing] = await db.select().from(conversationsTable)

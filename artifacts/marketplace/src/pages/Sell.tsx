@@ -61,8 +61,12 @@ interface UploadedImage {
 }
 
 function getStorageUrl(objectPath: string): string {
-  // Cloudinary / full CDN URLs — use directly
-  if (objectPath.startsWith("http://") || objectPath.startsWith("https://")) return objectPath;
+  // Public CDN URLs and same-origin Wasabi proxy URLs are already displayable.
+  if (
+    objectPath.startsWith("http://") ||
+    objectPath.startsWith("https://") ||
+    objectPath.startsWith("/api/")
+  ) return objectPath;
   const trimmed = objectPath.startsWith("/objects/")
     ? objectPath.slice("/objects/".length)
     : objectPath;

@@ -44,7 +44,11 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 function getStorageUrl(objectPath: string): string {
-  if (objectPath.startsWith("http://") || objectPath.startsWith("https://")) return objectPath;
+  if (
+    objectPath.startsWith("http://") ||
+    objectPath.startsWith("https://") ||
+    objectPath.startsWith("/api/")
+  ) return objectPath;
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   return `${base}/api/storage${objectPath}`;
 }

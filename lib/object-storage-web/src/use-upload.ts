@@ -149,11 +149,17 @@ export function useUpload(options: UseUploadOptions = {}) {
         throw new Error("Failed to upload file to storage");
       }
 
-      // If the PUT proxy returns a Cloudinary URL in the body, use it directly
-      // so the stored URL is a real CDN URL (not a /objects/uploads/TOKEN path).
+      // The upload proxy returns the final storage URL. It may be an absolute
+      // CDN URL or the same-origin Wasabi proxy path; both must replace the
+      // one-time /objects/uploads/TOKEN placeholder.
       try {
         const data = await response.json();
-        if (typeof data?.url === "string" && data.url.startsWith("http")) {
+        if (
+          typeof data?.url === "string" &&
+          (data.url.startsWith("http://") ||
+            data.url.startsWith("https://") ||
+            data.url.startsWith("/"))
+        ) {
           return data.url;
         }
       } catch {

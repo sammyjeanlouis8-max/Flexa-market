@@ -32,4 +32,16 @@ describe("video delivery helpers", () => {
     expect(getBrowserVideoContentType("uploads/videos/promo.webm", "video/webm")).toBe("video/webm");
     expect(getBrowserVideoContentType("uploads/videos/promo.ogv", "video/ogg")).toBe("video/ogg");
   });
+
+  it("serves voice messages with playable audio MIME types", () => {
+    expect(
+      getBrowserVideoContentType("uploads/messages/voice.m4a", "audio/mp4"),
+    ).toBe("audio/mp4");
+    expect(
+      getBrowserVideoContentType("uploads/messages/voice.webm", "audio/webm;codecs=opus"),
+    ).toBe("audio/webm");
+    expect(
+      getBrowserVideoContentType("uploads/messages/legacy.mp3", "application/octet-stream"),
+    ).toBe("audio/mpeg");
+  });
 });

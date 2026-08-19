@@ -35,3 +35,4 @@ export * from "./tv";
 export * from "./promo_purchase_commissions";
 export * from "./search_history";
 export * from "./boost_daily_impressions";
+export * from "./boost_video_uploads";

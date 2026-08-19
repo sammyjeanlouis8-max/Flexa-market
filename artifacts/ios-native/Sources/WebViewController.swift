@@ -248,6 +248,13 @@ extension WebViewController: WKNavigationDelegate {
         // NOTE: Do NOT call handlePushPermissionBridge() here.
         // The website calls window.webkit.messageHandlers.requestPushPermission.postMessage({})
         // after the user logs in — that triggers the bridge above automatically.
+        guard let host = webView.url?.host,
+              host == "stripe.com" || host.hasSuffix(".stripe.com") else { return }
+        let top = view.safeAreaInsets.top
+        guard top > 0 else { return }
+        let sat = Int(top)
+        let js = "(function(){if(document.getElementById('__flexa_sat'))return;var b=document.createElement('div');b.id='__flexa_sat';b.style.cssText='position:fixed;top:0;left:0;right:0;height:" + sat.description + "px;background:#fff;z-index:2147483647;pointer-events:none;';(document.body||document.documentElement).appendChild(b);document.documentElement.style.paddingTop='" + sat.description + "px';})();"
+        webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
     func webView(_ webView: WKWebView,
@@ -258,18 +265,6 @@ extension WebViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView,
                  didFail _: WKNavigation!, withError _: Error) {
         spinner.stopAnimating(); handleLoadFailure()
-    }
-
-    // Inject a safe-area white bar into Stripe-hosted pages so their close
-    // button is never hidden behind the Dynamic Island (iPhone 14/15/16 Pro).
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard let host = webView.url?.host,
-              host == "stripe.com" || host.hasSuffix(".stripe.com") else { return }
-        let top = view.safeAreaInsets.top
-        guard top > 0 else { return }
-        let sat = Int(top)
-        let js = "(function(){if(document.getElementById('__flexa_sat'))return;var b=document.createElement('div');b.id='__flexa_sat';b.style.cssText='position:fixed;top:0;left:0;right:0;height:" + sat.description + "px;background:#fff;z-index:2147483647;pointer-events:none;';(document.body||document.documentElement).appendChild(b);document.documentElement.style.paddingTop='" + sat.description + "px';})();"
-        webView.evaluateJavaScript(js, completionHandler: nil)
     }
 
     func webView(_ webView: WKWebView,

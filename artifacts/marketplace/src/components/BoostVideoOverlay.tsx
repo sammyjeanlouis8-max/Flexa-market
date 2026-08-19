@@ -34,10 +34,19 @@ export function markBoostAdShown(): void {
 
 // ─── URL helper ──────────────────────────────────────────────────────────────
 function toFetchableUrl(stored: string): string {
-  if (/^https?:\/\//i.test(stored)) return stored;
-  const trimmed = stored.startsWith("/objects/")
-    ? stored.slice("/objects/".length)
-    : stored;
+  const value = stored.trim();
+  if (/^https?:\/\//i.test(value)) return value;
+  // The boost API already resolves modern Wasabi assets to this same-origin,
+  // Range-capable route. Rewriting it as an object-storage path turns
+  // `/api/storage/video-stream?...` into a 404 and leaves iPhone with a black
+  // player surface.
+  if (value.startsWith("/api/")) return value;
+  // Preserve non-storage same-origin paths. Only legacy `/objects/...` values
+  // need converting to the object proxy below.
+  if (value.startsWith("/") && !value.startsWith("/objects/")) return value;
+  const trimmed = value.startsWith("/objects/")
+    ? value.slice("/objects/".length)
+    : value;
   return `/api/storage/objects/${trimmed}`;
 }
 
@@ -72,7 +81,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
   const [soundLocked, setSoundLocked] = useState(false); // true = iOS forced muted start
+  const [muted, setMuted] = useState(true);
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
+  const [videoFailed, setVideoFailed] = useState(false);
 
   // ── Video progress bar ────────────────────────────────────────────────────
   useEffect(() => {
@@ -115,7 +126,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     // Turn sound on, persist the unlock session-wide, and clear listeners.
     const unlockAudio = () => {
       const v = videoRef.current;
-      if (v) { v.muted = false; v.play().catch(() => {}); }
+      if (v) { v.muted = false; setMuted(false); v.play().catch(() => {}); }
       setSoundLocked(false);
       setAudioUnlocked(true);
       window.removeEventListener("touchstart",  unlockAudio, { capture: true });
@@ -125,6 +136,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
 
     const attemptPlay = async (withSound: boolean) => {
       vid.muted = !withSound;
+      setMuted(!withSound);
       try {
         await vid.play();
         if (cancelled) return;
@@ -154,6 +166,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     const onUnlocked = (e: Event) => {
       if ((e as CustomEvent<boolean>).detail && videoRef.current) {
         videoRef.current.muted = false;
+        setMuted(false);
         videoRef.current.play().catch(() => {});
         setSoundLocked(false);
       }
@@ -188,6 +201,16 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     videoRef.current?.pause();
     onClose();
   }, [onClose]);
+
+  const retryVideo = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const video = videoRef.current;
+    if (!video) return;
+    setVideoFailed(false);
+    video.load();
+    video.play().catch(() => setVideoFailed(true));
+  }, []);
 
   // ── CTA ───────────────────────────────────────────────────────────────────
   // Video-only boosts (status="hidden") have no product page — never navigate
@@ -233,15 +256,27 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         data-testid="boost-video-overlay"
       >
         <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
+          {/* A listing image remains visible while the first decoded video frame arrives. */}
+          {listing.thumbnail && (
+            <img
+              src={listing.thumbnail}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
           {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
           <video
             ref={videoRef}
             src={toFetchableUrl(listing.boostVideoUrl)}
             autoPlay
+            muted={muted}
             playsInline
             preload="auto"
             loop={false}
             onEnded={onClose}
+            onLoadedData={() => setVideoFailed(false)}
+            onError={() => setVideoFailed(true)}
             className="w-full"
             style={{
               display: "block",
@@ -252,6 +287,23 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             }}
             data-testid="video-boost-ad"
           />
+
+          {/* Do not leave people staring at an unexplained black rectangle if a
+              legacy/broken asset is unavailable. Modern normalized videos reach
+              the player through the Range stream route above. */}
+          {videoFailed && (
+            <button
+              type="button"
+              onClick={retryVideo}
+              onTouchEnd={retryVideo}
+              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
+              aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
+            >
+              <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
+                {t("boostAd.retryVideo", "Eseye videyo a ankò")}
+              </span>
+            </button>
+          )}
 
           {/* SPONSORED badge — overlaid top-left on the video */}
           <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">

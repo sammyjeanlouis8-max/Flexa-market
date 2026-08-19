@@ -26,6 +26,9 @@ description: Durable sound, delivery, normalization, and freeze-recovery rules f
 - Browser metadata checks are UX hints, not a trust boundary. Boost writes require a short-lived owner-bound proof from normalized ingestion.
 - Large uploads must be exact, owner-bound, disk-backed, and processed outside the request to prevent heap exhaustion and gateway timeouts.
 - Serve new Wasabi videos through a same-origin Range-capable endpoint. Keep persisted legacy media readable, but never let compatibility become a new-write bypass.
+- **Rule:** the random Boost overlay must preserve an already-resolved `/api/storage/video-stream?...` URL; only legacy `/objects/...` values should be converted to an object-proxy URL.
+- **Why:** rewriting the stream URL produces a 404 object path, which iPhone renders as a black player with no decoded image or sound prompt.
+- **How to apply:** render media URLs returned by the Boost API unchanged when they are same-origin `/api/...` paths, and render the video muted from its first DOM frame so Safari permits autoplay before the first tap unlocks sound.
 
 ## Codec-capable verification
 

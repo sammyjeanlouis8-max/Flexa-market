@@ -10,11 +10,16 @@ import { runBoostExpiryJob } from "./routes/boost";
 import { runMusicMonthlyReminder } from "./routes/music";
 
 
-import { runStartupMigrations } from "./lib/migrations";
+import { ensureBoostVideoUploadSchema, runStartupMigrations } from "./lib/migrations";
 import { runHighRiskAutoBlock, runAiActivityMonitor } from "./lib/ai-guardian";
 import { registerProcessErrorHandlers } from "./lib/errorMonitor";
 import { validateEmailConfig } from "./lib/email";
 import { validateStripeCredentials } from "./lib/stripeClient";
+import {
+  markBoostVideoUploadReady,
+  markBoostVideoUploadUnavailable,
+} from "./lib/boostVideoUploadReadiness";
+import { startBoostVideoUploadCleanupWorker } from "./lib/boostVideoUploadCleanup";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
@@ -44,6 +49,23 @@ initSocketServer(httpServer);
 // though the code is fine.
 httpServer.listen(port, () => {
   logger.info({ port }, "Server listening");
+
+  const initializeBoostVideoUploads = async (): Promise<void> => {
+    try {
+      await ensureBoostVideoUploadSchema();
+      markBoostVideoUploadReady();
+      startBoostVideoUploadCleanupWorker();
+      logger.info("Durable Boost video uploads ready");
+    } catch (error) {
+      markBoostVideoUploadUnavailable(error);
+      logger.warn({ err: error }, "Durable Boost video uploads not ready; retrying");
+      const retry = setTimeout(() => {
+        void initializeBoostVideoUploads();
+      }, 60_000);
+      retry.unref();
+    }
+  };
+  void initializeBoostVideoUploads();
 
   // ── Background DB initialisation ─────────────────────────────────────────
   runStartupMigrations()

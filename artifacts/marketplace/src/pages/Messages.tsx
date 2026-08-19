@@ -263,10 +263,18 @@ async function uploadMedia(file: Blob, contentType: string, token: string): Prom
     body: file,
   });
   if (!putRes.ok) throw new Error("Upload failed");
-  // Proxy PUT returns { url } with Cloudinary CDN URL — use it directly when available
+  // The upload proxy returns the real persisted-media URL. Wasabi URLs are
+  // same-origin `/api/storage/...` paths, while legacy Cloudinary responses
+  // may be absolute HTTPS URLs. Do not discard the Wasabi path and fall back
+  // to `objectPath`: that value is only a pre-upload placeholder.
   try {
     const data = await putRes.json();
-    if (typeof data?.url === "string" && data.url.startsWith("http")) return data.url;
+    if (
+      typeof data?.url === "string" &&
+      (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
+    ) {
+      return data.url;
+    }
   } catch { /* non-JSON response — fall back */ }
   return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
 }

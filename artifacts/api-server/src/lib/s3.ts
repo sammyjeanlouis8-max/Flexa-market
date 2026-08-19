@@ -154,18 +154,18 @@ const WASABI_ENDPOINT = process.env["WASABI_ENDPOINT"]
 
 export function isWasabiConfigured(): boolean {
   return !!(
-    process.env["WASABI_ACCESS_KEY_ID"] &&
-    process.env["WASABI_SECRET_ACCESS_KEY"] &&
+    (process.env["WASABI_ACCESS_KEY_ID"] ?? process.env["WASABI_ACCESS_KEY"]) &&
+    (process.env["WASABI_SECRET_ACCESS_KEY"] ?? process.env["WASABI_SECRET_KEY"] ?? process.env["WASABI_SECRET_KEY_ID"]) &&
     process.env["WASABI_BUCKET_NAME"]
   );
 }
 
 function getWasabiClient(): S3Client {
-  const accessKeyId     = process.env["WASABI_ACCESS_KEY_ID"];
-  const secretAccessKey = process.env["WASABI_SECRET_ACCESS_KEY"];
+  const accessKeyId     = process.env["WASABI_ACCESS_KEY_ID"] ?? process.env["WASABI_ACCESS_KEY"];
+  const secretAccessKey = process.env["WASABI_SECRET_ACCESS_KEY"] ?? process.env["WASABI_SECRET_KEY"] ?? process.env["WASABI_SECRET_KEY_ID"];
 
   if (!accessKeyId || !secretAccessKey) {
-    throw new Error("Wasabi credentials not configured.");
+    throw new Error("Wasabi credentials not configured. Set WASABI_ACCESS_KEY and WASABI_SECRET_KEY.");
   }
   if (!WASABI_BUCKET) {
     throw new Error("WASABI_BUCKET_NAME environment variable is not set.");
@@ -242,7 +242,8 @@ export async function getWasabiObject(
  * or expose the /api/storage/wasabi-image?key=... proxy endpoint.
  *
  * Requires:
- *   WASABI_ACCESS_KEY_ID, WASABI_SECRET_ACCESS_KEY, WASABI_BUCKET_NAME
+ *   WASABI_ACCESS_KEY + WASABI_SECRET_KEY, or their AWS-style aliases,
+ *   plus WASABI_BUCKET_NAME.
  * Optional:
  *   WASABI_REGION   (default: us-east-1)
  *   WASABI_ENDPOINT (default: https://s3.<region>.wasabisys.com)

@@ -320,41 +320,22 @@ function EditTrackModal({ track, onClose, onSaved, isAdmin = false }:
     try {
       const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
 
-      let coverUrl: string | undefined;
-
-      // ── If a new cover was picked, upload it to Cloudinary first ──────────
-      if (coverFile) {
-        const sigRes = await fetch("/api/music/upload-signature", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!sigRes.ok) throw new Error("Cloudinary signature failed");
-        const sig = await sigRes.json();
-        const fd = new FormData();
-        fd.append("file", coverFile);
-        fd.append("api_key", sig.apiKey);
-        fd.append("timestamp", String(sig.timestamp));
-        fd.append("signature", sig.cover.signature);
-        fd.append("folder",    sig.cover.folder);
-        fd.append("format",    sig.cover.format ?? "jpg");
-        const cldRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`,
-          { method: "POST", body: fd }
-        );
-        const cld = await cldRes.json();
-        if (!cld.secure_url) throw new Error(cld.error?.message ?? "Cover upload failed");
-        coverUrl = cld.secure_url;
-      }
-
       // Admin → full admin endpoint; artist-owner → restricted artist endpoint
       const endpoint = isAdmin ? `/api/admin/music/${track.id}` : `/api/music/${track.id}`;
+      const headers = { Authorization: `Bearer ${token}` };
+      const body = coverFile
+        ? (() => {
+            const form = new FormData();
+            form.append("title", title.trim());
+            form.append("artist", artist.trim());
+            form.append("cover", coverFile);
+            return form;
+          })()
+        : JSON.stringify({ title: title.trim(), artist: artist.trim() });
       const res = await fetch(endpoint, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title:  title.trim(),
-          artist: artist.trim(),
-          ...(coverUrl ? { cover_url: coverUrl } : {}),
-        }),
+        headers: coverFile ? headers : { ...headers, "Content-Type": "application/json" },
+        body,
       });
       if (!res.ok) throw new Error((await res.json()).error ?? res.statusText);
       const data = await res.json();
@@ -362,7 +343,7 @@ function EditTrackModal({ track, onClose, onSaved, isAdmin = false }:
         ...track, ...data.track,
         title:     title.trim(),
         artist:    artist.trim(),
-        cover_url: coverUrl ?? track.cover_url,
+        cover_url: data.track?.cover_url ?? track.cover_url,
       });
       onClose();
     } catch (e: any) {

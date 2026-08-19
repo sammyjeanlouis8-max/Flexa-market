@@ -223,7 +223,8 @@ if (fs.existsSync(publicDir)) {
   );
 
   // SPA catch-all: every non-API route serves index.html so React Router works
-  app.get("*", (_req: Request, res: Response) => {
+  // Express 5 requires a named wildcard. `/{*splat}` also matches `/`.
+  app.get("/{*splat}", (_req: Request, res: Response) => {
     res.sendFile(path.join(publicDir, "index.html"));
   });
 } else {

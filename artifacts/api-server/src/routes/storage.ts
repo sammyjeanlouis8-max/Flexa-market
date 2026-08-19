@@ -13,19 +13,8 @@ const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
 
 // ── Storage backend selection ──────────────────────────────────────────────────
-// Priority: Wasabi > Cloudinary > Replit GCS.
-// Wasabi is preferred because it works for ALL file types (images AND videos),
-// doesn't have per-account format restrictions, and the user has set it up.
-// Cloudinary is kept as image-only fallback for legacy deployments.
-
-// Detect when CLOUDINARY_CLOUD_NAME is set to the Replit Object Storage bucket ID
-const rawCloudName = process.env["CLOUDINARY_CLOUD_NAME"] ?? "";
-const KNOWN_CLOUD_NAME = "dvkbgodbk";
-const cloudName = rawCloudName && !rawCloudName.includes("-") && rawCloudName.length < 32
-  ? rawCloudName
-  : KNOWN_CLOUD_NAME;
-
-// Wasabi wins when configured (env vars present), regardless of whether Cloudinary is also set.
+// Flexa Music uploads use Wasabi only. Do not silently send user media to another
+// provider when Wasabi is missing or misconfigured.
 const USE_WASABI     = isWasabiConfigured();
 
 
@@ -98,6 +87,11 @@ const MAX_UPLOAD_BYTES = 350 * 1024 * 1024;
     try {
       const { name = "file", size = 0, contentType = "application/octet-stream" } =
         (req.body ?? {}) as { name?: string; size?: number; contentType?: string };
+      if (!USE_WASABI) {
+        return res.status(503).json({
+          error: "Wasabi storage is not configured. Set WASABI_ACCESS_KEY, WASABI_SECRET_KEY, and WASABI_BUCKET_NAME.",
+        });
+      }
       validateMimeType(contentType);
       const token = randomUUID();
       const base =
@@ -134,7 +128,7 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
         const clRaw = req.headers["content-length"];
         const contentLength = clRaw ? parseInt(clRaw, 10) : 0;
         if (!contentLength || contentLength <= 0) {
-          res.status(411).json({ error: "Content-Length header is required for video uploads." });
+          res.status(411).json({ error: "Content-Length header is required for uploads." });
           return;
         }
         const key = await streamToWasabi(req, contentType, contentLength);
@@ -146,14 +140,9 @@ router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Respon
         return;
       }
 
-      // Cloudinary fallback: buffer the file then upload
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) chunks.push(chunk as Buffer);
-      const buffer = Buffer.concat(chunks);
-
-      const url = await uploadBufferAndGetUrl(buffer, contentType, req);
-      req.log.info({ token, url, backend: "cloudinary" }, "Proxy upload complete");
-      res.status(200).json({ url });
+      return res.status(503).json({
+        error: "Wasabi storage is not configured. Uploads are not sent to Cloudinary.",
+      });
   } catch (err: any) {
     req.log.error({ err, token }, "Proxy upload failed");
     const msg: string = err?.message ?? "Upload failed";

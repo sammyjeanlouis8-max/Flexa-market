@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer, Monitor, Repeat2, Download, Search, Globe } from "lucide-react";
+import { Tv, Plus, Pencil, Trash2, Film, List, Radio, Clock, Calendar, Star, Eye, X, Check, ChevronDown, Youtube, Play, Pause, Square, Timer, Monitor, Repeat2, Download, Search, Globe, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -570,10 +570,11 @@ function SeriesModal({ series, onClose, onSaved }: { series: TvSeries | null; on
 // ── Main Admin TV Page ────────────────────────────────────────────────────────
 export default function AdminTV() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const hasAdminAccess = Boolean(user?.isAdmin || user?.isSuperAdmin);
   const [tab, setTab] = useState<"programs" | "series" | "import">("programs");
   const [editProgram, setEditProgram] = useState<TvProgram | null | "new">(null);
   const [editSeries, setEditSeries] = useState<TvSeries | null | "new">(null);
@@ -649,20 +650,25 @@ export default function AdminTV() {
   const [epLoading, setEpLoading]               = useState(false);
   const [epImportedIds, setEpImportedIds]       = useState<Set<string>>(new Set());
 
-  // Access check
-  if (!user?.isAdmin && !user?.isSuperAdmin) {
-    setLocation("/");
-    return null;
-  }
+  // Wait for /auth/me before deciding whether to leave the admin page.
+  // Redirecting while `user` is still null sends valid admins to Home during
+  // a slow API response and also makes the hook order change between renders.
+  useEffect(() => {
+    if (!authLoading && !hasAdminAccess) {
+      setLocation("/");
+    }
+  }, [authLoading, hasAdminAccess, setLocation]);
 
   const { data: programs, isLoading: loadingP } = useQuery<TvProgram[]>({
     queryKey: ["/admin/tv/programs"],
     queryFn: () => apiAuth("/api/admin/tv/programs").then(r => r.json()).then(d => d.programs ?? []),
+    enabled: hasAdminAccess,
   });
 
   const { data: series, isLoading: loadingS } = useQuery<TvSeries[]>({
     queryKey: ["/admin/tv/series"],
     queryFn: () => apiAuth("/api/admin/tv/series").then(r => r.json()).then(d => d.series ?? []),
+    enabled: hasAdminAccess,
   });
 
   const deleteProgram = useMutation({
@@ -1081,6 +1087,16 @@ export default function AdminTV() {
   function confirmDelete(label: string, onConfirm: () => void) {
     if (window.confirm(t("tv.confirmDelete", { title: label }))) onConfirm();
   }
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+      </div>
+    );
+  }
+
+  if (!hasAdminAccess) return null;
 
   return (
     <div className="max-w-4xl mx-auto px-3 py-4 pb-24">

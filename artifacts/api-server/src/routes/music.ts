@@ -211,8 +211,8 @@ function nullOr(v: unknown): string {
  */
 function toClientTrack(row: Record<string, unknown>) {
   const key = row.storage_key as string | null;
-  // Cloudinary keys (prefix "cld:") — audio_url already holds the direct Cloudinary URL
-  // Wasabi keys — route through signing proxy so private buckets work
+  // Legacy Cloudinary records retain their saved URL so existing published tracks
+  // can keep playing. Every new upload is Wasabi-only.
   const isCld = key?.startsWith("cld:");
   // Always show the uploader's real account name (uploader_name) instead of
   // the manually-typed artist field so listeners see who actually uploaded the track.
@@ -431,7 +431,12 @@ router.get("/music/diagnose", async (_req, res) => {
 });
 
 // GET /api/music/upload-signature — returns Wasabi proxy upload tokens
-    router.get("/music/upload-signature", requireAuth, (_req, res) => {
+router.get("/music/upload-signature", requireAuth, (_req, res) => {
+    if (!wasabiConfigured()) {
+      return res.status(503).json({
+        error: "Wasabi storage is not configured. Set WASABI_ACCESS_KEY, WASABI_SECRET_KEY, and WASABI_BUCKET_NAME.",
+      });
+    }
     const audioToken = randomUUID();
     const coverToken = randomUUID();
     res.json({
@@ -439,24 +444,24 @@ router.get("/music/diagnose", async (_req, res) => {
       audio: { uploadUrl: "/api/storage/uploads/put-proxy/" + audioToken },
       cover: { uploadUrl: "/api/storage/uploads/put-proxy/" + coverToken },
     });
-    });
+});
 
 
 /**
  * POST /api/music/register
  * Lightweight DB-insert-only endpoint called after the browser has already
- * uploaded files directly to Cloudinary.  No file processing — just metadata.
+ * uploaded files to Wasabi. No file processing — just metadata.
  */
 router.post("/music/register", requireAuth, async (req, res) => {
   const {
     title, artist, album, genre, type = "free",
-    audioPublicId, audioUrl, coverPublicId, coverUrl, lyrics,
+    audioUrl, coverUrl, lyrics,
     storageKey, coverStorageKey,
   } = req.body as Record<string, string | undefined>;
 
   if (!title?.trim())   return res.status(400).json({ error: "Title required" });
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
-  if (!audioPublicId && !storageKey) return res.status(400).json({ error: "audioPublicId or storageKey required" });
+  if (!storageKey?.trim()) return res.status(400).json({ error: "Wasabi storageKey required" });
 
   // Duration guard: max 60 minutes (3600 s) for non-admin uploads
   const durationSeconds = req.body.duration_seconds ? Number(req.body.duration_seconds) : null;
@@ -497,7 +502,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
-          ${storageKey ? nullOr(storageKey) : nullOr("cld:" + audioPublicId)}, ${coverStorageKey ? nullOr(coverStorageKey) : (coverPublicId ? nullOr("cld:" + coverPublicId) : "NULL")},
+          ${nullOr(storageKey)}, ${nullOr(coverStorageKey || null)},
           ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
           ${nullOr(lyrics?.trim() || null)},
           TRUE, FALSE,
@@ -678,7 +683,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
 
     if (req.files?.audio?.[0]) {
       const file   = req.files.audio[0];
-      const result = await uploadAudioToCloudinary(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
       finalAudio   = result.url;
       audioKey     = result.key;
     }
@@ -714,7 +719,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
 });
 
 // PUT /api/music/:id — artist updates their OWN track (title, artist, album, genre, cover, lyrics)
-router.put("/music/:id", requireAuth, async (req: any, res) => {
+router.put("/music/:id", requireAuth, upload.single("cover"), async (req: any, res) => {
   try {
     const id = Number(req.params.id);
     const userId = req.userId;
@@ -726,15 +731,28 @@ router.put("/music/:id", requireAuth, async (req: any, res) => {
       return res.status(403).json({ error: "You can only edit your own tracks" });
     }
     const { title, artist, album, genre, cover_url, lyrics } = req.body;
+    let coverResult: { key: string; url: string } | null = null;
+    if (req.file) {
+      coverResult = await uploadMusicCover(req.file.buffer, req.file.mimetype, req.file.originalname);
+    }
     const sets: string[] = [];
     if (title   !== undefined) sets.push(`title   = ${nullOr(title)}`);
     if (artist  !== undefined) sets.push(`artist  = ${nullOr(artist)}`);
     if (album   !== undefined) sets.push(`album   = ${nullOr(album  || null)}`);
     if (genre   !== undefined) sets.push(`genre   = ${nullOr(genre  || null)}`);
-    if (cover_url !== undefined) sets.push(`cover_url = ${nullOr(cover_url)}`);
+    if (coverResult) {
+      sets.push(`cover_url = ${nullOr(coverResult.url)}`);
+      sets.push(`cover_storage_key = ${nullOr(coverResult.key)}`);
+    } else if (cover_url !== undefined) {
+      sets.push(`cover_url = ${nullOr(cover_url)}`);
+    }
     if (lyrics  !== undefined) sets.push(`lyrics  = ${nullOr(lyrics || null)}`);
     sets.push("updated_at = NOW()");
     const [track] = await q(`UPDATE music_tracks SET ${sets.join(", ")} WHERE id = ${id} RETURNING *`);
+    if (coverResult) {
+      const oldCoverKey = (existing as any).cover_storage_key ?? extractKey((existing as any).cover_url);
+      if (oldCoverKey && !oldCoverKey.startsWith("cld:")) await deleteMusicFile(oldCoverKey);
+    }
     res.json({ track });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
@@ -780,17 +798,17 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
     let newCoverKey: string | null = (existing.cover_storage_key as string | null) ?? null;
 
     if (req.files?.audio?.[0]) {
-      // Upload new audio to Cloudinary then clean up the old object
+      // Upload new audio to Wasabi then clean up the old Wasabi object.
       const file   = req.files.audio[0];
-      const result = await uploadAudioToCloudinary(file.buffer, file.mimetype, file.originalname);
+      const result = await uploadMusicAudio(file.buffer, file.mimetype, file.originalname);
       finalAudio   = result.url;
       const oldKey = (existing.storage_key as string | null) ?? extractKey(existing.audio_url as string | null);
-      // Only attempt Wasabi deletion for legacy Wasabi keys (not "cld:" prefixed)
+      // Legacy Cloudinary records have no Wasabi object to delete.
       if (oldKey && !oldKey.startsWith("cld:")) await deleteMusicFile(oldKey);
       newAudioKey  = result.key;
     }
     if (req.files?.cover?.[0]) {
-      // Upload new cover to Cloudinary then clean up the old Wasabi object if any
+      // Upload new cover to Wasabi then clean up the old Wasabi object.
       const file   = req.files.cover[0];
       const result = await uploadMusicCover(file.buffer, file.mimetype, file.originalname);
       finalCover   = result.url;
@@ -1518,20 +1536,10 @@ export async function runMusicMonthlyReminder(): Promise<void> {
   }
 }
 
-// ── Orphan cleanup — called by client if DB registration fails after upload ───
-router.post("/music/cleanup-orphan", requireAuth, async (req: any, res: any) => {
-  const { audioPublicId, coverPublicId } = req.body ?? {};
-  if (!audioPublicId) return res.status(400).json({ error: "audioPublicId required" });
-  try {
-    await deleteCloudinaryAssets(
-      typeof audioPublicId === "string" ? audioPublicId : null,
-      typeof coverPublicId === "string" ? coverPublicId : null,
-    );
-    res.json({ ok: true });
-  } catch (err: any) {
-    logger.warn({ err }, "[music] cleanup-orphan failed");
-    res.status(500).json({ error: "Cleanup failed" });
-  }
+// New uploads are Wasabi-only. Orphan cleanup is performed by the upload worker;
+// this endpoint is intentionally retired rather than accepting arbitrary object keys.
+router.post("/music/cleanup-orphan", requireAuth, (_req, res) => {
+  res.status(410).json({ error: "Cloudinary cleanup is retired. Music uploads use Wasabi only." });
 });
 
 export default router;

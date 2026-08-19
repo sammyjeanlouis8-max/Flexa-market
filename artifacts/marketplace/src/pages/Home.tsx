@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import ListingCard from "@/components/ListingCard";
+import PromoVideoPoster from "@/components/PromoVideoPoster";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -291,16 +292,12 @@ function VideoPromoSection() {
             data-testid={`button-promo-video-${v.id}`}
           >
             {/* Thumbnail */}
-            {v.thumbnailUrl ? (
-              <img
-                src={v.thumbnailUrl}
-                alt={v.title}
-                loading="lazy"
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            ) : (
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-primary/10" />
-            )}
+            <PromoVideoPoster
+              videoUrl={v.videoUrl}
+              thumbnailUrl={v.thumbnailUrl}
+              title={v.title}
+              className="transition-transform duration-700 group-hover:scale-105"
+            />
 
             {/* Dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />

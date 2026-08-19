@@ -45,7 +45,7 @@ describe("GET /api/storage/video-stream", () => {
     s3Mocks.getWasabiObjectSize.mockReset();
   });
 
-  it("streams the full QuickTime object as browser-compatible MP4", async () => {
+  it("streams legacy QuickTime bytes with their correct MIME type", async () => {
     s3Mocks.getWasabiObject.mockResolvedValue({
       Body: Readable.from(Buffer.from("0123456789")),
       ContentLength: 10,
@@ -58,7 +58,7 @@ describe("GET /api/storage/video-stream", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toBe("video/mp4");
+    expect(response.headers.get("content-type")).toBe("video/quicktime");
     expect(response.headers.get("content-length")).toBe("10");
     expect(response.headers.get("accept-ranges")).toBe("bytes");
     expect(await response.text()).toBe("0123456789");

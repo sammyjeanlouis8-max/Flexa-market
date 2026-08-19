@@ -16,12 +16,15 @@ describe("video delivery helpers", () => {
     ).toBe("uploads/videos/promo.mp4");
   });
 
-  it("serves H.264/AAC QuickTime containers with a browser-compatible MP4 MIME", () => {
+  it("does not relabel legacy QuickTime bytes as MP4", () => {
     expect(
       getBrowserVideoContentType("uploads/videos/promo.quicktime", "video/quicktime"),
-    ).toBe("video/mp4");
+    ).toBe("video/quicktime");
     expect(
       getBrowserVideoContentType("uploads/videos/promo.mov", "video/quicktime"),
+    ).toBe("video/quicktime");
+    expect(
+      getBrowserVideoContentType("uploads/videos/promo.mp4", "video/mp4"),
     ).toBe("video/mp4");
   });
 

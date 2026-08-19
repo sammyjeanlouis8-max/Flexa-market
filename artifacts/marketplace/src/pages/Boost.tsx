@@ -5,7 +5,6 @@ import {
   Copy, CheckCheck, AlertCircle, Shield, Info,
   Video, X, Upload,
 } from "lucide-react";
-import { useUpload } from "@workspace/object-storage-web";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +19,7 @@ import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { formatHTG, formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
+import { MAX_BOOST_VIDEO_BYTES, uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
 
 const PLANS = [
   {
@@ -113,7 +113,7 @@ export default function BoostPage() {
   const [, setLocation] = useLocation();
   const { toast }     = useToast();
   const queryClient   = useQueryClient();
-  const { user }      = useAuth();
+  const { user, token } = useAuth();
   const { t }         = useTranslation();
 
   // Fetch the live USDT TRX wallet address configured by admin.
@@ -237,16 +237,15 @@ export default function BoostPage() {
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
-  const { uploadFile: uploadVideoFile } = useUpload();
   const MAX_VIDEO_SECONDS = 180;
-  const MAX_VIDEO_BYTES   = 300 * 1024 * 1024;
+  const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
 
-  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve, reject) => {
+  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-    v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode-failed")); };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
     v.src = url;
   });
 
@@ -258,26 +257,16 @@ export default function BoostPage() {
       toast({ title: t("boost.videoTooBig"), variant: "destructive" });
       return;
     }
-    try {
-      const seconds = await probeVideoDuration(file);
-      if (!Number.isFinite(seconds) || seconds > MAX_VIDEO_SECONDS + 0.5) {
-        toast({ title: t("boost.videoTooLong"), variant: "destructive" });
-        return;
-      }
-    } catch {
-      toast({ title: t("boost.videoDecodeFailed"), variant: "destructive" });
+    const seconds = await probeVideoDuration(file);
+    if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+      toast({ title: t("boost.videoTooLong"), variant: "destructive" });
       return;
     }
     setVideoUploading(true);
     try {
-      const result = await uploadVideoFile(file);
-      if (!result) {
-        toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
-        return;
-      }
-      // Persist the object-storage path; the backend rewrites it to a
-      // signed-fetch URL when the visitor's overlay loads it.
-      setVideoUrl(result.objectPath);
+      setVideoUrl(await uploadNormalizedBoostVideo(file, token));
+    } catch {
+      toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
     } finally {
       setVideoUploading(false);
     }

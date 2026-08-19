@@ -8,7 +8,7 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useUpload } from "@workspace/object-storage-web";
+import { MAX_BOOST_VIDEO_BYTES, uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
 import BoostWizard from "@/components/BoostWizard";
 import {
   AlertDialog,
@@ -96,8 +96,6 @@ export default function MyBoosts() {
   const [uploadingBoostId, setUploadingBoostId] = useState<number | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const pendingBoostRef = useRef<ActiveBoost | null>(null);
-  const { uploadFile } = useUpload();
-
   const handleAddVideo = (boost: ActiveBoost) => {
     pendingBoostRef.current = boost;
     videoInputRef.current?.click();
@@ -108,18 +106,18 @@ export default function MyBoosts() {
     e.target.value = "";
     const boost = pendingBoostRef.current;
     if (!file || !boost || !token) return;
+    if (file.size > MAX_BOOST_VIDEO_BYTES) {
+      toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Videyo a twò gwo" }), variant: "destructive" });
+      return;
+    }
 
     setUploadingBoostId(boost.boostId);
     try {
-      const result = await uploadFile(file);
-      if (!result) {
-        toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
-        return;
-      }
+      const videoUrl = await uploadNormalizedBoostVideo(file, token);
       const res = await fetch(`/api/boost/${boost.boostId}/video`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ videoUrl: result.objectPath }),
+        body: JSON.stringify({ videoUrl }),
       });
       const data = await res.json();
       if (!res.ok) {

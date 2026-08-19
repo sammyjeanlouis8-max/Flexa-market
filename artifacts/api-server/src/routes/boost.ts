@@ -11,12 +11,12 @@ import {
 import { getStripeClient } from "../lib/stripeClient";
 import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
-import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
+import { extractWasabiKey } from "../lib/s3";
+import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
- * Wasabi proxy URLs are returned as-is so the browser hits our same-origin
- * /api/storage/wasabi-image proxy (streams directly, no 302, Range-capable).
+ * Wasabi URLs are routed through the same-origin Range endpoint.
  * Unresolvable objectPath session IDs (/objects/uploads/…) return null.
  */
 async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> {
@@ -24,17 +24,9 @@ async function resolveBoostVideoUrl(raw: string | null): Promise<string | null> 
     if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
       return null;
     }
-    // Wasabi proxy URL → swap for a 7-day presigned URL so the browser connects
-    // directly to Wasabi and gets native Range-request support for long videos.
-    // The old proxy streamed through our DO server (has stream size/timeout limits),
-    // causing videos > 1 minute to go black on iPhone Safari.
     const wasabiKey = extractWasabiKey(raw);
     if (wasabiKey !== null) {
-      try {
-        return await getWasabiPresignedUrl(wasabiKey, 604_800); // 7-day TTL
-      } catch {
-        return raw; // fall back to proxy URL if presigning fails
-      }
+      return `/api/storage/video-stream?key=${encodeURIComponent(wasabiKey)}`;
     }
     return raw;
     }
@@ -151,14 +143,11 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   const expiresAt = new Date(Date.now() + planMeta.days * 24 * 60 * 60 * 1000);
   const reach = estimateReach(budget, plan, audience);
 
-  // Optional ≤30s promo video the seller uploaded via our object storage.
+  // Optional promo video normalized by the authenticated Boost upload pipeline.
   // Stored immediately so value survives an abandoned payment.
   //
-  // We deliberately accept ONLY object-storage paths (`/objects/<id>`), never
-  // arbitrary external URLs: an external URL would let a seller force every
-  // visitor's browser to contact an attacker-controlled host, leaking IPs and
-  // enabling cross-site fingerprinting. Forcing storage-hosted media keeps
-  // the victim's browser on our domain.
+  // The short-lived proof binds the completed H.264/AAC Wasabi object to this
+  // uploader. We persist only the canonical URL after verification.
   //
   // We always WRITE the column (treating undefined as null) so omitting the
   // field from a re-initiate clears any stale URL — otherwise a seller could
@@ -168,12 +157,12 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   let videoUrl: string | null = null;
   if (typeof rawVideo === "string") {
     const v = rawVideo.trim();
-    if (v.length > 0 && v.length <= 500 && (
-      v.startsWith("/objects/") ||
-      v.startsWith("/api/storage/objects/") ||
-      v.startsWith("https://")
-    )) {
-      videoUrl = v;
+    if (v.length > 0) {
+      videoUrl = verifyAndCanonicalizeBoostVideoUrl(v, req.userId!);
+      if (!videoUrl) {
+        res.status(400).json({ error: "Video must be a completed normalized Boost upload." });
+        return;
+      }
     }
   }
   await db.update(listingsTable)
@@ -501,16 +490,11 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
 
   const rawVideo = req.body?.videoUrl;
   const videoPath = typeof rawVideo === "string" ? rawVideo.trim() : "";
-  const isValidVideoPath = videoPath.length > 0 && videoPath.length <= 500 && (
-    videoPath.startsWith("/objects/") ||
-    videoPath.startsWith("/api/storage/objects/") ||
-    videoPath.startsWith("https://")
-  );
-  if (!isValidVideoPath) {
-    res.status(400).json({ error: "Invalid or missing videoUrl (must be a storage path or https:// URL)" });
+  const videoUrl = verifyAndCanonicalizeBoostVideoUrl(videoPath, req.userId!);
+  if (!videoUrl) {
+    res.status(400).json({ error: "Video must be a completed normalized Boost upload." });
     return;
   }
-  const videoUrl = videoPath;
 
   const VALID_CTA = ["link", "whatsapp", "none"] as const;
   type CtaType = typeof VALID_CTA[number];
@@ -805,15 +789,12 @@ router.patch("/boost/:boostId/video", requireAuth, async (req, res): Promise<voi
   let videoUrl: string | null = null;
   if (typeof rawVideo === "string") {
     const v = rawVideo.trim();
-    if (v.length > 0 && v.length <= 500 && (
-      v.startsWith("/objects/") ||
-      v.startsWith("/api/storage/objects/") ||
-      v.startsWith("https://")
-    )) {
-      videoUrl = v;
-    } else if (v.length > 0) {
-      res.status(400).json({ error: "Invalid video URL format" });
-      return;
+    if (v.length > 0) {
+      videoUrl = verifyAndCanonicalizeBoostVideoUrl(v, userId);
+      if (!videoUrl) {
+        res.status(400).json({ error: "Video must be a completed normalized Boost upload." });
+        return;
+      }
     }
   }
 

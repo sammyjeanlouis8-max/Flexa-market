@@ -10,6 +10,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ interface Category { id: number; name: string; }
 interface Props { open: boolean; onClose: () => void; }
 
 const MAX_VIDEO_SECONDS = 180;
-const MAX_VIDEO_BYTES = 350 * 1024 * 1024; // 350 MB — matches server cap
+const MAX_VIDEO_BYTES = 300 * 1024 * 1024; // matches Wasabi/server normalization cap
 const MIN_BUDGET = 5;
 const MAX_BUDGET = 500;
 const DEFAULT_BUDGET = 12.99;
@@ -113,7 +114,6 @@ export default function BoostWizard({ open, onClose }: Props) {
   const [videoUploading, setVideoUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -234,100 +234,14 @@ export default function BoostWizard({ open, onClose }: Props) {
       v.src = url;
     });
 
-  /** Request a presigned PUT URL from our storage backend. */
-  const requestPresignUrl = useCallback(async (file: File): Promise<{ uploadURL: string; objectPath: string }> => {
-    const res = await fetch("/api/storage/uploads/request-url", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "video/mp4" }),
-    });
-    if (!res.ok) throw new Error("presign-failed");
-    return res.json();
-  }, []);
-
-  /** Upload via XHR so we get real onprogress events (fetch has no upload progress).
-   *  Returns the Cloudinary CDN URL when the proxy returns { url }, otherwise null. */
-  const xhrUpload = useCallback((file: File, uploadURL: string): Promise<string | null> =>
-    new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhrRef.current = xhr;
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
-        xhrRef.current = null;
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            if (typeof data?.url === "string" && data.url.startsWith("http")) {
-              resolve(data.url);
-              return;
-            }
-          } catch { /* non-JSON */ }
-          resolve(null);
-        } else {
-          reject(new Error(`upload-failed-${xhr.status}`));
-        }
-      };
-      xhr.onerror = () => { xhrRef.current = null; reject(new Error("upload-network-error")); };
-      xhr.open("PUT", uploadURL);
-      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-      xhr.send(file);
-    }), []);
-
-  const CHUNK_SIZE      = 8 * 1024 * 1024;
-  const CHUNK_THRESHOLD = 50 * 1024 * 1024;
-
   const chunkedUpload = useCallback(async (file: File): Promise<string> => {
-    const storedToken = localStorage.getItem("flexamarket_token") ?? "";
-    const authHeaders: Record<string, string> = storedToken
-      ? { Authorization: `Bearer ${storedToken}` }
-      : {};
-
-    const initRes = await fetch("/api/storage/uploads/chunk-init", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-    });
-    if (!initRes.ok) throw new Error(`chunk-init-failed-${initRes.status}`);
-    const { uploadId, objectPath } = await initRes.json() as {
-      uploadId: string; objectPath: string;
-    };
-
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-      const putRes = await fetch(`/api/storage/uploads/chunk/${uploadId}/${i}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "video/mp4",
-          "Content-Length": String(chunk.size),
-          ...authHeaders,
-        },
-        body: chunk,
-      });
-      if (!putRes.ok) throw new Error(`chunk-put-failed-${putRes.status}-idx-${i}`);
-      setUploadPercent(Math.round(((i + 1) / totalChunks) * 90));
-    }
-
-    const finalRes = await fetch(`/api/storage/uploads/chunk-finalize/${uploadId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify({ totalChunks, contentType: file.type || "video/mp4" }),
-    });
-    if (!finalRes.ok) throw new Error(`chunk-finalize-failed-${finalRes.status}`);
-    setUploadPercent(100);
-    // Prefer the full Wasabi URL (contains the actual object key) over objectPath
-    // (which is just a session ID that cannot be resolved server-side).
-    const finalUploadData = await finalRes.json() as { url?: string; objectPath?: string };
-    return (finalUploadData.url && finalUploadData.url.startsWith("http")) ? finalUploadData.url : (finalUploadData.objectPath ?? objectPath);
-  }, []);
+    return uploadNormalizedBoostVideo(file, token, setUploadPercent);
+  }, [token]);
 
   const handleVideoFile = useCallback(async (file: File) => {
     if (file.size > MAX_VIDEO_BYTES) {
       toast({ title: t("boostWizard.errorVideoTooBig"), variant: "destructive" }); return;
     }
-
-    xhrRef.current?.abort();
 
     if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
     const localUrl = URL.createObjectURL(file);
@@ -339,30 +253,14 @@ export default function BoostWizard({ open, onClose }: Props) {
 
     try {
       const secsPromise = probeVideoDuration(file);
-      let objectPathResult: string;
-
-      if (file.size > CHUNK_THRESHOLD) {
-        const [secs, finalPath] = await Promise.all([secsPromise, chunkedUpload(file)]);
-        if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
-          toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
-          setVideoObjectUrl(null);
-          URL.revokeObjectURL(localUrl);
-          return;
-        }
-        objectPathResult = finalPath;
-      } else {
-        const [secs, { uploadURL, objectPath }] = await Promise.all([
-          secsPromise,
-          requestPresignUrl(file),
-        ]);
-        if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
-          toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
-          setVideoObjectUrl(null);
-          URL.revokeObjectURL(localUrl);
-          return;
-        }
-        const cloudinaryUrl = await xhrUpload(file, uploadURL);
-        objectPathResult = cloudinaryUrl ?? objectPath;
+      // Every Boost video, regardless of file size or filename, goes through
+      // server-side H.264/AAC normalization before the Wasabi URL is returned.
+      const [secs, objectPathResult] = await Promise.all([secsPromise, chunkedUpload(file)]);
+      if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
+        toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
+        setVideoObjectUrl(null);
+        URL.revokeObjectURL(localUrl);
+        return;
       }
 
       setVideoUrl(objectPathResult);
@@ -380,7 +278,7 @@ export default function BoostWizard({ open, onClose }: Props) {
       setUploadPercent(0);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoObjectUrl, requestPresignUrl, xhrUpload, chunkedUpload, t, toast]);
+  }, [videoObjectUrl, chunkedUpload, t, toast]);
 
   const handleVideoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

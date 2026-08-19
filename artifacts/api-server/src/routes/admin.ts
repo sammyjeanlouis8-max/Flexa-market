@@ -8,6 +8,7 @@ import { hashPassword } from "../lib/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
 import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
+import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 
 const router = Router();
 
@@ -1672,13 +1673,18 @@ router.post("/admin/listings/:id/boost", requireAdmin, async (req, res): Promise
     }
   }
 
-  // Optional promo video — accept only object-storage paths for safety.
+  // Optional promo video — require the owner-bound proof returned only after
+  // the shared H.264/AAC Wasabi normalization pipeline completes.
   const rawVideo = req.body?.videoUrl;
   let videoUrl: string | null = null;
   if (typeof rawVideo === "string") {
     const v = rawVideo.trim();
-    if (v.length > 0 && v.length <= 500 && (v.startsWith("/objects/") || v.startsWith("/api/storage/objects/"))) {
-      videoUrl = v;
+    if (v.length > 0) {
+      videoUrl = verifyAndCanonicalizeBoostVideoUrl(v, req.userId!);
+      if (!videoUrl) {
+        res.status(400).json({ error: "Video must be a completed normalized Boost upload." });
+        return;
+      }
     }
   }
 

@@ -1,31 +1,34 @@
 ---
-name: Flexa promo video feed (VideoFeed.tsx) playback gotchas
-description: Sound/autoplay, back-button, and stall/freeze recovery rules for the TikTok-style promo feed
+name: Flexa promo video feed playback
+description: Durable sound, delivery, normalization, and freeze-recovery rules for promoted videos
 ---
 
-# Promo video feed playback (artifacts/marketplace/src/pages/VideoFeed.tsx)
+# Promo video feed playback
 
-Three classes of bug recur on this feed. The durable rules:
+## Sound and navigation
 
-## Sound / autoplay
 - Browsers force autoplay to start **muted**; sound can only be enabled by a real user gesture.
-- Global unlock state lives in `lib/audioUnlocked.ts` (sessionStorage `flexaAudioUnlocked` + `flexa:audio-unlocked` CustomEvent that syncs every card's muted state).
-- **Rule:** the user's FIRST single-tap on a muted/active video must UNMUTE (set unlock + el.muted=false + play), not toggle play/pause. Only after unmute does single-tap toggle play/pause. A tiny top-right speaker icon alone is not discoverable — keep a visible "tap for sound" hint while muted.
+- **Rule:** the first tap on a muted active video must unlock sound and keep playing; only later taps toggle play/pause. Keep a visible sound hint while muted.
 - **Why:** the #1 user complaint ("pa gen son") is almost always just undiscovered autoplay-mute, not missing audio tracks.
-
-## Back button
-- Header back should use `window.history.length > 1 ? history.back() : navigate("/")`, not bare `navigate("/")`.
-- **Why:** history-back returns the user to the actual previous screen (feed is usually opened from the drawer/a link) and sidesteps wouter base-path edge cases. popstate drives wouter, so it's SPA-safe.
-
-## Cloudinary URL transform (the REAL "no sound" + "freeze" cause)
-- Promo videos are served from **Cloudinary** (`res.cloudinary.com/.../video/upload/...`), not object storage. `toStreamingVideoUrl()` exists in BOTH `api-server/src/routes/videos.ts` AND `listings.ts` — fix both together.
-- **This Cloudinary account returns HTTP 400 for the `fl_faststart` flag.** Any delivery URL containing `fl_faststart` → 400 (`image/gif`, size 0) → the `<video>` never loads → user sees a frozen poster with NO sound. That presents as the "pa gen son" + "video freezes" complaints — it is NOT an audio-track or autoplay-mute problem.
-- Second trap: stored `boostVideoUrl` already carries a `vc_h264,f_mp4` transform, and the old `toStreamingVideoUrl` did a naive `.replace("/video/upload/", "/video/upload/fl_faststart,vc_h264,f_mp4/")`, **stacking a duplicate** transform.
-- **Rule:** the transform must be idempotent — strip any pre-existing transformation segment(s) before the `v123` version marker, then inject exactly `vc_h264,ac_aac,f_mp4` (NO `fl_faststart`). `ac_aac` keeps audio; a video-only re-encode can silently drop sound.
-- **Verify with ffprobe + a browser-like GET** before/after: original + `vc_h264,ac_aac,f_mp4` → HTTP 206 `video/mp4` with an `aac,audio` stream; `fl_faststart...` → HTTP 400.
+- Back should return to actual browser history when available and use home only as fallback.
+- **Why:** the feed is commonly opened from several different entry points.
 
 ## Stall / freeze recovery
+
 - **Never call `video.load()` on every `onWaiting`/`onStalled`.** load() resets the element and re-downloads from scratch; on slow networks a brief buffer wait becomes a visible freeze/reload loop.
 - Recovery order: gentle `el.play()` nudge first (preserves buffer); hard `load()` only as last resort and **at most once per activation**.
 - The one-time gate flag must be reset **only when a card becomes active** — NOT in `onPlay` (onPlay fires repeatedly within one activation and would reopen the loop).
-- After a hard `load()`, restore `currentTime` only inside a one-shot `loadedmetadata` listener wrapped in try/catch — setting currentTime right after load() at readyState 0 throws `InvalidStateError`.
+- Never let a stale card's recovery callback reactivate playback after the user swipes away.
+
+## Normalized ingestion and delivery
+
+- A storage URL is not proof that video bytes are browser-safe. New Boost videos must finish server-side normalization to H.264/yuv420p video plus AAC audio MP4; video-only input gets silent AAC, and conversion failure must fail closed.
+- Browser metadata checks are UX hints, not a trust boundary. Boost writes require a short-lived owner-bound proof from normalized ingestion.
+- Large uploads must be exact, owner-bound, disk-backed, and processed outside the request to prevent heap exhaustion and gateway timeouts.
+- Serve new Wasabi videos through a same-origin Range-capable endpoint. Keep persisted legacy media readable, but never let compatibility become a new-write bypass.
+
+## Codec-capable verification
+
+- A codec-free headless browser can report `MEDIA_ERR_SRC_NOT_SUPPORTED` for healthy H.264/AAC media.
+- **Why:** network success and MP4 labels do not prove that a real frame decoded.
+- **How to apply:** use a codec-capable browser and confirm nonzero video dimensions, advancing time, a visible decoded frame, and successful tap-to-unmute.

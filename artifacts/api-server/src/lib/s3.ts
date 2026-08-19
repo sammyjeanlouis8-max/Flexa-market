@@ -222,10 +222,11 @@ export function extractWasabiKey(url: string): string | null {
 
 export function getBrowserVideoContentType(key: string, storedContentType?: string): string {
   const ext = (key.split(".").pop() ?? "").toLowerCase();
-  if (["mp4", "m4v", "mov", "qt", "quicktime"].includes(ext)) return "video/mp4";
+  if (["mp4", "m4v"].includes(ext)) return "video/mp4";
+  if (["mov", "qt", "quicktime"].includes(ext)) return "video/quicktime";
   if (ext === "webm") return "video/webm";
   if (ext === "ogv" || ext === "ogg") return "video/ogg";
-  return storedContentType?.startsWith("video/") ? storedContentType : "video/mp4";
+  return storedContentType?.startsWith("video/") ? storedContentType : "application/octet-stream";
 }
 
 /**

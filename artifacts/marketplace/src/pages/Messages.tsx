@@ -144,6 +144,7 @@ function injectChatAnimations() {
     @keyframes msgIn { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes menuIn { from { transform: scale(0.92) translateY(4px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes recordWave { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
     .msg-bubble-anim { animation: msgIn 120ms ease-out; }
     .menu-anim { animation: menuIn 100ms ease-out; }
   `;
@@ -1063,6 +1064,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [mediaModal, setMediaModal] = useState<{ url: string; type: "image" | "video" } | null>(null);
   const [isNight, setIsNight] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
@@ -1283,6 +1285,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       mr.start(100);
       mediaRecorderRef.current = mr;
       setIsRecording(true);
+      setRecordingPaused(false);
       setRecordingSecs(0);
       recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
     } catch {
@@ -1293,6 +1296,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const stopVoiceRecording = (cancel = false) => {
     stopRecordingTimer();
     setIsRecording(false);
+    setRecordingPaused(false);
     setRecordingSecs(0);
     const mr = mediaRecorderRef.current;
     if (!mr) return;
@@ -1304,6 +1308,20 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       mr.stop();
     }
     mediaRecorderRef.current = null;
+  };
+
+  const toggleRecordingPause = () => {
+    const mr = mediaRecorderRef.current;
+    if (!mr) return;
+    if (mr.state === "recording") {
+      mr.pause();
+      stopRecordingTimer();
+      setRecordingPaused(true);
+    } else if (mr.state === "paused") {
+      mr.resume();
+      setRecordingPaused(false);
+      recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+    }
   };
 
   const fmtRecSecs = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -1648,6 +1666,105 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
         {isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
+        ) : isRecording ? (
+          <div style={{
+            width: "100%", boxSizing: "border-box",
+            background: c.isDark ? c.inputBg : "#FFFFFF",
+            border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
+            borderRadius: 28, padding: "13px 16px 12px",
+            boxShadow: c.isDark ? "none" : "0 2px 10px rgba(15,23,42,0.06)",
+          }}>
+            {/* Live recording waveform */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <span style={{
+                flexShrink: 0, width: 42,
+                color: c.isDark ? "#F8FAFC" : "#111827",
+                fontSize: 19, fontWeight: 500, fontVariantNumeric: "tabular-nums",
+              }}>
+                {fmtRecSecs(recordingSecs)}
+              </span>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 3, height: 46, flex: 1, minWidth: 0, overflow: "hidden",
+              }}>
+                {WAVE_BARS.map((height, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      width: 3, minWidth: 2, height: `${Math.max(8, Math.round(height * 42))}px`,
+                      borderRadius: 99, background: composerActionColor, opacity: recordingPaused ? 0.55 : 0.95,
+                      transformOrigin: "center",
+                      animation: recordingPaused ? "none" : "recordWave 0.75s ease-in-out infinite alternate",
+                      animationDelay: `${i * 28}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+              <span style={{
+                flexShrink: 0, borderRadius: 14, padding: "7px 10px",
+                background: c.isDark ? "rgba(165,180,252,0.14)" : "#EEF3FF",
+                color: composerActionColor, fontSize: 13, fontWeight: 700,
+              }}>
+                1x
+              </span>
+            </div>
+
+            {/* Recording controls */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr auto 1fr",
+              alignItems: "center", marginTop: 12,
+            }}>
+              <button
+                type="button"
+                onClick={() => stopVoiceRecording(true)}
+                aria-label={t("messages.deleteRecording", "Efase recording la")}
+                style={{
+                  justifySelf: "start", width: 44, height: 44, borderRadius: "50%",
+                  background: "none", border: "none", color: composerActionColor,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <Trash2 style={{ width: 28, height: 28, strokeWidth: 1.8 }} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleRecordingPause}
+                aria-label={recordingPaused
+                  ? t("messages.resumeRecording", "Kontinye recording la")
+                  : t("messages.pauseRecording", "Mete recording la sou poz")}
+                style={{
+                  justifySelf: "center", width: 58, height: 58, borderRadius: "50%",
+                  background: "none", border: `2px solid ${composerActionColor}`,
+                  color: composerActionColor, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {recordingPaused ? (
+                  <Play style={{ width: 23, height: 23, fill: "currentColor", marginLeft: 3 }} />
+                ) : (
+                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ width: 5, height: 22, borderRadius: 3, background: "currentColor" }} />
+                    <span style={{ width: 5, height: 22, borderRadius: 3, background: "currentColor" }} />
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => stopVoiceRecording(false)}
+                aria-label={t("messages.sendVoice", "Voye recording la")}
+                style={{
+                  justifySelf: "end", width: 58, height: 58, borderRadius: "50%",
+                  background: composerActionColor, border: "none", color: "#FFFFFF",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: "0 3px 8px rgba(37,99,235,0.22)",
+                }}
+              >
+                <Play style={{ width: 27, height: 27, fill: "currentColor", marginLeft: 3 }} />
+              </button>
+            </div>
+          </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
 
@@ -1731,32 +1848,8 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               <Camera style={{ width: 24, height: 24, strokeWidth: 1.8 }} />
             </button>
 
-            {/* Recording UI / Send / Mic */}
-            {isRecording ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                {/* Cancel */}
-                <button type="button" onClick={() => stopVoiceRecording(true)} style={{
-                  flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
-                  background: "#374151", border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
-                }}>
-                  <X style={{ width: 18, height: 18 }} />
-                </button>
-                {/* Timer */}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: c.inputBg, borderRadius: 20, padding: "0 12px", height: 40 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#EF4444", display: "block", animation: "pulse 1s infinite" }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#EF4444", minWidth: 36 }}>{fmtRecSecs(recordingSecs)}</span>
-                </div>
-                {/* Send */}
-                <button type="button" onClick={() => stopVoiceRecording(false)} style={{
-                  flexShrink: 0, width: 46, height: 46, borderRadius: "50%",
-                  background: "#22C55E", border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
-                }}>
-                  <Send style={{ width: 19, height: 19 }} />
-                </button>
-              </div>
-            ) : text.trim() ? (
+            {/* Send / Mic */}
+            {text.trim() ? (
               <button
                 type="button"
                 onClick={sendText}

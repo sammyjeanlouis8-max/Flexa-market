@@ -32,7 +32,7 @@ function extFromVideoMime(mime: string): string {
   return map[mime.split(";")[0].trim().toLowerCase()] ?? "bin";
 }
 
-async function inputHasAudio(inputPath: string): Promise<boolean> {
+async function inputHasAudio(inputPath: string, signal?: AbortSignal): Promise<boolean> {
   const ffprobe = process.env["FFPROBE_PATH"] ?? "ffprobe";
   const { stdout } = await execFileAsync(ffprobe, [
     "-v", "error",
@@ -40,7 +40,7 @@ async function inputHasAudio(inputPath: string): Promise<boolean> {
     "-show_entries", "stream=index",
     "-of", "csv=p=0",
     inputPath,
-  ], { maxBuffer: 1024 * 1024, timeout: 60_000 });
+  ], { maxBuffer: 1024 * 1024, timeout: 60_000, signal });
   return stdout.trim().length > 0;
 }
 
@@ -51,9 +51,10 @@ async function inputHasAudio(inputPath: string): Promise<boolean> {
 export async function convertVideoFileToH264(
   inputPath: string,
   outputPath: string,
+  options: { signal?: AbortSignal } = {},
 ): Promise<void> {
   const ffmpeg = process.env["FFMPEG_PATH"] ?? "ffmpeg";
-  const hasAudio = await inputHasAudio(inputPath);
+  const hasAudio = await inputHasAudio(inputPath, options.signal);
   const inputs = hasAudio
     ? ["-i", inputPath]
     : [
@@ -76,7 +77,11 @@ export async function convertVideoFileToH264(
       "-movflags", "+faststart",
       "-max_muxing_queue_size", "9999",
       outputPath,
-    ], { maxBuffer: 20 * 1024 * 1024, timeout: 15 * 60_000 });
+    ], {
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 15 * 60_000,
+      signal: options.signal,
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`Video conversion to H.264/AAC MP4 failed: ${detail}`);

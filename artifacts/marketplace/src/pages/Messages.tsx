@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import {
   Send, MessageCircle, ArrowLeft, Check, CheckCheck,
-  Paperclip, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+  Plus, Camera, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
 } from "lucide-react";
 import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
@@ -1073,10 +1073,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socket = useSocket();
   const c = theme;
+  const composerActionColor = c.isDark ? "#A5B4FC" : "#2563EB";
 
   // Detect if night is active by checking pageBg
   const isDarkMode = c.isDark;
@@ -1642,28 +1644,53 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         maxWidth: "100vw", overflow: "hidden",
       }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
 
         {isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
 
-            {/* Attach */}
+            {/* Add attachment — kept outside the text pill like the mobile reference */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              aria-label={t("messages.attach", "Ajoute foto oswa videyo")}
               style={{
-                flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
+                flexShrink: 0, width: 36, height: 44, borderRadius: "50%",
                 background: "none", border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                color: c.iconColor, opacity: uploading ? 0.4 : 1,
+                color: composerActionColor, opacity: uploading ? 0.4 : 1,
               }}
             >
-              <Paperclip style={{ width: 21, height: 21 }} />
+              <Plus style={{ width: 28, height: 28, strokeWidth: 1.8 }} />
             </button>
 
-            {/* Emoji */}
+            {/* Text pill */}
+            <div style={{ flex: "1 1 0%", minWidth: 0 }}>
+              <Input
+                ref={chatInputRef}
+                value={text}
+                onChange={e => { setText(e.target.value); handleTyping(); }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
+                placeholder={uploading ? t("messages.uploading") : t("messages.typeMessage", "Ekri yon mesaj…")}
+                disabled={uploading}
+                className="chat-input w-full"
+                style={{
+                  fontSize: 16, height: 46,
+                  background: c.isDark ? c.inputBg : "#FFFFFF",
+                  border: `1px solid ${c.listBorder}`,
+                  borderRadius: 28,
+                  color: c.inputText,
+                  paddingLeft: 18, paddingRight: 18,
+                  outline: "none",
+                  boxShadow: "none",
+                }}
+              />
+            </div>
+
+            {/* Sticker / emoji */}
             <button
               type="button"
               onClick={() => {
@@ -1677,39 +1704,32 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 }
               }}
               style={{
-                flexShrink: 0, width: 40, height: 40, borderRadius: "50%",
-                background: showEmojiPanel ? "rgba(249,115,22,0.18)" : "none",
-                border: showEmojiPanel ? "1.5px solid rgba(249,115,22,0.5)" : "none",
+                flexShrink: 0, width: 38, height: 44, borderRadius: "50%",
+                background: showEmojiPanel ? "rgba(37,99,235,0.10)" : "none",
+                border: showEmojiPanel ? "1.5px solid rgba(37,99,235,0.35)" : "none",
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                color: c.iconColor, transition: "background 0.15s, border 0.15s",
+                color: composerActionColor, transition: "background 0.15s, border 0.15s",
               }}
-              aria-label="Emoji"
+              aria-label={t("messages.sticker", "Sticker ak emoji")}
             >
-              <span style={{ fontSize: 22, lineHeight: 1 }}>😊</span>
+              <MessageCircle style={{ width: 23, height: 23, strokeWidth: 1.8 }} />
             </button>
 
-            {/* Text input */}
-            <div style={{ flex: "1 1 0%", minWidth: 0 }}>
-              <Input
-                ref={chatInputRef}
-                value={text}
-                onChange={e => { setText(e.target.value); handleTyping(); }}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
-                placeholder={uploading ? t("messages.uploading") : t("messages.typeMessage", "Ekri yon mesaj…")}
-                disabled={uploading}
-                className="chat-input w-full"
-                style={{
-                  fontSize: 16, height: 46,
-                  background: c.inputBg,
-                  border: "none",
-                  borderRadius: 28,
-                  color: c.inputText,
-                  paddingLeft: 18, paddingRight: 18,
-                  outline: "none",
-                  boxShadow: "none",
-                }}
-              />
-            </div>
+            {/* Camera — opens the native camera picker on supported phones */}
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={uploading}
+              aria-label={t("messages.camera", "Pran yon foto")}
+              style={{
+                flexShrink: 0, width: 38, height: 44, borderRadius: "50%",
+                background: "none", border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: composerActionColor, opacity: uploading ? 0.4 : 1,
+              }}
+            >
+              <Camera style={{ width: 24, height: 24, strokeWidth: 1.8 }} />
+            </button>
 
             {/* Recording UI / Send / Mic */}
             {isRecording ? (
@@ -1780,7 +1800,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
 // ─── Messages Page ────────────────────────────────────────────────────────────
 export default function Messages() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const [, params] = useRoute("/messages/:id");

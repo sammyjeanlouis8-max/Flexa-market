@@ -71,30 +71,52 @@ router.get("/storage/wasabi-image", async (req: Request, res: Response) => {
       // WebView/Safari: those builds silently drop the Range header when
       // following a cross-origin redirect, so <audio>/<video> never starts.
       const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
-      const object = await getWasabiObject(key, range);
-      const contentType = getBrowserVideoContentType(key, object.ContentType);
-      const headers: Record<string, string> = {
-        "Content-Type": contentType,
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "private, max-age=3600",
-      };
-      if (object.ContentLength !== undefined) headers["Content-Length"] = String(object.ContentLength);
-      if (range && object.ContentRange) {
-        headers["Content-Range"] = object.ContentRange;
-        res.writeHead(206, headers);
-      } else {
-        res.writeHead(200, headers);
+      if (range && (!/^bytes=\d*-\d*$/.test(range) || range.includes(","))) {
+        // Malformed or multi-range request — reject per RFC 7233.
+        const size = await getWasabiObjectSize(key).catch(() => undefined);
+        res.status(416);
+        res.setHeader("Accept-Ranges", "bytes");
+        if (size !== undefined) res.setHeader("Content-Range", `bytes */${size}`);
+        res.end();
+        return;
       }
-      const body = object.Body as Readable | undefined;
-      if (!body) { res.end(); return; }
-      body.on("error", () => { res.destroy(); });
-      res.on("close", () => { body.destroy?.(); });
-      body.pipe(res);
+      const object = await getWasabiObject(key, range);
+      const body = object.Body as any;
+      if (!body || typeof body.pipe !== "function") {
+        res.status(502).json({ error: "File body unavailable." });
+        return;
+      }
+
+      res.status(object.ContentRange ? 206 : 200);
+      res.setHeader("Content-Type", getBrowserVideoContentType(key, object.ContentType));
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      if (object.ContentLength !== undefined) res.setHeader("Content-Length", String(object.ContentLength));
+      if (object.ContentRange) res.setHeader("Content-Range", object.ContentRange);
+      if (object.ETag) res.setHeader("ETag", object.ETag);
+      if (object.LastModified) res.setHeader("Last-Modified", object.LastModified.toUTCString());
+
+      await pipeline(body, res);
     } catch (err: any) {
-      const code = err?.name === "NoSuchKey" ? 404 : 500;
+      if (req.destroyed || err?.code === "ERR_STREAM_PREMATURE_CLOSE") return;
+      const isInvalidRange =
+        err?.name === "InvalidRange" ||
+        err?.Code === "InvalidRange" ||
+        err?.$metadata?.httpStatusCode === 416;
+      if (isInvalidRange && !res.headersSent) {
+        // Unsatisfiable range (e.g. stale seek offset) — tell the client the real size.
+        const size = await getWasabiObjectSize(key).catch(() => undefined);
+        res.status(416);
+        res.setHeader("Accept-Ranges", "bytes");
+        if (size !== undefined) res.setHeader("Content-Range", `bytes */${size}`);
+        res.end();
+        return;
+      }
       req.log.error({ err, key, errName: err?.name }, "Wasabi proxy error");
       if (!res.headersSent) {
-        res.status(code).json({ error: code === 404 ? "File not found." : "Could not retrieve file." });
+        res.status(err?.name === "NoSuchKey" ? 404 : 500).json({ error: err?.name === "NoSuchKey" ? "File not found." : "Could not retrieve file." });
+      } else {
+        res.destroy();
       }
     }
     });

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, conversationsTable, reviewsTable, deliveriesTable } from "@workspace/db";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, commentLikesTable, conversationsTable, reviewsTable, deliveriesTable } from "@workspace/db";
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
@@ -1041,7 +1041,19 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
 
     // 2. Hard / listing-specific FK references — delete entirely
     await db.delete(notificationsTable).where(eq(notificationsTable.listingId, id));
-    await db.delete(commentsTable).where(eq(commentsTable.listingId, id)); // commentLikes cascade via DB
+    // comment_likes and listing_views declare ON DELETE CASCADE in the schema,
+    // but the production constraints may predate that — delete explicitly first.
+    const listingComments = await db
+      .select({ id: commentsTable.id })
+      .from(commentsTable)
+      .where(eq(commentsTable.listingId, id));
+    if (listingComments.length > 0) {
+      await db
+        .delete(commentLikesTable)
+        .where(inArray(commentLikesTable.commentId, listingComments.map((c) => c.id)));
+    }
+    await db.delete(commentsTable).where(eq(commentsTable.listingId, id));
+    await db.delete(listingViewsTable).where(eq(listingViewsTable.listingId, id));
     await db.delete(offersTable).where(eq(offersTable.listingId, id));
     await db.delete(favoritesTable).where(eq(favoritesTable.listingId, id));
     // boost_daily_impressions references boosts; schema declares ON DELETE CASCADE

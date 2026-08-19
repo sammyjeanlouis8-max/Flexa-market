@@ -803,6 +803,7 @@ export default {
     lastSeenDays: "{{n}} jou de sa",
     startConversation: "Kòmanse konvèsasyon an",
     voiceUploadFailed: "Upload mesaj vwa echwe. Eseye ankò.",
+    voiceMessage: "Mesaj vwa",
     micDenied: "Pa ka accede mikwofòn. Asire ou otorize mikwofòn nan paramèt navigatè ou.",
     connectionProblem: "Gen yon ti pwoblèm koneksyon. Eseye ankò.",
     retry: "Rekòmanse",

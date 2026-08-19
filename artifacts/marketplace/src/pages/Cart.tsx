@@ -601,7 +601,7 @@ export default function Cart() {
                             alt=""
                             className="w-[88px] h-[88px] rounded-2xl object-cover"
                             style={{ border: `1px solid ${border}` }}
-                            onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/100x100/f97316/white?text=FM"; }}
+                            onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
                           />
                         </div>
                         <div className="flex-1 min-w-0">

@@ -347,10 +347,15 @@ export default function Sell() {
     const handleSuccess = (_listing: any) => {
       const l = _listing as any;
       if (isEditMode && editId) {
-        // Edit mode: invalidate caches and go back to the listing
+        // Edit mode: invalidate ALL home-page feed caches so price/currency
+        // changes appear immediately in the VIP section, boosted feed, and
+        // personalized feed — not just the listing-detail page.
         queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(editId) });
         queryClient.invalidateQueries({ queryKey: getGetListingsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetUserListingsQueryKey(l.sellerId ?? (existingListing as any)?.sellerId) });
+        queryClient.invalidateQueries({ queryKey: ["boosted-feed"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/stats/home"] });
+        queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
         toast({ title: t("tr.listingUpdated"), description: t("tr.listingUpdatedDesc") });
         setLocation(`/listings/${editId}`);
         return;
@@ -566,17 +571,20 @@ export default function Sell() {
           {/* ── Draft restored banner ─────────────────────────────────── */}
           {draftRestored && (
             <div style={{
-              display: "flex", alignItems: "center", gap: 10,
+              display: "flex", alignItems: "flex-start", gap: 10,
               padding: "10px 14px", borderRadius: 12,
-              background: "#EFF6FF", border: "1px solid #BFDBFE",
+              background: currency === "HTG" ? "#FFF7ED" : "#EFF6FF",
+              border: `1px solid ${currency === "HTG" ? "#FED7AA" : "#BFDBFE"}`,
             }}>
-              <span style={{ fontSize: 18 }}>📋</span>
+              <span style={{ fontSize: 18 }}>{currency === "HTG" ? "⚠️" : "📋"}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1D4ED8" }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: currency === "HTG" ? "#C2410C" : "#1D4ED8" }}>
                   {t("sell.draftRestored")}
                 </p>
-                <p style={{ margin: 0, fontSize: 11, color: "#3B82F6" }}>
-                  {t("sell.draftRestoredDesc")}
+                <p style={{ margin: 0, fontSize: 11, color: currency === "HTG" ? "#EA580C" : "#3B82F6" }}>
+                  {currency === "HTG"
+                    ? "Monè brouyon an: G HTG (Goud). Verifye si se sa w vle."
+                    : t("sell.draftRestoredDesc")}
                 </p>
               </div>
               <button

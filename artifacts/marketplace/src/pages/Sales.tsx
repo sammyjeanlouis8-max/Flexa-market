@@ -187,7 +187,7 @@ export default function Sales() {
       {sales && sales.length > 0 && (
         <div className="space-y-3">
           {sales.map(s => {
-            const img = (s.listingImages?.[0]) ?? `https://placehold.co/120x120/f97316/white?text=Item`;
+            const img = (s.listingImages?.[0]) ?? null;
             const StatusIcon = STATUS_ICON[s.orderStatus] ?? STATUS_ICON.ready_to_ship!;
             const statusColor = STATUS_COLOR[s.orderStatus] ?? STATUS_COLOR.ready_to_ship!;
 
@@ -197,12 +197,18 @@ export default function Sales() {
                 className="p-4 rounded-2xl border border-border bg-card flex flex-col md:flex-row md:items-center gap-4"
                 data-testid={`sale-row-${s.id}`}
               >
-                <img
-                  src={img}
-                  alt=""
-                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                  onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/120x120/f97316/white?text=Item"; }}
-                />
+                {img ? (
+                  <img
+                    src={img}
+                    alt=""
+                    className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                    onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
+                    <span className="text-muted-foreground text-xl">📦</span>
+                  </div>
+                )}
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

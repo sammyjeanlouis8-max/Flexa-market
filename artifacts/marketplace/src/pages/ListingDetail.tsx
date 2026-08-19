@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -520,7 +520,15 @@ export default function ListingDetail() {
   }
   if (!listing) return <div className="max-w-4xl mx-auto px-4 py-8 text-center text-muted-foreground">{t("tr.listingNotFound")}</div>;
 
-  const images = (listing as any).images ?? [];
+  // Strip external placeholder service URLs that load successfully but show
+  // an orange "No Image" image (so onError never fires for them).
+  const images = ((listing as any).images ?? []).filter(
+    (url: unknown) =>
+      typeof url === "string" &&
+      url.trim().length > 0 &&
+      !url.includes("placehold.co") &&
+      !url.includes("via.placeholder.com"),
+  );
   const boostVideoUrl = (listing as any).boostVideoUrl as string | null ?? null;
   const listingVideoUrl = (listing as any).listingVideoUrl as string | null ?? null;
   const boostExpiresAt = (listing as any).boostExpiresAt as string | null ?? null;
@@ -535,10 +543,13 @@ export default function ListingDetail() {
     ...images.map((url: string) => ({ type: "image" as const, url })),
   ];
   const totalMedia = mediaItems.length;
-  const currentMedia: MediaItem = mediaItems[imgIndex] ?? {
-    type: "image",
-    url: `https://placehold.co/800x600/f97316/white?text=No+Image`,
-  };
+  const currentMedia = mediaItems[imgIndex] ?? null;
+
+  // Track all failed image URLs as a Set so navigating away and back doesn't
+  // retry a broken URL from scratch (previously a single string, now a Set).
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(new Set());
+  const addFailedUrl = (url: string) =>
+    setFailedMediaUrls(prev => { const s = new Set(prev); s.add(url); return s; });
 
   const _pinchDist = (t: React.TouchList) =>
     Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -1063,7 +1074,7 @@ export default function ListingDetail() {
         onTouchMove={onHeroTouchMove}
         onTouchEnd={onHeroTouchEnd}
       >
-        {currentMedia.type === "video" ? (
+        {currentMedia?.type === "video" ? (
           <div className="relative w-full h-full">
             <video
               key={currentMedia.url}
@@ -1089,13 +1100,13 @@ export default function ListingDetail() {
               {videoMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
           </div>
-        ) : (
+        ) : currentMedia && !failedMediaUrls.has(currentMedia.url) ? (
           <img
             src={currentMedia.url}
             alt={listing.title}
             className="w-full h-full object-contain"
             draggable={false}
-            onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/800x600/f97316/white?text=No+Image"; }}
+            onError={() => addFailedUrl(currentMedia.url)}
             style={{
               transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
               transformOrigin: "center center",
@@ -1104,6 +1115,14 @@ export default function ListingDetail() {
               userSelect: "none",
             }}
           />
+        ) : (
+          <div
+            className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5"
+            role="img"
+            aria-label={t("sell.images")}
+          >
+            <ImageIcon className="h-14 w-14 text-primary/45" aria-hidden="true" />
+          </div>
         )}
 
         {/* Back button overlay */}
@@ -1184,7 +1203,7 @@ export default function ListingDetail() {
         )}
 
         {/* Promo video badge */}
-        {currentMedia.isPromo && (
+        {currentMedia?.isPromo && (
           <div className="absolute top-14 right-3 z-10 bg-orange-500 text-white text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
             <Film className="h-3 w-3" /> {t("tr.promoVideo")}
           </div>
@@ -1210,8 +1229,17 @@ export default function ListingDetail() {
                     <div className="absolute bottom-0 inset-x-0 bg-orange-500 text-white text-[8px] font-bold text-center py-0.5">{t("tr.promoBadge")}</div>
                   )}
                 </>
+              ) : failedMediaUrls.has(item.url) ? (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5">
+                  <ImageIcon className="h-5 w-5 text-primary/40" aria-hidden="true" />
+                </div>
               ) : (
-                <img src={item.url} alt="" className="w-full h-full object-cover" />
+                <img
+                  src={item.url}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={() => addFailedUrl(item.url)}
+                />
               )}
             </button>
           ))}

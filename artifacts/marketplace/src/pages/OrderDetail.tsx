@@ -740,7 +740,7 @@ export default function OrderDetail() {
   );
 
   const idx = stageIndex(order.orderStatus);
-  const img = order.listing.images?.[0] ?? `https://placehold.co/120x120/f97316/white?text=Item`;
+  const img = order.listing.images?.[0] ?? null;
   const trackStatusKey = order.trackingStatus ?? "pending";
   const trackColor = TRACKING_STATUS_COLOR[trackStatusKey] ?? TRACKING_STATUS_COLOR.pending!;
 
@@ -752,11 +752,17 @@ export default function OrderDetail() {
 
       {/* ── Header ── */}
       <div className="rounded-2xl border border-border bg-card p-5 flex items-start gap-4">
-        <img
-          src={img} alt=""
-          className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
-          onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/120x120/f97316/white?text=Item"; }}
-        />
+        {img ? (
+          <img
+            src={img} alt=""
+            className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+            onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='10' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+          />
+        ) : (
+          <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-muted flex items-center justify-center">
+            <span className="text-muted-foreground text-2xl">📦</span>
+          </div>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-xs text-muted-foreground">{order.orderRef}</span>

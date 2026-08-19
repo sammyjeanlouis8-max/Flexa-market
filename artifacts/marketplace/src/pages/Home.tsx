@@ -280,18 +280,17 @@ function VideoPromoSection() {
       </div>
 
       <div
-        className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none"
+        className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {videos.map(v => (
           <Link
             key={v.id}
-            href="/videos"
-            className="flex-shrink-0 w-36 rounded-xl overflow-hidden relative bg-black shadow-md active:scale-95 transition-transform block"
-            style={{ height: "200px", textDecoration: "none" }}
+            href={`/videos?video=${v.id}`}
+            className="group relative block h-60 w-40 flex-shrink-0 snap-start scroll-mx-4 overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.025] active:scale-[0.98] sm:h-64 sm:w-44"
+            style={{ textDecoration: "none" }}
             data-testid={`button-promo-video-${v.id}`}
           >
-            {/* Thumbnail */}
             <PromoVideoPoster
               videoUrl={v.videoUrl}
               thumbnailUrl={v.thumbnailUrl}
@@ -300,28 +299,28 @@ function VideoPromoSection() {
             />
 
             {/* Dark gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/15 to-black/25 transition-colors group-hover:via-black/30" />
 
             {/* Play button */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-10 w-10 rounded-full bg-white/20 border-2 border-white/60 backdrop-blur-sm flex items-center justify-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/60 bg-black/25 shadow-xl backdrop-blur-md transition-transform group-hover:scale-110">
                 <Play className="h-5 w-5 text-white fill-white ml-0.5" />
               </div>
             </div>
 
             {/* Sponsored badge */}
             <div className="absolute top-2 left-2">
-              <span className="bg-yellow-400 text-black text-[9px] font-bold uppercase px-1.5 py-0.5 rounded">
+              <span className="rounded-full border border-white/25 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
                 {t("boostAd.sponsored", { defaultValue: "Sponsored" })}
               </span>
             </div>
 
             {/* Title at bottom */}
-            <div className="absolute bottom-0 inset-x-0 px-2 pb-2">
-              <p className="text-white text-xs font-semibold leading-tight line-clamp-2">{v.title}</p>
+            <div className="absolute bottom-0 inset-x-0 px-3 pb-3">
               {v.sellerName && (
-                <p className="text-white/60 text-[10px] truncate mt-0.5">{v.sellerName}</p>
+                <p className="mb-1 truncate text-[10px] font-semibold text-white/70">@{v.sellerName}</p>
               )}
+              <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
             </div>
           </Link>
         ))}
@@ -329,8 +328,8 @@ function VideoPromoSection() {
         {/* "See all" card at end */}
         <Link
           href="/videos"
-          className="flex-shrink-0 w-36 rounded-xl border-2 border-dashed border-primary/30 flex flex-col items-center justify-center gap-2 active:scale-95 transition-transform bg-primary/5 block"
-          style={{ height: "200px", textDecoration: "none" }}
+          className="flex h-60 w-40 flex-shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 transition-transform active:scale-95 sm:h-64 sm:w-44"
+          style={{ textDecoration: "none" }}
           data-testid="button-video-promo-all"
         >
           <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -389,9 +388,7 @@ function BoostedPostCard({
 
   if (dismissed) return null;
 
-  const img =
-    listing.images?.[0] ??
-    `https://placehold.co/400x300/f97316/white?text=${encodeURIComponent(listing.title.slice(0, 10))}`;
+  const img = listing.images?.[0] ?? null;
 
   return (
     <div className="col-span-2 sm:col-span-3 lg:col-span-4">
@@ -430,15 +427,18 @@ function BoostedPostCard({
             as a non-interactive div so there is no clickable product link. */}
         {listing.status === "hidden" ? (
           <div className="flex gap-3 p-3 w-full text-left">
-            <img
-              src={img}
-              alt={listing.title}
-              className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://placehold.co/96x96/f97316/white?text=Ad";
-              }}
-            />
+            {img ? (
+              <img
+                src={img}
+                alt={listing.title}
+                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+              />
+            ) : (
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
+                <Zap className="h-6 w-6 text-primary/40" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
                 {listing.title}
@@ -455,15 +455,18 @@ function BoostedPostCard({
             className="flex gap-3 p-3 w-full text-left hover:bg-muted/40 transition-colors"
             onClick={() => setLocation(`/listings/${listing.id}`)}
           >
-            <img
-              src={img}
-              alt={listing.title}
-              className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://placehold.co/96x96/f97316/white?text=Ad";
-              }}
-            />
+            {img ? (
+              <img
+                src={img}
+                alt={listing.title}
+                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+              />
+            ) : (
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
+                <Zap className="h-6 w-6 text-primary/40" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="font-bold text-foreground text-base">
                 {formatPrice(listing.price, listing.country, listing.currency)}

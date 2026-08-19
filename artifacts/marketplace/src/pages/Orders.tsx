@@ -205,7 +205,7 @@ export default function Orders() {
       {orders && orders.length > 0 && (
         <div className="space-y-3">
           {orders.map(o => {
-            const img = o.listingImages?.[0] ?? `https://placehold.co/120x120/f97316/white?text=Item`;
+            const img = o.listingImages?.[0] ?? null;
             const StatusIcon = STATUS_ICON[o.orderStatus] ?? STATUS_ICON.ready_to_ship!;
             const statusColor = STATUS_COLOR[o.orderStatus] ?? STATUS_COLOR.ready_to_ship!;
             const trackColor = o.trackingStatus ? TRACKING_COLOR[o.trackingStatus] : null;
@@ -220,12 +220,18 @@ export default function Orders() {
                   onClick={() => { setConfirmingId(null); setLocation(`/orders/${o.id}`); }}
                   data-testid={`order-row-${o.id}`}
                 >
-                  <img
-                    src={img} alt=""
-                    loading="lazy"
-                    className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                    onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/120x120/f97316/white?text=Item"; }}
-                  />
+                  {img ? (
+                    <img
+                      src={img} alt=""
+                      loading="lazy"
+                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                      onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
+                      <span className="text-muted-foreground text-xl">📦</span>
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono text-xs text-muted-foreground">

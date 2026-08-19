@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import {
   Zap, Check, CreditCard, ArrowLeft, Clock, Eye,
   Copy, CheckCheck, AlertCircle, Shield, Info,
-  Video, X, Upload,
+  Video, X, Upload, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,11 @@ import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { formatHTG, formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
-import { MAX_BOOST_VIDEO_BYTES, uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
+import {
+  BoostVideoUploadError,
+  MAX_BOOST_VIDEO_BYTES,
+  uploadNormalizedBoostVideo,
+} from "@/lib/boostVideoUpload";
 
 const PLANS = [
   {
@@ -237,6 +241,11 @@ export default function BoostPage() {
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef               = useRef<HTMLInputElement | null>(null);
+
+  // Active-boost video-management state (used when an existing paid boost is detected)
+  const [abvUploading, setAbvUploading] = useState(false);
+  const [abvSuccess, setAbvSuccess]     = useState(false);
+  const abvFileInputRef                 = useRef<HTMLInputElement | null>(null);
   const MAX_VIDEO_SECONDS = 180;
   const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
 
@@ -265,8 +274,23 @@ export default function BoostPage() {
     setVideoUploading(true);
     try {
       setVideoUrl(await uploadNormalizedBoostVideo(file, token));
-    } catch {
-      toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
+    } catch (error) {
+      const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
+      const descriptionKey = (() => {
+        if (["UPLOAD_AUTH_REQUIRED", "UPLOAD_OWNER_MISMATCH"].includes(code)) return "boost.videoUploadAuth";
+        if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
+        if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
+        if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
+        if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
+        if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID") return "boost.videoUploadIncomplete";
+        if (code === "VIDEO_PROCESSING_TIMEOUT") return "boost.videoProcessingTimeout";
+        return "boost.videoUploadRetry";
+      })();
+      toast({
+        title: t("boost.videoUploadFailed"),
+        description: t(descriptionKey),
+        variant: "destructive",
+      });
     } finally {
       setVideoUploading(false);
     }
@@ -342,6 +366,40 @@ export default function BoostPage() {
   const { data: listing } = useGetListing(listingId, {
     query: { enabled: !!listingId, queryKey: getGetListingQueryKey(listingId) },
   });
+
+  // Detect an existing paid active boost for this listing so we can short-circuit
+  // the wizard and offer video-management only (no second charge).
+  const listingIsBoosted =
+    !!(listing as any)?.isBoosted &&
+    !!(listing as any)?.boostExpiresAt &&
+    new Date((listing as any).boostExpiresAt as string).getTime() > Date.now();
+
+  const { data: myActiveBoostsData, refetch: refetchActiveBoosts } = useQuery<{
+    boosts: Array<{
+      listingId: number;
+      boostId: number;
+      boostVideoUrl: string | null;
+      boostExpiresAt: string | null;
+      plan: string;
+      budget: number;
+    }>;
+  }>({
+    queryKey: ["boost-my-active", user?.id],
+    queryFn: async () => {
+      const tk = localStorage.getItem("flexamarket_token");
+      const res = await fetch("/api/boost/my-active", {
+        headers: tk ? { Authorization: `Bearer ${tk}` } : {},
+      });
+      if (!res.ok) return { boosts: [] };
+      return res.json();
+    },
+    enabled: !!user && listingIsBoosted,
+    staleTime: 30_000,
+  });
+
+  // The active boost record for this specific listing (null if none or not loaded yet)
+  const activeBoostForListing =
+    myActiveBoostsData?.boosts.find(b => b.listingId === listingId) ?? null;
 
   const isSuperAdmin = !!(user?.isSuperAdmin);
   // Super-admin can override audience country; others locked to their own (or listing's country for free boosts)
@@ -611,6 +669,232 @@ export default function BoostPage() {
       setAdminFreeLoading(false);
     }
   };
+
+  // ── Active-boost video management ─────────────────────────────────────────
+  // When this listing already has a paid active boost owned by this seller,
+  // skip the new-boost wizard entirely and offer only video attach/replace.
+  // This prevents accidental second charges and duplicate boost records.
+  if (activeBoostForListing && !isAdmin) {
+    const daysLeft = activeBoostForListing.boostExpiresAt
+      ? Math.max(0, Math.ceil(
+          (new Date(activeBoostForListing.boostExpiresAt).getTime() - Date.now()) / 86_400_000,
+        ))
+      : null;
+
+    const handleAbvVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file || !token) return;
+      if (file.size > MAX_VIDEO_BYTES) {
+        toast({ title: t("boost.videoTooBig"), variant: "destructive" });
+        return;
+      }
+      setAbvUploading(true);
+      try {
+        const uploadedUrl = await uploadNormalizedBoostVideo(file, token);
+        const res = await fetch(`/api/boost/${activeBoostForListing.boostId}/video`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ videoUrl: uploadedUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast({ title: data.error ?? t("boost.videoUploadFailed"), variant: "destructive" });
+          return;
+        }
+        await refetchActiveBoosts();
+        queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
+        setAbvSuccess(true);
+      } catch (error) {
+        const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
+        const descKey = ((): string => {
+          if (["UPLOAD_AUTH_REQUIRED", "UPLOAD_OWNER_MISMATCH"].includes(code)) return "boost.videoUploadAuth";
+          if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
+          if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
+          if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
+          if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
+          return "boost.videoUploadRetry";
+        })();
+        toast({ title: t("boost.videoUploadFailed"), description: t(descKey), variant: "destructive" });
+      } finally {
+        setAbvUploading(false);
+      }
+    };
+
+    const hasVideo = !!activeBoostForListing.boostVideoUrl;
+
+    // Success screen after attaching/replacing the video
+    if (abvSuccess) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gradient-to-b from-green-50 to-background dark:from-green-950/20 dark:to-background">
+          <div className="w-full max-w-sm text-center space-y-6">
+            <div className="relative mx-auto h-24 w-24">
+              <div className="absolute inset-0 rounded-full bg-green-200 dark:bg-green-900/40 animate-ping opacity-40" />
+              <div className="relative h-24 w-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/30">
+                <CheckCheck className="h-11 w-11 text-white" />
+              </div>
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-foreground mb-2">
+                {t("boost.videoAdded", { defaultValue: "Videyo Ajoute!" })}
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {t("boost.videoAddedDesc", { defaultValue: "Videyo promo ou a ap parèt nan feed la imedyatman." })}
+              </p>
+            </div>
+            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-2xl p-4">
+              <p className="text-sm text-green-700 dark:text-green-400 font-medium">
+                ✓ {t("boost.videoLiveDesc", { defaultValue: "Listing ou a kounye a ap parèt nan video feed la" })}
+              </p>
+            </div>
+            <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation("/my-boosts")}>
+              {t("myBoosts.title", { defaultValue: "Mes Boosts" })}
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={() => setLocation(`/listings/${listingId}`)}>
+              {t("boost.viewListing", { defaultValue: "Wè lis la" })}
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Main panel: show active-boost status and video upload/replace
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        {/* Gradient header — matches the normal boost page */}
+        <div className="-mx-4 -mt-6 mb-6 relative bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "radial-gradient(ellipse at 10% 60%, rgba(255,255,255,0.18) 0%, transparent 55%)" }} />
+          <div className="relative px-4 pt-4 pb-5">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-white hover:bg-white/20 shrink-0 rounded-full"
+                onClick={() => setLocation(`/listings/${listingId}`)}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-lg font-extrabold text-white flex items-center gap-2 leading-tight">
+                  <Zap className="h-4 w-4 text-yellow-200 fill-yellow-200 shrink-0" />
+                  {t("boost.boostListing", { defaultValue: "Boost Listing" })}
+                </h1>
+                {listing && (
+                  <p className="text-xs text-white/75 truncate mt-0.5">{(listing as any).title}</p>
+                )}
+              </div>
+              {daysLeft !== null && (
+                <div className="shrink-0 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-3 py-1.5 text-center">
+                  <p className="text-[10px] text-white/70 leading-none mb-0.5">
+                    {daysLeft === 0
+                      ? t("myBoosts.expiresIn", { defaultValue: "Jodi a" })
+                      : daysLeft === 1
+                      ? t("myBoosts.daysLeft", { n: 1, defaultValue: "1 jou" })
+                      : t("myBoosts.daysLeftPlural", { n: daysLeft, defaultValue: `${daysLeft} jou` })}
+                  </p>
+                  <p className="text-sm font-black text-white tabular-nums">
+                    {t("myBoosts.activeLabel", { defaultValue: "Aktif" })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Active boost banner */}
+        <div className="mb-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-4 py-3 flex items-start gap-3">
+          <div className="h-7 w-7 rounded-full bg-green-200 dark:bg-green-800 flex items-center justify-center shrink-0 mt-0.5">
+            <Zap className="h-3.5 w-3.5 text-green-700 dark:text-green-300 fill-current" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-green-800 dark:text-green-300">
+              {t("boost.alreadyActive", { defaultValue: "Boost la deja aktif" })}
+            </p>
+            <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+              {t("boost.alreadyActiveDesc", { defaultValue: "Anons ou a deja ap parèt. Ajoute oswa ranplase videyo promo a san nouvo peman." })}
+            </p>
+          </div>
+        </div>
+
+        {/* Video attach / replace card */}
+        <div className="rounded-xl border border-border bg-card p-4 mb-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
+              <Video className="h-3.5 w-3.5 text-white" />
+            </div>
+            <p className="text-sm font-bold text-foreground">
+              {t("boost.videoLabel", { defaultValue: "Videyo Promo" })}
+            </p>
+            {hasVideo && (
+              <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded">✓</span>
+            )}
+          </div>
+
+          {hasVideo ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 bg-muted/60 rounded-lg px-3 py-2.5">
+                <Check className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                <span className="text-sm font-medium text-foreground flex-1">
+                  {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("boost.replaceVideoDesc", { defaultValue: "Ou ka ranplase videyo a nenpòt ki lè. Nouvo videyo a ap parèt imedyatman." })}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => abvFileInputRef.current?.click()}
+                disabled={abvUploading}
+              >
+                {abvUploading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Ap telechaje…" })}</>
+                ) : (
+                  <><Upload className="h-4 w-4 mr-2" />{t("boost.replaceVideo", { defaultValue: "Ranplase Videyo" })}</>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {t("boost.videoHelp", { defaultValue: "Max 1 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
+              </p>
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => abvFileInputRef.current?.click()}
+                disabled={abvUploading}
+              >
+                {abvUploading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("boost.videoUploading", { defaultValue: "Ap telechaje…" })}</>
+                ) : (
+                  <><Upload className="h-4 w-4 mr-2" />{t("boost.videoPick", { defaultValue: "Chwazi videyo" })}</>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Back to My Boosts */}
+        <Button variant="ghost" className="w-full" onClick={() => setLocation("/my-boosts")}>
+          {t("myBoosts.title", { defaultValue: "Retounen nan Mes Boosts" })}
+        </Button>
+
+        {/* Hidden file input */}
+        <input
+          ref={abvFileInputRef}
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={handleAbvVideoSelected}
+        />
+      </div>
+    );
+  }
 
   // ── Admin free-boost success screen ─────────────────────────────────────────
   if (adminFreeSuccess) {

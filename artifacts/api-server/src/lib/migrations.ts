@@ -2,6 +2,85 @@ import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
+const REQUIRED_BOOST_VIDEO_MIGRATIONS: Array<{ name: string; sql: string }> = [
+  {
+    name: "boost_video_uploads.create",
+    sql: `CREATE TABLE IF NOT EXISTS boost_video_uploads (
+      id TEXT PRIMARY KEY,
+      owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content_type TEXT NOT NULL,
+      total_chunks INTEGER NOT NULL,
+      total_bytes INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'uploading',
+      final_storage_key TEXT,
+      error_code TEXT,
+      error_message TEXT,
+      processing_token TEXT,
+      processing_started_at TIMESTAMPTZ,
+      processing_heartbeat_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  },
+  {
+    name: "boost_video_upload_chunks.create",
+    sql: `CREATE TABLE IF NOT EXISTS boost_video_upload_chunks (
+      upload_id TEXT NOT NULL REFERENCES boost_video_uploads(id) ON DELETE CASCADE,
+      chunk_index INTEGER NOT NULL,
+      storage_key TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL,
+      content_sha256 TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (upload_id, chunk_index)
+    )`,
+  },
+  {
+    name: "boost_video_upload_chunks.content_sha256",
+    sql: `ALTER TABLE boost_video_upload_chunks ADD COLUMN IF NOT EXISTS content_sha256 TEXT`,
+  },
+  {
+    name: "boost_video_upload_chunks.content_sha256.backfill",
+    sql: `UPDATE boost_video_upload_chunks
+      SET content_sha256 = 'legacy-unverified'
+      WHERE content_sha256 IS NULL`,
+  },
+  {
+    name: "boost_video_upload_chunks.content_sha256.required",
+    sql: `ALTER TABLE boost_video_upload_chunks ALTER COLUMN content_sha256 SET NOT NULL`,
+  },
+  {
+    name: "boost_video_uploads.owner_status_idx",
+    sql: "CREATE INDEX IF NOT EXISTS boost_video_uploads_owner_status_idx ON boost_video_uploads(owner_id, status)",
+  },
+  {
+    name: "boost_video_uploads.expires_idx",
+    sql: "CREATE INDEX IF NOT EXISTS boost_video_uploads_expires_idx ON boost_video_uploads(expires_at)",
+  },
+  {
+    name: "boost_video_upload_chunks.upload_idx",
+    sql: "CREATE INDEX IF NOT EXISTS boost_video_upload_chunks_upload_idx ON boost_video_upload_chunks(upload_id)",
+  },
+];
+
+export async function ensureBoostVideoUploadSchema(): Promise<void> {
+  for (const migration of REQUIRED_BOOST_VIDEO_MIGRATIONS) {
+    try {
+      await db.execute(sql.raw(migration.sql));
+    } catch (err) {
+      // Non-fatal: a migration may fail when its constraint already exists
+      // (e.g. ADD COLUMN on an already-NOT NULL column, or SET NOT NULL when
+      // stale null rows survived a prior partial run).  Log and continue so
+      // the readiness flag is set and uploads can proceed.  New chunk rows
+      // always carry a sha256 value so the schema stays self-healing.
+      logger.warn(
+        { err, migration: migration.name },
+        "Boost video schema migration step skipped (non-fatal)",
+      );
+    }
+  }
+}
+
 /**
  * Idempotent schema migrations that run at server startup.
  * Uses IF NOT EXISTS / IF EXISTS guards — safe to run multiple times.

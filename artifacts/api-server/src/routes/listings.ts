@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable } from "@workspace/db";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, conversationsTable, reviewsTable, deliveriesTable } from "@workspace/db";
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
@@ -160,7 +160,16 @@ async function formatListing(
     distanceKm,
     proximityLevel,
     nearYou,
-    images: listing.images ?? [],
+    // Strip known external placeholder service URLs that return orange/styled
+    // "No Image" images — these load successfully so onError never fires,
+    // leaving them visible in the gallery instead of our neutral fallback.
+    images: (listing.images ?? []).filter(
+      (url: unknown) =>
+        typeof url === "string" &&
+        url.trim().length > 0 &&
+        !url.includes("placehold.co") &&
+        !url.includes("via.placeholder.com"),
+    ),
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
@@ -671,6 +680,13 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     res.status(400).json({ error: field ? `${field}: ${msg}` : msg });
     return;
   }
+  const imageUrls = parsed.data.images
+    .map((image) => image.trim())
+    .filter((image) => image.length > 0);
+  if (imageUrls.length === 0) {
+    res.status(400).json({ error: "At least one product photo is required." });
+    return;
+  }
 
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.categoryId));
   if (!cat) { res.status(400).json({ error: "Invalid category" }); return; }
@@ -746,7 +762,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
   const moderation = await moderateListing({
     title: parsed.data.title,
     description: parsed.data.description,
-    imageUrls: parsed.data.images ?? [],
+    imageUrls,
   });
 
   const moderationStatus = moderation.decision;
@@ -757,6 +773,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [listing] = await db.insert(listingsTable).values({
     ...parsed.data,
+    images: imageUrls,
     subcategoryId: parsed.data.subcategoryId ?? null,
     city: rawCity || null,
     state: listingState,
@@ -922,6 +939,13 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: field ? `${field}: ${msg}` : msg });
     return;
   }
+  const updatedImages = (parsed.data.images ?? existing.images ?? [])
+    .map((image) => image.trim())
+    .filter((image) => image.length > 0);
+  if (updatedImages.length === 0) {
+    res.status(400).json({ error: "A listing must keep at least one product photo." });
+    return;
+  }
 
   // Defense in depth — the OpenAPI-generated schema currently allows any
   // string for `status`, but only three values are meaningful in our state
@@ -932,7 +956,10 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [listing] = await db.update(listingsTable).set(parsed.data).where(eq(listingsTable.id, id)).returning();
+  const [listing] = await db.update(listingsTable).set({
+    ...parsed.data,
+    ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
+  }).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));
   let subcat: { name: string; slug: string } | null = null;
@@ -1000,7 +1027,26 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
       }
     }
 
+    // ── Clean up all FK-dependent records ────────────────────────────────────
+    // PostgreSQL defaults FK constraints to RESTRICT (no cascade), so any
+    // child rows that survive into the final DELETE will cause a 500.
+    // Order matters: nullable-FK records are SET NULL first (preserving
+    // financial/chat/review history), then hard-FK records are deleted.
+
+    // 1. Nullable FK references — preserve the rows but clear the listing link
+    await db.update(transactionsTable).set({ listingId: null }).where(eq(transactionsTable.listingId, id));
+    await db.update(deliveriesTable).set({ listingId: null }).where(eq(deliveriesTable.listingId, id));
+    await db.update(conversationsTable).set({ listingId: null }).where(eq(conversationsTable.listingId, id));
+    await db.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, id));
+
+    // 2. Hard / listing-specific FK references — delete entirely
+    await db.delete(notificationsTable).where(eq(notificationsTable.listingId, id));
+    await db.delete(commentsTable).where(eq(commentsTable.listingId, id)); // commentLikes cascade via DB
+    await db.delete(offersTable).where(eq(offersTable.listingId, id));
+    await db.delete(favoritesTable).where(eq(favoritesTable.listingId, id));
     await db.delete(boostsTable).where(eq(boostsTable.listingId, id));
+
+    // 3. Finally remove the listing itself
     await db.delete(listingsTable).where(eq(listingsTable.id, id));
     res.json({ message: "Deleted" });
   } catch (err) {

@@ -360,14 +360,29 @@ export default function MyBoosts() {
                     {/* Action row */}
                     <div className="px-3 pb-3 flex gap-2">
                       {boost.boostVideoUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/listings/${boost.listingId}/video`)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-muted text-foreground text-xs font-semibold hover:bg-accent transition-colors"
-                        >
-                          <Play className="h-3.5 w-3.5" />
-                          {t("myBoosts.watchAd")}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/listings/${boost.listingId}/video`)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-muted text-foreground text-xs font-semibold hover:bg-accent transition-colors"
+                          >
+                            <Play className="h-3.5 w-3.5" />
+                            {t("myBoosts.watchAd")}
+                          </button>
+                          {/* Replace video — shown even when one already exists */}
+                          <button
+                            type="button"
+                            onClick={() => handleAddVideo(boost)}
+                            disabled={uploadingBoostId === boost.boostId}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-semibold hover:bg-accent hover:text-primary transition-colors border border-border/50 disabled:opacity-60"
+                            title={t("myBoosts.replaceVideo", { defaultValue: "Ranplase videyo" })}
+                          >
+                            {uploadingBoostId === boost.boostId
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Upload className="h-3.5 w-3.5" />
+                            }
+                          </button>
+                        </>
                       ) : (
                         <button
                           type="button"

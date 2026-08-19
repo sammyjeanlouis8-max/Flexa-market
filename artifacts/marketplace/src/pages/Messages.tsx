@@ -246,6 +246,21 @@ function formatLastSeen(lastSeenAt: string | null, t: (k: string, o?: any) => st
   if (diff < 86400) return t("messages.lastSeenHours", { n: Math.floor(diff / 3600) });
   return t("messages.lastSeenDays", { n: Math.floor(diff / 86400) });
 }
+
+function localizeConversationPreview(
+  preview: string | null | undefined,
+  fallback: string,
+  t: (key: string, options?: any) => string,
+): string {
+  if (!preview) return fallback;
+
+  // Conversation previews were historically saved in the database as a
+  // localized-looking string. Recognize the old variants so the interface
+  // language controls the label without changing a user's message content.
+  const voiceMatch = preview.match(/^(\S+)\s+(?:Mesaj vwa|Message vocal|Voice message)$/i);
+  return voiceMatch ? `${voiceMatch[1]} ${t("messages.voiceMessage")}` : preview;
+}
+
 async function uploadMedia(file: Blob, contentType: string, token: string): Promise<string> {
   const presignRes = await fetch("/api/storage/uploads/request-url", {
     method: "POST",
@@ -1010,7 +1025,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
                   fontWeight: conv.unreadCount > 0 ? 600 : 400,
                   margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  {conv.lastMessage ?? conv.listingTitle}
+                  {localizeConversationPreview(conv.lastMessage, conv.listingTitle, t)}
                 </p>
                 {conv.unreadCount > 0 && (
                   <Badge style={{ fontSize: 11, minWidth: 20, height: 20, padding: "0 6px", background: "#2563EB", flexShrink: 0 }}>

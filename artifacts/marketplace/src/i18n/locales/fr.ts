@@ -807,6 +807,7 @@ export default {
     lastSeenDays: "Il y a {{n}} j",
     startConversation: "Commencer la conversation",
     voiceUploadFailed: "Échec de l'envoi du message vocal. Veuillez réessayer.",
+    voiceMessage: "Message vocal",
     micDenied: "Impossible d'accéder au microphone. Autorisez l'accès dans les paramètres de votre navigateur.",
     connectionProblem: "Problème de connexion. Veuillez réessayer.",
     retry: "Réessayer",

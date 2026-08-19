@@ -244,6 +244,7 @@ export default function BoostPage() {
 
   // Active-boost video-management state (used when an existing paid boost is detected)
   const [abvUploading, setAbvUploading] = useState(false);
+  const [abvUploadPercent, setAbvUploadPercent] = useState(0);
   const [abvSuccess, setAbvSuccess]     = useState(false);
   const abvFileInputRef                 = useRef<HTMLInputElement | null>(null);
   const MAX_VIDEO_SECONDS = 180;
@@ -690,8 +691,9 @@ export default function BoostPage() {
         return;
       }
       setAbvUploading(true);
+      setAbvUploadPercent(0);
       try {
-        const uploadedUrl = await uploadNormalizedBoostVideo(file, token);
+        const uploadedUrl = await uploadNormalizedBoostVideo(file, token, setAbvUploadPercent);
         const res = await fetch(`/api/boost/${activeBoostForListing.boostId}/video`, {
           method: "PATCH",
           headers: {
@@ -707,6 +709,7 @@ export default function BoostPage() {
         }
         await refetchActiveBoosts();
         queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
+        setAbvUploadPercent(100);
         setAbvSuccess(true);
       } catch (error) {
         const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
@@ -841,6 +844,29 @@ export default function BoostPage() {
                   {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
                 </span>
               </div>
+              {abvUploading && (
+                <div
+                  className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
+                    <span>{t("boost.videoUploading", { defaultValue: "Ap telechaje videyo a…" })}</span>
+                    <span>{abvUploadPercent}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-200 ease-out"
+                      style={{ width: `${abvUploadPercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {abvUploadPercent < 100
+                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Pa fèmen paj la pandan videyo a ap telechaje." })
+                      : t("boost.videoUploadFinishing", { defaultValue: "Videyo a telechaje. N ap fini prepare li…" })}
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t("boost.replaceVideoDesc", { defaultValue: "Ou ka ranplase videyo a nenpòt ki lè. Nouvo videyo a ap parèt imedyatman." })}
               </p>
@@ -857,6 +883,29 @@ export default function BoostPage() {
                   <><Upload className="h-4 w-4 mr-2" />{t("boost.replaceVideo", { defaultValue: "Ranplase Videyo" })}</>
                 )}
               </Button>
+              {abvUploading && (
+                <div
+                  className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div className="mb-2 flex items-center justify-between text-xs font-semibold text-primary">
+                    <span>{t("boost.videoUploading", { defaultValue: "Ap telechaje videyo a…" })}</span>
+                    <span>{abvUploadPercent}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-200 ease-out"
+                      style={{ width: `${abvUploadPercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {abvUploadPercent < 100
+                      ? t("boost.videoUploadKeepOpen", { defaultValue: "Pa fèmen paj la pandan videyo a ap telechaje." })
+                      : t("boost.videoUploadFinishing", { defaultValue: "Videyo a telechaje. N ap fini prepare li…" })}
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-3">

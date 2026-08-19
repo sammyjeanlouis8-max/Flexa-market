@@ -538,7 +538,7 @@ const AudioBubble = React.memo(function AudioBubble({
     <div style={{ padding: "8px 10px 6px", width: "100%", boxSizing: "border-box" }}>
       <audio
         ref={audioRef} src={src} preload="auto"
-        onPlay={handlePlay}
+        onPlaying={handlePlay}
         onPause={handlePause}
         onEnded={handleEnded}
         onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}

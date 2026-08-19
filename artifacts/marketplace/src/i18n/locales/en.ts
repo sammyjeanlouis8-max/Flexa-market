@@ -824,6 +824,7 @@ export default {
     listingLabel: "Listing",
     uploading: "Uploading…",
     recordVoice: "Record voice message",
+    voiceMessage: "Voice message",
   },
   saved: {
     title: "Saved Items",

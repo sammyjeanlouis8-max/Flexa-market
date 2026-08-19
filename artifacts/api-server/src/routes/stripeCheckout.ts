@@ -13,8 +13,31 @@ import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import Stripe from "stripe";
+import { getNextArtistPlanExpiry } from "../lib/artistPlan";
 
 const router = Router();
+
+let artistPlanLedgerReady: Promise<void> | null = null;
+async function ensureArtistPlanPaymentLedger(): Promise<void> {
+  if (!artistPlanLedgerReady) {
+    artistPlanLedgerReady = db.execute(sql`
+      CREATE TABLE IF NOT EXISTS music_artist_plan_payments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        provider TEXT NOT NULL,
+        provider_payment_id TEXT NOT NULL,
+        amount_usd NUMERIC(10,2) NOT NULL,
+        paid_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (provider, provider_payment_id)
+      )
+    `).then(() => undefined).catch((err) => {
+      artistPlanLedgerReady = null;
+      throw err;
+    });
+  }
+  await artistPlanLedgerReady;
+}
 
 const BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
@@ -709,18 +732,64 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
   if (meta.type === "artist_plan") {
     const userId = Number(meta.userId);
     if (!userId) { logger.warn({ meta, sessionId }, "artist_plan checkout missing userId"); return; }
+    if (session.amount_total !== 5000 || session.currency?.toLowerCase() !== "usd") {
+      logger.error({ userId, sessionId, amountTotal: session.amount_total, currency: session.currency }, "artist_plan checkout amount mismatch");
+      return;
+    }
 
-    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-    await db.update(usersTable)
-      .set({ subscriptionPlan: "artist" as any, subscriptionExpiresAt: expiresAt, updatedAt: new Date() })
-      .where(eq(usersTable.id, userId));
+    await ensureArtistPlanPaymentLedger();
+    const outcome = await db.transaction(async (tx) => {
+      const lockedUser = await tx.execute(sql`
+        SELECT subscription_plan, subscription_expires_at
+        FROM users
+        WHERE id = ${userId}
+        FOR UPDATE
+      `);
+      const user = lockedUser.rows[0] as {
+        subscription_plan?: string;
+        subscription_expires_at?: Date | string | null;
+      } | undefined;
+      if (!user) return { code: "missing_user" as const };
 
-    await db.insert(notificationsTable).values({
-      userId, actorId: userId, type: "system_alert",
-      message: `🎵 Plan Artis ou aktive! Ou ka telechaje chante san limit pou 1 an. Kolekte 500 abone pou kòmanse touche revni chak mwa.`,
-    }).catch(() => {});
+      const recorded = await tx.execute(sql`
+        INSERT INTO music_artist_plan_payments
+          (user_id, provider, provider_payment_id, amount_usd)
+        VALUES
+          (${userId}, 'stripe', ${sessionId}, 50.00)
+        ON CONFLICT (provider, provider_payment_id) DO NOTHING
+        RETURNING id
+      `);
+      if (!recorded.rows.length) return { code: "duplicate" as const };
 
-    logger.info({ userId, sessionId, expiresAt }, "[music] Artist Plan activated via Stripe");
+      const expiresAt = getNextArtistPlanExpiry({
+        subscriptionPlan: user.subscription_plan,
+        subscriptionExpiresAt: user.subscription_expires_at,
+      });
+      await tx.update(usersTable)
+        .set({
+          subscriptionPlan: "artist",
+          subscriptionExpiresAt: expiresAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(usersTable.id, userId));
+      await tx.insert(notificationsTable).values({
+        userId,
+        actorId: userId,
+        type: "system_alert",
+        message: "🎵 Plan Artis ou aktive! Ou ka telechaje chante san limit pou 1 an. Kolekte 500 abone pou kòmanse touche revni chak mwa.",
+      });
+      return { code: "activated" as const, expiresAt };
+    });
+
+    if (outcome.code === "missing_user") {
+      logger.error({ userId, sessionId }, "[music] Artist Plan payment references a missing user");
+      return;
+    }
+    if (outcome.code === "duplicate") {
+      logger.info({ userId, sessionId }, "[music] Duplicate Artist Plan Stripe completion ignored");
+      return;
+    }
+    logger.info({ userId, sessionId, expiresAt: outcome.expiresAt }, "[music] Artist Plan activated or renewed via Stripe");
     return;
   }
 

@@ -505,7 +505,22 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
       // ── New track: Wasabi proxy upload ────────────────────────────────────
       if (!audioFile) { setErr(t("adminMusic.errAudioRequired") || "Audio file required"); return; }
       setProgress(5);
-      const sigRes = await fetch("/api/music/upload-signature", { headers: authH });
+      const sigRes = await fetch("/api/music/upload-signature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authH },
+        body: JSON.stringify({
+          audio: {
+            name: audioFile.name,
+            size: audioFile.size,
+            contentType: audioFile.type || "application/octet-stream",
+          },
+          cover: coverFile ? {
+            name: coverFile.name,
+            size: coverFile.size,
+            contentType: coverFile.type || "application/octet-stream",
+          } : null,
+        }),
+      });
       if (!sigRes.ok) { const d = await sigRes.json().catch(()=>({})); throw new Error(d.error ?? "Signature failed"); }
       const sig = await sigRes.json();
       setProgress(10);
@@ -527,7 +542,7 @@ function AddSongTab({ track, onSave, onCancel }: { track?: Track|null; onSave: (
       });
       setProgress(85);
       let coverResult: {storageKey:string;url:string}|null = null;
-      if (coverFile) {
+      if (coverFile && sig.cover?.uploadUrl) {
         try {
           const cd = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
             const xhr = new XMLHttpRequest();

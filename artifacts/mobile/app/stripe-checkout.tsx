@@ -14,26 +14,28 @@ import WebView from "react-native-webview";
 const FLEXA_HOST = "flexamarket.com";
 
 // When Stripe redirects back to flexamarket.com the WebView blocks the
-// navigation and closes. We do two things:
-//  1. Fire the server-side activation so the wallet is credited server-side
-//     immediately (idempotent, verified against Stripe).
-//  2. Return the card_success params so the caller can navigate to the wallet
-//     screen with them — the web Wallet page then polls until balance updates.
-function handleFlexaSuccessUrl(url: string): { cardSuccess: boolean; sessionId: string | null; ref: string | null } {
+// navigation. Activate the verified session server-side, then route to the
+// matching fresh web screen so wallet and Artist Plan state cannot stay stale.
+function handleFlexaSuccessUrl(url: string): {
+  cardSuccess: boolean;
+  artistPlanSuccess: boolean;
+  sessionId: string | null;
+  ref: string | null;
+} {
   try {
     const parsed = new URL(url);
     const sessionId = parsed.searchParams.get("session_id");
     const ref       = parsed.searchParams.get("ref");
-    const isSuccess = parsed.searchParams.get("card_success") === "1";
-    if (isSuccess && sessionId) {
-      // Fire activation in background — wallet credit happens server-side
+    const cardSuccess = parsed.searchParams.get("card_success") === "1";
+    const artistPlanSuccess = parsed.searchParams.get("artist_plan") === "success";
+    if ((cardSuccess || artistPlanSuccess) && sessionId) {
       fetch(
         `https://${FLEXA_HOST}/api/stripe/checkout/activate?session_id=${encodeURIComponent(sessionId)}`,
       ).catch(() => {});
     }
-    return { cardSuccess: isSuccess, sessionId, ref };
+    return { cardSuccess, artistPlanSuccess, sessionId, ref };
   } catch {
-    return { cardSuccess: false, sessionId: null, ref: null };
+    return { cardSuccess: false, artistPlanSuccess: false, sessionId: null, ref: null };
   }
 }
 
@@ -125,6 +127,7 @@ export default function StripeCheckoutScreen() {
     };
   const { url } = useLocalSearchParams<{ url: string }>();
   const webRef = useRef<any>(null);
+  const handledReturnRef = useRef(false);
   const [loading, setLoading] = useState(true);
 
   const stripeUrl = typeof url === "string" ? url : null;
@@ -133,6 +136,29 @@ export default function StripeCheckoutScreen() {
     router.back();
     return null;
   }
+
+  const finishFlexaReturn = (returnUrl: string) => {
+    if (handledReturnRef.current) return;
+    handledReturnRef.current = true;
+    const { cardSuccess, artistPlanSuccess, sessionId } = handleFlexaSuccessUrl(returnUrl);
+    setTimeout(() => {
+      if (cardSuccess && sessionId) {
+        router.replace({
+          pathname: "/(tabs)/wallet",
+          params: { card_success: "1", session_id: sessionId },
+        } as any);
+      } else if (artistPlanSuccess && sessionId) {
+        router.replace({
+          pathname: "/website",
+          params: {
+            url: `https://${FLEXA_HOST}/music?artist_plan=success&session_id=${encodeURIComponent(sessionId)}`,
+          },
+        } as any);
+      } else {
+        router.back();
+      }
+    }, 0);
+  };
 
   return (
     // SafeAreaView with edges=["top","bottom"] lets React Native measure and
@@ -179,32 +205,14 @@ export default function StripeCheckoutScreen() {
           onLoadEnd={() => setLoading(false)}
           onShouldStartLoadWithRequest={(request) => {
             if (isFlexa(request.url)) {
-              const { cardSuccess, sessionId } = handleFlexaSuccessUrl(request.url);
-              setTimeout(() => {
-                if (cardSuccess && sessionId) {
-                  router.replace({
-                    pathname: "/(tabs)/wallet",
-                    params: { card_success: "1", session_id: sessionId },
-                  } as any);
-                } else {
-                  router.back();
-                }
-              }, 0);
+              finishFlexaReturn(request.url);
               return false;
             }
             return true;
           }}
           onNavigationStateChange={(state) => {
             if (isFlexa(state.url)) {
-              const { cardSuccess, sessionId } = handleFlexaSuccessUrl(state.url);
-              if (cardSuccess && sessionId) {
-                router.replace({
-                  pathname: "/(tabs)/wallet",
-                  params: { card_success: "1", session_id: sessionId },
-                } as any);
-              } else {
-                router.back();
-              }
+              finishFlexaReturn(state.url);
             }
           }}
         />

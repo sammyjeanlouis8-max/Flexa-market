@@ -15,7 +15,7 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, notificationsTable, usersTable } from "@workspace/db";
 import { sql as dsql, eq } from "drizzle-orm";
-import { requireAdmin, requireAuth, optionalAuth } from "../middlewares/auth";
+import { requireAdmin, requireAuth, optionalAuth, requireCardNotBlocked } from "../middlewares/auth";
 import multer from "multer";
 import {
   uploadMusicAudio,
@@ -26,9 +26,19 @@ import {
   isConfigured as wasabiConfigured,
   runPreflight,
 } from "../lib/wasabi";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { convertAudioToMp3, needsConversion } from "../lib/audioConvert";
 import { logger } from "../lib/logger";
+import { validateMimeType } from "../lib/s3";
+import {
+  ARTIST_PLAN_DURATION_MS,
+  ARTIST_PLAN_PRICE_CENTS,
+  ARTIST_PLAN_PRICE_USD,
+  allocateArtistPlanWallet,
+  getArtistPlanState,
+} from "../lib/artistPlan";
+import { issueUploadProxyToken } from "../lib/uploadProxyTokens";
+import { ensureMusicUploadClaimsTable } from "../lib/musicUploadClaims";
 
 const router = Router();
 // Support MP3, WAV, FLAC, AAC, M4A + images — up to 500 MB
@@ -54,9 +64,6 @@ const MAX_IP_IMPRESSIONS_PER_HOUR = 15;
 const HOUR_MS           = 3_600_000;
 const FLUSH_INTERVAL_MS = 60_000; // flush buffer every 60 s
 const MIN_WITHDRAW_USD  = 1.00;   // artist must have ≥ $1 to withdraw
-const FREE_SONG_LIMIT   = 2;      // free tier: max 2 songs per artist
-const ARTIST_PLAN_PRICE_CENTS = 5000; // $50.00 USD per year
-
 // ── In-memory guards ─────────────────────────────────────────────────────────
 /** key: `${sessionId}:${trackId}` → expiry timestamp */
 const sessionDedup  = new Map<string, number>();
@@ -194,6 +201,140 @@ function nullOr(v: unknown): string {
   return `'${esc(String(v))}'`;
 }
 
+type SqlExecutor = { execute: (query: any) => Promise<any> };
+
+async function readArtistPlanState(userId: number, executor: SqlExecutor = db): Promise<ReturnType<typeof getArtistPlanState>> {
+  const result = await executor.execute(dsql`
+    SELECT
+      u.subscription_plan,
+      u.subscription_expires_at,
+      (
+        SELECT COUNT(*)::int
+        FROM music_tracks mt
+        WHERE mt.artist_user_id = u.id
+      ) AS song_count
+    FROM users u
+    WHERE u.id = ${userId}
+    LIMIT 1
+  `);
+  const row = ((result as any).rows ?? result)?.[0];
+  if (!row) throw new Error("User not found");
+  return getArtistPlanState({
+    subscriptionPlan: row.subscription_plan,
+    subscriptionExpiresAt: row.subscription_expires_at,
+    songCount: Number(row.song_count ?? 0),
+  });
+}
+
+function checkoutFrontendBase(): string {
+  const candidates = [
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_BASE_URL,
+    "https://flexamarket.com",
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "https:" || url.protocol === "http:") return url.origin;
+    } catch {
+      // Try the next server-controlled candidate.
+    }
+  }
+  return "https://flexamarket.com";
+}
+
+class ArtistPlanRequiredError extends Error {
+  constructor(
+    readonly songCount: number,
+    readonly freeSongLimit: number,
+  ) {
+    super("ARTIST_PLAN_REQUIRED");
+    this.name = "ArtistPlanRequiredError";
+  }
+}
+
+class InvalidMusicUploadClaimError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidMusicUploadClaimError";
+  }
+}
+
+async function insertArtistTrackWithAdmission(
+  user: any,
+  insertSql: string,
+  claims?: { audioStorageKey: string; coverStorageKey?: string | null },
+): Promise<any> {
+  if (claims) await ensureMusicUploadClaimsTable();
+  return db.transaction(async (tx) => {
+    const isAdmin = Boolean(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin");
+    if (!isAdmin) {
+      await tx.execute(dsql`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`);
+      const state = await readArtistPlanState(user.id, tx as unknown as SqlExecutor);
+      if (!state.canUpload) {
+        throw new ArtistPlanRequiredError(state.songCount, state.freeSongLimit);
+      }
+    }
+
+    const claimIds: number[] = [];
+    if (claims) {
+      const lockClaim = async (
+        storageKey: string,
+        expectedKind: "audio" | "cover",
+        expectedPrefix: string,
+      ) => {
+        const result = await tx.execute(dsql`
+          SELECT id, owner_user_id, storage_key, kind, content_type, consumed_at, expires_at
+          FROM music_upload_claims
+          WHERE storage_key = ${storageKey}
+          FOR UPDATE
+        `);
+        const claim = result.rows[0] as {
+          id: number;
+          owner_user_id: number;
+          storage_key: string;
+          kind: string;
+          content_type: string;
+          consumed_at: Date | null;
+          expires_at: Date;
+        } | undefined;
+        if (
+          !claim ||
+          claim.owner_user_id !== user.id ||
+          claim.kind !== expectedKind ||
+          claim.consumed_at ||
+          new Date(claim.expires_at).getTime() <= Date.now() ||
+          !claim.storage_key.startsWith(expectedPrefix) ||
+          (expectedKind === "audio"
+            ? !claim.content_type.startsWith("audio/")
+            : !claim.content_type.startsWith("image/"))
+        ) {
+          throw new InvalidMusicUploadClaimError(
+            `${expectedKind === "audio" ? "Audio" : "Cover"} upload is invalid, expired, already used, or belongs to another account.`,
+          );
+        }
+        claimIds.push(claim.id);
+      };
+
+      await lockClaim(claims.audioStorageKey, "audio", "uploads/audio/");
+      if (claims.coverStorageKey) {
+        await lockClaim(claims.coverStorageKey, "cover", "uploads/images/");
+      }
+    }
+
+    const result = await tx.execute(dsql.raw(insertSql));
+    for (const claimId of claimIds) {
+      await tx.execute(dsql`
+        UPDATE music_upload_claims
+        SET consumed_at = NOW()
+        WHERE id = ${claimId} AND consumed_at IS NULL
+      `);
+    }
+    return (((result as any).rows ?? result) as any[])?.[0];
+  });
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // PUBLIC ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════════════
@@ -264,6 +405,190 @@ router.get("/music/purchased", requireAuth, async (req: any, res) => {
     );
     res.json({ purchasedIds: rows.map(r => r.track_id) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/artist/plan — authoritative upload eligibility and plan state.
+// Named route must stay before /music/:id.
+router.get("/music/artist/plan", requireAuth, async (req: any, res) => {
+  try {
+    const state = await readArtistPlanState(req.user.id);
+    res.json({
+      ...state,
+      canUpload: req.user.isAdmin || req.user.isSuperAdmin || state.canUpload,
+      priceUsd: ARTIST_PLAN_PRICE_USD,
+    });
+  } catch (err: any) {
+    req.log.error({ err, userId: req.user?.id }, "Artist Plan status failed");
+    res.status(500).json({ error: "Nou pa ka verifye Plan Artis la kounye a. Eseye ankò." });
+  }
+});
+
+// POST /api/music/artist/subscribe — create a server-priced Stripe checkout.
+router.post("/music/artist/subscribe", requireAuth, async (req: any, res) => {
+  try {
+    const state = await readArtistPlanState(req.user.id);
+    if (state.isArtistPlan) {
+      return res.json({ alreadyActive: true, isArtistPlan: true, expiresAt: state.expiresAt });
+    }
+
+    const { getStripeClient } = await import("../lib/stripeClient");
+    const stripe = await getStripeClient();
+    const baseUrl = checkoutFrontendBase();
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      client_reference_id: String(req.user.id),
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: ARTIST_PLAN_PRICE_CENTS,
+          product_data: {
+            name: "Flexa Music — Plan Artis",
+            description: "Telechaje mizik san limit pandan 1 an",
+          },
+        },
+      }],
+      metadata: {
+        type: "artist_plan",
+        userId: String(req.user.id),
+        priceUsd: String(ARTIST_PLAN_PRICE_USD),
+      },
+      success_url: `${baseUrl}/music?plan=activated&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/music?plan=cancelled`,
+    });
+
+    if (!session.url) {
+      throw new Error("Stripe did not return a checkout URL");
+    }
+    const checkoutUrl = new URL(session.url);
+    if (checkoutUrl.protocol !== "https:" || !(
+      checkoutUrl.hostname === "checkout.stripe.com" ||
+      checkoutUrl.hostname.endsWith(".checkout.stripe.com")
+    )) {
+      throw new Error("Stripe returned an invalid checkout URL");
+    }
+    res.json({ url: checkoutUrl.toString(), sessionId: session.id });
+  } catch (err: any) {
+    req.log.error({ err, userId: req.user?.id }, "Artist Plan Stripe checkout failed");
+    res.status(500).json({ error: "Nou pa ka louvri peman kat la kounye a. Eseye ankò." });
+  }
+});
+
+// POST /api/music/artist/subscribe/wallet — deduct and activate atomically.
+router.post("/music/artist/subscribe/wallet", requireAuth, requireCardNotBlocked, async (req: any, res) => {
+  const userId = req.user.id as number;
+  try {
+    const paymentRef = `artist-plan-wallet-${userId}-${randomUUID()}`;
+    const outcome = await db.transaction(async (tx) => {
+      const userResult = await tx.execute(dsql`
+        SELECT subscription_plan, subscription_expires_at
+        FROM users
+        WHERE id = ${userId}
+        FOR UPDATE
+      `);
+      const userRow = ((userResult as any).rows ?? userResult)?.[0];
+      if (!userRow) return { code: "not_found" as const };
+
+      const current = getArtistPlanState({
+        subscriptionPlan: userRow.subscription_plan,
+        subscriptionExpiresAt: userRow.subscription_expires_at,
+        songCount: 0,
+      });
+      if (current.isArtistPlan) {
+        return { code: "already_active" as const, expiresAt: current.expiresAt };
+      }
+
+      const walletResult = await tx.execute(dsql`
+        SELECT balance_usd, promo_balance, first_recharge_done
+        FROM promo_wallets
+        WHERE user_id = ${userId}
+        FOR UPDATE
+      `);
+      const wallet = ((walletResult as any).rows ?? walletResult)?.[0];
+      const allocation = allocateArtistPlanWallet({
+        balanceUsd: Number(wallet?.balance_usd ?? 0),
+        promoBalance: Number(wallet?.promo_balance ?? 0),
+        firstRechargeDone: Boolean(wallet?.first_recharge_done),
+      });
+      if (!allocation.ok) {
+        return {
+          code: "insufficient" as const,
+          promoBalance: allocation.promoAvailable,
+          realBalance: allocation.realAvailable,
+        };
+      }
+
+      await tx.update(promoWalletTable)
+        .set({
+          promoBalance: dsql`${promoWalletTable.promoBalance} - ${allocation.promoUsed}`,
+          balanceUsd: dsql`${promoWalletTable.balanceUsd} - ${allocation.realUsed}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(promoWalletTable.userId, userId));
+
+      if (allocation.promoUsed > 0) {
+        await tx.insert(walletTransactionsTable).values({
+          userId,
+          type: "promo_subscription_debit",
+          amountUsd: -allocation.promoUsed,
+          status: "completed",
+          paymentRef: `${paymentRef}:promo`,
+          note: "[Promo] Plan Artis Flexa Music — 1 an",
+        });
+      }
+      if (allocation.realUsed > 0) {
+        await tx.insert(walletTransactionsTable).values({
+          userId,
+          type: "artist_plan_debit",
+          amountUsd: -allocation.realUsed,
+          status: "completed",
+          paymentRef: `${paymentRef}:real`,
+          note: "[Real] Plan Artis Flexa Music — 1 an",
+        });
+      }
+
+      const expiresAt = new Date(Date.now() + ARTIST_PLAN_DURATION_MS);
+      await tx.update(usersTable)
+        .set({ subscriptionPlan: "artist", subscriptionExpiresAt: expiresAt, updatedAt: new Date() })
+        .where(eq(usersTable.id, userId));
+      await tx.insert(notificationsTable).values({
+        userId,
+        actorId: userId,
+        type: "system_alert",
+        message: "🎵 Plan Artis ou aktive! Ou ka telechaje chante san limit pou 1 an.",
+      });
+
+      return {
+        code: "activated" as const,
+        expiresAt: expiresAt.toISOString(),
+        promoUsed: allocation.promoUsed,
+        realUsed: allocation.realUsed,
+      };
+    });
+
+    if (outcome.code === "not_found") return res.status(404).json({ error: "User not found" });
+    if (outcome.code === "insufficient") {
+      return res.status(402).json({
+        error: "Balans FM pa ase",
+        promoBalance: outcome.promoBalance,
+        realBalance: outcome.realBalance,
+        required: ARTIST_PLAN_PRICE_USD,
+      });
+    }
+    res.json({
+      ok: true,
+      alreadyActive: outcome.code === "already_active",
+      isArtistPlan: true,
+      expiresAt: outcome.expiresAt,
+      ...(outcome.code === "activated"
+        ? { promoUsed: outcome.promoUsed, realUsed: outcome.realUsed }
+        : {}),
+    });
+  } catch (err: any) {
+    req.log.error({ err, userId }, "Artist Plan wallet payment failed");
+    res.status(500).json({ error: "Peman FM Wallet la pa pase. Okenn lajan pa retire; eseye ankò." });
+  }
 });
 
 // POST /api/music/:id/buy — create Stripe checkout to purchase a song
@@ -430,20 +755,67 @@ router.get("/music/diagnose", async (_req, res) => {
   res.json({ timestamp: new Date().toISOString(), durationMs: Date.now() - start, env, wasabi: preflight });
 });
 
-// GET /api/music/upload-signature — returns Wasabi proxy upload tokens
-router.get("/music/upload-signature", requireAuth, (_req, res) => {
+// POST /api/music/upload-signature — one-use Wasabi proxy tokens for eligible artists.
+router.post("/music/upload-signature", requireAuth, async (req: any, res) => {
+  try {
     if (!wasabiConfigured()) {
       return res.status(503).json({
         error: "Wasabi storage is not configured. Set WASABI_ACCESS_KEY, WASABI_SECRET_KEY, and WASABI_BUCKET_NAME.",
       });
     }
-    const audioToken = randomUUID();
-    const coverToken = randomUUID();
+
+    const isAdmin = Boolean(req.user?.isAdmin || req.user?.isSuperAdmin || req.user?.role === "admin");
+    if (!isAdmin) {
+      const state = await readArtistPlanState(req.user.id);
+      if (!state.canUpload) {
+        return res.status(403).json({
+          error: "ARTIST_PLAN_REQUIRED",
+          count: state.songCount,
+          limit: state.freeSongLimit,
+        });
+      }
+    }
+
+    const audio = req.body?.audio as { size?: number; contentType?: string } | undefined;
+    const cover = req.body?.cover as { size?: number; contentType?: string } | undefined;
+    const makeToken = (
+      file: { size?: number; contentType?: string },
+      maxBytes: number,
+      musicKind: "audio" | "cover",
+    ) => {
+      const expectedBytes = Number(file.size);
+      const contentType = String(file.contentType || "application/octet-stream").split(";")[0].trim();
+      validateMimeType(contentType);
+      if (
+        (musicKind === "audio" && !contentType.startsWith("audio/")) ||
+        (musicKind === "cover" && !contentType.startsWith("image/"))
+      ) {
+        throw new Error(musicKind === "audio" ? "Audio file type required." : "Image file type required for cover.");
+      }
+      if (!Number.isFinite(expectedBytes) || expectedBytes <= 0 || expectedBytes > maxBytes) {
+        throw new Error(`Invalid file size. Maximum is ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+      }
+      const token = issueUploadProxyToken({
+        contentType,
+        expectedBytes,
+        maxBytes,
+        purpose: "music",
+        ownerId: req.user.id,
+        musicKind,
+      });
+      return { uploadUrl: `/api/storage/uploads/put-proxy/${token.token}` };
+    };
+
+    if (!audio) return res.status(400).json({ error: "Audio metadata required" });
     res.json({
       backend: "wasabi",
-      audio: { uploadUrl: "/api/storage/uploads/put-proxy/" + audioToken },
-      cover: { uploadUrl: "/api/storage/uploads/put-proxy/" + coverToken },
+      audio: makeToken(audio, 1500 * 1024 * 1024, "audio"),
+      cover: cover ? makeToken(cover, 25 * 1024 * 1024, "cover") : null,
     });
+  } catch (err: any) {
+    req.log.error({ err, userId: req.user?.id }, "Music upload token creation failed");
+    res.status(400).json({ error: err?.message ?? "Could not create upload link" });
+  }
 });
 
 
@@ -475,25 +847,9 @@ router.post("/music/register", requireAuth, async (req, res) => {
   } = req.body as Record<string, string | undefined>;
   const priceUsd = priceUsdRaw ? Number(priceUsdRaw) : null;
 
-  const isAdmin = req.user?.role === "admin";
+  const isAdmin = Boolean(req.user?.isAdmin || req.user?.isSuperAdmin || req.user?.role === "admin");
   try {
-    // ── Artist Plan upload limit (non-admin only) ──────────────────────────
-    if (!isAdmin) {
-      const plan = (req.user as any).subscriptionPlan ?? "basic";
-      const isArtistPlan = plan === "artist" &&
-        ((req.user as any).subscriptionExpiresAt === null ||
-          new Date((req.user as any).subscriptionExpiresAt) > new Date());
-      if (!isArtistPlan) {
-        const [cnt] = await q<{ cnt: string }>(
-          `SELECT COUNT(*)::text AS cnt FROM music_tracks WHERE artist_user_id = ${req.user!.id}`
-        );
-        if (Number(cnt?.cnt ?? 0) >= FREE_SONG_LIMIT) {
-          return res.status(403).json({ error: "ARTIST_PLAN_REQUIRED", count: Number(cnt?.cnt ?? 0), limit: FREE_SONG_LIMIT });
-        }
-      }
-    }
-
-    const [row] = await q(
+    const row = await insertArtistTrackWithAdmission(req.user,
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
           type, monetization_type, price_usd, lyrics,
@@ -501,16 +857,30 @@ router.post("/music/register", requireAuth, async (req, res) => {
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
-          ${nullOr(audioUrl ?? null)}, ${nullOr(coverUrl ?? null)},
+           NULL, NULL,
           ${nullOr(storageKey)}, ${nullOr(coverStorageKey || null)},
           ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
           ${nullOr(lyrics?.trim() || null)},
           TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
-       RETURNING *`
+       RETURNING *`,
+      {
+        audioStorageKey: storageKey,
+        coverStorageKey: coverStorageKey || null,
+      },
     );
     res.status(201).json({ track: toClientTrack(row) });
   } catch (err: any) {
+    if (err instanceof ArtistPlanRequiredError) {
+      return res.status(403).json({
+        error: "ARTIST_PLAN_REQUIRED",
+        count: err.songCount,
+        limit: err.freeSongLimit,
+      });
+    }
+    if (err instanceof InvalidMusicUploadClaimError) {
+      return res.status(400).json({ error: "INVALID_MUSIC_UPLOAD", message: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -553,20 +923,17 @@ router.post("/music/upload", requireAuth, upload.fields([
   log(3, "authentication", { userId: req.user.id, role: req.user.role });
 
   // ── Step 3b: Artist Plan upload limit (non-admin only) ───────────────────
-  if (req.user.role !== "admin") {
-    const plan = (req.user as any).subscriptionPlan ?? "basic";
-    const isArtistPlan = plan === "artist" &&
-      ((req.user as any).subscriptionExpiresAt === null ||
-        new Date((req.user as any).subscriptionExpiresAt) > new Date());
-    if (!isArtistPlan) {
-      const [cnt] = await q<{ cnt: string }>(
-        `SELECT COUNT(*)::text AS cnt FROM music_tracks WHERE artist_user_id = ${req.user.id}`
-      );
-      if (Number(cnt?.cnt ?? 0) >= FREE_SONG_LIMIT) {
-        return fail(3, "upload_limit",
-          Object.assign(new Error("ARTIST_PLAN_REQUIRED"), { code: "ARTIST_PLAN_REQUIRED", count: Number(cnt?.cnt ?? 0), limit: FREE_SONG_LIMIT }),
-          403);
-      }
+  if (!req.user.isAdmin && !req.user.isSuperAdmin && req.user.role !== "admin") {
+    const planState = await readArtistPlanState(req.user.id);
+    if (!planState.canUpload) {
+      return res.status(403).json({
+        error: "ARTIST_PLAN_REQUIRED",
+        count: planState.songCount,
+        limit: planState.freeSongLimit,
+        step: 3,
+        stepName: "upload_limit",
+        uploadId,
+      });
     }
   }
 
@@ -634,7 +1001,7 @@ router.post("/music/upload", requireAuth, upload.fields([
   log(9, "db_insert_start", { audioKey: audioResult.key });
   let track: any;
   try {
-    const [row] = await q(
+    const row = await insertArtistTrackWithAdmission(req.user,
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
           type, lyrics, is_active, is_featured, created_by, artist_user_id)
@@ -645,13 +1012,23 @@ router.post("/music/upload", requireAuth, upload.fields([
           ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
           ${nullOr(type)}, ${nullOr(lyrics?.trim() || null)}, TRUE, FALSE,
           ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
-       RETURNING *`
+       RETURNING *`,
     );
     track = row;
   } catch (err: any) {
     // Audio was already uploaded — log the orphan key so admin can clean it up
     logger.error({ uploadId, orphanKey: audioResult.key, err: err.message },
       "[upload] DB insert failed — Wasabi object uploaded but not recorded in DB");
+    if (err instanceof ArtistPlanRequiredError) {
+      return res.status(403).json({
+        error: "ARTIST_PLAN_REQUIRED",
+        count: err.songCount,
+        limit: err.freeSongLimit,
+        step: 9,
+        stepName: "db_insert_admission",
+        uploadId,
+      });
+    }
     return fail(9, "db_insert", err);
   }
   log(9, "db_insert_complete", { trackId: track.id, storageKey: track.storage_key });

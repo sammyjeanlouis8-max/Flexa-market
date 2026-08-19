@@ -24,11 +24,10 @@ true;
 
 // Inject the native-app JWT token into the web page's localStorage and cookie
 // so the Messages component knows which messages belong to the current user.
-function makeTokenScript(token: string | null): string {
+export function makeTokenScript(token: string | null): string {
   if (!token) return 'true;';
-  // Escape the token safely (it's a JWT — base64url chars + dots, no quotes)
-  const safe = token.replace(/\"/g, '');
-  return `(function(){try{localStorage.setItem(flexamarket_token,${safe});document.cookie=fm_token=+encodeURIComponent(${safe});try{sessionStorage.setItem(flexamarket_token,${safe});}catch(e){}}catch(e){}})();true;`;
+  const encodedToken = JSON.stringify(token);
+  return `(function(){try{localStorage.setItem("flexamarket_token",${encodedToken});document.cookie="fm_token="+encodeURIComponent(${encodedToken})+"; path=/; SameSite=Lax";try{sessionStorage.setItem("flexamarket_token",${encodedToken});}catch(e){}}catch(e){}})();true;`;
 }
 
 const INTERNAL_HOSTS = [

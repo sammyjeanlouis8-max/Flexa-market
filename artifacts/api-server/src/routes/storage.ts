@@ -1,5 +1,4 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { randomUUID } from "crypto";
 import { createReadStream, createWriteStream, mkdirSync, renameSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +12,9 @@ import { validateMimeType, isWasabiConfigured, getWasabiPresignedUrl, getWasabiO
 import { convertVideoFileToH264 } from "../lib/videoConvert";
 import { createBoostVideoAssetProof } from "../lib/boostVideoAsset";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { requireAuth } from "../middlewares/auth";
+import { optionalAuth, requireAuth } from "../middlewares/auth";
+import { consumeUploadProxyToken, issueUploadProxyToken } from "../lib/uploadProxyTokens";
+import { recordCompletedMusicUploadClaim } from "../lib/musicUploadClaims";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -67,7 +68,7 @@ const MAX_UPLOAD_BYTES = 300 * 1024 * 1024;
     // Returns an upload URL (put-proxy) + placeholder objectPath.
     // uploadToPresignedUrl() will overwrite objectPath with the actual Wasabi URL
     // returned by the put-proxy response body.
-    router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
+    router.post("/storage/uploads/request-url", requireAuth, async (req: Request, res: Response) => {
     try {
       const { name = "file", size = 0, contentType = "application/octet-stream" } =
         (req.body ?? {}) as { name?: string; size?: number; contentType?: string };
@@ -77,13 +78,20 @@ const MAX_UPLOAD_BYTES = 300 * 1024 * 1024;
         });
       }
       validateMimeType(contentType);
-      const token = randomUUID();
-      const base =
-        process.env["PUBLIC_BASE_URL"] ??
-        `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
-      const uploadURL = `${base}/api/storage/uploads/put-proxy/${token}`;
+      const expectedBytes = Number(size);
+      if (!Number.isFinite(expectedBytes) || expectedBytes <= 0 || expectedBytes > MAX_UPLOAD_BYTES) {
+        return res.status(400).json({ error: "Invalid file size. Maximum size is 300 MB." });
+      }
+      const uploadToken = issueUploadProxyToken({
+        contentType,
+        expectedBytes,
+        maxBytes: MAX_UPLOAD_BYTES,
+        purpose: "generic",
+        ownerId: req.user!.id,
+      });
+      const uploadURL = `/api/storage/uploads/put-proxy/${uploadToken.token}`;
       // Placeholder — overwritten by the actual Wasabi proxy URL from the PUT response.
-      const objectPath = `/objects/uploads/${token}`;
+      const objectPath = `/objects/uploads/${uploadToken.token}`;
       res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Bad request" });
@@ -91,35 +99,67 @@ const MAX_UPLOAD_BYTES = 300 * 1024 * 1024;
     });
 
     // ── PUT /api/storage/uploads/put-proxy/:token ────────────────────────────────
-router.put("/storage/uploads/put-proxy/:token", async (req: Request, res: Response) => {
+router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Request, res: Response) => {
   const token = String(req.params["token"]);
   const rawContentType = (req.headers["content-type"] ?? "application/octet-stream") as string;
   const contentType = rawContentType.split(";")[0].trim();
+  const uploadToken = consumeUploadProxyToken(token);
+  if (!uploadToken) {
+    req.resume();
+    res.status(404).json({ error: "Upload link is invalid, expired, or already used." });
+    return;
+  }
+  if (uploadToken.ownerId && req.user?.id !== uploadToken.ownerId) {
+    req.resume();
+    res.status(403).json({ error: "This upload link belongs to another account." });
+    return;
+  }
 
   try {
     validateMimeType(contentType);
+    if (
+      uploadToken.contentType !== "application/octet-stream" &&
+      contentType !== uploadToken.contentType
+    ) {
+      req.resume();
+      res.status(400).json({ error: "File type does not match the upload request." });
+      return;
+    }
 
     const clHeader = req.headers["content-length"];
-    if (clHeader && parseInt(clHeader, 10) > MAX_UPLOAD_BYTES) {
+    const contentLength = clHeader ? parseInt(clHeader, 10) : 0;
+    if (!contentLength || contentLength <= 0) {
+      res.status(411).json({ error: "Content-Length header is required for uploads." });
+      return;
+    }
+    if (
+      contentLength > uploadToken.maxBytes ||
+      contentLength !== uploadToken.expectedBytes
+    ) {
       req.resume();
-      res.status(400).json({ error: "File too large. Maximum size is 350 MB." });
+      res.status(400).json({ error: "File size does not match the upload request." });
       return;
     }
 
 // For Wasabi: stream request body directly (no memory buffering).
       // This fixes long-video upload timeouts on DO App Platform.
       if (USE_WASABI) {
-        const clRaw = req.headers["content-length"];
-        const contentLength = clRaw ? parseInt(clRaw, 10) : 0;
-        if (!contentLength || contentLength <= 0) {
-          res.status(411).json({ error: "Content-Length header is required for uploads." });
-          return;
+        const key = await streamToWasabi(req, uploadToken.contentType, contentLength);
+        if (uploadToken.purpose === "music") {
+          if (!uploadToken.ownerId || !uploadToken.musicKind) {
+            throw new Error("Music upload token metadata is incomplete.");
+          }
+          await recordCompletedMusicUploadClaim({
+            uploadToken: token,
+            ownerUserId: uploadToken.ownerId,
+            storageKey: key,
+            kind: uploadToken.musicKind,
+            contentType: uploadToken.contentType,
+            sizeBytes: contentLength,
+          });
         }
-        const key = await streamToWasabi(req, contentType, contentLength);
-        const base = process.env["PUBLIC_BASE_URL"]
-          ?? `${req.headers["x-forwarded-proto"] ?? req.protocol}://${req.headers["x-forwarded-host"] ?? req.get("host")}`;
-        const url = `${base}/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
-        req.log.info({ token, key, backend: "wasabi-stream" }, "Proxy upload complete (streamed)");
+        const url = `/api/storage/wasabi-image?key=${encodeURIComponent(key)}`;
+        req.log.info({ token, key, purpose: uploadToken.purpose, backend: "wasabi-stream" }, "Proxy upload complete (streamed)");
         res.status(200).json({ url });
         return;
       }

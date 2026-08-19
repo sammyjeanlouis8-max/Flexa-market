@@ -105,10 +105,14 @@ export function useUpload(options: UseUploadOptions = {}) {
 
   const requestUploadUrl = useCallback(
     async (file: File): Promise<UploadResponse> => {
+      const token = typeof window !== "undefined"
+        ? (window.localStorage.getItem("flexamarket_token") ?? window.sessionStorage.getItem("flexamarket_token"))
+        : null;
       const response = await fetch(`${basePath}/uploads/request-url`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           name: file.name,
@@ -129,11 +133,15 @@ export function useUpload(options: UseUploadOptions = {}) {
 
   const uploadToPresignedUrl = useCallback(
     async (file: File, uploadURL: string, originalObjectPath: string): Promise<string> => {
+      const token = typeof window !== "undefined"
+        ? (window.localStorage.getItem("flexamarket_token") ?? window.sessionStorage.getItem("flexamarket_token"))
+        : null;
       const response = await fetch(uploadURL, {
         method: "PUT",
         body: file,
         headers: {
           "Content-Type": file.type || "application/octet-stream",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
 

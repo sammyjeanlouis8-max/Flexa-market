@@ -257,7 +257,11 @@ async function uploadMedia(file: Blob, contentType: string, token: string): Prom
     throw new Error((err as any).error || "Presign failed");
   }
   const { uploadURL, objectPath } = await presignRes.json();
-  const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": contentType }, body: file });
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: { "Content-Type": contentType, Authorization: `Bearer ${token}` },
+    body: file,
+  });
   if (!putRes.ok) throw new Error("Upload failed");
   // Proxy PUT returns { url } with Cloudinary CDN URL — use it directly when available
   try {

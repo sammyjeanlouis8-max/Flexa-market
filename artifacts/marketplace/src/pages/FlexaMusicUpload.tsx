@@ -124,8 +124,30 @@ export default function FlexaMusicUpload() {
       const token = localStorage.getItem("flexamarket_token");
       const authHeader = token ? { Authorization: `Bearer ${token}` } : {} as Record<string,string>;
 
-      // ── Step 1: Get Wasabi upload config ─────────────────────────────────────────────────
-      const sigRes = await fetch("/api/music/upload-signature", { headers: authHeader });
+      // ── Step 0: Check plan before uploading bytes ────────────────────────────
+      const planRes = await fetch("/api/music/artist/plan", { headers: authHeader });
+      const plan = await planRes.json().catch(() => ({}));
+      if (!planRes.ok) throw new Error(plan.error ?? t("music.planCheckFailed", "Unable to verify your Artist Plan. Please try again."));
+      if (typeof plan.canUpload !== "boolean") throw new Error(t("music.planCheckFailed", "Unable to verify your Artist Plan. Please try again."));
+      if (!plan.canUpload) throw new Error(t("music.planRequired", "Artist plan required"));
+
+      // ── Step 1: Get Wasabi upload config ──────────────────────────────────────
+      const sigRes = await fetch("/api/music/upload-signature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          audio: {
+            name: audioFile.name,
+            size: audioFile.size,
+            contentType: audioFile.type || "application/octet-stream",
+          },
+          cover: coverFile ? {
+            name: coverFile.name,
+            size: coverFile.size,
+            contentType: coverFile.type || "application/octet-stream",
+          } : null,
+        }),
+      });
       if (!sigRes.ok) { const d = await sigRes.json().catch(()=>({})); throw new Error(d.error ?? "Signature failed"); }
       const sig = await sigRes.json();
       setProgress(10);
@@ -155,7 +177,7 @@ export default function FlexaMusicUpload() {
 
       // ── Step 3: Upload cover via Wasabi proxy (optional) ───────────────────────
       let coverResult: {storageKey:string;url:string}|null = null;
-      if (coverFile) {
+      if (coverFile && sig.cover?.uploadUrl) {
         try {
           const coverData = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
             const xhr = new XMLHttpRequest();

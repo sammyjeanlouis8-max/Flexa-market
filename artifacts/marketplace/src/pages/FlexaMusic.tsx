@@ -625,7 +625,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
     if (!token) return;
     fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => setWalletBal(Number(d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
+      .then(d => setWalletBal(Number(d.availableUsd ?? d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
       .catch(() => {});
   }, []);
 
@@ -806,7 +806,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
     if (!token) return;
     fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
-      .then(d => setWalletBal(Number(d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
+      .then(d => setWalletBal(Number(d.availableUsd ?? d.balanceUsd ?? 0) + Number(d.promoBalance ?? 0)))
       .catch(() => {});
   }, []);
 
@@ -823,7 +823,22 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erè");
-      if (data.url) window.location.href = data.url;
+      if (data.alreadyActive) {
+        window.location.assign("/music?plan=activated");
+        return;
+      }
+      if (typeof data.url !== "string") {
+        throw new Error(t("music.checkoutUnavailable", "Checkout link unavailable. Please try again."));
+      }
+      const checkoutUrl = new URL(data.url);
+      const isStripe = checkoutUrl.protocol === "https:" && (
+        checkoutUrl.hostname === "checkout.stripe.com" ||
+        checkoutUrl.hostname.endsWith(".checkout.stripe.com")
+      );
+      if (!isStripe) {
+        throw new Error(t("music.checkoutUnavailable", "Checkout link unavailable. Please try again."));
+      }
+      window.location.assign(checkoutUrl.toString());
     } catch (e: any) { setErrMsg(e.message ?? "Erè koneksyon"); setLoadingStripe(false); }
   };
 
@@ -844,7 +859,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
         throw new Error(data.error ?? "Erè");
       }
       // Success — reload to get updated plan state
-      window.location.href = "/music?plan=activated";
+      window.location.assign("/music?plan=activated");
     } catch (e: any) { setErrMsg(e.message ?? "Erè koneksyon"); setLoadingWallet(false); }
   };
 
@@ -2803,11 +2818,30 @@ export default function FlexaMusic() {
   // ── Plan-activated / purchase-completed URL params ────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const planResult = params.get("plan");
+    const planSessionId = params.get("session_id");
     window.history.replaceState({}, "", window.location.pathname);
 
-    if (params.get("plan") === "activated") {
-      setPlanToast(true);
-      setTimeout(() => setPlanToast(false), 6000);
+    if (planResult === "activated") {
+      const showPlanToast = () => {
+        setPlanToast(true);
+        setTimeout(() => setPlanToast(false), 6000);
+      };
+      if (planSessionId && /^cs_/.test(planSessionId)) {
+        fetch(`/api/stripe/checkout/activate?session_id=${encodeURIComponent(planSessionId)}`)
+          .then(async response => {
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.status !== "paid" || result.activated !== true) {
+              throw new Error(result.error ?? "Artist Plan activation is still pending");
+            }
+            showPlanToast();
+          })
+          .catch(() => {
+            window.alert(t("music.planActivationPending", "Payment received. Artist Plan activation is still pending; reopen Music in a moment."));
+          });
+      } else {
+        showPlanToast();
+      }
     }
 
     const purchasedTrackId = params.get("purchased");
@@ -2820,7 +2854,7 @@ export default function FlexaMusic() {
         setPurchasedIds(prev => new Set([...prev, tid]));
       }
     }
-  }, []);
+  }, [t]);
 
   // ── Fetch purchased track IDs once on mount (sync localStorage) ──────────
   useEffect(() => {
@@ -2851,17 +2885,24 @@ export default function FlexaMusic() {
       const res = await fetch("/api/music/artist/plan", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
-      if (data.isArtistPlan || data.songCount < data.freeSongLimit) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Plan check failed");
+      if (
+        typeof data.canUpload !== "boolean" ||
+        typeof data.songCount !== "number" ||
+        typeof data.freeSongLimit !== "number"
+      ) {
+        throw new Error("Invalid Artist Plan response");
+      }
+      if (data.canUpload) {
         setArtistPlanSongCount(data.songCount); // passed to UploadView for warning banner
         setView("upload");
       } else {
         setArtistPlanSongCount(data.songCount);
         setView("artist-plan");
       }
-    } catch {
-      // If the plan-check API is unreachable, don't open upload — backend will block anyway.
-      // Show a soft retry nudge by doing nothing (user can tap the button again).
+    } catch (err: any) {
+      window.alert(err?.message ?? t("music.planCheckFailed", "Unable to verify your Artist Plan. Please try again."));
     }
   };
 

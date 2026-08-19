@@ -1,14 +1,14 @@
 /**
  * MusicUploadContext — global background upload manager
  *
- * Uploads files via the Wasabi put-proxy (browser → /api/storage/uploads/put-proxy → Wasabi)
+ * Uploads files via authenticated, one-use Wasabi put-proxy tokens
  * using XHR so upload progress is tracked accurately.
  *
  * Flow:
- *   1. POST /api/storage/uploads/request-url  → uploadURL + objectPath
+ *   1. POST /api/music/upload-signature  → one-use audio/cover upload URLs
  *   2. XHR PUT audio → /api/storage/uploads/put-proxy/:token  (progress 0–85%)
  *      Response: { url: '/api/storage/wasabi-image?key=<wasabiKey>' }
- *   3. POST /api/storage/uploads/request-url  + PUT cover (85–95%)
+ *   3. PUT cover with its one-use Music token (85–95%)
  *   4. POST /api/music/register  with storageKey + coverStorageKey  (95–100%)
  *
  * Lives at the App root so uploads survive page navigation.
@@ -60,15 +60,30 @@ const MusicUploadContext = createContext<MusicUploadCtx>({
   dismiss: () => {},
 });
 
-async function requestUploadUrl(file: File): Promise<{ uploadURL: string; objectPath: string }> {
-  const res = await fetch('/api/storage/uploads/request-url', {
+async function requestMusicUploadUrls(
+  audioFile: File,
+  coverFile: File | null,
+  token: string,
+): Promise<{ audio: { uploadUrl: string }; cover: { uploadUrl: string } | null }> {
+  const res = await fetch('/api/music/upload-signature', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || 'application/octet-stream' }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      audio: {
+        name: audioFile.name,
+        size: audioFile.size,
+        contentType: audioFile.type || 'application/octet-stream',
+      },
+      cover: coverFile ? {
+        name: coverFile.name,
+        size: coverFile.size,
+        contentType: coverFile.type || 'application/octet-stream',
+      } : null,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `Request-URL failed: HTTP ${res.status}`);
+    throw new Error(err.error ?? `Music upload link failed: HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -82,11 +97,17 @@ function extractKey(proxyUrl: string): string {
   throw new Error('Server returned an unexpected URL: ' + proxyUrl);
 }
 
-function uploadToWasabi(file: File, uploadURL: string, onProgress?: (pct: number) => void): Promise<string> {
+function uploadToWasabi(
+  file: File,
+  uploadURL: string,
+  authToken: string,
+  onProgress?: (pct: number) => void,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', uploadURL);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
     if (onProgress) {
       xhr.upload.onprogress = (ev) => {
         if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
@@ -130,21 +151,40 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
                coverPreview: meta.coverPreview ?? null, error: null, track: null });
 
     try {
-      const tk = localStorage.getItem('flexamarket_token') ?? '';
+      const tk = localStorage.getItem('flexamarket_token')
+        ?? sessionStorage.getItem('flexamarket_token')
+        ?? '';
 
-      const audioReq = await requestUploadUrl(audioFile);
+      // Check the authoritative server gate before sending any bytes to Wasabi.
+      // This avoids orphaned audio/cover objects when the free allowance is full.
+      const planRes = await fetch('/api/music/artist/plan', {
+        headers: { Authorization: `Bearer ${tk}` },
+      });
+      const plan = await planRes.json().catch(() => ({}));
+      if (!planRes.ok) {
+        throw new Error(plan.error ?? t('music.planCheckFailed', 'Unable to verify your Artist Plan. Please try again.'));
+      }
+      if (typeof plan.canUpload !== 'boolean' || typeof plan.songCount !== 'number') {
+        throw new Error(t('music.planCheckFailed', 'Unable to verify your Artist Plan. Please try again.'));
+      }
+      if (!plan.canUpload) {
+        onPlanRef.current?.(plan.songCount);
+        setState(prev => ({ ...prev, status: 'error', error: t('music.planRequired', 'Artist plan required') }));
+        return;
+      }
+
+      const uploadUrls = await requestMusicUploadUrls(audioFile, coverFile, tk);
       const storageKey = await uploadToWasabi(
-        audioFile, audioReq.uploadURL,
+        audioFile, uploadUrls.audio.uploadUrl, tk,
         (pct) => setState(prev => ({ ...prev, progress: Math.round(pct * 0.85) })),
       );
 
       setState(prev => ({ ...prev, progress: 85 }));
 
       let coverStorageKey: string | undefined;
-      if (coverFile) {
-        const coverReq = await requestUploadUrl(coverFile);
+      if (coverFile && uploadUrls.cover) {
         coverStorageKey = await uploadToWasabi(
-          coverFile, coverReq.uploadURL,
+          coverFile, uploadUrls.cover.uploadUrl, tk,
           (pct) => setState(prev => ({ ...prev, progress: 85 + Math.round(pct * 0.10) })),
         );
       }

@@ -15,6 +15,7 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, notificationsTable, usersTable } from "@workspace/db";
 import { sql as dsql, eq } from "drizzle-orm";
+import { Readable } from "node:stream";
 import { requireAdmin, requireAuth, optionalAuth, requireCardNotBlocked } from "../middlewares/auth";
 import multer from "multer";
 import {
@@ -344,14 +345,16 @@ async function insertArtistTrackWithAdmission(
  *
  * Wasabi bucket is PRIVATE — direct URLs require auth the browser can't add.
  * For any track that was uploaded to Wasabi (storage_key IS NOT NULL) we
- * replace audio_url with our signing proxy: GET /api/music/stream/{key}
- * which issues a 307 redirect to a 1-hour signed Wasabi URL.
+ * replace audio_url with our same-origin range proxy:
+ * GET /api/music/stream/{key}. Covers receive the same treatment through
+ * /api/storage/wasabi-image so private Wasabi keys never leak into the UI.
  *
  * Legacy tracks (Replit Object Storage, storage_key IS NULL) keep their
  * /api/storage/objects/… path unchanged so they continue working.
  */
 function toClientTrack(row: Record<string, unknown>) {
   const key = row.storage_key as string | null;
+  const coverKey = row.cover_storage_key as string | null;
   // Legacy Cloudinary records retain their saved URL so existing published tracks
   // can keep playing. Every new upload is Wasabi-only.
   const isCld = key?.startsWith("cld:");
@@ -362,7 +365,11 @@ function toClientTrack(row: Record<string, unknown>) {
     ...row,
     artist: displayArtist,
     audio_url: key && !isCld ? `/api/music/stream/${key}` : row.audio_url,
+    cover_url: coverKey && !coverKey.startsWith("cld:")
+      ? `/api/storage/wasabi-image?key=${encodeURIComponent(coverKey)}`
+      : row.cover_url,
     storage_key: undefined,
+    cover_storage_key: undefined,
     uploader_name: undefined, // don't expose separately — already merged into artist
   };
 }
@@ -380,7 +387,7 @@ router.get("/music", async (req, res) => {
       where += ` AND (title ILIKE '%${s}%' OR artist ILIKE '%${s}%' OR album ILIKE '%${s}%')`;
     }
     const rows = await q(
-      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.audio_url, mt.storage_key,
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key, mt.audio_url, mt.storage_key,
               mt.duration_seconds, mt.type, mt.monetization_type, mt.price_usd,
               mt.is_featured, mt.play_count, mt.valid_impressions, mt.is_artist_verified,
               mt.total_impressions, mt.estimated_revenue_usd, mt.artist_user_id, mt.created_at,
@@ -1091,7 +1098,7 @@ router.post("/admin/music", requireAdmin, upload.fields([
           ${nullOr(copyright_status||'verified')}, ${nullOr(tags||null)})
        RETURNING *`
     );
-    res.status(201).json({ track });
+    res.status(201).json({ track: toClientTrack(track) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
@@ -1130,7 +1137,7 @@ router.put("/music/:id", requireAuth, upload.single("cover"), async (req: any, r
       const oldCoverKey = (existing as any).cover_storage_key ?? extractKey((existing as any).cover_url);
       if (oldCoverKey && !oldCoverKey.startsWith("cld:")) await deleteMusicFile(oldCoverKey);
     }
-    res.json({ track });
+    res.json({ track: toClientTrack(track) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
@@ -1217,7 +1224,7 @@ router.put("/admin/music/:id", requireAdmin, upload.fields([
     sets.push("updated_at = NOW()");
 
     const [track] = await q(`UPDATE music_tracks SET ${sets.join(", ")} WHERE id = ${id} RETURNING *`);
-    res.json({ track });
+    res.json({ track: toClientTrack(track) });
   } catch (err: any) { res.status(500).json({ error: err?.message }); }
 });
 
@@ -1656,22 +1663,26 @@ router.put("/admin/music/artists/verify", requireAdmin, async (req, res) => {
 //
 // GET /api/music/stream/*key
 //
-// Redirects the client directly to the Wasabi object URL so all audio data
-// flows client ↔ Wasabi (zero server bandwidth).
-//
-//   Public bucket  → 302 to direct Wasabi URL  (browser caches freely)
-//   Private bucket → 307 to 1-hour signed URL  (browser must re-request)
-//
-// HTTP Range requests for seeking work natively because the browser follows
-// the redirect and sends Range headers directly to Wasabi.
+// Keeps playback on the app origin while forwarding Range requests to Wasabi.
+// Some iPhone Safari/WebView versions lose or reject byte ranges after a
+// cross-origin signed-URL redirect, which leaves a track at 0:00 forever.
 //
 // The key is everything after /api/music/stream/, e.g.:
 //   /api/music/stream/music/audio/abc123.mp3
-//   → https://s3.us-east-1.wasabisys.com/flexa-music/music/audio/abc123.mp3
+//   → bytes proxied from Wasabi, including Content-Range / 206 responses
 //
 router.get("/music/stream/*key", async (req, res) => {
   try {
-    const key = (req.params as any).key as string;
+    // Express 5 returns a named wildcard as an array of path segments. Normalize
+    // it back into the Wasabi object key before validating or fetching it.
+    // Without this, `key.startsWith(...)` throws and every new browser upload
+    // (uploads/audio/...) stays stuck at 0:00.
+    const rawKey = (req.params as any).key as string | string[] | undefined;
+    const key = Array.isArray(rawKey)
+      ? rawKey.join("/")
+      : typeof rawKey === "string"
+        ? rawKey
+        : "";
     if (!key) return res.status(400).json({ error: "Missing storage key" });
 
     // Cloudinary assets — look up the stored URL and redirect directly
@@ -1682,17 +1693,43 @@ router.get("/music/stream/*key", async (req, res) => {
       return res.redirect(302, url);
     }
 
+    // Only music-upload object keys may be streamed through this endpoint.
+    // The browser uploader writes uploads/audio/*; older direct uploads use
+    // music/audio/*.
+    if (!/^(?:uploads|music)\/audio\/[A-Za-z0-9._/-]+$/.test(key)) {
+      return res.status(400).json({ error: "Invalid music storage key" });
+    }
+
     const streamUrl = await getStreamUrl(key);
+    const range = req.header("range");
+    const upstream = await fetch(streamUrl, {
+      headers: range ? { Range: range } : undefined,
+    });
 
-    // Preserve any Range header the client sent — the redirect carries it naturally.
-    // We add Accept-Ranges so clients know range requests are supported.
-    res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Cache-Control",  "private, max-age=3600");
+    if (!upstream.ok && upstream.status !== 206) {
+      logger.warn({ key, status: upstream.status }, "Music stream upstream request failed");
+      return res.status(upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502)
+        .json({ error: "Stream unavailable" });
+    }
 
-    // 302 for public (cacheable), 307 for signed (must not cache the redirect itself)
-    res.redirect(streamUrl.includes("X-Amz-Signature") ? 307 : 302, streamUrl);
+    // Preserve the headers HTMLMediaElement uses to discover duration and seek.
+    for (const header of ["accept-ranges", "content-type", "content-length", "content-range", "etag", "last-modified"]) {
+      const value = upstream.headers.get(header);
+      if (value) res.setHeader(header, value);
+    }
+    res.setHeader("Cache-Control", "private, no-store");
+    res.status(upstream.status);
+
+    if (!upstream.body) return res.end();
+    Readable.fromWeb(upstream.body as any)
+      .on("error", (err) => {
+        logger.warn({ err, key }, "Music stream response interrupted");
+        if (!res.headersSent) res.status(502).end();
+        else res.destroy(err);
+      })
+      .pipe(res);
   } catch (err: any) {
-    logger.error({ err }, "Music stream redirect failed");
+    logger.error({ err }, "Music stream proxy failed");
     res.status(500).json({ error: err?.message ?? "Stream unavailable" });
   }
 });
@@ -1917,6 +1954,32 @@ export async function runMusicMonthlyReminder(): Promise<void> {
 // this endpoint is intentionally retired rather than accepting arbitrary object keys.
 router.post("/music/cleanup-orphan", requireAuth, (_req, res) => {
   res.status(410).json({ error: "Cloudinary cleanup is retired. Music uploads use Wasabi only." });
+});
+
+// GET /api/music/:id — public track payload for share links and MusicPublicPlayer.
+// It is deliberately last so every named /music endpoint is matched first.
+router.get("/music/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid track id" });
+    }
+    const [track] = await q(
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+              mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+              mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
+              mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
+              mt.artist_user_id, mt.created_at, mt.lyrics, u.name AS uploader_name
+       FROM music_tracks mt
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE mt.id = ${id} AND mt.is_active = TRUE
+       LIMIT 1`
+    );
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    res.json({ track: toClientTrack(track) });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Could not load track" });
+  }
 });
 
 export default router;

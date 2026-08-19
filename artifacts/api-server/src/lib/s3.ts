@@ -55,6 +55,8 @@ export type AllowedMimeType =
   | "video/x-matroska"
   | "video/x-ms-wmv"
   | "video/x-flv"
+  | "video/hevc"
+  | "video/x-hevc"
   | "audio/webm"
   | "audio/webm;codecs=opus"
   | "audio/mp4"
@@ -82,6 +84,8 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AllowedMimeType>([
   "video/x-matroska",
   "video/x-ms-wmv",
   "video/x-flv",
+  "video/hevc",
+  "video/x-hevc",
   "audio/webm",
   "audio/webm;codecs=opus",
   "audio/mp4",
@@ -326,3 +330,34 @@ export async function uploadBufferToWasabi(
     );
     return key;
     }
+
+export async function putWasabiObject(
+  key: string,
+  body: Buffer | NodeJS.ReadableStream,
+  mimeType: string,
+  contentLength: number,
+): Promise<void> {
+  if (!key || key.startsWith("/") || key.includes("..")) {
+    throw new Error("Invalid Wasabi object key");
+  }
+  if (!Number.isInteger(contentLength) || contentLength < 1 || contentLength > MAX_FILE_SIZE_BYTES) {
+    throw new Error("Invalid Wasabi object size");
+  }
+  const client = getWasabiClient();
+  await client.send(new PutObjectCommand({
+    Bucket: WASABI_BUCKET,
+    Key: key,
+    Body: body as any,
+    ContentType: mimeType,
+    ContentLength: contentLength,
+  }));
+}
+
+export async function deleteWasabiObject(key: string): Promise<void> {
+  if (!key || key.startsWith("/") || key.includes("..")) return;
+  const client = getWasabiClient();
+  await client.send(new DeleteObjectCommand({
+    Bucket: WASABI_BUCKET,
+    Key: key,
+  }));
+}

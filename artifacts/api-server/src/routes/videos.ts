@@ -140,6 +140,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     // Randomization seed: client sends a numeric seed so each session gets a
     // different ordering for videos with similar engagement scores.
     const seed = Math.abs(parseInt(String(req.query.seed ?? "0"), 10)) || 0;
+    const selectedId = Math.max(0, parseInt(String(req.query.selected ?? "0"), 10) || 0);
 
     const now = new Date();
 
@@ -238,6 +239,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
       .where(and(...conditions as Parameters<typeof and>))
       .orderBy(
+        sql<number>`CASE WHEN ${selectedId > 0} AND ${listingsTable.id} = ${selectedId} THEN 0 ELSE 1 END`,
         // ── AI Ranking Formula ───────────────────────────────────────────
         //
         // Score = engagement_base + freshness_bonus + diversity_noise
@@ -308,15 +310,12 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       followRows.forEach(f => followedSellerIds.add(f.followingId));
     }
 
-    res.set("Cache-Control", "no-store");
-    res.json({
-      // noCountry is permanently false — we always resolve a country (req #3)
-      noCountry: false,
-      videos: await Promise.all(items.map(async r => ({
+    const videos = items.flatMap(r => {
+      const videoUrl = r.boostVideoUrl ? resolveVideoUrl(r.boostVideoUrl) : null;
+      if (!videoUrl) return [];
+      return [{
         id:               r.id,
-        videoUrl:         r.boostVideoUrl
-          ? resolveVideoUrl(r.boostVideoUrl)
-          : null,
+        videoUrl,
         thumbnailUrl:     (() => {
           if (r.images?.[0]) return r.images[0];
           // Generate thumbnail from Cloudinary video URL when no listing images exist
@@ -347,7 +346,14 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         boostStartAt:     r.boostStartAt?.toISOString() ?? null,
         boostEndAt:       r.boostExpiresAt?.toISOString() ?? null,
         createdAt:        r.createdAt,
-      }))),
+      }];
+    });
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      // noCountry is permanently false — we always resolve a country (req #3)
+      noCountry: false,
+      videos,
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
       viewingCountry: isSuperAdmin ? null : userCountry,

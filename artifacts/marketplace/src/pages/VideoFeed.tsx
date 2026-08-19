@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -7,7 +7,7 @@ import {
   Play, BadgeCheck, Loader2, X, ArrowLeft,
   SendHorizontal, ChevronDown, Zap, Plus, ShoppingBag,
   MoreVertical, Pencil, Trash2, Check,
-  VolumeX, Volume2,
+  VolumeX, Volume2, Bookmark, Home,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/auth";
@@ -18,6 +18,7 @@ import { RestrictionBanner } from "@/components/RestrictionBanner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { formatPrice } from "@/lib/currency";
+import { captureVideoPosterFrame } from "@/lib/videoPoster";
 import { cn } from "@/lib/utils";
 import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
@@ -318,7 +319,15 @@ function CommentRow({
                     </p>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-[11px] text-white/40">{timeAgo(r.createdAt, t("videoFeed.timeJustNow"))}</span>
-                      {!r.isDeleted && <button type="button" className="text-[12px] font-semibold text-white/50">{t("videoFeed.reply")}</button>}
+                      {!r.isDeleted && (
+                        <button
+                          type="button"
+                          onClick={() => onReply(r.userName)}
+                          className="text-[12px] font-semibold text-white/50"
+                        >
+                          {t("videoFeed.reply")}
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-col items-center gap-1 shrink-0 pt-0.5">
@@ -546,20 +555,33 @@ function CommentPanel({ listingId, sellerId, onClose }: { listingId: number; sel
     if (!user) { toast({ title: t("videoFeed.loginToComment"), variant: "destructive" }); return; }
     if (isRestricted) { showRestrictionToast(); return; }
     if (!text.trim()) return;
+    const parentId = replyingTo?.id ?? null;
     setSubmitting(true);
     try {
       const res = await fetch(`/api/listings/${listingId}/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content: text.trim(), parentId: replyingTo?.id ?? null }),
+        body: JSON.stringify({ content: text.trim(), parentId }),
       });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setComments(prev => [data, ...prev]);
+      if (parentId) {
+        setComments(prev => prev.map(comment => (
+          comment.id === parentId
+            ? { ...comment, replies: [...(comment.replies ?? []), data] }
+            : comment
+        )));
+        setCollapsedReplies(prev => {
+          const next = new Set(prev);
+          next.delete(parentId);
+          return next;
+        });
+      } else {
+        setComments(prev => [data, ...prev]);
+      }
       setText("");
       setReplyingTo(null);
       setShowEmojiPanel(false);
-      setTimeout(() => onClose(), 300);
     } catch {
       toast({ title: t("videoFeed.commentSubmitError"), variant: "destructive" });
     } finally {
@@ -622,6 +644,9 @@ function CommentPanel({ listingId, sellerId, onClose }: { listingId: number; sel
   return (
     <div
       className="fixed z-[60] flex flex-col left-1/2 -translate-x-1/2 w-full"
+      role="dialog"
+      aria-modal="true"
+      data-testid="video-comments-panel"
       style={{
         bottom: kbOffset,
         maxWidth: "420px",
@@ -802,7 +827,7 @@ function VideoCard({
   onCommentOpen: (id: number) => void;
   onNext: () => void;
 }) {
-  const { user, token } = useAuth();
+  const { user, token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -838,12 +863,19 @@ function VideoCard({
   const stallAttemptsRef = useRef(0);
   const hardReloadTriedRef = useRef(false);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
+  const [messagePending, setMessagePending] = useState(false);
   const [muted, setMuted] = useState(false);
   const [generatedThumbnail, setGeneratedThumbnail] = useState<string | null>(null);
   const [videoBuffering, setVideoBuffering] = useState(true);
   const [hasVisibleFrame, setHasVisibleFrame] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   isActiveRef.current = isActive;
+
+  useEffect(() => {
+    if (!isActive && !isNext && !video.thumbnailUrl) {
+      setGeneratedThumbnail(null);
+    }
+  }, [isActive, isNext, video.thumbnailUrl]);
 
   // Sync muted state across all VideoCard instances when audio is unlocked
   useEffect(() => {
@@ -1134,7 +1166,7 @@ function VideoCard({
   }, [liked, token, video.id, muted]);
 
   const handleLike = async () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
     if (isRestricted) { showRestrictionToast(); return; }
     const wasLiked = liked;
     if (wasLiked) {
@@ -1145,10 +1177,11 @@ function VideoCard({
       setLikeCount(c => c + 1);
     }
     try {
-      await fetch(`/api/favorites/${video.id}`, {
+      const response = await fetch(`/api/favorites/${video.id}`, {
         method: wasLiked ? "DELETE" : "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!response.ok) throw new Error("Favorite request failed");
     } catch {
       // revert on error
       if (wasLiked) { markFavorited(video.id); setLikeCount(c => c + 1); }
@@ -1156,9 +1189,48 @@ function VideoCard({
     }
   };
 
+  const handleSave = () => {
+    void handleLike();
+  };
+
+  const handleMessageSeller = async () => {
+    if (!user) {
+      if (!isLoading) setLocation("/auth/login");
+      return;
+    }
+    if (user.id === video.sellerId || messagePending) return;
+    if (isRestricted) {
+      showRestrictionToast();
+      return;
+    }
+
+    setMessagePending(true);
+    try {
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ listingId: video.id, sellerId: video.sellerId }),
+      });
+      if (!response.ok) throw new Error("Conversation request failed");
+      const conversation = await response.json();
+      setLocation(`/messages/${conversation.id}`);
+    } catch {
+      toast({
+        title: t("errors.serverError"),
+        description: t("videoFeed.messageError", { defaultValue: "Nou pa t ka ouvri konvèsasyon an." }),
+        variant: "destructive",
+      });
+    } finally {
+      setMessagePending(false);
+    }
+  };
+
   const handleShare = async () => {
     if (isRestricted) { showRestrictionToast(); return; }
-    const url = `${window.location.origin}/listings/${video.id}`;
+    const url = `${window.location.origin}/videos?video=${video.id}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: video.title, url });
@@ -1255,17 +1327,8 @@ function VideoCard({
         onLoadedData={e => {
           scheduleFramePresentationCheck(e.currentTarget);
           if (!video.thumbnailUrl && !generatedThumbnail) {
-            try {
-              const v = e.currentTarget;
-              const canvas = document.createElement("canvas");
-              canvas.width = Math.min(v.videoWidth || 360, 720);
-              canvas.height = Math.min(v.videoHeight || 640, 1280);
-              const ctx = canvas.getContext("2d");
-              if (ctx) {
-                ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-                setGeneratedThumbnail(canvas.toDataURL("image/jpeg", 0.6));
-              }
-            } catch {}
+            const frame = captureVideoPosterFrame(e.currentTarget, 360, 640);
+            if (frame) setGeneratedThumbnail(frame);
           }
         }}
         onCanPlay={e => { scheduleFramePresentationCheck(e.currentTarget); }}
@@ -1381,7 +1444,7 @@ function VideoCard({
 
       {/* ── Right-side engagement column — pure TikTok style ── */}
       <div
-        className="absolute right-2 z-10 flex flex-col items-center gap-5"
+        className="absolute right-2 z-10 flex flex-col items-center gap-3.5"
         style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
@@ -1397,20 +1460,31 @@ function VideoCard({
                   {video.sellerName?.[0] ?? "?"}
                 </AvatarFallback>
               </Avatar>
-              {!following && user && user.id !== video.sellerId && (
+              {!following && user?.id !== video.sellerId && (
                 <button
                   type="button"
                   onClick={async e => {
                     e.preventDefault();
                     e.stopPropagation();
+                    if (!user) {
+                      if (!isLoading) setLocation("/auth/login");
+                      return;
+                    }
                     if (!token) return;
                     setFollowing(true);
-                    await fetch(`/api/users/${video.sellerId}/follow`, {
-                      method: "POST",
-                      headers: { Authorization: `Bearer ${token}` },
-                    }).catch(() => {});
+                    try {
+                      const response = await fetch(`/api/users/${video.sellerId}/follow`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!response.ok) throw new Error("Follow request failed");
+                    } catch {
+                      setFollowing(false);
+                    }
                   }}
                   className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow border-[1.5px] border-black active:scale-90 transition-transform z-10"
+                  aria-label={t("videoFeed.follow", { defaultValue: "Swiv" })}
+                  data-testid={`button-follow-seller-${video.sellerId}`}
                 >
                   <span className="text-white text-[11px] font-black leading-none">+</span>
                 </button>
@@ -1420,20 +1494,43 @@ function VideoCard({
         </div>
 
         {/* Like */}
-        <button type="button" onClick={handleLike} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
-          <Heart className={cn("h-[30px] w-[30px] drop-shadow-lg transition-colors", liked ? "fill-red-500 text-red-500" : "text-white")} style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.6))" }} />
+        <button type="button" onClick={handleLike} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-like-video-${video.id}`}>
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
+            <Heart className={cn("h-[27px] w-[27px] drop-shadow-lg transition-colors", liked ? "fill-red-500 text-red-500" : "text-white")} />
+          </span>
           <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(likeCount)}</span>
         </button>
 
         {/* Comment */}
-        <button type="button" onClick={handleCommentOpen} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
-          <MessageCircle className="h-[30px] w-[30px] text-white" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.6))" }} />
+        <button
+          type="button"
+          onClick={event => {
+            event.stopPropagation();
+            handleCommentOpen();
+          }}
+          aria-expanded={showComments}
+          className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform"
+          data-testid={`button-comments-video-${video.id}`}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
+            <MessageCircle className="h-[27px] w-[27px] text-white" />
+          </span>
           <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(video.commentCount)}</span>
         </button>
 
-        {/* Bookmark/Save (maps to share in TikTok slot) */}
-        <button type="button" onClick={handleShare} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform">
-          <Share2 className="h-[28px] w-[28px] text-white" style={{ filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.6))" }} />
+        {/* Save — favorites are the marketplace's persisted saved-items model */}
+        <button type="button" onClick={handleSave} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-save-video-${video.id}`}>
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
+            <Bookmark className={cn("h-[25px] w-[25px] transition-colors", liked ? "fill-amber-400 text-amber-400" : "text-white")} />
+          </span>
+          <span className="text-[10px] font-semibold text-white drop-shadow-md">{t("videoFeed.save", { defaultValue: "Sove" })}</span>
+        </button>
+
+        {/* Share */}
+        <button type="button" onClick={handleShare} className="flex flex-col items-center gap-0.5 active:scale-90 transition-transform" data-testid={`button-share-video-${video.id}`}>
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-black/35 backdrop-blur-md">
+            <Share2 className="h-[25px] w-[25px] text-white" />
+          </span>
           <span className="text-white text-[12px] font-semibold drop-shadow-md tabular-nums">{formatCount(shareCount)}</span>
         </button>
 
@@ -1514,18 +1611,34 @@ function VideoCard({
       {/* ── Bottom info overlay — TikTok exact layout ── */}
       <div
         className="absolute bottom-0 left-0 right-14 px-4 z-10"
-        style={{ paddingBottom: "calc(16px + env(safe-area-inset-bottom))" }}
+        style={{ paddingBottom: "calc(76px + env(safe-area-inset-bottom, 0px))" }}
         onClick={e => e.stopPropagation()}
         onTouchStart={e => e.stopPropagation()}
         onTouchEnd={e => e.stopPropagation()}
       >
         {/* @username + verified */}
-        <Link href={`/profile/${video.sellerId}`}>
-          <p className="text-white font-bold text-[15px] mb-1 flex items-center gap-1.5 w-fit drop-shadow-md">
-            @{video.sellerName}
-            {video.sellerIsVerified && <BadgeCheck className="h-3.5 w-3.5 text-primary shrink-0" />}
-          </p>
-        </Link>
+        <div className="mb-1 flex items-center gap-2">
+          <Link href={`/profile/${video.sellerId}`}>
+            <p className="flex w-fit items-center gap-1.5 text-[15px] font-bold text-white drop-shadow-md">
+              @{video.sellerName}
+              {video.sellerIsVerified && <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}
+            </p>
+          </Link>
+          {user?.id !== video.sellerId && (
+            <button
+              type="button"
+              onClick={handleMessageSeller}
+              disabled={messagePending}
+              className="flex items-center gap-1 rounded-full border border-white/20 bg-black/35 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-md transition-transform active:scale-95 disabled:opacity-50"
+              data-testid={`button-message-seller-${video.sellerId}`}
+            >
+              {messagePending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <SendHorizontal className="h-3 w-3" />}
+              {t("videoFeed.message", { defaultValue: "Mesaj" })}
+            </button>
+          )}
+        </div>
 
         {/* Caption with "...plus" expand */}
         <ExpandableCaption text={video.title} />
@@ -1534,7 +1647,7 @@ function VideoCard({
         {video.isBoosted && (
           <p className="text-white/55 text-[12px] mt-1 flex items-center gap-1">
             <Zap className="h-3 w-3 text-primary" />
-            Contenu promotionnel
+            {t("videoFeed.promotionalContent")}
           </p>
         )}
 
@@ -1634,6 +1747,7 @@ export default function VideoFeed() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [initialBatchLoaded, setInitialBatchLoaded] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const [wizardOpen, setWizardOpen] = useState(() => {
     try { return sessionStorage.getItem("bw_open_vf") === "1"; } catch { return false; }
@@ -1651,6 +1765,18 @@ export default function VideoFeed() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const feedGenerationRef = useRef(0);
+  const activeVideoIdRef = useRef<number | null>(null);
+  const pendingPreservedActiveIdRef = useRef<number | null>(null);
+  const selectedVideoIdRef = useRef<number | null>(
+    typeof window === "undefined"
+      ? null
+      : (() => {
+          const parsed = parseInt(new URLSearchParams(window.location.search).get("video") ?? "", 10);
+          return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        })(),
+  );
+  const initialSelectionAppliedRef = useRef(selectedVideoIdRef.current === null);
 
   // ── AI recommendation state ──────────────────────────────────────────────
   // seenIds: tracks every video the user has seen this session so we can
@@ -1669,10 +1795,16 @@ export default function VideoFeed() {
       : "";
     let url = `/api/videos/feed?page=${p}&limit=10&seed=${seed}`;
     if (excludeList) url += `&exclude=${encodeURIComponent(excludeList)}`;
+    if (replaceAll && selectedVideoIdRef.current) {
+      url += `&selected=${selectedVideoIdRef.current}`;
+    }
     return url;
   }, []);
 
   const fetchPage = useCallback(async (p: number, replace = false) => {
+    const requestGeneration = replace
+      ? ++feedGenerationRef.current
+      : feedGenerationRef.current;
     if (p === 1) setLoadingInitial(true); else setLoadingMore(true);
     try {
       const headers: Record<string, string> = {};
@@ -1680,19 +1812,33 @@ export default function VideoFeed() {
       const res = await fetch(buildFeedUrl(p, replace), { headers });
       if (!res.ok) return;
       const data = await res.json();
+      if (requestGeneration !== feedGenerationRef.current) return;
       const incoming: VideoItem[] = data.videos ?? [];
       if (replace) {
+        const currentActiveId = initialSelectionAppliedRef.current
+          ? activeVideoIdRef.current
+          : null;
+        if (currentActiveId && incoming.some(video => video.id === currentActiveId)) {
+          pendingPreservedActiveIdRef.current = currentActiveId;
+        }
         seenIdsRef.current = new Set(incoming.map(v => v.id));
         setVideos(incoming);
+        setInitialBatchLoaded(true);
       } else {
         incoming.forEach(v => seenIdsRef.current.add(v.id));
-        setVideos(prev => [...prev, ...incoming]);
+        setVideos(prev => (
+          requestGeneration === feedGenerationRef.current
+            ? [...prev, ...incoming]
+            : prev
+        ));
       }
       setHasMore(data.hasMore ?? false);
       setPage(p);
     } catch { /* non-critical */ } finally {
-      setLoadingInitial(false);
-      setLoadingMore(false);
+      if (requestGeneration === feedGenerationRef.current) {
+        setLoadingInitial(false);
+        setLoadingMore(false);
+      }
     }
   }, [token, buildFeedUrl]);
 
@@ -1729,7 +1875,10 @@ export default function VideoFeed() {
           if (!v.boostEndAt) return true;
           return new Date(v.boostEndAt).getTime() > now;
         });
-        if (live.length < prev.length) fetchPage(1, true);
+        if (live.length < prev.length) {
+          pendingPreservedActiveIdRef.current = activeVideoIdRef.current;
+          void fetchPage(1, true);
+        }
         return live;
       });
     }, 30_000);
@@ -1740,20 +1889,24 @@ export default function VideoFeed() {
   useEffect(() => {
     const poll = setInterval(async () => {
       try {
+        const requestGeneration = feedGenerationRef.current;
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
         // Use seed=0 for the poll so RANDOM() ordering surfaces newest content
         const res = await fetch("/api/videos/feed?page=1&limit=10&seed=0", { headers });
         if (!res.ok) return;
         const data = await res.json();
+        if (requestGeneration !== feedGenerationRef.current) return;
         const fresh: VideoItem[] = data.videos ?? [];
         if (fresh.length === 0) return;
         setVideos(prev => {
+          if (requestGeneration !== feedGenerationRef.current) return prev;
           const existingIds = new Set(prev.map(v => v.id));
           const newOnes = fresh.filter(v => !existingIds.has(v.id));
           if (newOnes.length === 0) return prev;
           // Mark them seen so they don't appear again in paginated loads
           newOnes.forEach(v => seenIdsRef.current.add(v.id));
+          pendingPreservedActiveIdRef.current = activeVideoIdRef.current;
           return [...newOnes, ...prev];
         });
       } catch { /* non-critical */ }
@@ -1772,6 +1925,7 @@ export default function VideoFeed() {
             const idx = cardRefs.current.indexOf(entry.target as HTMLDivElement);
             if (idx >= 0) {
               setActiveIdx(idx);
+              activeVideoIdRef.current = videos[idx]?.id ?? null;
               if (idx >= videos.length - 2 && hasMore && !loadingMore) {
                 fetchPage(page + 1);
               }
@@ -1798,6 +1952,48 @@ export default function VideoFeed() {
     const el = cardRefs.current[idx];
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+
+  useEffect(() => {
+    if (!initialBatchLoaded || initialSelectionAppliedRef.current) return;
+    const selectedId = selectedVideoIdRef.current;
+    const selectedIndex = selectedId === null
+      ? -1
+      : videos.findIndex(video => video.id === selectedId);
+    initialSelectionAppliedRef.current = true;
+    if (selectedIndex < 0) return;
+
+    setActiveIdx(selectedIndex);
+    activeVideoIdRef.current = videos[selectedIndex]?.id ?? null;
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const card = cardRefs.current[selectedIndex];
+      if (!container || !card) return;
+      container.scrollTo({ top: card.offsetTop, behavior: "auto" });
+    });
+  }, [initialBatchLoaded, videos]);
+
+  useLayoutEffect(() => {
+    const activeId = pendingPreservedActiveIdRef.current;
+    if (activeId === null) return;
+    pendingPreservedActiveIdRef.current = null;
+
+    const preservedIndex = videos.findIndex(video => video.id === activeId);
+    if (preservedIndex < 0) {
+      const fallbackIndex = Math.max(0, Math.min(activeIdx, videos.length - 1));
+      setActiveIdx(fallbackIndex);
+      activeVideoIdRef.current = videos[fallbackIndex]?.id ?? null;
+      return;
+    }
+
+    setActiveIdx(preservedIndex);
+    activeVideoIdRef.current = activeId;
+    requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const card = cardRefs.current[preservedIndex];
+      if (!container || !card) return;
+      container.scrollTo({ top: card.offsetTop, behavior: "auto" });
+    });
+  }, [activeIdx, videos]);
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loadingInitial) {
@@ -1973,11 +2169,22 @@ export default function VideoFeed() {
             onClick={handleBack}
             className="w-9 h-9 rounded-full bg-black/30 backdrop-blur-md flex items-center justify-center text-white border border-white/15 shrink-0"
             style={{ pointerEvents: "auto" }}
+            aria-label={t("common.back", { defaultValue: "Retounen" })}
+            data-testid="button-video-feed-back"
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
           <span className="flex-1 text-white font-bold text-base text-center drop-shadow-md">{t("videoFeed.title")}</span>
-          <div className="w-9 h-9 shrink-0" />
+          <button
+            type="button"
+            onClick={() => navigate("/")}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-md"
+            style={{ pointerEvents: "auto" }}
+            aria-label={t("common.close", { defaultValue: "Fèmen" })}
+            data-testid="button-video-feed-close"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Scroll container */}
@@ -2029,12 +2236,41 @@ export default function VideoFeed() {
           className="absolute z-50 flex items-center justify-center w-12 h-12 bg-primary rounded-full shadow-2xl active:scale-95 transition-transform"
           style={{
             right: "16px",
-            bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+            bottom: "calc(76px + env(safe-area-inset-bottom, 0px))",
             boxShadow: "0 0 24px rgba(249,115,22,0.5)",
           }}
+          aria-label={t("videoFeed.addBoost", { defaultValue: "Ajoute yon videyo" })}
+          data-testid="button-add-video-boost"
         >
           <Plus className="h-6 w-6 text-white" />
         </button>
+
+        {/* Mobile feed navigation — the global marketplace nav is intentionally hidden on /videos */}
+        <nav
+          className="absolute inset-x-0 bottom-0 z-40 flex items-start justify-around border-t border-white/10 bg-black/80 px-2 pt-2 backdrop-blur-xl lg:hidden"
+          style={{
+            height: "calc(64px + env(safe-area-inset-bottom, 0px))",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+          aria-label={t("nav.main", { defaultValue: "Navigasyon prensipal" })}
+        >
+          <button type="button" onClick={() => navigate("/")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-home">
+            <Home className="h-5 w-5" />
+            <span className="text-[9px] font-semibold">{t("nav.home")}</span>
+          </button>
+          <button type="button" className="flex min-w-14 flex-col items-center gap-1 text-primary" aria-current="page" data-testid="nav-video-feed">
+            <Play className="h-5 w-5 fill-current" />
+            <span className="text-[9px] font-black">{t("tr.promoVideo")}</span>
+          </button>
+          <button type="button" onClick={() => navigate("/saved")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-saved">
+            <Bookmark className="h-5 w-5" />
+            <span className="text-[9px] font-semibold">{t("nav.saved")}</span>
+          </button>
+          <button type="button" onClick={() => navigate("/messages")} className="flex min-w-14 flex-col items-center gap-1 text-white/65" data-testid="nav-video-messages">
+            <MessageCircle className="h-5 w-5" />
+            <span className="text-[9px] font-semibold">{t("nav.messages")}</span>
+          </button>
+        </nav>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════

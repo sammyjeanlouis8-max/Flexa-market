@@ -412,6 +412,7 @@ const AudioBubble = React.memo(function AudioBubble({
   const [playing,  setPlaying]  = useState(false);
   const [duration, setDuration] = useState(0);
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
+  const [playbackError, setPlaybackError] = useState(false);
 
   const N = WAVE_BARS.length;
 
@@ -476,6 +477,14 @@ const AudioBubble = React.memo(function AudioBubble({
     };
   }, [stopRaf]);
 
+  // iOS Safari/WKWebView needs an explicit load after the media source changes.
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    setPlaybackError(false);
+    el.load();
+  }, [src]);
+
   // ── controls ─────────────────────────────────────────────────────────────
   const toggle = () => {
     const el = audioRef.current;
@@ -485,7 +494,13 @@ const AudioBubble = React.memo(function AudioBubble({
     } else {
       if (_globalAudioEl && _globalAudioEl !== el) _globalAudioEl.pause();
       _globalAudioEl = el;
-      el.play().catch(() => {});
+      setPlaybackError(false);
+      if (el.error || el.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) el.load();
+      el.play().catch(() => {
+        setPlaying(false);
+        setPlaybackError(true);
+        if (_globalAudioEl === el) _globalAudioEl = null;
+      });
     }
   };
 
@@ -543,7 +558,7 @@ const AudioBubble = React.memo(function AudioBubble({
         onEnded={handleEnded}
         onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
         onStalled={handleStall} onSuspend={handleStall}
-        onError={() => { setPlaying(false); stopRaf(); }}
+        onError={() => { setPlaying(false); setPlaybackError(true); stopRaf(); }}
       />
 
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -627,6 +642,14 @@ const AudioBubble = React.memo(function AudioBubble({
           </div>
         </div>
       </div>
+      {playbackError && (
+        <p style={{
+          margin: "5px 0 0 46px", fontSize: 11,
+          color: isMe ? "rgba(255,255,255,0.88)" : "#B91C1C",
+        }}>
+          Odyo a pa ka jwe. Peze ankò.
+        </p>
+      )}
     </div>
   );
 });
@@ -1070,12 +1093,28 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
+  const [voiceFinalizing, setVoiceFinalizing] = useState(false);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
+  const voiceSessionRef = useRef<{
+    recorder: MediaRecorder;
+    stream: MediaStream;
+    chunks: Blob[];
+    recordedMime: string;
+    cancelled: boolean;
+    failed: boolean;
+    finalized: boolean;
+    finalize: () => Promise<void>;
+  } | null>(null);
+  const voiceBusyRef = useRef(false);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const recordingMeterRafRef = useRef<number | null>(null);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const recordingAnalyserRef = useRef<AnalyserNode | null>(null);
+  const recordingSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const msgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1262,37 +1301,159 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
   };
 
-  const startVoiceRecording = async () => {
-    if (isRestricted) return;
+  const stopRecordingMeter = useCallback(() => {
+    if (recordingMeterRafRef.current !== null) {
+      cancelAnimationFrame(recordingMeterRafRef.current);
+      recordingMeterRafRef.current = null;
+    }
+    recordingSourceRef.current?.disconnect();
+    recordingSourceRef.current = null;
+    recordingAnalyserRef.current = null;
+    const ctx = recordingAudioContextRef.current;
+    recordingAudioContextRef.current = null;
+    if (ctx && ctx.state !== "closed") void ctx.close().catch(() => {});
+    recordingBarRefs.current.forEach(bar => {
+      if (bar) bar.style.height = "4px";
+    });
+  }, []);
+
+  const startRecordingMeter = useCallback((stream: MediaStream) => {
+    stopRecordingMeter();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-      const mr = new MediaRecorder(stream, { mimeType });
-      recordingChunksRef.current = [];
-      mr.ondataavailable = e => { if (e.data.size > 0) recordingChunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
-        if (blob.size < 100) return;
-        const tkn = localStorage.getItem("flexamarket_token") ?? "";
-        setUploading(true);
+      const ctx: AudioContext = new AudioContextCtor();
+      const analyser = ctx.createAnalyser();
+      const source = ctx.createMediaStreamSource(stream);
+      analyser.fftSize = 256;
+      analyser.minDecibels = -75;
+      analyser.maxDecibels = -20;
+      analyser.smoothingTimeConstant = 0.72;
+      source.connect(analyser);
+      recordingAudioContextRef.current = ctx;
+      recordingAnalyserRef.current = analyser;
+      recordingSourceRef.current = source;
+      if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+
+      const samples = new Uint8Array(analyser.frequencyBinCount);
+      const draw = () => {
+        const recorderState = mediaRecorderRef.current?.state;
+        if (recorderState === "recording") {
+          analyser.getByteFrequencyData(samples);
+          const usableBins = Math.min(64, samples.length);
+          recordingBarRefs.current.forEach((bar, i) => {
+            if (!bar) return;
+            const bin = Math.min(usableBins - 1, 2 + Math.floor((i / WAVE_BARS.length) * (usableBins - 2)));
+            const nearby = (samples[bin] + samples[Math.min(bin + 1, usableBins - 1)]) / 2;
+            const height = Math.max(4, Math.min(42, 4 + (nearby / 255) * 42));
+            bar.style.height = `${Math.round(height)}px`;
+          });
+        } else {
+          recordingBarRefs.current.forEach(bar => {
+            if (bar) bar.style.height = "4px";
+          });
+        }
+        recordingMeterRafRef.current = requestAnimationFrame(draw);
+      };
+      recordingMeterRafRef.current = requestAnimationFrame(draw);
+    } catch {
+      stopRecordingMeter();
+    }
+  }, [stopRecordingMeter]);
+
+  const startVoiceRecording = async () => {
+    if (isRestricted || voiceBusyRef.current || uploading) return;
+    voiceBusyRef.current = true;
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const isAppleMobile =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const candidates = isAppleMobile
+        ? ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+        : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
+      const requestedMime = candidates.find(type => MediaRecorder.isTypeSupported(type)) ?? "";
+      const mr = requestedMime
+        ? new MediaRecorder(stream, { mimeType: requestedMime })
+        : new MediaRecorder(stream);
+      const recordedMime = mr.mimeType || requestedMime || (isAppleMobile ? "audio/mp4" : "audio/webm");
+      const activeStream = stream;
+      const session = {
+        recorder: mr,
+        stream: activeStream,
+        chunks: [] as Blob[],
+        recordedMime,
+        cancelled: false,
+        failed: false,
+        finalized: false,
+        finalize: async () => {},
+      };
+      const finalizeSession = async () => {
+        if (session.finalized) return;
+        session.finalized = true;
+        stopRecordingMeter();
+        session.stream.getTracks().forEach(t => t.stop());
+        if (voiceSessionRef.current === session) voiceSessionRef.current = null;
+        if (mediaRecorderRef.current === session.recorder) mediaRecorderRef.current = null;
         try {
-          // Normalize mimeType — strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
-          const uploadMime = mimeType.split(";")[0].trim();
-          const url = await uploadMedia(blob as unknown as File, uploadMime, tkn);
-          doSend({ messageType: "audio", mediaUrl: url, content: "" });
-        } catch { toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" }); }
-        finally { setUploading(false); }
+          if (session.cancelled || session.failed) return;
+          const blob = new Blob(session.chunks, { type: session.recordedMime });
+          if (blob.size < 100) return;
+          const tkn = localStorage.getItem("flexamarket_token") ?? "";
+          setUploading(true);
+          try {
+            // Normalize MIME params (e.g. audio/webm;codecs=opus → audio/webm).
+            const uploadMime = session.recordedMime.split(";")[0].trim();
+            const url = await uploadMedia(blob as unknown as File, uploadMime, tkn);
+            doSend({ messageType: "audio", mediaUrl: url, content: "" });
+          } catch {
+            toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
+          } finally {
+            setUploading(false);
+          }
+        } finally {
+          session.chunks = [];
+          voiceBusyRef.current = false;
+          setVoiceFinalizing(false);
+        }
+      };
+      session.finalize = finalizeSession;
+      voiceSessionRef.current = session;
+      mr.ondataavailable = e => { if (e.data.size > 0) session.chunks.push(e.data); };
+      mr.onstop = () => { void session.finalize(); };
+      mr.onerror = () => {
+        session.failed = true;
+        setVoiceFinalizing(true);
+        stopRecordingMeter();
+        session.stream.getTracks().forEach(t => t.stop());
+        setIsRecording(false);
+        stopRecordingTimer();
+        toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
+        // Browsers normally dispatch stop after error; cover implementations
+        // that transition directly to inactive without a stop callback.
+        if (session.recorder.state === "inactive") {
+          queueMicrotask(() => { void session.finalize(); });
+        }
       };
       mr.start(100);
       mediaRecorderRef.current = mr;
       setIsRecording(true);
       setRecordingPaused(false);
       setRecordingSecs(0);
+      startRecordingMeter(stream);
       recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
     } catch {
+      stream?.getTracks().forEach(t => t.stop());
+      voiceBusyRef.current = false;
+      setVoiceFinalizing(false);
+      stopRecordingMeter();
       toast({ title: t("messages.micDenied"), variant: "destructive" });
     }
   };
@@ -1302,16 +1463,16 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     setIsRecording(false);
     setRecordingPaused(false);
     setRecordingSecs(0);
-    const mr = mediaRecorderRef.current;
-    if (!mr) return;
-    if (cancel) {
-      recordingChunksRef.current = [];
-      mr.onstop = () => {};
-      mr.stop();
+    const session = voiceSessionRef.current;
+    if (!session) return;
+    session.cancelled = cancel;
+    setVoiceFinalizing(true);
+    stopRecordingMeter();
+    if (session.recorder.state !== "inactive") {
+      session.recorder.stop();
     } else {
-      mr.stop();
+      void session.finalize();
     }
-    mediaRecorderRef.current = null;
   };
 
   const toggleRecordingPause = () => {
@@ -1351,7 +1512,15 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   useEffect(() => () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     stopRecordingTimer();
-  }, []);
+    const session = voiceSessionRef.current;
+    if (session) {
+      session.cancelled = true;
+      if (session.recorder.state !== "inactive") session.recorder.stop();
+      else void session.finalize();
+      session.stream.getTracks().forEach(track => track.stop());
+    }
+    stopRecordingMeter();
+  }, [stopRecordingMeter]);
 
   const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
   // Find the last message sent by me (for status icon)
@@ -1694,12 +1863,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 {WAVE_BARS.map((height, i) => (
                   <span
                     key={i}
+                    ref={el => { recordingBarRefs.current[i] = el; }}
                     style={{
-                      width: 3, minWidth: 2, height: `${Math.max(8, Math.round(height * 42))}px`,
+                      width: 3, minWidth: 2, height: "4px",
                       borderRadius: 99, background: composerActionColor, opacity: recordingPaused ? 0.55 : 0.95,
                       transformOrigin: "center",
-                      animation: recordingPaused ? "none" : "recordWave 0.75s ease-in-out infinite alternate",
-                      animationDelay: `${i * 28}ms`,
+                      transition: "height 80ms linear, opacity 120ms ease",
                     }}
                   />
                 ))}
@@ -1871,12 +2040,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               <button
                 type="button"
                 onClick={startVoiceRecording}
-                disabled={uploading}
+                disabled={uploading || voiceFinalizing}
                 style={{
                   flexShrink: 0, width: 46, height: 46, borderRadius: "50%",
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "#fff", opacity: uploading ? 0.4 : 1,
+                  color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,
                 }}
                 aria-label={t("messages.recordVoice")}
               >

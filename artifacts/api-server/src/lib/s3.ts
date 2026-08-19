@@ -224,12 +224,31 @@ export function extractWasabiKey(url: string): string | null {
   return null;
 }
 
+/**
+ * Return a browser-safe MIME type for media streamed through the Wasabi proxy.
+ *
+ * The proxy serves images, video, and voice messages. Prefer an explicit
+ * stored MIME type when it is already media, then use the extension to repair
+ * legacy objects that were uploaded without useful metadata.
+ */
 export function getBrowserVideoContentType(key: string, storedContentType?: string): string {
   const ext = (key.split(".").pop() ?? "").toLowerCase();
+  if (storedContentType?.startsWith("audio/")) return storedContentType.split(";")[0].trim();
+  if (storedContentType?.startsWith("image/")) return storedContentType.split(";")[0].trim();
   if (["mp4", "m4v"].includes(ext)) return "video/mp4";
   if (["mov", "qt", "quicktime"].includes(ext)) return "video/quicktime";
-  if (ext === "webm") return "video/webm";
-  if (ext === "ogv" || ext === "ogg") return "video/ogg";
+  if (ext === "m4a" || ext === "aac") return "audio/mp4";
+  if (ext === "mp3") return "audio/mpeg";
+  if (ext === "wav") return "audio/wav";
+  if (ext === "weba") return "audio/webm";
+  if (ext === "oga") return "audio/ogg";
+  if (ext === "webm") {
+    return storedContentType?.startsWith("audio/") ? "audio/webm" : "video/webm";
+  }
+  if (ext === "ogv") return "video/ogg";
+  if (ext === "ogg") {
+    return storedContentType?.startsWith("audio/") ? "audio/ogg" : "video/ogg";
+  }
   return storedContentType?.startsWith("video/") ? storedContentType : "application/octet-stream";
 }
 

@@ -1,12 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye } from "lucide-react";
+import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon } from "lucide-react";
 import { formatViewCount } from "@/hooks/useViewTracker";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAddFavorite, useRemoveFavorite, getGetFavoritesQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useFavorites } from "@/contexts/favorites";
@@ -67,9 +67,7 @@ export default function ListingCard({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
-  const img =
-    listing.images?.[0] ??
-    `https://placehold.co/400x300/f97316/white?text=${encodeURIComponent(listing.title.slice(0, 10))}`;
+  const img = listing.images?.find((image) => image.trim().length > 0) ?? null;
   const flag = listing.country ? COUNTRY_FLAGS[listing.country] : null;
   const displayLocation = listing.city ?? listing.location;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
@@ -78,6 +76,12 @@ export default function ListingCard({
   const liked = isFavorited(listing.id) || (listing.isFavorited ?? false);
   const [likeCount, setLikeCount] = useState(listing.favoriteCount ?? 0);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImgLoaded(false);
+    setImageFailed(false);
+  }, [img]);
 
   const addFav = useAddFavorite();
   const removeFav = useRemoveFavorite();
@@ -130,22 +134,32 @@ export default function ListingCard({
       >
         {/* === IMAGE === */}
         <div className={cn("relative overflow-hidden bg-muted", compact ? "aspect-square" : "aspect-[4/3]")}>
-          <img
-            src={img}
-            alt={listing.title}
-            loading="lazy"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            style={{
-              filter: imgLoaded ? "none" : "blur(6px)",
-              transition: "filter 0.3s ease, transform 0.3s ease",
-              transform: imgLoaded ? "scale(1)" : "scale(1.04)",
-            }}
-            onLoad={() => setImgLoaded(true)}
-            onError={(e) => {
-              setImgLoaded(true);
-              (e.target as HTMLImageElement).src = `https://placehold.co/400x300/f97316/white?text=No+Image`;
-            }}
-          />
+          {img && !imageFailed ? (
+            <img
+              src={img}
+              alt={listing.title}
+              loading="lazy"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              style={{
+                filter: imgLoaded ? "none" : "blur(6px)",
+                transition: "filter 0.3s ease, transform 0.3s ease",
+                transform: imgLoaded ? "scale(1)" : "scale(1.04)",
+              }}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => {
+                setImgLoaded(true);
+                setImageFailed(true);
+              }}
+            />
+          ) : (
+            <div
+              className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5"
+              role="img"
+              aria-label={t("sell.images")}
+            >
+              <ImageIcon className="h-10 w-10 text-primary/45" aria-hidden="true" />
+            </div>
+          )}
 
           {/* SOLD overlay — dark gradient so white text is always readable */}
           {listing.status === "sold" && (

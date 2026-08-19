@@ -1,50 +1,58 @@
 name: iOS Native — Build & TestFlight
 
-# schedule fires at 07:10 UTC (= midnight Pacific) so the first run after
-# Apple's daily upload-limit resets goes automatically. The last step removes
-# this cron entry after a successful upload so it never fires again.
 on:
-  schedule:
-    - cron: '10 7 * * *'
   workflow_dispatch:
+    inputs:
+      reset_distribution_certificates:
+        description: "Delete existing Apple Distribution certificates before the build (only use after a certificate-limit error)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
     name: Build & Upload to TestFlight
-    runs-on: macos-latest      # Xcode 26+ with iOS 26 SDK (required by App Store)
+    runs-on: macos-latest
 
     steps:
       # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Generate all icon sizes on macOS CI using sips (avoids Linux/ImageMagick format issues) ──
+      # ── 2. Generate app icons on macOS CI ─────────────────────────────────
       - name: Generate app icons with sips
+        shell: bash
         run: |
-          SRC=artifacts/mobile/assets/images/icon.png
-          D=artifacts/ios-native/Assets.xcassets/AppIcon.appiconset
-          # All sizes referenced in Contents.json — must match exactly
-          sips -z 1024 1024 "$SRC" --out "$D/icon-1024.png"
-          sips -z 180  180  "$SRC" --out "$D/AppIcon180.png"
-          sips -z 167  167  "$SRC" --out "$D/AppIcon167.png"
-          sips -z 152  152  "$SRC" --out "$D/AppIcon152.png"
-          sips -z 120  120  "$SRC" --out "$D/AppIcon120.png"
-          sips -z 87   87   "$SRC" --out "$D/AppIcon87.png"
-          sips -z 80   80   "$SRC" --out "$D/AppIcon80.png"
-          sips -z 76   76   "$SRC" --out "$D/AppIcon76.png"
-          sips -z 60   60   "$SRC" --out "$D/AppIcon60.png"
-          sips -z 58   58   "$SRC" --out "$D/AppIcon58.png"
-          sips -z 40   40   "$SRC" --out "$D/AppIcon40.png"
-          sips -z 29   29   "$SRC" --out "$D/AppIcon29.png"
-          sips -z 20   20   "$SRC" --out "$D/AppIcon20.png"
-          echo "Icons generated:"
-          ls -la "$D/"
+          set -euo pipefail
+
+          SRC="artifacts/mobile/assets/images/icon.png"
+          DEST="artifacts/ios-native/Assets.xcassets/AppIcon.appiconset"
+
+          test -f "$SRC"
+          test -d "$DEST"
+
+          sips -z 1024 1024 "$SRC" --out "$DEST/icon-1024.png"
+          sips -z 180 180 "$SRC" --out "$DEST/AppIcon180.png"
+          sips -z 167 167 "$SRC" --out "$DEST/AppIcon167.png"
+          sips -z 152 152 "$SRC" --out "$DEST/AppIcon152.png"
+          sips -z 120 120 "$SRC" --out "$DEST/AppIcon120.png"
+          sips -z 87 87 "$SRC" --out "$DEST/AppIcon87.png"
+          sips -z 80 80 "$SRC" --out "$DEST/AppIcon80.png"
+          sips -z 76 76 "$SRC" --out "$DEST/AppIcon76.png"
+          sips -z 60 60 "$SRC" --out "$DEST/AppIcon60.png"
+          sips -z 58 58 "$SRC" --out "$DEST/AppIcon58.png"
+          sips -z 40 40 "$SRC" --out "$DEST/AppIcon40.png"
+          sips -z 29 29 "$SRC" --out "$DEST/AppIcon29.png"
+          sips -z 20 20 "$SRC" --out "$DEST/AppIcon20.png"
+
+          echo "Generated app icons:"
+          ls -la "$DEST"
 
       # ── 3. Install xcodegen ───────────────────────────────────────────────
       - name: Install xcodegen
         run: brew install xcodegen
 
-      # ── 4. Generate .xcodeproj from project.yml ──────────────────────────
+      # ── 4. Generate the Xcode project ─────────────────────────────────────
       - name: Generate Xcode project
         working-directory: artifacts/ios-native
         run: xcodegen generate
@@ -53,77 +61,144 @@ jobs:
       - name: Install fastlane
         run: gem install fastlane --no-document
 
-      # ── 6. Revoke stale iOS Distribution certs (Apple allows max 2) ──────
-      #   Each CI run starts with a clean keychain so old certs' private keys
-      #   are gone and Apple won't issue a 3rd cert. Revoke them first so
-      #   get_certificates can create a fresh one.
-      - name: Revoke old Distribution certificates
+      # ── 6. Optional signing recovery ──────────────────────────────────────
+      # Certificates are not deleted during normal builds.
+      # Enable this option only after Apple's certificate-limit error.
+      - name: Install certificate-reset dependency
+        if: ${{ inputs.reset_distribution_certificates == true }}
+        run: python3 -m pip install --disable-pip-version-check --user cryptography
+
+      - name: Reset Distribution certificates
+        if: ${{ inputs.reset_distribution_certificates == true }}
         env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8:    ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        shell: bash
         run: |
+          set -euo pipefail
+
           python3 - <<'PYEOF'
-          import os, json, time, base64, urllib.request, urllib.error
+          import base64
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+
           from cryptography.hazmat.primitives import hashes, serialization
-          from cryptography.hazmat.primitives.asymmetric import ec, utils as asym_utils
+          from cryptography.hazmat.primitives.asymmetric import ec
+          from cryptography.hazmat.primitives.asymmetric import utils as asym_utils
 
           def make_jwt():
-              key_pem = os.environ["ASC_KEY_P8"].encode()
-              private_key = serialization.load_pem_private_key(key_pem, password=None)
+              key_pem = os.environ["ASC_KEY_P8"].strip().replace("\\n", "\n").encode()
+
+              private_key = serialization.load_pem_private_key(
+                  key_pem,
+                  password=None,
+              )
+
               now = int(time.time())
-              hdr = base64.urlsafe_b64encode(json.dumps({
-                  "alg": "ES256", "kid": os.environ["ASC_KEY_ID"], "typ": "JWT"
-              }, separators=(',',':')).encode()).rstrip(b'=').decode()
-              pld = base64.urlsafe_b64encode(json.dumps({
-                  "iss": os.environ["ASC_ISSUER_ID"], "iat": now,
-                  "exp": now + 1200, "aud": "appstoreconnect-v1"
-              }, separators=(',',':')).encode()).rstrip(b'=').decode()
-              to_sign = f"{hdr}.{pld}".encode()
-              der_sig = private_key.sign(to_sign, ec.ECDSA(hashes.SHA256()))
-              r, s = asym_utils.decode_dss_signature(der_sig)
-              sig = base64.urlsafe_b64encode(
-                  r.to_bytes(32,'big') + s.to_bytes(32,'big')
-              ).rstrip(b'=').decode()
-              return f"{hdr}.{pld}.{sig}"
+
+              header = base64.urlsafe_b64encode(
+                  json.dumps(
+                      {
+                          "alg": "ES256",
+                          "kid": os.environ["ASC_KEY_ID"],
+                          "typ": "JWT",
+                      },
+                      separators=(",", ":"),
+                  ).encode()
+              ).rstrip(b"=").decode()
+
+              payload = base64.urlsafe_b64encode(
+                  json.dumps(
+                      {
+                          "iss": os.environ["ASC_ISSUER_ID"],
+                          "iat": now,
+                          "exp": now + 1200,
+                          "aud": "appstoreconnect-v1",
+                      },
+                      separators=(",", ":"),
+                  ).encode()
+              ).rstrip(b"=").decode()
+
+              message = f"{header}.{payload}".encode()
+
+              der_signature = private_key.sign(
+                  message,
+                  ec.ECDSA(hashes.SHA256()),
+              )
+
+              r, s = asym_utils.decode_dss_signature(der_signature)
+
+              signature = base64.urlsafe_b64encode(
+                  r.to_bytes(32, "big") + s.to_bytes(32, "big")
+              ).rstrip(b"=").decode()
+
+              return f"{header}.{payload}.{signature}"
 
           token = make_jwt()
-          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-          # List both IOS_DISTRIBUTION (legacy) and DISTRIBUTION (Apple Distribution, newer)
-          certs = []
-          for cert_type in ["IOS_DISTRIBUTION", "DISTRIBUTION"]:
-              url = f"https://api.appstoreconnect.apple.com/v1/certificates?filter[certificateType]={cert_type}&limit=20"
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req) as r:
-                  certs += json.loads(r.read()).get("data", [])
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json",
+          }
 
-          print(f"Found {len(certs)} IOS_DISTRIBUTION certificate(s)")
-          for cert in certs:
-              cid = cert["id"]
-              del_req = urllib.request.Request(
-                  f"https://api.appstoreconnect.apple.com/v1/certificates/{cid}",
-                  method="DELETE", headers=headers
+          certificates_by_id = {}
+
+          for certificate_type in ("IOS_DISTRIBUTION", "DISTRIBUTION"):
+              url = (
+                  "https://api.appstoreconnect.apple.com/v1/certificates"
+                  f"?filter[certificateType]={certificate_type}&limit=20"
               )
+
+              request = urllib.request.Request(url, headers=headers)
+
+              with urllib.request.urlopen(request) as response:
+                  data = json.loads(response.read())
+
+              for certificate in data.get("data", []):
+                  certificates_by_id[certificate["id"]] = certificate
+
+          print(
+              f"Found {len(certificates_by_id)} Apple Distribution certificate(s)"
+          )
+
+          for certificate_id in certificates_by_id:
+              delete_request = urllib.request.Request(
+                  f"https://api.appstoreconnect.apple.com/v1/certificates/{certificate_id}",
+                  method="DELETE",
+                  headers=headers,
+              )
+
               try:
-                  urllib.request.urlopen(del_req)
-                  print(f"  ✓ Revoked {cid}")
-              except urllib.error.HTTPError as e:
-                  print(f"  ✗ {cid}: {e.code} {e.reason}")
+                  with urllib.request.urlopen(delete_request):
+                      pass
+
+                  print(f"Revoked {certificate_id}")
+
+              except urllib.error.HTTPError as error:
+                  print(
+                      f"Could not revoke {certificate_id}: "
+                      f"{error.code} {error.reason}"
+                  )
+                  raise
           PYEOF
 
-      # ── 7. Build + sign + upload via fastlane ────────────────────────────
+      # ── 7. Build, sign, and upload through fastlane ───────────────────────
       - name: Build & Upload to TestFlight
         working-directory: artifacts/ios-native
         env:
-          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8:    ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           FASTLANE_HIDE_TIMESTAMP: "true"
           FASTLANE_SKIP_UPDATE_CHECK: "true"
+        shell: bash
         run: fastlane build_and_upload
 
-      # ── 8. Upload gym raw build log + IPA as artifacts ────────────────────
+      # ── 8. Keep build logs and IPA available for troubleshooting ──────────
       - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -132,56 +207,5 @@ jobs:
           path: |
             ~/Library/Logs/gym/
             /tmp/ipa_output/FlexaMarket.ipa
+          if-no-files-found: warn
           retention-days: 3
-
-      # ── 9. Remove cron schedule after successful upload ───────────────────
-      # Rewrites this workflow file to keep only workflow_dispatch, so the
-      # nightly schedule never fires again after the first successful build.
-      - name: Remove nightly cron schedule (self-cleanup)
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python3 - <<'PYEOF'
-          import os, json, base64, urllib.request
-
-          REPO  = os.environ.get("GITHUB_REPOSITORY", "sammyjeanlouis8-max/Flexa-market")
-          PATH  = ".github/workflows/ios-native.yml"
-          TOKEN = os.environ["GH_TOKEN"]
-          HEADERS = {
-              "Authorization": f"Bearer {TOKEN}",
-              "Accept": "application/vnd.github+json",
-              "Content-Type": "application/json",
-          }
-
-          # Fetch current file + sha
-          url = f"https://api.github.com/repos/{REPO}/contents/{PATH}"
-          req = urllib.request.Request(url, headers=HEADERS)
-          with urllib.request.urlopen(req) as r:
-              data = json.loads(r.read())
-          sha     = data["sha"]
-          content = base64.b64decode(data["content"]).decode()
-
-          # Remove the schedule block — replace the on: section
-          import re
-          cleaned = re.sub(
-              r"(on:\s*\n)(\s+schedule:\s*\n(?:\s+.*\n)*?)(\s+workflow_dispatch:)",
-              r"\1\3",
-              content,
-          )
-          # Also remove the explanatory comment above schedule
-          cleaned = re.sub(r"# schedule fires at.*\n(?:# .*\n)*", "", cleaned)
-          cleaned = cleaned.strip() + "\n"
-
-          if cleaned == content:
-              print("No schedule block found — nothing to remove.")
-          else:
-              body = json.dumps({
-                  "message": "ci: remove nightly cron after successful build 79 upload",
-                  "content": base64.b64encode(cleaned.encode()).decode(),
-                  "sha": sha,
-              }).encode()
-              put = urllib.request.Request(url, data=body, headers=HEADERS, method="PUT")
-              with urllib.request.urlopen(put) as r:
-                  print("✓ Schedule removed — workflow is now manual-only.")
-          PYEOF

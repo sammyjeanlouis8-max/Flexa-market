@@ -177,25 +177,45 @@ export default function FlexaMusicUpload() {
 
       // ── Step 3: Upload cover via Wasabi proxy (optional) ───────────────────────
       let coverResult: {storageKey:string;url:string}|null = null;
-      if (coverFile && sig.cover?.uploadUrl) {
-        try {
-          const coverData = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open("PUT", sig.cover.uploadUrl);
-            xhr.setRequestHeader("Content-Type", coverFile.type || "image/jpeg");
-            if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
-            xhr.onload = () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                const data = JSON.parse(xhr.responseText) as { url: string };
-                const storageKey = new URL(data.url, location.origin).searchParams.get("key") ?? "";
-                resolve({ storageKey, url: data.url });
-              } else { reject(new Error("Cover " + xhr.status)); }
-            };
-            xhr.onerror = () => reject(new Error("Cover network error"));
-            xhr.send(coverFile);
-          });
-          coverResult = coverData;
-        } catch { /* cover failure is non-fatal */ }
+      if (coverFile) {
+        if (!sig.cover?.uploadUrl) {
+          throw new Error("Nou pa t resevwa yon lyen pou telechaje thumbnail la. Eseye ankò.");
+        }
+        const coverData = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", sig.cover.uploadUrl);
+          xhr.setRequestHeader("Content-Type", coverFile.type || "image/jpeg");
+          if (token) xhr.setRequestHeader("Authorization", "Bearer " + token);
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText) as { url?: string };
+                const returnedUrl = data.url;
+                if (!returnedUrl) {
+                  reject(new Error("Wasabi pa t retounen kle thumbnail la. Eseye ankò."));
+                  return;
+                }
+                const storageKey = new URL(returnedUrl, location.origin).searchParams.get("key") ?? "";
+                if (!storageKey) {
+                  reject(new Error("Wasabi pa t retounen kle thumbnail la. Eseye ankò."));
+                  return;
+                }
+                resolve({ storageKey, url: returnedUrl });
+              } catch {
+                reject(new Error("Repons thumbnail la pa valab. Eseye ankò."));
+              }
+            } else {
+              let message = `Thumbnail upload failed: HTTP ${xhr.status}`;
+              try {
+                message = (JSON.parse(xhr.responseText) as { error?: string }).error ?? message;
+              } catch { /* keep the HTTP message */ }
+              reject(new Error(message));
+            }
+          };
+          xhr.onerror = () => reject(new Error("Koneksyon an koupe pandan thumbnail la t ap telechaje."));
+          xhr.send(coverFile);
+        });
+        coverResult = coverData;
       }
       setProgress(95);
 

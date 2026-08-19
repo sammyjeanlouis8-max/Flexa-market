@@ -134,8 +134,7 @@ async function formatListing(
         : ("/api/storage/objects/" + listing.boostVideoUrl.replace(/^\/objects\//, ""));
       const _vKey = extractWasabiKey(_vRaw);
       if (_vKey) {
-        const _base = process.env["PUBLIC_BASE_URL"] ?? "https://flexamarket.com";
-        resolvedBoostVideoUrl = `${_base}/api/storage/video-stream?key=${encodeURIComponent(_vKey)}`;
+        resolvedBoostVideoUrl = `/api/storage/video-stream?key=${encodeURIComponent(_vKey)}`;
       }
       if (!resolvedBoostVideoUrl) resolvedBoostVideoUrl = toStreamingVideoUrl(_vRaw);
     }

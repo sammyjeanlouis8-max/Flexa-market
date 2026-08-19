@@ -10,11 +10,9 @@ const router = Router();
  * Resolve a stored boostVideoUrl to a playable URL.
  *
  * Priority:
- *   1. Wasabi proxy URL  → return as-is so the browser hits our same-origin
- *      /api/storage/wasabi-image proxy. The proxy streams content directly
- *      (no 302 redirect) with Accept-Ranges: bytes, so iOS Safari Range
- *      requests work correctly. Presigned cross-origin Wasabi URLs were tried
- *      but caused spinner/black-screen on iOS (Range request handling issues).
+ *   1. Wasabi proxy URL  → route through the same-origin video stream endpoint.
+ *      It forwards Range requests and normalizes H.264/AAC MOV MIME types so
+ *      mobile browsers do not play audio behind a black video surface.
  *   2. Cloudinary URL    → inject H.264/AAC transcoding transform.
  *   3. Anything else     → return as-is.
  */
@@ -25,9 +23,10 @@ function resolveVideoUrl(raw: string): string | null {
   if (raw.startsWith("/objects/") || raw.startsWith("/api/storage/objects/")) {
     return null;
   }
-  // Wasabi proxy URL — serve through our proxy (same-origin, Range-capable)
-  if (extractWasabiKey(raw) !== null) {
-    return raw;
+  // Wasabi proxy URL — always use the dedicated same-origin, Range-capable stream.
+  const wasabiKey = extractWasabiKey(raw);
+  if (wasabiKey !== null) {
+    return `/api/storage/video-stream?key=${encodeURIComponent(wasabiKey)}`;
   }
   return toStreamingVideoUrl(raw);
 }

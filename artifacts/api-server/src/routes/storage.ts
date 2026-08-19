@@ -1,10 +1,11 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "crypto";
+import { pipeline } from "node:stream/promises";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, streamToWasabi } from "../lib/s3";
+import { validateMimeType, uploadBufferToWasabi, isWasabiConfigured, getWasabiPresignedUrl, getWasabiObject, getWasabiObjectSize, getBrowserVideoContentType, streamToWasabi } from "../lib/s3";
 import { needsVideoConversion, convertVideoToH264 } from "../lib/videoConvert";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { requireAuth } from "../middlewares/auth";
@@ -212,13 +213,12 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
 });
 
 
-// ── Video H.264 streaming proxy ──────────────────────────────────────────────
-// In-memory cache: original Wasabi key → transcoded H264 key.
-const videoH264Cache = new Map<string, string>();
-
 // GET /api/storage/video-stream?key=uploads/videos/xxx.mov
-// Serves a 307 to the best available version. Transcodes HEVC/MOV/WebM to
-// H264/MP4 in the background on first request so Chrome + Android can play it.
+// Streams the Wasabi object through the same origin and forwards byte ranges.
+// This avoids the cross-origin 307 path that can leave mobile browsers playing
+// the audio track while never presenting a decoded video frame. MOV/QuickTime
+// files produced by the boost uploader contain H.264/AAC and are exposed with
+// the browser-compatible video/mp4 MIME type.
 router.get("/storage/video-stream", async (req: Request, res: Response) => {
   const key = req.query["key"];
   if (!key || typeof key !== "string") {
@@ -228,45 +228,52 @@ router.get("/storage/video-stream", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Invalid key" }); return;
   }
 
-  const ext = (key.split('.').pop() ?? '').toLowerCase();
-  const videoMimes: Record<string, string> = {
-    mov: 'video/quicktime', webm: 'video/webm',
-    avi: 'video/x-msvideo', wmv: 'video/x-ms-wmv', mkv: 'video/x-matroska',
-    mp4: 'video/mp4',
-  };
-  const mime = videoMimes[ext] ?? 'video/mp4';
-
   try {
-    // Serve cached H264 version if available
-    const cachedKey = videoH264Cache.get(key);
-    if (cachedKey && cachedKey !== '__pending__') {
-      const url = await getWasabiPresignedUrl(cachedKey, 3600);
-      res.writeHead(307, { Location: url, "Cache-Control": "private, max-age=3600" });
-      res.end(); return;
+    const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
+    if (range && (!/^bytes=\d*-\d*$/.test(range) || range.includes(","))) {
+      const size = await getWasabiObjectSize(key).catch(() => undefined);
+      res.status(416);
+      res.setHeader("Accept-Ranges", "bytes");
+      if (size !== undefined) res.setHeader("Content-Range", `bytes */${size}`);
+      res.end();
+      return;
+    }
+    const object = await getWasabiObject(key, range);
+    const body = object.Body as any;
+    if (!body || typeof body.pipe !== "function") {
+      res.status(502).json({ error: "Video body unavailable" });
+      return;
     }
 
-    // Serve original immediately (may be HEVC on first request)
-    const origUrl = await getWasabiPresignedUrl(key, 3600);
-    res.writeHead(307, { Location: origUrl, "Cache-Control": "private, max-age=60" });
-    res.end();
-
-    // Transcode to H264 in background if needed
-    if (needsVideoConversion(mime) && videoH264Cache.get(key) !== '__pending__') {
-      videoH264Cache.set(key, '__pending__');
-      setImmediate(async () => {
-        try {
-          const buf = Buffer.from(await (await fetch(origUrl)).arrayBuffer());
-          const converted = await convertVideoToH264(buf, mime);
-          if (converted) {
-            const newKey = await uploadBufferToWasabi(converted.buffer, 'video/mp4');
-            videoH264Cache.set(key, newKey);
-          } else { videoH264Cache.delete(key); }
-        } catch { videoH264Cache.delete(key); }
-      });
+    res.status(object.ContentRange ? 206 : 200);
+    res.setHeader("Content-Type", getBrowserVideoContentType(key, object.ContentType));
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    if (object.ContentLength !== undefined) {
+      res.setHeader("Content-Length", String(object.ContentLength));
     }
+    if (object.ContentRange) res.setHeader("Content-Range", object.ContentRange);
+    if (object.ETag) res.setHeader("ETag", object.ETag);
+    if (object.LastModified) res.setHeader("Last-Modified", object.LastModified.toUTCString());
+
+    await pipeline(body, res);
   } catch (err: any) {
+    if (req.destroyed || err?.code === "ERR_STREAM_PREMATURE_CLOSE") return;
+    const isInvalidRange =
+      err?.name === "InvalidRange" ||
+      err?.Code === "InvalidRange" ||
+      err?.$metadata?.httpStatusCode === 416;
+    if (isInvalidRange && !res.headersSent) {
+      const size = await getWasabiObjectSize(key).catch(() => undefined);
+      res.status(416);
+      res.setHeader("Accept-Ranges", "bytes");
+      if (size !== undefined) res.setHeader("Content-Range", `bytes */${size}`);
+      res.end();
+      return;
+    }
     req.log.error({ err, key }, "video-stream error");
-    if (!res.headersSent) res.status(500).json({ error: "Video stream failed" });
+    if (!res.headersSent) res.status(err?.name === "NoSuchKey" ? 404 : 500).json({ error: "Video stream failed" });
+    else res.destroy();
   }
 });
 

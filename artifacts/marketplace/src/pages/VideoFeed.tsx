@@ -824,18 +824,31 @@ function VideoCard({
   const isPausedByHoldRef = useRef(false);
   const activatedAtRef = useRef<number>(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visualReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frameCallbackRef = useRef<number | null>(null);
+  const fallbackFrameRafRef = useRef<number | null>(null);
+  const fallbackPaintRafRef = useRef<number | null>(null);
+  const activationGenerationRef = useRef(0);
+  const pendingReloadResumeRef = useRef<{
+    element: HTMLVideoElement;
+    listener: () => void;
+  } | null>(null);
+  const isActiveRef = useRef(isActive);
+  const visibleFrameRef = useRef(false);
   const stallAttemptsRef = useRef(0);
   const hardReloadTriedRef = useRef(false);
   const [following, setFollowing] = useState(video.sellerIsFollowing ?? false);
   const [muted, setMuted] = useState(false);
   const [generatedThumbnail, setGeneratedThumbnail] = useState<string | null>(null);
   const [videoBuffering, setVideoBuffering] = useState(true);
+  const [hasVisibleFrame, setHasVisibleFrame] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const errorCountRef = useRef(0);
+  isActiveRef.current = isActive;
 
   // Sync muted state across all VideoCard instances when audio is unlocked
   useEffect(() => {
     const handler = (e: Event) => {
+      if (!isActiveRef.current || !visibleFrameRef.current) return;
       const unlocked = (e as CustomEvent<boolean>).detail;
       setMuted(!unlocked);
       if (videoRef.current) videoRef.current.muted = !unlocked;
@@ -843,6 +856,138 @@ function VideoCard({
     window.addEventListener("flexa:audio-unlocked", handler);
     return () => window.removeEventListener("flexa:audio-unlocked", handler);
   }, []);
+
+  const cancelVisualReadinessChecks = useCallback(() => {
+    if (visualReadyTimerRef.current) {
+      clearTimeout(visualReadyTimerRef.current);
+      visualReadyTimerRef.current = null;
+    }
+    const el = videoRef.current as (HTMLVideoElement & {
+      cancelVideoFrameCallback?: (id: number) => void;
+    }) | null;
+    if (el && frameCallbackRef.current !== null && el.cancelVideoFrameCallback) {
+      el.cancelVideoFrameCallback(frameCallbackRef.current);
+    }
+    frameCallbackRef.current = null;
+    if (fallbackFrameRafRef.current !== null) {
+      cancelAnimationFrame(fallbackFrameRafRef.current);
+      fallbackFrameRafRef.current = null;
+    }
+    if (fallbackPaintRafRef.current !== null) {
+      cancelAnimationFrame(fallbackPaintRafRef.current);
+      fallbackPaintRafRef.current = null;
+    }
+  }, []);
+
+  const cancelPendingReloadResume = useCallback(() => {
+    const pending = pendingReloadResumeRef.current;
+    if (pending) {
+      pending.element.removeEventListener("loadedmetadata", pending.listener);
+      pendingReloadResumeRef.current = null;
+    }
+  }, []);
+
+  const markVisibleFrame = useCallback((el: HTMLVideoElement): boolean => {
+    if (!isActiveRef.current) return false;
+    if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || el.videoWidth <= 0 || el.videoHeight <= 0) {
+      return false;
+    }
+    visibleFrameRef.current = true;
+    cancelVisualReadinessChecks();
+    setHasVisibleFrame(true);
+    setVideoBuffering(false);
+    setLoadFailed(false);
+    const shouldMute = !isAudioUnlocked();
+    el.muted = shouldMute;
+    setMuted(shouldMute);
+    return true;
+  }, [cancelVisualReadinessChecks]);
+
+  const showPlaybackFailure = useCallback(() => {
+    cancelVisualReadinessChecks();
+    cancelPendingReloadResume();
+    if (!isActiveRef.current) {
+      videoRef.current?.pause();
+      return;
+    }
+    videoRef.current?.pause();
+    setPlaying(false);
+    setVideoBuffering(false);
+    setLoadFailed(true);
+  }, [cancelPendingReloadResume, cancelVisualReadinessChecks]);
+
+  const hardReloadVideoOnce = useCallback((el: HTMLVideoElement): boolean => {
+    if (hardReloadTriedRef.current || !isActiveRef.current) return false;
+    hardReloadTriedRef.current = true;
+    cancelVisualReadinessChecks();
+    cancelPendingReloadResume();
+    setVideoBuffering(true);
+    const resumeAt = el.currentTime;
+    const generation = activationGenerationRef.current;
+    const resume = () => {
+      pendingReloadResumeRef.current = null;
+      if (!isActiveRef.current || activationGenerationRef.current !== generation) return;
+      if (resumeAt > 0 && Number.isFinite(resumeAt)) {
+        try { el.currentTime = resumeAt; } catch { /* ignore */ }
+      }
+      el.play().catch(showPlaybackFailure);
+    };
+    pendingReloadResumeRef.current = { element: el, listener: resume };
+    el.addEventListener("loadedmetadata", resume, { once: true });
+    try {
+      el.load();
+      return true;
+    } catch {
+      cancelPendingReloadResume();
+      return false;
+    }
+  }, [cancelPendingReloadResume, cancelVisualReadinessChecks, showPlaybackFailure]);
+
+  const scheduleFramePresentationCheck = useCallback((el: HTMLVideoElement) => {
+    if (!isActiveRef.current || visibleFrameRef.current) return;
+    const frameAwareVideo = el as HTMLVideoElement & {
+      requestVideoFrameCallback?: (callback: () => void) => number;
+    };
+    if (frameAwareVideo.requestVideoFrameCallback) {
+      if (frameCallbackRef.current !== null) return;
+      frameCallbackRef.current = frameAwareVideo.requestVideoFrameCallback(() => {
+        frameCallbackRef.current = null;
+        markVisibleFrame(el);
+      });
+      return;
+    }
+
+    // Older engines without requestVideoFrameCallback get a conservative
+    // double-paint fallback only after decoded data and dimensions exist.
+    if (
+      fallbackFrameRafRef.current === null &&
+      el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      el.videoWidth > 0 &&
+      el.videoHeight > 0
+    ) {
+      fallbackFrameRafRef.current = requestAnimationFrame(() => {
+        fallbackFrameRafRef.current = null;
+        fallbackPaintRafRef.current = requestAnimationFrame(() => {
+          fallbackPaintRafRef.current = null;
+          markVisibleFrame(el);
+        });
+      });
+    }
+  }, [markVisibleFrame]);
+
+  const armVisualReadinessCheck = useCallback((el: HTMLVideoElement) => {
+    cancelVisualReadinessChecks();
+    scheduleFramePresentationCheck(el);
+
+    // A play event only proves the media timeline started; audio can advance
+    // while the browser has not decoded a visible video frame. Give the first
+    // frame a bounded window, then do one hard reload at most. A second miss
+    // becomes an explicit retry state and the invisible audio is stopped.
+    visualReadyTimerRef.current = setTimeout(() => {
+      if (visibleFrameRef.current || !isActiveRef.current) return;
+      if (!hardReloadVideoOnce(el)) showPlaybackFailure();
+    }, 8000);
+  }, [cancelVisualReadinessChecks, hardReloadVideoOnce, scheduleFramePresentationCheck, showPlaybackFailure]);
 
   const handleVideoStall = useCallback(() => {
     const el = videoRef.current;
@@ -860,22 +1005,11 @@ function VideoCard({
       // element is still essentially empty (readyState < 2 = no current frame).
       // The flag is cleared only when a new card becomes active — never here and
       // never on onPlay — so an unstable stream can't be reloaded in a loop.
-      if (stallAttemptsRef.current >= 3 && v.readyState < 2 && !hardReloadTriedRef.current) {
-        hardReloadTriedRef.current = true;
-        const t = v.currentTime;
-        try { v.load(); } catch { /* ignore */ }
-        // Restore position only after metadata is ready: setting currentTime
-        // right after load() at readyState 0 throws InvalidStateError.
-        if (t > 0 && Number.isFinite(t)) {
-          v.addEventListener("loadedmetadata", () => {
-            try { v.currentTime = t; } catch { /* ignore */ }
-            v.play().catch(() => {});
-          }, { once: true });
-        }
-        v.play().catch(() => {});
+      if (stallAttemptsRef.current >= 3 && v.readyState < 2) {
+        if (!hardReloadVideoOnce(v)) showPlaybackFailure();
       }
     }, 3000);
-  }, [isActive]);
+  }, [hardReloadVideoOnce, isActive, showPlaybackFailure]);
 
   const handleMuteToggle = useCallback(() => {
     const nowUnlocked = muted;
@@ -888,32 +1022,27 @@ function VideoCard({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
+    isActiveRef.current = isActive;
+    activationGenerationRef.current += 1;
+    cancelPendingReloadResume();
     if (isActive) {
       activatedAtRef.current = Date.now();
-      errorCountRef.current = 0;
       stallAttemptsRef.current = 0;
       hardReloadTriedRef.current = false;
+      visibleFrameRef.current = false;
+      setHasVisibleFrame(false);
+      setVideoBuffering(true);
       setLoadFailed(false);
 
       const tryPlay = () => {
-        // Respect current audio-unlock state — start muted if audio not yet unlocked.
-        // Never try unmuted first on iOS: autoplay without a gesture always requires muted.
-        const shouldMute = !isAudioUnlocked();
-        el.muted = shouldMute;
-        setMuted(shouldMute);
+        // Every automatically activated card starts muted until its first visible
+        // frame. If the user had already unlocked audio, markVisibleFrame restores
+        // sound as soon as video and audio can begin together.
+        el.muted = true;
+        setMuted(true);
 
         el.play()
-          .then(() => {
-            if (!el.muted) setAudioUnlocked(true);
-          })
-          .catch(() => {
-            // If unmuted play somehow fails, force muted and retry once
-            if (!el.muted) {
-              el.muted = true;
-              setMuted(true);
-              el.play().catch(() => {});
-            }
-          });
+          .catch(showPlaybackFailure);
       };
 
       // Always call play() immediately — on iOS Safari this is what triggers buffering.
@@ -930,9 +1059,15 @@ function VideoCard({
 
       return () => {
         el.removeEventListener("canplay", tryPlay);
+        activationGenerationRef.current += 1;
+        isActiveRef.current = false;
+        cancelPendingReloadResume();
+        cancelVisualReadinessChecks();
         if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
       };
     } else {
+      cancelPendingReloadResume();
+      cancelVisualReadinessChecks();
       el.pause();
       setPlaying(false);
       setShowComments(false);
@@ -943,7 +1078,7 @@ function VideoCard({
     return () => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     };
-  }, [isActive]);
+  }, [cancelPendingReloadResume, cancelVisualReadinessChecks, isActive, showPlaybackFailure]);
 
   // Touch handlers: hold-to-pause + double-tap like + single-tap mute
   const handleTouchStart = useCallback(() => {
@@ -1094,8 +1229,23 @@ function VideoCard({
         preload={isActive ? "auto" : isNext ? "metadata" : "none"}
         poster={video.thumbnailUrl ?? generatedThumbnail ?? undefined}
         className={`absolute inset-0 w-full h-full ${isLandscape ? "object-contain" : "object-cover"}`}
-        style={{ willChange: "transform", transform: "translateZ(0)" }}
-        onPlay={() => { setPlaying(true); setVideoBuffering(false); errorCountRef.current = 0; stallAttemptsRef.current = 0; if (loadFailed) setLoadFailed(false); if (stallTimerRef.current) { clearTimeout(stallTimerRef.current); stallTimerRef.current = null; } }}
+        style={{
+          willChange: "transform, opacity",
+          transform: "translateZ(0)",
+          opacity: isActive && !hasVisibleFrame ? 0 : 1,
+          transition: "opacity 120ms linear",
+        }}
+        onPlay={e => {
+          setPlaying(true);
+          if (stallTimerRef.current) {
+            clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = null;
+          }
+          if (!visibleFrameRef.current) armVisualReadinessCheck(e.currentTarget);
+        }}
+        onPlaying={e => {
+          scheduleFramePresentationCheck(e.currentTarget);
+        }}
         onPause={() => setPlaying(false)}
         loop
         onLoadedMetadata={e => {
@@ -1103,7 +1253,7 @@ function VideoCard({
           setIsLandscape(v.videoWidth > v.videoHeight);
         }}
         onLoadedData={e => {
-          setVideoBuffering(false);
+          scheduleFramePresentationCheck(e.currentTarget);
           if (!video.thumbnailUrl && !generatedThumbnail) {
             try {
               const v = e.currentTarget;
@@ -1118,17 +1268,19 @@ function VideoCard({
             } catch {}
           }
         }}
+        onCanPlay={e => { scheduleFramePresentationCheck(e.currentTarget); }}
+        onTimeUpdate={e => {
+          if (!visibleFrameRef.current && e.currentTarget.currentTime > 0) {
+            scheduleFramePresentationCheck(e.currentTarget);
+          }
+        }}
         onStalled={handleVideoStall}
         onWaiting={() => { setVideoBuffering(true); handleVideoStall(); }}
         onError={() => {
           const el = videoRef.current;
           if (!el || !isActive) return;
           setVideoBuffering(false);
-          errorCountRef.current += 1;
-          // After a few failed attempts, stop the silent reload loop and surface the
-          // thumbnail + a tap-to-retry instead of leaving the user on a black screen.
-          if (errorCountRef.current >= 3) { setLoadFailed(true); return; }
-          setTimeout(() => { el.load(); el.play().catch(() => {}); }, 1500);
+          if (!hardReloadVideoOnce(el)) showPlaybackFailure();
         }}
       />
 
@@ -1147,11 +1299,16 @@ function VideoCard({
             e.stopPropagation();
             const el = videoRef.current;
             if (!el) return;
-            errorCountRef.current = 0;
+            cancelVisualReadinessChecks();
+            cancelPendingReloadResume();
+            visibleFrameRef.current = false;
+            hardReloadTriedRef.current = false;
+            stallAttemptsRef.current = 0;
+            setHasVisibleFrame(false);
             setLoadFailed(false);
             setVideoBuffering(true);
             el.load();
-            el.play().catch(() => {});
+            el.play().catch(showPlaybackFailure);
           }}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}

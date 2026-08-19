@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
@@ -207,13 +208,24 @@ export async function getWasabiPresignedUrl(
  */
 export function extractWasabiKey(url: string): string | null {
   try {
-    const u = new URL(url);
-    if (u.pathname.endsWith("/storage/wasabi-image")) {
+    const u = new URL(url, "http://flexa.local");
+    if (
+      u.pathname.endsWith("/storage/wasabi-image") ||
+      u.pathname.endsWith("/storage/video-stream")
+    ) {
       const k = u.searchParams.get("key");
       return k && k.length > 0 ? k : null;
     }
   } catch {}
   return null;
+}
+
+export function getBrowserVideoContentType(key: string, storedContentType?: string): string {
+  const ext = (key.split(".").pop() ?? "").toLowerCase();
+  if (["mp4", "m4v", "mov", "qt", "quicktime"].includes(ext)) return "video/mp4";
+  if (ext === "webm") return "video/webm";
+  if (ext === "ogv" || ext === "ogg") return "video/ogg";
+  return storedContentType?.startsWith("video/") ? storedContentType : "video/mp4";
 }
 
 /**
@@ -233,6 +245,17 @@ export async function getWasabiObject(
       ...(range ? { Range: range } : {}),
     })
   );
+}
+
+export async function getWasabiObjectSize(key: string): Promise<number | undefined> {
+  const client = getWasabiClient();
+  const result = await client.send(
+    new HeadObjectCommand({
+      Bucket: WASABI_BUCKET,
+      Key: key,
+    }),
+  );
+  return result.ContentLength;
 }
 
 /**

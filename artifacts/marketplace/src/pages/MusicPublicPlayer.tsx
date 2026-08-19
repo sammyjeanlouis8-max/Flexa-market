@@ -79,6 +79,18 @@ export default function MusicPublicPlayer() {
     if (track) document.title = `${track.title} — ${track.artist} · Flexa Music`;
   }, [track]);
 
+  // React updates the src attribute, but iOS Safari/WebViews need an explicit
+  // load() after a source change before the first user-initiated play().
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    audio.load();
+  }, [track?.audio_url]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;

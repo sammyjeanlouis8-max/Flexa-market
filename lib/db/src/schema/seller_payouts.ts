@@ -18,7 +18,7 @@ export const sellerPayoutAccountsTable = pgTable("seller_payout_accounts", {
   moncashRejectedReason: text("moncash_rejected_reason"),
 
   // ── Card payment payout preference ────────────────────────────────────────
-  // 'fm_wallet' → seller earnings auto-credited to their FM wallet after Stripe payment
+  // 'fm_wallet' → seller earnings credited to their FM wallet after escrow release
   // 'stripe'    → seller uses own connected Stripe account (requires Stripe Connect setup)
   cardPayoutMethod: text("card_payout_method").notNull().default("fm_wallet"),
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { escrowTransferGroup, escrowTransferIdempotencyKey, resolveSettlementRoute } from "../lib/escrowSettlement";
 
 // ─── Return state machine ─────────────────────────────────────────────────────
 
@@ -218,6 +219,89 @@ describe("Escrow release idempotency", () => {
     const results = [atomicRelease(), atomicRelease(), atomicRelease()];
     expect(results.filter(Boolean)).toHaveLength(1);
     expect(creditCount).toBe(1);
+  });
+});
+
+describe("Escrow settlement routing", () => {
+  it("routes to Stripe only when the seller chose Stripe and Connect is active", () => {
+    expect(resolveSettlementRoute({
+      paymentMethod: "stripe",
+      payoutPreference: "stripe",
+      stripeAccountId: "acct_123",
+      stripeAccountStatus: "active",
+    })).toBe("stripe_connect");
+  });
+
+  it("keeps funds in FM wallet when preference is wallet", () => {
+    expect(resolveSettlementRoute({
+      paymentMethod: "stripe",
+      payoutPreference: "fm_wallet",
+      stripeAccountId: "acct_123",
+      stripeAccountStatus: "active",
+    })).toBe("fm_wallet");
+  });
+
+  it("falls back safely when Connect is incomplete", () => {
+    expect(resolveSettlementRoute({
+      paymentMethod: "stripe",
+      payoutPreference: "stripe",
+      stripeAccountId: "acct_123",
+      stripeAccountStatus: "pending",
+    })).toBe("fm_wallet");
+  });
+
+  it("uses one deterministic Stripe idempotency key per order", () => {
+    expect(escrowTransferIdempotencyKey(42)).toBe("escrow-release-42");
+    expect(escrowTransferIdempotencyKey(42)).toBe(escrowTransferIdempotencyKey(42));
+    expect(escrowTransferIdempotencyKey(42)).not.toBe(escrowTransferIdempotencyKey(43));
+  });
+
+  it("uses a stable transfer group so old successful attempts can be reconciled", () => {
+    expect(escrowTransferGroup(42)).toBe("FM_ESCROW_42");
+    expect(escrowTransferGroup(42)).not.toBe(escrowTransferGroup(43));
+  });
+
+  it("requires evidence before classifying a legacy order", () => {
+    function classifyLegacy(input: {
+      walletCredit: boolean;
+      paymentIntentResolved: boolean;
+      destinationTransfer: boolean;
+    }): "prepaid" | "unpaid" | "review" {
+      if (input.walletCredit || input.destinationTransfer) return "prepaid";
+      if (input.paymentIntentResolved) return "unpaid";
+      return "review";
+    }
+
+    expect(classifyLegacy({
+      walletCredit: false,
+      paymentIntentResolved: false,
+      destinationTransfer: false,
+    })).toBe("review");
+    expect(classifyLegacy({
+      walletCredit: false,
+      paymentIntentResolved: true,
+      destinationTransfer: false,
+    })).toBe("unpaid");
+  });
+
+  it("never releases seller funds before payment succeeds", () => {
+    function canRelease(paymentStatus: string, deliveryAuthorized: boolean): boolean {
+      return paymentStatus === "completed" && deliveryAuthorized;
+    }
+    expect(canRelease("pending", true)).toBe(false);
+    expect(canRelease("failed", true)).toBe(false);
+    expect(canRelease("completed", false)).toBe(false);
+    expect(canRelease("completed", true)).toBe(true);
+  });
+
+  it("requires a matching successful legacy Stripe payment", () => {
+    function validLegacyPayment(status: string, currency: string, received: number, expected: number): boolean {
+      return status === "succeeded" && currency === "usd" && received >= expected;
+    }
+    expect(validLegacyPayment("processing", "usd", 10_000, 10_000)).toBe(false);
+    expect(validLegacyPayment("succeeded", "usd", 9_999, 10_000)).toBe(false);
+    expect(validLegacyPayment("succeeded", "eur", 10_000, 10_000)).toBe(false);
+    expect(validLegacyPayment("succeeded", "usd", 10_000, 10_000)).toBe(true);
   });
 });
 

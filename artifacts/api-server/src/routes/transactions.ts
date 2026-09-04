@@ -7,6 +7,8 @@ import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-pus
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
+import { getStripeClient } from "../lib/stripeClient";
+import { escrowTransferGroup, escrowTransferIdempotencyKey, resolveSettlementRoute } from "../lib/escrowSettlement";
 import {
   getDefaultCommissionRate, setDefaultCommissionRate,
   getMoncashRate, setMoncashRate, getStripeRate, setStripeRate,
@@ -41,48 +43,159 @@ export async function releaseEscrow(
     .where(eq(transactionsTable.id, txId));
 
   if (!tx || tx.escrowReleased || !tx.sellerUserId) return;
+  if (tx.paymentStatus !== "completed") {
+    logger.warn({ txId, paymentStatus: tx.paymentStatus, triggeredBy }, "Escrow release blocked: payment is not completed");
+    return;
+  }
+
+  const [deliveredRecord] = await db
+    .select({ id: deliveriesTable.id })
+    .from(deliveriesTable)
+    .where(and(
+      eq(deliveriesTable.transactionId, txId),
+      eq(deliveriesTable.status, "delivered"),
+    ));
+  const deliveryIsAuthorized =
+    !!deliveredRecord ||
+    tx.orderStatus === "delivered" ||
+    tx.orderStatus === "completed" ||
+    (triggeredBy === "auto" &&
+      !!tx.autoReleaseAt &&
+      tx.autoReleaseAt.getTime() <= Date.now() &&
+      (tx.orderStatus === "shipped" || tx.orderStatus === "delivered")) ||
+    (triggeredBy === "carrier" && tx.trackingStatus === "delivered");
+  if (!deliveryIsAuthorized) {
+    logger.warn({ txId, orderStatus: tx.orderStatus, trackingStatus: tx.trackingStatus, triggeredBy }, "Escrow release blocked: delivery is not authorized");
+    return;
+  }
 
   const sellerEarnings = tx.sellerEarnings ?? tx.amount;
-
-  // For Stripe Connect orders the funds were already transferred to the
-  // seller's Stripe account at checkout time (via transfer_data.destination).
-  // Do NOT double-credit the platform wallet in that case — only credit the
-  // wallet when the platform held the funds (MonCash, NatCash, or Stripe
-  // without active Connect).
   const [sellerRecord] = await db
-    .select({ stripeAccountId: usersTable.stripeAccountId, stripeAccountStatus: usersTable.stripeAccountStatus })
+    .select({
+      stripeAccountId: usersTable.stripeAccountId,
+      stripeAccountStatus: usersTable.stripeAccountStatus,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, tx.sellerUserId));
+  const [payoutAccount] = await db
+    .select({ cardPayoutMethod: sellerPayoutAccountsTable.cardPayoutMethod })
+    .from(sellerPayoutAccountsTable)
+    .where(eq(sellerPayoutAccountsTable.userId, tx.sellerUserId));
 
-  const isStripeConnectRouted =
-    tx.paymentMethod === "stripe" &&
-    !!sellerRecord?.stripeAccountId &&
-    sellerRecord.stripeAccountStatus === "active";
+  let isLegacyPrepaid = false;
+  if (tx.settlementStatus === "legacy_review") {
+    try {
+      const stripe = await getStripeClient();
+      let paymentIntentId = tx.stripePaymentIntentId;
+      if (!paymentIntentId) {
+        const checkoutSessionId = tx.stripeCheckoutSessionId ??
+          (tx.paymentRef?.startsWith("cs_") ? tx.paymentRef : null);
+        if (!checkoutSessionId) {
+          await db.update(transactionsTable)
+            .set({ settlementError: "Legacy settlement needs manual review: no Stripe Checkout Session or PaymentIntent reference" })
+            .where(eq(transactionsTable.id, txId));
+          return;
+        }
+        const session = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+        paymentIntentId = typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : session.payment_intent?.id ?? null;
+        if (!paymentIntentId) {
+          await db.update(transactionsTable)
+            .set({ settlementError: "Legacy settlement needs manual review: Checkout Session has no PaymentIntent" })
+            .where(eq(transactionsTable.id, txId));
+          return;
+        }
+        await db.update(transactionsTable)
+          .set({ stripePaymentIntentId: paymentIntentId })
+          .where(eq(transactionsTable.id, txId));
+      }
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      const expectedCents = Math.round((tx.buyerTotal ?? tx.amount) * 100);
+      const paymentIsValid =
+        paymentIntent.status === "succeeded" &&
+        paymentIntent.currency.toLowerCase() === tx.currency.toLowerCase() &&
+        paymentIntent.amount_received >= expectedCents;
+      if (!paymentIsValid) {
+        await db.update(transactionsTable)
+          .set({ settlementError: "Legacy settlement needs manual review: PaymentIntent is not a matching successful payment" })
+          .where(eq(transactionsTable.id, txId));
+        return;
+      }
 
-  // For non-Connect Stripe orders: check if seller was already credited at checkout
-  // (fm_wallet payout path) to prevent double-payment.
-  let sellerAlreadyPaidAtCheckout = false;
-  if (tx.paymentMethod === "stripe" && !isStripeConnectRouted) {
-    const [prePaid] = await db
-      .select({ id: walletTransactionsTable.id })
-      .from(walletTransactionsTable)
-      .where(and(
-        eq(walletTransactionsTable.userId, tx.sellerUserId),
-        eq(walletTransactionsTable.type, "sale_earnings"),
-        eq(walletTransactionsTable.paymentRef, `order-${txId}`),
-      ));
-    if (prePaid) {
-      sellerAlreadyPaidAtCheckout = true;
-      logger.info({ txId }, "releaseEscrow: seller pre-credited at Stripe checkout (fm_wallet) — skipping duplicate wallet credit");
+      const [walletCredit] = await db
+        .select({ id: walletTransactionsTable.id })
+        .from(walletTransactionsTable)
+        .where(and(
+          eq(walletTransactionsTable.userId, tx.sellerUserId),
+          eq(walletTransactionsTable.type, "sale_earnings"),
+          eq(walletTransactionsTable.paymentRef, `order-${txId}`),
+        ));
+      isLegacyPrepaid = !!walletCredit || !!paymentIntent.transfer_data?.destination;
+    } catch (err: any) {
+      await db.update(transactionsTable)
+        .set({
+          settlementError: `Legacy payment verification failed: ${String(err?.message ?? err).slice(0, 420)}`,
+        })
+        .where(eq(transactionsTable.id, txId));
+      throw err;
+    }
+  }
+  const route = resolveSettlementRoute({
+    paymentMethod: tx.paymentMethod,
+    payoutPreference: payoutAccount?.cardPayoutMethod,
+    stripeAccountId: sellerRecord?.stripeAccountId,
+    stripeAccountStatus: sellerRecord?.stripeAccountStatus,
+  });
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 10 * 60 * 1000);
+  const [claimed] = await db
+    .update(transactionsTable)
+    .set({
+      settlementStatus: "processing",
+      settlementMethod: isLegacyPrepaid ? "legacy_checkout" : route,
+      settlementAttemptedAt: now,
+      settlementError: null,
+    })
+    .where(and(
+      eq(transactionsTable.id, txId),
+      eq(transactionsTable.escrowReleased, false),
+      tx.settlementStatus === "legacy_review"
+        ? eq(transactionsTable.settlementStatus, "legacy_review")
+        : sql`(${transactionsTable.settlementStatus} IN ('pending', 'failed')
+            OR (${transactionsTable.settlementStatus} = 'processing'
+                AND ${transactionsTable.settlementAttemptedAt} < ${staleBefore}))`,
+    ))
+    .returning({ id: transactionsTable.id });
+
+  if (!claimed) return;
+
+  let stripeTransferId: string | null = null;
+  if (!isLegacyPrepaid && route === "stripe_connect") {
+    try {
+      const stripe = await getStripeClient();
+      const transferGroup = escrowTransferGroup(txId);
+      const existing = await stripe.transfers.list({ transfer_group: transferGroup, limit: 1 });
+      const transfer = existing.data[0] ?? await stripe.transfers.create({
+          amount: Math.round(sellerEarnings * 100),
+          currency: "usd",
+          destination: sellerRecord!.stripeAccountId!,
+          description: `FlexaMarket escrow release — order #${txId}`,
+          transfer_group: transferGroup,
+          metadata: { transactionId: String(txId), triggeredBy },
+        }, {
+          idempotencyKey: escrowTransferIdempotencyKey(txId),
+        });
+      stripeTransferId = transfer.id;
+    } catch (err: any) {
+      await db.update(transactionsTable)
+        .set({ settlementStatus: "failed", settlementError: String(err?.message ?? err).slice(0, 500) })
+        .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.escrowReleased, false)));
+      throw err;
     }
   }
 
-  // Atomic gate + wallet credit in a single DB transaction.
-  // If the server crashes between marking escrow released and crediting the wallet,
-  // the whole transaction rolls back so the seller is never silently shortchanged.
   const committed = await db.transaction(async (dbtx) => {
-    // Mark escrow released using WHERE escrowReleased=false.
-    // If another concurrent call already flipped the flag, rowsAffected=0 → bail out.
     const marked = await dbtx
       .update(transactionsTable)
       .set({
@@ -90,19 +203,21 @@ export async function releaseEscrow(
         escrowReleasedAt: new Date(),
         orderStatus: "completed",
         deliveredAt: tx.deliveredAt ?? new Date(),
+        settlementStatus: "paid",
+        settlementMethod: isLegacyPrepaid ? "legacy_checkout" : route,
+        settlementError: null,
+        stripeTransferId,
       })
       .where(and(
         eq(transactionsTable.id, txId),
         eq(transactionsTable.escrowReleased, false),
+        eq(transactionsTable.settlementStatus, "processing"),
       ))
       .returning({ id: transactionsTable.id });
 
-    if (marked.length === 0) return false; // already released
+    if (marked.length === 0) return false;
 
-    const shouldCreditWallet = !isStripeConnectRouted && !sellerAlreadyPaidAtCheckout;
-
-    if (shouldCreditWallet) {
-      // Credit seller's promo wallet (platform holds the funds)
+    if (!isLegacyPrepaid && route === "fm_wallet") {
       const [existing] = await dbtx
         .select({ id: promoWalletTable.id })
         .from(promoWalletTable)
@@ -126,17 +241,15 @@ export async function releaseEscrow(
         note: `Sale earnings — order #${txId} (released by: ${triggeredBy})`,
       }).onConflictDoNothing();
     } else {
-      // Stripe Connect or pre-credited: audit-only, no wallet credit
-      const note = isStripeConnectRouted
-        ? `Stripe Connect transfer — order #${txId} (released by: ${triggeredBy}) — wallet NOT credited (funds sent via Stripe Connect)`
-        : `Stripe fm_wallet — order #${txId} — seller pre-credited at checkout, escrow mark only`;
       await dbtx.insert(walletTransactionsTable).values({
         userId: tx.sellerUserId,
         type: "sale_earnings",
         amountUsd: sellerEarnings,
-        paymentRef: `order-${txId}-escrow-mark`,
+        paymentRef: `order-${txId}-${isLegacyPrepaid ? "legacy" : "stripe"}-release`,
         status: "completed",
-        note,
+        note: isLegacyPrepaid
+          ? `Legacy Stripe checkout payment — order #${txId}; escrow marked released without a second payment`
+          : `Stripe Connect escrow transfer ${stripeTransferId} — order #${txId} (released by: ${triggeredBy})`,
       }).onConflictDoNothing();
     }
 
@@ -144,7 +257,7 @@ export async function releaseEscrow(
   });
 
   if (!committed) {
-    logger.warn({ txId, triggeredBy }, "releaseEscrow: already released (concurrent call) — skipping wallet credit");
+    logger.warn({ txId, triggeredBy }, "releaseEscrow: already settled by a concurrent call");
     return;
   }
 
@@ -184,7 +297,9 @@ export async function releaseEscrow(
 
   void sendPushToUser(tx.sellerUserId, {
     title: "Lajan ou lage!",
-    body: `$${sellerEarnings.toFixed(2)} ajoute nan pòtfèy ou pou kòmand #${txId}.`,
+    body: route === "stripe_connect" && !isLegacyPrepaid
+      ? `$${sellerEarnings.toFixed(2)} lage sou kont Stripe ou pou kòmand #${txId}.`
+      : `$${sellerEarnings.toFixed(2)} disponib pou kòmand #${txId}.`,
     url: `/orders/${txId}`,
     tag: `escrow-${txId}`,
   });
@@ -206,7 +321,7 @@ export async function releaseEscrow(
     }
   })();
 
-  logger.info({ txId, sellerUserId: tx.sellerUserId, sellerEarnings, triggeredBy }, "Escrow released");
+  logger.info({ txId, sellerUserId: tx.sellerUserId, sellerEarnings, triggeredBy, route, stripeTransferId, isLegacyPrepaid }, "Escrow released and seller settlement completed");
 }
 
 // ─── Background auto-release job ──────────────────────────────────────────────

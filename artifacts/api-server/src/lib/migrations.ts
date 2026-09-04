@@ -372,6 +372,38 @@ export async function runStartupMigrations(): Promise<void> {
       name: "transactions.stripe_transfer_id",
       sql: `ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_transfer_id text`,
     },
+    {
+      name: "transactions.settlement_state",
+      sql: `
+        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS settlement_status text NOT NULL DEFAULT 'pending';
+        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS settlement_method text;
+        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS settlement_attempted_at timestamptz;
+        ALTER TABLE transactions ADD COLUMN IF NOT EXISTS settlement_error text;
+      `,
+    },
+    {
+      name: "transactions.mark_legacy_stripe_settlements",
+      sql: `
+        CREATE TABLE IF NOT EXISTS app_data_migrations (
+          name text PRIMARY KEY,
+          applied_at timestamptz NOT NULL DEFAULT NOW()
+        );
+        WITH claimed AS (
+          INSERT INTO app_data_migrations (name)
+          VALUES ('mark_legacy_stripe_settlements_v1')
+          ON CONFLICT (name) DO NOTHING
+          RETURNING name
+        )
+        UPDATE transactions
+          SET settlement_status = 'legacy_review',
+              settlement_method = 'legacy_review'
+        WHERE EXISTS (SELECT 1 FROM claimed)
+          AND payment_method = 'stripe'
+          AND payment_status = 'completed'
+          AND escrow_released = false
+          AND settlement_status = 'pending';
+      `,
+    },
     // ── Seller payout tables ─────────────────────────────────────────────────
     {
       name: "seller_payout_accounts.create_table",

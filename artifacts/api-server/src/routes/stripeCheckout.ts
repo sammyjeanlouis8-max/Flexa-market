@@ -104,18 +104,6 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       listingPriceUsd = offerRow.counterAmount ?? offerRow.amount;
     }
 
-    const [seller] = await db
-      .select({ id: usersTable.id, stripeAccountId: usersTable.stripeAccountId, stripeAccountStatus: usersTable.stripeAccountStatus })
-      .from(usersTable)
-      .where(eq(usersTable.id, listing.sellerId));
-
-    // Check seller's card payout preference
-    const [sellerPayoutAcct] = await db
-      .select({ cardPayoutMethod: sellerPayoutAccountsTable.cardPayoutMethod })
-      .from(sellerPayoutAccountsTable)
-      .where(eq(sellerPayoutAccountsTable.userId, listing.sellerId));
-    const sellerCardPayoutMethod = sellerPayoutAcct?.cardPayoutMethod ?? "fm_wallet";
-
     const stripe = await getStripeClient();
 
     // Sanitise the optional delivery fee passed from the frontend
@@ -131,8 +119,6 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     // listingPriceUsd is already set above (possibly overridden by accepted offer price)
     const buyerTotalUsd = quote.buyerTotal;
     const buyerTotalCents = Math.round(buyerTotalUsd * 100);
-    const platformFeeCents = Math.round(quote.commissionAmount * 100);
-
     const descParts: string[] = [];
     if (listing.description?.slice(0, 120)) descParts.push(listing.description.slice(0, 120));
     if (quote.buyerFeeAmount > 0) descParts.push(`Frè sèvis $${quote.buyerFeeAmount.toFixed(2)} (${(quote.buyerFeeRate * 100).toFixed(1)}%)`);
@@ -167,7 +153,6 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
         listingId: String(listing.id),
         buyerUserId: String(req.userId),
         sellerUserId: String(listing.sellerId),
-        sellerCardPayoutMethod,
         commissionRate: String(quote.rate),
         buyerFeeRate: String(quote.buyerFeeRate),
         deliveryFeeUsd: String(safeDeliveryFee),
@@ -183,14 +168,6 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
         shippingZip: shippingZip ?? "",
       },
     };
-
-    // If seller has an active Connect account, route funds
-    if (seller?.stripeAccountId && seller.stripeAccountStatus === "active") {
-      sessionParams.payment_intent_data = {
-        application_fee_amount: platformFeeCents,
-        transfer_data: { destination: seller.stripeAccountId },
-      };
-    }
 
     const session = await stripe.checkout.sessions.create(sessionParams);
 
@@ -455,15 +432,15 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
     const webhookSecret = await getStripeWebhookSecret();
 
     if (!webhookSecret) {
-      logger.warn("No Stripe webhook secret configured — skipping signature validation");
-      event = JSON.parse((req.body as Buffer).toString()) as Stripe.Event;
-    } else {
-      event = stripe.webhooks.constructEvent(
-        req.body as Buffer,
-        Array.isArray(sig) ? sig[0] : sig,
-        webhookSecret
-      );
+      logger.error("Stripe webhook secret is not configured — rejecting webhook");
+      res.status(503).json({ error: "Stripe webhook is not configured" });
+      return;
     }
+    event = stripe.webhooks.constructEvent(
+      req.body as Buffer,
+      Array.isArray(sig) ? sig[0] : sig,
+      webhookSecret
+    );
   } catch (err: any) {
     logger.error({ err }, "Stripe webhook signature validation failed");
     res.status(400).json({ error: `Webhook error: ${err.message}` });
@@ -953,42 +930,6 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     });
   }
 
-  // ── If seller chose "Kat FM" payout → auto-credit their FM wallet ──────────
-  // Also insert a sale_earnings audit record so releaseEscrow can detect this
-  // pre-payment and avoid double-crediting the seller when escrow releases later.
-  const sellerCardPayoutMethod = meta.sellerCardPayoutMethod ?? "fm_wallet";
-  if (sellerUserId && updatedTx && sellerCardPayoutMethod === "fm_wallet") {
-    const sellerEarnings = updatedTx.sellerEarnings ?? 0;
-    if (sellerEarnings > 0) {
-      const [existingWallet] = await db
-        .select({ id: promoWalletTable.id })
-        .from(promoWalletTable)
-        .where(eq(promoWalletTable.userId, sellerUserId));
-
-      if (existingWallet) {
-        await db
-          .update(promoWalletTable)
-          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${sellerEarnings}`, updatedAt: new Date() })
-          .where(eq(promoWalletTable.userId, sellerUserId));
-      } else {
-        await db.insert(promoWalletTable).values({ userId: sellerUserId, balanceUsd: sellerEarnings });
-      }
-
-      // Audit record with paymentRef='order-{txId}' so releaseEscrow detects the
-      // pre-payment and skips double-crediting (onConflictDoNothing is a safety net).
-      await db.insert(walletTransactionsTable).values({
-        userId: sellerUserId,
-        type: "sale_earnings",
-        amountUsd: sellerEarnings,
-        paymentRef: `order-${updatedTx.id}`,
-        status: "completed",
-        note: `Stripe FM wallet checkout credit — order #${updatedTx.id} (pre-paid at checkout)`,
-      }).onConflictDoNothing();
-
-      logger.info({ sellerUserId, sellerEarnings, sessionId, orderId: updatedTx.id }, "Seller FM wallet credited after Stripe purchase (Kat FM payout)");
-    }
-  }
-
   // Notify seller: new order received
   if (sellerUserId && updatedTx) {
     await db.insert(notificationsTable).values({
@@ -1000,13 +941,13 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
 
     void sendPushToUser(sellerUserId, {
       title: "🛍️ New Order Received!",
-      body: `You received a new order for "${listingId ? `listing #${listingId}` : "your product"}". Get the package ready!${sellerCardPayoutMethod === "fm_wallet" ? " Payment added to your FM Wallet." : ""}`,
+      body: `You received a new order for "${listingId ? `listing #${listingId}` : "your product"}". Get the package ready! Payment is held until delivery is confirmed.`,
       url: updatedTx ? `/orders/${updatedTx.id}` : "/sales",
       tag: `new-order-${sessionId}`,
     });
     void sendNewOrderAlertsForSeller(sellerUserId, {
       title: "🛍️ New Order Received!",
-      body: `You received a new order. Get the package ready!${sellerCardPayoutMethod === "fm_wallet" ? " Payment added to your FM Wallet." : ""}`,
+      body: "You received a new order. Get the package ready! Payment is held until delivery is confirmed.",
       data: { url: updatedTx ? `/orders/${updatedTx.id}` : "/sales" },
       sound: "default",
       channelId: "orders",
@@ -1078,7 +1019,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     })();
   }
 
-  logger.info({ sessionId, listingId, orderId: updatedTx?.id, sellerCardPayoutMethod }, "Checkout completed — order created");
+  logger.info({ sessionId, listingId, orderId: updatedTx?.id }, "Checkout completed — order created with seller funds pending");
 }
 
 /**

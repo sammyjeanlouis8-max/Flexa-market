@@ -203,6 +203,27 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
 
   const { content, messageType, mediaUrl, imageUrl } = parsed.data;
 
+  // The uploaded media URL is stable across retries, so it acts as an idempotency key.
+  if (messageType === "audio" && mediaUrl) {
+    const [existing] = await db.select().from(messagesTable).where(and(
+      eq(messagesTable.conversationId, id),
+      eq(messagesTable.senderId, req.userId!),
+      eq(messagesTable.messageType, "audio"),
+      eq(messagesTable.mediaUrl, mediaUrl),
+    )).limit(1);
+    if (existing) {
+      const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+      res.json({
+        id: existing.id, conversationId: existing.conversationId, senderId: existing.senderId,
+        senderName: sender?.name ?? "Unknown", senderAvatar: sender?.avatar ?? null,
+        content: existing.content, messageType: existing.messageType, mediaUrl: existing.mediaUrl ?? null,
+        imageUrl: existing.imageUrl ?? null, isRead: existing.isRead, isListened: existing.isListened,
+        createdAt: existing.createdAt.toISOString(),
+      });
+      return;
+    }
+  }
+
   const lastMessagePreview = messageType === "image" ? "📷 Photo"
     : messageType === "video" ? "🎥 Video"
     : messageType === "audio" ? "🎤 Mesaj vwa"

@@ -1343,7 +1343,7 @@ export default function ListingDetail() {
             <input
               value={promoCode}
               onChange={e => setPromoCode(e.target.value.toUpperCase())}
-              placeholder="Antre kòd promo oswa koupon…"
+              placeholder={t("cart.promoPlaceholder")}
               className="flex-1 bg-transparent outline-none text-foreground min-w-0 placeholder:text-muted-foreground"
             />
             {promoCode.length >= 3 && (

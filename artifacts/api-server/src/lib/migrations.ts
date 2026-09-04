@@ -112,6 +112,12 @@ export async function runStartupMigrations(): Promise<void> {
       )`,
     },
     {
+      name: "cross_app_wallet_transfers.idempotency_key",
+      // CREATE TABLE IF NOT EXISTS does not evolve an older bridge table.
+      // This must precede all key constraint, cleanup, and index statements.
+      sql: `ALTER TABLE cross_app_wallet_transfers ADD COLUMN IF NOT EXISTS idempotency_key TEXT`,
+    },
+    {
       name: "cross_app_wallet_transfers.idempotency_nullable",
       sql: `ALTER TABLE cross_app_wallet_transfers ALTER COLUMN idempotency_key DROP NOT NULL`,
     },

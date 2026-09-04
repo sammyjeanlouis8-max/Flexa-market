@@ -53,6 +53,9 @@ const _s: MusicStoreState = {
   plTitle: "", plCover: null, plGrad: undefined,
 };
 const _fns = new Set<() => void>();
+let _playbackIntent = false;
+let _interruptedBySystem = false;
+let _resumeTimers: number[] = [];
 
 export function getMusicState(): Readonly<MusicStoreState> { return _s; }
 
@@ -96,10 +99,21 @@ function syncPositionState(): void {
 }
 
 // ── Global controls (work regardless of whether FlexaMusic is mounted) ────────
+export function musicRequestPlay(): Promise<void> {
+  _playbackIntent = true;
+  return gAudio.play();
+}
+
+export function musicRequestPause(): void {
+  _playbackIntent = false;
+  _interruptedBySystem = false;
+  gAudio.pause();
+}
+
 export function musicTogglePlay(): void {
   if (!_s.track) return;
-  if (gAudio.paused) gAudio.play().catch(() => {});
-  else gAudio.pause();
+  if (gAudio.paused) musicRequestPlay().catch(() => {});
+  else musicRequestPause();
 }
 
 export function musicPlayNext(): void {
@@ -109,7 +123,7 @@ export function musicPlayNext(): void {
   gAudio.src = next.audio_url;
   gAudio.muted = _s.muted;
   gAudio.load();
-  gAudio.play().catch(() => {});
+  musicRequestPlay().catch(() => {});
   syncMediaSession(next);
 }
 
@@ -126,12 +140,12 @@ export function musicPlayPrev(): void {
   gAudio.src = prev.audio_url;
   gAudio.muted = _s.muted;
   gAudio.load();
-  gAudio.play().catch(() => {});
+  musicRequestPlay().catch(() => {});
   syncMediaSession(prev);
 }
 
 export function musicStop(): void {
-  gAudio.pause();
+  musicRequestPause();
   patchMusicState({ track: null, playing: false, currentTime: 0, duration: 0 });
 }
 
@@ -163,19 +177,28 @@ if (typeof window !== "undefined") {
     if (d && isFinite(d)) { _s.duration = d; _fns.forEach(f => f()); }
   });
   gAudio.addEventListener("play",    () => {
+    _playbackIntent = true;
+    _interruptedBySystem = false;
     _s.playing = true; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
   });
   gAudio.addEventListener("playing", () => {
+    _playbackIntent = true;
+    _interruptedBySystem = false;
     _s.playing = true; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
     syncPositionState();
   });
   gAudio.addEventListener("pause", () => {
+    if (_playbackIntent && _s.track && !gAudio.ended) {
+      _interruptedBySystem = true;
+    }
     _s.playing = false; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
   });
   gAudio.addEventListener("ended",   () => {
+    _playbackIntent = false;
+    _interruptedBySystem = false;
     _s.playing = false;
     _fns.forEach(f => f());
     // Auto-advance queue — but only when FlexaMusic is not mounted
@@ -199,10 +222,38 @@ if (typeof window !== "undefined") {
     if (actuallyPlaying) syncPositionState();
   }, 250);
 
+  // Phone calls, Siri, alarms, and other OS audio interruptions pause Safari's
+  // audio element without representing a user pause. Remember playback intent
+  // and retry when the page becomes active again, preserving currentTime.
+  const scheduleInterruptionResume = () => {
+    if (!_interruptedBySystem || !_playbackIntent || !_s.track || gAudio.ended) return;
+    _resumeTimers.forEach(id => window.clearTimeout(id));
+    _resumeTimers = [0, 400, 1200].map(delay => window.setTimeout(() => {
+      if (!_interruptedBySystem || !_playbackIntent || !_s.track || !gAudio.paused || gAudio.ended) return;
+      musicRequestPlay().catch(() => {
+        // Keep the interruption flag set so a later pageshow/focus event can retry.
+        _interruptedBySystem = true;
+      });
+    }, delay));
+  };
+
+  const markBackgroundInterruption = () => {
+    if (_playbackIntent && _s.track && !gAudio.ended) _interruptedBySystem = true;
+  };
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) markBackgroundInterruption();
+    else scheduleInterruptionResume();
+  });
+  window.addEventListener("pagehide", markBackgroundInterruption);
+  window.addEventListener("blur", markBackgroundInterruption);
+  window.addEventListener("pageshow", scheduleInterruptionResume);
+  window.addEventListener("focus", scheduleInterruptionResume);
+
   // MediaSession action handlers — persist globally
   if ("mediaSession" in navigator) {
-    navigator.mediaSession.setActionHandler("play",          () => gAudio.play().catch(() => {}));
-    navigator.mediaSession.setActionHandler("pause",         () => gAudio.pause());
+    navigator.mediaSession.setActionHandler("play",          () => musicRequestPlay().catch(() => {}));
+    navigator.mediaSession.setActionHandler("pause",         () => musicRequestPause());
     // FlexaMusic re-registers these handlers on every track/play change using
     // the same global functions, so the _flexaMounted guard is no longer needed.
     navigator.mediaSession.setActionHandler("nexttrack",     () => musicPlayNext());

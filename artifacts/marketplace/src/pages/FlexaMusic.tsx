@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
-import { gAudio, patchMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicSeek } from "@/lib/musicStore";
+import { gAudio, patchMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -2995,7 +2995,7 @@ export default function FlexaMusic() {
     stopTimer();
     const uid = userRef.current?.id;
     const cnt = incrementPlayCount(uid, track.id);
-    gAudio?.pause();
+    musicRequestPause();
     setPaywallTrack(track);
     setPaywallPlayCount(cnt);
     setView("paywall");
@@ -3015,8 +3015,8 @@ export default function FlexaMusic() {
     navigator.mediaSession.playbackState = playerState.playing ? "playing" : "paused";
     // Use gAudio (the global singleton) — NOT audioRef — so these handlers
     // stay valid after FlexaMusic unmounts (user navigates away mid-song).
-    navigator.mediaSession.setActionHandler("play",          () => gAudio.play().catch(() => {}));
-    navigator.mediaSession.setActionHandler("pause",         () => gAudio.pause());
+    navigator.mediaSession.setActionHandler("play",          () => musicRequestPlay().catch(() => {}));
+    navigator.mediaSession.setActionHandler("pause",         () => musicRequestPause());
     navigator.mediaSession.setActionHandler("nexttrack",     () => musicPlayNext());
     navigator.mediaSession.setActionHandler("previoustrack", () => musicPlayPrev());
     navigator.mediaSession.setActionHandler("seekto",        d  => { if (d.seekTime != null) musicSeek(d.seekTime); });
@@ -3036,7 +3036,7 @@ export default function FlexaMusic() {
         const newCount = incrementPlayCount((user as any)?.id, id);
         if (purchasedFetched && newCount >= FREE_PLAYS) {
           // Pause audio and surface the paywall
-          gAudio?.pause();
+          musicRequestPause();
           setPaywallTrack(track);
           setPaywallPlayCount(newCount);
           setView("paywall");
@@ -3058,7 +3058,7 @@ export default function FlexaMusic() {
       !isPurchasedLocally(uid, track.id) &&
       getPlayCount(uid, track.id) >= FREE_PLAYS
     ) {
-      gAudio?.pause();
+      musicRequestPause();
       setPaywallTrack(track);
       setPaywallPlayCount(getPlayCount(uid, track.id));
       setView("paywall");
@@ -3089,7 +3089,7 @@ export default function FlexaMusic() {
     }
 
     if (track.audio_url) {
-      audio.play().then(() => {
+      musicRequestPlay().then(() => {
         // play() resolved → audio is definitely playing; mirror that into state
         setPlayerState(s => ({ ...s, playing: true }));
       }).catch(() => {
@@ -3144,7 +3144,7 @@ export default function FlexaMusic() {
   const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio || !playerState.track) return;
-    audio.paused ? audio.play().catch(() => {}) : audio.pause();
+    audio.paused ? musicRequestPlay().catch(() => {}) : musicRequestPause();
   };
 
   const toggleMute = () => {
@@ -3162,7 +3162,7 @@ export default function FlexaMusic() {
   };
 
   const closePlayer = () => {
-    audioRef.current?.pause();
+    musicRequestPause();
     stopTimer();
     setPlayerState(s => ({ ...s, track: null, playing: false }));
   };
@@ -3197,7 +3197,7 @@ export default function FlexaMusic() {
       !isPurchasedLocally((user as any)?.id, track.id) &&
       getPlayCount((user as any)?.id, track.id) >= FREE_PLAYS
     ) {
-      gAudio?.pause();
+      musicRequestPause();
       setPaywallTrack(track);
       setPaywallPlayCount(getPlayCount((user as any)?.id, track.id));
       setView("paywall");

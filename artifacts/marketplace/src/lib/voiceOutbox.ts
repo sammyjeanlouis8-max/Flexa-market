@@ -39,6 +39,14 @@ export type PendingVoiceMessage = {
       });
     }
 
+    function transactionDone(tx: IDBTransaction): Promise<void> {
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error ?? new Error("Voice outbox transaction failed"));
+        tx.onabort = () => reject(tx.error ?? new Error("Voice outbox transaction aborted"));
+      });
+    }
+
     export async function savePendingVoice(input: {
       conversationId: number;
       blob: Blob;
@@ -55,7 +63,9 @@ export type PendingVoiceMessage = {
       const db = await openVoiceOutbox();
       try {
         const tx = db.transaction(STORE_NAME, "readwrite");
-        await requestResult(tx.objectStore(STORE_NAME).put(item));
+        const done = transactionDone(tx);
+        tx.objectStore(STORE_NAME).put(item);
+        await done;
         return item;
       } finally {
         db.close();
@@ -81,8 +91,13 @@ export type PendingVoiceMessage = {
       try {
         const tx = db.transaction(STORE_NAME, "readwrite");
         const store = tx.objectStore(STORE_NAME);
-        const current = await requestResult(store.get(id));
-        if (current) await requestResult(store.put({ ...current, ...patch }));
+        const done = transactionDone(tx);
+        const getRequest = store.get(id);
+        getRequest.onsuccess = () => {
+          if (getRequest.result) store.put({ ...getRequest.result, ...patch });
+        };
+        getRequest.onerror = () => tx.abort();
+        await done;
       } finally {
         db.close();
       }
@@ -92,7 +107,9 @@ export type PendingVoiceMessage = {
       const db = await openVoiceOutbox();
       try {
         const tx = db.transaction(STORE_NAME, "readwrite");
-        await requestResult(tx.objectStore(STORE_NAME).delete(id));
+        const done = transactionDone(tx);
+        tx.objectStore(STORE_NAME).delete(id);
+        await done;
       } finally {
         db.close();
       }

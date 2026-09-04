@@ -81,7 +81,10 @@ export default function Register() {
   }, []);
 
   const [phoneIso, setPhoneIso] = useState("US");
-  const [promoCode, setPromoCode] = useState("");
+  const [promoCode, setPromoCode] = useState(() => {
+    const referralFromLink = new URLSearchParams(window.location.search).get("ref");
+    return referralFromLink?.trim().toUpperCase() ?? "";
+  });
 
   const schema = useMemo(() => buildSchema(t), [t]);
   type FormValues = z.infer<typeof schema>;
@@ -321,7 +324,7 @@ export default function Register() {
                   placeholder={t("auth.promoCodePlaceholder")}
                   value={promoCode}
                   onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  maxLength={8}
+                  maxLength={16}
                   autoComplete="off"
                   className="font-mono tracking-widest"
                   data-testid="input-promo-code"

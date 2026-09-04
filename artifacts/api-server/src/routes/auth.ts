@@ -132,7 +132,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     : null;
 
   const deviceId = (req.body.deviceId as string | undefined) ?? null;
-  const rawPromoCode = typeof req.body.promoCode === "string" ? req.body.promoCode.trim().toUpperCase() : null;
+  const rawPromoCode = typeof req.body.promoCode === "string" ? req.body.promoCode.trim() : null;
   const ip = getClientIp(req);
   const ua = req.headers["user-agent"];
 
@@ -207,11 +207,14 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   // ── Promo code / referral lookup ──────────────────────────────────────────
   let referredByUserId: number | null = null;
   if (rawPromoCode) {
-    if (/^FX[A-Z2-9]{6}$/.test(rawPromoCode)) {
+    const normalizedPromoCode = rawPromoCode.toUpperCase();
+    // Current referral codes are name-based (for example Samuel37), while
+    // older accounts can still have the legacy FXAB2345 format.
+    if (/^[A-Z0-9]{4,16}$/.test(normalizedPromoCode)) {
       const [referrer] = await db
         .select({ id: usersTable.id, isBanned: usersTable.isBanned })
         .from(usersTable)
-        .where(eq(usersTable.referralCode, rawPromoCode));
+        .where(sql`upper(${usersTable.referralCode}) = ${normalizedPromoCode}`);
       if (referrer && !referrer.isBanned) {
         referredByUserId = referrer.id;
       } else if (!referrer) {
@@ -219,7 +222,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         return;
       }
     } else {
-      res.status(400).json({ error: "Format kod promo invalide (egzanp: FXAB2345)." });
+      res.status(400).json({ error: "Format kod promo a pa valid. Itilize sèlman lèt ak chif." });
       return;
     }
   }

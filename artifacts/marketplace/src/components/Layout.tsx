@@ -287,6 +287,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
   const go = (href: string) => { onClose(); navigate(href); };
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
+  const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
@@ -309,6 +310,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         heading: t("nav.adminSection"),
         items: [
           { icon: ShieldCheck, label: t("nav.adminDashboard"), href: "/admin" },
+          ...(canSeeModeratorPanel ? [{ icon: ShieldCheck, label: t("nav.moderatorPanel", { defaultValue: "Panèl Moderator" }), href: "/admin?tab=moderation" }] : []),
         ] as DrawerItem[],
       },
     ] : []),
@@ -654,6 +656,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   ] as const;
 
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
+  const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
   const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
@@ -693,7 +696,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     },
     ...(isAdmin ? [{
       heading: t("nav.adminSection"),
-      items: [{ href: "/admin", icon: ShieldCheck, label: t("nav.adminDashboard"), key: "admin", adminHighlight: true }],
+      items: [
+        { href: "/admin", icon: ShieldCheck, label: t("nav.adminDashboard"), key: "admin", adminHighlight: true },
+        ...(canSeeModeratorPanel ? [{ href: "/admin?tab=moderation", icon: ShieldCheck, label: t("nav.moderatorPanel", { defaultValue: "Panèl Moderator" }), key: "moderator" }] : []),
+      ],
     }] : []),
     ...(user ? [{
       heading: t("nav.account"),

@@ -177,7 +177,7 @@ function Avatar({ src, name, size = 36, className = "" }: { src?: string | null;
 // ── Cover art ─────────────────────────────────────────────────────────────────
 function CoverArt({ src, title, size = 48, radius = 8 }: { src?: string | null; title?: string; size?: number; radius?: number }) {
   return (
-    <div className="shrink-0 overflow-hidden flex items-center justify-center bg-[#2a2a2a]"
+    <div className="music-cover shrink-0 overflow-hidden flex items-center justify-center bg-[#2a2a2a]"
       style={{ width: size, height: size, borderRadius: radius }}>
       {src
         ? <img src={src} alt={title} className="w-full h-full object-cover" />
@@ -203,7 +203,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
+      <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       <div className="relative w-full rounded-t-3xl overflow-hidden"
         style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}
@@ -228,16 +228,16 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
               className="w-full rounded-2xl py-3.5 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
               style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                        boxShadow: "0 6px 20px rgba(124,58,237,0.4)" }}>
-              <span>💳</span>
+              <ShoppingBag size={17} />
               <span>{t("music.buyTrack", { price: Number(track.price_usd ?? 0).toFixed(2) })}</span>
             </button>
           </div>
         )}
         {/* Options */}
         {[
-          { icon: liked ? "❤️" : "🤍", label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
-          ...(isPaidLocked ? [] : [{ icon: "⬇️", label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
-          { icon: "🔗", label: t("music.shareTrack"),  action: () => {
+          { icon: liked ? <Heart size={19} fill="currentColor" /> : <Heart size={19} />, label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
+          ...(isPaidLocked ? [] : [{ icon: <Download size={19} />, label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
+          { icon: <Send size={19} />, label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/api/og/music/${track.id}`;
             if (navigator.share) {
               navigator.share({ title: track.title, text: `${track.title} — ${track.artist}`, url }).catch(() => {});
@@ -246,12 +246,12 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
             }
             onClose();
           }},
-          { icon: "🚩", label: t("music.reportTrack"), action: onClose },
-        ].map(({ icon, label, action, locked }: { icon: string; label: string; action: () => void; locked?: boolean }) => (
+          { icon: <AlertCircle size={19} />, label: t("music.reportTrack"), action: onClose },
+        ].map(({ icon, label, action, locked }: { icon: React.ReactNode; label: string; action: () => void; locked?: boolean }) => (
           <button key={label} onClick={locked ? undefined : action}
             disabled={!!locked}
             className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${locked ? "opacity-50 cursor-not-allowed" : "hover:bg-white/5"}`}>
-            <span className="text-xl w-7 text-center">{icon}</span>
+            <span className="text-xl w-7 text-center text-white/55 flex justify-center">{icon}</span>
             <span className={`text-sm font-medium ${locked ? "text-white/40" : "text-white"}`}>{label}</span>
           </button>
         ))}
@@ -668,7 +668,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
   const PLATFORM_PCT = 20;
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", display: "flex", flexDirection: "column" }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", display: "flex", flexDirection: "column" }}>
       {/* Blurred cover bg */}
       {track.cover_url && (
         <div style={{
@@ -751,7 +751,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
             className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-60"
             style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
                      boxShadow: "0 8px 24px rgba(124,58,237,0.4)" }}>
-            {loading ? <Loader2 size={18} className="animate-spin" /> : "💳"}
+            {loading ? <Loader2 size={18} className="animate-spin" /> : <ShoppingBag size={18} />}
             {loading ? t("music.connectingPayment") : t("music.buyTrack", { price: price.toFixed(2) })}
           </button>
 
@@ -866,14 +866,14 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   const canPayWallet = walletBal !== null && walletBal >= 50;
 
   const perks = [
-    { icon: "🎵", title: t("music.artistPlanPerk1Title"), desc: t("music.artistPlanPerk1Desc") },
-    { icon: "💰", title: t("music.artistPlanPerk2Title"), desc: t("music.artistPlanPerk2Desc") },
-    { icon: "📈", title: t("music.artistPlanPerk3Title"), desc: t("music.artistPlanPerk3Desc") },
-    { icon: "🏆", title: t("music.artistPlanPerk4Title"), desc: t("music.artistPlanPerk4Desc") },
+    { icon: <Music2 size={22} />, title: t("music.artistPlanPerk1Title"), desc: t("music.artistPlanPerk1Desc") },
+    { icon: <ShoppingBag size={22} />, title: t("music.artistPlanPerk2Title"), desc: t("music.artistPlanPerk2Desc") },
+    { icon: <BarChart2 size={22} />, title: t("music.artistPlanPerk3Title"), desc: t("music.artistPlanPerk3Desc") },
+    { icon: <CheckCircle size={22} />, title: t("music.artistPlanPerk4Title"), desc: t("music.artistPlanPerk4Desc") },
   ];
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff" }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff" }}>
       {/* Header */}
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3"
         style={{ background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -888,7 +888,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
         {/* Hero */}
         <div className="rounded-2xl p-6 text-center flex flex-col items-center gap-3"
           style={{ background: "linear-gradient(135deg,#7c3aed22,#c026d322)", border: "1px solid rgba(124,58,237,0.3)" }}>
-          <div className="text-5xl">🎤</div>
+          <Music2 size={48} className="text-[#ff795f]" />
           <h1 className="font-black text-2xl">{t("music.artistPlanHero")}</h1>
           <p className="text-sm text-white/60 leading-relaxed max-w-xs">
             {t("music.artistPlanDesc", { count: songCount })}
@@ -948,7 +948,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
             style={{ border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.06)" }}>
             <div className="px-4 pt-3 pb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-xl">💳</span>
+                <ShoppingBag size={20} className="text-emerald-300" />
                 <div>
                   <p className="font-bold text-sm text-emerald-300">Flex Card (FM Wallet)</p>
                   <p className="text-xs text-white/40">{t("music.artistPlanPaymentNote")}</p>
@@ -1081,7 +1081,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
   const inpStyle = { background: "#1a1a1a", borderColor: "rgba(255,255,255,0.1)" };
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff" }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff" }}>
       {/* Header */}
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3"
         style={{ background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1370,7 +1370,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
   const userName = user?.name ?? user?.username ?? "Ou";
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
 
       {/* ── Header ── */}
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3" style={{ background: "#0a0a0a" }}>
@@ -1379,7 +1379,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           onClick={() => setLocation(user ? "/music/earnings" : "/music")}
           className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold"
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
-          <span className="text-xs">🎵</span> {t("music.artistStudio")}
+          <Music2 size={14} className="text-[#ff795f]" /> {t("music.artistStudio")}
         </button>
         <div className="flex-1" />
         <button onClick={onUpload}
@@ -1446,7 +1446,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             <div className="flex flex-col gap-1.5">
               {tracks.map((track, i) => (
                 <button key={track.id} onClick={() => onPlay(track, tracks, i)}
-                  className="flex items-center gap-3 rounded-xl px-3 py-2.5 active:scale-[0.98] transition-transform text-left w-full"
+                  className="music-track-row flex items-center gap-3 rounded-xl px-3 py-2.5 active:scale-[0.98] transition-transform text-left w-full"
                   style={{ background: track.id === currentTrackId ? "rgba(124,58,237,0.25)" : "#1a1a1a" }}>
                   <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
                   <div className="flex-1 min-w-0">
@@ -1487,7 +1487,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {/* ── Vos favoris ── */}
           <div className="px-4 mb-5">
             {/* Header card */}
-            <div className="rounded-2xl overflow-hidden mb-2" style={{ background: "linear-gradient(135deg,#3d1c00,#7a2d00)" }}>
+            <div className="music-hero rounded-2xl overflow-hidden mb-2" style={{ background: "linear-gradient(135deg,#3d1c00,#7a2d00)" }}>
               <div className="flex items-center justify-between px-4 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }}>
@@ -1505,7 +1505,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             <div className="grid grid-cols-2 gap-1.5">
               {favDisplay.map(track => (
                 <button key={track.id} onClick={() => onPlay(track, favDisplay, favDisplay.indexOf(track))}
-                  className="flex items-center gap-2 rounded-xl px-2 py-2 text-left active:scale-[0.97] transition-transform"
+                  className="music-track-row flex items-center gap-2 rounded-xl px-2 py-2 text-left active:scale-[0.97] transition-transform"
                   style={{ background: "#1a1a1a" }}>
                   <CoverArt src={track.cover_url} title={track.title} size={40} radius={6} />
                   <div className="min-w-0 flex-1">
@@ -1520,7 +1520,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {/* ── Basé sur ce que vous aimez ── */}
           <div className="mb-6">
             <div className="flex items-center justify-between px-4 mb-3">
-              <p className="text-white font-black text-base">{t("music.basedOnLikes")}</p>
+              <p className="music-section-label">{t("music.basedOnLikes")}</p>
               <button className="text-xs font-bold" style={{ color: "#a78bfa" }} onClick={() => onSearch("")}>
                 {t("music.seeAll")}
               </button>
@@ -1545,7 +1545,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {/* ── Albums ── */}
           {albums.length >= 1 && (
             <div className="mb-6">
-              <p className="text-white font-black text-base px-4 mb-3">💿 {t("music.albums")}</p>
+              <p className="music-section-label px-4 mb-3 flex items-center gap-2"><Music2 size={16} className="text-[#f5bd62]" /> {t("music.albums")}</p>
               <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
                 {albums.map(album => (
                   <button key={album.name}
@@ -1564,7 +1564,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
 
           {/* ── Mixé pour [User] ── */}
           <div className="mb-6">
-            <p className="text-white font-black text-base px-4 mb-3">{t("music.mixedFor", { name: userName })}</p>
+            <p className="music-section-label px-4 mb-3">{t("music.mixedFor", { name: userName })}</p>
             <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
               {mixes.filter(m => m.tracks.length > 0).map((mix, i) => (
                 <button key={mix.id} onClick={() => onPlayList(mix)}
@@ -1592,11 +1592,11 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             </div>
           </div>
 
-          {/* ── 🔥 Top 10 Cette Semaine ── */}
+          {/* ── Top 10 Cette Semaine ── */}
           {tracks.filter(t => t.play_count > 0).length >= 3 && (
             <div className="mb-6">
               <div className="flex items-center justify-between px-4 mb-3">
-                <p className="text-white font-black text-base">🔥 {t("music.charts")}</p>
+              <p className="music-section-label flex items-center gap-2"><BarChart2 size={16} className="text-[#ff795f]" /> {t("music.charts")}</p>
               </div>
               <div className="px-4">
                 {tracks
@@ -1604,7 +1604,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                   .slice(0, 10)
                   .map((track, idx) => (
                     <button key={track.id} onClick={() => onPlay(track, tracks, tracks.indexOf(track))}
-                      className="flex items-center gap-3 w-full py-2 px-1 rounded-xl active:bg-white/5 text-left">
+                      className="music-track-row flex items-center gap-3 w-full py-2 px-1 rounded-xl active:bg-white/5 text-left">
                       <span className="font-black text-sm tabular-nums w-5 text-center shrink-0"
                         style={{ color: idx === 0 ? "#fbbf24" : idx === 1 ? "#9ca3af" : idx === 2 ? "#b45309" : "rgba(255,255,255,0.25)" }}>
                         {idx + 1}
@@ -1641,12 +1641,12 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
 
           {/* ── All tracks list ── */}
           <div className="px-4">
-            <p className="text-white font-black text-base mb-3">{t("music.allSongs")}</p>
+            <p className="music-section-label mb-3">{t("music.allSongs")}</p>
             <div className="space-y-0">
               {tracks.map((track, idx) => {
                 const isLiked = liked.has(track.id);
                 return (
-                  <div key={track.id} className="flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5 transition-colors">
+                  <div key={track.id} className="music-track-row flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5 transition-colors">
                     <button onClick={() => onPlay(track, tracks, idx)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left">
                       <div className="relative shrink-0">
@@ -2037,8 +2037,8 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
     return item.detail ?? `Revni debloke sou "${item.track_title}"`;
   };
 
-  const itemEmoji = (item: MusicActivity) =>
-    item.type === "comment" ? "💬" : item.type === "like" ? "❤️" : "🎵";
+  const itemEmoji = (item: MusicActivity): React.ReactNode =>
+    item.type === "comment" ? <MessageCircle size={17} /> : item.type === "like" ? <Heart size={17} /> : <Music2 size={17} />;
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col justify-end" onClick={onClose}>
@@ -2079,7 +2079,7 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
                 style={{ background: item.type === "earning" ? "rgba(124,58,237,0.2)" : "#1e1e1e" }}>
                 {item.actor_avatar
                   ? <img src={item.actor_avatar} alt="" className="w-full h-full object-cover" />
-                  : <span>{itemEmoji(item)}</span>}
+                  : <span className="text-white/55">{itemEmoji(item)}</span>}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-white/80 text-xs leading-relaxed">{itemText(item)}</p>
@@ -2121,7 +2121,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
   const coverSrc = playlistCover ?? currentTrack?.cover_url ?? null;
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
 
       {/* ── Top bar ── */}
       <div className="flex items-center gap-3 px-4 py-3 sticky top-0 z-30" style={{ background: "#0a0a0a" }}>
@@ -2274,7 +2274,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           const active = playerState.track?.id === track.id;
           return (
             <div key={track.id}
-              className={`flex items-center gap-2 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
+              className={`music-track-row flex items-center gap-2 py-3 rounded-xl px-1 transition-colors ${active ? "bg-white/5" : ""}`}>
               <button onClick={() => onPlay(track, idx)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                 <div className="relative shrink-0">
                   <CoverArt src={track.cover_url} title={track.title} size={44} radius={8} />
@@ -2354,7 +2354,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
   const totalPlays   = artistTracks.reduce((s, t) => s + (t.play_count ?? 0), 0);
 
   return (
-    <div style={{ background: "#0a0a0a", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
+    <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-14 pb-3">
         <button onClick={onBack}
@@ -2393,7 +2393,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
             const isLiked  = liked.has(track.id);
             const isActive = track.id === currentTrackId;
             return (
-              <div key={track.id} className="flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5">
+              <div key={track.id} className="music-track-row flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5">
                 <button onClick={() => onPlay(track, artistTracks, idx)}
                   className="flex items-center gap-3 flex-1 min-w-0 text-left">
                   <div className="relative shrink-0">
@@ -2688,7 +2688,7 @@ function NowPlayingModal({
             <button
               onClick={() => setLyricsOpen(o => !o)}
               className="flex items-center gap-2 w-full py-2">
-              <span className="text-white/50 text-sm font-bold">🎵 Paròl</span>
+              <span className="text-white/50 text-sm font-bold flex items-center gap-2"><Music2 size={15} /> Paròl</span>
               <ChevronDown size={14} className={`text-white/30 transition-transform ${lyricsOpen ? "rotate-180" : ""}`} />
             </button>
             {lyricsOpen && (
@@ -3258,7 +3258,7 @@ export default function FlexaMusic() {
   // loading / view state. Two separate early-returns each with their own <audio>
   // caused a brief null window during the loading→ready transition.
   return (
-    <>
+    <div className="flexa-music-shell">
       {/* audio lives in the global musicStore singleton — no <audio> element here */}
 
       {/* ── Plan-activated toast ── */}
@@ -3271,12 +3271,12 @@ export default function FlexaMusic() {
           boxShadow: "0 8px 32px rgba(124,58,237,0.5)",
           display: "flex", alignItems: "center", gap: 8,
         }}>
-          🎉 Plan Artis aktive! Ou ka telechaje san limit kounye a.
+          <CheckCircle size={17} /> Plan Artis aktive! Ou ka telechaje san limit kounye a.
         </div>
       )}
 
       {loading ? (
-        <div style={{ background: "#0a0a0a", minHeight: "100vh" }} className="flex items-center justify-center">
+        <div style={{ background: "transparent", minHeight: "100vh" }} className="music-view-root flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
       ) : view === "artist" && artistViewName ? (
@@ -3417,6 +3417,6 @@ export default function FlexaMusic() {
         />
       )}
 
-    </>
+    </div>
   );
 }

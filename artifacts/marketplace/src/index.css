@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -494,4 +494,66 @@ main {
     border-radius: 16px;
     border: 1px solid rgba(226, 232, 240, 0.8);
   }
+}
+
+/* Flexa Music — a warmer, editorial listening room layered over the marketplace shell. */
+.flexa-music-shell {
+  --music-ink: #f8f4ed;
+  --music-muted: rgba(248,244,237,.56);
+  --music-line: rgba(248,244,237,.12);
+  --music-plum: #5b1f4f;
+  --music-coral: #ff795f;
+  --music-gold: #f5bd62;
+  font-family: 'DM Sans', sans-serif;
+  background:
+    radial-gradient(ellipse 70% 36% at 15% 0%, rgba(100,31,88,.42), transparent 68%),
+    radial-gradient(ellipse 55% 28% at 92% 6%, rgba(255,121,95,.13), transparent 70%),
+    #100d16 !important;
+  color: var(--music-ink) !important;
+}
+.flexa-music-shell h1,.flexa-music-shell h2,.flexa-music-shell h3,
+.flexa-music-shell .font-black { font-family: 'Space Grotesk', sans-serif; letter-spacing: -.035em; }
+.flexa-music-shell input::placeholder { color: rgba(248,244,237,.35); }
+.flexa-music-shell button { transition: transform .18s ease, opacity .18s ease, background-color .18s ease; }
+.flexa-music-shell button:active { transform: scale(.965); }
+.flexa-music-shell .sticky { background: rgba(16,13,22,.78) !important; backdrop-filter: blur(18px); border-bottom: 1px solid var(--music-line); }
+.flexa-music-shell .rounded-xl[style*="#1a1a1a"],
+.flexa-music-shell .rounded-2xl[style*="#1a1a1a"],
+.flexa-music-shell .rounded-full[style*="#1a1a1a"] { background: rgba(255,255,255,.065) !important; border-color: var(--music-line) !important; }
+.flexa-music-shell [style*="linear-gradient(135deg,#7c3aed,#c026d3)"] {
+  background: linear-gradient(135deg, var(--music-coral), #cf3f78) !important;
+  box-shadow: 0 10px 24px rgba(255,92,105,.22) !important;
+}
+.flexa-music-shell .text-violet-400,.flexa-music-shell .text-violet-300,
+.flexa-music-shell .text-purple-400 { color: var(--music-coral) !important; }
+.flexa-music-shell .bg-violet-600 { background: #b94771 !important; }
+.flexa-music-shell img { filter: saturate(1.08); }
+.flexa-music-shell [style*="rgba(255,255,255,0.07)"],
+.flexa-music-shell [style*="rgba(255,255,255,0.08)"] { border-color: var(--music-line) !important; }
+.flexa-music-shell .music-hero {
+  position: relative; overflow: hidden; border-radius: 28px;
+  background: linear-gradient(115deg, #29152e 0%, #4c1e45 48%, #a2464f 100%);
+  box-shadow: 0 20px 45px rgba(0,0,0,.22);
+}
+.flexa-music-shell .music-hero:after {
+  content:""; position:absolute; width:260px; height:260px; right:-80px; top:-100px;
+  border: 1px solid rgba(255,244,220,.25); border-radius: 50%;
+  box-shadow: 0 0 0 28px rgba(255,244,220,.06), 0 0 0 58px rgba(255,244,220,.04);
+  transform: rotate(18deg);
+  pointer-events: none;
+}
+.flexa-music-shell .music-hero > * { position: relative; z-index: 1; }
+.flexa-music-shell .music-view-root {
+  background:
+    radial-gradient(ellipse 75% 30% at 12% 0%, rgba(100,31,88,.3), transparent 70%),
+    #100d16 !important;
+  color: var(--music-ink) !important;
+}
+.flexa-music-shell .music-section-label { letter-spacing:.14em; text-transform:uppercase; font-size:10px; color:var(--music-muted); font-weight:800; }
+.flexa-music-shell .music-track-row { border:1px solid transparent; border-radius:16px; }
+.flexa-music-shell .music-track-row:hover { background:rgba(255,255,255,.055); border-color:var(--music-line); }
+.flexa-music-shell .music-cover { box-shadow: 0 10px 22px rgba(0,0,0,.26); }
+@media (min-width: 768px) {
+  body:has(.flexa-music-shell) { background: #100d16 !important; }
+  .flexa-music-shell { width: 100%; max-width: none; min-height: 100dvh; border-left:1px solid rgba(255,255,255,.04); border-right:1px solid rgba(255,255,255,.04); }
 }

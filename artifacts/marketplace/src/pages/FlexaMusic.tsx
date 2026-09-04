@@ -12,7 +12,7 @@ import {
   Volume2, VolumeX, Shuffle, X, Download, MoreHorizontal,
   Bell, MessageCircle, ChevronLeft, ChevronDown, Plus, Loader2, Globe,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
-  Pencil, Trash2, ShoppingBag, Send, Radio,
+  Pencil, Trash2, ShoppingBag, Send, Radio, Home, Library,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -1331,8 +1331,6 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     return () => clearTimeout(id);
   }, [search]);
 
-  const likedTracks  = tracks.filter(t => liked.has(t.id));
-  const favDisplay   = likedTracks.slice(0, 4).length > 0 ? likedTracks.slice(0, 4) : tracks.slice(0, 4);
   const recommended  = tracks.filter(t => t.is_featured || liked.has(t.id) || t.play_count > 100).slice(0, 10);
   const recFallback  = recommended.length >= 3 ? recommended : tracks.slice(0, 10);
 
@@ -1372,24 +1370,33 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
   return (
     <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
 
-      {/* ── Header ── */}
-      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3" style={{ background: "#0a0a0a" }}>
-        <Avatar src={user?.avatar_url} name={userName} size={38} />
-        <button
-          onClick={() => setLocation(user ? "/music/earnings" : "/music")}
-          className="flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold"
-          style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.1)", color: "#fff" }}>
-          <Music2 size={14} className="text-[#ff795f]" /> {t("music.artistStudio")}
-        </button>
-        <div className="flex-1" />
-        <button onClick={onUpload}
-          className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#1a1a1a" }}>
-          <UploadCloud size={17} className="text-white/80" />
-        </button>
-        <button onClick={() => setShowNotifications(true)}
-          className="w-9 h-9 rounded-full flex items-center justify-center relative" style={{ background: "#1a1a1a" }}>
-          <Bell size={17} className="text-white/80" />
-        </button>
+      {/* ── SoundCloud-style top bar ── */}
+      <div className="music-topbar sticky top-0 z-30 flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Avatar src={user?.avatar_url} name={userName} size={36} />
+          <button
+            onClick={() => setLocation(user ? "/music/earnings" : "/music")}
+            className="music-topbar-pill flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold"
+            aria-label={t("music.artistStudio")}>
+            <Radio size={14} className="text-[#ff795f]" />
+            <span className="hidden sm:inline">{t("music.artistStudio")}</span>
+          </button>
+        </div>
+        <div className="music-topbar-title text-base font-black">Accueil</div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={onUpload} aria-label={t("music.uploadFirstSong")}
+            className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center">
+            <UploadCloud size={17} />
+          </button>
+          <button onClick={() => setShowNotifications(true)} aria-label={t("notifications.notifications", "Notifications")}
+            className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center relative">
+            <Bell size={17} />
+          </button>
+          <button onClick={() => setLocation("/messages")} aria-label="Messages"
+            className="music-icon-button hidden sm:flex w-9 h-9 rounded-full items-center justify-center">
+            <MessageCircle size={17} />
+          </button>
+        </div>
       </div>
 
       {/* ── Search ──
@@ -1484,44 +1491,42 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         </div>
       ) : (
         <>
-          {/* ── Vos favoris ── */}
-          <div className="px-4 mb-5">
-            {/* Header card */}
-            <div className="music-hero rounded-2xl overflow-hidden mb-2" style={{ background: "linear-gradient(135deg,#3d1c00,#7a2d00)" }}>
-              <div className="flex items-center justify-between px-4 py-3.5">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.1)" }}>
-                    <Heart size={20} className="text-red-400 fill-red-400" />
-                  </div>
-                  <span className="text-white font-black text-base">{t("music.likedSongs")}</span>
+          {/* ── SoundCloud-style discovery hero ── */}
+          <div className="px-4 mb-8">
+            <div className="music-discovery-hero overflow-hidden rounded-2xl">
+              <div className="relative z-10 flex items-end justify-between gap-4 p-5">
+                <div className="min-w-0">
+                  <p className="music-kicker mb-2">FLEXA MUSIC</p>
+                  <h1 className="text-2xl sm:text-3xl font-black leading-tight">{t("music.basedOnLikes")}</h1>
+                  <p className="mt-1 text-sm text-white/60 truncate">{t("music.mixedFor", { name: userName })}</p>
                 </div>
-                <button onClick={() => { const q = likedTracks.length > 0 ? likedTracks : tracks; if(q.length) onPlay(q[0], q, 0); }}
-                  className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "rgba(255,255,255,0.15)" }}>
-                  <Shuffle size={16} className="text-white" />
+                <button
+                  onClick={() => { const q = recFallback; if (q.length) onPlay(q[0], q, 0); }}
+                  aria-label={t("music.basedOnLikes")}
+                  className="music-hero-play w-12 h-12 rounded-full shrink-0 flex items-center justify-center">
+                  <Play size={18} fill="currentColor" className="ml-0.5" />
                 </button>
               </div>
-            </div>
-            {/* 2×2 grid */}
-            <div className="grid grid-cols-2 gap-1.5">
-              {favDisplay.map(track => (
-                <button key={track.id} onClick={() => onPlay(track, favDisplay, favDisplay.indexOf(track))}
-                  className="music-track-row flex items-center gap-2 rounded-xl px-2 py-2 text-left active:scale-[0.97] transition-transform"
-                  style={{ background: "#1a1a1a" }}>
-                  <CoverArt src={track.cover_url} title={track.title} size={40} radius={6} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
-                    <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
-                  </div>
-                </button>
-              ))}
+              <div className="music-hero-grid relative z-10 grid grid-cols-3 gap-2 px-4 pb-4">
+                {recFallback.slice(0, 3).map((track, index) => (
+                  <button key={track.id} onClick={() => onPlay(track, recFallback, index)}
+                    className="music-feature-tile relative overflow-hidden rounded-xl text-left">
+                    <CoverArt src={track.cover_url} title={track.title} size={160} radius={12} />
+                    <div className="absolute inset-x-0 bottom-0 p-2.5 pt-8 bg-gradient-to-t from-black/90 to-transparent">
+                      <p className="text-white text-xs font-bold truncate">{track.title}</p>
+                      <p className="text-white/55 text-[10px] truncate">{track.artist}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           {/* ── Basé sur ce que vous aimez ── */}
           <div className="mb-6">
             <div className="flex items-center justify-between px-4 mb-3">
-              <p className="music-section-label">{t("music.basedOnLikes")}</p>
-              <button className="text-xs font-bold" style={{ color: "#a78bfa" }} onClick={() => onSearch("")}>
+              <p className="music-section-title">{t("music.basedOnLikes")}</p>
+              <button className="music-see-all" onClick={() => onSearch("")}>
                 {t("music.seeAll")}
               </button>
             </div>
@@ -1545,13 +1550,13 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {/* ── Albums ── */}
           {albums.length >= 1 && (
             <div className="mb-6">
-              <p className="music-section-label px-4 mb-3 flex items-center gap-2"><Music2 size={16} className="text-[#f5bd62]" /> {t("music.albums")}</p>
+              <p className="music-section-title px-4 mb-3 flex items-center gap-2"><Music2 size={18} className="text-[#f5bd62]" /> {t("music.albums")}</p>
               <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
                 {albums.map(album => (
                   <button key={album.name}
                     onClick={() => { const first = album.tracks[0]; if (first) onPlay(first, album.tracks, 0); }}
-                    className="shrink-0 text-left active:scale-95 transition-transform" style={{ width: 140 }}>
-                    <CoverArt src={album.cover} title={album.name} size={140} radius={12} />
+                    className="shrink-0 text-left active:scale-95 transition-transform" style={{ width: 156 }}>
+                    <CoverArt src={album.cover} title={album.name} size={156} radius={10} />
                     <p className="text-white text-xs font-bold truncate mt-1.5">{album.name}</p>
                     <p className="text-white/40 text-[10px] truncate">
                       {album.tracks[0]?.artist} · {album.tracks.length} tit
@@ -1564,7 +1569,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
 
           {/* ── Mixé pour [User] ── */}
           <div className="mb-6">
-            <p className="music-section-label px-4 mb-3">{t("music.mixedFor", { name: userName })}</p>
+            <p className="music-section-title px-4 mb-3">{t("music.mixedFor", { name: userName })}</p>
             <div className="flex gap-3 overflow-x-auto pl-4 pr-4 pb-1 scrollbar-hide">
               {mixes.filter(m => m.tracks.length > 0).map((mix, i) => (
                 <button key={mix.id} onClick={() => onPlayList(mix)}
@@ -1596,7 +1601,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {tracks.filter(t => t.play_count > 0).length >= 3 && (
             <div className="mb-6">
               <div className="flex items-center justify-between px-4 mb-3">
-              <p className="music-section-label flex items-center gap-2"><BarChart2 size={16} className="text-[#ff795f]" /> {t("music.charts")}</p>
+              <p className="music-section-title flex items-center gap-2"><BarChart2 size={18} className="text-[#ff795f]" /> {t("music.charts")}</p>
               </div>
               <div className="px-4">
                 {tracks
@@ -1640,8 +1645,8 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           )}
 
           {/* ── All tracks list ── */}
-          <div className="px-4">
-            <p className="music-section-label mb-3">{t("music.allSongs")}</p>
+          <div id="music-library" className="px-4">
+            <p className="music-section-title mb-3">{t("music.allSongs")}</p>
             <div className="space-y-0">
               {tracks.map((track, idx) => {
                 const isLiked = liked.has(track.id);
@@ -1722,6 +1727,29 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           onDelete={onDelete}
         />
       )}
+
+      {/* ── SoundCloud-style mobile navigation ── */}
+      <nav className="music-bottom-nav md:hidden" aria-label="Music navigation">
+        <button className="music-bottom-nav-item active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+          <Home size={19} fill="currentColor" />
+          <span>Accueil</span>
+        </button>
+        <button className="music-bottom-nav-item" onClick={() => searchInputRef.current?.focus()}>
+          <Search size={19} />
+          <span>Rechercher</span>
+        </button>
+        <button className="music-upload-fab" onClick={onUpload} aria-label={t("music.uploadFirstSong")}>
+          <Plus size={25} />
+        </button>
+        <button className="music-bottom-nav-item" onClick={() => setShowNotifications(true)}>
+          <MessageCircle size={19} />
+          <span>Messages</span>
+        </button>
+        <button className="music-bottom-nav-item" onClick={() => document.getElementById("music-library")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          <Library size={19} />
+          <span>Bibliothèque</span>
+        </button>
+      </nav>
     </div>
   );
 }
@@ -2438,17 +2466,12 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
   );
 }
 
-// ── Deterministic waveform bar height (20–100%) ────────────────────────────────
-function waveBarH(trackId: number, i: number) {
-  return 20 + 80 * Math.abs(Math.sin((trackId * 17 + i * 37) * 0.12));
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
 // FULL-SCREEN NOW-PLAYING MODAL  (Spotify-style slide-up)
 // ══════════════════════════════════════════════════════════════════════════════
 function NowPlayingModal({
   playerState, liked, onClose, onToggle, onPrev, onNext,
-  onToggleLike, onSeek, onShuffle, onMute, isPaidPreview,
+  onToggleLike, onSeek, onShuffle, onMute, onVolume, isPaidPreview,
   radioMode, onToggleRadio, onArtistClick,
 }: {
   playerState: PlayerState;
@@ -2461,6 +2484,7 @@ function NowPlayingModal({
   onSeek: (t: number) => void;
   onShuffle: () => void;
   onMute: () => void;
+  onVolume: (value: number) => void;
   isPaidPreview?: boolean;
   radioMode: boolean;
   onToggleRadio: () => void;
@@ -2521,7 +2545,7 @@ function NowPlayingModal({
       </div>
 
       {/* ── Content ──────────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-col flex-1 px-6 overflow-hidden"
+      <div className="relative z-10 flex flex-col flex-1 px-6 overflow-y-auto"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 20px) + 12px)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}>
 
         {/* Top bar */}
@@ -2532,52 +2556,48 @@ function NowPlayingModal({
               className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
               <ChevronDown size={26} className="text-white/80" />
             </button>
-            <div className="text-center">
-              <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.2em]">Now Playing</p>
-              {playing && <div className="flex justify-center mt-1"><NowPlayingBars playing size="xs" /></div>}
+            <div className="text-center min-w-0 max-w-[58%]">
+              <p className="text-white text-sm font-black truncate">{track.title}</p>
+              <button onClick={() => { onClose(); onArtistClick(track.artist); }}
+                className="text-white/50 text-xs truncate max-w-full">
+                {track.artist}
+              </button>
             </div>
-            <button onClick={onShuffle}
-              className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
-              <Shuffle size={18} className="text-white/60" />
-            </button>
+            <div className="flex items-center">
+              <button onClick={() => onToggleLike(track.id)}
+                aria-label={isLiked ? "Retire de favoris" : "Ajoute nan favoris"}
+                className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
+                <Heart size={21} className={isLiked ? "text-fuchsia-400 fill-fuchsia-400" : "text-white/80"} />
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Album art */}
-        <div className="flex justify-center mb-7">
-          <div className="rounded-3xl overflow-hidden shadow-2xl"
-            style={{ width: "min(72vw, 280px)", height: "min(72vw, 280px)",
-                     boxShadow: "0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)" }}>
-            {track.cover_url
-              ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
-              : <div className="w-full h-full flex items-center justify-center"
-                  style={{ background: "linear-gradient(135deg,#2d1b4e,#4b0082)" }}>
-                  <Music2 size={72} className="text-white/20" />
-                </div>}
+        {/* Vinyl-style album art with a live progress halo */}
+        <div className="music-vinyl-stage flex justify-center mb-6">
+          <div className="music-vinyl" style={{
+            background: `conic-gradient(from -90deg, #d319ff ${Math.max(0, pct)}%, rgba(255,255,255,0.12) ${Math.max(0, pct)}% 100%)`,
+          }}>
+            <div className="music-vinyl-disc">
+              <div className="music-vinyl-label">
+                {track.cover_url
+                  ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+                  : <Music2 size={54} className="text-white/25" />}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Track info + like */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-white font-black text-[22px] leading-tight truncate">{track.title}</h2>
-              {track.is_artist_verified && (
-                <CheckCircle size={16} className="text-violet-400 fill-violet-400 shrink-0" />
-              )}
-            </div>
-            <button
-              onClick={() => { onClose(); onArtistClick(track.artist); }}
-              className="text-white/55 text-sm truncate mt-0.5 text-left hover:text-white/80 transition-colors active:opacity-70">
+        {/* Artist and album context */}
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <button onClick={() => { onClose(); onArtistClick(track.artist); }}
+              className="text-white/70 text-sm truncate text-left hover:text-white transition-colors">
               {track.artist}
             </button>
+            {track.is_artist_verified && <CheckCircle size={14} className="inline ml-1.5 text-fuchsia-400 fill-fuchsia-400" />}
           </div>
-          <button
-            onClick={() => onToggleLike(track.id)}
-            className="w-11 h-11 flex items-center justify-center rounded-full active:scale-90 transition-transform shrink-0"
-            style={{ background: isLiked ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.08)" }}>
-            <Heart size={20} className={isLiked ? "text-red-400 fill-red-400" : "text-white/50"} />
-          </button>
+          <span className="text-white/35 text-xs truncate">{track.album ?? "Flexa Music"}</span>
         </div>
 
         {/* ── 30s preview banner ───────────────────────────────────────────── */}
@@ -2599,33 +2619,21 @@ function NowPlayingModal({
           </div>
         )}
 
-        {/* ── Waveform — seekable ───────────────────────────────────────── */}
+        {/* ── SoundCloud-style seek bar ──────────────────────────────────── */}
         <div className="mb-1">
           <div
-            className="relative flex items-end gap-[2px] cursor-pointer"
-            style={{ touchAction: "none", height: 52 }}
+            className="music-player-seek relative cursor-pointer"
+            style={{ touchAction: "none" }}
             onClick={e  => seekFromX(e.clientX, e.currentTarget)}
             onTouchStart={e => { seekRef.current = true; seekFromX(e.touches[0].clientX, e.currentTarget); e.stopPropagation(); }}
             onTouchMove={e  => { if (!seekRef.current) return; e.preventDefault(); e.stopPropagation(); seekFromX(e.touches[0].clientX, e.currentTarget); }}
             onTouchEnd={()  => { seekRef.current = false; }}
           >
-            {Array.from({ length: 50 }, (_, i) => {
-              const h = waveBarH(track.id, i);
-              const isPast = (i / 50) < (pct / 100);
-              return (
-                <div key={i} className="flex-1 rounded-[2px]"
-                  style={{
-                    height: `${h}%`,
-                    background: isPast ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.18)",
-                    transition: "background 60ms",
-                  }} />
-              );
-            })}
-            {/* Playhead line */}
-            <div className="absolute inset-y-0 w-[2px] pointer-events-none rounded-full"
-              style={{ left: `calc(${pct}% - 1px)`,
-                       background: "rgba(255,255,255,0.9)",
-                       boxShadow: "0 0 6px rgba(255,255,255,0.6)" }} />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 rounded-full bg-white/20" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-500"
+              style={{ width: `${pct}%` }} />
+            <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-[0_0_14px_rgba(217,25,255,.75)]"
+              style={{ left: `calc(${pct}% - 8px)` }} />
           </div>
           {/* Time labels */}
           <div className="flex justify-between px-0.5 mt-1">
@@ -2635,51 +2643,52 @@ function NowPlayingModal({
         </div>
 
         {/* ── Playback controls ─────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mt-4">
+        <div className="flex items-center justify-between mt-5">
+          <button onClick={onShuffle} aria-label="Melanje"
+            className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            <Shuffle size={23} className="text-white/90" />
+          </button>
+
           <button onClick={onPrev}
-            className="w-14 h-14 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            aria-label="Chante anvan"
+            className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             <SkipBack size={30} className="text-white" />
           </button>
 
           <button onClick={onToggle}
             className="flex items-center justify-center rounded-full active:scale-90 transition-transform"
-            style={{ width: 72, height: 72,
-                     background: "linear-gradient(135deg,#7c3aed,#c026d3)",
-                     boxShadow: "0 6px 24px rgba(124,58,237,0.55)" }}>
+            style={{ width: 76, height: 76,
+                     background: "linear-gradient(135deg,#8b21ff,#d319ff)",
+                     boxShadow: "0 0 30px rgba(211,25,255,0.55)" }}>
             {playing
               ? <Pause  size={30} className="text-white" />
               : <Play   size={30} className="text-white ml-1" />}
           </button>
 
           <button onClick={onNext}
-            className="w-14 h-14 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            aria-label="Chante apre"
+            className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             <SkipForward size={30} className="text-white" />
+          </button>
+
+          <button onClick={onToggleRadio} aria-label="Radio"
+            className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
+            <Radio size={23} className={radioMode ? "text-fuchsia-400" : "text-white/75"} />
           </button>
         </div>
 
-        {/* ── Secondary controls: shuffle · mute · radio ─────────────── */}
-        <div className="flex items-center justify-center gap-3 mt-5">
-          <button onClick={onShuffle}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:bg-white/10 transition-all"
-            style={{ background: "rgba(255,255,255,0.08)" }}>
-            <Shuffle size={14} className="text-white/50" />
-            <span className="text-white/40 text-xs">Mix</span>
-          </button>
+        {/* ── Volume control ─────────────────────────────────────────────── */}
+        <div className="music-volume-control flex items-center gap-3 mt-6 px-4 py-3 rounded-full">
           <button onClick={onMute}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:bg-white/10 transition-all"
-            style={{ background: "rgba(255,255,255,0.08)" }}>
-            {muted
-              ? <><VolumeX size={14} className="text-white/50" /><span className="text-white/40 text-xs">Mute</span></>
-              : <><Volume2 size={14} className="text-white/70" /><span className="text-white/50 text-xs">Son</span></>}
+            aria-label={muted ? "Retire mute" : "Mute"}
+            className="w-7 h-7 flex items-center justify-center shrink-0">
+            {muted ? <VolumeX size={20} className="text-white/70" /> : <Volume2 size={20} className="text-white/90" />}
           </button>
-          <button onClick={onToggleRadio}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full active:scale-95 transition-all"
-            style={{ background: radioMode ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.08)" }}>
-            <Radio size={14} className={radioMode ? "text-violet-400" : "text-white/50"} />
-            <span className={`text-xs font-semibold ${radioMode ? "text-violet-400" : "text-white/40"}`}>
-              Radio
-            </span>
-          </button>
+          <input aria-label="Volim" type="range" min="0" max="1" step="0.01"
+            value={playerState.volume}
+            onChange={e => onVolume(Number(e.target.value))}
+            className="music-volume-range flex-1" />
+          <BarChart2 size={20} className="text-white/70 shrink-0" />
         </div>
 
         {/* ── Lyrics ────────────────────────────────────────────────────── */}
@@ -2800,6 +2809,7 @@ export default function FlexaMusic() {
   const audioRef    = useRef(gAudio);
   const listenRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playNextRef = useRef<() => void>(() => {});
+  const playNextFreeRef = useRef<() => void>(() => {});
   const [showNowPlaying, setShowNowPlaying] = useState(false);
 
   // Always-current refs — lets useCallback/effects read fresh values without
@@ -2990,15 +3000,13 @@ export default function FlexaMusic() {
     if (purchasedIdsRef.current.has(track.id)) return;
     if (isPurchasedLocally(userRef.current?.id, track.id)) return; // trust localStorage after purchase
     if (!playerState.playing || playerState.currentTime < 30) return;
-    // Reached 30 seconds — stop the impression timer (so it won't increment
-    // a second time), pause, and surface the paywall.
+    // Reached 30 seconds — count the preview, then move on to a free track.
+    // The paid track remains available for an intentional purchase from its
+    // card/menu; playback itself should never become a payment roadblock.
     stopTimer();
     const uid = userRef.current?.id;
-    const cnt = incrementPlayCount(uid, track.id);
-    musicRequestPause();
-    setPaywallTrack(track);
-    setPaywallPlayCount(cnt);
-    setView("paywall");
+    incrementPlayCount(uid, track.id);
+    playNextFreeRef.current();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerState.currentTime, playerState.playing, playerState.track]);
 
@@ -3035,11 +3043,8 @@ export default function FlexaMusic() {
       if (track?.monetization_type === "sale" && !purchasedIds.has(id) && !isPurchasedLocally((user as any)?.id, id)) {
         const newCount = incrementPlayCount((user as any)?.id, id);
         if (purchasedFetched && newCount >= FREE_PLAYS) {
-          // Pause audio and surface the paywall
-          musicRequestPause();
-          setPaywallTrack(track);
-          setPaywallPlayCount(newCount);
-          setView("paywall");
+          // Do not interrupt listening with a paywall; move to free music.
+          playNextFreeRef.current();
         }
       }
     }, 31_000);
@@ -3100,9 +3105,14 @@ export default function FlexaMusic() {
   }, [playerState.muted, playerState.volume]);
 
   const playNext = useCallback(() => {
-    // ── If there's a next track in the current queue, play it normally ────────
-    if (queue.length && queueIdx + 1 < queue.length) {
-      const next = queueIdx + 1;
+    // ── Skip paid/unavailable queue entries instead of opening a paywall ──────
+    const next = queue.findIndex((candidate, index) =>
+      index > queueIdx &&
+      (candidate.monetization_type !== "sale" ||
+        purchasedIdsRef.current.has(candidate.id) ||
+        isPurchasedLocally(userRef.current?.id, candidate.id))
+    );
+    if (next >= 0) {
       setQueueIdx(next);
       playTrack(queue[next], queue, next);
       return;
@@ -3122,6 +3132,11 @@ export default function FlexaMusic() {
     if (pool.length < 2) {
       pool = tracks.filter(t => t.id !== cur.id);
     }
+    pool = pool.filter(t =>
+      t.monetization_type !== "sale" ||
+      purchasedIdsRef.current.has(t.id) ||
+      isPurchasedLocally(userRef.current?.id, t.id)
+    );
     if (!pool.length) return;
 
     // Shuffle so every auto-play session feels fresh
@@ -3129,11 +3144,32 @@ export default function FlexaMusic() {
     setQueue(shuffled);
     setQueueIdx(0);
     playTrack(shuffled[0], shuffled, 0);
-  }, [queue, queueIdx, playTrack, playerState.track, tracks]);
+  }, [queue, queueIdx, playTrack, playerState.track, tracks, radioMode]);
+
+  const playNextFree = useCallback(() => {
+    const candidates = [
+      ...queue.slice(queueIdx + 1),
+      ...tracks.filter(t => t.id !== playerState.track?.id),
+    ];
+    const next = candidates.find(t =>
+      !!t.audio_url &&
+      (t.monetization_type !== "sale" ||
+        purchasedIdsRef.current.has(t.id) ||
+        isPurchasedLocally(userRef.current?.id, t.id))
+    );
+    if (!next) {
+      musicRequestPause();
+      return;
+    }
+    const nextQueue = queue.length ? queue : tracks;
+    const nextIndex = nextQueue.findIndex(t => t.id === next.id);
+    playTrack(next, nextQueue, nextIndex >= 0 ? nextIndex : 0);
+  }, [queue, queueIdx, tracks, playerState.track, playTrack]);
 
   // ── Keep playNextRef fresh so the audio "ended" handler never captures a stale closure
   // (must appear AFTER playNext is declared to avoid a TDZ crash in production builds)
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
+  useEffect(() => { playNextFreeRef.current = playNextFree; }, [playNextFree]);
 
   const playPrev = useCallback(() => {
     if (!queue.length) return;
@@ -3152,6 +3188,14 @@ export default function FlexaMusic() {
     if (!audio) return;
     audio.muted = !audio.muted;
     setPlayerState(s => ({ ...s, muted: !s.muted }));
+  };
+
+  const setVolume = (value: number) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = Math.max(0, Math.min(1, value));
+    if (audio.volume > 0 && audio.muted) audio.muted = false;
+    setPlayerState(s => ({ ...s, volume: audio.volume, muted: audio.muted }));
   };
 
   const seek = (t: number) => {
@@ -3403,6 +3447,7 @@ export default function FlexaMusic() {
           onSeek={seek}
           onShuffle={shuffleQueue}
           onMute={toggleMute}
+           onVolume={setVolume}
           isPaidPreview={
             playerState.track.monetization_type === "sale" &&
             !purchasedIds.has(playerState.track.id)

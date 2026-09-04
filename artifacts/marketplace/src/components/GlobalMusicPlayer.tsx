@@ -10,7 +10,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Play, Pause, SkipBack, SkipForward, X, Volume2, VolumeX, GripHorizontal } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, X, Volume2, VolumeX, GripHorizontal, ChevronDown } from "lucide-react";
 import {
   getMusicState,
   subscribeMusicState,
@@ -88,6 +88,7 @@ export default function GlobalMusicPlayer() {
   // positive Y → moves UP; positive X → moves right (relative to centred)
   const [pos, setPos] = useState<{ x: number; y: number }>(loadPos);
   const [isDragging, setIsDragging] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const dragStartTouch = useRef<{ cx: number; cy: number } | null>(null);
   const dragStartPos   = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,7 +286,7 @@ export default function GlobalMusicPlayer() {
       </div>
 
       {/* NOW PLAYING pill */}
-      {playing && !isDragging && (
+      {playing && !isDragging && !isMinimized && (
         <div className="absolute -top-3 left-4 flex items-center gap-1.5 px-2 py-0.5 rounded-full"
           style={{ background: "linear-gradient(90deg,#7c3aed,#c026d3)", boxShadow: "0 2px 8px rgba(124,58,237,0.6)" }}>
           <NowPlayingDots playing={playing} />
@@ -361,7 +362,7 @@ export default function GlobalMusicPlayer() {
         </div>
 
         {/* ── Info + controls row ── */}
-        <div className="flex items-center gap-2.5 px-3 pb-3 pt-0.5">
+        <div className={`flex items-center gap-2.5 px-3 ${isMinimized ? "py-1.5" : "pb-3 pt-0.5"}`}>
           {/* ── Cover + info — tap to open /music ── */}
           <div
             className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer active:opacity-70 transition-opacity"
@@ -374,7 +375,7 @@ export default function GlobalMusicPlayer() {
             <div className="flex-1 min-w-0">
               <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
               <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
-              <div className="flex items-center gap-1.5 mt-0.5">
+                {!isMinimized && <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-violet-300 text-[9px] font-mono tabular-nums">
                   {fmtDur(Math.floor(isSwiping ? previewTime : currentTime))}
                 </span>
@@ -392,15 +393,15 @@ export default function GlobalMusicPlayer() {
                     {t("music.playerDraggingTip")}
                   </span>
                 )}
-              </div>
+                </div>}
             </div>
           </div>{/* end tappable area */}
 
           <div className="flex items-center gap-0.5 shrink-0">
-            <button onClick={musicPlayPrev}
+            {!isMinimized && <button onClick={musicPlayPrev}
               className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
               <SkipBack size={14} className="text-white/70" />
-            </button>
+            </button>}
             <button onClick={musicTogglePlay}
               className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
               style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", boxShadow: "0 4px 12px rgba(124,58,237,0.5)" }}>
@@ -408,12 +409,19 @@ export default function GlobalMusicPlayer() {
                 ? <Pause size={15} className="text-white" />
                 : <Play  size={15} className="text-white ml-0.5" />}
             </button>
-            <button onClick={musicPlayNext}
+            {!isMinimized && <button onClick={musicPlayNext}
               className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
               <SkipForward size={14} className="text-white/70" />
-            </button>
-            <button onClick={musicToggleMute} className="w-7 h-7 flex items-center justify-center">
+            </button>}
+            {!isMinimized && <button onClick={musicToggleMute} className="w-7 h-7 flex items-center justify-center">
               {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
+            </button>}
+            <button
+              onClick={() => setIsMinimized(value => !value)}
+              onTouchStart={e => e.stopPropagation()}
+              aria-label={isMinimized ? "Expand mini-player la" : "Minimize mini-player la"}
+              className="w-7 h-7 flex items-center justify-center">
+              <ChevronDown size={15} className={`text-white/55 transition-transform ${isMinimized ? "rotate-180" : ""}`} />
             </button>
             <button onClick={musicStop} className="w-7 h-7 flex items-center justify-center">
               <X size={13} className="text-white/30" />

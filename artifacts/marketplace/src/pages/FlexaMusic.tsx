@@ -461,6 +461,7 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
     onSeek: (t: number) => void; onExpand: () => void; }) {
   const { track, playing, currentTime, duration, muted } = state;
   const isDragging = useRef(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   if (!track) return null;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -484,7 +485,7 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
       }}>
 
       {/* ── NOW PLAYING pill badge ── */}
-      {playing && (
+      {playing && !isMinimized && (
         <div className="absolute -top-3 left-4 flex items-center gap-1.5 px-2 py-0.5 rounded-full"
           style={{ background: "linear-gradient(90deg,#7c3aed,#c026d3)", boxShadow: "0 2px 8px rgba(124,58,237,0.6)" }}>
           <NowPlayingBars playing={playing} size="xs" />
@@ -517,7 +518,7 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
             style={{ left: `${pct}%`, boxShadow: "0 0 0 3px rgba(139,92,246,0.6), 0 2px 6px rgba(0,0,0,0.5)" }} />
         </div>
 
-        <div className="flex items-center gap-2.5 px-3 pb-3 pt-1">
+        <div className={`flex items-center gap-2.5 px-3 ${isMinimized ? "py-1.5" : "pb-3 pt-1"}`}>
           {/* Cover — tap to expand */}
           <button onClick={onExpand} className="shrink-0 relative">
             <CoverArt src={track.cover_url} title={track.title} size={42} radius={10} />
@@ -534,17 +535,17 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
             <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
             <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
             {/* Live time progress under title */}
-            <div className="flex items-center gap-1.5 mt-0.5">
+            {!isMinimized && <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-violet-300 text-[9px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
               {duration > 0 && <span className="text-white/20 text-[9px]">/ {fmtDur(Math.floor(duration))}</span>}
-            </div>
+            </div>}
           </button>
 
           {/* Controls */}
           <div className="flex items-center gap-0.5 shrink-0">
-            <button onClick={onPrev} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+            {!isMinimized && <button onClick={onPrev} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
               <SkipBack size={14} className="text-white/70" />
-            </button>
+            </button>}
             <button onClick={onToggle}
               className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
               style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", boxShadow: "0 4px 12px rgba(124,58,237,0.5)" }}>
@@ -552,11 +553,16 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
                 ? <Pause size={15} className="text-white" />
                 : <Play  size={15} className="text-white ml-0.5" />}
             </button>
-            <button onClick={onNext} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+            {!isMinimized && <button onClick={onNext} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
               <SkipForward size={14} className="text-white/70" />
-            </button>
-            <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
+            </button>}
+            {!isMinimized && <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
               {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
+            </button>}
+            <button onClick={() => setIsMinimized(value => !value)}
+              aria-label={isMinimized ? "Agrandi mini-player la" : "Minimize mini-player la"}
+              className="w-7 h-7 flex items-center justify-center">
+              <ChevronDown size={15} className={`text-white/55 transition-transform ${isMinimized ? "rotate-180" : ""}`} />
             </button>
             <button onClick={onClose} className="w-7 h-7 flex items-center justify-center">
               <X size={13} className="text-white/30" />

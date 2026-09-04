@@ -67,16 +67,19 @@ function calcRepayment(principal: number, months: number, rate: number) {
 
 // ── Upload helper ──────────────────────────────────────────────────────────────
 async function uploadFile(file: File, token: string): Promise<string> {
-  const presignRes = await fetch("/api/s3-upload/presign", {
+  const body = new FormData();
+  body.append("file", file);
+
+  const uploadRes = await fetch("/api/upload", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    headers: { Authorization: `Bearer ${token}` },
+    body,
   });
-  if (!presignRes.ok) throw new Error("Failed to get upload URL");
-  const { uploadUrl, publicUrl } = await presignRes.json();
-  const putRes = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-  if (!putRes.ok) throw new Error("Upload failed");
-  return publicUrl as string;
+  const result = await uploadRes.json().catch(() => null) as { url?: string; error?: string } | null;
+  if (!uploadRes.ok || !result?.url) {
+    throw new Error(result?.error ?? "Upload failed");
+  }
+  return result.url;
 }
 
 // ── Installment type ───────────────────────────────────────────────────────────
@@ -518,6 +521,7 @@ function FileUploadPicker({
   token: string; existing?: string[];
 }) {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
   const [urls, setUrls] = useState<string[]>(existing);
   const ref = useRef<HTMLInputElement>(null);
@@ -534,8 +538,14 @@ function FileUploadPicker({
       const combined = multiple ? [...urls, ...newUrls] : newUrls;
       setUrls(combined);
       onUploaded(combined);
-    } catch {
-      // silently ignore — user sees no preview
+    } catch (error) {
+      toast({
+        title: t("loanPage.uploadFailed", { defaultValue: "Upload failed" }),
+        description: error instanceof Error
+          ? error.message
+          : t("loanPage.uploadFailedDesc", { defaultValue: "Please try again." }),
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
@@ -562,7 +572,17 @@ function FileUploadPicker({
       <input ref={ref} type="file" accept="image/*,.pdf" multiple={multiple} className="hidden" onChange={e => handleFiles(e.target.files)} />
       {urls.length > 0 && (
         <div className="flex gap-2 flex-wrap">
-          {urls.map((u, i) => (
+          {urls.map((u, i) => u.toLowerCase().includes(".pdf") ? (
+            <a
+              key={i}
+              href={u}
+              target="_blank"
+              rel="noreferrer"
+              className="h-14 px-3 flex items-center justify-center rounded-lg border border-border text-xs font-semibold text-primary hover:bg-primary/5"
+            >
+              PDF {i + 1}
+            </a>
+          ) : (
             <img key={i} src={u} alt="" className="h-14 w-14 object-cover rounded-lg border border-border" />
           ))}
         </div>

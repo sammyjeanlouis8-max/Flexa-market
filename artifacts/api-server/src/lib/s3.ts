@@ -44,6 +44,7 @@ export type AllowedMimeType =
   | "image/gif"
   | "image/heic"
   | "image/heif"
+  | "application/pdf"
   | "video/mp4"
   | "video/quicktime"
   | "video/webm"
@@ -73,6 +74,7 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AllowedMimeType>([
   "image/gif",
   "image/heic",
   "image/heif",
+  "application/pdf",
   "video/mp4",
   "video/quicktime",
   "video/webm",
@@ -101,7 +103,7 @@ const MAX_FILE_SIZE_BYTES = 300 * 1024 * 1024;
 export function validateMimeType(mimeType: string): void {
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     throw new Error(
-      `File type "${mimeType}" is not allowed. Accepted types: images (JPEG, PNG, WebP, GIF) and videos (MP4, MOV, WebM).`
+      `File type "${mimeType}" is not allowed. Accepted types: images (JPEG, PNG, WebP, GIF, HEIC), PDF documents, videos, and audio.`
     );
   }
 }

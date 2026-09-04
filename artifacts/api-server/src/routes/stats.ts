@@ -19,6 +19,7 @@ function formatListing(
     title: listing.title,
     description: listing.description,
     price: listing.price,
+    currency: listing.currency ?? "USD",
     category: cat?.name ?? "Other",
     categorySlug: cat?.slug ?? "other",
     categoryIcon: cat?.icon ?? null,

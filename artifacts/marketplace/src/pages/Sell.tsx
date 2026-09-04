@@ -362,6 +362,7 @@ export default function Sell() {
       }
       // Create mode
       clearDraft();
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/home"] });
       if (l.moderationStatus === "rejected") {
         toast({ title: t("sell.moderation.rejectedTitle"), description: t("sell.moderation.rejectedDesc"), variant: "destructive" });
         setLocation("/profile");

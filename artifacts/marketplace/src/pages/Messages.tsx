@@ -22,6 +22,7 @@ import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useSocket } from "@/hooks/useSocket";
+import { listPendingVoices, removePendingVoice, savePendingVoice, updatePendingVoice } from "@/lib/voiceOutbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Conversation = {
@@ -1130,6 +1131,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
   const [voiceFinalizing, setVoiceFinalizing] = useState(false);
+  const [pendingVoiceCount, setPendingVoiceCount] = useState(0);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
@@ -1145,6 +1147,8 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     finalize: () => Promise<void>;
   } | null>(null);
   const voiceBusyRef = useRef(false);
+  const voiceQueueBusyRef = useRef(false);
+  const voiceQueueLastNoticeRef = useRef(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const recordingMeterRafRef = useRef<number | null>(null);
@@ -1443,17 +1447,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           if (session.cancelled || session.failed) return;
           const blob = new Blob(session.chunks, { type: session.recordedMime });
           if (blob.size < 100) return;
-          const tkn = localStorage.getItem("flexamarket_token") ?? "";
-          setUploading(true);
           try {
-            // Normalize MIME params (e.g. audio/webm;codecs=opus → audio/webm).
+            // Persist before uploading so a weak connection cannot destroy the recording.
             const uploadMime = session.recordedMime.split(";")[0].trim();
-            const url = await uploadMedia(blob as unknown as File, uploadMime, tkn);
-            doSend({ messageType: "audio", mediaUrl: url, content: "" });
+            await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
+            setPendingVoiceCount(count => count + 1);
+            void flushPendingVoices();
           } catch {
             toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
-          } finally {
-            setUploading(false);
           }
         } finally {
           session.chunks = [];
@@ -1495,7 +1496,75 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     }
   };
 
-  const stopVoiceRecording = (cancel = false) => {
+  const sendQueuedVoice = useCallback((body: { messageType: "audio"; mediaUrl: string; content: string }) => new Promise<void>((resolve, reject) => {
+      sendMsg.mutate({ id: convId, data: body as any }, {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+          queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+          setTimeout(() => scrollToBottom(true), 100);
+          resolve();
+        },
+        onError: reject,
+      });
+    }), [convId, queryClient, sendMsg]);
+
+    const flushPendingVoices = useCallback(async () => {
+      if (voiceQueueBusyRef.current || isRestricted) return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      voiceQueueBusyRef.current = true;
+      try {
+        const pending = await listPendingVoices(convId);
+        setPendingVoiceCount(pending.length);
+        for (const item of pending) {
+          try {
+            let mediaUrl = item.mediaUrl;
+            if (!mediaUrl) {
+              setUploading(true);
+              const token = localStorage.getItem("flexamarket_token") ?? "";
+              const blob = new Blob([item.bytes], { type: item.mimeType });
+              mediaUrl = await uploadMedia(blob, item.mimeType, token);
+              await updatePendingVoice(item.id, { mediaUrl });
+            }
+            await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
+            await removePendingVoice(item.id);
+            setPendingVoiceCount(count => Math.max(0, count - 1));
+          } catch (error) {
+            await updatePendingVoice(item.id, {
+              attempts: item.attempts + 1,
+              lastError: error instanceof Error ? error.message : "Voice delivery failed",
+            }).catch(() => {});
+            if (Date.now() - voiceQueueLastNoticeRef.current > 60000) {
+              voiceQueueLastNoticeRef.current = Date.now();
+              toast({ title: t("messages.voiceUploadFailed"), description: t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon."), variant: "destructive" });
+            }
+            break;
+          } finally {
+            setUploading(false);
+          }
+        }
+      } catch (error) {
+        console.error("Unable to process pending voice messages", error);
+      } finally {
+        voiceQueueBusyRef.current = false;
+      }
+    }, [convId, isRestricted, sendQueuedVoice, t, toast]);
+
+    useEffect(() => {
+      const wakeQueue = () => { void flushPendingVoices(); };
+      void flushPendingVoices();
+      window.addEventListener("online", wakeQueue);
+      window.addEventListener("focus", wakeQueue);
+      document.addEventListener("visibilitychange", wakeQueue);
+      const retryTimer = window.setInterval(wakeQueue, 15000);
+      return () => {
+        window.removeEventListener("online", wakeQueue);
+        window.removeEventListener("focus", wakeQueue);
+        document.removeEventListener("visibilitychange", wakeQueue);
+        window.clearInterval(retryTimer);
+      };
+    }, [flushPendingVoices]);
+
+      const stopVoiceRecording = (cancel = false) => {
     stopRecordingTimer();
     setIsRecording(false);
     setRecordingPaused(false);
@@ -1873,7 +1942,14 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
 
-        {isRestricted ? (
+        {pendingVoiceCount > 0 && !isRecording && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 13px", marginBottom: 8, borderRadius: 14, background: c.isDark ? "rgba(165,180,252,0.12)" : "#FFF7ED", color: c.isDark ? "#E0E7FF" : "#9A3412", fontSize: 13 }}>
+              <span>🎤 {t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}</span>
+              <button type="button" onClick={() => void flushPendingVoices()} style={{ border: "none", background: "transparent", color: "inherit", fontWeight: 700, cursor: "pointer" }}>{t("messages.retry", "Retry")}</button>
+            </div>
+          )}
+
+            {isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
         ) : isRecording ? (
           <div style={{

@@ -89,6 +89,116 @@ export async function ensureBoostVideoUploadSchema(): Promise<void> {
 export async function runStartupMigrations(): Promise<void> {
   const migrations: Array<{ name: string; sql: string }> = [
     {
+      name: "cross_app_wallet_transfers.create",
+      sql: `CREATE TABLE IF NOT EXISTS cross_app_wallet_transfers (
+        id SERIAL PRIMARY KEY,
+        idempotency_key TEXT,
+        source_app TEXT NOT NULL,
+        destination_app TEXT NOT NULL,
+        source_user_id TEXT NOT NULL,
+        destination_user_id TEXT NOT NULL,
+        local_user_id INTEGER REFERENCES users(id),
+        amount_cents INTEGER NOT NULL,
+        fee_cents INTEGER NOT NULL DEFAULT 0,
+        net_cents INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        direction TEXT NOT NULL,
+        note TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        completed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    },
+    {
+      name: "cross_app_wallet_transfers.idempotency_nullable",
+      sql: `ALTER TABLE cross_app_wallet_transfers ALTER COLUMN idempotency_key DROP NOT NULL`,
+    },
+    {
+      name: "cross_app_wallet_transfers.idempotency_deduplicate",
+      sql: `WITH ranked AS (
+        SELECT id,
+          ROW_NUMBER() OVER (
+            PARTITION BY idempotency_key
+            ORDER BY CASE WHEN status = 'completed' THEN 0 ELSE 1 END, id
+          ) AS rn
+        FROM cross_app_wallet_transfers
+        WHERE idempotency_key IS NOT NULL
+      )
+      UPDATE cross_app_wallet_transfers t
+      SET idempotency_key = NULL, updated_at = NOW()
+      FROM ranked r
+      WHERE t.id = r.id AND r.rn > 1`,
+    },
+    {
+      name: "cross_app_wallet_transfers.idempotency",
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS cross_app_transfers_idempotency_unique ON cross_app_wallet_transfers(idempotency_key) WHERE idempotency_key IS NOT NULL`,
+    },
+    {
+      name: "cross_app_wallet_transfers.cents_columns",
+      sql: `ALTER TABLE cross_app_wallet_transfers
+        ADD COLUMN IF NOT EXISTS amount_cents INTEGER,
+        ADD COLUMN IF NOT EXISTS fee_cents INTEGER,
+        ADD COLUMN IF NOT EXISTS net_cents INTEGER`,
+    },
+    {
+      name: "cross_app_wallet_transfers.cents_backfill",
+      sql: `DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cross_app_wallet_transfers' AND column_name = 'amount_usd') THEN
+          UPDATE cross_app_wallet_transfers
+          SET amount_cents = COALESCE(amount_cents, ROUND(amount_usd * 100)::INTEGER),
+              fee_cents = COALESCE(fee_cents, ROUND(fee_usd * 100)::INTEGER),
+              net_cents = COALESCE(net_cents, ROUND(net_amount_usd * 100)::INTEGER)
+          WHERE amount_cents IS NULL OR fee_cents IS NULL OR net_cents IS NULL;
+        END IF;
+      END $$`,
+    },
+    // Databases created by the first bridge revision have required REAL columns.
+    // Keep them for historical reads but make them nullable before new cents-only writes.
+    {
+      name: "cross_app_wallet_transfers.legacy_amount_nullable",
+      sql: `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cross_app_wallet_transfers' AND column_name='amount_usd') THEN ALTER TABLE cross_app_wallet_transfers ALTER COLUMN amount_usd DROP NOT NULL; END IF; END $$`,
+    },
+    {
+      name: "cross_app_wallet_transfers.legacy_fee_nullable",
+      sql: `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cross_app_wallet_transfers' AND column_name='fee_usd') THEN ALTER TABLE cross_app_wallet_transfers ALTER COLUMN fee_usd DROP NOT NULL; END IF; END $$`,
+    },
+    {
+      name: "cross_app_wallet_transfers.legacy_net_nullable",
+      sql: `DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='cross_app_wallet_transfers' AND column_name='net_amount_usd') THEN ALTER TABLE cross_app_wallet_transfers ALTER COLUMN net_amount_usd DROP NOT NULL; END IF; END $$`,
+    },
+    {
+      name: "wallet_transfers.idempotency_key",
+      sql: `ALTER TABLE wallet_transfers ADD COLUMN IF NOT EXISTS idempotency_key TEXT`,
+    },
+    {
+      name: "wallet_transfers.idempotency_deduplicate",
+      sql: `WITH ranked AS (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY idempotency_key ORDER BY created_at, id) AS rn
+        FROM wallet_transfers
+        WHERE idempotency_key IS NOT NULL
+      )
+      UPDATE wallet_transfers w SET idempotency_key = NULL
+      FROM ranked r WHERE w.id = r.id AND r.rn > 1`,
+    },
+    {
+      name: "wallet_transfers.idempotency_unique",
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS wallet_transfers_idempotency_unique ON wallet_transfers(idempotency_key) WHERE idempotency_key IS NOT NULL`,
+    },
+    {
+      name: "cross_app_wallet_transfers.pending",
+      sql: `CREATE INDEX IF NOT EXISTS cross_app_transfers_pending_idx ON cross_app_wallet_transfers(direction, status, created_at)`,
+    },
+    {
+      name: "cross_app_wallet_transfers.local_user",
+      sql: `CREATE INDEX IF NOT EXISTS cross_app_transfers_local_user_idx ON cross_app_wallet_transfers(local_user_id, created_at)`,
+    },
+    {
+      name: "cross_app_wallet_transfers.remote_user",
+      sql: `CREATE INDEX IF NOT EXISTS cross_app_transfers_remote_user_idx ON cross_app_wallet_transfers(destination_app, destination_user_id)`,
+    },
+    {
       name: "users.subscription_plan",
       sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_plan text NOT NULL DEFAULT 'basic'`,
     },
@@ -917,8 +1027,22 @@ export async function runStartupMigrations(): Promise<void> {
       )`,
     },
     {
-      name: "transfer_monthly_usage.index",
-      sql: `CREATE INDEX IF NOT EXISTS transfer_monthly_usage_user_month_idx ON transfer_monthly_usage(user_id, month_key)`,
+      name: "transfer_monthly_usage.consolidate_duplicates",
+      sql: `WITH ranked AS (
+        SELECT id, user_id, month_key,
+          SUM(total_sent_usd) OVER (PARTITION BY user_id, month_key) AS combined_total,
+          ROW_NUMBER() OVER (PARTITION BY user_id, month_key ORDER BY created_at, id) AS rn
+        FROM transfer_monthly_usage
+      ),
+      updated AS (
+        UPDATE transfer_monthly_usage u SET total_sent_usd = r.combined_total, updated_at = NOW()
+        FROM ranked r WHERE u.id = r.id AND r.rn = 1 RETURNING u.id
+      )
+      DELETE FROM transfer_monthly_usage u USING ranked r WHERE u.id = r.id AND r.rn > 1`,
+    },
+    {
+      name: "transfer_monthly_usage.unique_index",
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS transfer_monthly_usage_user_month_unique_idx ON transfer_monthly_usage(user_id, month_key)`,
     },
     {
       name: "drivers.latitude",

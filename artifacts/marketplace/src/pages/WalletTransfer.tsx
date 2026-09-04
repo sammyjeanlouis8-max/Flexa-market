@@ -16,7 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 const REGIONAL_COUNTRIES = ["Haiti", "Dominican Republic"];
 
 interface SearchedUser {
-  id: number;
+  id: number | string;
   name: string;
   avatar: string | null;
   country: string | null;
@@ -51,11 +51,13 @@ export default function WalletTransfer() {
   const [preview, setPreview] = useState<TransferPreview | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [walletAvailable, setWalletAvailable] = useState<number | null>(null);
+  const [recipientSource, setRecipientSource] = useState<"market" | "wholesale">("market");
+  const [submitIdempotencyKey, setSubmitIdempotencyKey] = useState("");
+  const [transferPending, setTransferPending] = useState(false);
 
   useEffect(() => {
-    if (!user) { if (!isLoading) navigate("/auth/login"); return null; }
+    if (!user) { navigate("/auth/login"); return; }
   }, [user]);
 
   useEffect(() => {
@@ -63,19 +65,30 @@ export default function WalletTransfer() {
     fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(d => {
-        setWalletBalance(d.balanceUsd ?? null);
         setWalletAvailable(d.availableUsd ?? d.balanceUsd ?? null);
       })
       .catch(() => {});
   }, [token]);
 
+  // An idempotency key belongs to one immutable transfer intent. Network retries
+  // with unchanged fields reuse it; editing any intent field starts a new intent.
+  useEffect(() => {
+    setSubmitIdempotencyKey("");
+  }, [recipientSource, recipient?.id, amount, note]);
+
   const searchUsers = async () => {
     if (!query.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`/api/wallet/p2p/search?q=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = recipientSource === "market"
+        ? await fetch(`/api/wallet/p2p/search?q=${encodeURIComponent(query)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        : await fetch("/api/wallet/cross-app/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ query }),
+          });
       if (res.ok) setResults((await res.json()).users ?? []);
     } finally { setSearching(false); }
   };
@@ -84,10 +97,12 @@ export default function WalletTransfer() {
     if (!recipient || !parseFloat(amt)) return;
     setLoadingPreview(true);
     try {
-      const res = await fetch("/api/wallet/p2p/preview", {
+      const res = await fetch(recipientSource === "market" ? "/api/wallet/p2p/preview" : "/api/wallet/cross-app/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ toUserId: recipient.id, amountUsd: parseFloat(amt) }),
+        body: JSON.stringify(recipientSource === "market"
+          ? { toUserId: recipient.id, amountUsd: parseFloat(amt) }
+          : { destinationUserId: recipient.id, amountUsd: parseFloat(amt) }),
       });
       if (res.ok) setPreview(await res.json());
     } finally { setLoadingPreview(false); }
@@ -97,13 +112,18 @@ export default function WalletTransfer() {
     if (!recipient || !preview) return;
     setSubmitting(true);
     try {
-      const res = await fetch("/api/wallet/p2p", {
+      const idempotencyKey = submitIdempotencyKey || crypto.randomUUID();
+      if (!submitIdempotencyKey) setSubmitIdempotencyKey(idempotencyKey);
+      const res = await fetch(recipientSource === "market" ? "/api/wallet/p2p" : "/api/wallet/cross-app", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ toUserId: recipient.id, amountUsd: parseFloat(amount), note }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(recipientSource === "market"
+          ? { toUserId: recipient.id, amountUsd: parseFloat(amount), note, idempotencyKey }
+          : { destinationUserId: recipient.id, amountUsd: parseFloat(amount), note, idempotencyKey }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Error");
+      setTransferPending(Boolean(data.pending));
       setStep("done");
     } catch (err: any) {
       toast({ title: err.message ?? "Error. Please try again.", variant: "destructive" });
@@ -118,9 +138,13 @@ export default function WalletTransfer() {
         <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle className="h-10 w-10 text-green-600" />
         </div>
-        <h2 className="text-2xl font-black mb-2">{t("walletTransfer.successTitle")}</h2>
+        <h2 className="text-2xl font-black mb-2">
+          {transferPending ? "Transfer pending" : t("walletTransfer.successTitle")}
+        </h2>
         <p className="text-muted-foreground mb-2">
-          {t("walletTransfer.successDesc", { amount: parseFloat(amount).toFixed(2), name: recipient?.name })}
+          {transferPending
+            ? "Your wallet was debited safely. Delivery will retry automatically; you will not be charged twice."
+            : t("walletTransfer.successDesc", { amount: parseFloat(amount).toFixed(2), name: recipient?.name })}
         </p>
         {preview?.netAmountUsd && (
           <p className="text-sm text-muted-foreground">
@@ -128,7 +152,7 @@ export default function WalletTransfer() {
           </p>
         )}
         <div className="flex gap-3 justify-center mt-8">
-          <Button variant="outline" onClick={() => { setStep("search"); setRecipient(null); setAmount(""); setPreview(null); }}>
+          <Button variant="outline" onClick={() => { setStep("search"); setRecipient(null); setAmount(""); setPreview(null); setSubmitIdempotencyKey(""); setTransferPending(false); }}>
             {t("walletTransfer.newTransfer")}
           </Button>
           <Button onClick={() => navigate("/wallet")}>{t("walletTransfer.viewWallet")}</Button>
@@ -162,6 +186,24 @@ export default function WalletTransfer() {
       {step === "search" && (
         <div className="space-y-4">
           <h2 className="font-bold">{t("walletTransfer.searchTitle")}</h2>
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
+            <Button
+              type="button"
+              size="sm"
+              variant={recipientSource === "market" ? "default" : "ghost"}
+              onClick={() => { setRecipientSource("market"); setResults([]); setRecipient(null); }}
+            >
+              Flexa Market
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={recipientSource === "wholesale" ? "default" : "ghost"}
+              onClick={() => { setRecipientSource("wholesale"); setResults([]); setRecipient(null); }}
+            >
+              Flexa Wholesale
+            </Button>
+          </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -182,7 +224,7 @@ export default function WalletTransfer() {
             <div className="space-y-2">
               {results.map(u => (
                 <button
-                  key={u.id}
+                  key={String(u.id)}
                   type="button"
                   onClick={() => { setRecipient(u); setStep("amount"); }}
                   className="w-full flex items-center gap-3 p-3 bg-card border border-border rounded-2xl hover:border-primary/50 hover:bg-accent transition-all text-left"
@@ -193,6 +235,7 @@ export default function WalletTransfer() {
                   </Avatar>
                   <div className="flex-1">
                     <p className="font-semibold text-sm">{u.name}</p>
+                    {recipientSource === "wholesale" && <p className="text-[10px] font-medium text-primary">Flexa Wholesale</p>}
                     {u.country && <p className="text-xs text-muted-foreground">{u.country}</p>}
                   </div>
                   {!REGIONAL_COUNTRIES.includes(u.country ?? "") && REGIONAL_COUNTRIES.includes(user.country ?? "") && (

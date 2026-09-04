@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, index, json } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, index, json, uniqueIndex } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 // ── P2P Wallet Transfers ─────────────────────────────────────────────────────
@@ -23,12 +23,14 @@ export const walletTransfersTable = pgTable("wallet_transfers", {
   isFlagged: boolean("is_flagged").notNull().default(false),
   flagReason: text("flag_reason"),
   ipAddress: text("ip_address"),
+  idempotencyKey: text("idempotency_key"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byFromUser: index("wallet_transfers_from_user_idx").on(t.fromUserId),
   byToUser:   index("wallet_transfers_to_user_idx").on(t.toUserId),
   byStatus:   index("wallet_transfers_status_idx").on(t.status),
   byCreated:  index("wallet_transfers_created_idx").on(t.createdAt),
+  idempotencyUnique: uniqueIndex("wallet_transfers_idempotency_unique").on(t.idempotencyKey),
 }));
 
 // ── Daily Transfer Access Fees ────────────────────────────────────────────────
@@ -119,7 +121,7 @@ export const transferMonthlyUsageTable = pgTable("transfer_monthly_usage", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
-  byUserMonth: index("transfer_monthly_usage_user_month_idx").on(t.userId, t.monthKey),
+  byUserMonth: uniqueIndex("transfer_monthly_usage_user_month_unique_idx").on(t.userId, t.monthKey),
 }));
 
 export type WalletTransfer = typeof walletTransfersTable.$inferSelect;

@@ -66,11 +66,13 @@ import flexCardRouter from "./flex-card";
 import tvRouter from "./tv";
 import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
+import bridgeRouter from "./bridge";
 import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
+router.use(bridgeRouter);
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
 

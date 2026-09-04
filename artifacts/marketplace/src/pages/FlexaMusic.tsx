@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
-import { gAudio, patchMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
+import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -2799,18 +2799,28 @@ export default function FlexaMusic() {
   const [plGrad,    setPlGrad]      = useState<string | undefined>(undefined);
 
   // ── Player state ──────────────────────────────────────────────────────────
-  const [playerState, setPlayerState] = useState<PlayerState>({
-    track: null, playing: false, currentTime: 0, duration: 0, muted: false, volume: 1,
-  });
-  const [queue,    setQueue]    = useState<Track[]>([]);
-  const [queueIdx, setQueueIdx] = useState(0);
+  const initialMusicState = getMusicState();
+  const [playerState, setPlayerState] = useState<PlayerState>(() => ({
+    track: initialMusicState.track as Track | null,
+    playing: initialMusicState.playing,
+    currentTime: initialMusicState.currentTime,
+    duration: initialMusicState.duration,
+    muted: initialMusicState.muted,
+    volume: initialMusicState.volume,
+  }));
+  const [queue,    setQueue]    = useState<Track[]>(() => initialMusicState.queue as Track[]);
+  const [queueIdx, setQueueIdx] = useState(() => initialMusicState.queueIdx);
 
   // Use the module-level singleton so audio persists across route changes
   const audioRef    = useRef(gAudio);
   const listenRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playNextRef = useRef<() => void>(() => {});
   const playNextFreeRef = useRef<() => void>(() => {});
-  const [showNowPlaying, setShowNowPlaying] = useState(false);
+  // Re-entering /music while audio is already playing should reopen the
+  // expanded player. Closing it intentionally falls back to MiniPlayer.
+  const [showNowPlaying, setShowNowPlaying] = useState(
+    () => Boolean(initialMusicState.track && initialMusicState.playing)
+  );
 
   // Always-current refs — lets useCallback/effects read fresh values without
   // adding purchasedIds/user to deps (avoids stale-closure paywall bypass).
@@ -2818,6 +2828,28 @@ export default function FlexaMusic() {
   const userRef         = useRef<any>(user);
   useEffect(() => { purchasedIdsRef.current = purchasedIds; }, [purchasedIds]);
   useEffect(() => { userRef.current = user; }, [user]);
+
+  // FlexaMusic and GlobalMusicPlayer both read the same singleton audio state.
+  // Hydrate local UI state on mount so a track started on another page appears
+  // immediately instead of looking like playback stopped.
+  useEffect(() => {
+    const syncFromMusicStore = () => {
+      const s = getMusicState();
+      setPlayerState(prev => ({
+        ...prev,
+        track: s.track as Track | null,
+        playing: s.playing,
+        currentTime: s.currentTime,
+        duration: s.duration,
+        muted: s.muted,
+        volume: s.volume,
+      }));
+      setQueue(s.queue as Track[]);
+      setQueueIdx(s.queueIdx);
+    };
+    syncFromMusicStore();
+    return subscribeMusicState(syncFromMusicStore);
+  }, []);
 
   // ── Register mount/unmount with global store ──────────────────────────────
   useEffect(() => {

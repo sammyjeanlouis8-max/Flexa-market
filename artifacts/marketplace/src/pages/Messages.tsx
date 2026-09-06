@@ -1188,6 +1188,17 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     finalize: () => Promise<void>;
   } | null>(null);
   const voiceBusyRef = useRef(false);
+
+  useEffect(() => {
+    if (!showEmojiPanel) return;
+    const closeWhenTappingOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-emoji-panel], [data-emoji-trigger]")) return;
+      setShowEmojiPanel(false);
+    };
+    document.addEventListener("pointerdown", closeWhenTappingOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
+  }, [showEmojiPanel]);
   const voiceQueueBusyRef = useRef(false);
   const voiceQueueLastNoticeRef = useRef(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2019,6 +2030,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       {/* ── Emoji panel — slides up / down with animation ── */}
       <TikTokEmojiPanel
         visible={showEmojiPanel}
+        onRequestClose={() => {
+          setShowEmojiPanel(false);
+          setTimeout(() => chatInputRef.current?.focus(), 30);
+        }}
         onEmojiSelect={(emoji) => {
           setText(prev => insertEmojiAtCursor(chatInputRef.current, prev, emoji));
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
@@ -2210,6 +2225,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               <div style={{ display: "flex", alignItems: "center", flexShrink: 0, height: 34 }}>
                 <button
                   type="button"
+                  data-emoji-trigger
                   onClick={() => {
                     const next = !showEmojiPanel;
                     setShowEmojiPanel(next);

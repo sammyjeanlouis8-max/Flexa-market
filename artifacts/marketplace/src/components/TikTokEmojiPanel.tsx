@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Search, Clock, Smile, PawPrint, Apple, Zap, MapPin, Lightbulb, Heart, Flag } from "lucide-react";
+import { Search, X } from "lucide-react";
 
 // ─── Emoji dataset ────────────────────────────────────────────────────────────
 
@@ -58,6 +58,12 @@ const EMOJIS: Record<string, string[]> = {
     "🛏️","🛋️","🪑","🚽","🚿","🛁","🧴","🧷","🧹","🧺","🧻","🧼","🪥","🪒","🧽","📔","📓","📒","📕","📚",
     "🔬","🔭","📡","🧲","💊","🩻","🪤","🗡️","⚔️","🛡️","🪖","🔮","🪬","🧿","🎎","🎐","🎏","🎑","🧧","🎠",
   ],
+  business: [
+    "🛍️","🛒","🏪","🏬","🏢","🏦","🏭","🏗️","💼","👔","🧑‍💼","👩‍💼","👨‍💼","🤝","📦","📮","🚚","🚛","🛵","✈️",
+    "💰","💵","💶","💷","💴","🪙","💳","🧾","🏷️","💲","📈","📉","📊","🧮","📋","🗂️","📁","📌","✍️","📝",
+    "📱","☎️","📧","💻","🖥️","🖨️","⌨️","🗓️","⏰","🔒","🔑","✅","☑️","⭐","🎯","🏆","🥇","💡","🔔","📣",
+    "🎁","🎉","🆕","🆓","💯","🔥","🚀","🌐","📍","🗺️","⚖️","🔧","🛠️","🧰","📸","🎥","📢","💬","❤️","🙏",
+  ],
   symbols: [
     "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝",
     "💟","☮️","✝️","☪️","🕉️","✡️","🔯","🕎","☯️","☦️","🛐","♻️","🔱","📛","🔰","⭕","✅","☑️","✔️","❌",
@@ -94,16 +100,18 @@ const CATEGORIES = [
   { id: "activities",icon: "⚽",   label: "Spò"     },
   { id: "travel",    icon: "✈️",   label: "Vwayaj"  },
   { id: "objects",   icon: "💡",   label: "Objè"    },
+  { id: "business",  icon: "💼",   label: "Biznis"  },
   { id: "symbols",   icon: "❤️",   label: "Senbòl"  },
   { id: "flags",     icon: "🏳️",   label: "Drapo"   },
 ];
 
 interface Props {
   onEmojiSelect: (emoji: string) => void;
+  onRequestClose: () => void;
   visible: boolean;
 }
 
-export default function TikTokEmojiPanel({ onEmojiSelect, visible }: Props) {
+export default function TikTokEmojiPanel({ onEmojiSelect, onRequestClose, visible }: Props) {
   const [activeCategory, setActiveCategory] = useState("smileys");
   const [search, setSearch] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
@@ -134,6 +142,7 @@ export default function TikTokEmojiPanel({ onEmojiSelect, visible }: Props) {
 
   return (
     <div
+      data-emoji-panel
       style={{
         overflow: "hidden",
         maxHeight: visible ? 300 : 0,
@@ -173,6 +182,16 @@ export default function TikTokEmojiPanel({ onEmojiSelect, visible }: Props) {
               ✕
             </button>
           )}
+          <button
+            type="button"
+            onClick={onRequestClose}
+            className="flex items-center justify-center text-white/60 hover:text-white"
+            style={{ width: 30, height: 30, flexShrink: 0 }}
+            aria-label="Fèmen emoji yo"
+            title="Fèmen"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
       </div>
 

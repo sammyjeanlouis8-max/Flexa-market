@@ -1496,6 +1496,12 @@ components:
           type: string
         avatar:
           type: string
+        dateOfBirth:
+          type: ["string", "null"]
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        gender:
+          type: ["string", "null"]
+          enum: [male, female, other, null]
 
     Category:
       type: object

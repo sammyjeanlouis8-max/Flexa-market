@@ -579,7 +579,14 @@ export default function EditProfile() {
     if (!user) return;
     _triggerAutoSaveStatus?.("saving");
     updateUser.mutate(
-      { id: user.id, data: values },
+      {
+        id: user.id,
+        data: {
+          ...values,
+          dateOfBirth: values.dateOfBirth || null,
+          gender: values.gender || null,
+        },
+      },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
@@ -587,9 +594,13 @@ export default function EditProfile() {
           if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
           savedTimerRef.current = setTimeout(() => _triggerAutoSaveStatus?.("idle"), 3000);
         },
-        onError: () => {
+        onError: (error: any) => {
           _triggerAutoSaveStatus?.("idle");
-          toast({ title: t("editProfile.couldntSave"), description: t("editProfile.checkConnection"), variant: "destructive" });
+          toast({
+            title: t("editProfile.couldntSave"),
+            description: error?.data?.error ?? t("editProfile.checkConnection"),
+            variant: "destructive",
+          });
         },
       }
     );

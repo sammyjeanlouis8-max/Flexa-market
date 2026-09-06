@@ -95,12 +95,25 @@ export type UserProfile = User & {
   isFollowing: boolean;
 };
 
+export type UpdateUserBodyGender =
+  (typeof UpdateUserBodyGender)[keyof typeof UpdateUserBodyGender] | null;
+
+export const UpdateUserBodyGender = {
+  male: "male",
+  female: "female",
+  other: "other",
+} as const;
+
 export interface UpdateUserBody {
   name?: string;
   phone?: string;
   location?: string;
   bio?: string;
   avatar?: string;
+  /** @nullable */
+  dateOfBirth?: string | null;
+  /** @nullable */
+  gender?: UpdateUserBodyGender;
 }
 
 export interface Category {

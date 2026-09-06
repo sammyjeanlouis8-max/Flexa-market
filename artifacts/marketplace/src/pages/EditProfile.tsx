@@ -472,7 +472,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
 }
 
 export default function EditProfile() {
-  const { user, token } = useAuth();
+  const { user, token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation();

@@ -6,6 +6,7 @@ export type ModerationDecision = "approved" | "pending" | "rejected";
 export type ModerationCategory =
   | "weapons"
   | "drugs"
+  | "animals"
   | "sexual"
   | "suggestive"
   | "toy_weapons"
@@ -36,6 +37,13 @@ const HIGH_RISK_PATTERNS: Record<Exclude<ModerationCategory, "suggestive" | "toy
     /\b(kokayin|ewoyin|wid)\b/i,
     /\b(cocaína|heroína|metanfetamina|marihuana en venta|cannabis en venta|hachís)\b/i,
     /\b(cocaína|heroína|metanfetamina|maconha à venda|cannabis à venda|haxixe)\b/i,
+  ],
+  animals: [
+    /\b(live animal|live animals|animal for sale|animals for sale|pet for sale|pets for sale|dog for sale|dogs for sale|cat for sale|cats for sale|puppy|puppies|kitten|kittens|livestock for sale)\b/i,
+    /\b(animal vivant|animaux vivants|animal à vendre|animaux à vendre|chien à vendre|chiens à vendre|chat à vendre|chats à vendre|chiot|chiots|chaton|chatons)\b/i,
+    /\b(bèt vivan|bèt pou vann|chen pou vann|chat pou vann|ti chen|ti chat|kabrit pou vann|bèf pou vann|kochon pou vann|poul vivan|kanna vivan)\b/i,
+    /\b(animal vivo|animales vivos|animal en venta|animales en venta|perro en venta|perros en venta|gato en venta|gatos en venta|cachorro|cachorros|gatito|gatitos)\b/i,
+    /\b(animal vivo|animais vivos|animal à venda|animais à venda|cão à venda|cães à venda|gato à venda|gatos à venda|filhote|filhotes)\b/i,
   ],
   sexual: [
     /\b(porn|pornographic|nude|nudes|naked photos|escort|prostitute|prostitution|sex toy|sex toys|dildo|vibrator|fleshlight|adult film|xxx|onlyfans|sugar baby|sugar daddy)\b/i,
@@ -166,6 +174,9 @@ const CATEGORY_MAP: Record<string, ModerationCategory> = {
   drugs: "drugs",
   "illicit/drugs": "drugs",
   illicit: "drugs",
+  animals: "animals",
+  "animals/live": "animals",
+  "regulated/animals": "animals",
   sexual: "sexual",
   "sexual/explicit": "sexual",
   "sexual/minors": "sexual",
@@ -194,9 +205,10 @@ async function analyzeWithAI(title: string, description: string, imageUrls: stri
         type: "text",
         text:
           `Classify this marketplace listing. Return STRICT JSON: {"flags": string[], "confidence": number 0..1, "explanation": string}. ` +
-          `Allowed flags: weapons, drugs, sexual, suggestive, toy_weapons, unclear, violence, hate. ` +
+          `Allowed flags: weapons, drugs, animals, sexual, suggestive, toy_weapons, unclear, violence, hate. ` +
           `Use "weapons" only for real firearms/ammo (not toys/airsoft/nerf — use toy_weapons). ` +
           `Use "drugs" only for illicit drugs being sold. ` +
+          `Use "animals" only when a live animal is being offered or sold; do not flag pet food, toys, supplies, clothing, or animal-themed products. ` +
           `confidence reflects how dangerous/policy-violating this content is.\n\n${text}`,
       },
       ...visionImages.map((url) => ({ type: "image_url" as const, image_url: { url } })),
@@ -229,7 +241,7 @@ async function analyzeWithAI(title: string, description: string, imageUrls: stri
   }
 }
 
-const HIGH_RISK_FLAGS: ReadonlySet<ModerationCategory> = new Set(["weapons", "drugs", "sexual", "violence", "hate"]);
+const HIGH_RISK_FLAGS: ReadonlySet<ModerationCategory> = new Set(["weapons", "drugs", "animals", "sexual", "violence", "hate"]);
 const MEDIUM_RISK_FLAGS: ReadonlySet<ModerationCategory> = new Set(["suggestive", "toy_weapons", "unclear"]);
 
 export async function moderateListing(input: {

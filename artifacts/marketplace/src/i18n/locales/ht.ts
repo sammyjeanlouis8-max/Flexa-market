@@ -139,7 +139,7 @@ export default {
     preferences: "Preferans",
     security: "Sekirite",
     rights: "Tout dwa rezève.",
-    madeIn: "Fèt ak ❤ ann Ayiti",
+    madeIn: "Fèt ak ❤ Ozetazini",
     privacy: "Politik Konfidansyalite",
     terms: "Kondisyon Sèvis",
     contactSupport: "Kontakte Sipò",

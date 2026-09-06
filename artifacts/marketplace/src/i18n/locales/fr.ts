@@ -53,7 +53,7 @@ export default {
     preferences: "Préférences",
     security: "Sécurité",
     rights: "Tous droits réservés.",
-    madeIn: "Fait avec ❤ en Haïti",
+    madeIn: "Fait avec ❤ aux États-Unis",
     privacy: "Politique de confidentialité",
     terms: "Conditions d'utilisation",
     contactSupport: "Contacter le support",

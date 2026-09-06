@@ -1,7 +1,6 @@
 import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { Mail, MapPin } from "lucide-react";
 
 /**
@@ -226,9 +225,8 @@ export default function Footer() {
             © {year} FLEXA MARKET. {t("footer.rights", { defaultValue: "All rights reserved." })}
           </p>
           <div className="flex items-center gap-3">
-            <LanguageSwitcher variant="icon" align="end" />
             <span className="text-xs text-muted-foreground">
-              {t("footer.madeIn", { defaultValue: "Made with ❤ in Haiti" })}
+              🇺🇸 {t("footer.madeIn", { defaultValue: "Made with ❤ in the USA" })}
             </span>
           </div>
         </div>

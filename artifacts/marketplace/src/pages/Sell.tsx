@@ -21,6 +21,7 @@ import { MULTI_CURRENCY_COUNTRIES, getCurrencySymbolByCode } from "@/lib/currenc
 import { cn } from "@/lib/utils";
 import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
 import ListingCard from "@/components/ListingCard";
+import { apiFetch } from "@/lib/api";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -101,7 +102,10 @@ export default function Sell() {
   const { data: categories } = useGetCategories();
   const createListing = useCreateListing();
   const updateListing = useUpdateListing();
-  const isPending = isEditMode ? updateListing.isPending : createListing.isPending;
+  const [adminUpdatePending, setAdminUpdatePending] = useState(false);
+  const isPending = isEditMode
+    ? (isAdmin ? adminUpdatePending : updateListing.isPending)
+    : createListing.isPending;
 
   // Fetch existing listing when editing
   // editId ?? 0: when null, id=0 → enabled:!!0=false → query skipped automatically
@@ -389,7 +393,16 @@ export default function Sell() {
       toast({ title: t("errors.submitFailed", "Submission failed"), description, variant: "destructive" });
     };
 
-    if (isEditMode && editId) {
+    if (isEditMode && editId && isAdmin) {
+      setAdminUpdatePending(true);
+      apiFetch<any>(`/api/admin/listings/${editId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      })
+        .then(handleSuccess)
+        .catch(handleError)
+        .finally(() => setAdminUpdatePending(false));
+    } else if (isEditMode && editId) {
       updateListing.mutate(
         { id: editId, data: payload as any },
         { onSuccess: handleSuccess, onError: handleError },

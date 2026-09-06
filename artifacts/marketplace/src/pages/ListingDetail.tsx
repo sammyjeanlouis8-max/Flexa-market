@@ -88,6 +88,7 @@ export default function ListingDetail() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [removeVideoConfirmOpen, setRemoveVideoConfirmOpen] = useState(false);
   const [removeVideoLoading, setRemoveVideoLoading] = useState(false);
+  const [adminActioning, setAdminActioning] = useState<"approve" | "reject" | "remove" | null>(null);
   const [offerOpen, setOfferOpen] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [offerMsg, setOfferMsg] = useState("");
@@ -683,6 +684,67 @@ export default function ListingDetail() {
       onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
       onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
     });
+  };
+
+  const refreshListingAfterAdminAction = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(id) }),
+      queryClient.invalidateQueries({ queryKey: getGetListingsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetFeaturedListingsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetUserListingsQueryKey(listing.sellerId) }),
+      queryClient.invalidateQueries({ queryKey: getGetFavoritesQueryKey() }),
+    ]);
+  };
+
+  const handleAdminListingAction = async (action: "approve" | "reject" | "remove") => {
+    let reason = "";
+    if (action === "reject" || action === "remove") {
+      const entered = window.prompt(
+        action === "reject"
+          ? "Ekri rezon rejè a pou vandè a wè li:"
+          : "Ekri rezon ou retire pwodwi a pou vandè a wè li:",
+        "Pwodwi a pa respekte règleman Flexa Market.",
+      );
+      if (entered === null) return;
+      reason = entered.trim();
+      if (!reason) {
+        toast({ title: "Rezon an obligatwa", variant: "destructive" });
+        return;
+      }
+    }
+
+    setAdminActioning(action);
+    try {
+      if (action === "approve") {
+        await apiFetch(`/api/admin/moderation/${id}/approve`, { method: "POST" });
+      } else if (action === "reject") {
+        await apiFetch(`/api/admin/moderation/${id}/reject`, {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        });
+      } else {
+        await apiFetch(`/api/admin/listings/${id}/remove`, {
+          method: "POST",
+          body: JSON.stringify({ reason }),
+        });
+      }
+      await refreshListingAfterAdminAction();
+      toast({
+        title: action === "approve"
+          ? "Pwodwi a apwouve"
+          : action === "reject"
+            ? "Pwodwi a rejte"
+            : "Pwodwi a retire",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Aksyon admin lan echwe",
+        description: error?.message ?? "Tanpri eseye ankò.",
+        variant: "destructive",
+      });
+    } finally {
+      setAdminActioning(null);
+    }
   };
 
   const handleOffer = () => {
@@ -1612,7 +1674,44 @@ export default function ListingDetail() {
         )}
 
         {isAdminViewer && !isOwner && (
-          <div className="px-4 py-3">
+          <div className="px-4 py-4 space-y-2 border-y bg-amber-50/40 dark:bg-amber-950/10">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+              <Shield className="h-4 w-4" />
+              Kontwòl administratè
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" onClick={() => setLocation(`/sell?edit=${id}`)} data-testid="button-admin-edit-listing">
+                <Pencil className="h-4 w-4 mr-1.5" /> Modifye
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white"
+                disabled={adminActioning !== null}
+                onClick={() => handleAdminListingAction("approve")}
+                data-testid="button-admin-approve-listing"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-1.5" />
+                {adminActioning === "approve" ? "..." : "Apwouve"}
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={adminActioning !== null}
+                onClick={() => handleAdminListingAction("reject")}
+                data-testid="button-admin-reject-listing"
+              >
+                <AlertTriangle className="h-4 w-4 mr-1.5" />
+                {adminActioning === "reject" ? "..." : "Rejte"}
+              </Button>
+              <Button
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50 dark:text-red-300"
+                disabled={adminActioning !== null}
+                onClick={() => handleAdminListingAction("remove")}
+                data-testid="button-admin-remove-listing"
+              >
+                <Trash2 className="h-4 w-4 mr-1.5" />
+                {adminActioning === "remove" ? "..." : "Retire"}
+              </Button>
+            </div>
             <Button variant="outline" size="sm" className="w-full border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-admin-boost-listing">
               <Zap className="h-4 w-4 mr-1" />
               <Shield className="h-3.5 w-3.5 mr-1.5 opacity-70" />

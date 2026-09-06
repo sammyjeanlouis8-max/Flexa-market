@@ -60,6 +60,7 @@ interface ActiveBoost {
   boostId: number;
   plan: string;
   budget: number;
+  isExpired: boolean;
 }
 
 function StatChip({
@@ -280,7 +281,7 @@ export default function MyBoosts() {
             <div className="space-y-3">
               {boosts.map(boost => {
                 const days = daysLeft(boost.boostExpiresAt);
-                const expiringSoon = days !== null && days <= 1;
+                const expiringSoon = !boost.isExpired && days !== null && days <= 1;
                 const refundEst = estimateRefund(boost);
                 return (
                   <div
@@ -325,7 +326,11 @@ export default function MyBoosts() {
                           <p className="font-bold text-foreground text-sm leading-snug line-clamp-2 flex-1">
                             {boost.title}
                           </p>
-                          {days !== null && (
+                          {boost.isExpired ? (
+                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              {t("myBoosts.expired")}
+                            </span>
+                          ) : days !== null && (
                             <span className={cn(
                               "shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap",
                               expiringSoon
@@ -396,36 +401,40 @@ export default function MyBoosts() {
                           }
                         </button>
                       )}
-                      {expiringSoon && (
+                      {(boost.isExpired || expiringSoon) && (
                         <button
                           type="button"
-                          onClick={() => setWizardOpen(true)}
+                          onClick={() => navigate(`/boost/${boost.listingId}`)}
                           className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-orange-50 dark:bg-orange-950/20 text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-900/30 text-xs font-semibold transition-colors border border-orange-200 dark:border-orange-800/40"
                         >
                           <RefreshCw className="h-3.5 w-3.5" />
                           {t("myBoosts.renewBoost")}
                         </button>
                       )}
-                      <Link
-                        href={`/boost/${boost.listingId}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity"
-                      >
-                        <Zap className="h-3.5 w-3.5" />
-                        {t("myBoosts.manage")}
-                      </Link>
+                      {!boost.isExpired && (
+                        <Link
+                          href={`/boost/${boost.listingId}`}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity"
+                        >
+                          <Zap className="h-3.5 w-3.5" />
+                          {t("myBoosts.manage")}
+                        </Link>
+                      )}
                       {/* Cancel boost */}
-                      <button
-                        type="button"
-                        onClick={() => setCancelTarget(boost)}
-                        className="flex items-center justify-center w-10 rounded-xl bg-red-50 dark:bg-red-950/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border border-red-200 dark:border-red-800/40"
-                        title={t("myBoosts.cancelBoost", { defaultValue: "Anile boost" })}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {!boost.isExpired && (
+                        <button
+                          type="button"
+                          onClick={() => setCancelTarget(boost)}
+                          className="flex items-center justify-center w-10 rounded-xl bg-red-50 dark:bg-red-950/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border border-red-200 dark:border-red-800/40"
+                          title={t("myBoosts.cancelBoost", { defaultValue: "Anile boost" })}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
 
                     {/* Refund estimate hint */}
-                    {refundEst > 0 && (
+                    {!boost.isExpired && refundEst > 0 && (
                       <p className="px-3 pb-2.5 text-[10px] text-muted-foreground">
                         {t("myBoosts.refundEstimate", { defaultValue: `Anile kounye a = ~$${refundEst.toFixed(2)} rembourseman`, amount: refundEst.toFixed(2) })}
                       </p>

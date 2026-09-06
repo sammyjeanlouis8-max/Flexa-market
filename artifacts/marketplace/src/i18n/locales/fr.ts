@@ -2230,10 +2230,10 @@ export default {
     },
   },
   myBoosts: {
-    title: "Mes Boosts Actifs",
-    subtitle: "Vos campagnes promotionnelles en direct",
-    loginRequired: "Connectez-vous pour voir vos boosts actifs",
-    empty: "Aucun boost actif pour l'instant",
+    title: "Mes Boosts",
+    subtitle: "Vos campagnes actives et vidéos expirées",
+    loginRequired: "Connectez-vous pour voir vos boosts",
+    empty: "Vous n'avez encore aucun boost",
     emptyDesc: "Boostez une annonce pour apparaître dans le fil vidéo",
     boostCta: "Commencer à booster",
     daysLeft: "{{n}} jour restant",
@@ -2259,6 +2259,7 @@ export default {
     willBeRefunded: "sera remboursé sur votre FM Wallet",
     ctrLabel: "CTR",
     renewBoost: "Renouveler",
+    expired: "Expiré",
   },
   boostWizard: {
     title: "Boostez Votre Vidéo",

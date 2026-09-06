@@ -2231,10 +2231,10 @@ export default {
     },
   },
   myBoosts: {
-    title: "Boost Aktif Mwen",
-    subtitle: "Kanpay pwomosyon ou yo an dirèk",
-    loginRequired: "Konekte pou wè boost aktif ou yo",
-    empty: "Pa gen boost aktif pou kounye a",
+    title: "Boost Mwen Yo",
+    subtitle: "Kanpay aktif ak videyo ki ekspire yo",
+    loginRequired: "Konekte pou wè boost ou yo",
+    empty: "Ou poko gen okenn boost",
     emptyDesc: "Bouste yon lis pou parèt nan fil videyo a",
     boostCta: "Kòmanse Bouste",
     daysLeft: "{{n}} jou rete",
@@ -2260,6 +2260,7 @@ export default {
     willBeRefunded: "pral retounen sou FM Wallet ou",
     ctrLabel: "CTR",
     renewBoost: "Renouvle",
+    expired: "Ekspire",
   },
   boostWizard: {
     title: "Bouste Videyo Ou",

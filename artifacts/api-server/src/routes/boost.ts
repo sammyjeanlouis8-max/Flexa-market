@@ -710,7 +710,8 @@ router.get("/listings/:id/boosts", requireAuth, async (req, res): Promise<void> 
 
 /**
  * GET /api/boost/my-active
- * Returns the authenticated seller's currently active boosts (with promo video).
+ * Returns the authenticated seller's current and expired boosts with promo video.
+ * Expired videos are owner-only here; public feeds still require an active boost.
  */
 router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
@@ -741,15 +742,22 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
       and(
         eq(boostsTable.userId, userId),
         eq(boostsTable.paymentStatus, "paid"),
-        eq(listingsTable.isBoosted, true),
-        gt(listingsTable.boostExpiresAt, now),
-        sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
+        isNotNull(listingsTable.boostVideoUrl),
       ),
     )
-    .orderBy(desc(listingsTable.boostExpiresAt));
+    .orderBy(desc(boostsTable.createdAt));
 
-  const boostVideoUrls = await Promise.all(rows.map(r => resolveBoostVideoUrl(r.boostVideoUrl)));
-  const boosts = rows.map((r, i) => ({
+  // Renewal creates a newer boost row for the same listing. Return only the
+  // newest paid record so the owner never sees duplicate video cards.
+  const seenListingIds = new Set<number>();
+  const ownerRows = rows.filter(row => {
+    if (seenListingIds.has(row.listingId)) return false;
+    seenListingIds.add(row.listingId);
+    return true;
+  });
+
+  const boostVideoUrls = await Promise.all(ownerRows.map(r => resolveBoostVideoUrl(r.boostVideoUrl)));
+  const boosts = ownerRows.map((r, i) => ({
     listingId: r.listingId,
     title: r.title,
     price: r.price,
@@ -763,6 +771,7 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     boostId: r.boostId,
     plan: r.plan,
     budget: r.budget,
+    isExpired: !r.boostExpiresAt || r.boostExpiresAt <= now,
   }));
   res.json({ boosts });
 });
@@ -931,14 +940,12 @@ export async function runBoostExpiryJob(): Promise<void> {
 
     if (expiring.length === 0) return;
 
-    // Step 2: clear ALL boost-related columns so no stale targeting data remains
+    // Step 2: disable public promotion and clear targeting data. Preserve the
+    // video and dates so the owner can still preview and renew the same boost.
     const result = await db
       .update(listingsTable)
       .set({
         isBoosted: false,
-        boostExpiresAt: null,
-        boostStartAt: null,
-        boostVideoUrl: null,
         boostAudienceCountry: null,
         boostAudienceCity: null,
         boostAudienceCities: null,

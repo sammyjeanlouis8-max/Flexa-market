@@ -2223,10 +2223,10 @@ export default {
     },
   },
   myBoosts: {
-    title: "My Active Boosts",
-    subtitle: "Your live promotional campaigns",
-    loginRequired: "Sign in to view your active boosts",
-    empty: "No active boosts right now",
+    title: "My Boosts",
+    subtitle: "Your active campaigns and expired videos",
+    loginRequired: "Sign in to view your boosts",
+    empty: "You don't have any boosts yet",
     emptyDesc: "Boost a listing to appear in the video feed",
     boostCta: "Start Boosting",
     daysLeft: "{{n}} day left",
@@ -2252,6 +2252,7 @@ export default {
     willBeRefunded: "will be refunded to your FM Wallet",
     ctrLabel: "CTR",
     renewBoost: "Renew",
+    expired: "Expired",
   },
   boostWizard: {
     title: "Boost Your Video",

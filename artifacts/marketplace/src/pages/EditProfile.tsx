@@ -27,9 +27,9 @@ import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY } from "@/lib/phoneCou
 type PhoneIso = string;
 
 const GENDER_OPTIONS = [
-  { value: "male",   label: "Gason" },
-  { value: "female", label: "Fanm" },
-  { value: "other",  label: "Lòt" },
+  { value: "male",   labelKey: "editProfile.genderMale" },
+  { value: "female", labelKey: "editProfile.genderFemale" },
+  { value: "other",  labelKey: "editProfile.genderOther" },
 ] as const;
 
 const schema = z.object({
@@ -75,6 +75,7 @@ function calcStrength(
 let _triggerAutoSaveStatus: ((s: "saving" | "saved" | "idle") => void) | null = null;
 
 function AutoSaveIndicator() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
@@ -86,7 +87,7 @@ function AutoSaveIndicator() {
     <div
       data-testid="autosave-indicator"
       aria-live="polite"
-      aria-label={status === "saving" ? "Saving" : status === "saved" ? "Saved" : ""}
+      aria-label={status === "saving" ? t("editProfile.saving") : status === "saved" ? t("editProfile.saved") : ""}
       className={[
         "fixed bottom-20 left-1/2 -translate-x-1/2 z-50",
         "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shadow-md transition-all duration-300",
@@ -97,7 +98,7 @@ function AutoSaveIndicator() {
     >
       {status === "saving" && <Loader2 className="h-3 w-3 animate-spin" />}
       {status === "saved" && <Check className="h-3 w-3" />}
-      {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : ""}
+      {status === "saving" ? t("editProfile.saving") : status === "saved" ? t("editProfile.saved") : ""}
     </div>
   );
 }
@@ -223,6 +224,7 @@ const BASE_URL = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
 
 function StoreManagerCard() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [manager, setManager] = useState<{ id: number; name: string; email: string | null; phone: string | null } | null>(null);
   const [loadingManager, setLoadingManager] = useState(true);
@@ -260,7 +262,7 @@ function StoreManagerCard() {
       if (!r.ok) throw new Error(d.error ?? "Invite failed");
       setManager(d.manager);
       setIdentifier("");
-      toast({ title: "Manadjè envite ✓" });
+      toast({ title: t("editProfile.managerInvited") });
     } catch (e: any) {
       toast({ title: e.message, variant: "destructive" });
     } finally {
@@ -277,7 +279,7 @@ function StoreManagerCard() {
       });
       if (!r.ok) throw new Error((await r.json()).error ?? "Revoke failed");
       setManager(null);
-      toast({ title: "Aksè manadjè retire ✓" });
+      toast({ title: t("editProfile.managerAccessRemoved") });
     } catch (e: any) {
       toast({ title: e.message, variant: "destructive" });
     } finally {
@@ -289,15 +291,15 @@ function StoreManagerCard() {
     <div className="bg-card border border-border rounded-2xl p-5 shadow-sm mb-4">
       <div className="flex items-center gap-2 mb-1">
         <Store className="h-4 w-4 text-primary" />
-        <h2 className="font-bold text-foreground text-base">Manadjè Lokal</h2>
+        <h2 className="font-bold text-foreground text-base">{t("editProfile.localManager")}</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        Chwazi yon moun nan zòn nan pou resevwa kòmand ak prepare pake yo pou chaofè.
+        {t("editProfile.localManagerDesc")}
       </p>
 
       {loadingManager ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" /> Ap chaje…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("common.loading")}
         </div>
       ) : manager ? (
         <div className="space-y-3">
@@ -320,7 +322,7 @@ function StoreManagerCard() {
             className="w-full text-xs text-destructive hover:text-destructive/80 transition-colors font-medium flex items-center justify-center gap-1.5"
           >
             {revoking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserX className="h-3.5 w-3.5" />}
-            Retire aksè manadjè
+            {t("editProfile.removeManagerAccess")}
           </button>
         </div>
       ) : (
@@ -329,7 +331,7 @@ function StoreManagerCard() {
             <input
               value={identifier}
               onChange={e => setIdentifier(e.target.value)}
-              placeholder="Email oswa nimewo telefòn"
+              placeholder={t("editProfile.managerContactPlaceholder")}
               className="flex-1 h-9 px-3 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               onKeyDown={e => e.key === "Enter" && handleInvite()}
             />
@@ -339,12 +341,12 @@ function StoreManagerCard() {
               className="h-9 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5 transition-opacity"
             >
               {inviting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-              Envite
+              {t("editProfile.invite")}
             </button>
           </div>
           <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
-            <span>Moun nan dwe gen kont Flexa deja. Yo ap wè kòmand ou yo sèlman — pa finansman.</span>
+            <span>{t("editProfile.managerAccountNote")}</span>
           </div>
         </div>
       )}
@@ -355,10 +357,15 @@ function StoreManagerCard() {
 // ── Pickup Hours Card ─────────────────────────────────────────────────────────
 type PickupSlot = { day: number; openTime: string; closeTime: string };
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_LABEL_KEYS = [
+  "editProfile.daySun", "editProfile.dayMon", "editProfile.dayTue",
+  "editProfile.dayWed", "editProfile.dayThu", "editProfile.dayFri",
+  "editProfile.daySat",
+] as const;
 
 function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | null }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [slots, setSlots] = useState<PickupSlot[]>(() => initialSchedule ?? []);
   const [saving, setSaving] = useState(false);
@@ -392,9 +399,9 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
       // Sync saved schedule back into the auth user cache so the card
       // reflects the correct state on the next render / page reload.
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
-      toast({ title: "Pickup hours saved ✓" });
+      toast({ title: t("editProfile.pickupHoursSaved") });
     } catch {
-      toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" });
+      toast({ title: t("editProfile.couldntSave"), description: t("common.tryAgain"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -405,16 +412,16 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-bold text-foreground text-base flex items-center gap-1.5">
-            <Clock className="h-4 w-4" /> Pickup Hours
+            <Clock className="h-4 w-4" /> {t("editProfile.pickupHours")}
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Let drivers know when your location is open for package pickup
+            {t("editProfile.pickupHoursDesc")}
           </p>
         </div>
       </div>
 
       <div className="space-y-2">
-        {DAY_LABELS.map((label, day) => {
+        {DAY_LABEL_KEYS.map((labelKey, day) => {
           const enabled = enabledDays.has(day);
           const slot = slots.find((s) => s.day === day);
           return (
@@ -430,7 +437,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
                     : "bg-muted text-muted-foreground border-border hover:border-primary/50",
                 ].join(" ")}
               >
-                {label}
+                {t(labelKey)}
               </button>
 
               {/* Time pickers */}
@@ -451,7 +458,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
                   />
                 </div>
               ) : (
-                <span className="text-xs text-muted-foreground italic">Closed</span>
+                <span className="text-xs text-muted-foreground italic">{t("editProfile.closed")}</span>
               )}
             </div>
           );
@@ -465,7 +472,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
         onClick={handleSave}
         disabled={saving}
       >
-        {saving ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Saving…</> : "Save Pickup Hours"}
+        {saving ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("editProfile.saving")}</> : t("editProfile.savePickupHours")}
       </Button>
     </div>
   );
@@ -508,7 +515,7 @@ export default function EditProfile() {
 
   const handlePhoneRequestCode = async () => {
     if (!newPhoneInput.trim() || newPhoneInput.trim().length < 6) {
-      toast({ title: "Ekri yon nimewo telefòn valid", variant: "destructive" }); return;
+      toast({ title: t("editProfile.enterValidPhone"), variant: "destructive" }); return;
     }
     setPhoneSending(true);
     try {
@@ -521,7 +528,7 @@ export default function EditProfile() {
       if (!r.ok) throw new Error(d.error ?? "Erè");
       setMaskedEmail(d.maskedEmail ?? "");
       setPhoneStep("otp");
-      toast({ title: "✅ Kòd voye pa email!" });
+      toast({ title: t("editProfile.phoneCodeSent") });
     } catch (e: any) {
       toast({ title: e?.message ?? "Erè", variant: "destructive" });
     } finally {
@@ -531,7 +538,7 @@ export default function EditProfile() {
 
   const handlePhoneConfirm = async () => {
     if (!phoneOtp.trim()) {
-      toast({ title: "Ekri kòd ou te resevwa a", variant: "destructive" }); return;
+      toast({ title: t("editProfile.enterReceivedCode"), variant: "destructive" }); return;
     }
     setPhoneConfirming(true);
     try {
@@ -542,7 +549,7 @@ export default function EditProfile() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? "Erè");
-      toast({ title: "✅ Nimewo telefòn aktualize!" });
+      toast({ title: t("editProfile.phoneUpdated") });
       queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
       setPhoneEditOpen(false);
       setPhoneStep("input");
@@ -795,7 +802,7 @@ export default function EditProfile() {
           <Input
             id="name"
             {...form.register("name")}
-            placeholder="e.g. Alex Johnson"
+            placeholder={t("editProfile.namePlaceholder")}
             data-testid="input-name"
             className="rounded-xl"
           />
@@ -814,7 +821,7 @@ export default function EditProfile() {
           <Input
             id="location"
             {...form.register("location")}
-            placeholder="Miami, New York, Los Angeles…"
+            placeholder={t("editProfile.locationPlaceholder")}
             data-testid="input-location"
             className="rounded-xl"
           />
@@ -830,7 +837,7 @@ export default function EditProfile() {
           <Textarea
             id="bio"
             {...form.register("bio")}
-            placeholder="Trusted seller — fast shipping, honest descriptions 🤝"
+            placeholder={t("editProfile.bioPlaceholder")}
             rows={3}
             data-testid="input-bio"
             className="rounded-xl resize-none"
@@ -841,10 +848,10 @@ export default function EditProfile() {
         {/* Date of Birth */}
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <label className="text-sm font-semibold text-foreground" htmlFor="dateOfBirth">Dat nesans</label>
+            <label className="text-sm font-semibold text-foreground" htmlFor="dateOfBirth">{t("editProfile.dateOfBirth")}</label>
             <span className="text-xs text-muted-foreground font-medium px-1.5 py-0.5 rounded-md border border-border">{t("editProfile.optional")}</span>
           </div>
-          <p className="text-xs text-muted-foreground mb-2">Itilize pou piblisite kap montre tèt yo yon fason ki kòrèk pou ou. Pa janm pataje ak moun.</p>
+          <p className="text-xs text-muted-foreground mb-2">{t("editProfile.dateOfBirthHint")}</p>
           <Input
             id="dateOfBirth"
             type="date"
@@ -861,19 +868,19 @@ export default function EditProfile() {
         {/* Gender */}
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <label className="text-sm font-semibold text-foreground" htmlFor="gender">Sèks</label>
+            <label className="text-sm font-semibold text-foreground" htmlFor="gender">{t("editProfile.gender")}</label>
             <span className="text-xs text-muted-foreground font-medium px-1.5 py-0.5 rounded-md border border-border">{t("editProfile.optional")}</span>
           </div>
-          <p className="text-xs text-muted-foreground mb-2">Pou piblisite pèsonalize sèlman. Pa janm pataje.</p>
+          <p className="text-xs text-muted-foreground mb-2">{t("editProfile.genderHint")}</p>
           <select
             id="gender"
             {...form.register("gender")}
             data-testid="input-gender"
             className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
-            <option value="">— Chwazi —</option>
+            <option value="">— {t("editProfile.choose")} —</option>
             {GENDER_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
             ))}
           </select>
         </div>
@@ -934,7 +941,7 @@ export default function EditProfile() {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
-              <h2 className="font-bold text-foreground text-base">📱 Nimewo Telefòn</h2>
+              <h2 className="font-bold text-foreground text-base">📱 {t("editProfile.phoneNumber")}</h2>
             </div>
             {user?.phone ? (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5">
@@ -942,18 +949,18 @@ export default function EditProfile() {
                 {user.phone}
                 {user.isPhoneVerified && (
                   <span className="ml-1 flex items-center gap-0.5 text-green-500 text-xs font-medium">
-                    <CheckCircle className="h-3 w-3" /> Verifye
+                    <CheckCircle className="h-3 w-3" /> {t("editProfile.countryVerified")}
                   </span>
                 )}
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">Pa gen nimewo. Ajoute yon nimewo pou resevwa notifikasyon SMS.</p>
+              <p className="text-xs text-muted-foreground">{t("editProfile.noPhone")}</p>
             )}
           </div>
           {!phoneEditOpen && (
             <Button variant="outline" size="sm" onClick={() => setPhoneEditOpen(true)} className="rounded-xl shrink-0">
               <Phone className="h-3.5 w-3.5 mr-1.5" />
-              {user?.phone ? "Chanje" : "Ajoute"}
+              {user?.phone ? t("editProfile.change") : t("editProfile.add")}
             </Button>
           )}
         </div>
@@ -963,7 +970,7 @@ export default function EditProfile() {
             {phoneStep === "input" ? (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Ekri nimewo ou a. Yon kòd 6 chif ap voye nan <strong>email</strong> ou pou konfirme.
+                  {t("editProfile.phoneChangeInstructions")}
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -978,15 +985,15 @@ export default function EditProfile() {
                     onClick={handlePhoneRequestCode}
                     disabled={phoneSending || !newPhoneInput.trim()}
                   >
-                    {phoneSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Voye kòd"}
+                    {phoneSending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("editProfile.sendCode")}
                   </Button>
                 </div>
-                <button onClick={() => setPhoneEditOpen(false)} className="text-xs text-muted-foreground hover:underline">Anile</button>
+                <button onClick={() => setPhoneEditOpen(false)} className="text-xs text-muted-foreground hover:underline">{t("common.cancel")}</button>
               </>
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Kòd 6 chif voye nan <strong>{maskedEmail}</strong>. Antre li anba pou konfime.
+                  {t("editProfile.emailCodeInstructions", { email: maskedEmail })}
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -1009,12 +1016,12 @@ export default function EditProfile() {
                   <button
                     onClick={() => { setPhoneStep("input"); setPhoneOtp(""); }}
                     className="text-xs text-muted-foreground hover:underline"
-                  >← Tounen</button>
+                  >{t("editProfile.back")}</button>
                   <button
                     onClick={handlePhoneRequestCode}
                     disabled={phoneSending}
                     className="text-xs text-primary hover:underline disabled:opacity-50"
-                  >Voye kòd ankò</button>
+                  >{t("editProfile.resendCode")}</button>
                 </div>
               </>
             )}

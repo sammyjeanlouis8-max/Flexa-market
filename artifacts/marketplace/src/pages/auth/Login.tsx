@@ -91,7 +91,7 @@ export default function Login() {
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/logo.png" alt="FLEXA MARKET" className="h-72 w-auto mx-auto mb-2" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-72 w-auto mx-auto mb-2" />
           <h1 className="text-3xl font-extrabold text-foreground mt-4">{t("auth.welcomeBack")}</h1>
           <p className="text-muted-foreground mt-1">{t("auth.signInSubtitle")}</p>
         </div>

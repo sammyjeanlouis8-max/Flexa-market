@@ -263,7 +263,7 @@ export default function ForgotPassword() {
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <img src="/logo.png" alt="FLEXA MARKET" className="h-56 w-auto mx-auto mb-2" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-56 w-auto mx-auto mb-2" />
           <h1 className="text-2xl font-extrabold text-foreground mt-4">
             {step === "done" ? t("auth.passwordUpdated") : t("auth.resetPassword")}
           </h1>

@@ -801,7 +801,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               )}
               {/* Logo + brand — desktop only on sub-pages */}
               <Link href="/" aria-label="FLEXA MARKET home" className="hidden md:flex items-center gap-2 shrink-0">
-                <img src="/logo.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
+                <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
                 <span className="font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
               </Link>
               <div className="hidden md:block flex-1">
@@ -811,7 +811,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           ) : (
             <>
               <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2">
-                <img src="/logo.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
+                <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
                 <span className="hidden sm:block font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
               </Link>
               <HeaderSearch />

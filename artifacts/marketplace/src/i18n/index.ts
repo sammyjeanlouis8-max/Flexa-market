@@ -2,13 +2,15 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import en from "./locales/en";
+import fr from "./locales/fr";
+import ht from "./locales/ht";
 
 // ── Async locale loaders ───────────────────────────────────────────────────────
-// EN is bundled synchronously (immediate fallback + zero-latency initial render).
+// EN, FR and HT are bundled synchronously because they are the three maintained
+// core locales. Keeping them in the same app bundle prevents a stale async
+// locale chunk from mixing old Creole labels into a newly deployed French page.
 // All other locales are separate Vite chunks loaded on demand.
 const ASYNC_LOADERS: Record<string, () => Promise<{ default: object }>> = {
-  fr: () => import("./locales/fr"),
-  ht: () => import("./locales/ht"),
   es: () => import("./locales/es"),
   pt: () => import("./locales/pt"),
   de: () => import("./locales/de"),
@@ -112,12 +114,16 @@ function resolveInitialLanguage(): SupportedLanguage {
 const initialLng = resolveInitialLanguage();
 
 // ── i18next initialization ────────────────────────────────────────────────────
-// Synchronous init with EN already bundled — first render is never blocked.
+// Synchronous init with all maintained core locales already bundled.
 // `partialBundledLanguages` lets us add other locales at runtime.
 i18n
   .use(initReactI18next)
   .init({
-    resources: { en: { translation: en } },
+    resources: {
+      en: { translation: en },
+      fr: { translation: fr },
+      ht: { translation: ht },
+    },
     lng: initialLng,
     fallbackLng: "en",
     supportedLngs: ["en", "fr", "ht", "es", "pt", "de", "hi", "fil", "ha", "zu", "af", "it", "nl", "sv", "no", "ar", "ja", "ko", "sw"],

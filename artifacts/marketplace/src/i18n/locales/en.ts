@@ -802,6 +802,7 @@ export default {
     lastSeenHours: "{{n}}h ago",
     lastSeenDays: "{{n}}d ago",
     startConversation: "Start conversation",
+    productContext: "Conversation product",
     voiceUploadFailed: "Voice message upload failed. Please try again.",
     micDenied: "Cannot access microphone. Please allow microphone access in your browser settings.",
     connectionProblem: "Connection problem. Please try again.",

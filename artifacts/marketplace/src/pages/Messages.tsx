@@ -172,12 +172,22 @@ function timeAgo(iso: string | null | undefined): string {
     return `${Math.floor(h / 24)}j`;
   } catch { return ""; }
 }
-function formatMsgTime(iso: string | null | undefined): string {
+function formatMsgDateTime(iso: string | null | undefined, language = "ht"): string {
   if (!iso) return "";
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    // Intl does not consistently ship a Haitian Creole locale. French keeps
+    // the date readable for HT users while still following the app language
+    // for English and French users.
+    const locale = language.toLowerCase().startsWith("ht") ? "fr-FR" : language;
+    return new Intl.DateTimeFormat(locale, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
   } catch { return ""; }
 }
 
@@ -700,7 +710,7 @@ function MsgBubble({
   isTranslating?: boolean;
   onTranslate?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const c = theme;
   const [showMenu, setShowMenu] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -710,7 +720,7 @@ function MsgBubble({
     return (
       <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "2px 8px" }}>
         <span style={{ fontSize: 12, color: theme.timeOut, fontStyle: "italic", opacity: 0.55 }}>
-          {t("messages.deletedMessage")}
+          {t("messages.deletedMessage")} · {formatMsgDateTime(msg.createdAt, i18n.language)}
         </span>
       </div>
     );
@@ -863,7 +873,7 @@ function MsgBubble({
         {mtype === "audio" && mediaUrl && (
           <AudioBubble
             src={mediaUrl} isMe={isMe} theme={c}
-            timestamp={formatMsgTime(msg.createdAt)}
+            timestamp={formatMsgDateTime(msg.createdAt, i18n.language)}
             statusIcon={StatusIcon}
             isListened={msg.isListened}
             onListened={() => onAudioListened?.(msg.id)}
@@ -955,7 +965,7 @@ function MsgBubble({
             padding: "2px 10px 7px",
           }}>
             <span style={{ fontSize: 11, color: timeColor, letterSpacing: 0.1 }}>
-              {formatMsgTime(msg.createdAt)}
+              {formatMsgDateTime(msg.createdAt, i18n.language)}
             </span>
             {StatusIcon}
           </div>
@@ -1832,7 +1842,58 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         </>)}
       </div>
 
-      {/* Listing context banner intentionally removed per approved mockup direction */}
+      {/* Keep the reason for the conversation visible while the thread is open. */}
+      {conv?.listingId && (
+        <Link
+          href={`/listings/${conv.listingId}`}
+          style={{ textDecoration: "none", flexShrink: 0 }}
+        >
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "9px 13px",
+            background: c.contextBg,
+            borderBottom: `1px solid ${c.contextBorder}`,
+            color: c.contextText,
+          }}>
+            <div style={{
+              width: 50, height: 50, borderRadius: 10, overflow: "hidden",
+              flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {conv.listingImage ? (
+                <img
+                  src={conv.listingImage}
+                  alt={conv.listingTitle}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <span style={{ fontSize: 22 }}>🛍️</span>
+              )}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{
+                margin: 0, fontSize: 10, fontWeight: 800,
+                letterSpacing: "0.08em", textTransform: "uppercase",
+                color: c.listSub,
+              }}>
+                {t("messages.productContext")}
+              </p>
+              <p style={{
+                margin: "3px 0 0", fontSize: 14, fontWeight: 700,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {conv.listingTitle}
+              </p>
+              {conv.listingPrice > 0 && (
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: c.listSub }}>
+                  ${Number(conv.listingPrice).toFixed(2)}
+                </p>
+              )}
+            </div>
+            <span aria-hidden="true" style={{ fontSize: 25, lineHeight: 1, color: c.listSub }}>›</span>
+          </div>
+        </Link>
+      )}
 
       {/* ── Messages scroll area — warm ivory/mint radial gradient background ── */}
       <div

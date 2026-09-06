@@ -802,6 +802,7 @@ export default {
     lastSeenHours: "{{n}}h de sa",
     lastSeenDays: "{{n}} jou de sa",
     startConversation: "Kòmanse konvèsasyon an",
+    productContext: "Pwodwi konvèsasyon an",
     voiceUploadFailed: "Upload mesaj vwa echwe. Eseye ankò.",
     voiceMessage: "Mesaj vwa",
     micDenied: "Pa ka accede mikwofòn. Asire ou otorize mikwofòn nan paramèt navigatè ou.",

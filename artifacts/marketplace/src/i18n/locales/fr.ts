@@ -806,6 +806,7 @@ export default {
     lastSeenHours: "Il y a {{n}}h",
     lastSeenDays: "Il y a {{n}} j",
     startConversation: "Commencer la conversation",
+    productContext: "Produit de la conversation",
     voiceUploadFailed: "Échec de l'envoi du message vocal. Veuillez réessayer.",
     voiceMessage: "Message vocal",
     micDenied: "Impossible d'accéder au microphone. Autorisez l'accès dans les paramètres de votre navigateur.",

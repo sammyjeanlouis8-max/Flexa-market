@@ -160,33 +160,60 @@ function injectChatAnimations() {
 injectChatAnimations();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function timeAgo(iso: string | null | undefined): string {
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+function dateParts(iso: string): { date: Date; dayDiff: number; ageMs: number } | null {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const messageDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  return {
+    date,
+    dayDiff: Math.max(0, Math.round((today - messageDay) / 86_400_000)),
+    ageMs: Math.max(0, now.getTime() - date.getTime()),
+  };
+}
+
+function localeFor(language: string): string {
+  return language.toLowerCase().startsWith("ht") ? "fr-FR" : language;
+}
+
+function conversationTime(iso: string | null | undefined, language: string, t: Translate): string {
   if (!iso) return "";
   try {
-    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (!Number.isFinite(m) || m < 1) return "kounye a";
-    if (m < 60) return `${m}min`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h`;
-    return `${Math.floor(h / 24)}j`;
+    const parts = dateParts(iso);
+    if (!parts) return "";
+    const minutes = Math.floor(parts.ageMs / 60_000);
+    if (minutes < 1) return t("messages.timeNow");
+    if (parts.dayDiff === 0 && minutes < 60) return t("messages.timeMinutes", { n: minutes });
+    if (parts.dayDiff === 0) return t("messages.timeHours", { n: Math.max(1, Math.floor(minutes / 60)) });
+    if (parts.dayDiff === 1) return t("messages.timeYesterday");
+    if (parts.dayDiff < 7) return t("messages.timeDays", { n: parts.dayDiff });
+    return new Intl.DateTimeFormat(localeFor(language), { day: "2-digit", month: "short" }).format(parts.date);
   } catch { return ""; }
 }
-function formatMsgDateTime(iso: string | null | undefined, language = "ht"): string {
+
+function formatMsgDateTime(iso: string | null | undefined, language: string, t: Translate): string {
   if (!iso) return "";
   try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    // Intl does not consistently ship a Haitian Creole locale. French keeps
-    // the date readable for HT users while still following the app language
-    // for English and French users.
-    const locale = language.toLowerCase().startsWith("ht") ? "fr-FR" : language;
-    return new Intl.DateTimeFormat(locale, {
+    const parts = dateParts(iso);
+    if (!parts) return "";
+    if (parts.ageMs < 60_000) return t("messages.timeNow");
+    const time = new Intl.DateTimeFormat(localeFor(language), {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(parts.date);
+    if (parts.dayDiff === 0) return `${t("messages.timeToday")}, ${time}`;
+    if (parts.dayDiff === 1) return `${t("messages.timeYesterday")}, ${time}`;
+    if (parts.dayDiff < 7) return `${t("messages.timeDays", { n: parts.dayDiff })}, ${time}`;
+    return new Intl.DateTimeFormat(localeFor(language), {
       day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-    }).format(d);
+    }).format(parts.date);
   } catch { return ""; }
 }
 
@@ -719,7 +746,7 @@ function MsgBubble({
     return (
       <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "2px 8px" }}>
         <span style={{ fontSize: 12, color: theme.timeOut, fontStyle: "italic", opacity: 0.55 }}>
-          {t("messages.deletedMessage")} · {formatMsgDateTime(msg.createdAt, i18n.language)}
+          {t("messages.deletedMessage")} · {formatMsgDateTime(msg.createdAt, i18n.language, t)}
         </span>
       </div>
     );
@@ -872,7 +899,7 @@ function MsgBubble({
         {mtype === "audio" && mediaUrl && (
           <AudioBubble
             src={mediaUrl} isMe={isMe} theme={c}
-            timestamp={formatMsgDateTime(msg.createdAt, i18n.language)}
+            timestamp={formatMsgDateTime(msg.createdAt, i18n.language, t)}
             statusIcon={StatusIcon}
             isListened={msg.isListened}
             onListened={() => onAudioListened?.(msg.id)}
@@ -964,7 +991,7 @@ function MsgBubble({
             padding: "2px 10px 7px",
           }}>
             <span style={{ fontSize: 11, color: timeColor, letterSpacing: 0.1 }}>
-              {formatMsgDateTime(msg.createdAt, i18n.language)}
+              {formatMsgDateTime(msg.createdAt, i18n.language, t)}
             </span>
             {StatusIcon}
           </div>
@@ -991,8 +1018,13 @@ function MsgBubble({
 
 // ─── Conversation List ────────────────────────────────────────────────────────
 function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?: number; theme: (typeof T)[ChatTheme] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const c = theme;
+  const sortedConvs = [...convs].sort((a, b) => {
+    const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+    const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+    return bTime - aTime;
+  });
   if (convs.length === 0) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center", padding: "64px 16px", background: c.listBg }}>
       <MessageCircle style={{ width: 48, height: 48, color: c.emptyIcon, marginBottom: 12 }} />
@@ -1002,7 +1034,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
   );
   return (
     <div style={{ overflowY: "auto", flex: 1, background: c.listBg }}>
-      {convs.map(conv => (
+      {sortedConvs.map(conv => (
         <Link key={conv.id} href={`/messages/${conv.id}`}>
           <div style={{
             display: "flex", alignItems: "center", gap: 12,
@@ -1039,7 +1071,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
                   {conv.otherUserName}
                 </span>
                 <span style={{ fontSize: 11, color: c.listTime, flexShrink: 0 }}>
-                  {conv.lastMessageAt ? timeAgo(conv.lastMessageAt) : ""}
+                  {conv.lastMessageAt ? conversationTime(conv.lastMessageAt, i18n.language, t) : ""}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
@@ -2320,6 +2352,12 @@ export default function Messages() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [queryClient, convId]);
+
+  useEffect(() => {
+    return socket.onNewMessage(() => {
+      queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+    });
+  }, [socket, queryClient]);
 
   useEffect(() => { if (!authLoading && !user) setLocation("/auth/login"); }, [authLoading, user]);
 

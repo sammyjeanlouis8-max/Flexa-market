@@ -767,6 +767,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/calculator/,
     /^\/delivery\/apply/,
     /^\/listings\/[^/]+/,
+    /^\/profile\/\d+\/?$/,
     /^\/tv(\/|$)/,
     /^\/admin\/tv(\/|$)/,
     /^\/admin\/music(\/|$)/,

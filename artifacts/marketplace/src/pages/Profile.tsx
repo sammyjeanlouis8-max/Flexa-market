@@ -205,7 +205,19 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {(listings as any[])?.map((l: any) => <ListingCard key={l.id} listing={l} />)}
+              {(listings as any[])?.map((l: any) => (
+                <div key={l.id} className="min-w-0">
+                  <ListingCard listing={l} />
+                  {me?.id === id && (l.status === "removed" || l.moderationStatus === "rejected") && (
+                    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+                      <p className="font-semibold">Pwodwi sa a pa pibliye ankò.</p>
+                      <p className="mt-0.5">
+                        Rezon admin nan: {l.moderationReason || "Administratè a pa bay plis detay."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </TabsContent>

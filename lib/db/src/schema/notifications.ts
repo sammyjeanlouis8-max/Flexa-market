@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, integer, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { usersTable } from "./users";
 import { listingsTable } from "./listings";
 
@@ -19,6 +20,9 @@ export const notificationsTable = pgTable("notifications", {
   notificationsUserCreatedIdx: index("notifications_user_created_at_idx").on(t.userId, t.createdAt),
   notificationsUserUnreadIdx: index("notifications_user_unread_idx").on(t.userId, t.isRead),
   notificationsListingIdx: index("notifications_listing_id_idx").on(t.listingId),
+  newListingDedupeIdx: uniqueIndex("notifications_new_listing_dedupe_idx")
+    .on(t.userId, t.type, t.listingId)
+    .where(sql`${t.type} = 'new_listing'`),
 }));
 
 export type Notification = typeof notificationsTable.$inferSelect;

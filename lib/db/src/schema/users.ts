@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, boolean, jsonb, date, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, boolean, jsonb, date, type AnyPgColumn, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -102,6 +102,9 @@ export const followsTable = pgTable("follows", {
   followerId: integer("follower_id").notNull().references(() => usersTable.id),
   followingId: integer("following_id").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => ({
+  followerFollowingUnique: uniqueIndex("follows_follower_following_uidx")
+    .on(table.followerId, table.followingId),
+}));
 
 export type Follow = typeof followsTable.$inferSelect;

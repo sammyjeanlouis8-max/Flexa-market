@@ -361,7 +361,20 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void> 
     .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
     .where(and(...conditions))
     .orderBy(desc(listingsTable.createdAt));
-  const listings = rows.map(r => formatListing(r.listings, r.users!, r.categories?.name ?? "Other", r.categories?.slug ?? "other"));
+  const listings = rows.map(r => {
+    const formatted = formatListing(r.listings, r.users!, r.categories?.name ?? "Other", r.categories?.slug ?? "other");
+    // Moderation details are private seller/admin information. Do not expose
+    // rejection notes in public listing cards.
+    return isOwner || isAdmin
+      ? {
+          ...formatted,
+          moderationStatus: r.listings.moderationStatus,
+          moderationReason: r.listings.moderationReason ?? null,
+          moderationSource: r.listings.moderationSource ?? null,
+          moderatedAt: r.listings.moderatedAt?.toISOString() ?? null,
+        }
+      : formatted;
+  });
   res.json(listings);
 });
 
@@ -392,10 +405,13 @@ router.post("/users/:id/follow", requireAuth, async (req, res): Promise<void> =>
   const followingId = parseInt(rawId, 10);
   if (req.userId === followingId) { res.status(400).json({ error: "Cannot follow yourself" }); return; }
 
-  const [existing] = await db.select().from(followsTable)
-    .where(and(eq(followsTable.followerId, req.userId!), eq(followsTable.followingId, followingId)));
-  if (!existing) {
-    await db.insert(followsTable).values({ followerId: req.userId!, followingId });
+  const [inserted] = await db.insert(followsTable)
+    .values({ followerId: req.userId!, followingId })
+    .onConflictDoNothing({
+      target: [followsTable.followerId, followsTable.followingId],
+    })
+    .returning({ id: followsTable.id });
+  if (inserted) {
     await db.update(usersTable).set({ followerCount: sql`${usersTable.followerCount} + 1` }).where(eq(usersTable.id, followingId));
     await db.update(usersTable).set({ followingCount: sql`${usersTable.followingCount} + 1` }).where(eq(usersTable.id, req.userId!));
   }
@@ -406,10 +422,12 @@ router.delete("/users/:id/follow", requireAuth, async (req, res): Promise<void> 
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const followingId = parseInt(rawId, 10);
 
-  await db.delete(followsTable)
+  const deleted = await db.delete(followsTable)
     .where(and(eq(followsTable.followerId, req.userId!), eq(followsTable.followingId, followingId)));
-  await db.update(usersTable).set({ followerCount: sql`GREATEST(${usersTable.followerCount} - 1, 0)` }).where(eq(usersTable.id, followingId));
-  await db.update(usersTable).set({ followingCount: sql`GREATEST(${usersTable.followingCount} - 1, 0)` }).where(eq(usersTable.id, req.userId!));
+  if (deleted.rowCount && deleted.rowCount > 0) {
+    await db.update(usersTable).set({ followerCount: sql`GREATEST(${usersTable.followerCount} - 1, 0)` }).where(eq(usersTable.id, followingId));
+    await db.update(usersTable).set({ followingCount: sql`GREATEST(${usersTable.followingCount} - 1, 0)` }).where(eq(usersTable.id, req.userId!));
+  }
   res.json({ message: "Unfollowed" });
 });
 

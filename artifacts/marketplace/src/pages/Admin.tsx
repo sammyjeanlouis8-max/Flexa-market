@@ -31,7 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { useAdminGetStats, useAdminGetUsers, useAdminGetListings, useAdminGetReports, useAdminBanUser, useAdminRemoveListing, getAdminGetUsersQueryKey, getAdminGetListingsQueryKey, getAdminGetReportsQueryKey, getAdminGetStatsQueryKey } from "@workspace/api-client-react";
+import { useAdminGetStats, useAdminGetUsers, useAdminGetListings, useAdminGetReports, useAdminBanUser, getAdminGetUsersQueryKey, getAdminGetListingsQueryKey, getAdminGetReportsQueryKey, getAdminGetStatsQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS } from "@/lib/countries";
 import { useQueryClient } from "@tanstack/react-query";
@@ -435,6 +435,7 @@ export default function Admin() {
 
   // Modals
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string; type: "user" | "listing" } | null>(null);
+  const [listingRemovalReason, setListingRemovalReason] = useState("");
   const [actioning, setActioning] = useState<string | null>(null);
   const [editListing, setEditListing] = useState<any | null>(null);
   const [boostModal, setBoostModal] = useState<{ id: number; title: string; isBoosted: boolean; boostExpiresAt?: string | null } | null>(null);
@@ -834,7 +835,6 @@ export default function Admin() {
   const { data: listings } = useAdminGetListings();
   const { data: reports } = useAdminGetReports();
   const banUser = useAdminBanUser();
-  const removeListing = useAdminRemoveListing();
 
   const s = stats as any;
   const allUsers = (users as any[]) ?? [];
@@ -1584,8 +1584,10 @@ export default function Admin() {
   };
 
   const handleModerationReject = async (id: number) => {
+    const reason = window.prompt("Ekri rezon rejè a pou vandè a wè li:", "Pwodwi a pa respekte règleman Flexa Market.");
+    if (reason === null) return;
     try {
-      await adminFetch(`/api/admin/moderation/${id}/reject`, "POST", {});
+      await adminFetch(`/api/admin/moderation/${id}/reject`, "POST", { reason: reason.trim() });
       toast({ title: "Listing rejected" });
       await loadModerationQueue();
       invalidate();
@@ -1849,7 +1851,7 @@ export default function Admin() {
     setDeleteTarget(null);
     await act(key, async () => {
       if (deleteTarget.type === "user") await adminFetch(path!, "DELETE");
-      else removeListing.mutate({ id: deleteTarget.id });
+      else await adminFetch(`/api/admin/listings/${deleteTarget.id}/remove`, "POST", { reason: listingRemovalReason.trim() });
       toast({ title: t("admin.deleted", { type: deleteTarget.type === "user" ? t("admin.tabUsers") : t("admin.tabListings") }) });
     });
   };
@@ -3652,7 +3654,7 @@ export default function Admin() {
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(l)} title="Edit"><Edit3 className="h-3 w-3" /></Button>
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openBoost(l)} title="Boost"><Zap className="h-3 w-3" /></Button>
                         <Button variant="ghost" size="sm" className={`h-7 px-2 ${l.isFeatured ? "text-yellow-600" : ""}`} onClick={() => handleFeature(l.id, !l.isFeatured)} title={l.isFeatured ? "Unfeature" : "Feature"} disabled={actioning === `feat-${l.id}`}><Star className="h-3 w-3" /></Button>
-                        {l.status !== "removed" && <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => setDeleteTarget({ id: l.id, name: l.title, type: "listing" })} title="Remove"><Trash2 className="h-3 w-3" /></Button>}
+                        {l.status !== "removed" && <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => { setListingRemovalReason(""); setDeleteTarget({ id: l.id, name: l.title, type: "listing" }); }} title="Remove"><Trash2 className="h-3 w-3" /></Button>}
                       </div>
                     </td>
                   </tr>
@@ -9043,11 +9045,17 @@ export default function Admin() {
 
       <Dialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="text-destructive">Delete Permanently?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">This will permanently delete <strong className="text-foreground">{deleteTarget?.name}</strong>{deleteTarget?.type === "user" ? " and all their listings" : ""}. This cannot be undone.</p>
+          <DialogHeader><DialogTitle className="text-destructive">{deleteTarget?.type === "listing" ? "Retire Listing" : "Delete Permanently?"}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{deleteTarget?.type === "listing" ? "Vandè a ap wè rezon ou mete a nan notifikasyon li yo." : <>This will permanently delete <strong className="text-foreground">{deleteTarget?.name}</strong> and all their listings. This cannot be undone.</>}</p>
+          {deleteTarget?.type === "listing" && (
+            <div className="mt-2">
+              <label className="text-xs font-medium text-muted-foreground">Rezon an</label>
+              <Textarea value={listingRemovalReason} onChange={e => setListingRemovalReason(e.target.value)} placeholder="Pa egzanp: foto oswa deskripsyon an pa respekte règleman yo." rows={3} className="mt-1" />
+            </div>
+          )}
           <DialogFooter className="gap-2 mt-2">
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={!!actioning} data-testid="button-confirm-delete"><Trash2 className="h-4 w-4 mr-1" />Delete</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={!!actioning} data-testid="button-confirm-delete"><Trash2 className="h-4 w-4 mr-1" />{deleteTarget?.type === "listing" ? "Retire" : "Delete"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

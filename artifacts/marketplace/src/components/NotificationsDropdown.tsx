@@ -110,6 +110,7 @@ export default function NotificationsDropdown() {
       case "subscription_billing_reminder": return t("notifications.subscriptionBillingReminder");
       case "subscription_grace_expired": return t("notifications.subscriptionGraceExpired");
       case "subscription_welcome": return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
+      case "new_listing": return n.message ?? `${n.actorName} ajoute yon nouvo pwodwi.`;
       case "listing_approved":
       case "moderation_approved": return t("notifications.listingApproved");
       case "listing_rejected":
@@ -134,6 +135,7 @@ export default function NotificationsDropdown() {
       case "moderation_approved":
       case "moderation_rejected":
       case "moderation_pending":
+      case "new_listing":
         return n.listingId ? `/listings/${n.listingId}` : "/sell";
 
       // Video/boost
@@ -225,6 +227,7 @@ export default function NotificationsDropdown() {
       case "listing_rejected":
       case "moderation_rejected": return "⛔";
       case "moderation_pending": return "⏳";
+      case "new_listing": return "📦";
       default: return "🔔";
     }
   };

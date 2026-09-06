@@ -1241,6 +1241,11 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
     viewCount: r.listings.viewCount, favoriteCount: r.listings.favoriteCount, sellerId: r.listings.sellerId,
     sellerName: r.users?.name ?? "Unknown", sellerAvatar: r.users?.avatar ?? null,
     sellerRating: r.users?.rating ?? 0, sellerIsVerified: r.users?.isVerified ?? false,
+    moderationStatus: r.listings.moderationStatus,
+    moderationReason: r.listings.moderationReason,
+    moderationSource: r.listings.moderationSource,
+    moderatedAt: r.listings.moderatedAt?.toISOString() ?? null,
+    moderatedBy: r.listings.moderatedBy,
     createdAt: r.listings.createdAt.toISOString(),
   })));
 });
@@ -1251,27 +1256,90 @@ router.put("/admin/listings/:id", requireAdmin, async (req, res): Promise<void> 
   if (!existing) { res.status(404).json({ error: "Listing not found" }); return; }
   const scopeErr = assertListingInScope(req.user!, existing);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  const { title, description, price, condition, status } = req.body;
+  const { title, description, price, condition, status, reason } = req.body;
   const updates: Record<string, unknown> = {};
   if (title) updates.title = title;
   if (description) updates.description = description;
   if (price !== undefined) updates.price = parseFloat(price);
   if (condition) updates.condition = condition;
   if (status) updates.status = status;
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+  if (status === "removed") {
+    updates.moderationStatus = "rejected";
+    updates.moderationReason = trimmedReason || existing.moderationReason || "Retire pa yon administratè.";
+    updates.moderationSource = "admin";
+    updates.moderatedAt = new Date();
+    updates.moderatedBy = req.userId!;
+  } else if (status === "available" && existing.status === "removed") {
+    updates.moderationStatus = "approved";
+    updates.moderationReason = "Apwouve pa yon administratè.";
+    updates.moderationSource = "admin";
+    updates.moderatedAt = new Date();
+    updates.moderatedBy = req.userId!;
+  }
   if (!Object.keys(updates).length) { res.status(400).json({ error: "No fields to update" }); return; }
   const [listing] = await db.update(listingsTable).set(updates).where(eq(listingsTable.id, id)).returning();
+  if (status === "removed" && existing.status !== "removed") {
+    if (existing.moderationStatus === "approved") {
+      await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, existing.categoryId));
+      if (existing.subcategoryId) {
+        await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, existing.subcategoryId));
+      }
+      await db.update(usersTable).set({ listingCount: sql`GREATEST(${usersTable.listingCount} - 1, 0)` }).where(eq(usersTable.id, existing.sellerId));
+    }
+    await db.insert(notificationsTable).values({
+      userId: existing.sellerId,
+      actorId: req.userId!,
+      type: "moderation_rejected",
+      listingId: id,
+      message: String(updates.moderationReason),
+    });
+  } else if (status === "available" && existing.status === "removed") {
+    await db.insert(notificationsTable).values({
+      userId: existing.sellerId,
+      actorId: req.userId!,
+      type: "moderation_approved",
+      listingId: id,
+      message: "Pwodwi a apwouve ankò pa yon administratè.",
+    });
+  }
   await log(req.userId!, "edit_listing", "listing", id, `Updated: ${Object.keys(updates).join(", ")}`);
   res.json(listing);
 });
 
 router.post("/admin/listings/:id/remove", requireAdmin, async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
   const scopeErr = assertListingInScope(req.user!, listing);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
-  await db.update(listingsTable).set({ status: "removed" }).where(eq(listingsTable.id, id));
-  await log(req.userId!, "remove_listing", "listing", id, `Removed listing: "${listing.title}"`);
+  const moderationReason = reason || listing.moderationReason || "Retire pa yon administratè.";
+  await db.update(listingsTable).set({
+    status: "removed",
+    moderationStatus: "rejected",
+    moderationReason,
+    moderationSource: "admin",
+    moderatedAt: new Date(),
+    moderatedBy: req.userId!,
+  }).where(eq(listingsTable.id, id));
+  if (listing.status !== "removed") {
+    if (listing.moderationStatus === "approved") {
+      await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, listing.categoryId));
+      if (listing.subcategoryId) {
+        await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, listing.subcategoryId));
+      }
+      await db.update(usersTable).set({ listingCount: sql`GREATEST(${usersTable.listingCount} - 1, 0)` }).where(eq(usersTable.id, listing.sellerId));
+    }
+    await db.insert(notificationsTable).values({
+      userId: listing.sellerId,
+      actorId: req.userId!,
+      type: "moderation_rejected",
+      listingId: id,
+      message: moderationReason,
+    });
+  }
+  await log(req.userId!, "remove_listing", "listing", id, `Removed listing: "${listing.title}" — ${moderationReason}`);
   res.json({ message: "Listing removed" });
 });
 
@@ -1486,6 +1554,7 @@ router.post("/admin/moderation/:id/approve", requireAdmin, async (req, res): Pro
     moderationStatus: "approved",
     moderationRiskLevel: "low",
     moderationReason: "Approved by admin override",
+    moderationSource: "admin",
     status: "available",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
@@ -1501,6 +1570,7 @@ router.post("/admin/moderation/:id/approve", requireAdmin, async (req, res): Pro
       actorId: req.userId!,
       type: "moderation_approved",
       listingId: id,
+      message: "Pwodwi a apwouve pa yon administratè.",
     });
   }
   await log(req.userId!, "moderation_approve", "listing", id, `Approved listing: "${listing.title}"`);
@@ -1519,6 +1589,7 @@ router.post("/admin/moderation/:id/reject", requireAdmin, async (req, res): Prom
     moderationStatus: "rejected",
     moderationRiskLevel: "high",
     moderationReason: reason || listing.moderationReason || "Rejected by admin",
+    moderationSource: "admin",
     status: "removed",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
@@ -1535,6 +1606,7 @@ router.post("/admin/moderation/:id/reject", requireAdmin, async (req, res): Prom
     actorId: req.userId!,
     type: "moderation_rejected",
     listingId: id,
+    message: reason || listing.moderationReason || "Pwodwi a rejte pa yon administratè.",
   });
   await log(req.userId!, "moderation_reject", "listing", id, `Rejected listing: "${listing.title}"`);
   res.json({ message: "Listing rejected" });

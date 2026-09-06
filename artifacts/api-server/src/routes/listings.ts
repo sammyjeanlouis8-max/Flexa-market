@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Router } from "express";
-import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, commentLikesTable, conversationsTable, reviewsTable, deliveriesTable } from "@workspace/db";
+import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsTable, transactionsTable, promoCodesTable, promoCodeUsesTable, sellerPayoutAccountsTable, listingViewsTable, promoWalletTable, offersTable, promoPurchaseCommissionsTable, searchHistoryTable, boostDailyImpressionsTable, notificationsTable, walletTransactionsTable, commentsTable, commentLikesTable, conversationsTable, reviewsTable, deliveriesTable, followsTable } from "@workspace/db";
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
@@ -11,11 +11,11 @@ import { moderateListing } from "../lib/moderation";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
 import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
-import { notificationsTable } from "@workspace/db";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { emitListingEngagement } from "../lib/socketServer";
+import { queueNewListingPush } from "../lib/listing-notifications";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -806,6 +806,30 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
       await db.update(categoriesTable).set({ listingCount: sql`${categoriesTable.listingCount} + 1` }).where(eq(categoriesTable.id, listing.subcategoryId));
     }
     await db.update(usersTable).set({ listingCount: sql`${usersTable.listingCount} + 1` }).where(eq(usersTable.id, req.userId!));
+
+    const followers = await db
+      .select({ followerId: followsTable.followerId })
+      .from(followsTable)
+      .where(and(
+        eq(followsTable.followingId, listing.sellerId),
+        ne(followsTable.followerId, listing.sellerId),
+      ));
+
+    if (followers.length > 0) {
+      await db.insert(notificationsTable).values(followers.map(({ followerId }) => ({
+        userId: followerId,
+        actorId: listing.sellerId,
+        type: "new_listing",
+        listingId: listing.id,
+        message: `${seller?.name ?? "Yon vandè"} ajoute yon nouvo pwodwi.`,
+      }))).onConflictDoNothing();
+
+      // Push is intentionally delayed and grouped per recipient. This keeps
+      // the in-app feed complete without creating one alert per followed seller.
+      for (const { followerId } of followers) {
+        queueNewListingPush(followerId, seller?.name ?? "Yon vandè");
+      }
+    }
   }
 
   if (moderationStatus !== "approved") {

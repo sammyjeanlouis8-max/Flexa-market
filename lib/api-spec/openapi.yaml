@@ -1719,6 +1719,7 @@ components:
           description: Optional listing video (standard/premium/vip plans only). Object-storage path.
         images:
           type: array
+          minItems: 1
           items:
             type: string
       required: [title, description, price, categoryId, condition, location, images]
@@ -1748,6 +1749,7 @@ components:
           type: string
         images:
           type: array
+          minItems: 1
           items:
             type: string
         status:

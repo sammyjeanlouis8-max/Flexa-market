@@ -2443,6 +2443,27 @@ export async function runStartupMigrations(): Promise<void> {
     `,
   });
 
+  // Follow subscriptions must be unique so concurrent taps cannot inflate
+  // follower counters or fan out duplicate product notifications.
+  migrations.push({
+    name: "follows.dedupe_existing_rows",
+    sql: `DELETE FROM follows older
+      USING follows newer
+      WHERE older.follower_id = newer.follower_id
+        AND older.following_id = newer.following_id
+        AND older.id > newer.id`,
+  });
+  migrations.push({
+    name: "follows.follower_following_unique",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS follows_follower_following_uidx ON follows(follower_id, following_id)",
+  });
+  migrations.push({
+    name: "notifications.new_listing_dedupe",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS notifications_new_listing_dedupe_idx
+      ON notifications(user_id, type, listing_id)
+      WHERE type = 'new_listing'`,
+  });
+
   let applied = 0;
   let failed = 0;
 

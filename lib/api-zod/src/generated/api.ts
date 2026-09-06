@@ -489,7 +489,7 @@ export const CreateListingBody = zod.object({
     .describe(
       "Optional listing video (standard\/premium\/vip plans only). Object-storage path.",
     ),
-  images: zod.array(zod.string()),
+  images: zod.array(zod.string()).min(1),
 });
 
 /**
@@ -716,7 +716,7 @@ export const UpdateListingBody = zod.object({
     .optional()
     .describe("State, department, or province of the listing."),
   country: zod.string().optional(),
-  images: zod.array(zod.string()).optional(),
+  images: zod.array(zod.string()).min(1).optional(),
   status: zod.string().optional(),
   stockQuantity: zod.number().nullish(),
   itemSize: zod

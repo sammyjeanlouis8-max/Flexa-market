@@ -1,7 +1,7 @@
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useEffect, useRef } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 // NOTE: setNotificationHandler and channel creation are intentionally
 // inside the hook (not at module level) to avoid calling iOS notification
@@ -11,7 +11,8 @@ async function setupNotifications() {
   // Set how notifications are handled when app is foregrounded
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),
@@ -61,7 +62,10 @@ async function setupNotifications() {
 }
 
 async function registerForPushNotifications(): Promise<string | null> {
-  if (!Device.isDevice) return null;
+  if (!Device.isDevice) {
+    console.warn("[push-reg] A physical device is required for push notifications");
+    return null;
+  }
 
   try {
     await setupNotifications();
@@ -74,17 +78,27 @@ async function registerForPushNotifications(): Promise<string | null> {
       finalStatus = status;
     }
 
-    if (finalStatus !== "granted") return null;
+    if (finalStatus !== "granted") {
+      console.warn("[push-reg] Notification permission was not granted");
+      return null;
+    }
 
+    // Firebase/Expo can take longer on a fresh Android install. Give it 30
+    // seconds, then let the hook retry instead of permanently abandoning
+    // registration after one short attempt.
     const tokenResult = await Promise.race<Notifications.ExpoPushToken | null>([
       Notifications.getExpoPushTokenAsync({
         projectId: "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e",
       }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000)),
     ]);
 
+    if (!tokenResult?.data) {
+      console.warn("[push-reg] Expo token request timed out; registration will retry");
+    }
     return tokenResult?.data ?? null;
-  } catch {
+  } catch (error) {
+    console.warn("[push-reg] Expo token request failed; registration will retry", error);
     return null;
   }
 }
@@ -99,11 +113,13 @@ export function usePushNotifications(
   const tokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    registerForPushNotifications().then((token) => {
-      if (!token) return;
+    let cancelled = false;
+    let registering = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const deliverToken = (token: string) => {
       tokenRef.current = token;
 
-      // Path 1 — inject into WebView (existing mechanism)
       if (injectJs) {
         const platform = Platform.OS;
         injectJs(
@@ -113,13 +129,31 @@ export function usePushNotifications(
         );
       }
 
-      // Path 2 — register directly via native fetch if we already have a JWT
-      // This fires even when the WebView injection timing window is missed.
       const jwt = getJwt?.();
-      if (jwt) {
-        onTokenSaved?.(token);
+      if (jwt) onTokenSaved?.(token);
+    };
+
+    const attemptRegistration = async () => {
+      if (cancelled || registering || tokenRef.current) return;
+      registering = true;
+      const token = await registerForPushNotifications();
+      registering = false;
+      if (cancelled) return;
+      if (token) {
+        deliverToken(token);
+        return;
       }
-    }).catch(() => {});
+      retryTimer = setTimeout(attemptRegistration, 60_000);
+    };
+
+    void attemptRegistration();
+
+    // A fresh Firebase registration commonly succeeds after the user returns
+    // to the app. Retry immediately on foreground instead of waiting for a
+    // reinstall or another login.
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void attemptRegistration();
+    });
 
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
@@ -132,7 +166,12 @@ export function usePushNotifications(
       }
     );
 
-    return () => sub.remove();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      appStateSub.remove();
+      sub.remove();
+    };
   }, []);
 
   return tokenRef;

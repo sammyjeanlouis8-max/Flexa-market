@@ -128,21 +128,40 @@ export async function sendApnsToTokens(
   tokens: string[],      // raw hex APNs device tokens (no "apns:" prefix)
   payload: ApnsPayload,
 ): Promise<string[]> {  // returns list of gone/dead tokens to prune
+  return (await sendApnsToTokensWithResults(tokens, payload)).dead;
+}
+
+export interface ApnsBatchResult {
+  attempted: number;
+  accepted: number;
+  failed: number;
+  dead: string[];
+}
+
+export async function sendApnsToTokensWithResults(
+  tokens: string[],
+  payload: ApnsPayload,
+): Promise<ApnsBatchResult> {
   const config = getApnsConfig();
   if (!config) {
     logger.warn("[apns] Not configured — set APNS_KEY_ID + APNS_KEY_P8 in Secrets");
-    return [];
+    return { attempted: tokens.length, accepted: 0, failed: tokens.length, dead: [] };
   }
 
   const dead: string[] = [];
+  let accepted = 0;
+  let failed = 0;
   await Promise.all(
     tokens.map(async (token) => {
       const result = await sendApnsNotification(token, payload, config);
-      if (!result.ok) {
+      if (result.ok) {
+        accepted += 1;
+      } else {
+        failed += 1;
         logger.warn({ token: token.slice(0, 16) + "…", error: result.error }, "[apns] send failed");
         if (result.gone) dead.push(token);
       }
     }),
   );
-  return dead;
+  return { attempted: tokens.length, accepted, failed, dead };
 }

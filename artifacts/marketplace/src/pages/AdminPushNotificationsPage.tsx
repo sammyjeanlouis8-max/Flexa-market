@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, Bell, Smartphone, Users, Send, Loader2,
   AlertTriangle, CheckCircle2, RefreshCw,
@@ -17,6 +18,17 @@ import {
 
 interface TokenCounts { total: number; apns: number; expo: number }
 interface PushResult  { ok: boolean; error?: string | null; gone?: boolean }
+interface ManualRecipient { id: number; name: string; deviceCount: number }
+interface ManualPushResult {
+  ok: boolean;
+  targetedUsers: number;
+  acceptedUsers: number;
+  acceptedDevices: number;
+  failedDevices: number;
+  skippedUsers: number;
+  inAppStored: number;
+  note: string;
+}
 
 export default function AdminPushNotificationsPage() {
   const [, nav]   = useLocation();
@@ -30,6 +42,17 @@ export default function AdminPushNotificationsPage() {
   const [testToken,  setTestToken]  = useState("");
   const [sending,    setSending]    = useState(false);
   const [result,     setResult]     = useState<PushResult | null>(null);
+  const [audience, setAudience] = useState<"all" | "user">("all");
+  const [manualTitle, setManualTitle] = useState("");
+  const [manualMessage, setManualMessage] = useState("");
+  const [manualUrl, setManualUrl] = useState("/");
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [recipients, setRecipients] = useState<ManualRecipient[]>([]);
+  const [selectedRecipient, setSelectedRecipient] = useState<ManualRecipient | null>(null);
+  const [totalEligibleUsers, setTotalEligibleUsers] = useState(0);
+  const [recipientLoading, setRecipientLoading] = useState(false);
+  const [manualSending, setManualSending] = useState(false);
+  const [manualResult, setManualResult] = useState<ManualPushResult | null>(null);
 
   const fetchCounts = () => {
     setLoading(true);
@@ -41,6 +64,76 @@ export default function AdminPushNotificationsPage() {
   };
 
   useEffect(() => { fetchCounts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (audience !== "user") return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRecipientLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (recipientSearch.trim()) params.set("q", recipientSearch.trim());
+        const response = await fetch(`${BASE}/api/push/manual-recipients?${params}`, {
+          headers: { Authorization: authHeader },
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Pa ka chaje itilizatè yo");
+        setRecipients(data.recipients ?? []);
+        setTotalEligibleUsers(data.totalEligibleUsers ?? 0);
+      } catch (error: any) {
+        if (error.name !== "AbortError") {
+          setRecipients([]);
+          toast({ title: error.message, variant: "destructive" });
+        }
+      } finally {
+        setRecipientLoading(false);
+      }
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [audience, recipientSearch, BASE, authHeader, toast]);
+
+  const sendManualPush = async () => {
+    if (!manualTitle.trim() || !manualMessage.trim()) return;
+    if (audience === "user" && !selectedRecipient) {
+      toast({ title: "Chwazi yon itilizatè", variant: "destructive" });
+      return;
+    }
+    const targetLabel = audience === "all"
+      ? `tout ${totalEligibleUsers || counts?.total || 0} itilizatè ki gen push aktif`
+      : selectedRecipient!.name;
+    if (!window.confirm(`Voye notifikasyon sa a bay ${targetLabel}?`)) return;
+
+    setManualSending(true);
+    setManualResult(null);
+    try {
+      const response = await fetch(`${BASE}/api/push/manual-send`, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audience,
+          userId: audience === "user" ? selectedRecipient!.id : undefined,
+          title: manualTitle.trim(),
+          message: manualMessage.trim(),
+          url: manualUrl.trim() || "/",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Notifikasyon an pa t ka voye");
+      setManualResult(data);
+      toast({
+        title: data.ok ? "Notifikasyon an aksepte" : "Voye a fini ak kèk erè",
+        description: `${data.acceptedDevices} aparèy aksepte mesaj la.`,
+      });
+    } catch (error: any) {
+      toast({ title: error.message, variant: "destructive" });
+    } finally {
+      setManualSending(false);
+    }
+  };
 
   const sendTest = async () => {
     if (!/^[0-9a-f]{32,}$/i.test(testToken.trim())) {
@@ -139,6 +232,162 @@ export default function AdminPushNotificationsPage() {
             <div className="flex items-center gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>{counts!.apns} aparèy iOS anrejistre — sistèm push aktif ✅</span>
+            </div>
+          )}
+        </div>
+
+        {/* Manual push campaign */}
+        <div className="rounded-2xl border border-blue-200 dark:border-blue-800 bg-card shadow-sm p-5 space-y-5">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Voye notifikasyon manyèl</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Voye yon mesaj bay tout aparèy aktif oswa yon itilizatè presi. Token yo rete kache sou sèvè a.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setAudience("all"); setSelectedRecipient(null); }}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                audience === "all"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                  : "border-border hover:bg-accent"
+              }`}
+              data-testid="button-push-audience-all"
+            >
+              <span className="block text-sm font-semibold">Tout itilizatè</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">Tout moun ki gen push aktif</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAudience("user")}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                audience === "user"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                  : "border-border hover:bg-accent"
+              }`}
+              data-testid="button-push-audience-user"
+            >
+              <span className="block text-sm font-semibold">Yon itilizatè</span>
+              <span className="block text-xs text-muted-foreground mt-0.5">Chèche pa non oswa ID</span>
+            </button>
+          </div>
+
+          {audience === "user" && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Chwazi itilizatè</Label>
+              {selectedRecipient ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-semibold">{selectedRecipient.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ID #{selectedRecipient.id} · {selectedRecipient.deviceCount} aparèy
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setSelectedRecipient(null)}>
+                    Chanje
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    value={recipientSearch}
+                    onChange={(event) => setRecipientSearch(event.target.value)}
+                    placeholder="Ekri non oswa ID itilizatè a"
+                    data-testid="input-push-recipient-search"
+                  />
+                  <div className="max-h-48 overflow-y-auto rounded-xl border divide-y">
+                    {recipientLoading ? (
+                      <div className="p-4 text-xs text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Ap chèche…
+                      </div>
+                    ) : recipients.length === 0 ? (
+                      <div className="p-4 text-xs text-muted-foreground">Pa jwenn itilizatè ki gen push aktif.</div>
+                    ) : recipients.map((recipient) => (
+                      <button
+                        key={recipient.id}
+                        type="button"
+                        onClick={() => setSelectedRecipient(recipient)}
+                        className="w-full px-3 py-2.5 text-left hover:bg-accent transition-colors"
+                        data-testid={`button-push-recipient-${recipient.id}`}
+                      >
+                        <span className="block text-sm font-medium">{recipient.name}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          ID #{recipient.id} · {recipient.deviceCount} aparèy
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Tit</Label>
+              <span className="text-[11px] text-muted-foreground">{manualTitle.length}/80</span>
+            </div>
+            <Input
+              value={manualTitle}
+              onChange={(event) => setManualTitle(event.target.value.slice(0, 80))}
+              placeholder="Egzanp: Nouvo pwodwi sou Flexa Market"
+              data-testid="input-manual-push-title"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">Mesaj</Label>
+              <span className="text-[11px] text-muted-foreground">{manualMessage.length}/240</span>
+            </div>
+            <Textarea
+              value={manualMessage}
+              onChange={(event) => setManualMessage(event.target.value.slice(0, 240))}
+              placeholder="Ekri mesaj ki pral parèt sou telefòn itilizatè yo"
+              rows={4}
+              data-testid="input-manual-push-message"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Paj pou ouvri</Label>
+            <Input
+              value={manualUrl}
+              onChange={(event) => setManualUrl(event.target.value)}
+              placeholder="/ oswa /search"
+              data-testid="input-manual-push-url"
+            />
+            <p className="text-[11px] text-muted-foreground">Dwe kòmanse ak / epi rete andedan Flexa Market.</p>
+          </div>
+
+          <Button
+            onClick={sendManualPush}
+            disabled={manualSending || !manualTitle.trim() || !manualMessage.trim() || (audience === "user" && !selectedRecipient)}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            data-testid="button-send-manual-push"
+          >
+            {manualSending
+              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Ap voye…</>
+              : <><Send className="h-4 w-4 mr-2" /> Voye notifikasyon</>}
+          </Button>
+
+          {manualResult && (
+            <div className={`rounded-xl border px-4 py-3 text-sm ${
+              manualResult.failedDevices === 0
+                ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300"
+                : "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+            }`}>
+              <p className="font-semibold">{manualResult.acceptedDevices} aparèy pou {manualResult.acceptedUsers} itilizatè aksepte mesaj la.</p>
+              <p className="text-xs mt-1">{manualResult.inAppStored} kopi anrejistre nan sant notifikasyon an.</p>
+              {manualResult.failedDevices > 0 && (
+                <p className="text-xs mt-1">{manualResult.failedDevices} aparèy echwe.</p>
+              )}
+              {manualResult.skippedUsers > 0 && (
+                <p className="text-xs mt-1">{manualResult.skippedUsers} itilizatè te dezaktive push.</p>
+              )}
+              <p className="text-[11px] opacity-80 mt-2">{manualResult.note}</p>
             </div>
           )}
         </div>

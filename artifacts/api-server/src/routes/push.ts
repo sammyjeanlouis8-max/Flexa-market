@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireRole } from "../middlewares/auth";
 import { getVapidPublicKey, upsertSubscription, deleteSubscription, isAllowedPushEndpoint } from "../lib/push";
 import { upsertExpoPushToken, deleteExpoPushToken, sendExpoPushToUser } from "../lib/expo-push";
 import { isApnsToken } from "../lib/expo-push";
 import { sendApnsNotification, getApnsConfig } from "../lib/apns";
-import { db, expoPushTokensTable, usersTable } from "@workspace/db";
+import { db, expoPushTokensTable, notificationsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { logAdminAction } from "../lib/auditLogger";
 
 // Strict bounds for the encryption keys the browser supplies. The real
 // values are short fixed-length base64url blobs; anything wildly outside
@@ -201,6 +202,165 @@ router.get("/push/tokens/detail", requireAdmin, async (_req, res): Promise<void>
     deviceId: r.deviceId,
     updatedAt: r.updatedAt,
   })));
+});
+
+/**
+ * GET /api/push/manual-recipients?q=...
+ * Superadmin-only user picker. Device tokens never leave the server.
+ */
+router.get("/push/manual-recipients", requireRole("superadmin"), async (req, res): Promise<void> => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+  const rows = await db
+    .select({
+      userId: expoPushTokensTable.userId,
+      userName: usersTable.name,
+      notifyPush: usersTable.notifyPush,
+    })
+    .from(expoPushTokensTable)
+    .leftJoin(usersTable, eq(usersTable.id, expoPushTokensTable.userId));
+
+  const recipients = new Map<number, { id: number; name: string; deviceCount: number }>();
+  for (const row of rows) {
+    if (row.notifyPush === false) continue;
+    const existing = recipients.get(row.userId);
+    if (existing) {
+      existing.deviceCount += 1;
+    } else {
+      recipients.set(row.userId, {
+        id: row.userId,
+        name: row.userName?.trim() || `Itilizatè #${row.userId}`,
+        deviceCount: 1,
+      });
+    }
+  }
+
+  const filtered = Array.from(recipients.values())
+    .filter((recipient) => !query
+      || recipient.name.toLowerCase().includes(query)
+      || String(recipient.id).includes(query))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 25);
+
+  res.json({ recipients: filtered, totalEligibleUsers: recipients.size });
+});
+
+/**
+ * POST /api/push/manual-send
+ * Body: { audience: "all" | "user", userId?, title, message, url? }
+ * Superadmin-only manual push campaign. Tokens remain server-side.
+ */
+router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Promise<void> => {
+  const audience = req.body?.audience;
+  const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  const url = typeof req.body?.url === "string" && req.body.url.trim()
+    ? req.body.url.trim()
+    : "/";
+  const requestedUserId = Number(req.body?.userId);
+
+  if (audience !== "all" && audience !== "user") {
+    res.status(400).json({ error: "Audience must be all or user" });
+    return;
+  }
+  if (!title || title.length > 80) {
+    res.status(400).json({ error: "Title is required and must be 80 characters or fewer" });
+    return;
+  }
+  if (!message || message.length > 240) {
+    res.status(400).json({ error: "Message is required and must be 240 characters or fewer" });
+    return;
+  }
+  if (!url.startsWith("/") || url.startsWith("//") || url.length > 300) {
+    res.status(400).json({ error: "URL must be a valid in-app path beginning with /" });
+    return;
+  }
+  if (audience === "user" && (!Number.isSafeInteger(requestedUserId) || requestedUserId <= 0)) {
+    res.status(400).json({ error: "A valid user is required" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      userId: expoPushTokensTable.userId,
+      notifyPush: usersTable.notifyPush,
+    })
+    .from(expoPushTokensTable)
+    .leftJoin(usersTable, eq(usersTable.id, expoPushTokensTable.userId));
+
+  const eligibleUserIds = Array.from(new Set(
+    rows
+      .filter((row) => row.notifyPush !== false)
+      .map((row) => row.userId),
+  ));
+  const targetUserIds = audience === "user"
+    ? eligibleUserIds.filter((id) => id === requestedUserId)
+    : eligibleUserIds;
+
+  if (targetUserIds.length === 0) {
+    res.status(404).json({ error: audience === "user"
+      ? "This user has no active push device"
+      : "No active push devices were found" });
+    return;
+  }
+
+  let inAppStored = 0;
+  for (let i = 0; i < targetUserIds.length; i += 250) {
+    const batch = targetUserIds.slice(i, i + 250);
+    try {
+      await db.insert(notificationsTable).values(batch.map((userId) => ({
+        userId,
+        actorId: req.userId!,
+        type: "admin_broadcast",
+        message: `${title}: ${message}`,
+      })));
+      inAppStored += batch.length;
+    } catch {
+      // Push delivery remains useful even if notification-center persistence fails.
+    }
+  }
+
+  let acceptedUsers = 0;
+  let acceptedDevices = 0;
+  let failedDevices = 0;
+  let skippedUsers = 0;
+  for (let i = 0; i < targetUserIds.length; i += 10) {
+    const batch = targetUserIds.slice(i, i + 10);
+    const results = await Promise.all(batch.map((userId) =>
+      sendExpoPushToUser(userId, {
+        title,
+        body: message,
+        sound: "default",
+        priority: "high",
+        channelId: "admin-broadcast",
+        data: { url, type: "admin_broadcast" },
+      }),
+    ));
+    acceptedUsers += results.filter((result) => result.acceptedDevices > 0).length;
+    acceptedDevices += results.reduce((sum, result) => sum + result.acceptedDevices, 0);
+    failedDevices += results.reduce((sum, result) => sum + result.failedDevices, 0);
+    skippedUsers += results.filter((result) => result.skippedByPreference).length;
+  }
+
+  await logAdminAction(req, {
+    actionType: "manual_push_broadcast",
+    actionCategory: "system",
+    description: `Manual push sent to ${audience === "all" ? `${targetUserIds.length} users` : `user #${requestedUserId}`}`,
+    targetType: audience === "all" ? "push_audience" : "user",
+    targetId: audience === "user" ? requestedUserId : undefined,
+    metadata: { audience, title, message, url, targetedUsers: targetUserIds.length, acceptedUsers, acceptedDevices, failedDevices, skippedUsers, inAppStored },
+    riskLevel: "medium",
+  });
+
+  res.json({
+    ok: failedDevices === 0 && acceptedDevices > 0,
+    targetedUsers: targetUserIds.length,
+    acceptedUsers,
+    acceptedDevices,
+    failedDevices,
+    skippedUsers,
+    inAppStored,
+    note: "Accepted means Apple/Expo accepted the message; final delivery to the device can occur later.",
+  });
 });
 
 /**

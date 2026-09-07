@@ -1,7 +1,7 @@
 import { db, expoPushTokensTable, usersTable, notificationsTable } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { logger } from "./logger";
-import { sendApnsToTokens, type ApnsPayload } from "./apns";
+import { sendApnsToTokensWithResults, type ApnsPayload } from "./apns";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -16,6 +16,14 @@ export type ExpoPushPayload = {
   priority?: "default" | "normal" | "high";
   /** Seconds before Expo drops an undelivered notification (max 2419200) */
   ttl?: number;
+};
+
+export type PushSendSummary = {
+  devicesFound: number;
+  attemptedDevices: number;
+  acceptedDevices: number;
+  failedDevices: number;
+  skippedByPreference: boolean;
 };
 
 function isExpoPushToken(token: string): boolean {
@@ -38,21 +46,32 @@ export function isApnsToken(token: string): boolean {
 export async function sendExpoPushToUser(
   userId: number,
   payload: ExpoPushPayload,
-): Promise<void> {
+): Promise<PushSendSummary> {
+  const summary: PushSendSummary = {
+    devicesFound: 0,
+    attemptedDevices: 0,
+    acceptedDevices: 0,
+    failedDevices: 0,
+    skippedByPreference: false,
+  };
   try {
     const rows = await db
       .select()
       .from(expoPushTokensTable)
       .where(eq(expoPushTokensTable.userId, userId));
 
-    if (rows.length === 0) return;
+    summary.devicesFound = rows.length;
+    if (rows.length === 0) return summary;
 
     const [user] = await db
       .select({ notifyPush: usersTable.notifyPush })
       .from(usersTable)
       .where(eq(usersTable.id, userId));
 
-    if (user && user.notifyPush === false) return;
+    if (user && user.notifyPush === false) {
+      summary.skippedByPreference = true;
+      return summary;
+    }
 
     // Badge: default to the user's unread notification count so the app
     // icon shows a number (like WhatsApp) on every push.
@@ -81,8 +100,11 @@ export async function sendExpoPushToUser(
         collapseId: payload.channelId,
       };
       const rawTokens = apnsRows.map((r) => r.token.slice("apns:".length));
-      const dead = await sendApnsToTokens(rawTokens, apnsPayload);
-      for (const t of dead) {
+      const apnsResult = await sendApnsToTokensWithResults(rawTokens, apnsPayload);
+      summary.attemptedDevices += apnsResult.attempted;
+      summary.acceptedDevices += apnsResult.accepted;
+      summary.failedDevices += apnsResult.failed;
+      for (const t of apnsResult.dead) {
         await db.delete(expoPushTokensTable)
           .where(eq(expoPushTokensTable.token, `apns:${t}`))
           .catch(() => {});
@@ -91,7 +113,7 @@ export async function sendExpoPushToUser(
 
     // ── Expo push (managed / React Native app) ─────────────────────────────
     const validTokens = rows.filter((r) => isExpoPushToken(r.token));
-    if (validTokens.length === 0) return;
+    if (validTokens.length === 0) return summary;
 
     const messages = validTokens.map((r) => ({
       to: r.token,
@@ -104,6 +126,7 @@ export async function sendExpoPushToUser(
       priority: payload.priority ?? "high",
       ...(payload.ttl !== undefined ? { ttl: payload.ttl } : {}),
     }));
+    summary.attemptedDevices += messages.length;
 
     logger.info(
       { userId, tokenCount: messages.length, tokens: validTokens.map(r => r.token.slice(0, 30)) },
@@ -126,13 +149,17 @@ export async function sendExpoPushToUser(
         { status: res.status, userId, body },
         "[expo-push] HTTP error from Expo push service",
       );
-      return;
+      summary.failedDevices += messages.length;
+      return summary;
     }
 
     const json: any = await res.json().catch(() => null);
     logger.info({ userId, expoResponse: json }, "[expo-push] Expo push send response");
 
-    if (!json?.data) return;
+    if (!json?.data) {
+      summary.failedDevices += messages.length;
+      return summary;
+    }
 
     const toDelete: string[] = [];
     const ticketIds: string[] = [];
@@ -141,7 +168,9 @@ export async function sendExpoPushToUser(
       const ticket = json.data[i];
       if (ticket?.status === "ok" && ticket?.id) {
         ticketIds.push(ticket.id);
+        summary.acceptedDevices += 1;
       } else if (ticket?.status === "error") {
+        summary.failedDevices += 1;
         const errCode = ticket?.details?.error;
         logger.warn(
           { userId, token: validTokens[i]?.token?.slice(0, 40), errCode, ticket },
@@ -150,6 +179,8 @@ export async function sendExpoPushToUser(
         if (errCode === "DeviceNotRegistered") {
           toDelete.push(validTokens[i].token);
         }
+      } else {
+        summary.failedDevices += 1;
       }
     }
 
@@ -174,8 +205,12 @@ export async function sendExpoPushToUser(
         checkExpoReceipts(ticketIds, validTokens.map(r => r.token), userId).catch(() => {});
       }, 3 * 60 * 1000);
     }
+    return summary;
   } catch (err) {
+    const uncounted = summary.attemptedDevices - summary.acceptedDevices - summary.failedDevices;
+    if (uncounted > 0) summary.failedDevices += uncounted;
     logger.error({ err, userId }, "[expo-push] sendExpoPushToUser unexpected failure");
+    return summary;
   }
 }
 

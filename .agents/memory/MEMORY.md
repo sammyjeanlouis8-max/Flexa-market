@@ -17,3 +17,5 @@
 - [Flexa iOS build signing](flexa-ios-build-signing.md) — Xcode 16.4/macos-15 CI: use fastlane update_code_signing_settings to switch Automatic→Manual before build; xcpretty||true silently hides failures; APNs token race condition fixed via NotificationCenter.
 - [iOS 26 removed APIs](ios26-removed-apis.md) — UIButton.contentEdgeInsets removed in iOS 26 (crashes OfflineView); use UIButton.Configuration instead. WKPreferences private KVC key allowFileAccessFromFileURLs also unsafe — drop it.
 - [Android push + EAS CI](android-push-eas.md) — Expo hook wired in App.tsx with onLoadEnd re-inject; pnpm CI needs corepack+--no-frozen-lockfile; google-play-key.json not in repo so no --auto-submit; Apple upload limit ~3/day resets midnight Pacific.
+- [Flexa API codegen](flexa-api-codegen.md) — Orval output can duplicate runtime/type exports; keep OpenAPI minItems and generated Zod validation synchronized.
+- [Flexa staff RBAC](flexa-staff-rbac.md) — canonical role outranks legacy isAdmin; finance/superadmin use dedicated guards, staff scope fails closed through country/department/city.

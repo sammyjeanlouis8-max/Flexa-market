@@ -54,7 +54,7 @@ router.post("/boost/estimate", requireAuth, async (req, res): Promise<void> => {
   const plan = req.body.plan as Plan;
   if (!VALID_PLANS.includes(plan)) { res.status(400).json({ error: "Invalid plan" }); return; }
   // Admins may target any country; regular users are locked to their own.
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
+  const isAdmin = !!req.user?.isSuperAdmin;
   const effectiveCountry = isAdmin
     ? (typeof req.body.audience?.country === "string" ? req.body.audience.country : req.user?.country)
     : req.user?.country;
@@ -74,8 +74,8 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   const listingId = parseInt(String(req.params.id), 10);
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
-  if (listing.sellerId !== req.userId && !isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (listing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  const isAdmin = !!req.user?.isSuperAdmin;
 
   // Guard against double-submit: if there is already a boost for this listing
   // in 'processing' state created within the last 2 minutes, reject immediately.
@@ -299,8 +299,7 @@ router.post("/listings/:id/boost/confirm", requireAuth, async (req, res): Promis
   const listingId = parseInt(String(req.params.id), 10);
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
-  if (listing.sellerId !== req.userId && !isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (listing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const boostId = parseInt(req.body.boostId, 10);
   const paymentRef = String(req.body.paymentRef ?? "").trim();
@@ -378,12 +377,11 @@ router.post("/listings/:id/boost/confirm", requireAuth, async (req, res): Promis
  */
 router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> => {
   const isSuperAdmin = !!req.user?.isSuperAdmin;
-  const isAdmin      = !!req.user?.isAdmin && !isSuperAdmin;
   // All admins see the full boost-video inventory; marketplace users stay scoped
   // to the boost's audience country, state, and city.
-  const skipCountryFilter = isSuperAdmin || isAdmin;
+  const skipCountryFilter = isSuperAdmin;
   const adminScopeCountry = (req.user as any)?.adminScopeCountry as string | null | undefined;
-  const viewerCountry = isAdmin
+  const viewerCountry = isSuperAdmin
     ? (adminScopeCountry ?? req.user?.country ?? null)
     : (req.user?.country ?? null);
   const viewerState   = req.user?.state    ?? null;
@@ -480,7 +478,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
  * Returns 402 with INSUFFICIENT_WALLET code + listingId if funds are low.
  */
 router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardNotBlocked, async (req, res): Promise<void> => {
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
+  const isAdmin = !!req.user?.isSuperAdmin;
 
   // Regular users must have a country on their profile.
   // Admins/super-admins may omit it; audienceCountry or "Haiti" is used instead.
@@ -512,10 +510,10 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   // Super-admins may target ALL countries globally.
   const isAllCountries = !!(req.user?.isSuperAdmin) && rawCountry === "ALL";
   const country = rawCountry;
-  const state = (!isAllCountries && country === "Haiti") ? (req.user.state ?? "Ouest") : null;
+  const state = (!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null;
   const city  = (!isAllCountries && typeof req.body.audienceCity === "string" && req.body.audienceCity.trim())
     ? req.body.audienceCity.trim()
-    : (!isAllCountries ? (req.user.location ?? null) : null);
+    : (!isAllCountries ? (req.user!.location ?? null) : null);
   const gender = ["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all";
   const ageMin = Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18;
   const ageMax = Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65;
@@ -641,8 +639,7 @@ router.post("/listings/:id/boost/stripe-checkout", requireAuth, requireCardNotBl
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
 
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
-  if (listing.sellerId !== req.userId && !isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (listing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const [boost] = await db.select().from(boostsTable).where(
     and(eq(boostsTable.id, boostId), eq(boostsTable.listingId, listingId))
@@ -694,8 +691,7 @@ router.get("/listings/:id/boosts", requireAuth, async (req, res): Promise<void> 
   const listingId = parseInt(String(req.params.id), 10);
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
-  if (listing.sellerId !== req.userId && !isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (listing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
   const boosts = await db.select().from(boostsTable)
     .where(eq(boostsTable.listingId, listingId))
@@ -1028,7 +1024,7 @@ router.post("/boost/verify-stripe-payment", requireAuth, async (req, res): Promi
     // Security check: verify this boost belongs to the requesting user
     const [boost] = await db.select().from(boostsTable).where(eq(boostsTable.id, boostId));
     if (!boost) { res.status(404).json({ error: "Boost not found" }); return; }
-    if (boost.userId !== req.userId && !req.user?.isAdmin) {
+    if (boost.userId !== req.userId) {
       res.status(403).json({ error: "Forbidden" }); return;
     }
 

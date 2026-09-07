@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
-import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked } from "../middlewares/auth";
+import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
@@ -762,7 +762,7 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
   const orderId = parseInt(rawId, 10);
   if (!orderId || Number.isNaN(orderId)) { res.status(400).json({ error: "Invalid order id" }); return; }
 
-  const isAdminReq = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
+  const isAdminReq = hasFinanceAdminAccess(req.user);
 
   // Admins can view any order; regular users only their own
   let tx: any, listing: any, isSeller: boolean, isBuyer: boolean;

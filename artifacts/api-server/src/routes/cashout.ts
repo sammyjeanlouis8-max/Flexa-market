@@ -2,7 +2,7 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import { db, cashoutRequestsTable, promoWalletTable, walletTransactionsTable, usersTable, agentApplicationsTable } from "@workspace/db";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked } from "../middlewares/auth";
+import { requireAuth, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
 
@@ -24,7 +24,7 @@ function otpExpiry(): Date {
 }
 
 function requireAgent(req: any, res: any, next: any) {
-  if (req.user?.role === "agent" || req.user?.isAdmin || req.user?.isSuperAdmin) {
+  if (req.user?.role === "agent" || hasFinanceAdminAccess(req.user)) {
     next();
   } else {
     res.status(403).json({ error: "Aksè refize — ajant sèlman" });
@@ -239,13 +239,13 @@ router.get("/cashout/agent-transfer/pending", requireAuth, async (req, res): Pro
     .where(and(eq(agentApplicationsTable.userId, userId), eq(agentApplicationsTable.status, "approved")))
     .limit(1);
 
-  if (!agentApp && !req.user?.isAdmin && !req.user?.isSuperAdmin) {
+  if (!agentApp && !hasFinanceAdminAccess(req.user)) {
     res.status(403).json({ error: "Aksè refize — ajant otorize sèlman" });
     return;
   }
 
   const conditions: any[] = [eq((cashoutRequestsTable as any).method, "agent_transfer")];
-  if (agentApp && !req.user?.isAdmin && !req.user?.isSuperAdmin) {
+  if (agentApp && !hasFinanceAdminAccess(req.user)) {
     conditions.push(eq((cashoutRequestsTable as any).assignedAgentAppId, agentApp.id));
   }
 
@@ -280,8 +280,8 @@ router.patch("/cashout/agent-transfer/:id/complete", requireAuth, async (req, re
     .where(and(eq(agentApplicationsTable.userId, userId), eq(agentApplicationsTable.status, "approved")))
     .limit(1);
 
-  const isAdminUser = req.user?.isAdmin || req.user?.isSuperAdmin;
-  if (!agentApp && !isAdminUser) {
+  const isFinanceAdmin = hasFinanceAdminAccess(req.user);
+  if (!agentApp && !isFinanceAdmin) {
     res.status(403).json({ error: "Aksè refize — ajant otorize sèlman" });
     return;
   }
@@ -289,7 +289,7 @@ router.patch("/cashout/agent-transfer/:id/complete", requireAuth, async (req, re
   const [request] = await db.select().from(cashoutRequestsTable).where(eq(cashoutRequestsTable.id, requestId));
   if (!request) { res.status(404).json({ error: "Demand lan pa jwenn" }); return; }
 
-  if (agentApp && !isAdminUser && (request as any).assignedAgentAppId !== agentApp.id) {
+  if (agentApp && !isFinanceAdmin && (request as any).assignedAgentAppId !== agentApp.id) {
     res.status(403).json({ error: "Demand sa a pa asiyen ou" });
     return;
   }

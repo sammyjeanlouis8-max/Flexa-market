@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable } from "@workspace/db";
 import { PLAN_CONFIG, type SubscriptionPlan } from "@workspace/db";
 import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or, inArray } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import type { Request } from "express";
@@ -481,9 +481,8 @@ router.post("/subscription/wallet-retry", requireAuth, async (req: any, res: any
 });
 
 // ── Admin: GET /api/admin/subscriptions ──────────────────────────────────────
-router.get("/admin/subscriptions", requireAuth, async (req: any, res: any) => {
+router.get("/admin/subscriptions", requireSuperAdmin, async (req: any, res: any) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) return res.status(403).json({ error: "Forbidden" });
     const rows = await db.select({
       sub: vendorSubscriptionsTable,
       user: { id: usersTable.id, name: usersTable.name, email: usersTable.email, avatar: usersTable.avatar },
@@ -501,9 +500,8 @@ router.get("/admin/subscriptions", requireAuth, async (req: any, res: any) => {
 });
 
 // ── Admin: POST /api/admin/subscriptions/grant ───────────────────────────────
-router.post("/admin/subscriptions/grant", requireAuth, async (req: any, res: any) => {
+router.post("/admin/subscriptions/grant", requireSuperAdmin, async (req: any, res: any) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) return res.status(403).json({ error: "Forbidden" });
     const { userId, plan, months = 1 } = req.body as { userId: number; plan: SubscriptionPlan; months?: number };
     if (!userId || !plan || !PLAN_CONFIG[plan]) return res.status(400).json({ error: "userId and plan required" });
 
@@ -536,9 +534,8 @@ router.post("/admin/subscriptions/grant", requireAuth, async (req: any, res: any
 });
 
 // ── Admin: POST /api/admin/subscriptions/revoke ──────────────────────────────
-router.post("/admin/subscriptions/revoke", requireAuth, async (req: any, res: any) => {
+router.post("/admin/subscriptions/revoke", requireSuperAdmin, async (req: any, res: any) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) return res.status(403).json({ error: "Forbidden" });
     const { userId } = req.body as { userId: number };
     if (!userId) return res.status(400).json({ error: "userId required" });
 
@@ -631,9 +628,8 @@ router.post("/subscription/checkout/verify", async (req: any, res: any): Promise
 
 // ── Admin: POST /api/admin/subscriptions/activate ───────────────────────────
 // Manually activates a pending subscription record (e.g. Stripe never confirmed).
-router.post("/admin/subscriptions/activate", requireAuth, async (req: any, res: any) => {
+router.post("/admin/subscriptions/activate", requireSuperAdmin, async (req: any, res: any) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) return res.status(403).json({ error: "Forbidden" });
     const { subscriptionId } = req.body as { subscriptionId: number };
     if (!subscriptionId) return res.status(400).json({ error: "subscriptionId required" });
 

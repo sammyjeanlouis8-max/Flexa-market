@@ -4,7 +4,7 @@ import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsT
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
-import { requireAuth, optionalAuth, requireNotRestricted } from "../middlewares/auth";
+import { requireAuth, optionalAuth, requireNotRestricted, hasRole } from "../middlewares/auth";
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
@@ -238,7 +238,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   if (city) baseConditions.push(ilike(listingsTable.city!, `%${city}%`));
   if (boosted === "true") baseConditions.push(eq(listingsTable.isBoosted, true));
 
-  const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+  const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     baseConditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
@@ -370,7 +370,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
-  const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+  const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
@@ -418,7 +418,7 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
 router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
-  const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+  const isAdmin = hasRole(req.user, "admin");
   const userCountry = req.user?.country ?? null;
 
   if (req.userId && userCountry && !isAdmin) {
@@ -482,7 +482,7 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
 router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
-  const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+  const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
@@ -901,7 +901,7 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .where(eq(listingsTable.id, id));
   if (!row) { res.status(404).json({ error: "Listing not found" }); return; }
 
-  const isAdminD = req.user?.isAdmin || req.user?.isSuperAdmin;
+  const isAdminD = hasRole(req.user, "admin");
   const isOwnerD = req.userId === row.listings.sellerId;
   if (req.userId && req.user?.country && !isAdminD && !isOwnerD &&
       row.listings.country && row.listings.country !== req.user.country) {
@@ -1000,7 +1000,7 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
   try {
     const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-    if (existing.sellerId !== req.userId && !req.user?.isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (existing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
     // ── Prorate-refund any active paid boost before deleting ─────────────────
     const [activeBoost] = await db
@@ -1108,7 +1108,7 @@ router.delete("/listings/:id/video", requireAuth, async (req, res): Promise<void
   try {
     const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
     if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-    if (existing.sellerId !== req.userId && !req.user?.isAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (existing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
 
     const [updated] = await db
       .update(listingsTable)
@@ -1840,7 +1840,7 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
 
     // 3. Scope to the user's country (same rule as the main feed)
     const userCountry = req.user?.country ?? null;
-    const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
+    const isAdmin = hasRole(req.user, "admin");
     if (userCountry && !isAdmin) {
       baseConditions.push(eq(listingsTable.country!, userCountry));
     }

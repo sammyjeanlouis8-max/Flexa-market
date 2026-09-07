@@ -8,7 +8,7 @@ import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, han
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { payReferralBonusIfEligible, applyRechargeCredits } from "./wallet";
 import { quoteForListing } from "../lib/commission";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
@@ -340,10 +340,8 @@ router.get("/stripe/checkout/activate", async (req, res) => {
  * GET /api/admin/stripe/transactions
  * Admin: All Stripe transactions with pagination.
  */
-router.get("/admin/stripe/transactions", requireAuth, async (req: any, res) => {
+router.get("/admin/stripe/transactions", requireFinanceAdmin, async (req: any, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: "Admin only" });
-
     const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
     const limit = 20;
     const offset = (page - 1) * limit;
@@ -375,9 +373,8 @@ router.get("/admin/stripe/transactions", requireAuth, async (req: any, res) => {
  * GET /api/admin/stripe/commission
  * GET the platform Stripe commission rate.
  */
-router.get("/admin/stripe/commission", requireAuth, async (req: any, res) => {
+router.get("/admin/stripe/commission", requireSuperAdmin, async (req: any, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: "Admin only" });
     const rate = await getPlatformCommission();
     return res.json({ commissionRate: rate, commissionPercent: rate * 100 });
   } catch (err) {
@@ -389,10 +386,8 @@ router.get("/admin/stripe/commission", requireAuth, async (req: any, res) => {
  * POST /api/admin/stripe/commission
  * Set the platform Stripe commission rate (0–50%).
  */
-router.post("/admin/stripe/commission", requireAuth, async (req: any, res) => {
+router.post("/admin/stripe/commission", requireSuperAdmin, async (req: any, res) => {
   try {
-    if (!req.user?.isAdmin) return res.status(403).json({ error: "Admin only" });
-
     const { commissionPercent } = req.body;
     const pct = parseFloat(commissionPercent);
     if (isNaN(pct) || pct < 0 || pct > 50) {

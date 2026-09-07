@@ -6,19 +6,25 @@ import {
   adminMessagesTable,
   usersTable,
   notificationsTable,
+  adminLogsTable,
 } from "@workspace/db";
 import { eq, and, or, desc, sql, inArray, ne } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireSuperAdmin, requireRole, hasRole } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin, requireRole, hasRole, isAdminAccessSuspended } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import {
   emitSupportMessage,
   emitSupportUpdate,
   emitNewSupportThread,
 } from "../lib/socketServer";
+import { userInAdminScope } from "../lib/adminScope";
 
 const router = Router();
 
 type BotHistoryItem = { role: "bot" | "user"; content: string };
+
+function hasActiveSupportAccess(user: typeof usersTable.$inferSelect | null | undefined): boolean {
+  return hasRole(user, "support") && !isAdminAccessSuspended(user);
+}
 
 function parseCreateThread(body: any):
   | { ok: true; subject: string; message: string; botHistory: BotHistoryItem[] }
@@ -80,6 +86,20 @@ async function getAdminIds(userCountry?: string | null): Promise<number[]> {
     .map((r) => r.id);
 }
 
+async function getScopedOwnerIds(admin: typeof usersTable.$inferSelect): Promise<number[]> {
+  const allUsers = await db.select().from(usersTable);
+  return allUsers.filter((user) => userInAdminScope(admin, user)).map((user) => user.id);
+}
+
+async function getScopedThread(admin: typeof usersTable.$inferSelect, threadId: number) {
+  const [row] = await db
+    .select({ thread: supportThreadsTable, owner: usersTable })
+    .from(supportThreadsTable)
+    .innerJoin(usersTable, eq(supportThreadsTable.userId, usersTable.id))
+    .where(eq(supportThreadsTable.id, threadId));
+  return row && userInAdminScope(admin, row.owner) ? row : null;
+}
+
 /**
  * GET /api/support/unread-count
  * For users: number of unread admin replies across their threads.
@@ -87,13 +107,21 @@ async function getAdminIds(userCountry?: string | null): Promise<number[]> {
  */
 router.get("/support/unread-count", requireAuth, async (req, res): Promise<void> => {
   const me = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = hasRole(me[0], "support");
+  const isAdmin = hasActiveSupportAccess(me[0]);
 
   if (isAdmin) {
+    const ownerIds = await getScopedOwnerIds(me[0]);
+    if (ownerIds.length === 0) {
+      res.json({ count: 0 });
+      return;
+    }
     const [row] = await db
       .select({ count: sql<number>`coalesce(sum(${supportThreadsTable.unreadByAdmin}), 0)::int` })
       .from(supportThreadsTable)
-      .where(eq(supportThreadsTable.status, "open"));
+      .where(and(
+        eq(supportThreadsTable.status, "open"),
+        inArray(supportThreadsTable.userId, ownerIds),
+      ));
     res.json({ count: row?.count ?? 0 });
     return;
   }
@@ -112,7 +140,7 @@ router.get("/support/unread-count", requireAuth, async (req, res): Promise<void>
  */
 router.get("/support/threads", requireAuth, async (req, res): Promise<void> => {
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = hasRole(me, "support");
+  const isAdmin = hasActiveSupportAccess(me);
   const wantAll = isAdmin && (req.query["all"] === "1" || req.query["all"] === "true");
 
   if (!wantAll) {
@@ -131,17 +159,12 @@ router.get("/support/threads", requireAuth, async (req, res): Promise<void> => {
   }
 
   // Admin list — build WHERE conditions
-  const conditions: any[] = [];
-
-  // Country scope enforcement: non-super-admin with a scope only sees their country
-  if (!me?.isSuperAdmin && me?.adminScopeCountry) {
-    conditions.push(
-      or(
-        eq(supportThreadsTable.country, me.adminScopeCountry),
-        sql`${supportThreadsTable.country} IS NULL`,
-      ),
-    );
-  }
+  const ownerIds = await getScopedOwnerIds(me!);
+  const conditions: any[] = [
+    ownerIds.length > 0
+      ? inArray(supportThreadsTable.userId, ownerIds)
+      : sql`false`,
+  ];
 
   // Optional filters from query string
   const statusQ = typeof req.query["status"] === "string" ? req.query["status"] : null;
@@ -308,9 +331,11 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
   }
 
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = hasRole(me, "support");
+  const isAdmin = hasActiveSupportAccess(me);
   const isOwner = thread.userId === req.userId;
-  if (!isAdmin && !isOwner) {
+  const [threadOwner] = await db.select().from(usersTable).where(eq(usersTable.id, thread.userId));
+  const canModerate = !!(isAdmin && threadOwner && userInAdminScope(me, threadOwner));
+  if (!isOwner && !canModerate) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -356,7 +381,7 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
     return fetched;
   });
 
-  const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, thread.userId));
+  const owner = threadOwner;
   const assignee = thread.assignedAdminId
     ? await db.select().from(usersTable).where(eq(usersTable.id, thread.assignedAdminId)).then((r) => r[0])
     : null;
@@ -407,10 +432,11 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
   }
 
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = hasRole(me, "support");
+  const isAdmin = hasActiveSupportAccess(me);
   const isSuperAdmin = !!me?.isSuperAdmin;
   const isOwner = threadPre.userId === req.userId;
-  if (!isAdmin && !isOwner) {
+  const scopedThread = isAdmin && me ? await getScopedThread(me, id) : null;
+  if (!isOwner && !scopedThread) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -483,6 +509,13 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
 
   // Notify the recipient(s).
   if (isAdmin) {
+    await db.insert(adminLogsTable).values({
+      adminId: req.userId!,
+      action: "support_reply",
+      targetType: "support_thread",
+      targetId: id,
+      details: `Replied to support thread ${id}`,
+    }).catch(() => {});
     await db
       .insert(notificationsTable)
       .values({ userId: thread.userId, actorId: req.userId!, type: "support_reply" })
@@ -514,6 +547,11 @@ router.post("/support/threads/:id/close", requireRole("support"), async (req, re
     res.status(400).json({ error: "Invalid id" });
     return;
   }
+  const scopedThread = await getScopedThread(req.user!, id);
+  if (!scopedThread) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
   const result = await db
     .update(supportThreadsTable)
     .set({ status: "closed", closedAt: new Date() })
@@ -523,6 +561,13 @@ router.post("/support/threads/:id/close", requireRole("support"), async (req, re
     res.status(409).json({ error: "Already closed or not found" });
     return;
   }
+  await db.insert(adminLogsTable).values({
+    adminId: req.userId!,
+    action: "support_close",
+    targetType: "support_thread",
+    targetId: id,
+    details: `Closed support thread ${id}`,
+  }).catch(() => {});
   emitSupportUpdate(id, { threadId: id, status: "closed" });
   res.json({ ok: true });
 });
@@ -540,8 +585,10 @@ router.post("/support/threads/:id/reopen", requireAuth, async (req, res): Promis
     return;
   }
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = hasRole(me, "support");
-  if (!isAdmin && thread.userId !== req.userId) {
+  const isAdmin = hasActiveSupportAccess(me);
+  const isOwner = thread.userId === req.userId;
+  const scopedThread = isAdmin && me ? await getScopedThread(me, id) : null;
+  if (!isOwner && !scopedThread) {
     res.status(403).json({ error: "Forbidden" });
     return;
   }
@@ -596,24 +643,32 @@ router.post("/support/threads/:id/assign", requireSuperAdmin, async (req, res): 
  * GET /api/admin/support/analytics — Super Admin summary metrics.
  */
 router.get("/admin/support/analytics", requireRole("support"), async (req, res): Promise<void> => {
+  const ownerIds = await getScopedOwnerIds(req.user!);
+  const ownerCondition = ownerIds.length > 0
+    ? inArray(supportThreadsTable.userId, ownerIds)
+    : sql`false`;
   const [totRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
-    .from(supportThreadsTable);
+    .from(supportThreadsTable)
+    .where(ownerCondition);
   const [openRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(supportThreadsTable)
-    .where(eq(supportThreadsTable.status, "open"));
+    .where(and(eq(supportThreadsTable.status, "open"), ownerCondition));
   const [closedTodayRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(supportThreadsTable)
-    .where(sql`closed_at::date = CURRENT_DATE`);
+    .where(and(sql`closed_at::date = CURRENT_DATE`, ownerCondition));
 
   // Average response time: minutes from thread creation to first admin reply
-  const avgResult = await db.execute(sql`
+  const avgResult = ownerIds.length === 0
+    ? { rows: [{ avg_min: null }] }
+    : await db.execute(sql`
     SELECT AVG(EXTRACT(EPOCH FROM (sm.created_at - st.created_at)) / 60)::float as avg_min
     FROM support_messages sm
     JOIN support_threads st ON st.id = sm.thread_id
     WHERE sm.is_admin_reply = true
+      AND st.user_id IN (${sql.join(ownerIds.map((id) => sql`${id}`), sql`, `)})
       AND sm.id = (
         SELECT id FROM support_messages
         WHERE thread_id = st.id AND is_admin_reply = true

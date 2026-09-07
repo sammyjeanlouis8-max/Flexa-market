@@ -1,8 +1,7 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
 import { eq, desc, sql, and, gte, ilike, or } from "drizzle-orm";
-import { requireAuth, requireCardNotBlocked } from "../middlewares/auth";
-import { requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
 
@@ -959,11 +958,7 @@ router.post("/wallet/topup/initiate", requireAuth, async (req, res): Promise<voi
 
 // ─── POST /api/wallet/topup/confirm ───────────────────────────────────────────
 // Admin confirms that MonCash payment was received → credit wallet.
-router.post("/wallet/topup/confirm", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.post("/wallet/topup/confirm", requireFinanceAdmin, async (req, res): Promise<void> => {
   const { paymentRef, action } = req.body as { paymentRef: string; action: "confirm" | "reject" };
   if (!paymentRef || !["confirm", "reject"].includes(action)) {
     res.status(400).json({ error: "paymentRef ak action obligatwa" });
@@ -1045,11 +1040,7 @@ router.post("/wallet/topup/submit-proof", requireAuth, async (req, res): Promise
 });
 
 // ─── GET /api/wallet/admin/all ────────────────────────────────────────────────
-router.get("/wallet/admin/all", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.get("/wallet/admin/all", requireFinanceAdmin, async (req, res): Promise<void> => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1")));
   const limit = 50;
   const offset = (page - 1) * limit;
@@ -1100,12 +1091,8 @@ router.get("/wallet/admin/all", requireAuth, async (req, res): Promise<void> => 
 // Super admin → sees ALL countries.
 // Regular admin → sees only transactions from users in adminScopeCountry.
 // ?filter=all|in|out  ?search=name_or_email  ?limit=N (default 300, max 500)
-router.get("/wallet/admin/transactions", requireAuth, async (req, res): Promise<void> => {
-  const admin = req.user;
-  if (!admin?.isAdmin && !admin?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.get("/wallet/admin/transactions", requireFinanceAdmin, async (req, res): Promise<void> => {
+  const admin = req.user!;
 
   const filter  = (req.query.filter as string) || "all";
   const search  = (req.query.search as string) || "";
@@ -1337,21 +1324,13 @@ router.get("/wallet/stripe/auto-retry", requireAuth, async (req: any, res): Prom
 });
 
 // ─── GET /api/wallet/admin/settings ──────────────────────────────────────────
-router.get("/wallet/admin/settings", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.get("/wallet/admin/settings", requireSuperAdmin, async (req, res): Promise<void> => {
   const settings = await getWalletSettings();
   res.json(settings);
 });
 
 // ─── POST /api/wallet/admin/settings ─────────────────────────────────────────
-router.post("/wallet/admin/settings", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.post("/wallet/admin/settings", requireSuperAdmin, async (req, res): Promise<void> => {
   const { rateHtgToUsd, bonusPct, moncashPlatformNumber } = req.body as { rateHtgToUsd?: number; bonusPct?: number; moncashPlatformNumber?: string };
 
   if (rateHtgToUsd !== undefined) {
@@ -1449,11 +1428,7 @@ router.get("/wallet/referral", requireAuth, async (req, res): Promise<void> => {
 
 // ─── POST /api/wallet/admin/credit ────────────────────────────────────────────
 // Admin manually adds USD credit to any user's wallet.
-router.post("/wallet/admin/credit", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.post("/wallet/admin/credit", requireFinanceAdmin, async (req, res): Promise<void> => {
   const { userId, amountUsd, note } = req.body as { userId: number; amountUsd: number; note?: string };
   if (!userId || !amountUsd || amountUsd <= 0) {
     res.status(400).json({ error: "userId ak amountUsd obligatwa" });
@@ -1481,11 +1456,7 @@ router.post("/wallet/admin/credit", requireAuth, async (req, res): Promise<void>
 // Admin: find all pending Stripe wallet_recharge transactions for a user,
 // look up each session on Stripe, and credit the wallet if the session is paid.
 // Idempotent — safe to call multiple times.
-router.post("/wallet/admin/stripe-retry", requireAuth, async (req: any, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
-    res.status(403).json({ error: "Admin sèlman" });
-    return;
-  }
+router.post("/wallet/admin/stripe-retry", requireFinanceAdmin, async (req: any, res): Promise<void> => {
   const { userId } = req.body as { userId: number };
   if (!userId) { res.status(400).json({ error: "userId obligatwa" }); return; }
 
@@ -1662,7 +1633,7 @@ router.post("/wallet/redeem-card", requireAuth, async (req, res): Promise<void> 
 // ─── GET /api/wallet/admin/user/:id ───────────────────────────────────────────
 // Full wallet profile for a single user (admin only).
 // Returns: user info, all balance fields, full transaction history (up to 500).
-router.get("/wallet/admin/user/:id", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.get("/wallet/admin/user/:id", requireFinanceAdmin, async (req, res): Promise<void> => {
   const admin = req.user!;
 
   const targetId = parseInt(req.params.id, 10);

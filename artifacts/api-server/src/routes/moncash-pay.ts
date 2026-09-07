@@ -112,9 +112,8 @@ router.post("/moncash/pay", requireAuth, async (req, res): Promise<void> => {
 
   if (!boost) { res.status(404).json({ error: "Boost order not found" }); return; }
 
-  // Only the boost owner (or an admin) may initiate payment.
-  const isAdmin = !!(req.user?.isAdmin || req.user?.isSuperAdmin);
-  if (boost.userId !== req.userId && !isAdmin) {
+  // Only the boost owner may initiate payment.
+  if (boost.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" }); return;
   }
 

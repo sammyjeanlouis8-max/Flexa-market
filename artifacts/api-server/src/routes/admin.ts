@@ -9,6 +9,7 @@ import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
 import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
+import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 
 const router = Router();
 
@@ -62,48 +63,6 @@ async function log(adminId: number, action: string, targetType?: string, targetI
 
 // ─── Hierarchical Scope System ────────────────────────────────────────────────
 
-export const SCOPE_OPTIONS: Record<string, { departments: string[]; citiesByDept: Record<string, string[]> }> = {
-  Haiti: {
-    departments: ["Ouest", "Nord", "Nord-Est", "Nord-Ouest", "Artibonite", "Centre", "Sud", "Grand'Anse", "Sud-Est", "Nippes"],
-    citiesByDept: {
-      Ouest: ["Port-au-Prince", "Pétion-Ville", "Delmas", "Carrefour"],
-      Nord: ["Cap-Haïtien"],
-      "Nord-Ouest": ["Port-de-Paix"],
-      "Sud-Est": ["Jacmel"],
-      Sud: ["Les Cayes"],
-      Artibonite: ["Gonaïves"],
-      "Grand'Anse": ["Jérémie"],
-    },
-  },
-  USA: {
-    departments: ["Northeast", "Southeast", "Midwest", "Southwest", "West"],
-    citiesByDept: {
-      Northeast: ["New York, NY", "Brooklyn, NY", "Queens, NY", "Boston, MA", "Philadelphia, PA", "Newark, NJ"],
-      Southeast: ["Miami, FL", "Orlando, FL", "Atlanta, GA", "Washington, DC"],
-      Midwest: ["Chicago, IL"],
-      Southwest: ["Houston, TX"],
-      West: ["Los Angeles, CA"],
-    },
-  },
-  "Dominican Republic": {
-    departments: ["Norte", "Sur", "Este"],
-    citiesByDept: {
-      Norte: ["Santiago", "Puerto Plata"],
-      Sur: ["Santo Domingo", "San Pedro de Macorís"],
-      Este: ["La Romana", "Punta Cana", "Higüey"],
-    },
-  },
-  Canada: {
-    departments: ["Quebec", "Ontario", "British Columbia", "Alberta"],
-    citiesByDept: {
-      Quebec: ["Montréal, QC", "Québec, QC"],
-      Ontario: ["Toronto, ON", "Ottawa, ON"],
-      "British Columbia": ["Vancouver, BC"],
-      Alberta: ["Calgary, AB", "Edmonton, AB"],
-    },
-  },
-};
-
 type AdminUser = typeof usersTable.$inferSelect;
 
 /** Parse adminScopeCountries JSON field into a string array (empty = not set) */
@@ -155,9 +114,11 @@ function getListingScopeConditions(admin: AdminUser): ReturnType<typeof eq>[] {
     conds.push(eq(listingsTable.city!, admin.adminScopeCity));
   } else if (admin.adminScopeDepartment && admin.adminScopeCountry) {
     const scopeData = SCOPE_OPTIONS[admin.adminScopeCountry];
-    const deptCities = scopeData?.citiesByDept[admin.adminScopeDepartment];
-    if (deptCities && deptCities.length > 0) {
+    const deptCities = scopeData?.citiesByDept[admin.adminScopeDepartment] ?? [];
+    if (deptCities.length > 0) {
       conds.push(inArray(listingsTable.city!, deptCities) as any);
+    } else {
+      conds.push(sql`false` as any);
     }
   }
   return conds;
@@ -175,6 +136,16 @@ function getUserScopeConditions(admin: AdminUser): ReturnType<typeof eq>[] {
   } else if (admin.adminScopeCountry) {
     conds.push(eq(usersTable.country!, admin.adminScopeCountry));
   }
+  if (admin.adminScopeCity) {
+    conds.push(eq(usersTable.location!, admin.adminScopeCity));
+  } else if (admin.adminScopeDepartment && admin.adminScopeCountry) {
+    const departmentCities = SCOPE_OPTIONS[admin.adminScopeCountry]?.citiesByDept[admin.adminScopeDepartment] ?? [];
+    if (departmentCities.length > 0) {
+      conds.push(inArray(usersTable.location!, departmentCities) as any);
+    } else {
+      conds.push(sql`false` as any);
+    }
+  }
   return conds;
 }
 
@@ -184,18 +155,12 @@ function getUserScopeConditions(admin: AdminUser): ReturnType<typeof eq>[] {
  * `target`, or null if the action is permitted.
  */
 function assertUserInScope(admin: AdminUser, target: AdminUser): string | null {
-  if (admin.isSuperAdmin) return null;
-  const countries = parseAdminCountries(admin);
-  if (countries.length > 0) {
-    if (target.country && !countries.includes(target.country)) {
-      return `Access denied: this user is in "${target.country}" — outside your scope (${countries.join(", ")})`;
-    }
-    return null;
-  }
-  if (admin.adminScopeCountry && target.country !== admin.adminScopeCountry) {
-    return `Access denied: this user is in "${target.country ?? "unknown"}" — outside your scope (${admin.adminScopeCountry})`;
-  }
-  return null;
+  if (userInAdminScope(admin, target)) return null;
+  const scope = admin.adminScopeCity
+    ?? admin.adminScopeDepartment
+    ?? getAdminCountryList(admin).join(", ")
+    ?? "assigned scope";
+  return `Access denied: this user is outside your scope (${scope || "assigned scope"})`;
 }
 
 /**
@@ -207,12 +172,10 @@ function assertListingInScope(admin: AdminUser, listing: typeof listingsTable.$i
   if (admin.isSuperAdmin) return null;
   const countries = parseAdminCountries(admin);
   if (countries.length > 0) {
-    if (listing.country && !countries.includes(listing.country)) {
-      return `Access denied: listing is in "${listing.country}" — outside your scope (${countries.join(", ")})`;
+    if (!listing.country || !countries.includes(listing.country)) {
+      return `Access denied: listing is in "${listing.country ?? "unknown"}" — outside your scope (${countries.join(", ")})`;
     }
-    return null;
-  }
-  if (admin.adminScopeCountry && listing.country !== admin.adminScopeCountry) {
+  } else if (admin.adminScopeCountry && listing.country !== admin.adminScopeCountry) {
     return `Access denied: listing is in "${listing.country ?? "unknown"}" — outside your scope (${admin.adminScopeCountry})`;
   }
   if (admin.adminScopeCity && listing.city !== admin.adminScopeCity) {
@@ -220,8 +183,8 @@ function assertListingInScope(admin: AdminUser, listing: typeof listingsTable.$i
   }
   if (admin.adminScopeDepartment && admin.adminScopeCountry && !admin.adminScopeCity) {
     const deptCities = SCOPE_OPTIONS[admin.adminScopeCountry]?.citiesByDept[admin.adminScopeDepartment] ?? [];
-    if (deptCities.length > 0 && listing.city && !deptCities.includes(listing.city)) {
-      return `Access denied: listing is in "${listing.city}" — outside your department scope (${admin.adminScopeDepartment})`;
+    if (deptCities.length === 0 || !listing.city || !deptCities.includes(listing.city)) {
+      return `Access denied: listing is in "${listing.city ?? "unknown"}" — outside your department scope (${admin.adminScopeDepartment})`;
     }
   }
   return null;
@@ -242,6 +205,10 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     const all = [...uScope, ...(extra ? [extra] : [])];
     return all.length ? and(...all) : undefined;
   };
+  const scopedReporterIds = db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(userWhere());
 
   const [
     [totalUsers], [totalListings], [activeListings],
@@ -256,7 +223,10 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     db.select({ count: count() }).from(listingsTable).where(listingWhere(eq(listingsTable.isBoosted, true))),
     db.select({ count: count() }).from(listingsTable).where(listingWhere(eq(listingsTable.isFeatured, true))),
     db.select({ count: count() }).from(boostsTable),
-    db.select({ count: count() }).from(reportsTable).where(eq(reportsTable.status, "pending")),
+    db.select({ count: count() }).from(reportsTable).where(and(
+      eq(reportsTable.status, "pending"),
+      inArray(reportsTable.reporterId, scopedReporterIds),
+    )),
     db.select({ count: count() }).from(usersTable).where(userWhere(eq(usersTable.isFlagged, true))),
     db.select({ count: count() }).from(usersTable).where(userWhere(eq(usersTable.isBanned, true))),
     db.select({ count: count() }).from(usersTable).where(eq(usersTable.isAdmin, true)),
@@ -267,7 +237,6 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
 
   const safeStats = {
     totalUsers: Number(totalUsers.count),
-    onlineUsers: getOnlineUserCount(),
     totalListings: Number(totalListings.count),
     activeListings: Number(activeListings.count),
     pendingReports: Number(pendingReports.count),
@@ -285,6 +254,7 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
   }
   res.json({
     ...safeStats,
+    onlineUsers: getOnlineUserCount(),
     boostedListings: Number(boostedListings.count),
     featuredListings: Number(featuredListings.count),
     totalBoosts: Number(totalBoosts.count),

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, jobsTable, usersTable } from "@workspace/db";
 import { eq, and, desc, ne, or, isNull, sql, inArray } from "drizzle-orm";
-import { requireAuth, requireNotRestricted } from "../middlewares/auth";
+import { requireAuth, requireNotRestricted, requireSuperAdmin } from "../middlewares/auth";
 import { deductWalletHybrid } from "./wallet";
 
 const router = Router();
@@ -64,9 +64,7 @@ function feeForCountry(country: string | null | undefined): {
 router.get("/jobs", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const viewerCountry = req.user?.country ?? null;
-  const isAdmin = Boolean(
-    req.user?.isAdmin || (req.user as { isSuperAdmin?: boolean } | null)?.isSuperAdmin
-  );
+  const isAdmin = Boolean((req.user as { isSuperAdmin?: boolean } | null)?.isSuperAdmin);
 
   const baseConds = [
     eq(jobsTable.status, "open"),
@@ -180,7 +178,7 @@ router.post("/jobs", requireAuth, requireNotRestricted, async (req, res): Promis
 
   // Admins / superadmins post for free — they help seed the marketplace
   // and shouldn't be paywalled. Their jobs are created already-paid + open.
-  const isAdmin = Boolean(req.user?.isAdmin || (req.user as { isSuperAdmin?: boolean } | null)?.isSuperAdmin);
+  const isAdmin = Boolean((req.user as { isSuperAdmin?: boolean } | null)?.isSuperAdmin);
 
   // Jobs is currently a Haiti-only feature — non-Haiti payment processing
   // (international card rails) is too complex for the current MVP, so we
@@ -406,7 +404,7 @@ router.get("/jobs/my-applications", requireAuth, async (req, res): Promise<void>
 router.get("/jobs/employer-status", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const user = req.user as any;
-  if (user?.isAdmin || user?.isSuperAdmin) {
+  if (user?.isSuperAdmin) {
     res.json({ status: "approved", isVerifiedEmployer: true, adminBypass: true });
     return;
   }
@@ -446,7 +444,7 @@ router.get("/jobs/:id/applications", requireAuth, async (req, res): Promise<void
   const user = req.user as any;
   const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId));
   if (!job) { res.status(404).json({ error: "Not found" }); return; }
-  const isOwner = job.posterId === userId || user?.isAdmin || user?.isSuperAdmin;
+  const isOwner = job.posterId === userId || user?.isSuperAdmin;
   if (!isOwner) { res.status(403).json({ error: "Forbidden" }); return; }
   const apps = await db.execute(sql`
     SELECT ja.*, u.name as applicant_name, u.avatar as applicant_avatar, u.phone as applicant_phone, u.rating, u.review_count
@@ -499,9 +497,7 @@ router.patch("/jobs/:id/applications/:appId", requireAuth, async (req, res): Pro
 
 // ── Admin employer verification management ────────────────────────────────────
 
-router.get("/admin/employer-verifications", requireAuth, async (req, res): Promise<void> => {
-  const user = req.user as any;
-  if (!user?.isAdmin && !user?.isSuperAdmin) { res.status(403).json({ error: "Forbidden" }); return; }
+router.get("/admin/employer-verifications", requireSuperAdmin, async (req, res): Promise<void> => {
   const status = req.query.status as string ?? "pending";
   const rows = await db.execute(sql`
     SELECT ev.*, u.name as user_name, u.email as user_email, u.avatar as user_avatar
@@ -514,9 +510,7 @@ router.get("/admin/employer-verifications", requireAuth, async (req, res): Promi
   res.json(rows.rows);
 });
 
-router.patch("/admin/employer-verifications/:id", requireAuth, async (req, res): Promise<void> => {
-  const user = req.user as any;
-  if (!user?.isSuperAdmin) { res.status(403).json({ error: "Only Super Admin can approve employer verifications." }); return; }
+router.patch("/admin/employer-verifications/:id", requireSuperAdmin, async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id), 10);
   const { action, rejectionReason } = req.body as any;
   if (!["approve", "reject"].includes(action)) { res.status(400).json({ error: "Invalid action" }); return; }

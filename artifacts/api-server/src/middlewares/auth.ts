@@ -120,11 +120,28 @@ export function hasRole(user: typeof usersTable.$inferSelect | undefined | null,
   return ROLE_RANK[getRole(user)] >= ROLE_RANK[min];
 }
 
+export function isAdminAccessSuspended(user: typeof usersTable.$inferSelect | undefined | null): boolean {
+  if (!user || user.isSuperAdmin || !(user as any).isAdminSuspended) return false;
+  const until = (user as any).adminSuspendedUntil;
+  return !until || new Date(until) > new Date();
+}
+
+export function hasFinanceAdminAccess(user: typeof usersTable.$inferSelect | undefined | null): boolean {
+  if (!user || isAdminAccessSuspended(user)) return false;
+  if (user.isSuperAdmin) return true;
+  return getRole(user) === "admin" && !!user.isAdmin;
+}
+
 export function requireRole(min: Role) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     await requireAuth(req, res, async () => {
       if (!hasRole(req.user, min)) {
         res.status(403).json({ error: `${min} access required` });
+        return;
+      }
+      if (min !== "user" && isAdminAccessSuspended(req.user)) {
+        const until = (req.user as any)?.adminSuspendedUntil;
+        res.status(403).json({ error: "Admin account suspended", suspended: true, until: until ?? null });
         return;
       }
       next();
@@ -174,11 +191,7 @@ export async function requireNotRestricted(req: Request, res: Response, next: Ne
  */
 export async function requireFinanceAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   await requireAuth(req, res, async () => {
-    const user = req.user!;
-    if (user.isSuperAdmin) { next(); return; }
-    const role = (user.role || "user") as string;
-    const blockedRoles = ["support", "moderator", "user", "agent"];
-    if (!user.isAdmin || blockedRoles.includes(role)) {
+    if (!hasFinanceAdminAccess(req.user)) {
       res.status(403).json({ error: "Access denied: financial admin access required" });
       return;
     }

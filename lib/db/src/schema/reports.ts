@@ -10,9 +10,15 @@ export const reportsTable = pgTable("reports", {
   targetId: integer("target_id").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("pending"),
+  priority: text("priority").notNull().default("normal"),
+  assignedAdminId: integer("assigned_admin_id").references(() => usersTable.id),
+  resolution: text("resolution"),
+  resolvedById: integer("resolved_by_id").references(() => usersTable.id),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true });
+export const insertReportSchema = createInsertSchema(reportsTable).omit({ id: true, createdAt: true, updatedAt: true, status: true, priority: true, assignedAdminId: true, resolution: true, resolvedById: true, resolvedAt: true });
 export type InsertReport = z.infer<typeof insertReportSchema>;
 export type Report = typeof reportsTable.$inferSelect;

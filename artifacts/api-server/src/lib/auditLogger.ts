@@ -1,6 +1,7 @@
 import { db, adminAuditLogsTable } from "@workspace/db";
 import { Request } from "express";
 import { logger } from "./logger";
+import { getRole } from "../middlewares/auth";
 
 function generateId(prefix: string): string {
   const year = new Date().getFullYear();
@@ -10,7 +11,8 @@ function generateId(prefix: string): string {
 
 export type AuditActionCategory =
   | "wallet" | "user" | "listing" | "security" | "agent" | "driver"
-  | "subscription" | "delivery" | "support" | "system" | "escrow" | "fintech";
+  | "subscription" | "delivery" | "support" | "system" | "escrow" | "fintech"
+  | "moderation" | "report" | "appeal";
 
 export type AuditRiskLevel = "low" | "medium" | "high" | "critical";
 
@@ -35,7 +37,7 @@ export async function logAdminAction(req: Request, entry: AuditEntry): Promise<v
   try {
     const actor = req.user as any;
     const actorId = req.userId!;
-    const actorRole = actor?.isSuperAdmin ? "super_admin" : actor?.isAdmin ? "admin" : "agent";
+    const actorRole = getRole(actor);
     const actorName = actor?.name ?? "Unknown";
 
     const auditId  = generateId("AUD-ADM");
@@ -60,9 +62,9 @@ export async function logAdminAction(req: Request, entry: AuditEntry): Promise<v
       targetId:         entry.targetId ?? null,
       targetName:       entry.targetName ?? null,
       description:      entry.description,
-      beforeState:      entry.beforeState ? JSON.stringify(entry.beforeState) : null,
-      afterState:       entry.afterState  ? JSON.stringify(entry.afterState)  : null,
-      metadata:         entry.metadata    ? JSON.stringify(entry.metadata)    : null,
+      beforeState:      entry.beforeState ?? null,
+      afterState:       entry.afterState ?? null,
+      metadata:         entry.metadata ?? null,
       ipAddress,
       userAgent:        req.headers["user-agent"] ?? null,
       deviceFingerprint:req.headers["x-device-fp"] as string ?? null,

@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import AdminOperationsQueue from "@/components/admin/AdminOperationsQueue";
+import AdminAppealsPanel from "@/components/admin/AdminAppealsPanel";
 import SupportAdminPanel from "@/components/SupportAdminPanel";
 import AdminDeliveryPanel from "@/components/AdminDeliveryPanel";
 import AdminOrdersPanel from "@/components/AdminOrdersPanel";
@@ -338,7 +340,7 @@ function ActionBadge({ action }: { action: string }) {
 const LOG_COOLDOWN_ACTIONS = new Set(["reset_nudge_cooldown", "notify_legacy_password_users", "notify_legacy_password_users_blocked"]);
 const LOG_USER_ACTIONS = new Set(["ban_user", "unban_user", "delete_user", "unflag_user", "add_admin", "set_role", "verify_user", "trust_user", "restrict_user", "unrestrict_user"]);
 const LOG_LISTING_ACTIONS = new Set(["boost_listing", "remove_boost", "extend_boost", "remove_listing", "edit_listing", "feature_listing", "unfeature_listing"]);
-const MODERATOR_TABS = new Set(["users", "flagged", "restricted", "listings", "moderation", "reports", "support", "logs"]);
+const MODERATOR_TABS = new Set(["operations", "appeals", "users", "flagged", "restricted", "listings", "moderation", "reports", "support", "logs"]);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -497,12 +499,12 @@ export default function Admin() {
 
   // Tab state is URL-driven so deep links like /admin?tab=support&thread=42
   // (used by support push notifications) land users in the right place.
-  // We default to "users" here (a safe value that is always available) and
+  // We default to "operations" here (a safe value that is always available) and
   // let an effect promote to "flagged" later once the user list has loaded —
   // referencing `flaggedUsers` directly here would be a TDZ access since it
   // is derived from `users` further down in this component.
   const initialQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const initialTab = initialQuery.get("tab") || "users";
+  const initialTab = initialQuery.get("tab") || "operations";
   const initialDeepThread = initialQuery.get("thread");
   const [adminTab, setAdminTabState] = useState<string>(initialTab);
   const [tabExplicitlySet, setTabExplicitlySet] = useState<boolean>(initialQuery.has("tab"));
@@ -744,7 +746,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (isModerator && !MODERATOR_TABS.has(adminTab)) {
-      setAdminTabState("users");
+      setAdminTabState("operations");
     }
   }, [isModerator, adminTab]);
 
@@ -855,13 +857,10 @@ export default function Admin() {
   const allListings = (listings as any[]) ?? [];
   const flaggedUsers = allUsers.filter((u: any) => u.isFlagged && !u.isBanned);
 
-  // If the user landed on /admin without an explicit ?tab and there are
-  // flagged users to triage, surface that tab automatically. Only runs
-  // until the user picks a tab themselves.
+  // Operations tab acts as the default overview.
+  // We no longer auto-promote to flagged because Operations includes users.
   useEffect(() => {
-    if (!tabExplicitlySet && adminTab === "users" && flaggedUsers.length > 0) {
-      setAdminTabState("flagged");
-    }
+    // Keep this empty so we just stay on the default operations tab.
   }, [tabExplicitlySet, adminTab, flaggedUsers.length]);
   const bannedUsers = allUsers.filter((u: any) => u.isBanned);
   const adminTeam = allUsers.filter((u: any) => u.isAdmin || u.isSuperAdmin);
@@ -3200,6 +3199,8 @@ export default function Admin() {
           <TabsList className="flex w-max gap-1 h-auto p-1">
             {isModerator ? (
             <>
+              <TabsTrigger value="operations" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-operations"><Activity className="h-3 w-3 mr-1" />{t("admin.tabOperations", "Operations")}</TabsTrigger>
+              <TabsTrigger value="appeals" className="text-xs" data-testid="tab-appeals"><ShieldCheck className="h-3 w-3 mr-1" />{t("admin.tabAppeals", "Appeals")}</TabsTrigger>
               <TabsTrigger value="users" className="text-xs">{t("admin.tabUsers")}</TabsTrigger>
               <TabsTrigger value="flagged" className="text-xs relative">
                 {t("admin.tabFlagged")} {flaggedUsers.length > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{flaggedUsers.length}</span>}
@@ -3220,6 +3221,8 @@ export default function Admin() {
             </>
             ) : (
             <>
+            <TabsTrigger value="operations" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-operations"><Activity className="h-3 w-3 mr-1" />{t("admin.tabOperations", "Operations")}</TabsTrigger>
+            <TabsTrigger value="appeals" className="text-xs" data-testid="tab-appeals"><ShieldCheck className="h-3 w-3 mr-1" />{t("admin.tabAppeals", "Appeals")}</TabsTrigger>
             <TabsTrigger value="users" className="text-xs">{t("admin.tabUsers")}</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="admins" className="text-xs font-bold text-purple-700 dark:text-purple-400"><Crown className="h-3 w-3 mr-1" />Ekip Admin</TabsTrigger>}
             <TabsTrigger value="orders" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-orders"><Package className="h-3 w-3 mr-1" />Òd</TabsTrigger>
@@ -3336,6 +3339,44 @@ export default function Admin() {
             )}
           </TabsList>
         </div>
+
+        {/* ── Operations Queue ── */}
+        <TabsContent value="operations" className="mt-4">
+          <AdminOperationsQueue
+            adminFetch={adminFetch}
+            me={me}
+            allUsers={allUsers}
+            onNavigateToTab={(tab, ctx) => {
+              if (ctx?.search && tab === "users") setUserSearch(ctx.search);
+
+              if (ctx?.thread && tab === "support") {
+                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
+                setAdminTab("support");
+              } else {
+                setAdminTab(tab);
+              }
+            }}
+          />
+        </TabsContent>
+
+        {/* ── Appeals Panel ── */}
+        <TabsContent value="appeals" className="mt-4">
+          <AdminAppealsPanel
+            adminFetch={adminFetch}
+            me={me}
+            isSuperAdmin={isSuperAdmin}
+            onNavigateToTab={(tab, ctx) => {
+              if (ctx?.search && tab === "users") setUserSearch(ctx.search);
+
+              if (ctx?.thread && tab === "support") {
+                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
+                setAdminTab("support");
+              } else {
+                setAdminTab(tab);
+              }
+            }}
+          />
+        </TabsContent>
 
         {/* ── All Users ── */}
         <TabsContent value="users">

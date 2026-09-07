@@ -1151,6 +1151,25 @@ export async function runStartupMigrations(): Promise<void> {
           AND b.expires_at     > NOW()
       `,
     },
+    { name: "reports.priority", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'normal'` },
+    { name: "reports.assigned_admin_id", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS assigned_admin_id integer REFERENCES users(id)` },
+    { name: "reports.resolution", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS resolution text` },
+    { name: "reports.resolved_by_id", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS resolved_by_id integer REFERENCES users(id)` },
+    { name: "reports.resolved_at", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS resolved_at timestamptz` },
+    { name: "reports.updated_at", sql: `ALTER TABLE reports ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW()` },
+    { name: "reports.action_queue_indexes", sql: `CREATE INDEX IF NOT EXISTS reports_pending_priority_idx ON reports(status, priority, created_at DESC); CREATE INDEX IF NOT EXISTS reports_assignee_idx ON reports(assigned_admin_id) WHERE assigned_admin_id IS NOT NULL` },
+    {
+      name: "admin_appeals.create",
+      sql: `CREATE TABLE IF NOT EXISTS admin_appeals (
+        id serial PRIMARY KEY, target_type text NOT NULL, target_id integer NOT NULL,
+        requested_by_id integer NOT NULL REFERENCES users(id), original_actor_id integer REFERENCES users(id),
+        reason text NOT NULL, original_state text, status text NOT NULL DEFAULT 'pending',
+        decision text, decided_by_id integer REFERENCES users(id), decided_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT NOW(), updated_at timestamptz NOT NULL DEFAULT NOW()
+      )`,
+    },
+    { name: "admin_appeals.indexes", sql: `CREATE INDEX IF NOT EXISTS admin_appeals_status_created_idx ON admin_appeals(status, created_at DESC); CREATE INDEX IF NOT EXISTS admin_appeals_target_idx ON admin_appeals(target_type, target_id)` },
+    { name: "admin_appeals.decision_reason", sql: `ALTER TABLE admin_appeals ADD COLUMN IF NOT EXISTS decision_reason text` },
   ];
 
   // Face-profile photo columns — driver applications

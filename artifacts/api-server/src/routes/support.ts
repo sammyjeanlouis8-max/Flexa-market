@@ -603,7 +603,7 @@ router.post("/support/threads/:id/reopen", requireAuth, async (req, res): Promis
 /**
  * POST /api/support/threads/:id/assign — Super Admin assigns/reassigns a thread.
  */
-router.post("/support/threads/:id/assign", requireSuperAdmin, async (req, res): Promise<void> => {
+router.post("/support/threads/:id/assign", requireRole("admin"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -616,14 +616,19 @@ router.post("/support/threads/:id/assign", requireSuperAdmin, async (req, res): 
     res.status(404).json({ error: "Not found" });
     return;
   }
+  const scopedThread = await getScopedThread(req.user!, id);
+  if (!scopedThread) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
 
   let assignedAdminName: string | null = null;
   if (adminId !== null) {
     const [admin] = await db
       .select()
       .from(usersTable)
-      .where(and(eq(usersTable.id, adminId), or(eq(usersTable.isAdmin, true), eq(usersTable.isSuperAdmin, true))));
-    if (!admin) {
+      .where(eq(usersTable.id, adminId));
+    if (!admin || !hasRole(admin, "moderator") || admin.isBanned || isAdminAccessSuspended(admin) || !userInAdminScope(admin, scopedThread.owner)) {
       res.status(400).json({ error: "Admin not found" });
       return;
     }
@@ -634,8 +639,25 @@ router.post("/support/threads/:id/assign", requireSuperAdmin, async (req, res): 
     .update(supportThreadsTable)
     .set({ assignedAdminId: adminId })
     .where(eq(supportThreadsTable.id, id));
-
+  await db.insert(adminLogsTable).values({ adminId: req.userId!, action: "support_assign", targetType: "support_thread", targetId: id, details: `Assigned support thread to ${adminId ?? "unassigned"}` }).catch(() => {});
+  if (adminId !== null && adminId !== req.userId) await db.insert(notificationsTable).values({ userId: adminId, actorId: req.userId!, type: "support_assignment", message: `You were assigned support thread #${id}` }).catch(() => {});
   emitSupportUpdate(id, { threadId: id, assignedAdminId: adminId, assignedAdminName });
+  res.json({ ok: true });
+});
+
+/** Moderators may only claim an unassigned thread within their own geographic scope. */
+router.post("/support/threads/:id/claim", requireRole("moderator"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const scoped = await getScopedThread(req.user!, id);
+  if (!scoped) { res.status(403).json({ error: "Forbidden" }); return; }
+  const changed = await db.update(supportThreadsTable)
+    .set({ assignedAdminId: req.userId! })
+    .where(and(eq(supportThreadsTable.id, id), sql`${supportThreadsTable.assignedAdminId} IS NULL`))
+    .returning({ id: supportThreadsTable.id });
+  if (!changed.length) { res.status(409).json({ error: "Thread is already assigned" }); return; }
+  await db.insert(adminLogsTable).values({ adminId: req.userId!, action: "support_claim", targetType: "support_thread", targetId: id, details: "Claimed unassigned support thread" }).catch(() => {});
+  emitSupportUpdate(id, { threadId: id, assignedAdminId: req.userId!, assignedAdminName: req.user!.name });
   res.json({ ok: true });
 });
 
@@ -699,6 +721,11 @@ router.get("/admin/support/threads/:id/export", requireAdmin, async (req, res): 
   const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.id, id));
   if (!thread) {
     res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const scopedThread = await getScopedThread(req.user!, id);
+  if (!scopedThread) {
+    res.status(403).json({ error: "Forbidden" });
     return;
   }
 

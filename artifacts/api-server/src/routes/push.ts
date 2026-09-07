@@ -205,15 +205,23 @@ router.get("/push/tokens/detail", requireAdmin, async (_req, res): Promise<void>
 });
 
 /**
- * GET /api/push/manual-recipients?q=...
+ * GET /api/push/manual-recipients?q=...&country=...&countries=...
  * Superadmin-only user picker. Device tokens never leave the server.
  */
 router.get("/push/manual-recipients", requireRole("superadmin"), async (req, res): Promise<void> => {
   const query = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+  const countryFilter = typeof req.query.country === "string" ? req.query.country.trim() : "";
+  const countryFilters = [
+    ...(countryFilter ? [countryFilter] : []),
+    ...(typeof req.query.countries === "string"
+      ? req.query.countries.split(",").map((country) => country.trim()).filter(Boolean)
+      : []),
+  ];
   const rows = await db
     .select({
       userId: expoPushTokensTable.userId,
       userName: usersTable.name,
+      country: usersTable.country,
       notifyPush: usersTable.notifyPush,
     })
     .from(expoPushTokensTable)
@@ -222,6 +230,7 @@ router.get("/push/manual-recipients", requireRole("superadmin"), async (req, res
   const recipients = new Map<number, { id: number; name: string; deviceCount: number }>();
   for (const row of rows) {
     if (row.notifyPush === false) continue;
+    if (countryFilters.length > 0 && !countryFilters.includes(row.country ?? "")) continue;
     const existing = recipients.get(row.userId);
     if (existing) {
       existing.deviceCount += 1;
@@ -246,11 +255,18 @@ router.get("/push/manual-recipients", requireRole("superadmin"), async (req, res
 
 /**
  * POST /api/push/manual-send
- * Body: { audience: "all" | "user", userId?, title, message, url? }
+ * Body: { audience: "all" | "countries" | "country" | "user", countries?, country?, userId?, title, message, url? }
  * Superadmin-only manual push campaign. Tokens remain server-side.
  */
 router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Promise<void> => {
   const audience = req.body?.audience;
+  const country = typeof req.body?.country === "string" ? req.body.country.trim() : "";
+  const countries = Array.isArray(req.body?.countries)
+    ? Array.from(new Set(req.body.countries
+      .filter((value: unknown): value is string => typeof value === "string")
+      .map((value: string) => value.trim())
+      .filter(Boolean)))
+    : [];
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   const url = typeof req.body?.url === "string" && req.body.url.trim()
@@ -258,8 +274,8 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
     : "/";
   const requestedUserId = Number(req.body?.userId);
 
-  if (audience !== "all" && audience !== "user") {
-    res.status(400).json({ error: "Audience must be all or user" });
+  if (audience !== "all" && audience !== "countries" && audience !== "country" && audience !== "user") {
+    res.status(400).json({ error: "Audience must be all, countries, country, or user" });
     return;
   }
   if (!title || title.length > 80) {
@@ -278,10 +294,19 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
     res.status(400).json({ error: "A valid user is required" });
     return;
   }
+  if (audience === "country" && (!country || country.length > 100)) {
+    res.status(400).json({ error: "A valid country is required" });
+    return;
+  }
+  if (audience === "countries" && (countries.length < 2 || countries.length > 50 || countries.some((value) => value.length > 100))) {
+    res.status(400).json({ error: "At least two valid countries are required" });
+    return;
+  }
 
   const rows = await db
     .select({
       userId: expoPushTokensTable.userId,
+      country: usersTable.country,
       notifyPush: usersTable.notifyPush,
     })
     .from(expoPushTokensTable)
@@ -294,12 +319,19 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
   ));
   const targetUserIds = audience === "user"
     ? eligibleUserIds.filter((id) => id === requestedUserId)
+    : audience === "country" || audience === "countries"
+      ? Array.from(new Set(rows
+        .filter((row) => row.notifyPush !== false
+          && (audience === "country" ? row.country === country : countries.includes(row.country ?? "")))
+        .map((row) => row.userId)))
     : eligibleUserIds;
 
   if (targetUserIds.length === 0) {
     res.status(404).json({ error: audience === "user"
       ? "This user has no active push device"
-      : "No active push devices were found" });
+      : audience === "country" || audience === "countries"
+        ? "No active push devices were found in the selected countries"
+        : "No active push devices were found" });
     return;
   }
 
@@ -344,10 +376,28 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
   await logAdminAction(req, {
     actionType: "manual_push_broadcast",
     actionCategory: "system",
-    description: `Manual push sent to ${audience === "all" ? `${targetUserIds.length} users` : `user #${requestedUserId}`}`,
-    targetType: audience === "all" ? "push_audience" : "user",
+    description: `Manual push sent to ${
+      audience === "all" ? `${targetUserIds.length} users`
+        : audience === "country" ? `${targetUserIds.length} users in ${country}`
+          : audience === "countries" ? `${targetUserIds.length} users in ${countries.join(", ")}`
+          : `user #${requestedUserId}`
+    }`,
+    targetType: audience === "all" || audience === "country" || audience === "countries" ? "push_audience" : "user",
     targetId: audience === "user" ? requestedUserId : undefined,
-    metadata: { audience, title, message, url, targetedUsers: targetUserIds.length, acceptedUsers, acceptedDevices, failedDevices, skippedUsers, inAppStored },
+    metadata: {
+      audience,
+      country: audience === "country" ? country : undefined,
+      countries: audience === "countries" ? countries : undefined,
+      title,
+      message,
+      url,
+      targetedUsers: targetUserIds.length,
+      acceptedUsers,
+      acceptedDevices,
+      failedDevices,
+      skippedUsers,
+      inAppStored,
+    },
     riskLevel: "medium",
   });
 

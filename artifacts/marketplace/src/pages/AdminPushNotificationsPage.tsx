@@ -53,6 +53,7 @@ export default function AdminPushNotificationsPage() {
   const [recipientLoading, setRecipientLoading] = useState(false);
   const [manualSending, setManualSending] = useState(false);
   const [manualResult, setManualResult] = useState<ManualPushResult | null>(null);
+  const [confirmManualOpen, setConfirmManualOpen] = useState(false);
 
   const fetchCounts = () => {
     setLoading(true);
@@ -102,11 +103,7 @@ export default function AdminPushNotificationsPage() {
       toast({ title: "Chwazi yon itilizatè", variant: "destructive" });
       return;
     }
-    const targetLabel = audience === "all"
-      ? `tout ${totalEligibleUsers || counts?.total || 0} itilizatè ki gen push aktif`
-      : selectedRecipient!.name;
-    if (!window.confirm(`Voye notifikasyon sa a bay ${targetLabel}?`)) return;
-
+    setConfirmManualOpen(false);
     setManualSending(true);
     setManualResult(null);
     try {
@@ -363,7 +360,7 @@ export default function AdminPushNotificationsPage() {
           </div>
 
           <Button
-            onClick={sendManualPush}
+            onClick={() => setConfirmManualOpen(true)}
             disabled={manualSending || !manualTitle.trim() || !manualMessage.trim() || (audience === "user" && !selectedRecipient)}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
             data-testid="button-send-manual-push"
@@ -448,6 +445,60 @@ export default function AdminPushNotificationsPage() {
         </div>
 
       </div>
+
+      {confirmManualOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="manual-push-confirm-title"
+          data-testid="dialog-confirm-manual-push"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-background border border-border shadow-2xl p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 shrink-0 rounded-xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h2 id="manual-push-confirm-title" className="font-bold text-foreground">Konfime notifikasyon an</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {audience === "all"
+                    ? `Mesaj sa a pral ale bay tout itilizatè ki gen push aktif${totalEligibleUsers ? ` (${totalEligibleUsers})` : ""}.`
+                    : `Mesaj sa a pral ale bay ${selectedRecipient?.name ?? "itilizatè ou chwazi a"}.`}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-muted/60 border border-border p-3 space-y-1.5">
+              <p className="text-sm font-semibold text-foreground">{manualTitle}</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{manualMessage}</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">Ap ouvri: {manualUrl.trim() || "/"}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirmManualOpen(false)}
+                disabled={manualSending}
+              >
+                Anile
+              </Button>
+              <Button
+                type="button"
+                onClick={sendManualPush}
+                disabled={manualSending}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid="button-confirm-manual-push"
+              >
+                {manualSending
+                  ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Ap voye…</>
+                  : <><Send className="h-4 w-4 mr-2" /> Wi, voye li</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

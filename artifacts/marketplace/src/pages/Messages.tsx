@@ -21,7 +21,13 @@ import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useSocket } from "@/hooks/useSocket";
-import { listPendingVoices, removePendingVoice, savePendingVoice, updatePendingVoice } from "@/lib/voiceOutbox";
+import {
+  listPendingVoices,
+  removePendingVoice,
+  savePendingVoice,
+  updatePendingVoice,
+  type PendingVoiceMessage,
+} from "@/lib/voiceOutbox";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Conversation = {
@@ -722,6 +728,61 @@ const AudioBubble = React.memo(function AudioBubble({
   );
 });
 
+function PendingVoiceBubble({
+  item,
+  theme,
+}: {
+  item: PendingVoiceMessage;
+  theme: (typeof T)[ChatTheme];
+}) {
+  const { t, i18n } = useTranslation();
+  const [src, setSrc] = useState("");
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(new Blob([item.bytes], { type: item.mimeType }));
+    setSrc(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [item.bytes, item.mimeType]);
+
+  return (
+    <div
+      className="msg-bubble-anim"
+      style={{ display: "flex", alignItems: "flex-end", width: "100%", overflow: "hidden" }}
+    >
+      <div style={{ flex: 1 }} />
+      <div style={{
+        width: "min(220px, 79%)",
+        maxWidth: "min(220px, 79%)",
+        minWidth: 0,
+        borderRadius: "18px 18px 5px 18px",
+        background: theme.bubbleOut,
+        border: (theme as any).bubbleOutBorder ? `1px solid ${(theme as any).bubbleOutBorder}` : undefined,
+        boxShadow: !theme.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
+        overflow: "hidden",
+        opacity: 0.88,
+      }}>
+        {src && (
+          <AudioBubble
+            src={src}
+            isMe
+            theme={theme}
+            timestamp={formatMsgDateTime(new Date(item.createdAt).toISOString(), i18n.language, t)}
+            statusIcon={(
+              <span
+                title={t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}
+                style={{ fontSize: 13, lineHeight: 1, color: theme.timeOut }}
+              >
+                ◷
+              </span>
+            )}
+            isListened={false}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 function MsgBubble({
   msg, isMe, isLastInGroup, isLastSentByMe, onMediaTap, theme, onAudioListened,
@@ -1173,6 +1234,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [recordingSecs, setRecordingSecs] = useState(0);
   const [voiceFinalizing, setVoiceFinalizing] = useState(false);
   const [pendingVoiceCount, setPendingVoiceCount] = useState(0);
+  const [pendingVoices, setPendingVoices] = useState<PendingVoiceMessage[]>([]);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
@@ -1521,8 +1583,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           try {
             // Persist before uploading so a weak connection cannot destroy the recording.
             const uploadMime = session.recordedMime.split(";")[0].trim();
-            await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
+            const queuedVoice = await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
+            setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
             setPendingVoiceCount(count => count + 1);
+            setTimeout(() => scrollToBottom(true), 50);
             void flushPendingVoices();
           } catch {
             toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
@@ -1581,11 +1645,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
     const flushPendingVoices = useCallback(async () => {
       if (voiceQueueBusyRef.current || isRestricted) return;
-      if (typeof navigator !== "undefined" && !navigator.onLine) return;
       voiceQueueBusyRef.current = true;
       try {
         const pending = await listPendingVoices(convId);
+        setPendingVoices(pending);
         setPendingVoiceCount(pending.length);
+        if (typeof navigator !== "undefined" && !navigator.onLine) return;
         for (const item of pending) {
           try {
             let mediaUrl = item.mediaUrl;
@@ -1598,6 +1663,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             }
             await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
             await removePendingVoice(item.id);
+            setPendingVoices(current => current.filter(voice => voice.id !== item.id));
             setPendingVoiceCount(count => Math.max(0, count - 1));
           } catch (error) {
             await updatePendingVoice(item.id, {
@@ -1705,16 +1771,19 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       alert(t("messages.fileTooLarge", { size: 25 }));
       return;
     }
-    const tkn = localStorage.getItem("flexamarket_token") ?? "";
-    setUploading(true);
     try {
       const contentType = file.type || "audio/mp4";
-      const url = await uploadMedia(file, contentType, tkn);
-      doSend({ messageType: "audio", mediaUrl: url, content: "" });
+      const queuedVoice = await savePendingVoice({
+        conversationId: convId,
+        blob: file,
+        mimeType: contentType,
+      });
+      setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
+      setPendingVoiceCount(count => count + 1);
+      setTimeout(() => scrollToBottom(true), 50);
+      void flushPendingVoices();
     } catch {
       alert(t("messages.uploadFailed"));
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -2010,7 +2079,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             <p style={{ color: c.listSub, fontSize: 14 }}>{t("messages.loading")}</p>
           </div>
         )}
-        {!isLoading && msgList.length === 0 && (
+        {!isLoading && msgList.length === 0 && pendingVoices.length === 0 && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "0 32px" }}>
             <MessageCircle style={{ width: 40, height: 40, color: c.emptyIcon, marginBottom: 8 }} />
             <p style={{ fontSize: 14, color: c.emptyText, margin: 0 }}>
@@ -2019,7 +2088,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           </div>
         )}
 
-        {msgList.length > 0 && (
+        {(msgList.length > 0 || pendingVoices.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", padding: "18px 14px 12px", maxWidth: 680, margin: "0 auto", boxSizing: "border-box", overflowX: "hidden" }}>
             <div style={{ flex: 1 }} />
             {msgList.map((msg, idx) => {
@@ -2047,6 +2116,11 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 </div>
               );
             })}
+            {pendingVoices.map((item, idx) => (
+              <div key={item.id} style={{ marginTop: msgList.length === 0 && idx === 0 ? 0 : 4 }}>
+                <PendingVoiceBubble item={item} theme={c} />
+              </div>
+            ))}
 
             {/* Typing indicator — warm ivory bubble */}
             {typingOther && (

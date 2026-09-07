@@ -1211,6 +1211,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const msgContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const audioCaptureInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socket = useSocket();
@@ -1696,6 +1697,27 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     finally { setUploading(false); }
   };
 
+  const handleAudioCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert(t("messages.fileTooLarge", { size: 25 }));
+      return;
+    }
+    const tkn = localStorage.getItem("flexamarket_token") ?? "";
+    setUploading(true);
+    try {
+      const contentType = file.type || "audio/mp4";
+      const url = await uploadMedia(file, contentType, tkn);
+      doSend({ messageType: "audio", mediaUrl: url, content: "" });
+    } catch {
+      alert(t("messages.uploadFailed"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   useEffect(() => () => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     stopRecordingTimer();
@@ -2077,6 +2099,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       }}>
         <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
+        <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
 
         {pendingVoiceCount > 0 && !isRecording && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 13px", marginBottom: 8, borderRadius: 14, background: c.isDark ? "rgba(165,180,252,0.12)" : "#FFF7ED", color: c.isDark ? "#E0E7FF" : "#9A3412", fontSize: 13 }}>
@@ -2334,7 +2357,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             ) : (
               <button
                 type="button"
-                onClick={startVoiceRecording}
+                onClick={isAndroidMobile ? () => audioCaptureInputRef.current?.click() : startVoiceRecording}
                 disabled={uploading || voiceFinalizing}
                 style={{
                   flexShrink: 0,

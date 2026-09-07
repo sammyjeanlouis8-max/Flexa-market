@@ -1215,6 +1215,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const socket = useSocket();
   const c = theme;
+  const isAndroidMobile = typeof navigator !== "undefined" && (
+    /Android/i.test(navigator.userAgent) ||
+    (/FlexaMarket/i.test(navigator.userAgent) && typeof window !== "undefined" && window.innerWidth <= 374)
+  );
   // Warm coral for light mode (matches mockup send button & attach icon), violet for dark
   const composerActionColor = c.isDark ? "#A5B4FC" : "#df715b";
 
@@ -1464,8 +1468,15 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const startVoiceRecording = async () => {
     if (isRestricted || voiceBusyRef.current || uploading) return;
     voiceBusyRef.current = true;
+    setShowEmojiPanel(false);
+    chatInputRef.current?.blur();
     let stream: MediaStream | null = null;
     try {
+      // Android WebView behaves more reliably when Gboard has fully dismissed
+      // before it opens the native microphone permission / capture session.
+      if (isAndroidMobile) {
+        await new Promise(resolve => window.setTimeout(resolve, 120));
+      }
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -2165,7 +2176,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, minWidth: 0, minHeight: 53 }}>
+          <div style={{
+            display: "flex", alignItems: "flex-end",
+            gap: isAndroidMobile ? 6 : 8,
+            minWidth: 0,
+            minHeight: isAndroidMobile ? 48 : 53,
+          }}>
 
             {/* Add attachment — rounded circle with warm bg matching mockup */}
             <button
@@ -2174,7 +2190,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               disabled={uploading}
               aria-label={t("messages.attach", "Ajoute foto oswa videyo")}
               style={{
-                flexShrink: 0, width: 38, height: 38, borderRadius: "50%",
+                flexShrink: 0,
+                width: isAndroidMobile ? 36 : 38,
+                height: isAndroidMobile ? 36 : 38,
+                borderRadius: "50%",
                 background: c.isDark ? c.iconActiveBg : "#f0f3ed",
                 border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -2186,7 +2205,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
             {/* Text pill — bordered rounded pill with cream/white background */}
             <div style={{
-              minHeight: 46, minWidth: 0, flex: 1,
+              minHeight: isAndroidMobile ? 44 : 46, minWidth: 0, flex: 1,
               display: "flex", alignItems: "flex-end",
               border: `1.5px solid ${c.isDark ? c.listBorder : "#d7ddd7"}`,
               borderRadius: 24,
@@ -2207,7 +2226,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                   fontSize: 16,
                   lineHeight: "22px",
                   minHeight: 34,
-                  maxHeight: 120,
+                  maxHeight: isAndroidMobile ? 88 : 120,
                   background: "transparent",
                   border: "none",
                   borderRadius: 18,
@@ -2247,34 +2266,38 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 >
                   <Smile style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => cameraInputRef.current?.click()}
-                  disabled={uploading}
-                  aria-label={t("messages.camera", "Pran yon foto")}
-                  style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: "none", border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    color: composerActionColor, opacity: uploading ? 0.4 : 1,
-                  }}
-                >
-                  <Camera style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  aria-label={t("messages.attach", "Chwazi foto oswa videyo")}
-                  style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: "none", border: "none", cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    color: composerActionColor, opacity: uploading ? 0.4 : 1,
-                  }}
-                >
-                  <Image style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
-                </button>
+                {!isAndroidMobile && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={uploading}
+                      aria-label={t("messages.camera", "Pran yon foto")}
+                      style={{
+                        width: 34, height: 34, borderRadius: "50%",
+                        background: "none", border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                      }}
+                    >
+                      <Camera style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      aria-label={t("messages.attach", "Chwazi foto oswa videyo")}
+                      style={{
+                        width: 34, height: 34, borderRadius: "50%",
+                        background: "none", border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                      }}
+                    >
+                      <Image style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -2285,7 +2308,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 onClick={sendText}
                 disabled={uploading}
                 style={{
-                  flexShrink: 0, width: 43, height: 43, borderRadius: "50%",
+                  flexShrink: 0,
+                  width: isAndroidMobile ? 41 : 43,
+                  height: isAndroidMobile ? 41 : 43,
+                  borderRadius: "50%",
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading ? 0.3 : 1,
@@ -2300,7 +2326,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 onClick={startVoiceRecording}
                 disabled={uploading || voiceFinalizing}
                 style={{
-                  flexShrink: 0, width: 43, height: 43, borderRadius: "50%",
+                  flexShrink: 0,
+                  width: isAndroidMobile ? 41 : 43,
+                  height: isAndroidMobile ? 41 : 43,
+                  borderRadius: "50%",
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,

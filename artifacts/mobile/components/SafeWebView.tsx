@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  PermissionsAndroid,
   Platform,
   Pressable,
   StyleSheet,
@@ -68,6 +69,34 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
   const webRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [canGoBack, setCanGoBack] = useState(false);
+  const audioPermissionRequestedRef = useRef(false);
+
+  const requestAudioPermissionForMessages = async (url: string) => {
+    if (Platform.OS !== 'android' || audioPermissionRequestedRef.current) return;
+    try {
+      const pathname = new URL(url).pathname;
+      if (!pathname.startsWith('/messages')) return;
+      const alreadyGranted = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+      );
+      if (alreadyGranted) {
+        audioPermissionRequestedRef.current = true;
+        return;
+      }
+      audioPermissionRequestedRef.current = true;
+      await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        {
+          title: 'Pèmèt anrejistreman vwa',
+          message: 'Flexa Market bezwen mikro a pou voye mesaj vwa.',
+          buttonPositive: 'Pèmèt',
+          buttonNegative: 'Pa kounye a',
+        },
+      );
+    } catch {
+      audioPermissionRequestedRef.current = false;
+    }
+  };
 
   const handleBack = () => {
     if (canGoBack) {
@@ -97,6 +126,10 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
       webRef.current.injectJavaScript(makeTokenScript(token));
     }
   }, [token]);
+
+  useEffect(() => {
+    void requestAudioPermissionForMessages(uri);
+  }, [uri]);
 
   // Wait for AsyncStorage to finish loading the token before mounting the WebView.
   // This ensures injectedJavaScriptBeforeContentLoaded always receives the real token,
@@ -162,8 +195,15 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         allowsBackgroundMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         overScrollMode='never'
-        userAgent='FlexaMarket/1.0 (Mobile App)'
-        onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
+        userAgent={
+          Platform.OS === 'android'
+            ? 'FlexaMarket/1.0 (Android Mobile App)'
+            : 'FlexaMarket/1.0 (iOS Mobile App)'
+        }
+        onNavigationStateChange={(state) => {
+          setCanGoBack(state.canGoBack);
+          void requestAudioPermissionForMessages(state.url);
+        }}
         onLoadStart={() => setLoading(true)}
         onLoadEnd={() => setLoading(false)}
         onError={() => setLoading(false)}

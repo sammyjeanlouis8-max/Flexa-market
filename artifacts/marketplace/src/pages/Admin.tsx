@@ -350,13 +350,21 @@ export default function Admin() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isSuperAdmin = (user as any)?.isSuperAdmin;
-  const isModerator = !isSuperAdmin && (user as any)?.role === "moderator";
+  const explicitRole = (user as any)?.role;
+  const hasExplicitStaffRole = ["support", "moderator", "admin", "superadmin"].includes(explicitRole);
+  const canonicalRole = hasExplicitStaffRole
+    ? explicitRole
+    : (user as any)?.isSuperAdmin
+      ? "superadmin"
+      : (user as any)?.isAdmin
+        ? "admin"
+        : "user";
+  const isSuperAdmin = canonicalRole === "superadmin";
+  const isModerator = canonicalRole === "moderator";
   const hasAdminPanelAccess = !!user && (
-    isSuperAdmin ||
-    (user as any)?.role === "admin" ||
-    (user as any)?.role === "moderator" ||
-    user.isAdmin
+    canonicalRole === "superadmin" ||
+    canonicalRole === "admin" ||
+    canonicalRole === "moderator"
   );
   const [me, setMe] = useState<{
     role: string;

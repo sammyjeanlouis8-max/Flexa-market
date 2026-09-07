@@ -32,6 +32,14 @@ describe("canonical staff authorization", () => {
     expect(hasFinanceAdminAccess(moderator)).toBe(false);
   });
 
+  it("does not promote an explicit moderator with a stale isSuperAdmin flag", () => {
+    const moderator = { ...baseUser, role: "moderator", isAdmin: true, isSuperAdmin: true };
+
+    expect(getRole(moderator)).toBe("moderator");
+    expect(hasRole(moderator, "admin")).toBe(false);
+    expect(hasFinanceAdminAccess(moderator)).toBe(false);
+  });
+
   it("recognizes active and expired admin suspensions", () => {
     const active = {
       ...baseUser,

@@ -107,9 +107,9 @@ export type Role = "user" | "support" | "moderator" | "admin" | "superadmin";
 
 export function getRole(user: typeof usersTable.$inferSelect | undefined | null): Role {
   if (!user) return "user";
-  if (user.isSuperAdmin) return "superadmin";
   const r = (user.role || "user") as Role;
   if (r === "superadmin" || r === "admin" || r === "moderator" || r === "support") return r;
+  if (user.isSuperAdmin) return "superadmin";
   if (user.isAdmin) return "admin";
   return "user";
 }
@@ -121,15 +121,16 @@ export function hasRole(user: typeof usersTable.$inferSelect | undefined | null,
 }
 
 export function isAdminAccessSuspended(user: typeof usersTable.$inferSelect | undefined | null): boolean {
-  if (!user || user.isSuperAdmin || !(user as any).isAdminSuspended) return false;
+  if (!user || getRole(user) === "superadmin" || !(user as any).isAdminSuspended) return false;
   const until = (user as any).adminSuspendedUntil;
   return !until || new Date(until) > new Date();
 }
 
 export function hasFinanceAdminAccess(user: typeof usersTable.$inferSelect | undefined | null): boolean {
   if (!user || isAdminAccessSuspended(user)) return false;
-  if (user.isSuperAdmin) return true;
-  return getRole(user) === "admin" && !!user.isAdmin;
+  const role = getRole(user);
+  if (role === "superadmin") return true;
+  return role === "admin" && !!user.isAdmin;
 }
 
 export function requireRole(min: Role) {

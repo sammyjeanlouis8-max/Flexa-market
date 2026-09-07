@@ -2199,7 +2199,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                 value={text}
                 onChange={e => { setText(e.target.value); handleTyping(); }}
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
-                placeholder={uploading ? t("messages.uploading") : t("messages.typeMessage", "Ekri yon mesaj…")}
+                placeholder={uploading ? t("messages.uploading") : t("messages.placeholder")}
                 disabled={uploading}
                 className="chat-input w-full"
                 rows={1}

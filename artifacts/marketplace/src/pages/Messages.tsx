@@ -1668,19 +1668,30 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const fmtRecSecs = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
+    if (files.length === 0) return;
     const tkn = localStorage.getItem("flexamarket_token") ?? "";
-    const isVideo = file.type.startsWith("video/");
-    const isImage = file.type.startsWith("image/");
-    if (!isImage && !isVideo) { alert(t("messages.onlyPhotosVideos")); return; }
-    const limitMB = isVideo ? 50 : 10;
-    if (file.size > limitMB * 1024 * 1024) { alert(t("messages.fileTooLarge", { size: limitMB })); return; }
+    for (const file of files) {
+      const isVideo = file.type.startsWith("video/");
+      const isImage = file.type.startsWith("image/");
+      if (!isImage && !isVideo) {
+        alert(t("messages.onlyPhotosVideos"));
+        return;
+      }
+      const limitMB = isVideo ? 50 : 10;
+      if (file.size > limitMB * 1024 * 1024) {
+        alert(t("messages.fileTooLarge", { size: limitMB }));
+        return;
+      }
+    }
     setUploading(true);
     try {
-      const url = await uploadMedia(file, file.type, tkn);
-      doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
+      for (const file of files) {
+        const isVideo = file.type.startsWith("video/");
+        const url = await uploadMedia(file, file.type, tkn);
+        doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
+      }
     } catch { alert(t("messages.uploadFailed")); }
     finally { setUploading(false); }
   };
@@ -2064,7 +2075,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         /* paddingBottom intentionally omitted — CSS class handles safe-area */
         maxWidth: "100vw", overflow: "hidden",
       }}>
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
 
         {pendingVoiceCount > 0 && !isRecording && (

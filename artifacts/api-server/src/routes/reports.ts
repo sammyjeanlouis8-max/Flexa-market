@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, reportsTable, usersTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireRole } from "../middlewares/auth";
 import { CreateReportBody } from "@workspace/api-zod";
 
 const router = Router();
@@ -13,7 +13,7 @@ router.post("/reports", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json({ message: "Report submitted" });
 });
 
-router.get("/admin/reports", requireAdmin, async (_req, res): Promise<void> => {
+router.get("/admin/reports", requireRole("moderator"), async (_req, res): Promise<void> => {
   const rows = await db.select().from(reportsTable)
     .leftJoin(usersTable, eq(reportsTable.reporterId, usersTable.id))
     .orderBy(desc(reportsTable.createdAt));

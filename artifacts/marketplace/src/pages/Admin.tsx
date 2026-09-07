@@ -338,6 +338,7 @@ function ActionBadge({ action }: { action: string }) {
 const LOG_COOLDOWN_ACTIONS = new Set(["reset_nudge_cooldown", "notify_legacy_password_users", "notify_legacy_password_users_blocked"]);
 const LOG_USER_ACTIONS = new Set(["ban_user", "unban_user", "delete_user", "unflag_user", "add_admin", "set_role", "verify_user", "trust_user", "restrict_user", "unrestrict_user"]);
 const LOG_LISTING_ACTIONS = new Set(["boost_listing", "remove_boost", "extend_boost", "remove_listing", "edit_listing", "feature_listing", "unfeature_listing"]);
+const MODERATOR_TABS = new Set(["users", "flagged", "restricted", "listings", "moderation", "reports", "support", "logs"]);
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -348,6 +349,13 @@ export default function Admin() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isSuperAdmin = (user as any)?.isSuperAdmin;
+  const isModerator = !isSuperAdmin && (user as any)?.role === "moderator";
+  const hasAdminPanelAccess = !!user && (
+    isSuperAdmin ||
+    (user as any)?.role === "admin" ||
+    (user as any)?.role === "moderator" ||
+    user.isAdmin
+  );
   const [me, setMe] = useState<{
     role: string;
     permissions: Record<string, boolean>;
@@ -730,13 +738,19 @@ export default function Admin() {
 
   useEffect(() => {
       if (isLoading) return; // wait for /auth/me to resolve before redirecting
-      if (user && !user.isAdmin && !(user as any).isSuperAdmin) setLocation("/");
+      if (user && !hasAdminPanelAccess) setLocation("/");
       else if (!user) setLocation("/auth/login");
-    }, [user, isLoading]);
+    }, [user, isLoading, hasAdminPanelAccess]);
+
+  useEffect(() => {
+    if (isModerator && !MODERATOR_TABS.has(adminTab)) {
+      setAdminTabState("users");
+    }
+  }, [isModerator, adminTab]);
 
   // Poll the support unread badge so admins see new help requests in real time.
   useEffect(() => {
-    if (!user || (!user.isAdmin && !(user as any).isSuperAdmin)) return;
+    if (!hasAdminPanelAccess) return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -747,11 +761,11 @@ export default function Admin() {
     tick();
     const id = setInterval(tick, 15000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [user]);
+  }, [hasAdminPanelAccess]);
 
   // Poll admin-to-admin chat unread count.
   useEffect(() => {
-    if (!user || (!user.isAdmin && !(user as any).isSuperAdmin)) return;
+    if (!hasAdminPanelAccess || isModerator) return;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -762,10 +776,10 @@ export default function Admin() {
     tick();
     const id = setInterval(tick, 10000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [user]);
+  }, [hasAdminPanelAccess, isModerator]);
 
   useEffect(() => {
-    if (!user || (!user.isAdmin && !(user as any).isSuperAdmin)) return;
+    if (!hasAdminPanelAccess) return;
     (async () => {
       try {
         const data = await adminFetch("/api/admin/me", "GET");
@@ -784,11 +798,11 @@ export default function Admin() {
         try { const opts = await adminFetch("/api/admin/scope-options", "GET"); setScopeOptions(opts); } catch {}
       }
     })();
-  }, [user]);
+  }, [user, hasAdminPanelAccess]);
 
   // Eagerly load data for tabs the current user can access.
   useEffect(() => {
-    if (!user || (!user.isAdmin && !(user as any).isSuperAdmin)) return;
+    if (!hasAdminPanelAccess || isModerator) return;
     // Load application queues so stat cards show live counts immediately.
     loadDriverApps("pending");
     loadKycAgentApps("pending");
@@ -802,7 +816,7 @@ export default function Admin() {
       loadUsdtWallet();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, hasAdminPanelAccess, isModerator]);
 
   // Load password hash stats and keep them live (poll every 30 s).
   const fetchPwHashStats = useCallback(async (opts?: { manual?: boolean }) => {
@@ -819,7 +833,7 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    if (!user || (!user.isAdmin && !(user as any).isSuperAdmin)) return;
+    if (!hasAdminPanelAccess || isModerator) return;
     let cancelled = false;
     const tick = async () => {
       if (cancelled) return;
@@ -828,7 +842,7 @@ export default function Admin() {
     tick();
     const id = setInterval(tick, 30000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [user, fetchPwHashStats]);
+  }, [user, fetchPwHashStats, hasAdminPanelAccess, isModerator]);
 
   const { data: stats } = useAdminGetStats();
   const { data: users } = useAdminGetUsers();
@@ -2523,9 +2537,11 @@ export default function Admin() {
           {isSuperAdmin ? <Crown className="h-5 w-5 text-white" /> : <Shield className="h-5 w-5 text-white" />}
         </div>
         <div>
-          <h1 className="text-xl font-extrabold text-foreground leading-tight">Admin Panel</h1>
+          <h1 className="text-xl font-extrabold text-foreground leading-tight">{isModerator ? "Panel Modération" : "Admin Panel"}</h1>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-            <p className="text-xs text-muted-foreground">{isSuperAdmin ? "Super Admin — full access" : "Admin — limited access"}</p>
+            <p className="text-xs text-muted-foreground">
+              {isSuperAdmin ? "Super Admin — full access" : isModerator ? "Modérateur — accès limité" : "Admin — limited access"}
+            </p>
             {me?.scopeLevel && !isSuperAdmin && (
               <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full
                 ${me.scopeCity ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
@@ -2545,21 +2561,23 @@ export default function Admin() {
       {/* Stats Grid */}
       {s && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
-          <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => { loadWalletAdmin(); setShowUsersSheet(true); }} />
+          <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
           <StatCard icon={Wifi} label="Online Kounye a" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
           <StatCard icon={Package} label="Anons Aktif" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
-          <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />
-          <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />
+          {!isModerator && <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />}
+          {!isModerator && <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />}
           <StatCard icon={AlertTriangle} label="Flagged" value={s.flaggedUsers ?? 0} color="bg-orange-600 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setAdminTab("flagged")} />
           <StatCard icon={Flag} label="Rapò" value={s.pendingReports} color="bg-red-600 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("reports")} />
-          <StatCard icon={Truck} label="Chofe Atant" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />
-          <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />
-          <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />
-          <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />
-          <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />
+          {!isModerator && <StatCard icon={Truck} label="Chofe Atant" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />}
+          {!isModerator && <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />}
+          {!isModerator && <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />}
+          {!isModerator && <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
+          {!isModerator && <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
         </div>
       )}
 
+      {!isModerator && (
+      <>
       {/* ── Pending Applications Urgent Banner ── */}
       {(driverApps.filter((a: any) => a.status === "pending").length > 0 || kycAgentApps.filter((a: any) => a.status === "pending").length > 0 || loanAdminPending > 0 || employerApps.filter((a: any) => a.status === "pending").length > 0) && (
         <div className="mb-4 rounded-2xl border-2 border-orange-400 dark:border-orange-600 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 overflow-hidden shadow-sm shadow-orange-100 dark:shadow-orange-900/20">
@@ -2984,6 +3002,8 @@ export default function Admin() {
         )}
 
       </div>
+      </>
+      )}
 
       {/* Super Admin shortcut — Add Admin */}
       {isSuperAdmin && (
@@ -3054,7 +3074,7 @@ export default function Admin() {
       )}
 
       {/* Password upgrade status card */}
-      {pwHashStats !== null && (() => {
+      {!isModerator && pwHashStats !== null && (() => {
         const isInCooldown = pwHashStats.nudgeCooldownEndsAt != null && new Date(pwHashStats.nudgeCooldownEndsAt) > new Date();
         const cooldownEndsLabel = pwHashStats.nudgeCooldownEndsAt
           ? new Date(pwHashStats.nudgeCooldownEndsAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -3178,6 +3198,28 @@ export default function Admin() {
       <Tabs value={adminTab} onValueChange={setAdminTab}>
         <div className="overflow-x-auto pb-1 mb-5">
           <TabsList className="flex w-max gap-1 h-auto p-1">
+            {isModerator ? (
+            <>
+              <TabsTrigger value="users" className="text-xs">{t("admin.tabUsers")}</TabsTrigger>
+              <TabsTrigger value="flagged" className="text-xs relative">
+                {t("admin.tabFlagged")} {flaggedUsers.length > 0 && <span className="ml-1 bg-red-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{flaggedUsers.length}</span>}
+              </TabsTrigger>
+              <TabsTrigger value="restricted" className="text-xs">{t("admin.tabRestricted")}</TabsTrigger>
+              <TabsTrigger value="listings" className="text-xs">{t("admin.tabListings")}</TabsTrigger>
+              <TabsTrigger value="moderation" className="text-xs relative" onClick={() => loadModerationQueue()}>
+                <ShieldAlert className="h-3 w-3 mr-1" />{t("admin.tabModeration")}
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="text-xs">{t("admin.tabReports")}</TabsTrigger>
+              <TabsTrigger value="support" className="text-xs relative" data-testid="tab-support">
+                <MessageSquare className="h-3 w-3 mr-1" />Sipò
+                {supportUnread > 0 && <Badge className="ml-1 h-4 px-1 text-[9px] bg-red-600 hover:bg-red-600">{supportUnread}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="logs" className="text-xs" onClick={() => loadLogs(buildLogsParams(logsDateRange, logsDateFrom, logsDateTo))}>
+                <Activity className="h-3 w-3 mr-1" />Log Moderasyon
+              </TabsTrigger>
+            </>
+            ) : (
+            <>
             <TabsTrigger value="users" className="text-xs">{t("admin.tabUsers")}</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="admins" className="text-xs font-bold text-purple-700 dark:text-purple-400"><Crown className="h-3 w-3 mr-1" />Ekip Admin</TabsTrigger>}
             <TabsTrigger value="orders" className="text-xs font-bold text-blue-700 dark:text-blue-400" data-testid="tab-orders"><Package className="h-3 w-3 mr-1" />Òd</TabsTrigger>
@@ -3290,6 +3332,8 @@ export default function Admin() {
                 <ShieldAlert className="h-3 w-3 mr-1" />Veye Kont
               </TabsTrigger>
             )}
+            </>
+            )}
           </TabsList>
         </div>
 
@@ -3371,14 +3415,18 @@ export default function Admin() {
                           <AvatarFallback className="text-xs bg-primary text-primary-foreground">{u.name[0]}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <button
-                            className="font-medium text-foreground hover:text-primary text-sm text-left flex items-center gap-1 group"
-                            onClick={() => openWalletDetail(u.id)}
-                            title="Wè pòtfèy + tranzaksyon"
-                          >
-                            {u.name}
-                            <Wallet className="h-3 w-3 opacity-0 group-hover:opacity-60 text-primary transition-opacity" />
-                          </button>
+                          {isModerator ? (
+                            <span className="font-medium text-foreground text-sm">{u.name}</span>
+                          ) : (
+                            <button
+                              className="font-medium text-foreground hover:text-primary text-sm text-left flex items-center gap-1 group"
+                              onClick={() => openWalletDetail(u.id)}
+                              title="Wè pòtfèy + tranzaksyon"
+                            >
+                              {u.name}
+                              <Wallet className="h-3 w-3 opacity-0 group-hover:opacity-60 text-primary transition-opacity" />
+                            </button>
+                          )}
                           <div className="flex gap-1 flex-wrap mt-0.5">
                             <RoleBadge user={u} />
                             {u.isFlagged && <Badge variant="outline" className="text-[9px] py-0 h-4 border-amber-400 text-amber-600">⚠ Flagged</Badge>}
@@ -3399,12 +3447,12 @@ export default function Admin() {
                           </span>
                         )}
                       </div>
-                      <div className="relative mt-1">
+                      {!isModerator && <div className="relative mt-1">
                         <select className="h-6 rounded border border-dashed border-input bg-background pl-1.5 pr-5 appearance-none cursor-pointer text-[10px] focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed" style={{ fontSize: "16px", transform: "scale(0.65)", transformOrigin: "left center", width: "calc(8rem / 0.65)", marginLeft: 0 }} disabled={!!actioning} value="" onChange={e => { if (e.target.value) handleSetCountry(u.id, e.target.value); e.target.value = ""; }}>
                           <option value="">Set country…</option>
                           {SUPPORTED_COUNTRIES.map(c => <option key={c} value={c}>{COUNTRY_FLAGS[c]} {c}</option>)}
                         </select>
-                      </div>
+                      </div>}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col gap-1">
@@ -3417,9 +3465,9 @@ export default function Admin() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-emerald-600" onClick={() => openWalletDetail(u.id)} title="Wè pòtfèy itilizatè a"><Wallet className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => loadActivity(u)} data-testid={`button-activity-${u.id}`} title="Activity"><Eye className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-blue-600" onClick={() => loadSecurity(u)} data-testid={`button-security-${u.id}`} title="Security / IP info"><ShieldAlert className="h-3 w-3" /></Button>
+                        {!isModerator && <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-emerald-600" onClick={() => openWalletDetail(u.id)} title="Wè pòtfèy itilizatè a"><Wallet className="h-3 w-3" /></Button>}
+                        {!isModerator && <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => loadActivity(u)} data-testid={`button-activity-${u.id}`} title="Activity"><Eye className="h-3 w-3" /></Button>}
+                        {!isModerator && <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-blue-600" onClick={() => loadSecurity(u)} data-testid={`button-security-${u.id}`} title="Security / IP info"><ShieldAlert className="h-3 w-3" /></Button>}
                         {can("bans") && !u.isVerified && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-emerald-600 border-emerald-300" onClick={() => handleVerify(u.id)} disabled={actioning === `verify-${u.id}`} data-testid={`button-verify-user-${u.id}`} title="Verify identity"><BadgeCheck className="h-3 w-3" /></Button>
                         )}
@@ -3429,7 +3477,7 @@ export default function Admin() {
                         {can("resetPasswords") && u.id !== user?.id && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-purple-600 border-purple-300" onClick={() => handleResetPassword(u)} disabled={actioning === `resetpw-${u.id}`} data-testid={`button-reset-password-${u.id}`} title="Reset password"><KeyRound className="h-3 w-3" /></Button>
                         )}
-                        {isLocked && (
+                        {!isModerator && isLocked && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-orange-600 border-orange-300" onClick={() => handleResetCountryLock(u.id)} disabled={actioning === `reset-country-${u.id}`} title="Unlock country change">
                             <Unlock className="h-3 w-3" />
                           </Button>
@@ -3440,13 +3488,13 @@ export default function Admin() {
                         {!u.isAdmin && !u.isSuperAdmin && u.isRestricted && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-emerald-600 border-emerald-300" onClick={() => handleUnrestrict(u.id, u.name)} disabled={actioning === `unrestrict-${u.id}`} title="Lift restriction"><RotateCcw className="h-3 w-3" /></Button>
                         )}
-                        {!u.isAdmin && !u.isSuperAdmin && !u.isBanned && (
+                        {!isModerator && !u.isAdmin && !u.isSuperAdmin && !u.isBanned && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-destructive border-destructive/30" onClick={() => handleBan(u.id)} disabled={actioning === `ban-${u.id}`} data-testid={`button-ban-user-${u.id}`} title="Ban user"><Ban className="h-3 w-3" /></Button>
                         )}
-                        {u.isBanned && (
+                        {!isModerator && u.isBanned && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-emerald-600 border-emerald-300 dark:border-emerald-700" onClick={() => handleUnban(u.id)} disabled={actioning === `unban-${u.id}`} data-testid={`button-unban-inline-${u.id}`} title="Unban user"><RotateCcw className="h-3 w-3" /></Button>
                         )}
-                        {!u.isSuperAdmin && (
+                        {!isModerator && !u.isSuperAdmin && (
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} disabled={actioning === `del-${u.id}`} data-testid={`button-delete-user-${u.id}`}><Trash2 className="h-3 w-3" /></Button>
                         )}
                       </div>
@@ -3479,7 +3527,11 @@ export default function Admin() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl text-xs">
                 <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                <span className="text-amber-800 dark:text-amber-300">Flagged automatically during registration (same device, same IP as existing account, or other suspicious patterns). Review security info, then ban, clear, or delete.</span>
+                <span className="text-amber-800 dark:text-amber-300">
+                  {isModerator
+                    ? "Kont sa a bezwen revizyon. Retire signalman an si li nòmal, oswa mete yon restriksyon tanporè si sa nesesè."
+                    : "Flagged automatically during registration (same device, same IP as existing account, or other suspicious patterns). Review security info, then ban, clear, or delete."}
+                </span>
               </div>
               {flaggedUsers.map((u: any) => (
                 <div key={u.id} className="bg-card border border-amber-300 dark:border-amber-800 rounded-xl p-4" data-testid={`admin-flagged-${u.id}`}>
@@ -3496,10 +3548,11 @@ export default function Admin() {
                       {u.flagReason && <p className="text-xs text-amber-800 dark:text-amber-300 mt-1.5 bg-amber-50 dark:bg-amber-950/30 px-2 py-1 rounded border border-amber-100 dark:border-amber-900"><strong>Reason:</strong> {u.flagReason}</p>}
                     </div>
                     <div className="flex flex-col gap-1.5 flex-shrink-0">
-                      <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700" onClick={() => loadSecurity(u)} data-testid={`button-security-flagged-${u.id}`}><ShieldAlert className="h-3 w-3 mr-1" />Security</Button>
-                      <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleBan(u.id)} disabled={!!actioning} data-testid={`button-ban-flagged-${u.id}`}><Ban className="h-3 w-3 mr-1" />Ban</Button>
+                      {!isModerator && <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700" onClick={() => loadSecurity(u)} data-testid={`button-security-flagged-${u.id}`}><ShieldAlert className="h-3 w-3 mr-1" />Security</Button>}
+                      {!isModerator && <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleBan(u.id)} disabled={!!actioning} data-testid={`button-ban-flagged-${u.id}`}><Ban className="h-3 w-3 mr-1" />Ban</Button>}
+                      {isModerator && !u.isRestricted && <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700" onClick={() => setRestrictTarget({ id: u.id, name: u.name })} disabled={!!actioning}><ShieldAlert className="h-3 w-3 mr-1" />Restrenn</Button>}
                       <Button size="sm" variant="outline" className="h-7 text-xs border-green-400 text-green-700 hover:bg-green-50" onClick={() => handleUnflag(u.id)} disabled={!!actioning} data-testid={`button-clear-flagged-${u.id}`}><CheckCircle2 className="h-3 w-3 mr-1" />Clear</Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} disabled={!!actioning} data-testid={`button-delete-flagged-${u.id}`}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>
+                      {!isModerator && <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} disabled={!!actioning} data-testid={`button-delete-flagged-${u.id}`}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>}
                     </div>
                   </div>
                 </div>
@@ -3652,8 +3705,8 @@ export default function Admin() {
                     <td className="px-4 py-2.5 text-right">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEdit(l)} title="Edit"><Edit3 className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openBoost(l)} title="Boost"><Zap className="h-3 w-3" /></Button>
-                        <Button variant="ghost" size="sm" className={`h-7 px-2 ${l.isFeatured ? "text-yellow-600" : ""}`} onClick={() => handleFeature(l.id, !l.isFeatured)} title={l.isFeatured ? "Unfeature" : "Feature"} disabled={actioning === `feat-${l.id}`}><Star className="h-3 w-3" /></Button>
+                        {!isModerator && <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openBoost(l)} title="Boost"><Zap className="h-3 w-3" /></Button>}
+                        {!isModerator && <Button variant="ghost" size="sm" className={`h-7 px-2 ${l.isFeatured ? "text-yellow-600" : ""}`} onClick={() => handleFeature(l.id, !l.isFeatured)} title={l.isFeatured ? "Unfeature" : "Feature"} disabled={actioning === `feat-${l.id}`}><Star className="h-3 w-3" /></Button>}
                         {l.status !== "removed" && <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive" onClick={() => { setListingRemovalReason(""); setDeleteTarget({ id: l.id, name: l.title, type: "listing" }); }} title="Remove"><Trash2 className="h-3 w-3" /></Button>}
                       </div>
                     </td>

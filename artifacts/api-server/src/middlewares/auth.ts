@@ -77,7 +77,8 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
 
 export async function requireAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   await requireAuth(req, res, async () => {
-    if (!req.user?.isAdmin && !req.user?.isSuperAdmin) {
+    const role = getRole(req.user);
+    if (role !== "admin" && role !== "superadmin") {
       res.status(403).json({ error: "Admin access required" });
       return;
     }

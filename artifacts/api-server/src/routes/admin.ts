@@ -229,7 +229,7 @@ function assertListingInScope(admin: AdminUser, listing: typeof listingsTable.$i
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
 
-router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<void> => {
   const admin = req.user!;
   const lScope = getListingScopeConditions(admin);
   const uScope = getUserScopeConditions(admin);
@@ -265,26 +265,33 @@ router.get("/admin/stats", requireAdmin, async (req, res): Promise<void> => {
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "grace_period")),
   ]);
 
-  res.json({
+  const safeStats = {
     totalUsers: Number(totalUsers.count),
     onlineUsers: getOnlineUserCount(),
     totalListings: Number(totalListings.count),
     activeListings: Number(activeListings.count),
-    boostedListings: Number(boostedListings.count),
-    featuredListings: Number(featuredListings.count),
-    totalBoosts: Number(totalBoosts.count),
     pendingReports: Number(pendingReports.count),
     flaggedUsers: Number(flaggedUsers.count),
     bannedUsers: Number(bannedUsers.count),
-    adminUsers: Number(adminUsers.count),
-    totalRevenue: Number(revenueResult[0]?.total ?? 0),
-    activeSubscriptions: Number(activeSubscriptions.count),
-    graceSubscriptions: Number(graceSubscriptions.count),
     // Scope metadata for the frontend to display
     scopeLevel: getScopeLevel(admin),
     scopeCountry: admin.adminScopeCountry ?? null,
     scopeDepartment: admin.adminScopeDepartment ?? null,
     scopeCity: admin.adminScopeCity ?? null,
+  };
+  if (getRole(admin) === "moderator") {
+    res.json(safeStats);
+    return;
+  }
+  res.json({
+    ...safeStats,
+    boostedListings: Number(boostedListings.count),
+    featuredListings: Number(featuredListings.count),
+    totalBoosts: Number(totalBoosts.count),
+    adminUsers: Number(adminUsers.count),
+    totalRevenue: Number(revenueResult[0]?.total ?? 0),
+    activeSubscriptions: Number(activeSubscriptions.count),
+    graceSubscriptions: Number(graceSubscriptions.count),
   });
 });
 
@@ -598,7 +605,7 @@ router.post("/admin/nudge-cooldown-settings", requireSuperAdmin, async (req, res
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/users", requireRole("moderator"), async (req, res): Promise<void> => {
   const { country, q } = req.query as Record<string, string>;
   const admin = req.user!;
   const scopeConds = getUserScopeConditions(admin);
@@ -908,7 +915,7 @@ router.post("/admin/users/:id/unban", requireAdmin, async (req, res): Promise<vo
   res.json({ message: "User unbanned" });
 });
 
-router.post("/admin/users/:id/restrict", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/restrict", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
@@ -962,7 +969,7 @@ router.post("/admin/users/:id/restrict", requireAdmin, async (req, res): Promise
   res.json({ message: "User restricted" });
 });
 
-router.post("/admin/users/:id/unrestrict", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/unrestrict", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
@@ -1044,7 +1051,7 @@ router.post("/admin/users/:id/set-country", requireSuperAdmin, async (req, res):
   res.json({ message: "Country updated", country });
 });
 
-router.post("/admin/users/:id/unflag", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/unflag", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
@@ -1221,7 +1228,7 @@ router.post("/admin/users/add-admin-by-email", requireSuperAdmin, async (req, re
 
 // ─── Listings ─────────────────────────────────────────────────────────────────
 
-router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/listings", requireRole("moderator"), async (req, res): Promise<void> => {
   const { country } = req.query as Record<string, string>;
   const admin = req.user!;
   const scopeConds = getListingScopeConditions(admin);
@@ -1250,7 +1257,7 @@ router.get("/admin/listings", requireAdmin, async (req, res): Promise<void> => {
   })));
 });
 
-router.put("/admin/listings/:id", requireAdmin, async (req, res): Promise<void> => {
+router.put("/admin/listings/:id", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
   if (!existing) { res.status(404).json({ error: "Listing not found" }); return; }
@@ -1307,7 +1314,7 @@ router.put("/admin/listings/:id", requireAdmin, async (req, res): Promise<void> 
   res.json(listing);
 });
 
-router.post("/admin/listings/:id/remove", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/listings/:id/remove", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
@@ -1505,7 +1512,7 @@ router.delete("/admin/jobs/:id", requireAdmin, async (req, res): Promise<void> =
 
 // ─── Moderation Queue ────────────────────────────────────────────────────────
 
-router.get("/admin/moderation", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/moderation", requireRole("moderator"), async (req, res): Promise<void> => {
   const { status } = req.query as Record<string, string>;
   const admin = req.user!;
   const scopeConds = getListingScopeConditions(admin);
@@ -1543,7 +1550,7 @@ router.get("/admin/moderation", requireAdmin, async (req, res): Promise<void> =>
   })));
 });
 
-router.post("/admin/moderation/:id/approve", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/moderation/:id/approve", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
@@ -1577,7 +1584,7 @@ router.post("/admin/moderation/:id/approve", requireAdmin, async (req, res): Pro
   res.json({ message: "Listing approved" });
 });
 
-router.post("/admin/moderation/:id/reject", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const { reason } = req.body as { reason?: string };
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
@@ -1969,7 +1976,7 @@ router.post("/admin/boosts/:boostId/reject", requireAdmin, async (req, res): Pro
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
-router.get("/admin/logs", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/logs", requireRole("moderator"), async (req, res): Promise<void> => {
   const { since, until } = req.query as { since?: string; until?: string };
   const admin = req.user!;
   const conditions: any[] = [];

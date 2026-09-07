@@ -8,7 +8,7 @@ import {
   notificationsTable,
 } from "@workspace/db";
 import { eq, and, or, desc, sql, inArray, ne } from "drizzle-orm";
-import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin, requireRole, hasRole } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import {
   emitSupportMessage,
@@ -87,7 +87,7 @@ async function getAdminIds(userCountry?: string | null): Promise<number[]> {
  */
 router.get("/support/unread-count", requireAuth, async (req, res): Promise<void> => {
   const me = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = !!(me[0]?.isAdmin || me[0]?.isSuperAdmin);
+  const isAdmin = hasRole(me[0], "support");
 
   if (isAdmin) {
     const [row] = await db
@@ -112,7 +112,7 @@ router.get("/support/unread-count", requireAuth, async (req, res): Promise<void>
  */
 router.get("/support/threads", requireAuth, async (req, res): Promise<void> => {
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = !!(me?.isAdmin || me?.isSuperAdmin);
+  const isAdmin = hasRole(me, "support");
   const wantAll = isAdmin && (req.query["all"] === "1" || req.query["all"] === "true");
 
   if (!wantAll) {
@@ -308,7 +308,7 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
   }
 
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = !!(me?.isAdmin || me?.isSuperAdmin);
+  const isAdmin = hasRole(me, "support");
   const isOwner = thread.userId === req.userId;
   if (!isAdmin && !isOwner) {
     res.status(403).json({ error: "Forbidden" });
@@ -407,7 +407,7 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
   }
 
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = !!(me?.isAdmin || me?.isSuperAdmin);
+  const isAdmin = hasRole(me, "support");
   const isSuperAdmin = !!me?.isSuperAdmin;
   const isOwner = threadPre.userId === req.userId;
   if (!isAdmin && !isOwner) {
@@ -508,7 +508,7 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
 });
 
 /** POST /api/support/threads/:id/close — admin closes a ticket. */
-router.post("/support/threads/:id/close", requireAdmin, async (req, res): Promise<void> => {
+router.post("/support/threads/:id/close", requireRole("support"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -540,7 +540,7 @@ router.post("/support/threads/:id/reopen", requireAuth, async (req, res): Promis
     return;
   }
   const [me] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-  const isAdmin = !!(me?.isAdmin || me?.isSuperAdmin);
+  const isAdmin = hasRole(me, "support");
   if (!isAdmin && thread.userId !== req.userId) {
     res.status(403).json({ error: "Forbidden" });
     return;
@@ -595,7 +595,7 @@ router.post("/support/threads/:id/assign", requireSuperAdmin, async (req, res): 
 /**
  * GET /api/admin/support/analytics — Super Admin summary metrics.
  */
-router.get("/admin/support/analytics", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/support/analytics", requireRole("support"), async (req, res): Promise<void> => {
   const [totRow] = await db
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(supportThreadsTable);

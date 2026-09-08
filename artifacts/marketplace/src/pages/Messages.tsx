@@ -1305,9 +1305,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       refetchOnMount: true,
       // A stuck mobile connection must become a visible retry state instead
       // of leaving the conversation on "Loading messages..." forever.
-      retry: 1,
+      retry: 0,
     },
-    request: { timeoutMs: 10_000 },
+    request: { timeoutMs: 6_000 },
   });
   const { data: convs } = useGetConversations({
     query: {
@@ -1317,7 +1317,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnMount: true,
+      retry: 0,
     },
+    request: { timeoutMs: 6_000 },
   });
   const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
   const sendMsg = useSendMessage();
@@ -2512,7 +2514,9 @@ export default function Messages() {
       refetchIntervalInBackground: true,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
+      retry: 0,
     },
+    request: { timeoutMs: 6_000 },
   });
 
   useEffect(() => {

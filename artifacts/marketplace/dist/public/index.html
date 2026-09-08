@@ -2,7 +2,7 @@
 <html lang="fr" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=auto, interactive-widget=resizes-visual" />
 
     <!-- ═══════════════════════ SEO CORE ═══════════════════════ -->
     <title>FLEXA MARKET — Achte &amp; Vann ann Ayiti | Marketplace #1</title>
@@ -50,10 +50,10 @@
     <meta name="apple-mobile-web-app-title" content="FlexaMarket" />
     <meta name="format-detection" content="telephone=no" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/flexa-logo-v2.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/logo.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/logo.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/flexa-logo-v2.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/flexa-logo-v2.png" />
 
     <!-- ═══════════════════════ FONTS (performance-first) ═══════════════════════ -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -95,7 +95,7 @@
           "url": "https://flexamarket.com/",
           "logo": {
             "@type": "ImageObject",
-            "url": "https://flexamarket.com/logo.png",
+            "url": "https://flexamarket.com/flexa-logo-v2.png",
             "width": 512,
             "height": 512
           },
@@ -300,11 +300,34 @@
         document.documentElement.style.setProperty('--sat', sat + 'px');
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-B9oQ2gUr.js"></script>
+    <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can
+         leave the layout viewport behind its bottom toolbar while scrolling. -->
+    <script>
+      (function () {
+        function updateVisualViewportVars() {
+          var vv = window.visualViewport;
+          var layoutHeight = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+          var bottomInset = vv
+            ? Math.max(0, layoutHeight - vv.height - (vv.offsetTop || 0))
+            : 0;
+          var visualWidth = vv && vv.width ? vv.width : window.innerWidth;
+          document.documentElement.style.setProperty('--flexa-vv-bottom', Math.round(bottomInset) + 'px');
+          document.documentElement.style.setProperty('--flexa-vv-width', Math.round(visualWidth) + 'px');
+        }
+
+        updateVisualViewportVars();
+        window.addEventListener('resize', updateVisualViewportVars, { passive: true });
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', updateVisualViewportVars, { passive: true });
+          window.visualViewport.addEventListener('scroll', updateVisualViewportVars, { passive: true });
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-B4TwAfeR.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-D8rembIz.js">
-    <link rel="modulepreload" crossorigin href="/assets/vendor-BOJZZyyA.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-DjgBrkgT.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-BGxBWBoV.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-jVby1cc2.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-DimBlSyL.css">
   </head>
   <body>
     <!-- Skip navigation for accessibility / SEO -->

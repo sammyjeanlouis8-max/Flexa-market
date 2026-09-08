@@ -350,7 +350,11 @@ function Router() {
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    const pageScroller = document.querySelector<HTMLElement>("main.app-main-scroll");
+      if (pageScroller) {
+        pageScroller.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location]);
 
   // Redirect to profile completion only after auth has settled

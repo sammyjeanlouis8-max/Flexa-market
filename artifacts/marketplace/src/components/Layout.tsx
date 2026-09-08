@@ -391,8 +391,13 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-[70] md:hidden bg-card rounded-t-2xl shadow-2xl"
-        style={{ maxHeight: "80vh", overflowY: "auto" }}
+        className="fixed bottom-0 left-0 right-0 z-[70] w-full max-w-[100vw] overflow-x-hidden md:hidden bg-card rounded-t-2xl shadow-2xl"
+        style={{
+          maxHeight: "80dvh",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          touchAction: "pan-y",
+        }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
@@ -413,7 +418,12 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         </div>
 
         {/* Menu items */}
-        <div className="px-3 py-3 space-y-4 pb-8">
+        <div
+          className="px-3 pt-3 space-y-4"
+          style={{
+            paddingBottom: "max(6rem, calc(env(safe-area-inset-bottom, 0px) + 4rem))",
+          }}
+        >
           {sections.map(section => (
             <div
               key={section.heading}

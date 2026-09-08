@@ -853,8 +853,8 @@ export default function Layout({ children }: { children: ReactNode }) {
       {/* ── Top header ── */}
       {/* paddingTop covers the notch / Dynamic Island on iPhone X+ when
           viewport-fit=cover is active (see index.html viewport meta). */}
-      {!isVideoFeed && <header className="sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
-        <div className="max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
+      {!isVideoFeed && <header className="mobile-app-header sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+        <div className="mobile-app-header-row w-full max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 
           {/* Mobile back button — visible only on sub-pages, hidden on desktop */}
           {showBackButton ? (
@@ -952,7 +952,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
             in the upper 64 px, extra space is padding below them. */}
-        <div className="mobile-bottom-nav-row grid grid-cols-5" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
+        <div className="mobile-bottom-nav-row w-full grid grid-cols-5" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (

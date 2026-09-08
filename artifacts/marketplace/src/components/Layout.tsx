@@ -848,13 +848,13 @@ export default function Layout({ children }: { children: ReactNode }) {
   ].some(rx => rx.test(location));
 
   return (
-    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
+    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
       {/* paddingTop covers the notch / Dynamic Island on iPhone X+.
           --sat is also used because Safari viewport-fit=auto can report
           env(safe-area-inset-top) as 0 while the status area is still present. */}
-      {!isVideoFeed && <header className="mobile-app-header sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      {!isVideoFeed && <header className="mobile-app-header sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56">
         <div className="mobile-app-header-row w-full max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
 
           {/* Mobile back button — visible only on sub-pages, hidden on desktop */}

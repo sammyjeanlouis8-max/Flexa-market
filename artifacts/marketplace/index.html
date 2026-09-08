@@ -2,7 +2,7 @@
 <html lang="fr" dir="ltr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=auto, interactive-widget=resizes-visual" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
 
     <!-- ═══════════════════════ SEO CORE ═══════════════════════ -->
     <title>FLEXA MARKET — Achte &amp; Vann ann Ayiti | Marketplace #1</title>
@@ -310,7 +310,10 @@
           var bottomInset = vv
             ? Math.max(0, layoutHeight - vv.height - (vv.offsetTop || 0))
             : 0;
-          var visualWidth = vv && vv.width ? vv.width : window.innerWidth;
+           // Keep layout controls tied to the layout viewport. Safari's
+           // visualViewport width can briefly shrink while its toolbar or
+           // keyboard animates, which makes fixed navigation jump sideways.
+           var visualWidth = window.innerWidth || document.documentElement.clientWidth;
           document.documentElement.style.setProperty('--flexa-vv-bottom', Math.round(bottomInset) + 'px');
           document.documentElement.style.setProperty('--flexa-vv-width', Math.round(visualWidth) + 'px');
         }

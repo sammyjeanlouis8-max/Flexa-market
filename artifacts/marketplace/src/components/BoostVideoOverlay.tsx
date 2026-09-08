@@ -196,9 +196,11 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   }, []);
 
   // ── Skip ──────────────────────────────────────────────────────────────────
-  const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (skipHandledRef.current) return;
+    skipHandledRef.current = true;
     videoRef.current?.pause();
     onClose();
   }, [onClose]);

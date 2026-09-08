@@ -847,7 +847,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   ].some(rx => rx.test(location));
 
   return (
-    <div className={`bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
+    <div className={`w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-svh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
       {/* paddingTop covers the notch / Dynamic Island on iPhone X+ when

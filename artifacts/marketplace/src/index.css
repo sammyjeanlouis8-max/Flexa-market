@@ -7,10 +7,14 @@
 
 html {
   height: 100%;
+  width: 100%;
   margin: 0;
   /* clip on html prevents the document from horizontal-scrolling
-     without creating a BFC on body (which would break -mx-* edge-to-edge layouts) */
+     without creating a BFC on body (which would break -mx-* edge-to-edge layouts).
+     Safari versions that do not support clip keep the hidden fallback. */
+  overflow-x: hidden;
   overflow-x: clip;
+  overscroll-behavior-x: none;
   max-width: 100vw;
   /* Disable CSS smooth-scroll globally — all scrolling must be intentional */
   scroll-behavior: auto !important;
@@ -18,11 +22,16 @@ html {
 
 body {
   height: 100%;
+  width: 100%;
+  min-width: 0;
   margin: 0;
   /* clip (not hidden) avoids creating a block formatting context, so
-     children with negative margins (-mx-4) still paint to the edge */
+     children with negative margins (-mx-4) still paint to the edge.
+     Keep hidden first as a fallback for older iOS Safari. */
+  overflow-x: hidden;
   overflow-x: clip;
-  max-width: 100%;
+  overscroll-behavior-x: none;
+  max-width: 100vw;
   scroll-behavior: auto !important;
   /* Prevent rubber-band / overscroll bounce on mobile */
   overscroll-behavior-y: none;
@@ -34,14 +43,21 @@ body {
 #root {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   /* 100dvh: correct on iOS Safari (excludes collapsing browser chrome) */
   min-height: 100dvh;
+  overflow-x: hidden;
   overflow-x: clip;
-  max-width: 100%;
+  max-width: 100vw;
 }
 
 main {
   flex: 1;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 /* ── Mobile-first full-screen chat ─────────────────────────────────────────

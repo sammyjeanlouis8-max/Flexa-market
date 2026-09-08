@@ -300,6 +300,29 @@
         document.documentElement.style.setProperty('--sat', sat + 'px');
       })();
     </script>
+    <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can
+         leave the layout viewport behind its bottom toolbar while scrolling. -->
+    <script>
+      (function () {
+        function updateVisualViewportVars() {
+          var vv = window.visualViewport;
+          var layoutHeight = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+          var bottomInset = vv
+            ? Math.max(0, layoutHeight - vv.height - (vv.offsetTop || 0))
+            : 0;
+          var visualWidth = vv && vv.width ? vv.width : window.innerWidth;
+          document.documentElement.style.setProperty('--flexa-vv-bottom', Math.round(bottomInset) + 'px');
+          document.documentElement.style.setProperty('--flexa-vv-width', Math.round(visualWidth) + 'px');
+        }
+
+        updateVisualViewportVars();
+        window.addEventListener('resize', updateVisualViewportVars, { passive: true });
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', updateVisualViewportVars, { passive: true });
+          window.visualViewport.addEventListener('scroll', updateVisualViewportVars, { passive: true });
+        }
+      })();
+    </script>
   </head>
   <body>
     <!-- Skip navigation for accessibility / SEO -->

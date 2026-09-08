@@ -77,6 +77,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const skipHandledRef = useRef(false);
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;

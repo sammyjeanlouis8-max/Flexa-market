@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, driverApplicationsTable, driversTable, deliveriesTable, usersTable, notificationsTable, promoWalletTable, walletTransactionsTable, transactionsTable, listingsTable } from "@workspace/db";
-import { eq, and, desc, or, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, or, sql, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { releaseEscrow } from "./transactions";
 import { emitDriverLocation, emitAdminDriverUpdate, emitDeliveryStatus } from "../lib/socketServer";
@@ -1074,11 +1074,9 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
     }
   }
 
-  // Real-time socket push so buyer sees code instantly on screen
-  emitDeliveryStatus(deliveryId, {
-    status: "driver_assigned",
-    verificationCode: code,
-  });
+  // Never broadcast the buyer's secret code to a delivery-wide room. The
+  // authenticated buyer retrieves it through the ownership-filtered tracking API.
+  emitDeliveryStatus(deliveryId, { status: "driver_assigned" });
 
   // Push the buyer (web + mobile). NEVER include the secret code here —
   // it was delivered securely via SMS + the in-app socket above.
@@ -1089,7 +1087,12 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
     { deliveryId, type: "driver_assigned" },
   );
 
-  res.json({ delivery: updated, verificationCode: code });
+  res.json({
+    delivery: {
+      ...updated,
+      verificationCode: undefined,
+    },
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1108,7 +1111,9 @@ router.get("/delivery/seller-self", requireAuth, async (req, res): Promise<void>
     ))
     .orderBy(desc(deliveriesTable.updatedAt))
     .limit(10);
-  res.json({ deliveries: rows });
+  res.json({
+    deliveries: rows.map(({ verificationCode: _buyerSecret, ...delivery }) => delivery),
+  });
 });
 
 // POST /api/delivery/:id/seller-accept — seller accepts their own delivery (self-deliver)
@@ -1119,6 +1124,45 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
   if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
   if (delivery.sellerId !== userId) { res.status(403).json({ error: "You can only self-deliver your own orders" }); return; }
+  if (!DELIVERY_COUNTRIES.includes(delivery.country) || !["motorcycle", "car"].includes(delivery.deliveryMethod)) {
+    res.status(400).json({ error: "Seller self-delivery is only available for FM deliveries in Haiti and Dominican Republic" });
+    return;
+  }
+  if (!delivery.transactionId) {
+    res.status(409).json({ error: "Self-delivery requires a valid purchase order" });
+    return;
+  }
+
+  const [order] = await db
+    .select({
+      buyerId: transactionsTable.userId,
+      listingId: transactionsTable.listingId,
+      sellerUserId: transactionsTable.sellerUserId,
+      paymentStatus: transactionsTable.paymentStatus,
+      type: transactionsTable.type,
+    })
+    .from(transactionsTable)
+    .where(eq(transactionsTable.id, delivery.transactionId))
+    .limit(1);
+  if (!order || order.type !== "purchase" || order.paymentStatus !== "completed" || !order.listingId) {
+    res.status(409).json({ error: "Self-delivery requires a completed purchase order" });
+    return;
+  }
+
+  const [listing] = await db
+    .select({ sellerId: listingsTable.sellerId })
+    .from(listingsTable)
+    .where(eq(listingsTable.id, order.listingId))
+    .limit(1);
+  const ownershipMatches =
+    listing?.sellerId === userId &&
+    (order.sellerUserId === null || order.sellerUserId === userId) &&
+    order.buyerId === delivery.buyerId &&
+    (delivery.listingId === null || delivery.listingId === order.listingId);
+  if (!ownershipMatches) {
+    res.status(403).json({ error: "You can only self-deliver an order for an item you sold" });
+    return;
+  }
   if (delivery.status !== "waiting") { res.status(409).json({ error: "Delivery already taken" }); return; }
 
   const code = genCode();
@@ -1132,7 +1176,12 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
       acceptedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "waiting")))
+    .where(and(
+      eq(deliveriesTable.id, deliveryId),
+      eq(deliveriesTable.status, "waiting"),
+      eq(deliveriesTable.sellerId, userId),
+      isNull(deliveriesTable.driverUserId),
+    ))
     .returning();
 
   if (!updated) { res.status(409).json({ error: "Delivery already taken" }); return; }
@@ -1153,7 +1202,9 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
     }
   }
 
-  emitDeliveryStatus(deliveryId, { status: "seller_delivering", verificationCode: code });
+  // The confirmation code is buyer-only. Never return or broadcast it to the
+  // seller; the buyer retrieves it through the ownership-filtered tracking API.
+  emitDeliveryStatus(deliveryId, { status: "seller_delivering" });
 
   await pushBoth(
     delivery.buyerId,
@@ -1162,7 +1213,12 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
     { deliveryId, type: "driver_assigned" },
   );
 
-  res.json({ delivery: updated, verificationCode: code });
+  res.json({
+    delivery: {
+      ...updated,
+      verificationCode: undefined,
+    },
+  });
 });
 
 // PATCH /api/delivery/:id/seller-status — seller updates their self-delivery status
@@ -1177,7 +1233,14 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
 
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
   if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
-  if (delivery.sellerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (delivery.sellerId !== userId || delivery.driverUserId !== userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (!DELIVERY_COUNTRIES.includes(delivery.country) || !["motorcycle", "car"].includes(delivery.deliveryMethod)) {
+    res.status(400).json({ error: "Invalid seller self-delivery" });
+    return;
+  }
 
   if (!ALLOWED[delivery.status] || ALLOWED[delivery.status] !== status) {
     res.status(400).json({ error: "Invalid transition", from: delivery.status, to: status }); return;
@@ -1186,8 +1249,17 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
   const [updated] = await db
     .update(deliveriesTable)
     .set({ status, updatedAt: new Date(), ...(status === "seller_arrived" ? { arrivedAt: new Date() } : {}) })
-    .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.sellerId, userId)))
+    .where(and(
+      eq(deliveriesTable.id, deliveryId),
+      eq(deliveriesTable.sellerId, userId),
+      eq(deliveriesTable.driverUserId, userId),
+      eq(deliveriesTable.status, "seller_delivering"),
+    ))
     .returning();
+  if (!updated) {
+    res.status(409).json({ error: "Delivery status changed. Refresh and try again." });
+    return;
+  }
 
   emitDeliveryStatus(deliveryId, { status });
 
@@ -1213,7 +1285,14 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
 
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
   if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
-  if (delivery.sellerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (delivery.sellerId !== userId || delivery.driverUserId !== userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  if (!DELIVERY_COUNTRIES.includes(delivery.country) || !["motorcycle", "car"].includes(delivery.deliveryMethod)) {
+    res.status(400).json({ error: "Invalid seller self-delivery" });
+    return;
+  }
 
   if (delivery.status === "delivered" || delivery.codeVerifiedAt !== null) {
     res.status(409).json({ error: "Delivery already confirmed", alreadyProcessed: true }); return;
@@ -1244,6 +1323,10 @@ router.post("/delivery/:id/seller-verify-code", requireAuth, async (req, res): P
     updatedAt: now,
   }).where(and(
     eq(deliveriesTable.id, deliveryId),
+    eq(deliveriesTable.sellerId, userId),
+    eq(deliveriesTable.driverUserId, userId),
+    eq(deliveriesTable.status, "seller_arrived"),
+    eq(deliveriesTable.verificationCode, String(code)),
     eq(deliveriesTable.sellerPaymentReleased, false),
   )).returning({ id: deliveriesTable.id });
 
@@ -2447,59 +2530,113 @@ router.post("/admin/deliveries/:id/cancel", requireAdmin, async (req, res): Prom
 
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
   if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
-  if (delivery.status === "delivered" || delivery.status === "cancelled") {
-    res.status(400).json({ error: `Delivery is already ${delivery.status}` }); return;
-  }
-
-  // Cancel the delivery
   const now = new Date();
-  await db.update(deliveriesTable)
-    .set({ status: "cancelled", updatedAt: now })
-    .where(eq(deliveriesTable.id, deliveryId));
+  const cancellation = await db.transaction(async (dbtx) => {
+    // Lock the parent order before the delivery so cancel and code verification
+    // cannot produce both a buyer refund and a seller payout.
+    const lockedTxRows = delivery.transactionId
+      ? await dbtx
+          .select()
+          .from(transactionsTable)
+          .where(eq(transactionsTable.id, delivery.transactionId))
+          .for("update")
+      : [];
+    const lockedTx = lockedTxRows[0];
 
-  // ── Refund buyer if there is a linked transaction with escrow not yet released ──
-  let refundedAmount: number | null = null;
-  if (delivery.transactionId) {
-    const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, delivery.transactionId)).limit(1);
-    if (tx && !tx.escrowReleased && tx.userId) {
-      const refundAmt = tx.amount ?? 0;
-      // Mark transaction as cancelled
-      await db.update(transactionsTable)
-        .set({ orderStatus: "return_refunded", updatedAt: now })
-        .where(and(eq(transactionsTable.id, delivery.transactionId), eq(transactionsTable.escrowReleased, false)));
+    const [lockedDelivery] = await dbtx
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.id, deliveryId))
+      .for("update");
+    if (!lockedDelivery) return { kind: "missing" as const };
+    if (
+      lockedDelivery.status === "delivered" ||
+      lockedDelivery.status === "cancelled" ||
+      lockedDelivery.codeVerifiedAt !== null ||
+      lockedDelivery.sellerPaymentReleased ||
+      lockedTx?.escrowReleased
+    ) {
+      return { kind: "terminal" as const, status: lockedDelivery.status };
+    }
 
-      // Credit buyer FM wallet
-      const [existing] = await db.select({ id: promoWalletTable.id })
-        .from(promoWalletTable).where(eq(promoWalletTable.userId, tx.userId)).limit(1);
+    await dbtx
+      .update(deliveriesTable)
+      .set({ status: "cancelled", updatedAt: now })
+      .where(eq(deliveriesTable.id, deliveryId));
+
+    let refundedAmount: number | null = null;
+    let buyerId: number | null = null;
+    if (lockedTx) {
+      buyerId = lockedTx.userId;
+      refundedAmount = lockedTx.amount ?? 0;
+
+      await dbtx
+        .update(transactionsTable)
+        .set({ orderStatus: "return_refunded" })
+        .where(and(
+          eq(transactionsTable.id, lockedTx.id),
+          eq(transactionsTable.escrowReleased, false),
+        ));
+
+      const [existing] = await dbtx
+        .select({ id: promoWalletTable.id })
+        .from(promoWalletTable)
+        .where(eq(promoWalletTable.userId, buyerId))
+        .for("update");
       if (existing) {
-        await db.update(promoWalletTable)
-          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmt}`, updatedAt: now })
-          .where(eq(promoWalletTable.userId, tx.userId));
+        await dbtx
+          .update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundedAmount}`, updatedAt: now })
+          .where(eq(promoWalletTable.userId, buyerId));
       } else {
-        await db.insert(promoWalletTable).values({ userId: tx.userId, balanceUsd: refundAmt });
+        await dbtx.insert(promoWalletTable).values({ userId: buyerId, balanceUsd: refundedAmount });
       }
-      // Audit log for buyer
-      await db.insert(walletTransactionsTable).values({
-        userId: tx.userId,
+
+      await dbtx.insert(walletTransactionsTable).values({
+        userId: buyerId,
         type: "refund",
-        amountUsd: refundAmt,
+        amountUsd: refundedAmount,
         paymentRef: `delivery-cancel-refund-${deliveryId}`,
         status: "completed",
-        note: `Admin anile livrezon #FL-${deliveryId} — $${refundAmt.toFixed(2)} retounen nan Kat FM ou`,
-      }).catch(() => {});
-      // Notify buyer
-      await db.insert(notificationsTable).values({
-        userId: tx.userId,
-        type: "order_update",
-        isRead: false,
-        message: `Livrezon #FL-${deliveryId} anile pa admin. $${refundAmt.toFixed(2)} retounen nan Kat FM ou imedyatman.`,
-      } as any).catch(() => {});
-      refundedAmount = refundAmt;
+        note: `Admin anile livrezon #FL-${deliveryId} — $${refundedAmount.toFixed(2)} retounen nan Kat FM ou`,
+      });
     }
+
+    return { kind: "cancelled" as const, refundedAmount, buyerId };
+  });
+
+  if (cancellation.kind === "missing") {
+    res.status(404).json({ error: "Delivery not found" });
+    return;
+  }
+  if (cancellation.kind === "terminal") {
+    res.status(409).json({
+      error: "Delivery can no longer be cancelled because confirmation or payment already started",
+      currentStatus: cancellation.status,
+    });
+    return;
   }
 
-  req.log.info({ deliveryId, adminId: req.userId, refundedAmount }, "Admin force-cancelled delivery");
-  res.json({ success: true, deliveryId, status: "cancelled", refundedAmount });
+  if (cancellation.buyerId && cancellation.refundedAmount !== null) {
+    await db.insert(notificationsTable).values({
+      userId: cancellation.buyerId,
+      type: "order_update",
+      isRead: false,
+      message: `Livrezon #FL-${deliveryId} anile pa admin. $${cancellation.refundedAmount.toFixed(2)} retounen nan Kat FM ou imedyatman.`,
+    } as any).catch(() => {});
+  }
+
+  req.log.info({
+    deliveryId,
+    adminId: req.userId,
+    refundedAmount: cancellation.refundedAmount,
+  }, "Admin force-cancelled delivery");
+  res.json({
+    success: true,
+    deliveryId,
+    status: "cancelled",
+    refundedAmount: cancellation.refundedAmount,
+  });
 });
 
 // POST /api/admin/deliveries/:id/force-complete — admin completes a delivery the driver couldn't finish
@@ -2859,8 +2996,71 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const transactionIdNum = Number.parseInt(String(transactionId), 10);
+  const suppliedListingId = Number.parseInt(String(listingId), 10);
+  const suppliedBuyerId = Number.parseInt(String(buyerId), 10);
+  if (!Number.isInteger(transactionIdNum) || transactionIdNum <= 0) {
+    res.status(400).json({ error: "A valid purchase transaction is required" });
+    return;
+  }
+
+  const [order] = await db
+    .select({
+      listingId: transactionsTable.listingId,
+      buyerId: transactionsTable.userId,
+      sellerUserId: transactionsTable.sellerUserId,
+      paymentStatus: transactionsTable.paymentStatus,
+      type: transactionsTable.type,
+      listingCountry: transactionsTable.listingCountry,
+      deliveryMethod: transactionsTable.deliveryMethod,
+      deliveryFeeUsd: transactionsTable.deliveryFeeUsd,
+    })
+    .from(transactionsTable)
+    .where(eq(transactionsTable.id, transactionIdNum))
+    .limit(1);
+  if (!order || order.type !== "purchase" || order.paymentStatus !== "completed" || !order.listingId) {
+    res.status(409).json({ error: "Delivery requires a completed purchase order" });
+    return;
+  }
+
+  const [listing] = await db
+    .select({
+      sellerId: listingsTable.sellerId,
+      country: listingsTable.country,
+      deliveryMethod: listingsTable.deliveryMethod,
+    })
+    .from(listingsTable)
+    .where(eq(listingsTable.id, order.listingId))
+    .limit(1);
+  if (!listing) {
+    res.status(404).json({ error: "Order listing not found" });
+    return;
+  }
+  if (listing.sellerId !== userId || (order.sellerUserId !== null && order.sellerUserId !== userId)) {
+    res.status(403).json({ error: "You can only create delivery for an item you sold" });
+    return;
+  }
+  if (
+    (Number.isInteger(suppliedListingId) && suppliedListingId !== order.listingId) ||
+    (Number.isInteger(suppliedBuyerId) && suppliedBuyerId !== order.buyerId)
+  ) {
+    res.status(409).json({ error: "Delivery order details do not match the purchase" });
+    return;
+  }
+
+  const canonicalCountry = order.listingCountry ?? listing.country;
+  if (!canonicalCountry || !DELIVERY_COUNTRIES.includes(canonicalCountry) || canonicalCountry !== String(country)) {
+    res.status(409).json({ error: "Delivery country does not match the purchase" });
+    return;
+  }
+  const canonicalDeliveryMethod = order.deliveryMethod ?? listing.deliveryMethod ?? String(deliveryMethod);
+  if (canonicalDeliveryMethod !== String(deliveryMethod)) {
+    res.status(409).json({ error: "Delivery method does not match the purchase" });
+    return;
+  }
+
   // Pre-compute driver earnings (85% of fee) — tip is 100% separate
-  const feeUsdNum = feeUsd != null ? parseFloat(String(feeUsd)) : null;
+  const feeUsdNum = order.deliveryFeeUsd ?? (feeUsd != null ? parseFloat(String(feeUsd)) : null);
   const driverEarningsNum = feeUsdNum != null ? Math.round(feeUsdNum * DRIVER_COMMISSION_PCT * 100) / 100 : null;
   const tipUsdNum = tipUsd != null && parseFloat(String(tipUsd)) > 0 ? parseFloat(parseFloat(String(tipUsd)).toFixed(2)) : null;
 
@@ -2875,35 +3075,83 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
     trackingNumber = generateTrackingNumber();
   }
 
-  const [delivery] = await db
-    .insert(deliveriesTable)
-    .values({
-      transactionId: transactionId ? parseInt(transactionId, 10) : null,
-      listingId: listingId ? parseInt(listingId, 10) : null,
-      sellerId: userId,
-      buyerId: parseInt(buyerId, 10),
-      deliveryMethod: String(deliveryMethod),
-      pickupAddress: pickupAddress ? String(pickupAddress) : null,
-      pickupCity: pickupCity ? String(pickupCity) : null,
-      deliveryAddress: String(deliveryAddress),
-      deliveryCity: deliveryCity ? String(deliveryCity) : null,
-      country: String(country),
-      status: deliveryMethod === "self" ? "on_the_way" : "waiting",
-      sellerNote: sellerNote ? String(sellerNote).slice(0, 500) : null,
-      currency: "USD",
-      feeUsd: feeUsdNum,
-      feeLocal: feeLocal != null ? parseFloat(String(feeLocal)) : null,
-      distanceKm: distanceKm != null ? parseFloat(String(distanceKm)) : null,
-      driverEarnings: driverEarningsNum,
-      tipUsd: tipUsdNum,
-      speedTier: speedTier ? String(speedTier) : null,
-      holdAmountUsd: 10,
-      trackingNumber,
-    } as any)
-    .returning();
+  const creation = await db.transaction(async (dbtx) => {
+    // One canonical delivery per purchase. Locking the order closes the race
+    // between duplicate create requests without relying on client behavior.
+    await dbtx.execute(sql`SELECT id FROM transactions WHERE id = ${transactionIdNum} FOR UPDATE`);
+    const [freshOrder] = await dbtx
+      .select({
+        buyerId: transactionsTable.userId,
+        listingId: transactionsTable.listingId,
+        sellerUserId: transactionsTable.sellerUserId,
+        paymentStatus: transactionsTable.paymentStatus,
+        type: transactionsTable.type,
+        orderStatus: transactionsTable.orderStatus,
+        escrowReleased: transactionsTable.escrowReleased,
+      })
+      .from(transactionsTable)
+      .where(eq(transactionsTable.id, transactionIdNum))
+      .limit(1);
+    if (
+      !freshOrder ||
+      freshOrder.type !== "purchase" ||
+      freshOrder.paymentStatus !== "completed" ||
+      freshOrder.escrowReleased ||
+      ["cancelled", "delivered", "completed", "return_refunded"].includes(freshOrder.orderStatus) ||
+      freshOrder.listingId !== order.listingId ||
+      freshOrder.buyerId !== order.buyerId ||
+      (freshOrder.sellerUserId !== null && freshOrder.sellerUserId !== userId)
+    ) {
+      return { kind: "ineligible" as const };
+    }
+
+    const [existingDelivery] = await dbtx
+      .select({ id: deliveriesTable.id })
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.transactionId, transactionIdNum))
+      .limit(1);
+    if (existingDelivery) return { kind: "exists" as const };
+
+    const [created] = await dbtx
+      .insert(deliveriesTable)
+      .values({
+        transactionId: transactionIdNum,
+        listingId: order.listingId,
+        sellerId: listing.sellerId,
+        buyerId: order.buyerId,
+        deliveryMethod: canonicalDeliveryMethod,
+        pickupAddress: pickupAddress ? String(pickupAddress) : null,
+        pickupCity: pickupCity ? String(pickupCity) : null,
+        deliveryAddress: String(deliveryAddress),
+        deliveryCity: deliveryCity ? String(deliveryCity) : null,
+        country: canonicalCountry,
+        status: canonicalDeliveryMethod === "self" ? "on_the_way" : "waiting",
+        sellerNote: sellerNote ? String(sellerNote).slice(0, 500) : null,
+        currency: "USD",
+        feeUsd: feeUsdNum,
+        feeLocal: feeLocal != null ? parseFloat(String(feeLocal)) : null,
+        distanceKm: distanceKm != null ? parseFloat(String(distanceKm)) : null,
+        driverEarnings: driverEarningsNum,
+        tipUsd: tipUsdNum,
+        speedTier: speedTier ? String(speedTier) : null,
+        holdAmountUsd: 10,
+        trackingNumber,
+      } as any)
+      .returning();
+    return { kind: "created" as const, delivery: created };
+  });
+  if (creation.kind === "ineligible") {
+    res.status(409).json({ error: "This order is no longer eligible for delivery" });
+    return;
+  }
+  if (creation.kind === "exists") {
+    res.status(409).json({ error: "A delivery already exists for this order" });
+    return;
+  }
+  const delivery = creation.delivery;
 
   // Email buyer with tracking number + link
-  const buyerIdNum = parseInt(buyerId, 10);
+  const buyerIdNum = order.buyerId;
   db.select({ email: usersTable.email, name: usersTable.name })
     .from(usersTable)
     .where(eq(usersTable.id, buyerIdNum))
@@ -2916,7 +3164,7 @@ router.post("/delivery", requireAuth, async (req, res): Promise<void> => {
           trackingNumber,
           trackingUrl,
           deliveryCity: deliveryCity ? String(deliveryCity) : (country ?? ""),
-          deliveryMethod: String(deliveryMethod),
+          deliveryMethod: canonicalDeliveryMethod,
         });
         sendEmail({ to: buyer.email, ...emailOpts }).catch(() => {});
       }

@@ -25,6 +25,7 @@ type Order = {
   listingImages: string[] | null;
   sellerId: number;
   sellerName: string | null;
+  deliveryStatus: string | null;
 };
 
 const STATUS_ICON: Record<string, typeof Clock> = {
@@ -209,7 +210,9 @@ export default function Orders() {
             const StatusIcon = STATUS_ICON[o.orderStatus] ?? STATUS_ICON.ready_to_ship!;
             const statusColor = STATUS_COLOR[o.orderStatus] ?? STATUS_COLOR.ready_to_ship!;
             const trackColor = o.trackingStatus ? TRACKING_COLOR[o.trackingStatus] : null;
-            const canCancel = ["pending", "ready_to_ship"].includes(o.orderStatus);
+            const canCancel = o.deliveryStatus !== null
+              ? o.deliveryStatus === "waiting"
+              : ["pending", "ready_to_ship"].includes(o.orderStatus);
             const isConfirming = confirmingId === o.id;
             const isCancelling = cancellingId === o.id;
 

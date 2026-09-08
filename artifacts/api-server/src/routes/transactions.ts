@@ -620,10 +620,12 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
       listingImages: listingsTable.images,
       sellerId: listingsTable.sellerId,
       sellerName: usersTable.name,
+      deliveryStatus: deliveriesTable.status,
     })
     .from(transactionsTable)
     .innerJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+    .leftJoin(deliveriesTable, eq(deliveriesTable.transactionId, transactionsTable.id))
     .where(and(
       eq(transactionsTable.userId, req.userId!),
       eq(transactionsTable.type, "purchase"),
@@ -1913,10 +1915,8 @@ router.get("/admin/transactions", requireFinanceAdmin, async (req, res): Promise
 // POST /api/transactions/:id/cancel
 // Rules:
 //   • Buyer only (tx.userId must match)
-//   • Only cancellable when orderStatus in ["pending","ready_to_ship"]
-//   • If delivery exists and status is >= picked_up → blocked (driver has the parcel)
-//   • If delivery status is "driver_assigned" → driver gets 30% of delivery fee as compensation
-//   • If delivery status is "waiting" (no driver yet) → full refund
+//   • FM/local delivery: cancellable only while delivery status is "waiting"
+//   • Orders without a delivery: cancellable when orderStatus is pending/ready_to_ship
 //   • Wallet-paid orders: auto-refund to buyer's real balance
 //   • Other payment methods: mark cancelled; admin processes refund manually
 router.post("/transactions/:id/cancel", requireAuth, async (req, res): Promise<void> => {
@@ -1934,142 +1934,145 @@ router.post("/transactions/:id/cancel", requireAuth, async (req, res): Promise<v
   if (tx.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
   if (tx.orderStatus === "cancelled") { res.status(409).json({ error: "Deja kansele" }); return; }
 
-  const cancellable = ["pending", "ready_to_ship"];
-  if (!cancellable.includes(tx.orderStatus ?? "")) {
-    res.status(409).json({ error: "Kòmand sa pa kapab kansele nan etap sa" }); return;
-  }
+  const now = new Date();
 
-  // Find associated delivery (Haiti local delivery flow only)
-  const [delivery] = await db
-    .select()
-    .from(deliveriesTable)
-    .where(eq(deliveriesTable.transactionId, txId))
-    .limit(1);
+  const cancellation = await db.transaction(async (dbtx) => {
+    // Creation, cancellation, and rejection all serialize on the order row.
+    // Re-read after acquiring the lock so no stale pre-lock state is trusted.
+    const [lockedTx] = await dbtx
+      .select()
+      .from(transactionsTable)
+      .where(eq(transactionsTable.id, txId))
+      .for("update");
+    if (!lockedTx || lockedTx.userId !== userId || lockedTx.orderStatus === "cancelled") {
+      return { kind: "order_changed" as const };
+    }
 
-  // Cancellation rules for local delivery orders:
-  //   • status="waiting"         → buyer CAN cancel (full refund, no driver involved yet)
-  //   • status="driver_assigned" → buyer CANNOT cancel (driver already committed)
-  //   • status="picked_up" +     → buyer CANNOT cancel (driver has the parcel)
-  // Buyer may cancel ONLY before a driver has accepted — i.e. the delivery is
-  // still in the open pool (status="waiting"). Once a driver accepts, or the
-  // delivery moves to any later state, the order is locked: only admin/support
-  // can intervene. This single rule future-proofs every post-accept status.
-  if (delivery && delivery.status !== "waiting") {
+    const [lockedDelivery] = await dbtx
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.transactionId, txId))
+      .for("update");
+
+    if (lockedDelivery) {
+      if (lockedDelivery.status !== "waiting") {
+        return { kind: "delivery_taken" as const, status: lockedDelivery.status };
+      }
+      await dbtx
+        .update(deliveriesTable)
+        .set({ status: "cancelled", updatedAt: now } as any)
+        .where(and(
+          eq(deliveriesTable.id, lockedDelivery.id),
+          eq(deliveriesTable.status, "waiting"),
+        ));
+    } else if (!["pending", "ready_to_ship"].includes(lockedTx.orderStatus ?? "")) {
+      return { kind: "order_changed" as const };
+    }
+
+    const refundAmount = lockedTx.amount + (lockedTx.deliveryFeeUsd ?? 0);
+
+    if (lockedTx.paymentMethod === "wallet" && refundAmount > 0) {
+      const [buyerWallet] = await dbtx
+        .select()
+        .from(promoWalletTable)
+        .where(eq(promoWalletTable.userId, userId))
+        .for("update");
+
+      if (buyerWallet) {
+        await dbtx
+          .update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmount}`, updatedAt: now })
+          .where(eq(promoWalletTable.userId, userId));
+      } else {
+        await dbtx.insert(promoWalletTable).values({ userId, balanceUsd: refundAmount });
+      }
+
+      await dbtx.insert(walletTransactionsTable).values({
+        userId,
+        type: "refund",
+        amountUsd: refundAmount,
+        paymentRef: `cancel-${txId}`,
+        status: "completed",
+        note: `Rembosman konplè — kòmand #${txId} kansele anvan ranmase. $${refundAmount.toFixed(2)} (pri atik + frè livrezon) retounen nan pòtfèy ou imedyatman.`,
+      });
+    }
+
+    // ── Mark transaction cancelled ─────────────────────────────────────────
+    await dbtx
+      .update(transactionsTable)
+      .set({ orderStatus: "cancelled" } as any)
+      .where(eq(transactionsTable.id, txId));
+
+    if (lockedTx.listingId) {
+      const [listing] = await dbtx
+        .select({ stockQuantity: listingsTable.stockQuantity, status: listingsTable.status })
+        .from(listingsTable)
+        .where(eq(listingsTable.id, lockedTx.listingId))
+        .for("update");
+
+      if (listing) {
+        if (listing.stockQuantity !== null && listing.stockQuantity !== undefined) {
+          await dbtx
+            .update(listingsTable)
+            .set({
+              stockQuantity: sql`${listingsTable.stockQuantity} + 1`,
+              status: "available",
+            } as any)
+            .where(eq(listingsTable.id, lockedTx.listingId));
+        } else if (listing.status === "sold") {
+          await dbtx
+            .update(listingsTable)
+            .set({ status: "available" } as any)
+            .where(eq(listingsTable.id, lockedTx.listingId));
+        }
+      }
+    }
+
+    return {
+      kind: "cancelled" as const,
+      refundAmount,
+      walletRefunded: lockedTx.paymentMethod === "wallet",
+      sellerUserId: lockedTx.sellerUserId,
+      listingId: lockedTx.listingId,
+      paymentMethod: lockedTx.paymentMethod,
+    };
+  });
+
+  if (cancellation.kind === "delivery_taken") {
     res.status(409).json({
-      error: "Chofe a deja aksepte kòmand ou. Ou pa kapab kansele ankò.",
+      error: "Machann nan oswa chofè a deja aksepte kòmand ou. Ou pa kapab anile li ankò.",
       driverAssigned: true,
-      currentStatus: delivery.status,
+      currentStatus: cancellation.status,
     });
     return;
   }
-
-  const deliveryFee = tx.deliveryFeeUsd ?? 0;
-  // Full refund: item price + delivery fee — no driver compensation since
-  // the driver has not yet physically picked up the parcel.
-  const refundAmount = tx.amount + deliveryFee;
-
-  const now = new Date();
-
-  // ── Wallet-paid: auto-refund buyer in full ────────────────────────────────
-  if (tx.paymentMethod === "wallet" && refundAmount > 0) {
-    const [buyerWallet] = await db
-      .select()
-      .from(promoWalletTable)
-      .where(eq(promoWalletTable.userId, userId))
-      .limit(1);
-
-    if (buyerWallet) {
-      await db
-        .update(promoWalletTable)
-        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmount}`, updatedAt: now })
-        .where(eq(promoWalletTable.userId, userId));
-    } else {
-      await db.insert(promoWalletTable).values({ userId, balanceUsd: refundAmount });
-    }
-
-    await db.insert(walletTransactionsTable).values({
-      userId,
-      type: "refund",
-      amountUsd: refundAmount,
-      paymentRef: `cancel-${txId}`,
-      status: "completed",
-      note: `Rembosman konplè — kòmand #${txId} kansele anvan ranmase. $${refundAmount.toFixed(2)} (pri atik + frè livrezon) retounen nan pòtfèy ou imedyatman.`,
-    });
-
-    // Notify driver (if one was assigned) that the order is cancelled — no compensation
-    if (delivery?.driverUserId) {
-      await db.insert(notificationsTable).values({
-        userId: delivery.driverUserId,
-        type: "order_cancelled",
-        actorId: userId,
-        message: "Achetè a kansele kòmand lan anvan ou te ranmase li. Ou pa gen oken pèt — ou pa t' janm touche kòmand sa.",
-      } as any).catch(() => {});
-    }
-  }
-
-  // ── Mark transaction cancelled ───────────────────────────────────────────
-  await db
-    .update(transactionsTable)
-    .set({ orderStatus: "cancelled" } as any)
-    .where(eq(transactionsTable.id, txId));
-
-  // ── Restore listing stock ─────────────────────────────────────────────────
-  // If the listing had a stockQuantity (multi-item), increment it back by 1
-  // and restore status to 'available' if it became 'sold'.
-  // If it was a single-item listing (stockQuantity IS NULL), just restore
-  // the status to 'available' so it reappears on the marketplace.
-  if (tx.listingId) {
-    const [listing] = await db
-      .select({ stockQuantity: listingsTable.stockQuantity, status: listingsTable.status })
-      .from(listingsTable)
-      .where(eq(listingsTable.id, tx.listingId))
-      .limit(1);
-
-    if (listing) {
-      if (listing.stockQuantity !== null && listing.stockQuantity !== undefined) {
-        // Multi-stock listing: increment quantity back, un-sell if needed
-        await db
-          .update(listingsTable)
-          .set({
-            stockQuantity: sql`${listingsTable.stockQuantity} + 1`,
-            status: "available",
-          } as any)
-          .where(eq(listingsTable.id, tx.listingId));
-      } else if (listing.status === "sold") {
-        // Single-item listing: just restore to available
-        await db
-          .update(listingsTable)
-          .set({ status: "available" } as any)
-          .where(eq(listingsTable.id, tx.listingId));
-      }
-    }
-  }
-
-  // ── Mark delivery cancelled (reset so no stale delivery stays active) ────
-  if (delivery) {
-    await db
-      .update(deliveriesTable)
-      .set({ status: "cancelled", updatedAt: now } as any)
-      .where(eq(deliveriesTable.id, delivery.id));
+  if (cancellation.kind === "order_changed") {
+    res.status(409).json({ error: "Kòmand sa pa kapab anile nan etap sa" });
+    return;
   }
 
   // Notify seller
-  if (tx.sellerUserId) {
+  if (cancellation.sellerUserId) {
     await db.insert(notificationsTable).values({
-      userId: tx.sellerUserId,
+      userId: cancellation.sellerUserId,
       type: "order_cancelled",
       actorId: userId,
-      listingId: tx.listingId ?? undefined,
+      listingId: cancellation.listingId ?? undefined,
     } as any).catch(() => {});
   }
 
-  req.log.info({ txId, userId, refundAmount, paymentMethod: tx.paymentMethod }, "Order cancelled by buyer — full refund (pre-pickup)");
+  req.log.info({
+    txId,
+    userId,
+    refundAmount: cancellation.refundAmount,
+    paymentMethod: cancellation.paymentMethod,
+  }, "Order cancelled by buyer — full refund (pre-pickup)");
 
   res.json({
     ok: true,
-    refundAmount,
+    refundAmount: cancellation.refundAmount,
     driverCompensation: 0,
-    walletRefunded: tx.paymentMethod === "wallet",
+    walletRefunded: cancellation.walletRefunded,
   });
 });
 
@@ -2097,96 +2100,142 @@ router.post("/orders/:id/seller-reject", requireAuth, async (req, res): Promise<
     res.status(409).json({ error: "Ou ka sèlman refize yon kòmand ki poko voye" }); return;
   }
 
-  const [delivery] = await db
-    .select()
-    .from(deliveriesTable)
-    .where(eq(deliveriesTable.transactionId, txId))
-    .limit(1);
-
-  if (delivery && delivery.status !== "waiting") {
-    res.status(409).json({ error: "Chofe a deja pran kòmand lan — ou pa kapab refize ankò" }); return;
-  }
-
   const now = new Date();
-  const buyerId = tx.userId;
-  const refundAmount = (tx.amount ?? 0) + (tx.deliveryFeeUsd ?? 0);
-
-  // ── Instant wallet refund to buyer ─────────────────────────────────────────
-  if (tx.paymentMethod === "wallet" && refundAmount > 0 && buyerId) {
-    const [buyerWallet] = await db
+  const rejection = await db.transaction(async (dbtx) => {
+    const [lockedTx] = await dbtx
       .select()
-      .from(promoWalletTable)
-      .where(eq(promoWalletTable.userId, buyerId))
-      .limit(1);
-
-    if (buyerWallet) {
-      await db
-        .update(promoWalletTable)
-        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmount}`, updatedAt: now })
-        .where(eq(promoWalletTable.userId, buyerId));
-    } else {
-      await db.insert(promoWalletTable).values({ userId: buyerId, balanceUsd: refundAmount });
+      .from(transactionsTable)
+      .where(eq(transactionsTable.id, txId))
+      .for("update");
+    if (
+      !lockedTx ||
+      lockedTx.sellerUserId !== userId ||
+      lockedTx.orderStatus !== "ready_to_ship"
+    ) {
+      return { kind: "order_changed" as const };
     }
 
-    await db.insert(walletTransactionsTable).values({
-      userId: buyerId,
-      type: "refund",
-      amountUsd: refundAmount,
-      paymentRef: `seller-reject-${txId}`,
-      status: "completed",
-      note: `Ranbousman — machann te refize kòmand #${txId}. $${refundAmount.toFixed(2)} tounen nan pòtfèy ou imedyatman.`,
-    });
-  }
+    const [lockedDelivery] = await dbtx
+      .select()
+      .from(deliveriesTable)
+      .where(eq(deliveriesTable.transactionId, txId))
+      .for("update");
+    if (lockedDelivery) {
+      if (lockedDelivery.status !== "waiting") {
+        return { kind: "delivery_taken" as const, status: lockedDelivery.status };
+      }
+      await dbtx
+        .update(deliveriesTable)
+        .set({ status: "cancelled", updatedAt: now } as any)
+        .where(and(
+          eq(deliveriesTable.id, lockedDelivery.id),
+          eq(deliveriesTable.status, "waiting"),
+        ));
+    }
 
-  // ── Cancel order ────────────────────────────────────────────────────────────
-  await db
-    .update(transactionsTable)
-    .set({ orderStatus: "cancelled" } as any)
-    .where(eq(transactionsTable.id, txId));
+    const buyerId = lockedTx.userId;
+    const refundAmount = (lockedTx.amount ?? 0) + (lockedTx.deliveryFeeUsd ?? 0);
 
-  // ── Restore listing ─────────────────────────────────────────────────────────
-  if (tx.listingId) {
-    const [listing] = await db
-      .select({ stockQuantity: listingsTable.stockQuantity, status: listingsTable.status })
-      .from(listingsTable)
-      .where(eq(listingsTable.id, tx.listingId))
-      .limit(1);
-    if (listing) {
-      if (listing.stockQuantity !== null && listing.stockQuantity !== undefined) {
-        await db.update(listingsTable)
-          .set({ stockQuantity: sql`${listingsTable.stockQuantity} + 1`, status: "available" } as any)
-          .where(eq(listingsTable.id, tx.listingId));
-      } else if (listing.status === "sold") {
-        await db.update(listingsTable)
-          .set({ status: "available" } as any)
-          .where(eq(listingsTable.id, tx.listingId));
+    if (lockedTx.paymentMethod === "wallet" && refundAmount > 0) {
+      const [buyerWallet] = await dbtx
+        .select()
+        .from(promoWalletTable)
+        .where(eq(promoWalletTable.userId, buyerId))
+        .for("update");
+
+      if (buyerWallet) {
+        await dbtx
+          .update(promoWalletTable)
+          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmount}`, updatedAt: now })
+          .where(eq(promoWalletTable.userId, buyerId));
+      } else {
+        await dbtx.insert(promoWalletTable).values({ userId: buyerId, balanceUsd: refundAmount });
+      }
+
+      await dbtx.insert(walletTransactionsTable).values({
+        userId: buyerId,
+        type: "refund",
+        amountUsd: refundAmount,
+        paymentRef: `seller-reject-${txId}`,
+        status: "completed",
+        note: `Ranbousman — machann te refize kòmand #${txId}. $${refundAmount.toFixed(2)} tounen nan pòtfèy ou imedyatman.`,
+      });
+    }
+
+    await dbtx
+      .update(transactionsTable)
+      .set({ orderStatus: "cancelled" } as any)
+      .where(eq(transactionsTable.id, txId));
+
+    if (lockedTx.listingId) {
+      const [listing] = await dbtx
+        .select({ stockQuantity: listingsTable.stockQuantity, status: listingsTable.status })
+        .from(listingsTable)
+        .where(eq(listingsTable.id, lockedTx.listingId))
+        .for("update");
+      if (listing) {
+        if (listing.stockQuantity !== null && listing.stockQuantity !== undefined) {
+          await dbtx
+            .update(listingsTable)
+            .set({ stockQuantity: sql`${listingsTable.stockQuantity} + 1`, status: "available" } as any)
+            .where(eq(listingsTable.id, lockedTx.listingId));
+        } else if (listing.status === "sold") {
+          await dbtx
+            .update(listingsTable)
+            .set({ status: "available" } as any)
+            .where(eq(listingsTable.id, lockedTx.listingId));
+        }
       }
     }
-  }
 
-  // ── Cancel any pending delivery ─────────────────────────────────────────────
-  if (delivery) {
-    await db.update(deliveriesTable)
-      .set({ status: "cancelled", updatedAt: now } as any)
-      .where(eq(deliveriesTable.id, delivery.id));
+    return {
+      kind: "rejected" as const,
+      buyerId,
+      refundAmount,
+      walletRefunded: lockedTx.paymentMethod === "wallet",
+      paymentMethod: lockedTx.paymentMethod,
+      listingId: lockedTx.listingId,
+    };
+  });
+
+  if (rejection.kind === "delivery_taken") {
+    res.status(409).json({
+      error: "Machann nan oswa chofè a deja pran kòmand lan — ou pa kapab refize ankò",
+      currentStatus: rejection.status,
+    });
+    return;
+  }
+  if (rejection.kind === "order_changed") {
+    res.status(409).json({ error: "Ou ka sèlman refize yon kòmand ki poko voye" });
+    return;
   }
 
   // ── Notify buyer ────────────────────────────────────────────────────────────
-  if (buyerId) {
+  if (rejection.buyerId) {
     await db.insert(notificationsTable).values({
-      userId: buyerId,
+      userId: rejection.buyerId,
       type: "order_cancelled",
       actorId: userId,
-      listingId: tx.listingId ?? undefined,
-      message: tx.paymentMethod === "wallet"
-        ? `Machann nan te refize kòmand #${txId} ou a. $${refundAmount.toFixed(2)} tounen nan pòtfèy ou imedyatman.`
+      listingId: rejection.listingId ?? undefined,
+      message: rejection.paymentMethod === "wallet"
+        ? `Machann nan te refize kòmand #${txId} ou a. $${rejection.refundAmount.toFixed(2)} tounen nan pòtfèy ou imedyatman.`
         : `Machann nan te refize kòmand #${txId} ou a. Ou pral resevwa ranbousman ou — kontakte sipò si ou pa resevwa l nan 48h.`,
     } as any).catch(() => {});
   }
 
-  req.log.info({ txId, sellerId: userId, buyerId, refundAmount, paymentMethod: tx.paymentMethod }, "Order rejected by seller — buyer refunded");
+  req.log.info({
+    txId,
+    sellerId: userId,
+    buyerId: rejection.buyerId,
+    refundAmount: rejection.refundAmount,
+    paymentMethod: rejection.paymentMethod,
+  }, "Order rejected by seller — buyer refunded");
 
-  res.json({ ok: true, refundAmount, walletRefunded: tx.paymentMethod === "wallet" });
+  res.json({
+    ok: true,
+    refundAmount: rejection.refundAmount,
+    walletRefunded: rejection.walletRefunded,
+  });
 });
 
 // ─── Multi-seller cart checkout ────────────────────────────────────────────────

@@ -195,6 +195,7 @@ type DrawerItem =
   | { kind?: "nav";   icon: React.ComponentType<{ className?: string }>; label: string; href: string }
   | { kind: "lang";   icon: React.ComponentType<{ className?: string }>; label: string; href?: never }
   | { kind: "loan";   icon: React.ComponentType<{ className?: string }>; label: string; subtitle: string; href: string }
+  | { kind: "delivery"; icon: React.ComponentType<{ className?: string }>; label: string; href: string; variant: "available" | "apply" }
   | { kind: "promo";  icon: React.ComponentType<{ className?: string }>; label: string; href: string; balance: number; realBalance: number };
 
 function DarkModeToggle({ className }: { className?: string }) {
@@ -305,6 +306,23 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         ] : []),
       ] as DrawerItem[],
     },
+    ...(user && (isDrawerAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) ? [
+      {
+        heading: t("nav.livrezonSection"),
+        items: (() => {
+          const applyLabel =
+            driverStatus === "approved"  ? t("nav.driverApproved") :
+            driverStatus === "pending"   ? t("nav.driverPending") :
+            driverStatus === "rejected"  ? t("nav.driverRejected") :
+            driverStatus === "suspended" ? t("nav.driverSuspended") :
+            t("nav.applyDriver");
+          return [
+            { kind: "delivery", variant: "available", icon: Truck, label: t("nav.deliveryAvailable"), href: "/delivery/deliveries" },
+            { kind: "delivery", variant: "apply", icon: Truck, label: applyLabel, href: "/delivery/apply" },
+          ] as DrawerItem[];
+        })(),
+      },
+    ] : []),
     ...(isDrawerAdmin ? [
       {
         heading: t("nav.adminSection"),
@@ -336,23 +354,6 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         ] as DrawerItem[],
       },
     ]),
-    ...(user && (isDrawerAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) ? [
-      {
-        heading: t("nav.livrezonSection"),
-        items: (() => {
-          const applyLabel =
-            driverStatus === "approved"  ? t("nav.driverApproved") :
-            driverStatus === "pending"   ? t("nav.driverPending") :
-            driverStatus === "rejected"  ? t("nav.driverRejected") :
-            driverStatus === "suspended" ? t("nav.driverSuspended") :
-            t("nav.applyDriver");
-          return [
-            { icon: Truck, label: t("nav.deliveryAvailable"), href: "/delivery/deliveries" },
-            { icon: Truck, label: applyLabel, href: "/delivery/apply" },
-          ] as DrawerItem[];
-        })(),
-      },
-    ] : []),
     ...(canSeeLoan ? [{
       heading: "💼 Sipò Finansye",
       items: [
@@ -488,6 +489,33 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                             <p className="text-xs text-muted-foreground truncate mt-0.5">{item.subtitle}</p>
                           </div>
                           <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "#a78bfa" }} />
+                        </div>
+                      </button>
+                    );
+                  }
+                  if (item.kind === "delivery") {
+                    const isAvailable = item.variant === "available";
+                    return (
+                      <button
+                        key={item.href}
+                        type="button"
+                        onClick={() => go(item.href)}
+                        className={`relative w-full overflow-hidden rounded-xl px-3 py-3 text-left text-white shadow-md active:scale-[0.98] transition-transform ${
+                          isAvailable
+                            ? "bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 shadow-emerald-500/30"
+                            : "bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 shadow-orange-500/30"
+                        }`}
+                        data-testid={isAvailable ? "drawer-deliveries-available" : "drawer-driver-application"}
+                      >
+                        <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
+                        <div className="relative z-10 flex items-center gap-3">
+                          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/15 ring-1 ring-white/30">
+                            <item.icon className="h-5 w-5" />
+                            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-white ring-2 ring-white/40 motion-safe:animate-ping" />
+                          </div>
+                          <span className="flex-1 text-sm font-black">{item.label}</span>
+                          <Sparkles className="h-4 w-4 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
+                          <ChevronRight className="h-4 w-4 text-white/80" />
                         </div>
                       </button>
                     );

@@ -851,7 +851,7 @@ function DriverTrackingCard({
 
       {/* Verification code */}
       {isBuyer && delivery.verificationCode && !isDelivered &&
-        ["driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived"].includes(delivery.status) && (
+        ["driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived", "seller_delivering", "seller_arrived"].includes(delivery.status) && (
         <div className="mx-5 mb-3">
           <div className="bg-gradient-to-br from-primary to-orange-500 rounded-2xl px-5 py-4 text-white">
             <p className="text-[10px] font-black opacity-80 mb-1.5 tracking-widest uppercase">🔐 Kòd Konfirmasyon</p>
@@ -864,7 +864,11 @@ function DriverTrackingCard({
                 <Copy className="h-3.5 w-3.5" /> Kopye
               </button>
             </div>
-            <p className="text-[11px] opacity-90 mt-2 font-medium">Bay chofe a kòd sa a lè li rive pou konfime livrezon an ✓</p>
+            <p className="text-[11px] opacity-90 mt-2 font-medium">
+              {delivery.status.startsWith("seller_")
+                ? "Bay machann nan kòd sa a sèlman lè li remèt ou kòmand lan ✓"
+                : "Bay chofe a kòd sa a lè li rive pou konfime livrezon an ✓"}
+            </p>
           </div>
         </div>
       )}

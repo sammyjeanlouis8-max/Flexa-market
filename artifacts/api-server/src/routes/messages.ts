@@ -20,7 +20,33 @@ const SendMessageBody = z.object({
   imageUrl: z.string().optional(),
 });
 
-router.get("/conversations/unread-count", requireAuth, async (req, res): Promise<void> => {
+    // The API starts listening before the full startup migration chain finishes.
+    // Ensure the message columns used by voice playback and soft-delete exist
+    // before a conversation request runs, so the first mobile fetch cannot fail
+    // with "column does not exist" during a deploy or cold start.
+    let messageSchemaReady: Promise<void> | null = null;
+    function ensureMessageSchema(): Promise<void> {
+    if (!messageSchemaReady) {
+      messageSchemaReady = (async () => {
+        await db.execute(sql.raw(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_listened boolean NOT NULL DEFAULT false",
+        ));
+        await db.execute(sql.raw(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted boolean NOT NULL DEFAULT false",
+        ));
+        await db.execute(sql.raw(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz",
+        ));
+      })().catch((error) => {
+        // Allow the next request to retry if the database was still waking up.
+        messageSchemaReady = null;
+        throw error;
+      });
+    }
+    return messageSchemaReady;
+    }
+
+    router.get("/conversations/unread-count", requireAuth, async (req, res): Promise<void> => {
   const myConvs = db.select({ id: conversationsTable.id }).from(conversationsTable)
     .where(or(eq(conversationsTable.buyerId, req.userId!), eq(conversationsTable.sellerId, req.userId!)));
 

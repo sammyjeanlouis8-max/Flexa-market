@@ -74,6 +74,110 @@ async function pushBoth(
 }
 
 const DELIVERY_COUNTRIES = ["Haiti", "Dominican Republic"];
+const DRIVER_PICKUP_TIMEOUT_MINUTES = 60;
+
+/**
+ * Returns abandoned pre-pickup assignments to the public delivery pool.
+ *
+ * The guarded UPDATE is the concurrency boundary: if a driver advances the
+ * delivery at the same moment this job runs, PostgreSQL re-checks the status
+ * predicate after taking the row lock. A delivery that is no longer
+ * "driver_assigned" cannot be reset.
+ */
+export async function runStaleDriverAssignmentJob(): Promise<number> {
+  const staleAssignments = await db.transaction(async (dbtx) => {
+    const stale = await dbtx
+      .select({
+        id: deliveriesTable.id,
+        buyerId: deliveriesTable.buyerId,
+        sellerId: deliveriesTable.sellerId,
+        abandonedDriverUserId: deliveriesTable.driverUserId,
+      })
+      .from(deliveriesTable)
+      .where(and(
+        eq(deliveriesTable.status, "driver_assigned"),
+        sql`${deliveriesTable.acceptedAt} <= NOW() - (${DRIVER_PICKUP_TIMEOUT_MINUTES} * INTERVAL '1 minute')`,
+      ))
+      .for("update", { skipLocked: true });
+
+    if (stale.length === 0) return stale;
+
+    await dbtx
+      .update(deliveriesTable)
+      .set({
+        status: "waiting",
+        driverId: null,
+        driverUserId: null,
+        verificationCode: null,
+        acceptedAt: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(
+        inArray(deliveriesTable.id, stale.map((delivery) => delivery.id)),
+        eq(deliveriesTable.status, "driver_assigned"),
+      ));
+
+    return stale;
+  });
+
+  for (const delivery of staleAssignments) {
+    const buyerMessage = "Chofè a pa t kòmanse ranmase kòmand lan nan 60 minit. Livrezon an retounen nan lis la pou yon lòt chofè pran li. Ou p ap peye anyen anplis.";
+    const sellerMessage = "Chofè ki te aksepte livrezon an pa t rive nan 60 minit. Sistèm nan ap chèche yon lòt chofè otomatikman.";
+    const driverMessage = "Livrezon sa a retire sou kont ou paske pa t gen pwogrè pickup pandan 60 minit. Li retounen nan lis livrezon disponib yo.";
+
+    await Promise.all([
+      db.insert(notificationsTable).values({
+        userId: delivery.buyerId,
+        type: "driver_timeout",
+        isRead: false,
+        message: buyerMessage,
+      } as any).catch(() => {}),
+      db.insert(notificationsTable).values({
+        userId: delivery.sellerId,
+        type: "driver_timeout",
+        isRead: false,
+        message: sellerMessage,
+      } as any).catch(() => {}),
+      delivery.abandonedDriverUserId
+        ? db.insert(notificationsTable).values({
+            userId: delivery.abandonedDriverUserId,
+            type: "driver_timeout",
+            isRead: false,
+            message: driverMessage,
+          } as any).catch(() => {})
+        : Promise.resolve(),
+      delivery.abandonedDriverUserId
+        ? db.update(driversTable)
+            .set({ flaggedForReview: true })
+            .where(eq(driversTable.userId, delivery.abandonedDriverUserId))
+            .catch(() => {})
+        : Promise.resolve(),
+      pushBoth(delivery.buyerId, "N ap chèche yon lòt chofè", buyerMessage, {
+        deliveryId: delivery.id,
+        type: "driver_timeout",
+      }),
+      pushBoth(delivery.sellerId, "Chofè a depase delè pickup la", sellerMessage, {
+        deliveryId: delivery.id,
+        type: "driver_timeout",
+      }),
+      delivery.abandonedDriverUserId
+        ? pushBoth(delivery.abandonedDriverUserId, "Delè pickup la ekspire", driverMessage, {
+            deliveryId: delivery.id,
+            type: "driver_timeout",
+          })
+        : Promise.resolve(),
+    ]);
+
+    emitDeliveryStatus(delivery.id, { status: "waiting" });
+    emitAdminDriverUpdate({
+      deliveryId: delivery.id,
+      driverUserId: delivery.abandonedDriverUserId,
+      type: "driver_timeout",
+    });
+  }
+
+  return staleAssignments.length;
+}
 
 // ── Admin scope helpers (mirrors admin.ts pattern) ─────────────────────────
 function parseAdminCountries(admin: any): string[] {

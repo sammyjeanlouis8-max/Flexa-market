@@ -8,6 +8,7 @@ import { runSubscriptionExpiryJob } from "./routes/subscription";
 import { runLoanRepaymentJob, runLoanAdminRejectionJob } from "./routes/loans";
 import { runBoostExpiryJob } from "./routes/boost";
 import { runMusicMonthlyReminder } from "./routes/music";
+import { runStaleDriverAssignmentJob } from "./routes/delivery";
 
 
 import { ensureBoostVideoUploadSchema, runStartupMigrations } from "./lib/migrations";
@@ -90,6 +91,19 @@ httpServer.listen(port, () => {
       // Reset isBoosted flag + clear boost fields for expired boosts every 5 minutes
       setInterval(() => { runBoostExpiryJob().catch(() => {}); }, 5 * 60 * 1000);
       runBoostExpiryJob().catch(() => {});
+      // Return abandoned driver assignments to the pool after 60 minutes
+      setInterval(() => {
+        runStaleDriverAssignmentJob()
+          .then((count) => {
+            if (count > 0) logger.warn({ count }, "Stale driver assignments returned to delivery pool");
+          })
+          .catch((err) => logger.error({ err }, "Stale driver assignment job failed"));
+      }, 5 * 60 * 1000);
+      runStaleDriverAssignmentJob()
+        .then((count) => {
+          if (count > 0) logger.warn({ count }, "Stale driver assignments returned to delivery pool");
+        })
+        .catch((err) => logger.error({ err }, "Stale driver assignment job failed"));
     });
     // Run loan repayment job every hour
     setInterval(() => { runLoanRepaymentJob().catch(() => {}); }, 60 * 60 * 1000);

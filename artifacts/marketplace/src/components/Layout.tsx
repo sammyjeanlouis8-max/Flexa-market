@@ -826,6 +826,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/chatbot/,
     /^\/calculator/,
     /^\/delivery\/apply/,
+    /^\/delivery\/deliveries\/?$/,
     /^\/listings\/[^/]+/,
     /^\/profile\/\d+\/?$/,
     /^\/tv(\/|$)/,

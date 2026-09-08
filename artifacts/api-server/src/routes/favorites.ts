@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, favoritesTable, listingsTable, usersTable, categoriesTable, notificationsTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { cleanListingImages, listingHasUsableImageSql } from "../lib/listingMedia";
 
 const router = Router();
 
@@ -9,7 +10,7 @@ function formatListing(listing: typeof listingsTable.$inferSelect, seller: typeo
   return {
     id: listing.id, title: listing.title, description: listing.description, price: listing.price,
     category: catName, categorySlug: catSlug, condition: listing.condition, location: listing.location,
-    images: listing.images ?? [], status: listing.status, isBoosted: listing.isBoosted,
+    images: cleanListingImages(listing.images), status: listing.status, isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
     viewCount: listing.viewCount, favoriteCount: listing.favoriteCount, sellerId: listing.sellerId,
     sellerName: seller.name, sellerAvatar: seller.avatar ?? null, sellerRating: seller.rating,
@@ -29,6 +30,7 @@ router.get("/favorites", requireAuth, async (req, res): Promise<void> => {
   if (userCountry) {
     conditions.push(eq(listingsTable.country!, userCountry));
   }
+  conditions.push(listingHasUsableImageSql());
 
   const rows = await db.select().from(favoritesTable)
     .leftJoin(listingsTable, eq(favoritesTable.listingId, listingsTable.id))
@@ -36,6 +38,13 @@ router.get("/favorites", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
     .where(and(...conditions))
     .orderBy(desc(favoritesTable.createdAt));
+
+  const invalidFavoriteIds = rows
+    .filter((r) => r.listings && !cleanListingImages(r.listings.images).length)
+    .map((r) => r.favorites.listingId);
+  if (invalidFavoriteIds.length > 0) {
+    await db.delete(favoritesTable).where(sql`${favoritesTable.listingId} IN (${sql.join(invalidFavoriteIds.map((id) => sql`${id}`), sql`, `)}) AND ${favoritesTable.userId} = ${req.userId!}`);
+  }
 
   const listings = rows
     .filter(r => r.listings)

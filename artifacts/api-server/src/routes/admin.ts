@@ -10,6 +10,7 @@ import { sendEmailBatch, sendEmail } from "../lib/email";
 import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
+import { hasUsableListingImage } from "../lib/listingMedia";
 
 const router = Router();
 
@@ -1240,6 +1241,10 @@ router.put("/admin/listings/:id", requireRole("moderator"), async (req, res): Pr
   if (price !== undefined) updates.price = parseFloat(price);
   if (condition) updates.condition = condition;
   if (status) updates.status = status;
+  if (status === "available" && !hasUsableListingImage(existing.images)) {
+    res.status(400).json({ error: "A listing must have at least one real product image before it can be published." });
+    return;
+  }
   const trimmedReason = typeof reason === "string" ? reason.trim() : "";
   if (status === "removed") {
     updates.moderationStatus = "rejected";

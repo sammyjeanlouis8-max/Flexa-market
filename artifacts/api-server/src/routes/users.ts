@@ -5,6 +5,7 @@ import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { UpdateUserBody } from "@workspace/api-zod";
 import { verifyPassword } from "../lib/auth";
 import { sendEmail } from "../lib/email";
+import { cleanListingImages, listingHasUsableImageSql } from "../lib/listingMedia";
 
 // ── In-memory phone-change OTP store ─────────────────────────────────────────
 // { userId → { code, phone, expiresAt } }
@@ -52,7 +53,7 @@ function formatListing(listing: typeof listingsTable.$inferSelect, seller: typeo
     categorySlug: catSlug,
     condition: listing.condition,
     location: listing.location,
-    images: listing.images ?? [],
+    images: cleanListingImages(listing.images),
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
@@ -347,6 +348,7 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void> 
   const isOwner = req.userId === id;
   const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
   const conditions = [eq(listingsTable.sellerId, id)];
+  conditions.push(listingHasUsableImageSql());
   if (!isOwner && !isAdmin) {
     conditions.push(eq(listingsTable.moderationStatus, "approved"));
     // Mirror the detail-endpoint's country isolation: a logged-in user with a

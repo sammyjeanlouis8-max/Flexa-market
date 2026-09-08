@@ -16,6 +16,7 @@ import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { emitListingEngagement } from "../lib/socketServer";
 import { queueNewListingPush } from "../lib/listing-notifications";
+import { cleanListingImages, hasUsableListingImage, listingHasUsableImageSql } from "../lib/listingMedia";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -163,13 +164,7 @@ async function formatListing(
     // Strip known external placeholder service URLs that return orange/styled
     // "No Image" images — these load successfully so onError never fires,
     // leaving them visible in the gallery instead of our neutral fallback.
-    images: (listing.images ?? []).filter(
-      (url: unknown) =>
-        typeof url === "string" &&
-        url.trim().length > 0 &&
-        !url.includes("placehold.co") &&
-        !url.includes("via.placeholder.com"),
-    ),
+    images: cleanListingImages(listing.images),
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
@@ -227,7 +222,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
   const offset = (pageNum - 1) * limitNum;
 
-  const baseConditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved")];
+  const baseConditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql()];
   if (q) baseConditions.push(or(ilike(listingsTable.title, `%${q}%`), ilike(listingsTable.description, `%${q}%`))!);
   if (category) baseConditions.push(eq(categoriesTable.slug, category));
   if (subcategory) baseConditions.push(eq(subcategoriesTable.slug, subcategory));
@@ -369,7 +364,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
 router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
@@ -417,7 +412,7 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
 
 router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   const isAdmin = hasRole(req.user, "admin");
   const userCountry = req.user?.country ?? null;
 
@@ -481,7 +476,7 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
 
 router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
@@ -540,6 +535,7 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     eq(listingsTable.isBoosted, true),
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
+    listingHasUsableImageSql(),
     sql`${listingsTable.boostExpiresAt} > NOW()` as any,
     sql`${listingsTable.sellerId} != ${req.userId}` as any,
   ];
@@ -680,10 +676,8 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     res.status(400).json({ error: field ? `${field}: ${msg}` : msg });
     return;
   }
-  const imageUrls = parsed.data.images
-    .map((image) => image.trim())
-    .filter((image) => image.length > 0);
-  if (imageUrls.length === 0) {
+   const imageUrls = cleanListingImages(parsed.data.images);
+   if (!hasUsableListingImage(imageUrls)) {
     res.status(400).json({ error: "At least one product photo is required." });
     return;
   }
@@ -900,6 +894,10 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
     .where(eq(listingsTable.id, id));
   if (!row) { res.status(404).json({ error: "Listing not found" }); return; }
+  if (!hasUsableListingImage(row.listings.images) && !hasRole(req.user, "admin")) {
+    res.status(404).json({ error: "Listing not found" });
+    return;
+  }
 
   const isAdminD = hasRole(req.user, "admin");
   const isOwnerD = req.userId === row.listings.sellerId;
@@ -963,10 +961,8 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: field ? `${field}: ${msg}` : msg });
     return;
   }
-  const updatedImages = (parsed.data.images ?? existing.images ?? [])
-    .map((image) => image.trim())
-    .filter((image) => image.length > 0);
-  if (updatedImages.length === 0) {
+  const updatedImages = cleanListingImages(parsed.data.images ?? existing.images ?? []);
+  if (!hasUsableListingImage(updatedImages)) {
     res.status(400).json({ error: "A listing must keep at least one product photo." });
     return;
   }
@@ -1832,6 +1828,7 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     const baseConditions = [
       eq(listingsTable.status, "available"),
       eq(listingsTable.moderationStatus, "approved"),
+      listingHasUsableImageSql(),
       or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0))!,
       or(...termConditions)!,
       // Exclude the user's own listings

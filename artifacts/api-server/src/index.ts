@@ -9,6 +9,7 @@ import { runLoanRepaymentJob, runLoanAdminRejectionJob } from "./routes/loans";
 import { runBoostExpiryJob } from "./routes/boost";
 import { runMusicMonthlyReminder } from "./routes/music";
 import { runStaleDriverAssignmentJob } from "./routes/delivery";
+import { runListingMediaCleanup } from "./lib/listingMedia";
 
 
 import { ensureBoostVideoUploadSchema, runStartupMigrations } from "./lib/migrations";
@@ -104,6 +105,11 @@ httpServer.listen(port, () => {
           if (count > 0) logger.warn({ count }, "Stale driver assignments returned to delivery pool");
         })
         .catch((err) => logger.error({ err }, "Stale driver assignment job failed"));
+      runListingMediaCleanup()
+        .then((count) => {
+          if (count > 0) logger.warn({ count }, "Legacy listings without images were removed");
+        })
+        .catch((err) => logger.error({ err }, "Listing media cleanup failed"));
     });
     // Run loan repayment job every hour
     setInterval(() => { runLoanRepaymentJob().catch(() => {}); }, 60 * 60 * 1000);

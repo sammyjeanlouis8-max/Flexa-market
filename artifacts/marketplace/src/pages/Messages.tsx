@@ -1295,18 +1295,20 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   // Detect if night is active by checking pageBg
   const isDarkMode = c.isDark;
 
-  const { data: messages, isLoading } = useGetMessages(convId, {
+  const { data: messages, isLoading, isError: messagesError, refetch: refetchMessages } = useGetMessages(convId, {
     query: {
+      enabled: !!user && !authLoading && Number.isInteger(convId),
       queryKey: getGetMessagesQueryKey(convId),
       refetchInterval: 5000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnMount: true,
+      retry: 2,
     },
   });
   const { data: convs } = useGetConversations({
     query: {
-      enabled: true,
+      enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
       refetchInterval: 5000,
       refetchIntervalInBackground: true,
@@ -2077,6 +2079,21 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         {isLoading && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
             <p style={{ color: c.listSub, fontSize: 14 }}>{t("messages.loading")}</p>
+          </div>
+        )}
+        {messagesError && !isLoading && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "0 32px", gap: 10 }}>
+            <MessageCircle style={{ width: 40, height: 40, color: c.emptyIcon }} />
+            <p style={{ color: c.emptyText, fontSize: 14, margin: 0 }}>
+              {t("messages.loadError", "Mesaj yo pa t ka chaje.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refetchMessages()}
+              style={{ border: "none", borderRadius: 999, padding: "9px 18px", background: c.sendBg, color: "#fff", fontWeight: 700, cursor: "pointer" }}
+            >
+              {t("common.retry", "Eseye ankò")}
+            </button>
           </div>
         )}
         {!isLoading && msgList.length === 0 && pendingVoices.length === 0 && (

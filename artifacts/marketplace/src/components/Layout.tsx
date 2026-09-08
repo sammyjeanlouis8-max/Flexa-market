@@ -391,8 +391,11 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-[70] w-full max-w-[100vw] overflow-x-hidden md:hidden bg-card rounded-t-2xl shadow-2xl"
+        className="mobile-menu-sheet fixed bottom-0 left-0 right-0 z-[70] w-full max-w-[100vw] min-w-0 overflow-x-hidden md:hidden bg-card rounded-t-2xl shadow-2xl"
         style={{
+          width: "100%",
+          maxWidth: "100vw",
+          boxSizing: "border-box",
           maxHeight: "80dvh",
           overflowY: "auto",
           overscrollBehavior: "contain",
@@ -427,12 +430,12 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           {sections.map(section => (
             <div
               key={section.heading}
-              className={section.highlight ? "rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent ring-1 ring-primary/20 p-2" : ""}
+              className={`min-w-0 max-w-full ${section.highlight ? "rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent ring-1 ring-primary/20 p-2" : ""}`}
             >
               <p className={`text-xs font-bold uppercase tracking-wider px-2 mb-1 ${section.highlight ? "text-primary" : "text-muted-foreground font-semibold"}`}>
                 {section.heading}
               </p>
-              <div className="grid grid-cols-2 gap-1">
+              <div className="grid min-w-0 w-full grid-cols-[repeat(2,minmax(0,1fr))] gap-1">
                 {section.items.map((item, idx) => {
                   if (item.kind === "promo") {
                     const totalBal = (item.balance ?? 0) + (item.realBalance ?? 0);

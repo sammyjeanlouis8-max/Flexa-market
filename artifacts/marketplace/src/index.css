@@ -60,6 +60,18 @@ main {
   overflow-x: hidden;
 }
 
+/* Safari can keep a grid item's min-content width even when its parent is
+   clipped. The drawer must size every track and child from the viewport. */
+.mobile-menu-sheet,
+.mobile-menu-sheet * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.mobile-menu-sheet .grid > * {
+  max-width: 100%;
+}
+
 /* ── Mobile-first full-screen chat ─────────────────────────────────────────
    On phones, the MessageThread takes over the entire viewport using
    position:fixed so it is completely immune to parent flex/overflow chains.

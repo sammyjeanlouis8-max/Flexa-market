@@ -358,7 +358,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       {/* CTA first, then Skip/countdown below — both pinned to bottom */}
       <div
         className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)" }}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), var(--sab, 0px), 12px)", touchAction: "manipulation" }}
       >
         {/* CTA button — hidden for video-only boosts with no external action */}
         {(!isVideoOnly || hasExternalCta) && (

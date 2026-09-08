@@ -1640,12 +1640,23 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 
   const sendQueuedVoice = useCallback((body: { messageType: "audio"; mediaUrl: string; content: string }) => new Promise<void>((resolve, reject) => {
       sendMsg.mutate({ id: convId, data: body as any }, {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
-          queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
-          setTimeout(() => scrollToBottom(true), 100);
-          resolve();
-        },
+        onSuccess: (createdMessage: any) => {
+            // Put the confirmed message into the cache before removing its local
+            // outbox bubble. This prevents a successful voice send from
+            // disappearing in the gap before the refetch returns.
+            if (createdMessage?.id) {
+              queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+                const list: any[] = Array.isArray(old) ? old : [];
+                return list.some(message => message.id === createdMessage.id)
+                  ? list
+                  : [...list, createdMessage];
+              });
+            }
+            queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+            queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+            setTimeout(() => scrollToBottom(true), 100);
+            resolve();
+          },
         onError: reject,
       });
     }), [convId, queryClient, sendMsg]);
@@ -2199,10 +2210,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
 
         {pendingVoiceCount > 0 && !isRecording && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 13px", marginBottom: 8, borderRadius: 14, background: c.isDark ? "rgba(165,180,252,0.12)" : "#FFF7ED", color: c.isDark ? "#E0E7FF" : "#9A3412", fontSize: 13 }}>
-              <span>🎤 {t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}</span>
-              <button type="button" onClick={() => void flushPendingVoices()} style={{ border: "none", background: "transparent", color: "inherit", fontWeight: 700, cursor: "pointer" }}>{t("messages.retry", "Retry")}</button>
-            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 10px", marginBottom: 5, borderRadius: 10, background: c.isDark ? "rgba(165,180,252,0.12)" : "#FFF7ED", color: c.isDark ? "#E0E7FF" : "#9A3412", fontSize: 11, lineHeight: 1.3 }}>
+                <span style={{ minWidth: 0 }}>🎤 {t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}</span>
+                <button type="button" onClick={() => void flushPendingVoices()} style={{ flexShrink: 0, border: "none", background: "transparent", color: "inherit", fontWeight: 700, cursor: "pointer", padding: "3px 0" }}>{t("messages.retry", "Retry")}</button>
+              </div>
           )}
 
             {isRestricted ? (

@@ -145,7 +145,10 @@ main {
     min-width: 0;
     overflow: hidden;
     box-sizing: border-box;
-    padding-top: max(env(safe-area-inset-top, 0px), 8px) !important;
+    /* Safari with viewport-fit=auto often reports env(safe-area-inset-top)
+       as 0 even though the page still sits beneath the Dynamic Island/status
+       area. The synchronous --sat bootstrap is the reliable fallback. */
+    padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px) !important;
   }
 
   .mobile-app-header-row {

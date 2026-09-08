@@ -533,7 +533,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative w-full overflow-hidden rounded-lg px-3 py-1.5 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
+                        className={`relative h-8 w-full overflow-hidden rounded-lg px-3 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
                           isOrders
                             ? "bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 shadow-blue-500/30"
                             : "bg-gradient-to-r from-fuchsia-600 via-pink-500 to-rose-500 shadow-pink-500/30"
@@ -542,12 +542,12 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                       >
                         <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
                         <div className="relative z-10 flex items-center gap-2">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/15 ring-1 ring-white/30">
-                            <item.icon className="h-4 w-4" />
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-black/15 ring-1 ring-white/30">
+                            <item.icon className="h-3.5 w-3.5" />
                           </div>
-                          <span className="flex-1 text-[13px] font-black">{item.label}</span>
-                          <Sparkles className="h-3.5 w-3.5 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
-                          <ChevronRight className="h-3.5 w-3.5 text-white/80" />
+                          <span className="flex-1 text-xs font-black leading-none">{item.label}</span>
+                          <Sparkles className="h-3 w-3 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
+                          <ChevronRight className="h-3 w-3 text-white/80" />
                         </div>
                       </button>
                     );

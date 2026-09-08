@@ -893,8 +893,8 @@ export default function Layout({ children }: { children: ReactNode }) {
 
           {user && <NotificationsDropdown />}
           {user && <CartIconButton />}
-          {/* Visible language switcher — always shown in header */}
-          <LanguageSwitcher className="shrink-0" />
+          {/* Desktop language switcher; mobile language remains in the profile/guest menu */}
+          <LanguageSwitcher className="header-language-switcher shrink-0" />
           {/* Profile menu */}
           {user ? <UserMenu /> : <GuestMenu />}
 

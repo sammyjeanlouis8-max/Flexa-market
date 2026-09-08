@@ -163,8 +163,14 @@ main {
     max-width: 100%;
     min-width: 0;
     height: 56px !important;
-    gap: 6px !important;
+    gap: 4px !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
     box-sizing: border-box;
+  }
+
+  .mobile-app-header-row > * {
+    min-width: 0;
   }
 
   .mobile-app-header-row > a,
@@ -176,6 +182,13 @@ main {
     min-width: 0;
     width: 100%;
     max-width: none;
+  }
+
+  /* Signed-in and guest menus already contain the language picker. Keeping a
+     second 40px language trigger in the mobile header makes the row wider than
+     narrow iPhone viewports and Safari scales/shifts the whole page to fit it. */
+  .header-language-switcher {
+    display: none !important;
   }
 }
 
@@ -248,6 +261,9 @@ main {
     top: 0;
     left: 0;
     right: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     bottom: 0;
     height: auto !important;
     /* Must be > Layout header z-50 (50) so the chat conversation header
@@ -294,6 +310,31 @@ main {
   .chat-input-bar {
     flex-shrink: 0;
     padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
+  }
+
+  .chat-thread-header {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .chat-header-actions {
+    min-width: 0;
+    max-width: 136px;
+  }
+
+  .chat-header-actions button {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+  }
+
+  /* The same theme control remains available outside the conversation. On
+     narrow chat headers, hiding this duplicate keeps call/admin actions fully
+     inside the viewport instead of clipping the final button on Safari. */
+  .chat-theme-toggle {
+    display: none !important;
   }
 
   /* 44×44 minimum touch target — Apple HIG requirement */

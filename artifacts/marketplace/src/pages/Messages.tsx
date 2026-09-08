@@ -1880,7 +1880,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
 
       {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
-      <div style={{
+      <div className="chat-thread-header" style={{
         display: "flex", alignItems: "center", gap: 11,
         paddingTop: threadHeaderTopPad,
         paddingBottom: "11px", paddingLeft: "13px", paddingRight: "13px",
@@ -1961,9 +1961,10 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           </Link>
 
           {/* Actions — compact (40×40) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+          <div className="chat-header-actions" style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
             {/* Theme toggle */}
             <button
+              className="chat-theme-toggle"
               type="button"
               onClick={onToggleTheme}
               title={isDarkMode ? t("messages.sunlightMode") : t("messages.nightMode")}

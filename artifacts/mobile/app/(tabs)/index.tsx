@@ -30,8 +30,12 @@ import { usePushNotifications } from "../../hooks/usePushNotifications";
 const WEBSITE = "https://flexamarket.com";
 const MAX_BRIDGE_BYTES = 40 * 1024 * 1024; // 40 MB
 
+// The marketplace WebView owns the bottom safe-area inset. Reserving the
+// bottom edge here shrinks the WebView and puts a native white strip over the
+// chat composer and the bottom ad controls, making their visible center
+// untappable on iPhone.
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
-  Platform.OS === "ios" ? ["top", "bottom"] : [];
+  Platform.OS === "ios" ? ["top"] : [];
 
 // ─── URL helpers ──────────────────────────────────────────────────────────────
 function isInternal(url: string): boolean {

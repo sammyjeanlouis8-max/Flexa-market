@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   useGetConversations, useGetMessages, useSendMessage,
-  getGetMessagesQueryKey, getGetConversationsQueryKey,
+  getGetMessagesQueryKey, getGetMessagesQueryOptions, getGetConversationsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1080,7 +1080,14 @@ function MsgBubble({
 // ─── Conversation List ────────────────────────────────────────────────────────
 function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?: number; theme: (typeof T)[ChatTheme] }) {
   const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const c = theme;
+  const prefetchMessages = (conversationId: number) => {
+    void queryClient.prefetchQuery(getGetMessagesQueryOptions(conversationId, {
+      query: { staleTime: 15_000 },
+      request: { timeoutMs: 6_000 },
+    }));
+  };
   const sortedConvs = [...convs].sort((a, b) => {
     const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
     const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
@@ -1097,7 +1104,10 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
     <div style={{ overflowY: "auto", flex: 1, background: c.listBg }}>
       {sortedConvs.map(conv => (
         <Link key={conv.id} href={`/messages/${conv.id}`}>
-          <div style={{
+          <div
+            onPointerDown={() => prefetchMessages(conv.id)}
+            onMouseEnter={() => prefetchMessages(conv.id)}
+            style={{
             display: "flex", alignItems: "center", gap: 12,
             padding: "12px 16px",
             borderBottom: `1px solid ${c.listBorder}`,
@@ -1299,13 +1309,15 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     query: {
       enabled: !!user && !authLoading && Number.isInteger(convId),
       queryKey: getGetMessagesQueryKey(convId),
+      staleTime: 15_000,
       refetchInterval: 5000,
       refetchIntervalInBackground: true,
       refetchOnWindowFocus: true,
       refetchOnMount: true,
-      // A stuck mobile connection must become a visible retry state instead
-      // of leaving the conversation on "Loading messages..." forever.
-      retry: 0,
+      // Retry the first request quietly so the conversation can open without
+      // exposing a transient error state to the user.
+      retry: 2,
+      retryDelay: attemptIndex => Math.min(400 * 2 ** attemptIndex, 1_500),
     },
     request: { timeoutMs: 6_000 },
   });
@@ -2098,22 +2110,12 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             <p style={{ color: c.listSub, fontSize: 14 }}>{t("messages.loading")}</p>
           </div>
         )}
-        {messagesError && !isLoading && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "0 32px", gap: 10 }}>
-            <MessageCircle style={{ width: 40, height: 40, color: c.emptyIcon }} />
-            <p style={{ color: c.emptyText, fontSize: 14, margin: 0 }}>
-              {t("messages.loadError", "Mesaj yo pa t ka chaje.")}
-            </p>
-            <button
-              type="button"
-              onClick={() => void refetchMessages()}
-              style={{ border: "none", borderRadius: 999, padding: "9px 18px", background: c.sendBg, color: "#fff", fontWeight: 700, cursor: "pointer" }}
-            >
-              {t("common.retry", "Eseye ankò")}
-            </button>
+        {(isLoading || (messagesError && msgList.length === 0)) && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            <Loader2 style={{ width: 24, height: 24, color: c.emptyIcon, animation: "spin 1s linear infinite" }} />
           </div>
         )}
-        {!isLoading && msgList.length === 0 && pendingVoices.length === 0 && (
+        {!isLoading && !messagesError && msgList.length === 0 && pendingVoices.length === 0 && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "0 32px" }}>
             <MessageCircle style={{ width: 40, height: 40, color: c.emptyIcon, marginBottom: 8 }} />
             <p style={{ fontSize: 14, color: c.emptyText, margin: 0 }}>

@@ -243,7 +243,11 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView
         style={styles.container}
-        edges={Platform.OS === "ios" ? ["top", "bottom"] : []}
+        // The marketplace WebView owns the bottom safe-area inset itself
+          // (the chat composer uses env(safe-area-inset-bottom)). Reserving it
+          // here as well shrinks the WebView and leaves a white native strip
+          // over the lower half of the composer on iPhone.
+          edges={Platform.OS === "ios" ? ["top"] : []}
       >
         <WebView
           ref={webRef}

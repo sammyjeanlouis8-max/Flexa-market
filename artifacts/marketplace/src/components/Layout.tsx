@@ -543,7 +543,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative h-8 w-full overflow-hidden rounded-lg px-3 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
+                        className={`relative mx-auto h-8 w-1/2 min-w-[190px] max-w-[240px] overflow-hidden rounded-lg px-3 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
                           isOrders
                             ? "bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 shadow-blue-500/30"
                             : "bg-gradient-to-r from-fuchsia-600 via-pink-500 to-rose-500 shadow-pink-500/30"

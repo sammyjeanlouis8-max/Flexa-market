@@ -196,6 +196,7 @@ type DrawerItem =
   | { kind: "lang";   icon: React.ComponentType<{ className?: string }>; label: string; href?: never }
   | { kind: "loan";   icon: React.ComponentType<{ className?: string }>; label: string; subtitle: string; href: string }
   | { kind: "delivery"; icon: React.ComponentType<{ className?: string }>; label: string; href: string; variant: "available" | "apply" }
+  | { kind: "commerce"; icon: React.ComponentType<{ className?: string }>; label: string; href: string; variant: "orders" | "sales" }
   | { kind: "promo";  icon: React.ComponentType<{ className?: string }>; label: string; href: string; balance: number; realBalance: number };
 
 function DarkModeToggle({ className }: { className?: string }) {
@@ -339,8 +340,8 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           { icon: User,        label: t("nav.profile"),       href: "/settings" },
           { icon: Heart,       label: t("nav.saved"),         href: "/saved" },
           { icon: Tag,         label: t("nav.offers"),        href: "/offers" },
-          { icon: ShoppingBag, label: t("nav.orders"),        href: "/orders" },
-          { icon: TrendingUp,  label: t("nav.sales"),         href: "/sales" },
+          { kind: "commerce", variant: "orders", icon: ShoppingBag, label: t("nav.orders"), href: "/orders" },
+          { kind: "commerce", variant: "sales", icon: TrendingUp, label: t("nav.sales"), href: "/sales" },
           { icon: Wallet,      label: t("nav.wallet"),        href: "/wallet" },
           { icon: Crown,       label: t("nav.subscription"),  href: "/subscription" },
           { icon: Settings,    label: t("nav.settings"),      href: "/settings" },
@@ -512,6 +513,32 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/15 ring-1 ring-white/30">
                             <item.icon className="h-5 w-5" />
                             <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-white ring-2 ring-white/40 motion-safe:animate-ping" />
+                          </div>
+                          <span className="flex-1 text-sm font-black">{item.label}</span>
+                          <Sparkles className="h-4 w-4 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
+                          <ChevronRight className="h-4 w-4 text-white/80" />
+                        </div>
+                      </button>
+                    );
+                  }
+                  if (item.kind === "commerce") {
+                    const isOrders = item.variant === "orders";
+                    return (
+                      <button
+                        key={item.href}
+                        type="button"
+                        onClick={() => go(item.href)}
+                        className={`relative w-full overflow-hidden rounded-xl px-3 py-3 text-left text-white shadow-md active:scale-[0.98] transition-transform ${
+                          isOrders
+                            ? "bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 shadow-blue-500/30"
+                            : "bg-gradient-to-r from-fuchsia-600 via-pink-500 to-rose-500 shadow-pink-500/30"
+                        }`}
+                        data-testid={isOrders ? "drawer-orders" : "drawer-sales"}
+                      >
+                        <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
+                        <div className="relative z-10 flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/15 ring-1 ring-white/30">
+                            <item.icon className="h-5 w-5" />
                           </div>
                           <span className="flex-1 text-sm font-black">{item.label}</span>
                           <Sparkles className="h-4 w-4 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />

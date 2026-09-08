@@ -309,7 +309,8 @@ main {
    */
   .chat-input-bar {
     flex-shrink: 0;
-    padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px), 8px);
+    /* The native shell may already reserve this inset; env() handles the WebView-owned case. */
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
   }
 
   .chat-thread-header {

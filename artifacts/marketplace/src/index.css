@@ -60,6 +60,41 @@ main {
   overflow-x: hidden;
 }
 
+/* On phones the document itself is a fixed app viewport. Only the main
+   content region scrolls, so Safari/Chrome cannot drag the whole page or
+   propagate rubber-band movement past any edge. */
+@media (max-width: 767px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  #root,
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
+    max-height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-main-scroll {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-main-immersive {
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
 /* Safari can keep a grid item's min-content width even when its parent is
    clipped. The drawer must size every track and child from the viewport. */
 .mobile-menu-sheet,

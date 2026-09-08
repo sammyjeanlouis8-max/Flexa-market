@@ -116,6 +116,12 @@ function isYouTubeLive(url: string) {
 
 type EmbedInfo = { url: string; isIframe: boolean; isDirect: boolean };
 
+function scrollTvToTop() {
+  const scroller = document.querySelector<HTMLElement>(".app-main-scroll");
+  scroller?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
 // Facebook/Instagram block iframe embedding via X-Frame-Options — return null so
 // VideoPlayer shows the "no video" placeholder instead of the Facebook error page.
 function isBlockedEmbedUrl(url: string): boolean {
@@ -455,8 +461,8 @@ function BroadcastPlayer({ videoUrl, videoKey, title, isPaused }: {
 }
 
 // ── Video Player with Fullscreen (for regular on-demand viewing) ──────────────
-function VideoPlayer({ program, onClose, noVideoLabel }: {
-  program: TvProgram; onClose?: () => void; noVideoLabel?: string;
+function VideoPlayer({ program, onClose, onUnavailable, noVideoLabel }: {
+  program: TvProgram; onClose?: () => void; onUnavailable?: () => void; noVideoLabel?: string;
 }) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -517,9 +523,9 @@ function VideoPlayer({ program, onClose, noVideoLabel }: {
       </div>
       {embed ? (
         embed.isIframe ? (
-          <iframe src={embed.url} className="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen title={program.title} style={{ border: "none" }} />
+          <iframe src={embed.url} className="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen title={program.title} onError={onUnavailable} style={{ border: "none" }} />
         ) : (
-          <video ref={videoRef} src={embed.url} autoPlay playsInline controls={!isLinear} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} className="absolute inset-0 w-full h-full object-contain" />
+          <video ref={videoRef} src={embed.url} autoPlay playsInline controls={!isLinear} onError={onUnavailable} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} className="absolute inset-0 w-full h-full object-contain" />
         )
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-3"><Tv size={56} /><p className="text-sm">{noVideoLabel ?? "—"}</p></div>
@@ -862,6 +868,7 @@ export default function FlexaTV() {
   const [search, setSearch] = useState("");
   const [movieGenre, setMovieGenre] = useState<YtsGenre>("All");
   const [moviePage, setMoviePage] = useState(1);
+  const [unavailableIds, setUnavailableIds] = useState<Set<number>>(() => new Set());
   const viewedRef = useRef<Set<number>>(new Set());
 
   const tlabel = (type: string) => ({
@@ -872,6 +879,11 @@ export default function FlexaTV() {
   // ── Broadcast state — shared from global BroadcastContext (no extra polling) ──
   const bs = useBroadcast();
   const broadcastActive = bs.state === "playing" || bs.state === "paused";
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(scrollTvToTop);
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   // (popstate intercept removed — Layout.tsx handleBack navigates to "/" on /tv)
 
@@ -916,7 +928,7 @@ export default function FlexaTV() {
         isFeatured: false,
         viewCount: 0,
       });
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollTvToTop();
     };
     window.addEventListener("flexa:resume-film", handler);
     return () => window.removeEventListener("flexa:resume-film", handler);
@@ -986,12 +998,21 @@ export default function FlexaTV() {
     staleTime: 5 * 60_000,
     enabled: activeTab === "films",
   });
+  const playableMovies = (moviesData?.results ?? []).filter(movie => Boolean(movie.videoUrl));
 
   const viewMutation = useMutation({
     mutationFn: (id: number) => fetch(`/api/tv/programs/${id}/view`, { method: "POST" }),
   });
 
   function play(program: TvProgram) {
+    if (!getEmbedInfo(program)) {
+      setUnavailableIds(previous => {
+        const next = new Set(previous);
+        if (program.id > 0) next.add(program.id);
+        return next;
+      });
+      return;
+    }
     setPlaying(program);
     // Track in context so mini-player can continue if user navigates away
     bs.setFilmPlayer({
@@ -1007,8 +1028,18 @@ export default function FlexaTV() {
       viewedRef.current.add(program.id);
       viewMutation.mutate(program.id);
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollTvToTop();
   }
+
+  const markUnavailable = useCallback((program: TvProgram) => {
+    setUnavailableIds(previous => {
+      const next = new Set(previous);
+      if (program.id > 0) next.add(program.id);
+      return next;
+    });
+    if (playing?.id === program.id) setPlaying(null);
+    if (bs.filmPlayer?.programId === program.id) bs.setFilmPlayer(null);
+  }, [bs, playing?.id]);
 
   // Auto-play on first load only (run once when data first arrives)
   // Store a ref so we never re-trigger once the user has made a choice.
@@ -1016,24 +1047,26 @@ export default function FlexaTV() {
   useEffect(() => {
     if (autoPlayedRef.current || playing) return;
     // Skip live programs with blocked embed URLs (Facebook/Instagram) — they show an error page
-    const liveProg = programs?.find(p => p.type === "live" && !isBlockedEmbedUrl(p.videoUrl ?? ""));
+    const liveProg = programs?.find(p => p.type === "live" && !unavailableIds.has(p.id) && !!getEmbedInfo(p));
     if (liveProg) { autoPlayedRef.current = true; play(liveProg); return; }
-    if (nowPlaying && !isBlockedEmbedUrl(nowPlaying.videoUrl ?? "")) { autoPlayedRef.current = true; play(nowPlaying); return; }
-    const featured = programs?.find(p => p.isFeatured);
+    if (nowPlaying && !unavailableIds.has(nowPlaying.id) && getEmbedInfo(nowPlaying)) { autoPlayedRef.current = true; play(nowPlaying); return; }
+    const featured = programs?.find(p => p.isFeatured && !unavailableIds.has(p.id) && !!getEmbedInfo(p));
     if (featured) { autoPlayedRef.current = true; play(featured); }
-  }, [nowPlaying, programs]); // eslint-disable-line
+  }, [nowPlaying, programs, unavailableIds]); // eslint-disable-line
 
   const sq = search.toLowerCase().trim();
   const matchSearch = (p: TvProgram) => !sq || p.title.toLowerCase().includes(sq) || (p.description ?? "").toLowerCase().includes(sq);
   const matchSearchSched = (p: TvProgram) => !sq || p.title.toLowerCase().includes(sq);
 
-  const livePrograms = (programs?.filter(p => p.type === "live") ?? []).filter(matchSearch);
-  const films = (programs?.filter(p => p.type === "film") ?? []).filter(matchSearch);
-  const episodeList = (programs?.filter(p => p.type === "series") ?? []).filter(matchSearch);
-  const programList = (programs?.filter(p => p.type === "program" || p.type === "news") ?? []).filter(matchSearch);
-  const upcoming = (schedule?.filter(p => p.scheduledAt && new Date(p.scheduledAt) > now) ?? []).filter(matchSearchSched).slice(0, 10);
+  const playablePrograms = (programs ?? []).filter(p => !unavailableIds.has(p.id) && !!getEmbedInfo(p));
+  const playableSchedule = (schedule ?? []).filter(p => !unavailableIds.has(p.id) && !!getEmbedInfo(p));
+  const livePrograms = playablePrograms.filter(p => p.type === "live").filter(matchSearch);
+  const films = playablePrograms.filter(p => p.type === "film").filter(matchSearch);
+  const episodeList = playablePrograms.filter(p => p.type === "series").filter(matchSearch);
+  const programList = playablePrograms.filter(p => p.type === "program" || p.type === "news").filter(matchSearch);
+  const upcoming = playableSchedule.filter(p => p.scheduledAt && new Date(p.scheduledAt) > now).filter(matchSearchSched).slice(0, 10);
 
-  const currentAiring = schedule?.find(p => {
+  const currentAiring = playableSchedule.find(p => {
     if (!p.scheduledAt) return false;
     const start = new Date(p.scheduledAt).getTime();
     const end = p.endsAt ? new Date(p.endsAt).getTime() : start + (p.durationMinutes ?? 60) * 60_000;
@@ -1080,6 +1113,7 @@ export default function FlexaTV() {
                 <VideoPlayer
                   program={playing}
                   onClose={() => setPlaying(null)}
+                  onUnavailable={() => markUnavailable(playing)}
                   noVideoLabel={t("tv.noVideo")}
                 />
               </div>
@@ -1313,12 +1347,12 @@ export default function FlexaTV() {
             )}
 
             {/* YTS movie grid */}
-            {moviesFetching && (moviesData?.results ?? []).length === 0 ? (
+            {moviesFetching && playableMovies.length === 0 ? (
               <div className="flex flex-col items-center py-16 gap-3 text-muted-foreground">
                 <Loader2 size={32} className="animate-spin opacity-50" />
                 <p className="text-sm">Chaje fim yo…</p>
               </div>
-            ) : (moviesData?.results ?? []).length === 0 ? (
+            ) : playableMovies.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Film size={40} className="mx-auto mb-3 opacity-30" />
                 <p className="text-sm">Pa gen rezilta pou {movieGenre}</p>
@@ -1326,7 +1360,7 @@ export default function FlexaTV() {
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-2">
-                  {(moviesData?.results ?? []).map((m) => (
+                  {playableMovies.map((m) => (
                     <button
                       key={m.imdbCode || m.title}
                       onClick={() => play(ytsToProgram(m))}
@@ -1371,7 +1405,7 @@ export default function FlexaTV() {
                 </div>
 
                 {/* Load more */}
-                {(moviesData?.results.length ?? 0) >= 24 && (
+                {playableMovies.length >= 24 && (
                   <button
                     onClick={() => setMoviePage(p => p + 1)}
                     disabled={moviesFetching}

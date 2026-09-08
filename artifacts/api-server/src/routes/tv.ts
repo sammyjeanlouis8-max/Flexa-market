@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, tvSeriesTable, tvProgramsTable, platformSettingsTable, expoPushTokensTable } from "@workspace/db";
-import { eq, and, lte, gte, gt, desc, asc, sql } from "drizzle-orm";
+import { eq, and, lte, gte, gt, desc, asc, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/auth";
 import multer from "multer";
 import { randomUUID } from "crypto";
@@ -103,6 +103,10 @@ function isBlockedEmbedHost(url: string | null): boolean {
       h.includes("fb.watch") || h.includes("fb.com")
     );
   } catch { return false; }
+}
+
+function hasPlayableSource(videoUrl: string | null, videoKey: string | null): boolean {
+  return Boolean(videoKey || (videoUrl && !isBlockedEmbedHost(videoUrl)));
 }
 
 router.get("/tv/broadcast", async (_req, res): Promise<void> => {
@@ -361,12 +365,15 @@ router.get("/tv/programs", async (_req, res): Promise<void> => {
       .orderBy(desc(tvProgramsTable.isFeatured), desc(tvProgramsTable.viewCount));
     // Strip live programs whose videoUrl is a blocked embed host (Facebook/Instagram
     // block iframes — returning them causes "Ce contenu n'est plus disponible" error)
-    const programs = rawPrograms.map(p => {
-      if (p.type === "live" && p.videoUrl && isBlockedEmbedHost(p.videoUrl)) {
-        return { ...p, videoUrl: null }; // clear the URL so VideoPlayer shows "no video"
-      }
-      return p;
-    });
+    const unavailableIds = rawPrograms
+      .filter(p => !hasPlayableSource(p.videoUrl, p.videoKey))
+      .map(p => p.id);
+    if (unavailableIds.length > 0) {
+      await db.update(tvProgramsTable)
+        .set({ isActive: false })
+        .where(inArray(tvProgramsTable.id, unavailableIds));
+    }
+    const programs = rawPrograms.filter(p => hasPlayableSource(p.videoUrl, p.videoKey));
     return void res.json({ programs });
   } catch {
     return void res.status(500).json({ error: "Failed to fetch programs" });

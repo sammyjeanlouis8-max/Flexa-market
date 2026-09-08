@@ -918,7 +918,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           never hides under the fixed bottom nav on any iPhone model. */}
       <main className={
         isMessages || isVideoFeed
-          ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isVideoFeed ? "" : " md:pl-56"}`
+          ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
           : `app-main-scroll flex-1 min-h-0 ${isListingDetail ? "" : "pb-safe-nav"} md:pl-56`
       }>
         {children}

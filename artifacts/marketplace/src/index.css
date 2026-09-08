@@ -221,6 +221,14 @@ main {
    On md+ screens it reverts to normal in-flow flex layout.
    ────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 767px) {
+  /* The chat overlay lives inside this stacking context. Raise only an active
+     mobile thread above the sticky app header so its own back button remains
+     visible; the list and every other route keep their normal stacking order. */
+  .message-thread-main {
+    position: relative;
+    z-index: 60;
+  }
+
   /*
    * iOS WebView safe-area fix
    * ─────────────────────────

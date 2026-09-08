@@ -10,7 +10,18 @@
  *    socket.io connection alive (Android kills idle WebViews aggressively).
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
-import { AppState, AppStateStatus, BackHandler, Platform, StyleSheet } from "react-native";
+import {
+  ActivityIndicator,
+  AppState,
+  AppStateStatus,
+  BackHandler,
+  Image,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import * as Notifications from "expo-notifications";
@@ -45,6 +56,10 @@ async function registerPushTokenDirect(token: string, jwt: string): Promise<void
 export default function App() {
   const webRef = useRef<any>(null);
   const [canGoBack, setCanGoBack] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const currentLoadFailedRef = useRef(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
@@ -163,6 +178,12 @@ export default function App() {
 
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
+    if (!currentLoadFailedRef.current) {
+      setLoadError(false);
+      setIsLoading(false);
+      setIsRetrying(false);
+    }
+
     // Drain any script that arrived before the page was ready
     if (pendingScript.current) {
       webRef.current?.injectJavaScript(pendingScript.current);
@@ -200,6 +221,24 @@ export default function App() {
     }
   }, []);
 
+  const handleLoadStart = useCallback(() => {
+    currentLoadFailedRef.current = false;
+    setIsLoading(true);
+  }, []);
+
+  const handleLoadError = useCallback(() => {
+    currentLoadFailedRef.current = true;
+    setIsLoading(false);
+    setIsRetrying(false);
+    setLoadError(true);
+  }, []);
+
+  const retryLoad = useCallback(() => {
+    setIsRetrying(true);
+    currentLoadFailedRef.current = false;
+    webRef.current?.reload();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView
@@ -222,15 +261,172 @@ export default function App() {
           cacheEnabled
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
+          onLoadStart={handleLoadStart}
           onLoadEnd={onLoadEnd}
+          onError={handleLoadError}
+          onHttpError={(event) => {
+            if (event.nativeEvent.statusCode >= 500) handleLoadError();
+          }}
           onMessage={onMessage}
         />
+
+        {isLoading && !loadError && (
+          <View style={styles.statusScreen} accessibilityLiveRegion="polite">
+            <Image
+              source={require("./assets/images/icon.png")}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityLabel="Flexa Market"
+            />
+            <Text style={styles.brandName}>Flexa Market</Text>
+            <ActivityIndicator size="large" color="#F97316" style={styles.loader} />
+            <Text style={styles.loadingTitle}>N ap prepare mache a pou ou</Text>
+            <Text style={styles.loadingMessage}>
+              Sa ka pran kèk segonn si koneksyon an dousman.
+            </Text>
+          </View>
+        )}
+
+        {loadError && (
+          <View style={styles.statusScreen} accessibilityLiveRegion="assertive">
+            <View style={styles.offlineIcon}>
+              <Text style={styles.offlineIconText}>!</Text>
+            </View>
+            <Text style={styles.errorTitle}>Koneksyon an pa disponib</Text>
+            <Text style={styles.errorMessage}>
+              Nou pa ka louvri Flexa Market kounye a. Verifye entènèt ou epi eseye ankò.
+            </Text>
+            <Pressable
+              onPress={retryLoad}
+              disabled={isRetrying}
+              accessibilityRole="button"
+              accessibilityLabel="Eseye konekte ankò"
+              style={({ pressed }) => [
+                styles.retryButton,
+                pressed && styles.retryButtonPressed,
+                isRetrying && styles.retryButtonDisabled,
+              ]}
+            >
+              {isRetrying ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.retryButtonText}>Eseye ankò</Text>
+              )}
+            </Pressable>
+            <Text style={styles.connectionHint}>
+              Wi-Fi oswa done mobil dwe aktive
+            </Text>
+          </View>
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F172A" },
-  webview: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  webview: { flex: 1, backgroundColor: "#F8FAFC" },
+  statusScreen: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    backgroundColor: "#F8FAFC",
+  },
+  logo: {
+    width: 88,
+    height: 88,
+    borderRadius: 22,
+  },
+  brandName: {
+    marginTop: 14,
+    color: "#0F172A",
+    fontSize: 24,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  loader: {
+    marginTop: 32,
+  },
+  loadingTitle: {
+    marginTop: 20,
+    color: "#1E293B",
+    fontSize: 17,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  loadingMessage: {
+    marginTop: 8,
+    maxWidth: 290,
+    color: "#64748B",
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+  },
+  offlineIcon: {
+    width: 76,
+    height: 76,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 38,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+  offlineIconText: {
+    color: "#F97316",
+    fontSize: 42,
+    fontWeight: "800",
+    lineHeight: 48,
+  },
+  errorTitle: {
+    marginTop: 24,
+    color: "#0F172A",
+    fontSize: 23,
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: -0.3,
+  },
+  errorMessage: {
+    marginTop: 12,
+    maxWidth: 310,
+    color: "#475569",
+    fontSize: 15,
+    lineHeight: 23,
+    textAlign: "center",
+  },
+  retryButton: {
+    minWidth: 190,
+    minHeight: 52,
+    marginTop: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    paddingHorizontal: 28,
+    backgroundColor: "#F97316",
+    shadowColor: "#F97316",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    elevation: 5,
+  },
+  retryButtonPressed: {
+    opacity: 0.88,
+    transform: [{ scale: 0.98 }],
+  },
+  retryButtonDisabled: {
+    opacity: 0.72,
+  },
+  retryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  connectionHint: {
+    marginTop: 18,
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
 });

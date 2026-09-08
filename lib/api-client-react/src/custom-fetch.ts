@@ -1,5 +1,7 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
+  /** Abort a request that has stayed open longer than the caller allows. */
+  timeoutMs?: number;
 };
 
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -327,7 +329,12 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const {
+    responseType = "auto",
+    timeoutMs,
+    headers: headersInit,
+    ...init
+  } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -368,7 +375,40 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let removeExternalAbortListener: (() => void) | undefined;
+  let requestSignal = init.signal;
+
+  if (
+    typeof timeoutMs === "number" &&
+    timeoutMs > 0 &&
+    typeof AbortController !== "undefined"
+  ) {
+    const controller = new AbortController();
+    const externalSignal = init.signal;
+    const abortFromOutside = () => controller.abort();
+
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener("abort", abortFromOutside, { once: true });
+        removeExternalAbortListener = () =>
+          externalSignal.removeEventListener("abort", abortFromOutside);
+      }
+    }
+
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    requestSignal = controller.signal;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(input, { ...init, method, headers, signal: requestSignal });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    removeExternalAbortListener?.();
+  }
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

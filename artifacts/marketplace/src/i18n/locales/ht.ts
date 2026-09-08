@@ -57,6 +57,7 @@ export default {
     discover: "Eksplore",
     videos: "Videyo",
     videosSection: "Videyo Pwomosyon",
+    ordersSalesSection: "🛍️ Kòmand ak Vant",
     myBoosts: "⚡ Boost Aktif Mwen",
     promoAccount: "Kont Promo",
     commissionPromo: "Komisyon Promo",

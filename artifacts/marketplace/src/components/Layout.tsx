@@ -307,6 +307,13 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
         ] : []),
       ] as DrawerItem[],
     },
+    ...(user ? [{
+      heading: t("nav.ordersSalesSection"),
+      items: [
+        { kind: "commerce", variant: "orders", icon: ShoppingBag, label: t("nav.orders"), href: "/orders" },
+        { kind: "commerce", variant: "sales", icon: TrendingUp, label: t("nav.sales"), href: "/sales" },
+      ] as DrawerItem[],
+    }] : []),
     ...(user && (isDrawerAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) ? [
       {
         heading: t("nav.livrezonSection"),
@@ -340,8 +347,6 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
           { icon: User,        label: t("nav.profile"),       href: "/settings" },
           { icon: Heart,       label: t("nav.saved"),         href: "/saved" },
           { icon: Tag,         label: t("nav.offers"),        href: "/offers" },
-          { kind: "commerce", variant: "orders", icon: ShoppingBag, label: t("nav.orders"), href: "/orders" },
-          { kind: "commerce", variant: "sales", icon: TrendingUp, label: t("nav.sales"), href: "/sales" },
           { icon: Wallet,      label: t("nav.wallet"),        href: "/wallet" },
           { icon: Crown,       label: t("nav.subscription"),  href: "/subscription" },
           { icon: Settings,    label: t("nav.settings"),      href: "/settings" },

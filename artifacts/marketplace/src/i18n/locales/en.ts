@@ -97,6 +97,7 @@ export default {
     discover: "Discover",
     videos: "Videos",
     videosSection: "Promotional Videos",
+    ordersSalesSection: "🛍️ Orders & Sales",
     myBoosts: "⚡ My Active Boosts",
     promoAccount: "Promo Account",
     commissionPromo: "Commission Promo",

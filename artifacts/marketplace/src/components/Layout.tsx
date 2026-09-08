@@ -947,12 +947,12 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail ? "hidden" : ""}`}
         aria-label="Main navigation"
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
             in the upper 64 px, extra space is padding below them. */}
-        <div className="flex" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
+        <div className="mobile-bottom-nav-row grid grid-cols-5" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (
@@ -961,7 +961,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   type="button"
                   data-testid="nav-more"
                   onClick={() => setMoreOpen(true)}
-                  className="flex-1 h-16 flex flex-col items-center justify-center gap-0.5"
+                  className="min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
                 >
                   <MoreHorizontal
                     className={`h-5 w-5 transition-colors ${
@@ -984,11 +984,11 @@ export default function Layout({ children }: { children: ReactNode }) {
             const showBadge = typeof t2.badge === "number" && t2.badge > 0;
 
             return (
-              <Link key={t2.key} href={t2.href} className="flex-1">
+              <Link key={t2.key} href={t2.href} className="min-w-0 w-full">
                 <button
                   type="button"
                   data-testid={`nav-${t2.key}`}
-                  className="w-full h-16 flex flex-col items-center justify-center gap-0.5"
+                  className="w-full min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
                 >
                   {t2.highlight ? (
                     <div className="bg-[#F97316] rounded-full p-3 -mt-6 shadow-lg border-[3px] border-background">

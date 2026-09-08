@@ -585,7 +585,10 @@ router.get("/transactions/me", requireAuth, async (req, res): Promise<void> => {
     })
     .from(transactionsTable)
     .leftJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
-    .where(eq(transactionsTable.userId, req.userId!))
+    .where(and(
+      eq(transactionsTable.userId, req.userId!),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
+    ))
     .orderBy(desc(transactionsTable.createdAt))
     .limit(100);
   res.json(txs);
@@ -630,6 +633,7 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
       eq(transactionsTable.userId, req.userId!),
       eq(transactionsTable.type, "purchase"),
       eq(transactionsTable.paymentStatus, "completed"),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
     ))
     .orderBy(desc(transactionsTable.createdAt))
     .limit(200);
@@ -696,7 +700,13 @@ router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
 
 async function loadOrderForUser(orderId: number, userId: number) {
   const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, orderId));
-  if (!tx || tx.type !== "purchase" || tx.paymentStatus !== "completed" || !tx.listingId) return null;
+  if (
+    !tx ||
+    tx.type !== "purchase" ||
+    tx.paymentStatus !== "completed" ||
+    ["cancelled", "return_refunded"].includes(tx.orderStatus ?? "") ||
+    !tx.listingId
+  ) return null;
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, tx.listingId));
   if (!listing) return null;
   const isSeller = listing.sellerId === userId;

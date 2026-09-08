@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, driverApplicationsTable, driversTable, deliveriesTable, usersTable, notificationsTable, promoWalletTable, walletTransactionsTable, transactionsTable, listingsTable } from "@workspace/db";
-import { eq, and, desc, or, sql, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, or, sql, inArray, isNull, notInArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { releaseEscrow } from "./transactions";
 import { emitDriverLocation, emitAdminDriverUpdate, emitDeliveryStatus } from "../lib/socketServer";
@@ -738,6 +738,7 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
 
     const conditions: any[] = [
       inArray(deliveriesTable.status, ["waiting", "driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived", "seller_delivering", "seller_arrived"]),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
       or(
         eq(deliveriesTable.deliveryMethod, "motorcycle"),
         eq(deliveriesTable.deliveryMethod, "car"),
@@ -878,6 +879,7 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(listingsTable, sql`${listingsTable.id} = COALESCE(${deliveriesTable.listingId}, ${transactionsTable.listingId})`)
     .where(and(
       eq(deliveriesTable.status, "waiting"),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
       eq(deliveriesTable.country, userCountry),
       or(
         eq(deliveriesTable.deliveryMethod, "motorcycle"),
@@ -957,6 +959,7 @@ router.get("/delivery/available", requireAuth, async (req, res): Promise<void> =
 
   const baseWhere = and(
     eq(deliveriesTable.status, "waiting"),
+    notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
     eq(deliveriesTable.country, driver.country),
     or(
       eq(deliveriesTable.deliveryMethod, "motorcycle"),
@@ -1336,7 +1339,7 @@ router.patch("/delivery/:id/seller-status", requireAuth, async (req, res): Promi
   };
 
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
-  if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
+   if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
   if (delivery.sellerId !== userId || delivery.driverUserId !== userId) {
     res.status(403).json({ error: "Forbidden" });
     return;
@@ -2537,6 +2540,10 @@ router.get("/delivery/tracking/:id", requireAuth, async (req, res): Promise<void
     .limit(1);
 
   if (!delivery) { res.status(404).json({ error: "Not found" }); return; }
+  if (delivery.status === "cancelled") {
+    res.status(410).json({ error: "This delivery was cancelled and is no longer available" });
+    return;
+  }
 
   const canView = [delivery.sellerId, delivery.buyerId, delivery.driverUserId].includes(userId)
     || !!(req.user?.isAdmin || req.user?.isSuperAdmin);
@@ -3410,8 +3417,10 @@ router.get("/delivery/buyer/active", requireAuth, async (req, res): Promise<void
       driverUserId: deliveriesTable.driverUserId,
     })
     .from(deliveriesTable)
+    .leftJoin(transactionsTable, eq(deliveriesTable.transactionId, transactionsTable.id))
     .where(and(
       eq(deliveriesTable.buyerId, userId),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
       sql`${deliveriesTable.status} IN ('waiting', 'accepted', 'picked_up', 'on_the_way')`,
     ))
     .orderBy(desc(deliveriesTable.createdAt))

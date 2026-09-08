@@ -401,8 +401,10 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             <button
               type="button"
               onClick={handleSkip}
-              onTouchEnd={e => { e.preventDefault(); handleSkip(e); }}
-              className="bg-white text-black rounded-full px-5 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all"
+              onPointerUp={handleSkip}
+              onTouchEnd={handleSkip}
+              className="relative z-10 bg-white text-black rounded-full px-5 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all"
+              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
               data-testid="button-boost-skip"
             >
               {t("boostAd.skip")} <X className="h-4 w-4" />

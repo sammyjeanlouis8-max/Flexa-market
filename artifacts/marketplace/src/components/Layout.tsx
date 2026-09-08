@@ -432,7 +432,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
               <p className={`text-xs font-bold uppercase tracking-wider px-2 mb-1 ${section.highlight ? "text-primary" : "text-muted-foreground font-semibold"}`}>
                 {section.heading}
               </p>
-              <div className="space-y-0.5">
+              <div className="grid grid-cols-2 gap-1">
                 {section.items.map((item, idx) => {
                   if (item.kind === "promo") {
                     const totalBal = (item.balance ?? 0) + (item.realBalance ?? 0);
@@ -441,7 +441,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key="promo-account"
                         type="button"
                         onClick={() => go(item.href)}
-                        className="w-full text-left rounded-xl overflow-hidden relative active:scale-[0.98] transition-transform"
+                        className="col-span-2 w-full text-left rounded-xl overflow-hidden relative active:scale-[0.98] transition-transform"
                         style={{
                           background: "linear-gradient(120deg, #ca8a04 0%, #d97706 28%, #f59e0b 55%, #fbbf24 78%, #fde68a 100%)",
                           boxShadow: "0 4px 18px 0 rgba(202,138,4,0.60), inset 0 1px 0 rgba(255,255,255,0.45)",
@@ -478,7 +478,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key="loan-apply"
                         type="button"
                         onClick={() => go(item.href)}
-                        className="w-full text-left rounded-2xl overflow-hidden relative group"
+                        className="col-span-2 w-full text-left rounded-2xl overflow-hidden relative group"
                         style={{
                           background: "linear-gradient(135deg, #7c3aed22 0%, #6d28d922 40%, #4f46e522 100%)",
                           border: "1px solid #7c3aed44",
@@ -516,7 +516,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative w-full overflow-hidden rounded-xl px-3 py-3 text-left text-white shadow-md active:scale-[0.98] transition-transform ${
+                        className={`relative w-full min-w-0 overflow-hidden rounded-xl px-2 py-2.5 text-left text-white shadow-md active:scale-[0.98] transition-transform ${
                           isAvailable
                             ? "bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 shadow-emerald-500/30"
                             : "bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 shadow-orange-500/30"
@@ -524,14 +524,13 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         data-testid={isAvailable ? "drawer-deliveries-available" : "drawer-driver-application"}
                       >
                         <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
-                        <div className="relative z-10 flex items-center gap-3">
-                          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/15 ring-1 ring-white/30">
-                            <item.icon className="h-5 w-5" />
-                            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-white ring-2 ring-white/40 motion-safe:animate-ping" />
+                        <div className="relative z-10 flex min-w-0 items-center gap-2">
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/15 ring-1 ring-white/30">
+                            <item.icon className="h-4 w-4" />
+                            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-white ring-2 ring-white/40 motion-safe:animate-ping" />
                           </div>
-                          <span className="flex-1 text-sm font-black">{item.label}</span>
-                          <Sparkles className="h-4 w-4 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
-                          <ChevronRight className="h-4 w-4 text-white/80" />
+                          <span className="min-w-0 flex-1 truncate text-xs font-black">{item.label}</span>
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
                         </div>
                       </button>
                     );
@@ -543,7 +542,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative mx-auto h-8 w-1/2 min-w-[190px] max-w-[240px] overflow-hidden rounded-lg px-3 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
+                        className={`relative h-8 w-full min-w-0 overflow-hidden rounded-lg px-2 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
                           isOrders
                             ? "bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 shadow-blue-500/30"
                             : "bg-gradient-to-r from-fuchsia-600 via-pink-500 to-rose-500 shadow-pink-500/30"
@@ -556,7 +555,6 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                             <item.icon className="h-3.5 w-3.5" />
                           </div>
                           <span className="flex-1 text-xs font-black leading-none">{item.label}</span>
-                          <Sparkles className="h-3 w-3 text-white/90 motion-safe:animate-pulse" aria-hidden="true" />
                           <ChevronRight className="h-3 w-3 text-white/80" />
                         </div>
                       </button>
@@ -564,7 +562,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                   }
                   if (item.kind === "lang") {
                     return (
-                      <div key="lang-item">
+                      <div key="lang-item" className="col-span-2">
                         {/* Language toggle row */}
                         <button
                           type="button"
@@ -614,7 +612,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                       key={item.href ?? idx}
                       type="button"
                       onClick={() => go(item.href!)}
-                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-left ${
+                      className={`w-full min-w-0 flex items-center gap-2 px-2 py-2.5 rounded-xl transition-colors text-left ${
                         isHighlightItem
                           ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                           : "hover:bg-accent"
@@ -622,7 +620,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
                       data-testid={item.href === "/videos" ? "drawer-promo-videos" : undefined}
                     >
                       <item.icon className={`h-5 w-5 shrink-0 ${isHighlightItem ? "" : "text-muted-foreground"}`} />
-                      <span className={`flex-1 text-sm ${isHighlightItem ? "font-bold" : "font-medium"}`}>{item.label}</span>
+                      <span className={`min-w-0 flex-1 truncate text-xs ${isHighlightItem ? "font-bold" : "font-medium"}`}>{item.label}</span>
                       <ChevronRight className={`h-4 w-4 ${isHighlightItem ? "text-primary-foreground/70" : "text-muted-foreground/50"}`} />
                     </button>
                   );

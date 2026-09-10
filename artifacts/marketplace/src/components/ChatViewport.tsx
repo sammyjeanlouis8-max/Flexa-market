@@ -22,6 +22,7 @@ export function ChatViewport({ children, background }: { children: ReactNode; ba
     if (!mobile) return;
     const viewport = window.visualViewport;
     let frame = 0;
+    const settleTimers: ReturnType<typeof setTimeout>[] = [];
     const update = () => {
       const element = ref.current;
       if (!element) return;
@@ -36,17 +37,42 @@ export function ChatViewport({ children, background }: { children: ReactNode; ba
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(update);
     };
+    // WKWebView can report pre-transition geometry at mount/focus and finish
+    // adjusting its native insets without another visualViewport event.
+    // Re-read for a bounded settling period; never focus or scroll the page
+    // ourselves, and never keep a polling loop running in the background.
+    const settle = () => {
+      settleTimers.forEach(clearTimeout);
+      settleTimers.length = 0;
+      schedule();
+      for (const delay of [100, 300, 600]) {
+        settleTimers.push(setTimeout(schedule, delay));
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") settle();
+    };
     update();
+    settle();
     viewport?.addEventListener("resize", schedule);
     viewport?.addEventListener("scroll", schedule);
     window.addEventListener("resize", schedule);
-    window.addEventListener("pageshow", schedule);
+    window.addEventListener("pageshow", settle);
+    window.addEventListener("orientationchange", settle);
+    document.addEventListener("focusin", settle);
+    document.addEventListener("focusout", settle);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelAnimationFrame(frame);
+      settleTimers.forEach(clearTimeout);
       viewport?.removeEventListener("resize", schedule);
       viewport?.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
-      window.removeEventListener("pageshow", schedule);
+      window.removeEventListener("pageshow", settle);
+      window.removeEventListener("orientationchange", settle);
+      document.removeEventListener("focusin", settle);
+      document.removeEventListener("focusout", settle);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [mobile]);
 

@@ -267,6 +267,29 @@ function prewarmBundle() {
 // Replit wipes node_modules content on restart; recreate minimal stubs so
 // Expo's plugin resolver does not crash before Metro even starts.
 // ---------------------------------------------------------------------------
+function repairExpoPackageLink() {
+  const fs = require("fs");
+  const path = require("path");
+  const localExpo = path.join(__dirname, "..", "node_modules", "expo");
+  const workspaceExpo = path.resolve(__dirname, "../../../node_modules/expo");
+  const requiredFile = "bundledNativeModules.json";
+
+  try {
+    if (fs.existsSync(path.join(localExpo, requiredFile))) return;
+    if (!fs.existsSync(path.join(workspaceExpo, requiredFile))) {
+      console.warn("[dev-start] Workspace Expo package is incomplete; cannot repair local stub");
+      return;
+    }
+
+    fs.rmSync(localExpo, { recursive: true, force: true });
+    const relativeTarget = path.relative(path.dirname(localExpo), workspaceExpo);
+    fs.symlinkSync(relativeTarget, localExpo, "dir");
+    console.log("[dev-start] Repaired artifact-local Expo package link");
+  } catch (error) {
+    console.warn("[dev-start] Could not repair Expo package link:", error.message);
+  }
+}
+
 function fixBrokenPlugins() {
   const fs = require("fs");
   const path = require("path");
@@ -278,6 +301,36 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
   const INDEX_STUB = "// stub — pnpm virtual store entry missing\nmodule.exports = {};\n";
 
   const nodeModulesDir = path.join(__dirname, "..", "node_modules");
+  const workspaceNodeModules = path.resolve(__dirname, "../../../node_modules");
+  const pnpmStore = path.join(workspaceNodeModules, ".pnpm");
+
+  function isHollowPackage(packageDir) {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8"));
+      if (manifest.version === "1.0.0") return true;
+      const entry = path.join(packageDir, "index.js");
+      return fs.existsSync(entry) && fs.readFileSync(entry, "utf8").includes("stub — pnpm virtual store entry missing");
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function findWorkspacePackage(packageName) {
+    const direct = path.join(workspaceNodeModules, packageName);
+    try {
+      if (!isHollowPackage(direct)) return fs.realpathSync(direct);
+    } catch (_) {}
+
+    try {
+      for (const storeEntry of fs.readdirSync(pnpmStore)) {
+        const candidate = path.join(pnpmStore, storeEntry, "node_modules", packageName);
+        if (!fs.existsSync(candidate) || isHollowPackage(candidate)) continue;
+        const manifest = JSON.parse(fs.readFileSync(path.join(candidate, "package.json"), "utf8"));
+        if (manifest.name === packageName) return fs.realpathSync(candidate);
+      }
+    } catch (_) {}
+    return null;
+  }
 
   let allDeps = [];
   try {
@@ -294,6 +347,19 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
       try { lstat = fs.lstatSync(symlinkPath); } catch (_) {}
 
       let realDir = null;
+
+      const localIsBroken = !lstat || isHollowPackage(symlinkPath);
+      if (localIsBroken) {
+        const workspacePackage = findWorkspacePackage(pkg);
+        if (workspacePackage) {
+          fs.rmSync(symlinkPath, { recursive: true, force: true });
+          fs.mkdirSync(path.dirname(symlinkPath), { recursive: true });
+          const relativeTarget = path.relative(path.dirname(symlinkPath), workspacePackage);
+          fs.symlinkSync(relativeTarget, symlinkPath, "dir");
+          fixed++;
+          continue;
+        }
+      }
 
       if (!lstat) {
         // No entry at all — create a real directory as stub
@@ -335,7 +401,38 @@ module.exports = createRunOncePlugin(withPlugin, "stub", "1.0.0");
     }
   }
 
-  if (fixed > 0) console.log(`[dev-start] Fixed ${fixed} broken package stubs`);
+  if (fixed > 0) console.log(`[dev-start] Fixed ${fixed} broken package links/stubs`);
+}
+
+// Expo CLI evaluates tsconfig before Metro starts. Replit may restore the
+// artifact-local TypeScript package as an empty compatibility stub even though
+// the workspace's real TypeScript package is intact. Point that stub at the
+// real compiler so Expo receives ts.sys.getCurrentDirectory and the rest of
+// the compiler API instead of an empty object.
+function repairTypeScriptStub() {
+  const fs = require("fs");
+  const path = require("path");
+  const localIndex = path.join(__dirname, "..", "node_modules", "typescript", "index.js");
+
+  try {
+    delete require.cache[require.resolve(localIndex)];
+    const localTypeScript = require(localIndex);
+    if (typeof localTypeScript?.sys?.getCurrentDirectory === "function") return;
+  } catch (_) {}
+
+  try {
+    const workspaceRoot = path.resolve(__dirname, "../../..");
+    const realTypeScript = require.resolve("typescript", { paths: [workspaceRoot] });
+    let relativeTarget = path.relative(path.dirname(localIndex), realTypeScript).replace(/\\/g, "/");
+    if (!relativeTarget.startsWith(".")) relativeTarget = `./${relativeTarget}`;
+    fs.writeFileSync(
+      localIndex,
+      `// Replit compatibility shim — generated by scripts/dev-start.js\nmodule.exports = require(${JSON.stringify(relativeTarget)});\n`,
+    );
+    console.log("[dev-start] Repaired artifact-local TypeScript stub");
+  } catch (error) {
+    console.warn("[dev-start] Could not repair TypeScript stub:", error.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +513,8 @@ function startMetro() {
 server.listen(PORT, () => {
   console.log(`[dev-start] Proxy ready on :${PORT} → Metro :${METRO_PORT}`);
   console.log(`[dev-start] Health check: /status → {"status":"packager-status:running"}`);
+  repairExpoPackageLink();
   fixBrokenPlugins();
+  repairTypeScriptStub();
   startMetro();
 });

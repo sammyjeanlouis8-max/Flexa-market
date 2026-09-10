@@ -260,8 +260,8 @@ export default function App() {
           mediaPlaybackRequiresUserAction={false}
           allowsFullscreenVideo
           setSupportMultipleWindows={false}
-          originWhitelist={["*"]}
-          mixedContentMode="always"
+          originWhitelist={["https://*"]}
+          mixedContentMode="never"
           cacheEnabled
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}

@@ -236,8 +236,6 @@ export default function HomeTab() {
         javaScriptEnabled
         domStorageEnabled
         thirdPartyCookiesEnabled
-        allowUniversalAccessFromFileURLs
-        allowFileAccessFromFileURLs
         injectedJavaScript={INIT_SCRIPT}
         injectedJavaScriptBeforeContentLoaded={INIT_SCRIPT}
         applicationNameForUserAgent="FlexaMarket/1.0 Safari/605.1.15"
@@ -246,8 +244,8 @@ export default function HomeTab() {
         allowsFullscreenVideo
         allowsBackForwardNavigationGestures={Platform.OS === "ios"}
         setSupportMultipleWindows={false}
-        originWhitelist={["*"]}
-        mixedContentMode="always"
+        originWhitelist={["https://*"]}
+        mixedContentMode="never"
         cacheEnabled
         startInLoadingState
         keyboardDisplayRequiresUserAction={false}

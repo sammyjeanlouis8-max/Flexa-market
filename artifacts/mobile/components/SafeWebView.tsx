@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  Linking,
   PermissionsAndroid,
   Platform,
   Pressable,
@@ -194,6 +195,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         allowsFullscreenVideo
         allowsBackgroundMediaPlayback
         mediaPlaybackRequiresUserAction={false}
+        originWhitelist={['https://*']}
+        mixedContentMode='never'
         overScrollMode='never'
         userAgent={
           Platform.OS === 'android'
@@ -218,6 +221,7 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
             }
           } catch {}
           if (isInternal(url)) return true;
+          Linking.openURL(url).catch(() => {});
           return false;
         }}
         onOpenWindow={(syntheticEvent) => {

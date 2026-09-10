@@ -16,6 +16,17 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
+// expo-notifications depends on @ide/backoff, whose tiny runtime imports
+// Node's built-in "assert". React Native has no Node standard library, so map
+// that one import to a browser-safe assertion function.
+const assertShim = path.resolve(projectRoot, "shims/assert.js");
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "assert") {
+    return { type: "sourceFile", filePath: assertShim };
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 // Belt-and-suspenders: block .local from ever being resolved/bundled.
 config.resolver.blockList = [
   /\/\.local\/.*/,

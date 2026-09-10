@@ -733,12 +733,18 @@ const AudioBubble = React.memo(function AudioBubble({
 function PendingVoiceBubble({
   item,
   theme,
+  isSending,
+  onRetry,
 }: {
   item: PendingVoiceMessage;
   theme: (typeof T)[ChatTheme];
+  isSending: boolean;
+  onRetry: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [src, setSrc] = useState("");
+  const failed = !!item.lastError && !isSending;
+  const statusLabel = t(isSending ? "messages.voiceSending" : failed ? "messages.voiceNotSent" : "messages.voiceWaiting");
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(new Blob([item.bytes], { type: item.mimeType }));
@@ -771,14 +777,28 @@ function PendingVoiceBubble({
             timestamp={formatMsgDateTime(new Date(item.createdAt).toISOString(), i18n.language, t)}
             statusIcon={(
               <span
-                title={t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}
+                title={statusLabel}
+                aria-label={statusLabel}
+                role="status"
                 style={{ fontSize: 13, lineHeight: 1, color: theme.timeOut }}
               >
-                ◷
+                {isSending ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 12, height: 12 }} /> : failed ? "!" : "◷"}
               </span>
             )}
             isListened={false}
           />
+        )}
+        {failed && (
+          <button type="button" onClick={onRetry}
+            aria-label={`${t("messages.voiceNotSent")}. ${t("messages.voiceRetry")}`}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "flex-end",
+              width: "100%", minHeight: 36, padding: "2px 10px 7px",
+              border: "none", background: "transparent", cursor: "pointer",
+              color: theme.isDark ? "#FCA5A5" : "#991B1B", fontSize: 11, fontWeight: 600,
+            }}>
+            {t("messages.voiceNotSent")} · {t("messages.voiceRetry")}
+          </button>
         )}
       </div>
     </div>
@@ -1225,7 +1245,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingSecs, setRecordingSecs] = useState(0);
   const [voiceFinalizing, setVoiceFinalizing] = useState(false);
-  const [pendingVoiceCount, setPendingVoiceCount] = useState(0);
+  const [sendingVoiceId, setSendingVoiceId] = useState<string | null>(null);
   const [pendingVoices, setPendingVoices] = useState<PendingVoiceMessage[]>([]);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
@@ -1254,7 +1274,6 @@ function MessageThread({ convId, theme, onToggleTheme }: {
     return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
   }, [showEmojiPanel]);
   const voiceQueueBusyRef = useRef(false);
-  const voiceQueueLastNoticeRef = useRef(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const recordingMeterRafRef = useRef<number | null>(null);
@@ -1595,7 +1614,6 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             const uploadMime = session.recordedMime.split(";")[0].trim();
             const queuedVoice = await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
             setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
-            setPendingVoiceCount(count => count + 1);
             setTimeout(() => scrollToBottom(true), 50);
             void flushPendingVoices();
           } catch {
@@ -1670,9 +1688,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       try {
         const pending = await listPendingVoices(convId);
         setPendingVoices(pending);
-        setPendingVoiceCount(pending.length);
         if (typeof navigator !== "undefined" && !navigator.onLine) return;
         for (const item of pending) {
+          setSendingVoiceId(item.id);
           try {
             let mediaUrl = item.mediaUrl;
             if (!mediaUrl) {
@@ -1685,18 +1703,16 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
             await removePendingVoice(item.id);
             setPendingVoices(current => current.filter(voice => voice.id !== item.id));
-            setPendingVoiceCount(count => Math.max(0, count - 1));
           } catch (error) {
-            await updatePendingVoice(item.id, {
+            const failure = {
               attempts: item.attempts + 1,
               lastError: error instanceof Error ? error.message : "Voice delivery failed",
-            }).catch(() => {});
-            if (Date.now() - voiceQueueLastNoticeRef.current > 60000) {
-              voiceQueueLastNoticeRef.current = Date.now();
-              toast({ title: t("messages.voiceUploadFailed"), description: t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon."), variant: "destructive" });
-            }
+            };
+            await updatePendingVoice(item.id, failure).catch(() => {});
+            setPendingVoices(current => current.map(voice => voice.id === item.id ? { ...voice, ...failure } : voice));
             break;
           } finally {
+            setSendingVoiceId(null);
             setUploading(false);
           }
         }
@@ -1705,7 +1721,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       } finally {
         voiceQueueBusyRef.current = false;
       }
-    }, [convId, isRestricted, sendQueuedVoice, t, toast]);
+    }, [convId, isRestricted, sendQueuedVoice]);
 
     useEffect(() => {
       const wakeQueue = () => { void flushPendingVoices(); };
@@ -1800,7 +1816,6 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         mimeType: contentType,
       });
       setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
-      setPendingVoiceCount(count => count + 1);
       setTimeout(() => scrollToBottom(true), 50);
       void flushPendingVoices();
     } catch {
@@ -2176,7 +2191,9 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             })}
             {pendingVoices.map((item, idx) => (
               <div key={item.id} style={{ marginTop: msgList.length === 0 && idx === 0 ? 0 : 4 }}>
-                <PendingVoiceBubble item={item} theme={c} />
+                <PendingVoiceBubble item={item} theme={c}
+                  isSending={sendingVoiceId === item.id}
+                  onRetry={() => void flushPendingVoices()} />
               </div>
             ))}
 
@@ -2234,13 +2251,6 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
         <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
-
-        {pendingVoiceCount > 0 && !isRecording && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "5px 10px", marginBottom: 5, borderRadius: 10, background: c.isDark ? "rgba(165,180,252,0.12)" : "#FFF7ED", color: c.isDark ? "#E0E7FF" : "#9A3412", fontSize: 11, lineHeight: 1.3 }}>
-                <span style={{ minWidth: 0 }}>🎤 {t("messages.voiceQueued", "Voice la an sekirite; n ap eseye ankò lè koneksyon an bon.")}</span>
-                <button type="button" onClick={() => void flushPendingVoices()} style={{ flexShrink: 0, border: "none", background: "transparent", color: "inherit", fontWeight: 700, cursor: "pointer", padding: "3px 0" }}>{t("messages.retry", "Retry")}</button>
-              </div>
-          )}
 
             {isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>

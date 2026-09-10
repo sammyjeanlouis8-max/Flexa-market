@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useSocket } from "@/hooks/useSocket";
+import { ChatViewport } from "@/components/ChatViewport";
 import {
   listPendingVoices,
   removePendingVoice,
@@ -1910,7 +1911,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   })();
 
   return (
-    <div className="chat-fullscreen" style={{ display: "flex", flexDirection: "column", minHeight: 0, background: c.pageBg }}>
+    <ChatViewport background={c.pageBg}>
 
       {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
       <div className="chat-thread-header" style={{
@@ -2533,7 +2534,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       {mediaModal && (
         <MediaModal url={mediaModal.url} type={mediaModal.type} onClose={() => setMediaModal(null)} />
       )}
-    </div>
+    </ChatViewport>
   );
 }
 

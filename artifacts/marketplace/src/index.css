@@ -281,6 +281,15 @@ main {
     touch-action: pan-y;
   }
 
+  .chat-fullscreen.chat-visual-viewport {
+    top: var(--chat-visible-top, 0px);
+    bottom: auto;
+    height: var(--chat-visible-height, 100dvh) !important;
+    /* A transformed fixed layer can be clipped by WKWebView during resize. */
+    transform: none;
+    -webkit-transform: none;
+  }
+
   /*
    * Thread header — owns the top safe-area inset.
    * --sat is set by the iOS bootstrap script in index.html.

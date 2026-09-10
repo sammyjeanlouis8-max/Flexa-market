@@ -32,6 +32,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Conversation = {
   id: number; listingId?: number | null; listingTitle: string; listingImage?: string | null;
+  listingPrice?: number | null;
   otherUserId: number; otherUserName: string; otherUserAvatar?: string | null;
   lastMessage?: string | null; lastMessageAt?: string | null; unreadCount: number;
 };
@@ -1084,7 +1085,7 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
   const c = theme;
   const prefetchMessages = (conversationId: number) => {
     void queryClient.prefetchQuery(getGetMessagesQueryOptions(conversationId, {
-      query: { staleTime: 15_000 },
+      query: { queryKey: getGetMessagesQueryKey(conversationId), staleTime: 15_000 },
       request: { timeoutMs: 6_000 },
     }));
   };
@@ -1305,7 +1306,13 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   // Detect if night is active by checking pageBg
   const isDarkMode = c.isDark;
 
-  const { data: messages, isLoading, isError: messagesError, refetch: refetchMessages } = useGetMessages(convId, {
+  const {
+    data: messages,
+    isLoading,
+    isFetching: messagesFetching,
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useGetMessages(convId, {
     query: {
       enabled: !!user && !authLoading && Number.isInteger(convId),
       queryKey: getGetMessagesQueryKey(convId),
@@ -1368,14 +1375,17 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   }, [convId, queryClient, socket]);
 
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
-        queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
-      }
+    const refreshWhenAvailable = () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+      queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", refreshWhenAvailable);
+    window.addEventListener("online", refreshWhenAvailable);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenAvailable);
+      window.removeEventListener("online", refreshWhenAvailable);
+    };
   }, [queryClient, convId]);
 
   // ── Presence ──────────────────────────────────────────────────────────────
@@ -1918,7 +1928,6 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         <button
           type="button"
           onClick={() => window.history.back()}
-          onTouchEnd={e => { e.preventDefault(); window.history.back(); }}
           style={{
             width: 40, height: 40, borderRadius: "50%", background: "transparent",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -2105,14 +2114,46 @@ function MessageThread({ convId, theme, onToggleTheme }: {
           overscrollBehavior: "contain",
         } as React.CSSProperties}
       >
-        {isLoading && (
+        {isLoading && msgList.length === 0 && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
             <p style={{ color: c.listSub, fontSize: 14 }}>{t("messages.loading")}</p>
           </div>
         )}
-        {(isLoading || (messagesError && msgList.length === 0)) && (
+        {messagesError && msgList.length === 0 && !messagesFetching && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
-            <Loader2 style={{ width: 24, height: 24, color: c.emptyIcon, animation: "spin 1s linear infinite" }} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: 24, textAlign: "center" }}>
+              <MessageCircle style={{ width: 36, height: 36, color: c.emptyIcon }} />
+              <p style={{ color: c.listSub, fontSize: 14, margin: 0, maxWidth: 250 }}>
+                {t("messages.loadError", "Nou pa ka chaje mesaj yo kounye a.")}
+              </p>
+              <button
+                type="button"
+                onClick={() => void refetchMessages()}
+                disabled={messagesFetching}
+                style={{
+                  border: "none", borderRadius: 10, padding: "10px 18px",
+                  background: c.sendBg, color: "#fff", fontWeight: 700,
+                  cursor: messagesFetching ? "wait" : "pointer", opacity: messagesFetching ? 0.6 : 1,
+                }}
+              >
+                {t("messages.retry", "Eseye ankò")}
+              </button>
+            </div>
+          </div>
+        )}
+        {messagesError && msgList.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "6px 14px 0" }}>
+            <button
+              type="button"
+              onClick={() => void refetchMessages()}
+              disabled={messagesFetching}
+              style={{
+                border: "none", background: "transparent", color: c.listSub,
+                fontSize: 12, textDecoration: "underline", cursor: messagesFetching ? "wait" : "pointer",
+              }}
+            >
+              {t("messages.refresh", "Pwoblèm koneksyon — chaje ankò")}
+            </button>
           </div>
         )}
         {!isLoading && !messagesError && msgList.length === 0 && pendingVoices.length === 0 && (
@@ -2576,7 +2617,6 @@ export default function Messages() {
           <button
             type="button"
             onClick={() => window.location.href = "/"}
-            onTouchEnd={e => { e.preventDefault(); window.location.href = "/"; }}
             style={{
               width: 44, height: 44, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",

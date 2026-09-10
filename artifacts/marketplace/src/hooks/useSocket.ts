@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 
 let globalSocket: Socket | null = null;
@@ -29,7 +29,19 @@ export function useSocket() {
   useEffect(() => {
     const socket = getSocket();
     socketRef.current = socket;
-    return () => {};
+    const reconnect = () => {
+      if (!socket.connected) socket.connect();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") reconnect();
+    };
+
+    window.addEventListener("online", reconnect);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      window.removeEventListener("online", reconnect);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   // ── Marketplace conversation helpers ────────────────────────────────────────
@@ -248,7 +260,10 @@ export function useSocket() {
     [],
   );
 
-  return {
+  // Keep the hook result referentially stable. Consumers use this object in
+  // effect dependencies; returning a fresh object on every render repeatedly
+  // joined rooms, recreated listeners, and restarted presence polling.
+  return useMemo(() => ({
     // Marketplace conversations
     joinConv, leaveConv, emitTyping, emitStopTyping,
     onNewMessage, onAudioListened, onMsgDeleted, onTyping, onStopTyping,
@@ -264,5 +279,15 @@ export function useSocket() {
     joinDelivery, leaveDelivery, onDriverLocation, onDeliveryStatus, onAdminDriverUpdate,
     // Presence
     emitPresenceJoin, queryPresence, onPresenceStatus,
-  };
+  }), [
+    joinConv, leaveConv, emitTyping, emitStopTyping,
+    onNewMessage, onAudioListened, onMsgDeleted, onTyping, onStopTyping,
+    joinListing, leaveListing, onNewListingComment, onListingEngagement,
+    joinSupport, leaveSupport, joinSupportAdmin, leaveSupportAdmin,
+    emitSupportTyping, emitSupportStopTyping,
+    onSupportMessage, onSupportTyping, onSupportStopTyping,
+    onSupportUpdate, onNewSupportThread,
+    joinDelivery, leaveDelivery, onDriverLocation, onDeliveryStatus, onAdminDriverUpdate,
+    emitPresenceJoin, queryPresence, onPresenceStatus,
+  ]);
 }

@@ -304,22 +304,40 @@
          leave the layout viewport behind its bottom toolbar while scrolling. -->
     <script>
       (function () {
+        var inputFocused = false;
+
         function updateVisualViewportVars() {
           var vv = window.visualViewport;
           var layoutHeight = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
-          var bottomInset = vv
+          var rawBottomInset = vv
             ? Math.max(0, layoutHeight - vv.height - (vv.offsetTop || 0))
             : 0;
-           // Keep layout controls tied to the layout viewport. Safari's
-           // visualViewport width can briefly shrink while its toolbar or
-           // keyboard animates, which makes fixed navigation jump sideways.
-           var visualWidth = window.innerWidth || document.documentElement.clientWidth;
+          // Safari changes visualViewport.height while its browser toolbar
+          // expands/collapses. Treating that toolbar height as a CSS bottom
+          // offset makes the fixed navigation visibly jump. Only apply the
+          // offset for a real on-screen keyboard, where a focused text field
+          // and a large viewport reduction are both present.
+          var keyboardOpen = inputFocused && rawBottomInset > 120;
+          var bottomInset = keyboardOpen ? rawBottomInset : 0;
           document.documentElement.style.setProperty('--flexa-vv-bottom', Math.round(bottomInset) + 'px');
-          document.documentElement.style.setProperty('--flexa-vv-width', Math.round(visualWidth) + 'px');
+          // Keep width tied to the layout viewport. visualViewport.width can
+          // briefly shrink during Safari toolbar/keyboard animations.
+          var layoutWidth = document.documentElement.clientWidth || window.innerWidth || 0;
+          document.documentElement.style.setProperty('--flexa-vv-width', Math.round(layoutWidth) + 'px');
         }
 
         updateVisualViewportVars();
         window.addEventListener('resize', updateVisualViewportVars, { passive: true });
+        document.addEventListener('focusin', function (event) {
+          var target = event.target;
+          inputFocused = !!(target && target.matches &&
+            target.matches('input, textarea, select, [contenteditable="true"]'));
+          updateVisualViewportVars();
+        }, { passive: true });
+        document.addEventListener('focusout', function () {
+          inputFocused = false;
+          updateVisualViewportVars();
+        }, { passive: true });
         if (window.visualViewport) {
           window.visualViewport.addEventListener('resize', updateVisualViewportVars, { passive: true });
           window.visualViewport.addEventListener('scroll', updateVisualViewportVars, { passive: true });

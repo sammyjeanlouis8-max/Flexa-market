@@ -437,15 +437,19 @@ function MediaModal({ url, type, onClose }: { url: string; type: "image" | "vide
 }
 
 // ─── Audio Bubble ─────────────────────────────────────────────────────────────
-// Natural-sounding voice waveform heights (0–1 scale)
+// The live recording meter keeps its original density.
 const WAVE_BARS = [
   0.30,0.55,0.45,0.72,0.48,1.00,0.65,0.85,0.38,0.90,
   0.62,0.45,0.78,0.32,0.95,0.58,0.80,0.42,0.68,0.52,
   0.88,0.35,0.65,0.50,0.75,0.45,0.60,0.30,
 ];
-
-// Module-level singleton — only one audio plays at a time
+// Shared across voice bubbles so starting one pauses the previous recording.
 let _globalAudioEl: HTMLAudioElement | null = null;
+
+// Sub-sampled for playback compactness
+const VOICE_BARS = [
+  0.30,0.72,0.48,1.00,0.65,0.85,0.38,0.90,0.62,0.45,0.78,0.32,
+];
 
 const AudioBubble = React.memo(function AudioBubble({
   src, isMe, theme, timestamp, statusIcon, isListened, onListened,
@@ -469,7 +473,7 @@ const AudioBubble = React.memo(function AudioBubble({
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
   const [playbackError, setPlaybackError] = useState(false);
 
-  const N = WAVE_BARS.length;
+  const N = VOICE_BARS.length;
 
   // ── colours ──────────────────────────────────────────────────────────────
   const PLAYED_COLOR = isMe ? (theme.isDark ? "#86efac" : "#2a76d8") : "#2a76d8";
@@ -495,7 +499,7 @@ const AudioBubble = React.memo(function AudioBubble({
 
     // Move the progress dot
     if (dotRef.current) {
-      dotRef.current.style.left = `calc(${frac * 100}% - 5px)`;
+      dotRef.current.style.left = `calc(${frac * 100}% - 4px)`;
       dotRef.current.style.opacity = el.duration > 0 ? "1" : "0";
     }
 
@@ -576,7 +580,7 @@ const AudioBubble = React.memo(function AudioBubble({
     setFracSnap(0);
     // Reset all bars and dot
     barsRef.current.forEach(b => { if (b) b.style.background = IDLE_COLOR; });
-    if (dotRef.current) dotRef.current.style.left = "calc(0% - 5px)";
+    if (dotRef.current) dotRef.current.style.left = "calc(0% - 4px)";
     if (timeRef.current && audioRef.current) {
       const d = audioRef.current.duration;
       const m2 = Math.floor(d / 60); const s2 = Math.floor(d % 60);
@@ -606,7 +610,7 @@ const AudioBubble = React.memo(function AudioBubble({
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: "8px 12px 6px 8px", width: "100%", boxSizing: "border-box" }}>
+    <div style={{ padding: "4px 8px 4px 6px", width: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
       <audio
         ref={audioRef} src={src} preload="auto"
         onPlaying={handlePlay}
@@ -617,14 +621,14 @@ const AudioBubble = React.memo(function AudioBubble({
         onError={() => { setPlaying(false); setPlaybackError(true); stopRaf(); }}
       />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, height: 32 }}>
 
         {/* ── Play / Pause button — filled circle WhatsApp style ── */}
         <button
           type="button" onClick={toggle}
           aria-label={t(playing ? "messages.voicePause" : "messages.voicePlay")}
           style={{
-            flexShrink: 0, width: 44, height: 44, borderRadius: "50%",
+            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
             background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.1)" : "#ecf0e9"),
             border: "none", cursor: "pointer", padding: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -633,77 +637,70 @@ const AudioBubble = React.memo(function AudioBubble({
           }}
         >
           {playing ? (
-            <span style={{ display: "flex", gap: 3, alignItems: "center" }}>
-              <span style={{ width: 3.5, height: 13, borderRadius: 2, background: "currentColor", display: "block" }} />
-              <span style={{ width: 3.5, height: 13, borderRadius: 2, background: "currentColor", display: "block" }} />
+            <span style={{ display: "flex", gap: 2.5, alignItems: "center" }}>
+              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
+              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
             </span>
           ) : (
-            <svg width="13" height="15" viewBox="0 0 13 15" fill="currentColor" style={{ marginLeft: 2 }}>
+            <svg width="11" height="13" viewBox="0 0 13 15" fill="currentColor" style={{ marginLeft: 2 }}>
               <path d="M0 0 L13 7.5 L0 15 Z" />
             </svg>
           )}
         </button>
 
         {/* ── Waveform ── */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Bars row */}
-          <div style={{ position: "relative", height: 26 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 1.5, height: "100%", overflow: "hidden" }}>
-              {WAVE_BARS.map((h, i) => (
-                <div
-                  key={i}
-                  ref={el => { barsRef.current[i] = el; }}
-                  style={{
-                    flex: "1 1 0", minWidth: 2, borderRadius: 99,
-                    height: `${Math.round(h * 100)}%`,
-                    background: IDLE_COLOR,
-                    // No CSS transition — rAF handles color, transition would lag behind
-                  }}
-                />
-              ))}
-            </div>
-            {/* Progress dot */}
-            <div
-              ref={dotRef}
-              style={{
-                position: "absolute", top: "50%", transform: "translateY(-50%)",
-                left: "calc(0% - 5px)", opacity: 0,
-                width: 11, height: 11, borderRadius: "50%",
-                background: PLAYED_COLOR,
-                pointerEvents: "none",
-                boxShadow: `0 1px 4px ${PLAYED_COLOR}80`,
-              }}
-            />
+        <div style={{ flex: 1, minWidth: 24, position: "relative", height: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 1.5, height: "100%", overflow: "hidden" }}>
+            {VOICE_BARS.map((h, i) => (
+              <div
+                key={i}
+                ref={el => { barsRef.current[i] = el; }}
+                style={{
+                  flex: "1 1 0", minWidth: 1.5, borderRadius: 99,
+                  height: `${Math.round(h * 100)}%`,
+                  background: IDLE_COLOR,
+                  // No CSS transition — rAF handles color, transition would lag behind
+                }}
+              />
+            ))}
           </div>
+          {/* Progress dot */}
+          <div
+            ref={dotRef}
+            style={{
+              position: "absolute", top: "50%", transform: "translateY(-50%)",
+              left: "calc(0% - 4px)", opacity: 0,
+              width: 8, height: 8, borderRadius: "50%",
+              background: PLAYED_COLOR,
+              pointerEvents: "none",
+              boxShadow: `0 1px 3px ${PLAYED_COLOR}80`,
+            }}
+          />
+        </div>
 
-          {/* Time + metadata row */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <Mic style={{
-                width: 11, height: 11, flexShrink: 0,
-                color: micColor,
-                transition: "color 0.3s",
-              }} />
-              {/* rAF writes here directly; React only sets the initial value */}
-              <span
-                ref={timeRef}
-                style={{ fontSize: 10.5, color: timeColor, fontVariantNumeric: "tabular-nums", minWidth: 28 }}
-              >
-                {fmtSecs(duration)}
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <span style={{ fontSize: 10.5, color: timeColor, whiteSpace: "nowrap" }}>{timestamp}</span>
-              {statusIcon && (
-                <span style={{ display: "flex", alignItems: "center" }}>{statusIcon}</span>
-              )}
-            </div>
-          </div>
+        {/* Time + metadata inline */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <Mic style={{
+            width: 11, height: 11, flexShrink: 0,
+            color: micColor,
+            transition: "color 0.3s",
+          }} />
+          {/* rAF writes here directly; React only sets the initial value */}
+          <span
+            ref={timeRef}
+            style={{ fontSize: 10, color: timeColor, fontVariantNumeric: "tabular-nums", minWidth: 22 }}
+          >
+            {fmtSecs(duration)}
+          </span>
+          <span style={{ fontSize: 10, color: timeColor, whiteSpace: "nowrap" }}>{timestamp}</span>
+          {statusIcon && (
+            <span style={{ display: "flex", alignItems: "center" }}>{statusIcon}</span>
+          )}
         </div>
       </div>
       {playbackError && (
         <p style={{
-          margin: "5px 0 0 46px", fontSize: 11,
+          margin: "2px 0 0 38px", fontSize: 10,
           color: theme.isDark ? "#FCA5A5" : "#991B1B",
         }}>
           {t("messages.voicePlaybackError")}
@@ -742,10 +739,10 @@ function PendingVoiceBubble({
     >
       <div style={{ flex: 1 }} />
       <div style={{
-        width: "min(260px, 85%)",
-        maxWidth: "min(260px, 85%)",
+        width: "min(200px, 85%)",
+        maxWidth: "min(200px, 85%)",
         minWidth: 0,
-        borderRadius: "18px 18px 5px 18px",
+        borderRadius: "12px 12px 4px 12px",
         background: theme.bubbleOut,
         border: (theme as any).bubbleOutBorder ? `1px solid ${(theme as any).bubbleOutBorder}` : undefined,
         boxShadow: !theme.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
@@ -765,7 +762,7 @@ function PendingVoiceBubble({
                 role="status"
                 style={{ fontSize: 13, lineHeight: 1, color: theme.timeOut }}
               >
-                {isSending ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 12, height: 12 }} /> : failed ? "!" : "◷"}
+                {isSending ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 11, height: 11 }} /> : failed ? "!" : "◷"}
               </span>
             )}
             isListened={false}
@@ -824,22 +821,21 @@ function MsgBubble({
   const hasMedia = (mtype === "image" || mtype === "video") && !!mediaUrl;
   const hasText = !!msg.content;
 
-  // Mockup-approved radii: incoming = 18 18 18 5, outgoing = 18 18 5 18
-  // tail only on last message in group; otherwise keep full 18px corner
-  const TAIL = 5;
+  // Compact radii: incoming = 12 12 12 4, outgoing = 12 12 4 12
+  const TAIL = 4;
   const br = isMe
-    ? `18px 18px ${isLastInGroup ? TAIL : 18}px 18px`
-    : `18px 18px 18px ${isLastInGroup ? TAIL : 18}px`;
+    ? `12px 12px ${isLastInGroup ? TAIL : 12}px 12px`
+    : `12px 12px 12px ${isLastInGroup ? TAIL : 12}px`;
   const mediaBR = isMe
-    ? `18px 18px ${hasText ? 0 : (isLastInGroup ? TAIL : 18)}px ${hasText ? 0 : 18}px`
-    : `18px 18px ${hasText ? 0 : 18}px ${hasText ? 0 : (isLastInGroup ? TAIL : 18)}px`;
+    ? `12px 12px ${hasText ? 0 : (isLastInGroup ? TAIL : 12)}px ${hasText ? 0 : 12}px`
+    : `12px 12px ${hasText ? 0 : 12}px ${hasText ? 0 : (isLastInGroup ? TAIL : 12)}px`;
 
   const bubbleBg = isMe ? c.bubbleOut : c.bubbleIn;
   const bubbleBorder = (c as any)[isMe ? "bubbleOutBorder" : "bubbleInBorder"];
   const textColor = isMe ? c.textOut : c.textIn;
   const timeColor = isMe ? c.timeOut : c.timeIn;
   const mediaW = "min(200px, 72vw)";
-  const bubbleMaxW = isAudio ? "min(260px, 85%)" : hasMedia && !hasText ? mediaW : "79%";
+  const bubbleMaxW = isAudio ? "min(200px, 85%)" : hasMedia && !hasText ? mediaW : "79%";
 
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -885,7 +881,6 @@ function MsgBubble({
       style={{ display: "flex", alignItems: "flex-end", gap: 4, width: "100%", overflow: "hidden", position: "relative" }}
     >
       {isMe && <div style={{ flex: 1 }} />}
-      {!isMe && <div style={{ width: 24, flexShrink: 0 }} />}
 
       <div
         style={{
@@ -910,11 +905,11 @@ function MsgBubble({
       >
         {/* Admin badge */}
         {!isMe && msg.senderIsAdmin && (
-          <div style={{ padding: "6px 12px 2px", display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ padding: "4px 8px 0", display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{
-              fontSize: 10, fontWeight: 800, letterSpacing: 0.6, color: "#22D3EE",
-              background: "rgba(34,211,238,0.10)", borderRadius: 6, padding: "2px 7px",
-              border: "1px solid rgba(34,211,238,0.25)", display: "inline-flex", alignItems: "center", gap: 4,
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: "#22D3EE",
+              background: "rgba(34,211,238,0.10)", borderRadius: 4, padding: "1px 5px",
+              border: "1px solid rgba(34,211,238,0.25)", display: "inline-flex", alignItems: "center", gap: 3,
             }}>
               🛡 ADM-{String(msg.senderId).padStart(4, "0")}
             </span>
@@ -974,89 +969,125 @@ function MsgBubble({
 
         {/* Text */}
         {mtype === "text" && hasText && (
-          <>
-            <p style={{
-              margin: 0, padding: "10px 14px 4px",
-              fontSize: 15, lineHeight: 1.5, fontWeight: 400,
+          <div style={{ padding: "5px 6px 5px 8px" }}>
+            <div style={{
+              fontSize: 13, lineHeight: 1.35, fontWeight: 400,
               wordBreak: "break-word", whiteSpace: "pre-wrap",
-              color: textColor, letterSpacing: 0.1,
+              color: textColor,
             }}>
               {translation && !showOriginal ? translation.translatedText : msg.content}
-            </p>
+              {isMe && (
+                <span style={{ float: "right", display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 4, transform: "translateY(2px)" }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </span>
+              )}
+            </div>
 
             {/* Translation controls — only for received text messages */}
             {!isMe && (
-              <div style={{ padding: "2px 14px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
-                {translation ? (
-                  <>
-                    {/* "Translated from X" badge */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: textColor, opacity: 0.5 }}>
-                      <Globe size={10} />
-                      <span>{t("messages.translatedFrom", { lang: translation.detectedLanguage })}</span>
-                    </div>
-                    {/* Toggle original / translation */}
+              <div style={{ marginTop: 3, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {translation ? (
+                    <>
+                      {/* "Translated from X" badge */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9.5, color: textColor, opacity: 0.5 }}>
+                        <Globe size={9} />
+                        <span>{t("messages.translatedFrom", { lang: translation.detectedLanguage })}</span>
+                      </div>
+                      {/* Toggle original / translation */}
+                      <button
+                        type="button"
+                        onClick={() => setShowOriginal(s => !s)}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          color: textColor, opacity: 0.65, fontSize: 9.5,
+                          padding: 0, textAlign: "left",
+                          display: "inline-flex", alignItems: "center", gap: 3, width: "fit-content",
+                        }}
+                      >
+                        {showOriginal ? t("messages.showTranslation") : t("messages.showOriginal")}
+                      </button>
+                    </>
+                  ) : (
+                    /* Translate button */
                     <button
                       type="button"
-                      onClick={() => setShowOriginal(s => !s)}
+                      onClick={onTranslate}
+                      disabled={isTranslating}
                       style={{
-                        background: "none", border: "none", cursor: "pointer",
-                        color: textColor, opacity: 0.65, fontSize: 11,
+                        background: "none", border: "none",
+                        cursor: isTranslating ? "default" : "pointer",
+                        color: textColor, opacity: isTranslating ? 0.4 : 0.6, fontSize: 9.5,
                         padding: 0, textAlign: "left",
-                        display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content",
+                        display: "inline-flex", alignItems: "center", gap: 3, width: "fit-content",
                       }}
                     >
-                      {showOriginal ? t("messages.showTranslation") : t("messages.showOriginal")}
+                      {isTranslating ? (
+                        <>
+                          <Loader2 size={9} style={{ animation: "spin 1s linear infinite" }} />
+                          <span>{t("messages.translating")}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Globe size={9} />
+                          <span>{t("messages.translate")}</span>
+                        </>
+                      )}
                     </button>
-                  </>
-                ) : (
-                  /* Translate button */
-                  <button
-                    type="button"
-                    onClick={onTranslate}
-                    disabled={isTranslating}
-                    style={{
-                      background: "none", border: "none",
-                      cursor: isTranslating ? "default" : "pointer",
-                      color: textColor, opacity: isTranslating ? 0.4 : 0.6, fontSize: 11,
-                      padding: 0, textAlign: "left",
-                      display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content",
-                    }}
-                  >
-                    {isTranslating ? (
-                      <>
-                        <Loader2 size={11} style={{ animation: "spin 1s linear infinite" }} />
-                        <span>{t("messages.translating")}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Globe size={11} />
-                        <span>{t("messages.translate")}</span>
-                      </>
-                    )}
-                  </button>
-                )}
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </div>
               </div>
             )}
-          </>
+            {isMe && <div style={{ clear: "both" }} />}
+          </div>
         )}
         {mtype !== "text" && hasText && (
-          <p style={{
-            margin: 0, padding: "4px 12px 2px",
-            fontSize: 12, lineHeight: 1.4,
-            wordBreak: "break-word", color: textColor, opacity: 0.85,
-          }}>
-            {msg.content}
-          </p>
+          <div style={{ padding: "4px 8px 5px" }}>
+            <p style={{
+              margin: 0, fontSize: 13, lineHeight: 1.35,
+              wordBreak: "break-word", color: textColor, opacity: 0.9,
+            }}>
+              {msg.content}
+              {isMe && (
+                <span style={{ float: "right", display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 4, transform: "translateY(2px)" }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </span>
+              )}
+            </p>
+            {isMe && <div style={{ clear: "both" }} />}
+            {!isMe && (
+               <div style={{ marginTop: 2, display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                     <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                       {formatChatTime(msg.createdAt, i18n.language)}
+                     </span>
+                     {StatusIcon}
+                  </div>
+               </div>
+            )}
+          </div>
         )}
 
-        {/* Timestamp + status (hidden for audio — AudioBubble renders its own) */}
-        {!isAudio && (
+        {/* Timestamp + status (hidden for audio and text — they render their own) */}
+        {!isAudio && !hasText && (
           <div style={{
+            position: "absolute", bottom: 4, right: 6,
             display: "flex", alignItems: "center", gap: 3,
-            justifyContent: "flex-end",
-            padding: "2px 10px 7px",
+            background: "rgba(0,0,0,0.4)", borderRadius: 10, padding: "2px 6px"
           }}>
-            <span style={{ fontSize: 11, color: timeColor, letterSpacing: 0.1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+            <span style={{ fontSize: 9.5, color: "#fff", letterSpacing: 0.1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
               {formatChatTime(msg.createdAt, i18n.language)}
             </span>
             {StatusIcon}
@@ -2162,7 +2193,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
               return (
                 <React.Fragment key={entry.key}>
                   {startsDay && <ChatDateDivider createdAt={entry.createdAt} isDark={c.isDark} />}
-                  <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 10 : 3 }}>
+                  <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 8 : 2 }}>
                     {entry.kind === "pending" ? (
                       <PendingVoiceBubble item={entry.item} theme={c}
                         isSending={sendingVoiceId === entry.item.id}

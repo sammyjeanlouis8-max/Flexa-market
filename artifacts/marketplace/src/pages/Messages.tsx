@@ -22,6 +22,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useSocket } from "@/hooks/useSocket";
 import { ChatViewport } from "@/components/ChatViewport";
+import { ChatDateDivider } from "@/components/ChatDateDivider";
+import { buildChatTimeline, formatChatTime, sameChatGroup } from "@/lib/chatTimeline";
 import {
   listPendingVoices,
   removePendingVoice,
@@ -199,29 +201,6 @@ function conversationTime(iso: string | null | undefined, language: string, t: T
     if (parts.dayDiff === 1) return t("messages.timeYesterday");
     if (parts.dayDiff < 7) return t("messages.timeDays", { n: parts.dayDiff });
     return new Intl.DateTimeFormat(localeFor(language), { day: "2-digit", month: "short" }).format(parts.date);
-  } catch { return ""; }
-}
-
-function formatMsgDateTime(iso: string | null | undefined, language: string, t: Translate): string {
-  if (!iso) return "";
-  try {
-    const parts = dateParts(iso);
-    if (!parts) return "";
-    if (parts.ageMs < 60_000) return t("messages.timeNow");
-    const time = new Intl.DateTimeFormat(localeFor(language), {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(parts.date);
-    if (parts.dayDiff === 0) return `${t("messages.timeToday")}, ${time}`;
-    if (parts.dayDiff === 1) return `${t("messages.timeYesterday")}, ${time}`;
-    if (parts.dayDiff < 7) return `${t("messages.timeDays", { n: parts.dayDiff })}, ${time}`;
-    return new Intl.DateTimeFormat(localeFor(language), {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(parts.date);
   } catch { return ""; }
 }
 
@@ -460,9 +439,9 @@ function MediaModal({ url, type, onClose }: { url: string; type: "image" | "vide
 // ─── Audio Bubble ─────────────────────────────────────────────────────────────
 // Natural-sounding voice waveform heights (0–1 scale)
 const WAVE_BARS = [
-  0.30,0.72,0.48,1.00,0.55,0.85,0.38,0.90,0.62,0.45,
-  0.78,0.32,0.95,0.58,0.80,0.42,0.68,0.52,0.88,0.35,
-  0.65,0.50,
+  0.30,0.55,0.45,0.72,0.48,1.00,0.65,0.85,0.38,0.90,
+  0.62,0.45,0.78,0.32,0.95,0.58,0.80,0.42,0.68,0.52,
+  0.88,0.35,0.65,0.50,0.75,0.45,0.60,0.30,
 ];
 
 // Module-level singleton — only one audio plays at a time
@@ -475,6 +454,7 @@ const AudioBubble = React.memo(function AudioBubble({
   timestamp: string; statusIcon: React.ReactNode;
   isListened: boolean; onListened?: () => void;
 }) {
+  const { t } = useTranslation();
   const audioRef     = useRef<HTMLAudioElement>(null);
   const rafRef       = useRef<number | null>(null);
   const playingRef   = useRef(false);                       // used inside rAF loop
@@ -492,11 +472,11 @@ const AudioBubble = React.memo(function AudioBubble({
   const N = WAVE_BARS.length;
 
   // ── colours ──────────────────────────────────────────────────────────────
-  const PLAYED_COLOR = "#33AAFF";
-  // Outgoing audio is now on mint-green (#dff3d4), so use dark-green bars; incoming stays neutral
-  const IDLE_COLOR   = isMe ? "#75a76c" : "rgba(0,0,0,0.18)";
-  const iconColor    = isMe ? "#243a31" : theme.textIn;
+  const PLAYED_COLOR = isMe ? (theme.isDark ? "#86efac" : "#2a76d8") : "#2a76d8";
+  const IDLE_COLOR   = isMe ? (theme.isDark ? "rgba(255,255,255,0.35)" : "#95c389") : (theme.isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.18)");
+  const iconColor    = isMe ? (theme.isDark ? "#ffffff" : "#243a31") : theme.textIn;
   const timeColor    = isMe ? theme.timeOut : theme.timeIn;
+  const micColor     = isMe ? (isListened ? PLAYED_COLOR : (theme.isDark ? "rgba(255,255,255,0.5)" : "rgba(36,58,49,0.5)")) : (theme.isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)");
 
   // ── direct-DOM waveform update at 60 fps ─────────────────────────────────
   const paintFrame = useCallback(() => {
@@ -626,7 +606,7 @@ const AudioBubble = React.memo(function AudioBubble({
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: "8px 10px 6px", width: "100%", boxSizing: "border-box" }}>
+    <div style={{ padding: "8px 12px 6px 8px", width: "100%", boxSizing: "border-box" }}>
       <audio
         ref={audioRef} src={src} preload="auto"
         onPlaying={handlePlay}
@@ -642,9 +622,10 @@ const AudioBubble = React.memo(function AudioBubble({
         {/* ── Play / Pause button — filled circle WhatsApp style ── */}
         <button
           type="button" onClick={toggle}
+          aria-label={t(playing ? "messages.voicePause" : "messages.voicePlay")}
           style={{
-            flexShrink: 0, width: 36, height: 36, borderRadius: "50%",
-            background: isMe ? "#c8e6bb" : "#ecf0e9",
+            flexShrink: 0, width: 44, height: 44, borderRadius: "50%",
+            background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.1)" : "#ecf0e9"),
             border: "none", cursor: "pointer", padding: 0,
             display: "flex", alignItems: "center", justifyContent: "center",
             color: iconColor, transition: "background 0.15s",
@@ -666,14 +647,14 @@ const AudioBubble = React.memo(function AudioBubble({
         {/* ── Waveform ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Bars row */}
-          <div style={{ position: "relative", height: 28 }}>
+          <div style={{ position: "relative", height: 26 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 1.5, height: "100%", overflow: "hidden" }}>
               {WAVE_BARS.map((h, i) => (
                 <div
                   key={i}
                   ref={el => { barsRef.current[i] = el; }}
                   style={{
-                    width: 3, flexShrink: 0, borderRadius: 99,
+                    flex: "1 1 0", minWidth: 2, borderRadius: 99,
                     height: `${Math.round(h * 100)}%`,
                     background: IDLE_COLOR,
                     // No CSS transition — rAF handles color, transition would lag behind
@@ -690,30 +671,32 @@ const AudioBubble = React.memo(function AudioBubble({
                 width: 11, height: 11, borderRadius: "50%",
                 background: PLAYED_COLOR,
                 pointerEvents: "none",
-                boxShadow: "0 1px 4px rgba(51,170,255,0.5)",
+                boxShadow: `0 1px 4px ${PLAYED_COLOR}80`,
               }}
             />
           </div>
 
           {/* Time + metadata row */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 3 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <Mic style={{
                 width: 11, height: 11, flexShrink: 0,
-                color: isMe ? (isListened ? PLAYED_COLOR : "rgba(255,255,255,0.50)") : "rgba(0,0,0,0.30)",
+                color: micColor,
                 transition: "color 0.3s",
               }} />
               {/* rAF writes here directly; React only sets the initial value */}
               <span
                 ref={timeRef}
-                style={{ fontSize: 11, color: timeColor, fontVariantNumeric: "tabular-nums", minWidth: 28 }}
+                style={{ fontSize: 10.5, color: timeColor, fontVariantNumeric: "tabular-nums", minWidth: 28 }}
               >
                 {fmtSecs(duration)}
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              <span style={{ fontSize: 11, color: timeColor }}>{timestamp}</span>
-              {statusIcon}
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 10.5, color: timeColor, whiteSpace: "nowrap" }}>{timestamp}</span>
+              {statusIcon && (
+                <span style={{ display: "flex", alignItems: "center" }}>{statusIcon}</span>
+              )}
             </div>
           </div>
         </div>
@@ -721,9 +704,9 @@ const AudioBubble = React.memo(function AudioBubble({
       {playbackError && (
         <p style={{
           margin: "5px 0 0 46px", fontSize: 11,
-          color: isMe ? "rgba(255,255,255,0.88)" : "#B91C1C",
+          color: theme.isDark ? "#FCA5A5" : "#991B1B",
         }}>
-          Odyo a pa ka jwe. Peze ankò.
+          {t("messages.voicePlaybackError")}
         </p>
       )}
     </div>
@@ -759,8 +742,8 @@ function PendingVoiceBubble({
     >
       <div style={{ flex: 1 }} />
       <div style={{
-        width: "min(220px, 79%)",
-        maxWidth: "min(220px, 79%)",
+        width: "min(260px, 85%)",
+        maxWidth: "min(260px, 85%)",
         minWidth: 0,
         borderRadius: "18px 18px 5px 18px",
         background: theme.bubbleOut,
@@ -774,7 +757,7 @@ function PendingVoiceBubble({
             src={src}
             isMe
             theme={theme}
-            timestamp={formatMsgDateTime(new Date(item.createdAt).toISOString(), i18n.language, t)}
+            timestamp={formatChatTime(item.createdAt, i18n.language)}
             statusIcon={(
               <span
                 title={statusLabel}
@@ -829,7 +812,7 @@ function MsgBubble({
     return (
       <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "2px 8px" }}>
         <span style={{ fontSize: 12, color: theme.timeOut, fontStyle: "italic", opacity: 0.55 }}>
-          {t("messages.deletedMessage")} · {formatMsgDateTime(msg.createdAt, i18n.language, t)}
+          {t("messages.deletedMessage")} · {formatChatTime(msg.createdAt, i18n.language)}
         </span>
       </div>
     );
@@ -856,7 +839,7 @@ function MsgBubble({
   const textColor = isMe ? c.textOut : c.textIn;
   const timeColor = isMe ? c.timeOut : c.timeIn;
   const mediaW = "min(200px, 72vw)";
-  const bubbleMaxW = isAudio ? "min(220px, 79%)" : hasMedia && !hasText ? mediaW : "79%";
+  const bubbleMaxW = isAudio ? "min(260px, 85%)" : hasMedia && !hasText ? mediaW : "79%";
 
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -982,7 +965,7 @@ function MsgBubble({
         {mtype === "audio" && mediaUrl && (
           <AudioBubble
             src={mediaUrl} isMe={isMe} theme={c}
-            timestamp={formatMsgDateTime(msg.createdAt, i18n.language, t)}
+            timestamp={formatChatTime(msg.createdAt, i18n.language)}
             statusIcon={StatusIcon}
             isListened={msg.isListened}
             onListened={() => onAudioListened?.(msg.id)}
@@ -1070,11 +1053,11 @@ function MsgBubble({
         {!isAudio && (
           <div style={{
             display: "flex", alignItems: "center", gap: 3,
-            justifyContent: isMe ? "flex-end" : "flex-start",
+            justifyContent: "flex-end",
             padding: "2px 10px 7px",
           }}>
-            <span style={{ fontSize: 11, color: timeColor, letterSpacing: 0.1 }}>
-              {formatMsgDateTime(msg.createdAt, i18n.language, t)}
+            <span style={{ fontSize: 11, color: timeColor, letterSpacing: 0.1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+              {formatChatTime(msg.createdAt, i18n.language)}
             </span>
             {StatusIcon}
           </div>
@@ -1837,10 +1820,15 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   }, [stopRecordingMeter]);
 
   const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
+  const timeline = buildChatTimeline(msgList, pendingVoices);
   // Find the last message sent by me (for status icon)
   let lastSentByMeId: number | null = null;
-  for (let i = msgList.length - 1; i >= 0; i--) {
-    if (msgList[i].senderId === user?.id) { lastSentByMeId = msgList[i].id; break; }
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i];
+    if (entry.kind === "message" && Number(entry.item.senderId) === Number(user?.id)) {
+      lastSentByMeId = entry.item.id;
+      break;
+    }
   }
 
   // Auto-translate all incoming text messages to match the user's app language
@@ -2164,38 +2152,39 @@ function MessageThread({ convId, theme, onToggleTheme }: {
         {(msgList.length > 0 || pendingVoices.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", padding: "18px 14px 12px", maxWidth: 680, margin: "0 auto", boxSizing: "border-box", overflowX: "hidden" }}>
             <div style={{ flex: 1 }} />
-            {msgList.map((msg, idx) => {
-              const isMe = Number(msg.senderId) === Number(user?.id);
-              const prev = msgList[idx - 1];
-              const next = msgList[idx + 1];
-              const isFirstInGroup = !prev || prev.senderId !== msg.senderId;
-              const isLastInGroup = !next || next.senderId !== msg.senderId;
-              const isLastSentByMe = msg.id === lastSentByMeId;
+            {timeline.map((entry, idx) => {
+              const prev = timeline[idx - 1];
+              const next = timeline[idx + 1];
+              const startsDay = entry.day != null && entry.day !== prev?.day;
+              const isFirstInGroup = !sameChatGroup(prev, entry, Number(user?.id));
+              const isLastInGroup = !sameChatGroup(entry, next, Number(user?.id));
 
               return (
-                <div key={msg.id} style={{ marginTop: idx === 0 ? 0 : isFirstInGroup ? 12 : 4 }}>
-                  <MsgBubble
-                    msg={msg} isMe={isMe}
-                    isLastInGroup={isLastInGroup}
-                    isLastSentByMe={isLastSentByMe}
-                    onMediaTap={(url, type) => setMediaModal({ url, type })}
-                    theme={theme}
-                    onAudioListened={handleAudioListened}
-                    onDeleteMsg={handleDeleteMsg}
-                    translation={translations.get(msg.id) ?? null}
-                    isTranslating={translatingIds.has(msg.id)}
-                    onTranslate={() => translateMessage(msg.id)}
-                  />
-                </div>
+                <React.Fragment key={entry.key}>
+                  {startsDay && <ChatDateDivider createdAt={entry.createdAt} isDark={c.isDark} />}
+                  <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 10 : 3 }}>
+                    {entry.kind === "pending" ? (
+                      <PendingVoiceBubble item={entry.item} theme={c}
+                        isSending={sendingVoiceId === entry.item.id}
+                        onRetry={() => void flushPendingVoices()} />
+                    ) : (
+                      <MsgBubble
+                        msg={entry.item} isMe={Number(entry.item.senderId) === Number(user?.id)}
+                        isLastInGroup={isLastInGroup}
+                        isLastSentByMe={entry.item.id === lastSentByMeId}
+                        onMediaTap={(url, type) => setMediaModal({ url, type })}
+                        theme={theme}
+                        onAudioListened={handleAudioListened}
+                        onDeleteMsg={handleDeleteMsg}
+                        translation={translations.get(entry.item.id) ?? null}
+                        isTranslating={translatingIds.has(entry.item.id)}
+                        onTranslate={() => translateMessage(entry.item.id)}
+                      />
+                    )}
+                  </div>
+                </React.Fragment>
               );
             })}
-            {pendingVoices.map((item, idx) => (
-              <div key={item.id} style={{ marginTop: msgList.length === 0 && idx === 0 ? 0 : 4 }}>
-                <PendingVoiceBubble item={item} theme={c}
-                  isSending={sendingVoiceId === item.id}
-                  onRetry={() => void flushPendingVoices()} />
-              </div>
-            ))}
 
             {/* Typing indicator — warm ivory bubble */}
             {typingOther && (

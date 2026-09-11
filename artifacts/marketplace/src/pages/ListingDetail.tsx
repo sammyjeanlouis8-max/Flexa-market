@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
 import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon } from "lucide-react";
@@ -1756,14 +1757,14 @@ export default function ListingDetail() {
             when the buy bar could appear so the layout never shifts when the
             buy dialog opens / closes (removing it caused the page to jump) */}
         {!isOwner && listing.status === "available" && (
-          <div className="h-24" />
+          <div className="h-[calc(6rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
         )}
 
       </div>
 
-      {/* ══════════ STICKY BOTTOM BUY BAR (Temu-style) ══════════ */}
-      {!isOwner && listing.status === "available" && !buyNowOpen && (
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-background border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.10)] flex items-center gap-2.5 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
+      {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
+        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-background border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.10)] flex items-center gap-2.5 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
 
           {/* Add to Cart */}
           {user && user.id !== listing.sellerId && (() => {
@@ -1813,7 +1814,8 @@ export default function ListingDetail() {
               <span className="text-[10px] font-semibold opacity-90">{formatPrice(listing.price, country, (listing as any).currency)}</span>
             </div>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Offer Dialog */}

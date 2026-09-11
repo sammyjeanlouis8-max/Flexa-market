@@ -30,7 +30,7 @@ const faqs: FAQItem[] = [
   { id: "promo", category: "Pòtfèy", question: "Kisa balans pwomos ye?", answer: "Balans pwomos se kredi ou jwenn via referans oswa bonifikasyon achte. Ou pa ka retire yo dirèkteman, men ou ka itilize yo pou boost pwodwi. Pou chak $20 ou depanse nan reyèl pou boost, $1 pwomos deblouke." },
   // Boost
   { id: "boost", category: "Boost", question: "Kijan pou boost yon pwodwi?", answer: "Ale nan pwodwi ou → 'Boost pwodwi sa'. Chwazi plan (durée, budget, audience). Peye via pòtfèy ou oswa kat kredi. Boost aktive imedyatman apre peman konfime." },
-  { id: "video", category: "Boost", question: "Kijan pou kreye yon videyo promo?", answer: "Nan pwosesis boost la, ou ka uploade yon videyo (max 3 minit). Videyo a ap parèt nan feed 'Vidéos promotionnelles' a. Format sipòte: MP4, MOV, AVI." },
+  { id: "video", category: "Boost", question: "Kijan pou kreye yon videyo promo?", answer: "Nan pwosesis boost la, ou ka uploade yon videyo (max 5 minit). Videyo a ap parèt nan feed 'Vidéos promotionnelles' a. Format sipòte: MP4, MOV, AVI." },
   { id: "boost-debug", category: "Boost", question: "Boost mwen pa parèt nan feed la?", answer: "Verifye: 1) Peman konfime? 2) Boost toujou aktif (pa ekspire)? 3) Tande kòd peyi audience ou a. Si tout bon, videyo feed la filtre pa peyi — yon visitè ki nan peyi cib la pral wè li." },
 ];
 

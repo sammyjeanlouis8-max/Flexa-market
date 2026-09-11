@@ -453,7 +453,7 @@ export default function Sell() {
   const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
-  const MAX_VIDEO_SECONDS = 180;
+  const MAX_VIDEO_SECONDS = 300;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024; // 300 MB — matches server cap
 
   // Subscription plan check — user.subscriptionPlan comes from the API (all DB fields returned)

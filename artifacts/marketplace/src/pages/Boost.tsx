@@ -238,7 +238,7 @@ export default function BoostPage() {
   const [budget, setBudget]             = useState<number>(5.00);
   const [estimatedReach, setEstimatedReach] = useState<number | null>(null);
 
-  // Optional ≤30s promo video. Stored as the publicly-fetchable URL we'll
+  // Optional ≤5 minute promo video. Stored as the publicly-fetchable URL we'll
   // pass to /boost/initiate. Validation happens client-side via a hidden
   // <video> element that decodes metadata to read .duration.
   const [videoUrl, setVideoUrl]         = useState<string | null>(null);
@@ -250,7 +250,7 @@ export default function BoostPage() {
   const [abvUploadPercent, setAbvUploadPercent] = useState(0);
   const [abvSuccess, setAbvSuccess]     = useState(false);
   const abvFileInputRef                 = useRef<HTMLInputElement | null>(null);
-  const MAX_VIDEO_SECONDS = 180;
+  const MAX_VIDEO_SECONDS = 300;
   const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
 
   const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve) => {
@@ -292,6 +292,7 @@ export default function BoostPage() {
         if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
         if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
         if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
+        if (code === "VIDEO_DURATION_EXCEEDED") return "boost.videoTooLong";
         if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
         if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID") return "boost.videoUploadIncomplete";
         if (code === "VIDEO_PROCESSING_TIMEOUT") return "boost.videoProcessingTimeout";
@@ -705,6 +706,11 @@ export default function BoostPage() {
         toast({ title: t("boost.videoTooBig"), variant: "destructive" });
         return;
       }
+      const seconds = await probeVideoDuration(file);
+      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+        toast({ title: t("boost.videoTooLong"), variant: "destructive" });
+        return;
+      }
       setAbvUploading(true);
       setAbvUploadPercent(0);
       try {
@@ -737,6 +743,7 @@ export default function BoostPage() {
           if (["UPLOAD_SESSION_EXPIRED", "UPLOAD_SESSION_NOT_FOUND"].includes(code)) return "boost.videoUploadExpired";
           if (["UPLOAD_NETWORK_ERROR", "UPLOAD_STATUS_UNAVAILABLE"].includes(code)) return "boost.videoUploadNetwork";
           if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code)) return "boost.videoConversionFailed";
+          if (code === "VIDEO_DURATION_EXCEEDED") return "boost.videoTooLong";
           if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
           return "boost.videoUploadRetry";
         })();
@@ -964,7 +971,7 @@ export default function BoostPage() {
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                {t("boost.videoHelp", { defaultValue: "Max 1 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
+                {t("boost.videoHelp", { defaultValue: "Max 5 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
               </p>
               <Button
                 type="button"
@@ -1768,7 +1775,7 @@ export default function BoostPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                {t("boost.videoHelp", { defaultValue: "Max 1 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
+                {t("boost.videoHelp", { defaultValue: "Max 5 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
               </p>
               {videoUrl ? (
                 <div className="flex items-center justify-between gap-3 bg-muted rounded-xl px-3 py-2.5">

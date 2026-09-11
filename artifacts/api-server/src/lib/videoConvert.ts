@@ -20,6 +20,16 @@ const PASSTHROUGH_VIDEO_MIMES = new Set(["video/mp4", "video/x-m4v"]);
 const FFMPEG_THREADS = Math.max(1, Math.min(2, Number(process.env["VIDEO_FFMPEG_THREADS"] ?? 2) || 2));
 const MAX_OUTPUT_EDGE_PX = 1280;
 
+export class VideoDurationExceededError extends Error {
+  constructor(
+    public readonly durationSeconds: number,
+    public readonly maxSeconds: number,
+  ) {
+    super(`Video duration ${durationSeconds.toFixed(2)}s exceeds the ${maxSeconds}s limit`);
+    this.name = "VideoDurationExceededError";
+  }
+}
+
 export function needsVideoConversion(mime: string): boolean {
   const base = mime.split(";")[0].trim().toLowerCase();
   return base.startsWith("video/") && !PASSTHROUGH_VIDEO_MIMES.has(base);
@@ -46,6 +56,28 @@ async function inputHasAudio(inputPath: string, signal?: AbortSignal): Promise<b
     inputPath,
   ], { maxBuffer: 1024 * 1024, timeout: 60_000, signal });
   return stdout.trim().length > 0;
+}
+
+export async function assertVideoDurationAtMost(
+  inputPath: string,
+  maxSeconds: number,
+  signal?: AbortSignal,
+): Promise<number> {
+  const ffprobe = process.env["FFPROBE_PATH"] ?? "ffprobe";
+  const { stdout } = await execFileAsync(ffprobe, [
+    "-v", "error",
+    "-show_entries", "format=duration",
+    "-of", "default=noprint_wrappers=1:nokey=1",
+    inputPath,
+  ], { maxBuffer: 1024 * 1024, timeout: 60_000, signal });
+  const durationSeconds = Number.parseFloat(stdout.trim());
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw new Error("Video duration could not be read");
+  }
+  if (durationSeconds > maxSeconds + 0.5) {
+    throw new VideoDurationExceededError(durationSeconds, maxSeconds);
+  }
+  return durationSeconds;
 }
 
 /**

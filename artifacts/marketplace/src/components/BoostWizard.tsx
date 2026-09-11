@@ -29,7 +29,7 @@ interface UserListing { id: number; title: string; price: number; images: string
 interface Category { id: number; name: string; }
 interface Props { open: boolean; onClose: () => void; }
 
-const MAX_VIDEO_SECONDS = 180;
+const MAX_VIDEO_SECONDS = 300;
 const MAX_VIDEO_BYTES = 300 * 1024 * 1024; // matches Wasabi/server normalization cap
 const MIN_BUDGET = 5;
 const MAX_BUDGET = 500;
@@ -263,17 +263,16 @@ export default function BoostWizard({ open, onClose }: Props) {
     setUploadPercent(0);
 
     try {
-      const secsPromise = probeVideoDuration(file);
-      // Every Boost video, regardless of file size or filename, goes through
-      // server-side H.264/AAC normalization before the Wasabi URL is returned.
-      const [secs, objectPathResult] = await Promise.all([secsPromise, chunkedUpload(file)]);
+      const secs = await probeVideoDuration(file);
       if (Number.isFinite(secs) && secs > MAX_VIDEO_SECONDS + 0.5) {
         toast({ title: t("boostWizard.errorVideoTooLong"), variant: "destructive" });
         setVideoObjectUrl(null);
         URL.revokeObjectURL(localUrl);
         return;
       }
-
+      // Every Boost video, regardless of file size or filename, goes through
+      // server-side H.264/AAC normalization before the Wasabi URL is returned.
+      const objectPathResult = await chunkedUpload(file);
       setVideoUrl(objectPathResult);
     } catch (err: any) {
       if (err?.message !== "abort") {
@@ -288,6 +287,8 @@ export default function BoostWizard({ open, onClose }: Props) {
             return t("boost.videoUploadNetwork", { defaultValue: "Erreur réseau. Vérifiez votre connexion et réessayez." });
           if (["VIDEO_TYPE_UNSUPPORTED", "VIDEO_CONVERSION_FAILED"].includes(code))
             return t("boost.videoConversionFailed", { defaultValue: "Format vidéo non supporté. Utilisez MP4 ou MOV." });
+          if (code === "VIDEO_DURATION_EXCEEDED")
+            return t("boost.videoTooLong", { defaultValue: "Video must be 5 minutes or shorter." });
           if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code))
             return t("boost.videoStorageFailed", { defaultValue: "Stockage vidéo indisponible. Réessayez dans quelques secondes." });
           if (code === "UPLOAD_INCOMPLETE" || code === "CHUNK_SIZE_INVALID")

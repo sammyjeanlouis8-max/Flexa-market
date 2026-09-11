@@ -20,7 +20,11 @@ import {
   streamToWasabi,
   validateMimeType,
 } from "../lib/s3";
-import { convertVideoFileToH264 } from "../lib/videoConvert";
+import {
+  assertVideoDurationAtMost,
+  convertVideoFileToH264,
+  VideoDurationExceededError,
+} from "../lib/videoConvert";
 import { createVideoAssetProof } from "../lib/boostVideoAsset";
 import {
   claimBoostVideoProcessing,
@@ -250,6 +254,7 @@ const PROCESSING_RECOVERY_INTERVAL_MS = 60 * 1000;
 const PROCESSING_RECOVERY_SCAN_LIMIT = 24;
 const MAX_CONCURRENT_VIDEO_NORMALIZATIONS = 2;
 const MAX_QUEUED_VIDEO_NORMALIZATIONS = 24;
+const MAX_MARKETPLACE_VIDEO_SECONDS = 5 * 60;
 const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
@@ -322,7 +327,7 @@ async function processChunkUpload(
   const sourcePath = join(processingDir, "source.upload");
   const normalizedPath = join(processingDir, "normalized.mp4");
   mkdirSync(processingDir, { recursive: false });
-  let stage: "assembly" | "conversion" | "storage" = "assembly";
+  let stage: "assembly" | "validation" | "conversion" | "storage" = "assembly";
   let finalKey: string | null = null;
   let leaseLost = false;
   let heartbeatInFlight = false;
@@ -395,6 +400,14 @@ async function processChunkUpload(
     }
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
 
+    stage = "validation";
+    const durationSeconds = await assertVideoDurationAtMost(
+      sourcePath,
+      MAX_MARKETPLACE_VIDEO_SECONDS,
+      conversionAbort.signal,
+    );
+    if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
+
     stage = "conversion";
     await convertVideoFileToH264(sourcePath, normalizedPath, {
       signal: conversionAbort.signal,
@@ -426,7 +439,7 @@ async function processChunkUpload(
       });
     }
     log.info(
-      { uploadId, sourceBytes: session.totalBytes, normalizedBytes, key: finalKey, ownerId: session.ownerId },
+      { uploadId, sourceBytes: session.totalBytes, normalizedBytes, durationSeconds, key: finalKey, ownerId: session.ownerId },
       "Boost video normalized and uploaded to Wasabi",
     );
   } catch (error) {
@@ -435,12 +448,16 @@ async function processChunkUpload(
       log.warn({ uploadId, ownerId: session.ownerId }, "Boost video processor stopped after losing its lease");
       return;
     }
-    const errorCode = stage === "conversion"
+    const errorCode = error instanceof VideoDurationExceededError
+      ? "VIDEO_DURATION_EXCEEDED"
+      : stage === "conversion" || stage === "validation"
       ? "VIDEO_CONVERSION_FAILED"
       : stage === "storage"
         ? "VIDEO_STORAGE_FAILED"
         : "UPLOAD_ASSEMBLY_FAILED";
-    const errorMessage = errorCode === "VIDEO_CONVERSION_FAILED"
+    const errorMessage = errorCode === "VIDEO_DURATION_EXCEEDED"
+      ? "Video must be 5 minutes or shorter."
+      : errorCode === "VIDEO_CONVERSION_FAILED"
       ? "This video could not be converted. Try exporting it as MP4 or MOV."
       : errorCode === "VIDEO_STORAGE_FAILED"
         ? "The video could not be saved. Please retry."

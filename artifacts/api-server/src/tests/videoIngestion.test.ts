@@ -338,6 +338,18 @@ describe("Boost video ingestion", () => {
       body: Buffer.from("abc"),
     });
     expect(firstChunk.status).toBe(204);
+    const progress = await fetch(`${baseUrl}/api/storage/uploads/chunk-status/${uploadId}`, {
+      headers: { "x-test-user": "42" },
+    });
+    expect(progress.status).toBe(200);
+    expect(await progress.json()).toMatchObject({
+      receivedChunks: 1,
+      receivedChunkIndices: [0],
+      receivedBytes: 3,
+      totalChunks: 1,
+      totalBytes: 3,
+      expiresAt: expect.any(String),
+    });
 
     const duplicateChunk = await fetch(`${baseUrl}/api/storage/uploads/chunk/${uploadId}/0`, {
       method: "PUT",
@@ -388,13 +400,9 @@ describe("Boost video ingestion", () => {
     });
     expect(chunkResponse.status).toBe(204);
 
-    const finalizeResponse = await fetch(`${baseUrl}/api/storage/uploads/chunk-finalize/${uploadId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-test-user": "42" },
-      body: "{}",
-    });
-    expect(finalizeResponse.status).toBe(202);
-
+    // No finalize request: the last verified durable chunk starts the bounded
+    // normalizer automatically. Clients may still POST finalize as an
+    // idempotent compatibility step.
     let completedUrl = "";
     for (let attempt = 0; attempt < 100; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -402,10 +410,17 @@ describe("Boost video ingestion", () => {
         headers: { "x-test-user": "42" },
       });
       expect(statusResponse.status).toBe(200);
-      const status = await statusResponse.json() as { status: string; url?: string; error?: string };
+      const status = await statusResponse.json() as {
+        status: string; url?: string; objectPath?: string; error?: string;
+        receivedChunks: number; receivedChunkIndices: number[]; totalBytes: number;
+      };
       if (status.status === "failed") throw new Error(status.error);
       if (status.status === "complete" && status.url) {
         completedUrl = status.url;
+        expect(status.objectPath).toBe(status.url);
+        expect(status.receivedChunks).toBe(1);
+        expect(status.receivedChunkIndices).toEqual([0]);
+        expect(status.totalBytes).toBe(hevcMov.byteLength);
         break;
       }
     }

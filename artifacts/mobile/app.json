@@ -67,7 +67,9 @@
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
       ],
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
@@ -89,7 +91,8 @@
           "defaultChannel": "default",
           "sounds": []
         }
-      ]
+      ],
+      "./modules/flexa-background-upload/app.plugin.js"
     ],
     "experiments": {},
     "extra": {

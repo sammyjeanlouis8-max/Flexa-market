@@ -8,8 +8,10 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { MAX_BOOST_VIDEO_BYTES, uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
+import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
+import { startVideoUpload } from "@/lib/videoUploadQueue";
 import BoostWizard from "@/components/BoostWizard";
+import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import {
   AlertDialog,
@@ -108,7 +110,7 @@ export default function MyBoosts() {
     const file = e.target.files?.[0];
     e.target.value = "";
     const boost = pendingBoostRef.current;
-    if (!file || !boost || !token) return;
+    if (!file || !boost || !token || !user) return;
     if (file.size > MAX_BOOST_VIDEO_BYTES) {
       toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Videyo a twò gwo" }), variant: "destructive" });
       return;
@@ -116,7 +118,10 @@ export default function MyBoosts() {
 
     setUploadingBoostId(boost.boostId);
     try {
-      const videoUrl = await uploadNormalizedBoostVideo(file, token);
+      const videoUrl = await startVideoUpload(file, token, {
+        ownerId: user.id,
+        purpose: "boost",
+      });
       const res = await fetch(`/api/boost/${boost.boostId}/video`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -161,6 +166,29 @@ export default function MyBoosts() {
   }, [token]);
 
   useEffect(() => { fetchBoosts(); }, [fetchBoosts]);
+
+  const handleUseCompletedVideo = async (boost: ActiveBoost, videoUrl: string) => {
+    if (!token) return;
+    setUploadingBoostId(boost.boostId);
+    try {
+      const res = await fetch(`/api/boost/${boost.boostId}/video`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ videoUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.error ?? t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
+        return;
+      }
+      toast({ title: t("myBoosts.videoAdded", { defaultValue: "Videyo ajoute ✓" }) });
+      fetchBoosts();
+    } catch {
+      toast({ title: t("myBoosts.videoUploadFailed", { defaultValue: "Echèk telechajman videyo" }), variant: "destructive" });
+    } finally {
+      setUploadingBoostId(null);
+    }
+  };
 
   const handleWizardClose = () => {
     try { sessionStorage.removeItem("bw_open_mb"); } catch { /* ok */ }
@@ -434,6 +462,11 @@ export default function MyBoosts() {
                         </button>
                       )}
                     </div>
+                    <VideoUploadChooser
+                      purpose="boost"
+                      onUse={(videoUrl) => void handleUseCompletedVideo(boost, videoUrl)}
+                      className="mx-3 mb-3"
+                    />
 
                     {/* Refund estimate hint */}
                     {!boost.isExpired && refundEst > 0 && (

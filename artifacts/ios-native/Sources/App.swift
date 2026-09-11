@@ -46,4 +46,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         Beacon.send("apns-register-failed", String(describing: error).prefix(200).description)
         print("[Push] Failed: \(error)")
     }
+
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        guard identifier == "com.flexamarket.mobile.background-uploads-v1" else {
+            completionHandler()
+            return
+        }
+        BackgroundUploadManager.shared.setBackgroundEventsCompletion(completionHandler)
+    }
 }

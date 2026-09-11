@@ -20,4 +20,9 @@ describe("English recovery copy across app languages", () => {
     });
     expect(locale.page.retry).toBe("Réessayer");
   });
+  it("preserves array-valued translations", () => {
+    const localized = { steps: ["Profil", "Documents"], retry: "Réessayer" };
+    expect(withEnglishRetryCopy(localized, { steps: ["Profile", "Documents"], retry: "Try again" }))
+      .toEqual({ steps: ["Profil", "Documents"], retry: "Try again" });
+  });
 });

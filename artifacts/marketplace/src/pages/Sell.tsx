@@ -21,8 +21,10 @@ import { MULTI_CURRENCY_COUNTRIES, getCurrencySymbolByCode } from "@/lib/currenc
 import { cn } from "@/lib/utils";
 import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
 import ListingCard from "@/components/ListingCard";
+import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { startVideoUpload } from "@/lib/videoUploadQueue";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -77,7 +79,7 @@ function getStorageUrl(objectPath: string): string {
 
 export default function Sell() {
   const purchasesDisabled = isAndroidApp();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const { isRestricted, showRestrictionToast } = useRestriction();
   const isAdmin = !!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin;
   const [, setLocation] = useLocation();
@@ -448,7 +450,6 @@ export default function Sell() {
   }, [form]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Video upload ──────────────────────────────────────────────────────────
-  const { uploadFile: uploadVideoFile } = useUpload();
   const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -491,12 +492,17 @@ export default function Sell() {
     }
     setVideoUploading(true);
     try {
-      const result = await uploadVideoFile(file);
-      if (!result) {
+      if (!user) {
         toast({ title: t("sell.videoUploadFailed"), variant: "destructive" });
         return;
       }
-      setListingVideoUrl(result.objectPath);
+      const uploadedUrl = await startVideoUpload(file, token, {
+        ownerId: user.id,
+        purpose: "listing",
+      });
+      setListingVideoUrl(uploadedUrl);
+    } catch {
+      toast({ title: t("sell.videoUploadFailed"), variant: "destructive" });
     } finally {
       setVideoUploading(false);
     }
@@ -1058,6 +1064,7 @@ export default function Sell() {
                     )}
                   </Button>
                 )}
+                <VideoUploadChooser purpose="listing" onUse={setListingVideoUrl} />
               </>
             ) : (
               <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20">

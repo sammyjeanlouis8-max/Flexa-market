@@ -6,7 +6,7 @@ import {
   type BoostVideoUpload,
   type BoostVideoUploadChunk,
 } from "@workspace/db";
-import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 
 export type BoostVideoUploadStatus = "uploading" | "processing" | "complete" | "failed" | "deleting";
 
@@ -87,6 +87,38 @@ export async function getBoostVideoUploadChunks(uploadId: string): Promise<Boost
     .from(boostVideoUploadChunksTable)
     .where(eq(boostVideoUploadChunksTable.uploadId, uploadId))
     .orderBy(asc(boostVideoUploadChunksTable.chunkIndex));
+}
+
+/**
+ * Finds a small, durable recovery work set. Callers must still verify the
+ * chunk manifest and atomically claim the lease before starting ffmpeg.
+ * In particular, an `uploading` session is not assumed complete.
+ */
+export async function listBoostVideoUploadsForRecovery(
+  staleBefore: Date,
+  limit: number,
+): Promise<BoostVideoUpload[]> {
+  const safeLimit = Math.max(1, Math.min(50, Math.floor(limit)));
+  return db
+    .select()
+    .from(boostVideoUploadsTable)
+    .where(and(
+      gt(boostVideoUploadsTable.expiresAt, new Date()),
+      or(
+        eq(boostVideoUploadsTable.status, "uploading"),
+        and(
+          eq(boostVideoUploadsTable.status, "processing"),
+          or(
+            isNull(boostVideoUploadsTable.processingHeartbeatAt),
+            lt(boostVideoUploadsTable.processingHeartbeatAt, staleBefore),
+          ),
+        ),
+      ),
+    ))
+    // Recent uploads are most likely to have just completed while this
+    // instance was unavailable; the bounded periodic scan reaches older ones.
+    .orderBy(desc(boostVideoUploadsTable.updatedAt), asc(boostVideoUploadsTable.id))
+    .limit(safeLimit);
 }
 
 export async function claimBoostVideoProcessing(

@@ -5,15 +5,12 @@
  * 1. Push token registration (FCM/APNs) — injected into WebView on load.
  * 2. Cold-start navigation — notification URL captured before WebView loads,
  *    injected in onLoadEnd (fixes the double-tap bug).
- * 3. Background keepalive — when the app goes to background, a periodic
- *    heartbeat is injected into the WebView every 25 s to keep the
- *    socket.io connection alive (Android kills idle WebViews aggressively).
+ * 3. Durable background uploads — trusted WebView requests are handed to a
+ *    native WorkManager foreground worker after their file has been staged.
  */
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import {
   ActivityIndicator,
-  AppState,
-  AppStateStatus,
   BackHandler,
   Image,
   Linking,
@@ -33,11 +30,13 @@ import {
   isTrustedFlexaUrl,
   platformBridgeScript,
 } from "./security/webviewPolicy";
+import {
+  dispatchFlexaUpload,
+  hasNativeBackgroundUploads,
+  parseFlexaUploadMessage,
+} from "./native/backgroundUploads";
 
 const WEBSITE = "https://flexamarket.com";
-
-// Heartbeat interval while app is in background (ms).
-const BACKGROUND_HEARTBEAT_MS = 25_000;
 
 /** Register an Expo push token directly from native (bypasses WebView timing). */
 async function registerPushTokenDirect(token: string, jwt: string): Promise<void> {
@@ -74,7 +73,6 @@ export default function App() {
   }, []);
   useEffect(() => clearErrorTimer, [clearErrorTimer]);
   const currentUrlRef = useRef(WEBSITE);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
   const jwtRef = useRef<string | null>(null);
@@ -99,44 +97,6 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // ── Background keepalive ───────────────────────────────────────────────
-  // When the user switches away from the app, start injecting a heartbeat
-  // script every BACKGROUND_HEARTBEAT_MS. The script calls the website's
-  // socket keepalive function (if it exists) so the connection stays open.
-  // Stop the heartbeat when the app returns to foreground.
-  useEffect(() => {
-    const handleAppState = (nextState: AppStateStatus) => {
-      if (nextState === "background") {
-        if (heartbeatRef.current) return; // already running
-        heartbeatRef.current = setInterval(() => {
-          if (!webRef.current || !isTrustedFlexaUrl(currentUrlRef.current)) return;
-          webRef.current.injectJavaScript(
-            `(function(){` +
-              // Ping socket.io if present
-              `try{if(window.__socket&&window.__socket.connected)window.__socket.emit("heartbeat");}catch(e){}` +
-              // Fallback: hit the health endpoint silently so the OS sees network activity
-              `try{fetch("/api/health",{method:"GET",cache:"no-store"}).catch(function(){});}catch(e){}` +
-            `})();true;`
-          );
-        }, BACKGROUND_HEARTBEAT_MS);
-      } else if (nextState === "active") {
-        if (heartbeatRef.current) {
-          clearInterval(heartbeatRef.current);
-          heartbeatRef.current = null;
-        }
-      }
-    };
-
-    const sub = AppState.addEventListener("change", handleAppState);
-    return () => {
-      sub.remove();
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-    };
-  }, []);
-
   // ── Push token registration ────────────────────────────────────────────
   const injectJs = useCallback((script: string) => {
     if (webRef.current && isTrustedFlexaUrl(currentUrlRef.current)) {
@@ -156,7 +116,23 @@ export default function App() {
     },
   );
 
-  // ── onMessage: receive JWT + trigger direct token save ─────────────────
+  const emitUploadResult = useCallback((
+    requestId: string,
+    ok: boolean,
+    payload: Record<string, unknown> | string,
+  ) => {
+    // A response is injected only into the trusted top-level marketplace page.
+    // Upload credentials are deliberately never included in native responses.
+    if (!webRef.current || !isTrustedFlexaUrl(currentUrlRef.current)) return;
+    const detail = ok
+      ? { requestId, ok: true, data: payload }
+      : { requestId, ok: false, error: String(payload) };
+    webRef.current.injectJavaScript(
+      `window.dispatchEvent(new CustomEvent("flexa-upload-result",{detail:${JSON.stringify(detail)}}));true;`,
+    );
+  }, []);
+
+  // ── onMessage: receive JWT + native background-upload bridge ───────────
   // The marketplace sends { type: "AUTH_TOKEN", token: jwt } after the user
   // loads.  We store it and, if we already have an Expo push token, call the
   // registration API immediately — no WebView injection timing issues.
@@ -172,11 +148,21 @@ export default function App() {
         if (pushToken) {
           registerPushTokenDirect(pushToken, msg.token).catch(() => {});
         }
+        return;
       }
+
+      const uploadMessage = parseFlexaUploadMessage(event.nativeEvent.data);
+      if (!uploadMessage) return;
+      void dispatchFlexaUpload(uploadMessage)
+        .then((data) => emitUploadResult(uploadMessage.requestId, true, data))
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "Upload request failed";
+          emitUploadResult(uploadMessage.requestId, false, message);
+        });
     } catch {
       // not our message
     }
-  }, []);
+  }, [emitUploadResult]);
 
   // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
@@ -291,7 +277,10 @@ export default function App() {
           applicationNameForUserAgent={
             Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
           }
-          injectedJavaScriptBeforeContentLoaded={platformBridgeScript(Platform.OS)}
+          injectedJavaScriptBeforeContentLoaded={platformBridgeScript(
+            Platform.OS,
+            hasNativeBackgroundUploads,
+          )}
           originWhitelist={["https://*"]}
           mixedContentMode="never"
           cacheEnabled

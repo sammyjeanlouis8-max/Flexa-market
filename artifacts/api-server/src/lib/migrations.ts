@@ -58,6 +58,12 @@ const REQUIRED_BOOST_VIDEO_MIGRATIONS: Array<{ name: string; sql: string }> = [
     sql: "CREATE INDEX IF NOT EXISTS boost_video_uploads_expires_idx ON boost_video_uploads(expires_at)",
   },
   {
+    // Bounded restart recovery scans filter by status and expiry, then prefer
+    // recently updated manifests. This index avoids a full upload-history scan.
+    name: "boost_video_uploads.recovery_idx",
+    sql: "CREATE INDEX IF NOT EXISTS boost_video_uploads_recovery_idx ON boost_video_uploads(status, expires_at, updated_at DESC)",
+  },
+  {
     name: "boost_video_upload_chunks.upload_idx",
     sql: "CREATE INDEX IF NOT EXISTS boost_video_upload_chunks_upload_idx ON boost_video_upload_chunks(upload_id)",
   },

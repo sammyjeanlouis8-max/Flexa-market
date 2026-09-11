@@ -22,9 +22,10 @@ import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS, citiesFor } from "@/lib/countries";
 import {
   BoostVideoUploadError,
   MAX_BOOST_VIDEO_BYTES,
-  uploadNormalizedBoostVideo,
 } from "@/lib/boostVideoUpload";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { startVideoUpload } from "@/lib/videoUploadQueue";
+import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 
 const PLANS = [
   {
@@ -276,7 +277,14 @@ export default function BoostPage() {
     }
     setVideoUploading(true);
     try {
-      setVideoUrl(await uploadNormalizedBoostVideo(file, token));
+      if (!user) {
+        toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
+        return;
+      }
+      setVideoUrl(await startVideoUpload(file, token, {
+        ownerId: user.id,
+        purpose: "boost",
+      }));
     } catch (error) {
       const code = error instanceof BoostVideoUploadError ? error.code : "VIDEO_UPLOAD_FAILED";
       const descriptionKey = (() => {
@@ -692,7 +700,7 @@ export default function BoostPage() {
     const handleAbvVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       e.target.value = "";
-      if (!file || !token) return;
+      if (!file || !token || !user) return;
       if (file.size > MAX_VIDEO_BYTES) {
         toast({ title: t("boost.videoTooBig"), variant: "destructive" });
         return;
@@ -700,7 +708,11 @@ export default function BoostPage() {
       setAbvUploading(true);
       setAbvUploadPercent(0);
       try {
-        const uploadedUrl = await uploadNormalizedBoostVideo(file, token, setAbvUploadPercent);
+        const uploadedUrl = await startVideoUpload(file, token, {
+          ownerId: user.id,
+          purpose: "boost",
+          onProgress: setAbvUploadPercent,
+        });
         const res = await fetch(`/api/boost/${activeBoostForListing.boostId}/video`, {
           method: "PATCH",
           headers: {
@@ -728,7 +740,42 @@ export default function BoostPage() {
           if (["UPLOAD_SERVICE_STARTING", "VIDEO_STORAGE_UNAVAILABLE", "VIDEO_STORAGE_FAILED", "CHUNK_STORAGE_FAILED"].includes(code)) return "boost.videoStorageFailed";
           return "boost.videoUploadRetry";
         })();
-        toast({ title: t("boost.videoUploadFailed"), description: t(descKey), variant: "destructive" });
+        toast({
+          title: t("boost.videoUploadFailed"),
+          description: t(descKey),
+          variant: "destructive",
+        });
+      } finally {
+        setAbvUploading(false);
+      }
+    };
+
+    const handleAbvVideoUsed = async (uploadedUrl: string) => {
+      if (!token) return;
+      setAbvUploading(true);
+      try {
+        const res = await fetch(`/api/boost/${activeBoostForListing.boostId}/video`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ videoUrl: uploadedUrl }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          toast({ title: data.error ?? t("boost.videoUploadFailed"), variant: "destructive" });
+          return;
+        }
+        await refetchActiveBoosts();
+        queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(listingId) });
+        setAbvSuccess(true);
+      } catch {
+        toast({
+          title: t("boost.videoUploadFailed"),
+          description: t("boost.videoUploadRetry"),
+          variant: "destructive",
+        });
       } finally {
         setAbvUploading(false);
       }
@@ -933,6 +980,7 @@ export default function BoostPage() {
               </Button>
             </div>
           )}
+          <VideoUploadChooser purpose="boost" onUse={handleAbvVideoUsed} />
         </div>
 
         {/* Back to My Boosts */}
@@ -1740,6 +1788,7 @@ export default function BoostPage() {
                   {videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje…" }) : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
                 </Button>
               )}
+              <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
             </div>
 
           </div>

@@ -15,6 +15,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
 import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
 import GlobalMusicPlayer from "@/components/GlobalMusicPlayer";
+import VideoUploadCenter from "@/components/VideoUploadCenter";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -399,6 +400,7 @@ function App() {
       <TooltipProvider>
         <ThemeProvider storageKey="flexamarket_theme" defaultTheme="light">
           <AuthProvider>
+            <VideoUploadCenter />
             <CartProvider>
             <FavoritesProvider>
               <BroadcastProvider>

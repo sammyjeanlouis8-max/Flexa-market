@@ -22,6 +22,7 @@ import {
   markBoostVideoUploadUnavailable,
 } from "./lib/boostVideoUploadReadiness";
 import { startBoostVideoUploadCleanupWorker } from "./lib/boostVideoUploadCleanup";
+import { startBoostVideoUploadProcessingWorker } from "./routes/storage";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
@@ -57,6 +58,7 @@ httpServer.listen(port, () => {
       await ensureBoostVideoUploadSchema();
       markBoostVideoUploadReady();
       startBoostVideoUploadCleanupWorker();
+      startBoostVideoUploadProcessingWorker(logger);
       logger.info("Durable Boost video uploads ready");
     } catch (error) {
       markBoostVideoUploadUnavailable(error);

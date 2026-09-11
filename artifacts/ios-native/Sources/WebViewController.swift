@@ -41,6 +41,8 @@ final class WebViewController: UIViewController {
         NotificationCenter.default.removeObserver(self)
         webView?.configuration.userContentController
             .removeScriptMessageHandler(forName: "requestPushPermission")
+        webView?.configuration.userContentController
+            .removeScriptMessageHandler(forName: "flexaUpload")
     }
 
     @objc private func handleApnsToken(_ n: Notification) {
@@ -67,6 +69,13 @@ final class WebViewController: UIViewController {
         let bootstrap = WKUserScript(source: """
             window.__iosWebView = true;
             window.__iosPushBridgeSafe = true; // build 83+: bridge no longer crashes
+            try {
+                if (location.protocol === 'https' &&
+                    (location.hostname === 'flexamarket.com' ||
+                     location.hostname.endsWith('.flexamarket.com'))) {
+                    window.__flexaBackgroundUploadsV1 = true;
+                }
+            } catch (_) {}
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.getRegistrations().then(function(rs) {
                     rs.forEach(function(r) { r.unregister(); });
@@ -80,6 +89,7 @@ final class WebViewController: UIViewController {
         // The website calls window.webkit.messageHandlers.requestPushPermission.postMessage({})
         // once the user is logged in — this is the ONLY path that requests push permission.
         ucc.add(ScriptMessageProxy(self), name: "requestPushPermission")
+        ucc.add(ScriptMessageProxy(self), name: "flexaUpload")
 
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -238,8 +248,47 @@ extension WebViewController: WKScriptMessageHandler {
         didReceive message: WKScriptMessage
     ) {
         if message.name == "requestPushPermission" {
+            guard isTrustedFlexaFrame(message) else { return }
             handlePushPermissionBridge()
+        } else if message.name == "flexaUpload" {
+            guard isTrustedFlexaFrame(message),
+                  let payload = message.body as? [String: Any],
+                  let requestId = payload["requestId"] as? String else { return }
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let result: [String: Any]
+                do {
+                    result = ["requestId": requestId, "ok": true,
+                              "data": try BackgroundUploadManager.shared.handle(payload)]
+                } catch {
+                    result = ["requestId": requestId, "ok": false,
+                              "error": error.localizedDescription]
+                }
+                DispatchQueue.main.async { self?.sendUploadResult(result) }
+            }
         }
+    }
+
+    private func isTrustedFlexaFrame(_ message: WKScriptMessage) -> Bool {
+        let origin = message.frameInfo.securityOrigin
+        return message.frameInfo.isMainFrame
+            && origin.protocol == "https"
+            && (origin.host == "flexamarket.com" || origin.host.hasSuffix(".flexamarket.com"))
+    }
+
+    private func sendUploadResult(_ result: [String: Any]) {
+        guard let url = webView?.url, isTrustedFlexaURL(url),
+              JSONSerialization.isValidJSONObject(result),
+              let data = try? JSONSerialization.data(withJSONObject: result),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent('flexa-upload-result',{detail:\(json)}));",
+            completionHandler: nil
+        )
+    }
+
+    private func isTrustedFlexaURL(_ url: URL) -> Bool {
+        url.scheme == "https"
+            && (url.host == "flexamarket.com" || (url.host?.hasSuffix(".flexamarket.com") ?? false))
     }
 }
 

@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.flexabackgroundupload'
+version = '1.0.0'
+
+android {
+  namespace 'expo.modules.flexabackgroundupload'
+
+  defaultConfig {
+    minSdk 24
+  }
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  implementation "androidx.core:core-ktx:1.13.1"
+  implementation "androidx.work:work-runtime-ktx:2.9.0"
+}

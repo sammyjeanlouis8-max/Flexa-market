@@ -29,8 +29,9 @@ test("Stripe routing preserves legitimate HTTPS checkout only", () => {
 
 test("native marker keeps a stable suffix and origin-gated bridge", () => {
   assert.equal(ANDROID_UA_SUFFIX, "FlexaMarketAndroid/1.0");
-  const script = platformBridgeScript("android");
+  const script = platformBridgeScript("android", true);
   assert.match(script, /__flexaPlatform="android"/);
+  assert.match(script, /__flexaBackgroundUploadsV1=true/);
   assert.match(script, /location\.protocol==="https:"/);
   assert.match(script, /location\.hostname==="flexamarket\.com"/);
 });

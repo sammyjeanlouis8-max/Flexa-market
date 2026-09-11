@@ -15,6 +15,10 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 
 const PASSTHROUGH_VIDEO_MIMES = new Set(["video/mp4", "video/x-m4v"]);
+// Keep a single normalization job from consuming every shared API CPU. The
+// upload scheduler also limits concurrent jobs; this is the per-ffmpeg limit.
+const FFMPEG_THREADS = Math.max(1, Math.min(2, Number(process.env["VIDEO_FFMPEG_THREADS"] ?? 2) || 2));
+const MAX_OUTPUT_EDGE_PX = 1280;
 
 export function needsVideoConversion(mime: string): boolean {
   const base = mime.split(";")[0].trim().toLowerCase();
@@ -45,8 +49,11 @@ async function inputHasAudio(inputPath: string, signal?: AbortSignal): Promise<b
 }
 
 /**
- * File-backed conversion used by Boost ingestion. The output always contains
- * H.264 video and AAC audio; silent source videos receive a silent AAC track.
+ * File-backed conversion used by durable marketplace-video ingestion. The
+ * output always contains H.264 video and AAC audio; silent source videos
+ * receive a silent AAC track. It caps the long edge without stretching,
+ * allowing ffmpeg's default autorotation to turn phone videos into their
+ * display orientation before the normalized MP4 is written.
  */
 export async function convertVideoFileToH264(
   inputPath: string,
@@ -68,10 +75,17 @@ export async function convertVideoFileToH264(
   try {
     await execFileAsync(ffmpeg, [
       "-y",
+      "-hide_banner", "-loglevel", "error",
+      "-threads", String(FFMPEG_THREADS),
+      "-filter_threads", "1",
       ...inputs,
       ...maps,
       "-sn", "-dn",
-      "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+      "-vf",
+      `scale=w='min(${MAX_OUTPUT_EDGE_PX},iw)':h='min(${MAX_OUTPUT_EDGE_PX},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1`,
+      "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.1",
+      "-threads", String(FFMPEG_THREADS), "-fpsmax", "30",
+      "-crf", "23", "-maxrate", "4M", "-bufsize", "8M", "-preset", "fast",
       "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "128k",
       "-movflags", "+faststart",

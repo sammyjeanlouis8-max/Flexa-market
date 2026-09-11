@@ -11,7 +11,9 @@ import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
-import { uploadNormalizedBoostVideo, BoostVideoUploadError } from "@/lib/boostVideoUpload";
+import { BoostVideoUploadError } from "@/lib/boostVideoUpload";
+import { startVideoUpload } from "@/lib/videoUploadQueue";
+import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -237,8 +239,15 @@ export default function BoostWizard({ open, onClose }: Props) {
     });
 
   const chunkedUpload = useCallback(async (file: File): Promise<string> => {
-    return uploadNormalizedBoostVideo(file, token, setUploadPercent);
-  }, [token]);
+    if (!user) {
+      throw new BoostVideoUploadError("UPLOAD_AUTH_REQUIRED", "Sign in before uploading a video.");
+    }
+    return startVideoUpload(file, token, {
+      ownerId: user.id,
+      purpose: "boost",
+      onProgress: setUploadPercent,
+    });
+  }, [token, user]);
 
   const handleVideoFile = useCallback(async (file: File) => {
     if (file.size > MAX_VIDEO_BYTES) {
@@ -590,6 +599,15 @@ export default function BoostWizard({ open, onClose }: Props) {
           </div>
         </button>
       )}
+      <VideoUploadChooser
+        purpose="boost"
+        onUse={(url) => {
+          if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+          setVideoObjectUrl(null);
+          setVideoUploadError(null);
+          setVideoUrl(url);
+        }}
+      />
     </div>
   );
 

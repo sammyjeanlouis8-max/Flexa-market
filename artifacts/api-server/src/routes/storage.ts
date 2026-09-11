@@ -21,7 +21,7 @@ import {
   validateMimeType,
 } from "../lib/s3";
 import { convertVideoFileToH264 } from "../lib/videoConvert";
-import { createBoostVideoAssetProof } from "../lib/boostVideoAsset";
+import { createVideoAssetProof } from "../lib/boostVideoAsset";
 import {
   claimBoostVideoProcessing,
   completeBoostVideoProcessing,
@@ -31,6 +31,7 @@ import {
   getBoostVideoUploadChunk,
   getBoostVideoUploadChunks,
   heartbeatBoostVideoProcessing,
+  listBoostVideoUploadsForRecovery,
   saveBoostVideoUploadChunk,
   type BoostVideoUploadStatus,
 } from "../lib/boostVideoUploadStore";
@@ -236,12 +237,19 @@ router.put("/storage/uploads/put-proxy/:token", optionalAuth, async (req: Reques
   }
 });
 
-// ── Durable chunked Boost-video upload routes ─────────────────────────────────
+// ── Durable chunked marketplace-video upload routes ────────────────────────────
 // PostgreSQL owns session/progress state and Wasabi owns every staged chunk.
 // No request depends on process memory or one instance's ephemeral disk.
 const CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
-const CHUNK_SESSION_TTL_MS = 6 * 60 * 60 * 1000;
+// A mobile app may be backgrounded for hours while its native transfer and
+// server-side conversion continue. Keep the durable manifest resumable for a
+// full day; cleanup still removes abandoned staged chunks after expiry.
+const CHUNK_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const PROCESSING_STALE_MS = 17 * 60 * 1000;
+const PROCESSING_RECOVERY_INTERVAL_MS = 60 * 1000;
+const PROCESSING_RECOVERY_SCAN_LIMIT = 24;
+const MAX_CONCURRENT_VIDEO_NORMALIZATIONS = 2;
+const MAX_QUEUED_VIDEO_NORMALIZATIONS = 24;
 const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
@@ -258,7 +266,7 @@ interface UploadLogger {
 }
 
 function completionUrl(key: string, ownerId: number): string {
-  const proof = createBoostVideoAssetProof(key, ownerId);
+  const proof = createVideoAssetProof(key, ownerId);
   return `/api/storage/wasabi-image?key=${encodeURIComponent(key)}&asset=${encodeURIComponent(proof)}`;
 }
 
@@ -272,6 +280,15 @@ function isExpired(expiresAt: Date): boolean {
 
 function processingIsStale(heartbeat: Date | null): boolean {
   return !heartbeat || heartbeat.getTime() < Date.now() - PROCESSING_STALE_MS;
+}
+
+function isCompleteChunkManifest(
+  chunks: Array<{ chunkIndex: number; sizeBytes: number }>,
+  session: { totalChunks: number; totalBytes: number },
+): boolean {
+  return chunks.length === session.totalChunks &&
+    chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0) === session.totalBytes &&
+    chunks.every((chunk, index) => chunk.chunkIndex === index);
 }
 
 async function readBoundedChunk(req: Request, expectedBytes: number): Promise<Buffer> {
@@ -332,10 +349,7 @@ async function processChunkUpload(
 
   try {
     const chunks = await getBoostVideoUploadChunks(uploadId);
-    const completeChunkSet =
-      chunks.length === session.totalChunks &&
-      chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0) === session.totalBytes &&
-      chunks.every((chunk, index) => chunk.chunkIndex === index);
+    const completeChunkSet = isCompleteChunkManifest(chunks, session);
     if (!completeChunkSet) throw new Error("Durable chunk manifest is incomplete");
 
     async function* chunksInOrder(): AsyncGenerator<Buffer> {
@@ -451,7 +465,11 @@ async function startProcessingIfClaimable(
     new Date(Date.now() - PROCESSING_STALE_MS),
   );
   if (!claimed) return false;
-  void processChunkUpload(uploadId, claimed.processingToken, log).catch(async (error) => {
+  try {
+    // This is intentionally awaited by the bounded scheduler. Do not detach
+    // it here: doing so would release a scheduler slot while ffmpeg still runs.
+    await processChunkUpload(uploadId, claimed.processingToken, log);
+  } catch (error) {
     await failBoostVideoProcessing(
       uploadId,
       claimed.processingToken,
@@ -459,8 +477,89 @@ async function startProcessingIfClaimable(
       "Video processing was interrupted. Please retry.",
     ).catch(() => {});
     log.error({ err: error, uploadId, ownerId }, "Boost video background processor crashed");
-  });
+  }
   return true;
+}
+
+/**
+ * A process-local gate protects CPU/disk even if many clients finish at once.
+ * The authoritative work state remains Postgres: queued IDs are merely hints,
+ * and each job claims a lease immediately before it starts.
+ */
+const queuedProcessing = new Map<string, { ownerId: number; log: UploadLogger }>();
+let activeNormalizations = 0;
+let recoveryWorkerStarted = false;
+let recoveryScanRunning = false;
+
+function drainProcessingQueue(): void {
+  while (activeNormalizations < MAX_CONCURRENT_VIDEO_NORMALIZATIONS && queuedProcessing.size > 0) {
+    const next = queuedProcessing.entries().next().value as
+      | [string, { ownerId: number; log: UploadLogger }]
+      | undefined;
+    if (!next) return;
+    const [uploadId, work] = next;
+    queuedProcessing.delete(uploadId);
+    activeNormalizations += 1;
+    void startProcessingIfClaimable(uploadId, work.ownerId, work.log)
+      .catch((error) => {
+        work.log.error({ err: error, uploadId, ownerId: work.ownerId }, "Video normalization claim failed");
+      })
+      .finally(() => {
+        activeNormalizations -= 1;
+        drainProcessingQueue();
+      });
+  }
+}
+
+function queueProcessingIfPossible(uploadId: string, ownerId: number, log: UploadLogger): boolean {
+  if (queuedProcessing.has(uploadId)) return true;
+  if (queuedProcessing.size >= MAX_QUEUED_VIDEO_NORMALIZATIONS) return false;
+  queuedProcessing.set(uploadId, { ownerId, log });
+  drainProcessingQueue();
+  return true;
+}
+
+async function queueIfManifestComplete(
+  uploadId: string,
+  ownerId: number,
+  log: UploadLogger,
+): Promise<boolean> {
+  const session = await getBoostVideoUpload(uploadId);
+  if (!session || session.ownerId !== ownerId || isExpired(session.expiresAt)) return false;
+  const chunks = await getBoostVideoUploadChunks(uploadId);
+  if (!isCompleteChunkManifest(chunks, session)) return false;
+  return queueProcessingIfPossible(uploadId, ownerId, log);
+}
+
+/**
+ * Starts bounded durable recovery. It is deliberately independent of client
+ * polling: after a restart, a completed manifest or a stale processing lease
+ * is rediscovered and re-claimed from Postgres.
+ */
+export function startBoostVideoUploadProcessingWorker(log: UploadLogger = console): void {
+  if (recoveryWorkerStarted) return;
+  recoveryWorkerStarted = true;
+  const scan = async (): Promise<void> => {
+    if (recoveryScanRunning) return;
+    recoveryScanRunning = true;
+    try {
+      const candidates = await listBoostVideoUploadsForRecovery(
+        new Date(Date.now() - PROCESSING_STALE_MS),
+        PROCESSING_RECOVERY_SCAN_LIMIT,
+      );
+      for (const candidate of candidates) {
+        if (queuedProcessing.size >= MAX_QUEUED_VIDEO_NORMALIZATIONS) break;
+        await queueIfManifestComplete(candidate.id, candidate.ownerId, log);
+      }
+    } catch (error) {
+      log.warn({ err: error }, "Durable video processing recovery scan failed");
+    } finally {
+      recoveryScanRunning = false;
+    }
+  };
+  void scan();
+  const timer = setInterval(() => { void scan(); }, PROCESSING_RECOVERY_INTERVAL_MS);
+  timer.unref();
 }
 
 function sendMissingSession(res: Response): void {
@@ -487,6 +586,16 @@ function requireBoostUploadReady(res: Response): boolean {
   return false;
 }
 
+/**
+ * Durable normalized-video API contract (Boost and listing attachment only):
+ * - init: `{ uploadId, objectPath, totalChunks, totalBytes, expiresAt }`
+ * - status: keeps legacy `receivedChunks` as a number and additionally returns
+ *   `receivedChunkIndices`, `receivedBytes`, `totalChunks`, `totalBytes`, and
+ *   `expiresAt`; completed status/finalize returns both `url` and identical
+ *   proved `objectPath`.
+ * - chunk PUT accepts application/octet-stream because the session's
+ *   `contentType` (not the transport header) controls normalization.
+ */
 // POST /api/storage/uploads/chunk-init
 router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res: Response) => {
   if (!requireBoostUploadReady(res)) return;
@@ -524,6 +633,7 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
   }
 
   const uploadId = randomUUID();
+  const expiresAt = new Date(Date.now() + CHUNK_SESSION_TTL_MS);
   try {
     await createBoostVideoUpload({
       id: uploadId,
@@ -531,9 +641,17 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
       contentType,
       totalChunks,
       totalBytes,
-      expiresAt: new Date(Date.now() + CHUNK_SESSION_TTL_MS),
+      expiresAt,
     });
-    res.json({ uploadId, objectPath: `/objects/uploads/${uploadId}` });
+    res.json({
+      uploadId,
+      // Retained only as an opaque, pre-completion compatibility placeholder.
+      // The usable proved asset path is returned by finalize/status.
+      objectPath: `/objects/uploads/${uploadId}`,
+      totalChunks,
+      totalBytes,
+      expiresAt: expiresAt.toISOString(),
+    });
   } catch (error) {
     (req as any).log.error({ err: error, uploadId, ownerId: req.userId }, "Boost upload session creation failed");
     res.status(500).json({
@@ -595,6 +713,11 @@ router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: R
         existing.contentSha256 === contentSha256 &&
         storedBytes === expectedBytes
       ) {
+        // A native/client retry of the last successful PUT must remain a
+        // success even if the first request queued or completed processing.
+        // It also repairs a process that died after saving the manifest but
+        // before it could enqueue it.
+        await queueIfManifestComplete(uploadId, session.ownerId, (req as any).log);
         res.status(204).end();
       } else {
         res.status(409).json({
@@ -653,6 +776,10 @@ router.put("/storage/uploads/chunk/:uploadId/:index", requireAuth, async (req: R
       });
       return;
     }
+    // Final verified chunk automatically moves into durable processing. The
+    // lease itself is claimed by the bounded scheduler, so racing final PUTs
+    // and explicit finalize calls are idempotent and cannot launch extra ffmpeg.
+    await queueIfManifestComplete(uploadId, currentSession.ownerId, (req as any).log);
     res.status(204).end();
   } catch (error) {
     (req as any).log.warn({ err: error, uploadId, index: rawIndex }, "Boost video chunk upload failed");
@@ -688,32 +815,44 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
       return;
     }
     if (session.status === "complete" && session.finalStorageKey) {
-      res.json({ status: session.status, url: completionUrl(session.finalStorageKey, session.ownerId) });
+      const url = completionUrl(session.finalStorageKey, session.ownerId);
+      res.json({
+        status: session.status,
+        url,
+        objectPath: url,
+        receivedChunks: session.totalChunks,
+        receivedChunkIndices: Array.from({ length: session.totalChunks }, (_, index) => index),
+        receivedBytes: session.totalBytes,
+        totalChunks: session.totalChunks,
+        totalBytes: session.totalBytes,
+        expiresAt: session.expiresAt.toISOString(),
+      });
       return;
     }
 
     const chunks = await getBoostVideoUploadChunks(uploadId);
     const receivedBytes = chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0);
-    const completeChunkSet =
-      chunks.length === session.totalChunks &&
-      receivedBytes === session.totalBytes &&
-      chunks.every((chunk, index) => chunk.chunkIndex === index);
+    const completeChunkSet = isCompleteChunkManifest(chunks, session);
     if (!completeChunkSet) {
       res.status(409).json({
         errorCode: "UPLOAD_INCOMPLETE",
         error: "The video upload is incomplete.",
         receivedChunks: chunks.length,
+        receivedChunkIndices: chunks.map((chunk) => chunk.chunkIndex),
+        receivedBytes,
         totalChunks: session.totalChunks,
+        totalBytes: session.totalBytes,
+        expiresAt: session.expiresAt.toISOString(),
       });
       return;
     }
 
-    const canAttemptClaim =
+    const canAttemptQueue =
       session.status === "uploading" ||
       (session.status === "processing" && processingIsStale(session.processingHeartbeatAt)) ||
       (session.status === "failed" && RETRYABLE_PROCESSING_ERRORS.has(session.errorCode ?? ""));
-    if (canAttemptClaim) {
-      await startProcessingIfClaimable(uploadId, session.ownerId, (req as any).log);
+    if (canAttemptQueue) {
+      queueProcessingIfPossible(uploadId, session.ownerId, (req as any).log);
       session = await getBoostVideoUpload(uploadId) ?? session;
     }
     if (session.status === "failed") {
@@ -725,7 +864,15 @@ router.post("/storage/uploads/chunk-finalize/:uploadId", requireAuth, async (req
       });
       return;
     }
-    res.status(202).json({ status: "processing" });
+    res.status(202).json({
+      status: session.status === "uploading" ? "processing" : session.status,
+      receivedChunks: chunks.length,
+      receivedChunkIndices: chunks.map((chunk) => chunk.chunkIndex),
+      receivedBytes,
+      totalChunks: session.totalChunks,
+      totalBytes: session.totalBytes,
+      expiresAt: session.expiresAt.toISOString(),
+    });
   } catch (error) {
     (req as any).log.error({ err: error, uploadId, ownerId: req.userId }, "Boost video finalization failed");
     res.status(500).json({
@@ -754,18 +901,28 @@ router.get("/storage/uploads/chunk-status/:uploadId", requireAuth, async (req: R
       return;
     }
 
-    if (session.status === "processing" && processingIsStale(session.processingHeartbeatAt)) {
-      await startProcessingIfClaimable(uploadId, session.ownerId, (req as any).log);
+    const chunks = await getBoostVideoUploadChunks(uploadId);
+    if (
+      (session.status === "uploading" && isCompleteChunkManifest(chunks, session)) ||
+      (session.status === "processing" && processingIsStale(session.processingHeartbeatAt))
+    ) {
+      queueProcessingIfPossible(uploadId, session.ownerId, (req as any).log);
       session = await getBoostVideoUpload(uploadId) ?? session;
     }
-    const chunks = await getBoostVideoUploadChunks(uploadId);
     const status = session.status as BoostVideoUploadStatus;
     res.json({
       status,
       receivedChunks: chunks.length,
+      receivedChunkIndices: chunks.map((chunk) => chunk.chunkIndex),
+      receivedBytes: chunks.reduce((sum, chunk) => sum + chunk.sizeBytes, 0),
       totalChunks: session.totalChunks,
+      totalBytes: session.totalBytes,
+      expiresAt: session.expiresAt.toISOString(),
       ...(status === "complete" && session.finalStorageKey
-        ? { url: completionUrl(session.finalStorageKey, session.ownerId) }
+        ? (() => {
+            const url = completionUrl(session.finalStorageKey, session.ownerId);
+            return { url, objectPath: url };
+          })()
         : {}),
       ...(status === "failed"
         ? {

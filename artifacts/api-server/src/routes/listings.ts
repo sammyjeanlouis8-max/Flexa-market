@@ -17,6 +17,10 @@ import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-pus
 import { emitListingEngagement } from "../lib/socketServer";
 import { queueNewListingPush } from "../lib/listing-notifications";
 import { cleanListingImages, hasUsableListingImage, listingHasUsableImageSql } from "../lib/listingMedia";
+import {
+  canonicalizeListingVideoUrl,
+  normalizedVideoStorageKey,
+} from "../lib/boostVideoAsset";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -181,11 +185,19 @@ async function formatListing(
       : null,
     stockQuantity: listing.stockQuantity ?? null,
     itemSize: listing.itemSize ?? null,
-    listingVideoUrl: listing.listingVideoUrl
-      ? toStreamingVideoUrl(listing.listingVideoUrl.startsWith("http")
-          ? listing.listingVideoUrl
-          : `/api/storage/objects/${listing.listingVideoUrl.replace(/^\/objects\//, "")}`)
-      : null,
+    listingVideoUrl: (() => {
+      if (!listing.listingVideoUrl) return null;
+      const raw = listing.listingVideoUrl.startsWith("http") || listing.listingVideoUrl.startsWith("/api/")
+        ? listing.listingVideoUrl
+        : `/api/storage/objects/${listing.listingVideoUrl.replace(/^\/objects\//, "")}`;
+      const key = extractWasabiKey(raw);
+      // Durable normalized uploads are persisted as the canonical Wasabi
+      // proxy path after their owner proof is verified. Resolve that path just
+      // like Boost media instead of incorrectly treating it as object storage.
+      return key
+        ? `/api/storage/video-stream?key=${encodeURIComponent(key)}`
+        : toStreamingVideoUrl(raw);
+    })(),
     viewCount: listing.viewCount,
     favoriteCount: listing.favoriteCount,
     sharesCount: listing.sharesCount,
@@ -735,6 +747,19 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     return;
   }
 
+  // A normalized durable upload returns a short-lived ownership proof. Verify
+  // it before persistence, then store only the canonical Wasabi path so a
+  // listing remains playable after the proof expires. Legacy listing-video
+  // URLs without an asset proof retain their existing behavior.
+  const submittedListingVideoUrl = (parsed.data as any).listingVideoUrl as string | undefined;
+  const canonicalListingVideoUrl = submittedListingVideoUrl
+    ? canonicalizeListingVideoUrl(submittedListingVideoUrl, req.userId!)
+    : undefined;
+  if (submittedListingVideoUrl && normalizedVideoStorageKey(submittedListingVideoUrl) && !canonicalListingVideoUrl) {
+    res.status(400).json({ error: "Listing video upload proof is invalid or expired." });
+    return;
+  }
+
   // Daily listing limit for new accounts (admins bypass)
   const accountAgeDays = (Date.now() - new Date(seller.createdAt).getTime()) / (1000 * 60 * 60 * 24);
   if (!sellerIsAdmin && accountAgeDays < 7) {
@@ -767,6 +792,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [listing] = await db.insert(listingsTable).values({
     ...parsed.data,
+    ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
     images: imageUrls,
     subcategoryId: parsed.data.subcategoryId ?? null,
     city: rawCity || null,
@@ -976,9 +1002,19 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const submittedListingVideoUrl = (parsed.data as any).listingVideoUrl as string | undefined;
+  const canonicalListingVideoUrl = submittedListingVideoUrl
+    ? canonicalizeListingVideoUrl(submittedListingVideoUrl, req.userId!, existing.listingVideoUrl)
+    : undefined;
+  if (submittedListingVideoUrl && normalizedVideoStorageKey(submittedListingVideoUrl) && !canonicalListingVideoUrl) {
+    res.status(400).json({ error: "Listing video upload proof is invalid or expired." });
+    return;
+  }
+
   const [listing] = await db.update(listingsTable).set({
     ...parsed.data,
     ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
+    ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
   }).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));

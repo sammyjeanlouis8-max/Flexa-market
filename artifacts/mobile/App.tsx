@@ -261,7 +261,10 @@ export default function App() {
         // (the chat composer uses env(safe-area-inset-bottom)). Reserving it
         // here as well shrinks the WebView and leaves a white native strip
         // over the lower half of the composer on iPhone.
-        edges={Platform.OS === "ios" ? ["top"] : []}
+        // Android edge-to-edge WebViews need native insets: CSS safe-area
+        // values are not a reliable substitute for Android window insets.
+        // Side insets also protect the content after rotation on cutout phones.
+        edges={Platform.OS === "ios" ? ["top"] : ["top", "bottom", "left", "right"]}
       >
         <WebView
           ref={webRef}

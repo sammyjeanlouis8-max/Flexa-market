@@ -84,6 +84,15 @@
     },
     "plugins": [
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
@@ -92,7 +101,8 @@
           "sounds": []
         }
       ],
-      "./modules/flexa-background-upload/app.plugin.js"
+      "./modules/flexa-background-upload/app.plugin.js",
+      "./plugins/withAndroidAdaptiveLayout.js"
     ],
     "experiments": {},
     "extra": {

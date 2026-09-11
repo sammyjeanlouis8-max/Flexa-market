@@ -11,6 +11,7 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
 import { promisify } from "util";
+import { canCopyVideo, type VideoProbeStream } from "./videoCopyPolicy";
 
 const execFileAsync = promisify(execFile);
 
@@ -46,16 +47,17 @@ function extFromVideoMime(mime: string): string {
   return map[mime.split(";")[0].trim().toLowerCase()] ?? "bin";
 }
 
-async function inputHasAudio(inputPath: string, signal?: AbortSignal): Promise<boolean> {
+async function probeStreams(inputPath: string, signal?: AbortSignal): Promise<VideoProbeStream[]> {
   const ffprobe = process.env["FFPROBE_PATH"] ?? "ffprobe";
   const { stdout } = await execFileAsync(ffprobe, [
     "-v", "error",
-    "-select_streams", "a:0",
-    "-show_entries", "stream=index",
-    "-of", "csv=p=0",
+    "-show_streams",
+    "-of", "json",
     inputPath,
   ], { maxBuffer: 1024 * 1024, timeout: 60_000, signal });
-  return stdout.trim().length > 0;
+  const result = JSON.parse(stdout) as { streams?: VideoProbeStream[] };
+  if (!Array.isArray(result.streams)) throw new Error("Video streams could not be read");
+  return result.streams;
 }
 
 export async function assertVideoDurationAtMost(
@@ -90,10 +92,27 @@ export async function assertVideoDurationAtMost(
 export async function convertVideoFileToH264(
   inputPath: string,
   outputPath: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; forceTranscode?: boolean } = {},
 ): Promise<void> {
   const ffmpeg = process.env["FFMPEG_PATH"] ?? "ffmpeg";
-  const hasAudio = await inputHasAudio(inputPath, options.signal);
+  const streams = await probeStreams(inputPath, options.signal);
+  const hasAudio = streams.some(s => s.codec_type === "audio");
+  if (!options.forceTranscode && canCopyVideo(streams)) {
+    try {
+      // Repackage only: preserve encoded image/audio quality and move the
+      // MP4 index to the start so playback need not download the entire file.
+      await execFileAsync(ffmpeg, [
+        "-y", "-hide_banner", "-loglevel", "error", "-i", inputPath,
+        "-map", "0:v:0", "-map", "0:a:0", "-sn", "-dn",
+        "-c", "copy", "-movflags", "+faststart", outputPath,
+      ], { maxBuffer: 20 * 1024 * 1024, timeout: 60_000, signal: options.signal });
+      return;
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      // Some containers cannot be remuxed. Overwrite any partial output using
+      // the original, bounded transcode path; never serve the partial file.
+    }
+  }
   const inputs = hasAudio
     ? ["-i", inputPath]
     : [

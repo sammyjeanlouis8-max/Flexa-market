@@ -24,6 +24,7 @@ import {
   MAX_BOOST_VIDEO_BYTES,
   uploadNormalizedBoostVideo,
 } from "@/lib/boostVideoUpload";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 const PLANS = [
   {
@@ -119,6 +120,7 @@ export default function BoostPage() {
   const queryClient   = useQueryClient();
   const { user, token } = useAuth();
   const { t }         = useTranslation();
+  const purchasesDisabled = isAndroidApp();
 
   // Fetch the live USDT TRX wallet address configured by admin.
   const { data: usdtWalletData } = useQuery<{ address: string }>({
@@ -490,6 +492,7 @@ export default function BoostPage() {
   };
 
   const handleInitiate = async () => {
+    if (purchasesDisabled) return;
     if (videoUploading) {
       toast({ title: t("boost.videoStillUploading", { defaultValue: "Videyo a ap telechaje toujou. Tann li fini avant ou kontinye." }), variant: "destructive" });
       return;
@@ -534,6 +537,7 @@ export default function BoostPage() {
   };
 
   const handleCardPay = async () => {
+    if (purchasesDisabled) return;
     if (!boostId) {
       toast({ title: "Boost not initialized. Please go back and try again.", variant: "destructive" });
       return;
@@ -561,6 +565,7 @@ export default function BoostPage() {
   };
 
   const handleUsdtConfirm = async () => {
+    if (purchasesDisabled) return;
     if (!txHash.trim()) {
       toast({ title: "Enter your transaction hash", variant: "destructive" });
       return;
@@ -581,6 +586,7 @@ export default function BoostPage() {
   };
 
   const handleSepaPay = async () => {
+    if (purchasesDisabled) return;
     const cleaned = iban.replace(/\s+/g, "").toUpperCase();
     if (!ibanName.trim() || cleaned.length < 15) {
       toast({ title: t("boost.fillSepaDetails"), variant: "destructive" });
@@ -602,6 +608,7 @@ export default function BoostPage() {
   };
 
   const handleApplePay = async () => {
+    if (purchasesDisabled) return;
     setLoading(true);
     try {
       await apiPost(`/api/listings/${listingId}/boost/confirm`, {
@@ -941,6 +948,20 @@ export default function BoostPage() {
           className="hidden"
           onChange={handleAbvVideoSelected}
         />
+      </div>
+    );
+  }
+
+  if (purchasesDisabled) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="w-full max-w-sm rounded-2xl border bg-card p-6 text-center shadow-sm">
+          <Info className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
+          <p className="text-sm font-medium">{t("androidPurchasePolicy.unavailable")}</p>
+          <Button className="mt-5 w-full" variant="outline" onClick={() => setLocation(`/listings/${listingId}`)}>
+            {t("boost.viewListing", { defaultValue: "View listing" })}
+          </Button>
+        </div>
       </div>
     );
   }

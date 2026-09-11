@@ -1,4 +1,7 @@
 export default {
+  androidPurchasePolicy: {
+    unavailable: "Acha pa disponib nan aplikasyon sa a.",
+  },
   tr: {
     listingNotFound: "Anons lan pa jwenn",
     promoVideo: "Videyo Promo",

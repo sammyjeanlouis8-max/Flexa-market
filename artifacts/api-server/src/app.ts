@@ -6,6 +6,7 @@ import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { stripeWebhookHandler } from "./routes/stripeCheckout";
+import { androidDigitalPurchaseGuard } from "./middlewares/androidDigitalPurchaseGuard";
 
 const app: Express = express();
 
@@ -47,7 +48,10 @@ app.use("/api/categories", (_req: Request, res: Response, next: NextFunction) =>
   next();
 });
 
-app.use("/api", router);
+// Must run before every API route so native Android requests cannot reach any
+// charging/digital-entitlement handler. Stripe's webhook remains above it so
+// already-paid transactions are always settled.
+app.use("/api", androidDigitalPurchaseGuard, router);
 
 // ─── Serve built marketplace frontend (production single-server deployment) ───
 // During the production build, the marketplace SPA is copied into dist/public/.

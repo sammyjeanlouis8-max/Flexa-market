@@ -10,6 +10,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { uploadNormalizedBoostVideo, BoostVideoUploadError } from "@/lib/boostVideoUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ export default function BoostWizard({ open, onClose }: Props) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { uploadFile } = useUpload();
+  const purchasesDisabled = isAndroidApp();
 
   const [step, setStep] = useState<Step>(() => {
     if (open) {
@@ -392,6 +394,7 @@ export default function BoostWizard({ open, onClose }: Props) {
 
   // Confirm & Boost
   const handleConfirm = async () => {
+    if (purchasesDisabled) return;
     if (!videoUrl) {
       toast({ title: t("boostWizard.errorVideoRequired"), variant: "destructive" }); return;
     }
@@ -473,6 +476,7 @@ export default function BoostWizard({ open, onClose }: Props) {
   };
 
   const handleTypeSelect = (type: BoostType) => {
+    if (purchasesDisabled) return;
     setBoostType(type);
     setAudienceCountry(user?.country ?? "Haiti");
     if (type === "existing") setStep("select");
@@ -481,6 +485,17 @@ export default function BoostWizard({ open, onClose }: Props) {
   };
 
   if (!open) return null;
+
+  if (purchasesDisabled) {
+    return (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-sm rounded-2xl border bg-card p-6 text-center shadow-2xl">
+          <p className="text-sm font-medium">{t("androidPurchasePolicy.unavailable")}</p>
+          <Button className="mt-5 w-full" variant="outline" onClick={onClose}>{t("common.close", "Close")}</Button>
+        </div>
+      </div>
+    );
+  }
 
   // Shared video upload UI block
   const VideoUploadBlock = (

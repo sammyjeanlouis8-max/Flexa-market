@@ -16,6 +16,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import QRCode from "qrcode";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
 function formatCardNumber(acct: string | null | undefined): string {
@@ -603,11 +604,16 @@ export default function WalletPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const purchasesDisabled = isAndroidApp();
 
   const [step, setStep] = useState<Step>("home");
   const [stepStack, setStepStack] = useState<Step[]>([]);
 
   function navigateTo(next: Step) {
+    if (purchasesDisabled && ["choice", "topup", "moncash", "moncash_confirm", "moncash_submit", "moncash_done", "card", "crypto"].includes(next)) {
+      toast({ title: t("androidPurchasePolicy.unavailable") });
+      return;
+    }
     setStepStack(prev => [...prev, step]);
     setStep(next);
   }
@@ -885,7 +891,9 @@ export default function WalletPage() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const initiateMut = useMutation({
-    mutationFn: (amountHtg: number) => apiPost("/wallet/topup/initiate", { amountHtg, phone }),
+    mutationFn: (amountHtg: number) => purchasesDisabled
+      ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
+      : apiPost("/wallet/topup/initiate", { amountHtg, phone }),
     onSuccess: (data) => {
       setPendingRef(data.paymentRef);
       setPendingDetails({ amountHtg: data.amountHtg, totalUsd: data.totalUsd, bonusUsd: data.bonusUsd, baseUsd: data.baseUsd, rateUsed: data.rateUsed, bonusPct: data.bonusPct });
@@ -911,7 +919,9 @@ export default function WalletPage() {
   });
 
   const cardSessionMut = useMutation({
-    mutationFn: (amountUsd: number) => apiPost("/wallet/topup/card/session", { amountUsd }),
+    mutationFn: (amountUsd: number) => purchasesDisabled
+      ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
+      : apiPost("/wallet/topup/card/session", { amountUsd }),
     onSuccess: (data) => {
       // Store session so we can retry credit if Safari drops the session
       if (data.sessionId) {
@@ -936,7 +946,9 @@ export default function WalletPage() {
   });
 
   const promoUnlockMut = useMutation({
-    mutationFn: () => apiPost("/wallet/promo/unlock", {}),
+    mutationFn: () => purchasesDisabled
+      ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
+      : apiPost("/wallet/promo/unlock", {}),
     onSuccess: (data) => {
       toast({ title: t("wallet.promoUnlocked"), description: t("wallet.promoUnlockedDesc", { amount: data.unlockedUsd?.toFixed(2) ?? "0.00" }) });
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
@@ -946,7 +958,9 @@ export default function WalletPage() {
   });
 
   const promoConvertMut = useMutation({
-    mutationFn: () => apiPost("/wallet/promo/convert", {}),
+    mutationFn: () => purchasesDisabled
+      ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
+      : apiPost("/wallet/promo/convert", {}),
     onSuccess: (data) => {
       toast({ title: t("wallet.promoConverted"), description: t("wallet.promoConvertedDesc", { amount: data.convertedUsd?.toFixed(2) ?? "0.00" }) });
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
@@ -1080,7 +1094,9 @@ export default function WalletPage() {
   });
 
   const submitProofMut = useMutation({
-    mutationFn: () => apiPost("/wallet/topup/submit-proof", {
+    mutationFn: () => purchasesDisabled
+      ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
+      : apiPost("/wallet/topup/submit-proof", {
       paymentRef: pendingRef,
       userTransferRef: userTransferRef.trim() || undefined,
       screenshotUrl: screenshotUrl || undefined,
@@ -3245,14 +3261,14 @@ export default function WalletPage() {
       {/* ══ QUICK ACTION BUTTONS ════════════════════════════════════════════════ */}
       <div className="flex justify-between gap-1">
         {([
-          {
+          ...(purchasesDisabled ? [] : [{
             label: t("wallet.actionDeposit"), Icon: ArrowUpCircle,
             iconColor: "#60a5fa",
             bg: "linear-gradient(145deg,#0f1f3d,#0d1a35)",
             border: "rgba(59,130,246,0.35)",
             glow: "rgba(59,130,246,0.15)",
             action: () => navigateTo(isHaiti ? "topup" : "card"),
-          },
+          }]),
           {
             label: t("wallet.actionSend"), Icon: Send,
             iconColor: "#93c5fd",
@@ -3261,14 +3277,14 @@ export default function WalletPage() {
             glow: "rgba(96,165,250,0.12)",
             action: () => navigateTo("send"),
           },
-          {
+          ...(purchasesDisabled ? [] : [{
             label: t("wallet.actionContacts"), Icon: Users,
             iconColor: "#4ade80",
             bg: "linear-gradient(145deg,#0a2318,#081e14)",
             border: "rgba(34,197,94,0.30)",
             glow: "rgba(34,197,94,0.12)",
             action: () => setLocation("/wallet/agents"),
-          },
+          }]),
           {
             label: t("wallet.actionBonus"), Icon: Gift,
             iconColor: "#f97316",
@@ -3380,7 +3396,7 @@ export default function WalletPage() {
 
 
       {/* ── Promo Actions (Unlock + Convert) ───────────────────────────────── */}
-      {!isLoading && ((balance?.newUnlockableUsd ?? 0) > 0 || (balance?.unlockedBalance ?? 0) > 0) && (
+      {!purchasesDisabled && !isLoading && ((balance?.newUnlockableUsd ?? 0) > 0 || (balance?.unlockedBalance ?? 0) > 0) && (
         <div className="rounded-xl border border-amber-200/70 dark:border-amber-700/40 bg-amber-50/30 dark:bg-amber-950/10 p-3 space-y-2.5">
           <p className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
             <Gift className="h-3.5 w-3.5" /> {t("wallet.promoActionsTitle")}
@@ -3426,7 +3442,7 @@ export default function WalletPage() {
       )}
 
       {/* ── Promo Unlock Progress ───────────────────────────────────────────── */}
-      {!isLoading && (balance?.promoBalance ?? 0) > 0 && (balance?.newUnlockableUsd ?? 0) === 0 && (
+      {!purchasesDisabled && !isLoading && (balance?.promoBalance ?? 0) > 0 && (balance?.newUnlockableUsd ?? 0) === 0 && (
         <div className="rounded-xl border border-border bg-card p-3">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold text-foreground">{t("wallet.promoUnlockProgress")}</p>
@@ -3446,7 +3462,7 @@ export default function WalletPage() {
       )}
 
       {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
-      <style>{`
+      {!purchasesDisabled && <><style>{`
         @keyframes fmEntryPulse {
           0%,100% { box-shadow:0 0 10px 2px rgba(99,102,241,0.3); }
           50%     { box-shadow:0 0 28px 8px rgba(99,102,241,0.7); }
@@ -3476,7 +3492,7 @@ export default function WalletPage() {
           </div>
           <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
-      </button>
+      </button></>}
 
       <button
         type="button"
@@ -3584,7 +3600,7 @@ export default function WalletPage() {
       )}
 
       {/* ── Compact Referral / Promo Card ──────────────────────────────────── */}
-      {referral?.referralCode ? (
+      {!purchasesDisabled && (referral?.referralCode ? (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
@@ -3661,7 +3677,7 @@ export default function WalletPage() {
         </div>
       ) : (
         <div className="text-xs text-muted-foreground animate-pulse">{t("wallet.loadingPromo")}</div>
-      )}
+      ))}
 
       {/* ── Recent Transactions ─────────────────────────────────────────────── */}
       <div>

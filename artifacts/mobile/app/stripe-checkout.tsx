@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -10,6 +11,12 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
+import {
+  ANDROID_UA_SUFFIX,
+  classifyWebUrl,
+  isTrustedFlexaUrl,
+  isTrustedStripeUrl,
+} from "../security/webviewPolicy";
 
 const FLEXA_HOST = "flexamarket.com";
 
@@ -40,12 +47,7 @@ function handleFlexaSuccessUrl(url: string): {
 }
 
 function isFlexa(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === FLEXA_HOST || hostname.endsWith("." + FLEXA_HOST);
-  } catch {
-    return false;
-  }
+  return isTrustedFlexaUrl(url);
 }
 
 // Set proper mobile viewport so Stripe's responsive layout matches the rest of the app.
@@ -130,7 +132,7 @@ export default function StripeCheckoutScreen() {
   const handledReturnRef = useRef(false);
   const [loading, setLoading] = useState(true);
 
-  const stripeUrl = typeof url === "string" ? url : null;
+  const stripeUrl = typeof url === "string" && isTrustedStripeUrl(url) ? url : null;
 
   if (!stripeUrl) {
     router.back();
@@ -200,19 +202,38 @@ export default function StripeCheckoutScreen() {
           scalesPageToFit={false}
           injectedJavaScriptBeforeContentLoaded={buildStripeInjectScript(insets.top)}
           injectedJavaScript={buildStripeInjectScript(insets.top)}
+          applicationNameForUserAgent={
+            Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
+          }
           injectedJavaScriptForMainFrameOnly
           onLoadStart={() => setLoading(true)}
           onLoadEnd={() => setLoading(false)}
           onShouldStartLoadWithRequest={(request) => {
-            if (isFlexa(request.url)) {
+            const route = classifyWebUrl(request.url);
+            if (route === "flexa") {
               finishFlexaReturn(request.url);
               return false;
             }
-            return true;
+            if (route === "stripe") return true;
+            if (route === "external") Linking.openURL(request.url).catch(() => {});
+            return false;
           }}
           onNavigationStateChange={(state) => {
             if (isFlexa(state.url)) {
               finishFlexaReturn(state.url);
+            }
+          }}
+          onOpenWindow={(event) => {
+            const targetUrl = event.nativeEvent.targetUrl;
+            const route = classifyWebUrl(targetUrl);
+            if (route === "stripe") {
+              webRef.current?.injectJavaScript(
+                `window.location.href=${JSON.stringify(targetUrl)};true;`,
+              );
+            } else if (route === "flexa") {
+              finishFlexaReturn(targetUrl);
+            } else if (route === "external") {
+              Linking.openURL(targetUrl).catch(() => {});
             }
           }}
         />

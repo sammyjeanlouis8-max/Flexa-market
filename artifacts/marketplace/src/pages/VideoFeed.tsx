@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
 
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -1693,7 +1694,7 @@ function VideoCard({
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyFeed({ onBoostClick }: { onBoostClick: () => void }) {
+function EmptyFeed({ onBoostClick, purchasesDisabled }: { onBoostClick: () => void; purchasesDisabled: boolean }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center h-full text-white gap-5 px-8 text-center">
@@ -1702,14 +1703,14 @@ function EmptyFeed({ onBoostClick }: { onBoostClick: () => void }) {
         <h2 className="text-xl font-black mb-2">{t("videoFeed.emptyTitle")}</h2>
         <p className="text-white/60 text-sm leading-relaxed max-w-xs">{t("videoFeed.emptyDesc")}</p>
       </div>
-      <button
+      {!purchasesDisabled && <button
         type="button"
         onClick={onBoostClick}
         className="flex items-center gap-2 bg-primary text-white font-bold px-6 py-3 rounded-full shadow-xl hover:opacity-90 transition-opacity active:scale-95"
       >
         <Zap className="h-4 w-4" />
         {t("videoFeed.emptyCta")}
-      </button>
+      </button>}
     </div>
   );
 }
@@ -1742,6 +1743,7 @@ export default function VideoFeed() {
     }
   }, [navigate]);
   const { token } = useAuth();
+  const purchasesDisabled = isAndroidApp();
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -1753,6 +1755,7 @@ export default function VideoFeed() {
     try { return sessionStorage.getItem("bw_open_vf") === "1"; } catch { return false; }
   });
   const openWizard = () => {
+    if (purchasesDisabled) return;
     try { sessionStorage.setItem("bw_open_vf", "1"); } catch { /* ok */ }
     setWizardOpen(true);
   };
@@ -2045,7 +2048,7 @@ export default function VideoFeed() {
             <span className="flex-1 text-white font-bold text-base text-center drop-shadow">{t("videoFeed.title")}</span>
             <div className="w-9 h-9" />
           </div>
-          <EmptyFeed onBoostClick={openWizard} />
+          <EmptyFeed onBoostClick={openWizard} purchasesDisabled={purchasesDisabled} />
         </>
       )}
 
@@ -2230,7 +2233,7 @@ export default function VideoFeed() {
         )}
 
         {/* FAB — Add boost */}
-        <button
+        {!purchasesDisabled && <button
           type="button"
           onClick={openWizard}
           className="absolute z-50 flex items-center justify-center w-12 h-12 bg-primary rounded-full shadow-2xl active:scale-95 transition-transform"
@@ -2243,7 +2246,7 @@ export default function VideoFeed() {
           data-testid="button-add-video-boost"
         >
           <Plus className="h-6 w-6 text-white" />
-        </button>
+        </button>}
 
         {/* Mobile feed navigation — the global marketplace nav is intentionally hidden on /videos */}
         <nav

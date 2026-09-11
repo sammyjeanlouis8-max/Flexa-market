@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -1667,9 +1668,9 @@ export default function ListingDetail() {
                 {t("buttons.relist", { defaultValue: "Re-list as available" })}
               </Button>
             ) : null}
-            <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-boost-listing">
+            {(!isAndroidApp() || listing.isBoosted) && <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-boost-listing">
               <Zap className="h-4 w-4 mr-1" /> {t("buttons.boostListing")}
-            </Button>
+            </Button>}
           </div>
         )}
 
@@ -1712,11 +1713,11 @@ export default function ListingDetail() {
                 {adminActioning === "remove" ? "..." : "Retire"}
               </Button>
             </div>
-            <Button variant="outline" size="sm" className="w-full border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-admin-boost-listing">
+            {!isAndroidApp() && <Button variant="outline" size="sm" className="w-full border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-admin-boost-listing">
               <Zap className="h-4 w-4 mr-1" />
               <Shield className="h-3.5 w-3.5 mr-1.5 opacity-70" />
               Boost (Admin)
-            </Button>
+            </Button>}
           </div>
         )}
 

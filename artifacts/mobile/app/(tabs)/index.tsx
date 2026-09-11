@@ -25,6 +25,11 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import { usePushNotifications } from "../../hooks/usePushNotifications";
+import {
+  ANDROID_UA_SUFFIX,
+  classifyWebUrl,
+  platformBridgeScript,
+} from "../../security/webviewPolicy";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WEBSITE = "https://flexamarket.com";
@@ -37,22 +42,10 @@ const MAX_BRIDGE_BYTES = 40 * 1024 * 1024; // 40 MB
 const SAFE_EDGES: ("top" | "bottom" | "left" | "right")[] =
   Platform.OS === "ios" ? ["top"] : [];
 
-// ─── URL helpers ──────────────────────────────────────────────────────────────
-function isInternal(url: string): boolean {
-  try {
-    const { hostname, protocol } = new URL(url);
-    if (protocol === "mailto:" || protocol === "tel:" || protocol === "sms:") return false;
-    if (hostname === "flexamarket.com" || hostname.endsWith(".flexamarket.com")) return true;
-    if (hostname === "stripe.com" || hostname.endsWith(".stripe.com") || hostname.endsWith(".stripe.network")) return true;
-    return false;
-  } catch {
-    return true;
-  }
-}
-
 // ─── Injected script ──────────────────────────────────────────────────────────
 const INIT_SCRIPT = `
 (function(){
+  ${platformBridgeScript(Platform.OS)}
   if(!window.__flexaCtxBlocked){
     window.__flexaCtxBlocked=true;
     document.addEventListener('contextmenu',function(e){e.preventDefault();},true);
@@ -135,6 +128,7 @@ export default function HomeTab() {
       const p = Platform.OS;
       injectJs(
         `(function(){
+          try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;}catch(e){return;}
           window.__expoPushToken=${JSON.stringify(token)};
           window.__expoPushPlatform=${JSON.stringify(p)};
           if(typeof window.__onExpoPushToken==='function')
@@ -145,22 +139,25 @@ export default function HomeTab() {
   }, [insets, injectJs, tokenRef]);
 
   const onShouldStartLoadWithRequest = useCallback((req: any) => {
-    if (isInternal(req.url)) return true;
-    Linking.openURL(req.url).catch(() => {});
+    const route = classifyWebUrl(req.url);
+    if (route === "flexa" || route === "stripe") return true;
+    if (route === "external") Linking.openURL(req.url).catch(() => {});
     return false;
   }, []);
 
   const onOpenWindow = useCallback((event: any) => {
     const url = event.nativeEvent?.targetUrl;
     if (!url) return;
-    if (isInternal(url)) {
+    const route = classifyWebUrl(url);
+    if (route === "flexa" || route === "stripe") {
       webRef.current?.injectJavaScript(`window.location.href=${JSON.stringify(url)};true;`);
-    } else {
+    } else if (route === "external") {
       Linking.openURL(url).catch(() => {});
     }
   }, []);
 
   const handleMessage = useCallback((event: any) => {
+    if (Platform.OS !== "ios") return;
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === "PICK_VIDEO") handleNativeVideoPick();
@@ -238,7 +235,9 @@ export default function HomeTab() {
         thirdPartyCookiesEnabled
         injectedJavaScript={INIT_SCRIPT}
         injectedJavaScriptBeforeContentLoaded={INIT_SCRIPT}
-        applicationNameForUserAgent="FlexaMarket/1.0 Safari/605.1.15"
+        applicationNameForUserAgent={
+          Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
+        }
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         allowsFullscreenVideo

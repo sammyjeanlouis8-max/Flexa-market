@@ -13,6 +13,7 @@ import { useFavorites } from "@/contexts/favorites";
 
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { formatPrice, useExchangeRate, htgToUsd, convertToUsd } from "@/lib/currency";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 type Listing = {
   id: number;
@@ -133,7 +134,7 @@ export default function ListingCard({
         data-testid={`card-listing-${listing.id}`}
       >
         {/* === IMAGE === */}
-        <div className={cn("relative overflow-hidden bg-muted", compact ? "aspect-square" : "aspect-[4/3]")}>
+        <div className={cn("listing-card-media relative overflow-hidden bg-muted", compact ? "aspect-square" : "aspect-[4/3]")}>
           {img && !imageFailed ? (
             <img
               src={img}
@@ -246,7 +247,7 @@ export default function ListingCard({
         </div>
 
         {/* === INFO === */}
-        <div className={cn("p-2.5", compact && "p-2")}>
+        <div className={cn("listing-card-info p-2.5", compact && "p-2")}>
           <p className={cn("font-bold text-foreground", compact ? "text-sm" : "text-base")}>
             {formatPrice(listing.price, listing.country, listing.currency)}
           </p>
@@ -255,7 +256,7 @@ export default function ListingCard({
               ≈ ${usdEquivalent!.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
             </p>
           )}
-          <p className={cn("text-foreground font-semibold mt-0.5 line-clamp-2 leading-tight", compact ? "text-xs" : "text-sm")}>
+          <p className={cn("listing-card-title text-foreground font-semibold mt-0.5 line-clamp-2 leading-tight", compact ? "text-xs" : "text-sm")}>
             {listing.title}
           </p>
           <div className="flex items-center gap-1 mt-1 text-muted-foreground">
@@ -334,7 +335,7 @@ export default function ListingCard({
           )}
 
           {/* === BOOST BUTTON (only shown to the listing owner) === */}
-          {!preview && isOwner && listing.status !== "sold" && (
+          {!preview && isOwner && listing.status !== "sold" && (!isAndroidApp() || listing.isBoosted) && (
             <Button
               size="sm"
               variant="outline"

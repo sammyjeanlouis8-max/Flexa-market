@@ -14,6 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import WebView from 'react-native-webview';
+import {
+  ANDROID_UA_SUFFIX,
+  classifyWebUrl,
+  platformBridgeScript,
+} from '@/security/webviewPolicy';
 
 const BLOCK_CONTEXT_MENU_SCRIPT = `
 (function() {
@@ -27,30 +32,10 @@ true;
 // Inject the native-app JWT token into the web page's localStorage and cookie
 // so the Messages component knows which messages belong to the current user.
 export function makeTokenScript(token: string | null): string {
-  if (!token) return 'true;';
+  const bridge = platformBridgeScript(Platform.OS);
+  if (!token) return bridge;
   const encodedToken = JSON.stringify(token);
-  return `(function(){try{localStorage.setItem("flexamarket_token",${encodedToken});document.cookie="fm_token="+encodeURIComponent(${encodedToken})+"; path=/; SameSite=Lax";try{sessionStorage.setItem("flexamarket_token",${encodedToken});}catch(e){}}catch(e){}})();true;`;
-}
-
-const INTERNAL_HOSTS = [
-  'flexamarket.com',
-  'www.flexamarket.com',
-  'bonjour-tool.replit.app',
-  'stripe.com',
-  'checkout.stripe.com',
-  'js.stripe.com',
-  'hooks.stripe.com',
-  'm.stripe.com',
-  'm.stripe.network',
-];
-
-function isInternal(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return INTERNAL_HOSTS.some((h) => hostname === h || hostname.endsWith('.' + h));
-  } catch {
-    return true;
-  }
+  return `(function(){try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;window.__flexaPlatform=${JSON.stringify(Platform.OS === 'android' ? 'android' : 'ios')};localStorage.setItem("flexamarket_token",${encodedToken});document.cookie="fm_token="+encodeURIComponent(${encodedToken})+"; path=/; SameSite=Lax";try{sessionStorage.setItem("flexamarket_token",${encodedToken});}catch(e){}}catch(e){}})();true;`;
 }
 
 interface SafeWebViewProps {
@@ -198,10 +183,8 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         originWhitelist={['https://*']}
         mixedContentMode='never'
         overScrollMode='never'
-        userAgent={
-          Platform.OS === 'android'
-            ? 'FlexaMarket/1.0 (Android Mobile App)'
-            : 'FlexaMarket/1.0 (iOS Mobile App)'
+        applicationNameForUserAgent={
+          Platform.OS === 'android' ? ANDROID_UA_SUFFIX : undefined
         }
         onNavigationStateChange={(state) => {
           setCanGoBack(state.canGoBack);
@@ -213,25 +196,27 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
         onHttpError={() => setLoading(false)}
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
-          try {
-            const { hostname } = new URL(url);
-            if (hostname === 'checkout.stripe.com' || hostname.endsWith('.checkout.stripe.com')) {
-              setTimeout(() => router.push('/stripe-checkout?url=' + encodeURIComponent(url)), 0);
-              return false;
-            }
-          } catch {}
-          if (isInternal(url)) return true;
-          Linking.openURL(url).catch(() => {});
+          const route = classifyWebUrl(url);
+          if (route === 'stripe') {
+            setTimeout(() => router.push('/stripe-checkout?url=' + encodeURIComponent(url)), 0);
+            return false;
+          }
+          if (route === 'flexa') return true;
+          if (route === 'external') Linking.openURL(url).catch(() => {});
           return false;
         }}
         onOpenWindow={(syntheticEvent) => {
           const targetUrl = (syntheticEvent.nativeEvent as any)?.targetUrl ?? '';
-          try {
-            const { hostname } = new URL(targetUrl);
-            if (hostname === 'checkout.stripe.com' || hostname.endsWith('.checkout.stripe.com')) {
-              router.push('/stripe-checkout?url=' + encodeURIComponent(targetUrl));
-            }
-          } catch {}
+          const route = classifyWebUrl(targetUrl);
+          if (route === 'stripe') {
+            router.push('/stripe-checkout?url=' + encodeURIComponent(targetUrl));
+          } else if (route === 'flexa') {
+            webRef.current?.injectJavaScript(
+              `window.location.href=${JSON.stringify(targetUrl)};true;`,
+            );
+          } else if (route === 'external') {
+            Linking.openURL(targetUrl).catch(() => {});
+          }
         }}
       />
     </SafeAreaView>

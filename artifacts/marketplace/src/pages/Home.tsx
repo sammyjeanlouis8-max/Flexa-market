@@ -858,7 +858,7 @@ export default function Home() {
   return (
     <div className="w-full">
       {/* === TOP SEARCH BAR === */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
+      <div className="hidden md:block sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
         <form onSubmit={handleSearch} className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
@@ -876,7 +876,7 @@ export default function Home() {
         </form>
       </div>
 
-      <div className="px-4 py-4 space-y-6">
+      <div className="px-4 py-2 space-y-3 md:py-4 md:space-y-6">
 
         {/* === ADMIN VIEW BANNER + COUNTRY PICKER === */}
         {/* Super admin: full dropdown with "All Countries" option */}
@@ -1218,7 +1218,7 @@ export default function Home() {
               <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
               <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
               {flexaFamilyFiltered.map((l: NormalListing) => (
                 <div key={l.id} className="relative">
                   <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
@@ -1301,14 +1301,14 @@ export default function Home() {
           </div>
 
           {feedLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
               {[...Array(10)].map((_, i) => (
                 <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
               ))}
             </div>
           ) : feedItems.length > 0 ? (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
                 {feedItems.map(item => {
                   if (item.type === "boosted") {
                     return (
@@ -1355,7 +1355,7 @@ export default function Home() {
               (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
             );
             return recentFiltered.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
                 {recentFiltered.map((l: NormalListing) => (
                   <ListingCard key={l.id} listing={l} />
                 ))}

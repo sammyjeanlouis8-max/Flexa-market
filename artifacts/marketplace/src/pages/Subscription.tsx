@@ -13,6 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 type Plan = {
   id: string;
@@ -106,6 +107,7 @@ export default function Subscription() {
   const { toast } = useToast();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
+  const purchasesDisabled = isAndroidApp();
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [mySub, setMySub] = useState<MySubscription | null>(null);
@@ -233,6 +235,7 @@ export default function Subscription() {
 
   // Open payment method picker and pre-load wallet balance
   const openPayDialog = async (planId: string) => {
+    if (purchasesDisabled) return;
     if (!user) { setLocation("/auth/login"); return; }
     setPendingPlanId(planId);
     setSelectedPayMethod("wallet");
@@ -250,6 +253,7 @@ export default function Subscription() {
 
   // Subscribe via FM Wallet
   const subscribeWithWallet = async () => {
+    if (purchasesDisabled) return;
     if (!pendingPlanId) return;
     setWalletLoading(true);
     try {
@@ -287,6 +291,7 @@ export default function Subscription() {
 
   // Subscribe via Stripe card
   const subscribeWithCard = async (planId: string) => {
+    if (purchasesDisabled) return;
     setSubscribing(planId);
     try {
       const tk = localStorage.getItem("flexamarket_token");
@@ -316,6 +321,7 @@ export default function Subscription() {
   const subscribe = openPayDialog;
 
   const openPortal = async () => {
+    if (purchasesDisabled) return;
     setPortalLoading(true);
     try {
       const tk = localStorage.getItem("flexamarket_token");
@@ -352,6 +358,7 @@ export default function Subscription() {
   };
 
   const handleWalletRetry = async () => {
+    if (purchasesDisabled) return;
     setWalletRetryLoading(true);
     try {
       const tk = localStorage.getItem("flexamarket_token");
@@ -372,6 +379,7 @@ export default function Subscription() {
   };
 
   const handleUncancel = async () => {
+    if (purchasesDisabled) return;
     setUncancelLoading(true);
     try {
       const tk = localStorage.getItem("flexamarket_token");
@@ -464,6 +472,11 @@ export default function Subscription() {
 
       {/* ── Page content ────────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
+      {purchasesDisabled && (
+        <div className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-4 text-center text-sm font-medium">
+          {t("androidPurchasePolicy.unavailable")}
+        </div>
+      )}
 
       {/* ── Return-to-app banner (shown after mobile payment) ─────────────── */}
       {showReturnApp && (
@@ -519,14 +532,14 @@ export default function Subscription() {
       )}
 
       {/* ── Page header ───────────────────────────────────────────────────── */}
-      <div className="text-center mb-8">
+      {!purchasesDisabled && <div className="text-center mb-8">
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 px-2.5 py-1 rounded-full mb-3">
           <Crown className="h-3 w-3" />
           {t("subscription.badge")}
         </p>
         <h1 className="text-xl font-semibold tracking-tight mb-1">{t("subscription.title")}</h1>
         <p className="text-sm text-muted-foreground max-w-sm mx-auto">{t("subscription.subtitle")}</p>
-      </div>
+      </div>}
 
       {/* ── Active subscription status bar ────────────────────────────────── */}
       {user && mySub && mySub.plan !== "basic" && (
@@ -600,15 +613,17 @@ export default function Subscription() {
           {!isExpired && (
             <div className="flex items-center gap-2 shrink-0">
               {mySub.cancelAtPeriodEnd ? (
+                purchasesDisabled ? null : (
                 <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleUncancel} disabled={uncancelLoading}>
                   {uncancelLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                   {t("subscription.reactiveBtn")}
                 </Button>
+                )
               ) : (
                 <>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openPortal} disabled={portalLoading}>
+                  {!purchasesDisabled && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openPortal} disabled={portalLoading}>
                     {portalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : t("subscription.manageBilling")}
-                  </Button>
+                  </Button>}
                   <Button
                     size="sm" variant="outline"
                     className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/30 gap-1"
@@ -630,16 +645,16 @@ export default function Subscription() {
                 <p className="text-xs font-medium text-amber-700 dark:text-amber-400">{t("subscription.graceAlert")}</p>
                 <p className="text-xs text-amber-600 dark:text-amber-500">{t("subscription.graceDesc", { date: fmtDate(mySub.graceUntil, lang) })}</p>
               </div>
-              <Button size="sm" className="h-6 text-xs px-2 bg-amber-500 hover:bg-amber-600 text-white shrink-0" onClick={openPortal} disabled={portalLoading}>
+              {!purchasesDisabled && <Button size="sm" className="h-6 text-xs px-2 bg-amber-500 hover:bg-amber-600 text-white shrink-0" onClick={openPortal} disabled={portalLoading}>
                 {portalLoading ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : t("subscription.updatePayment")}
-              </Button>
+              </Button>}
             </div>
           )}
         </div>
       )}
 
       {/* Grace-expired basic user notice */}
-      {user && mySub && mySub.plan === "basic" && isExpired && (
+      {!purchasesDisabled && user && mySub && mySub.plan === "basic" && isExpired && (
         <div className="mb-5 rounded-xl border border-red-300/60 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800/40 px-4 py-3 flex items-start gap-2.5">
           <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
           <div>
@@ -650,7 +665,7 @@ export default function Subscription() {
       )}
 
       {/* Hidden listings banner */}
-      {user && hiddenCount > 0 && (
+      {!purchasesDisabled && user && hiddenCount > 0 && (
         <div className="mb-5 rounded-xl border border-orange-400/50 bg-orange-50/60 dark:bg-orange-950/20 dark:border-orange-700/40 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex items-start gap-2.5 flex-1">
             <EyeOff className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
@@ -666,7 +681,7 @@ export default function Subscription() {
             </div>
           </div>
           {/* Only show wallet-retry button if user has a wallet subscription */}
-          {mySub && !mySub.stripeSubscriptionId && (
+          {mySub && !mySub.stripeSubscriptionId && !purchasesDisabled && (
             <Button
               size="sm"
               className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 gap-1.5"
@@ -681,7 +696,7 @@ export default function Subscription() {
       )}
 
       {/* ── Plans grid ────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {!purchasesDisabled && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {plans.map((plan) => {
           const c = PLAN_COLORS[plan.id] ?? PLAN_COLORS.basic;
           const Icon = PLAN_ICONS[plan.id] ?? Zap;
@@ -787,7 +802,7 @@ export default function Subscription() {
                     )
                   ) : isCurrentPaid ? (
                     <div>
-                      <Button
+                      {!purchasesDisabled && <Button
                         size="sm"
                         variant="outline"
                         className="w-full h-8 text-xs"
@@ -795,7 +810,7 @@ export default function Subscription() {
                         disabled={portalLoading}
                       >
                         {portalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : t("subscription.manageMyPlan")}
-                      </Button>
+                      </Button>}
                       {mySub?.nextBillingDate && !mySub.cancelAtPeriodEnd && (
                         <p className="text-[10px] text-center text-muted-foreground mt-1.5">
                           {t("subscription.nextBillingLabel", { date: fmtDate(mySub.nextBillingDate, lang) })}
@@ -807,7 +822,7 @@ export default function Subscription() {
                         </p>
                       )}
                     </div>
-                  ) : (
+                  ) : purchasesDisabled ? null : (
                     <div>
                       <Button
                         size="sm"
@@ -833,10 +848,10 @@ export default function Subscription() {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* ── Visibility chart ──────────────────────────────────────────────── */}
-      <div className="mt-8 bg-card border border-border rounded-xl p-4">
+      {!purchasesDisabled && <div className="mt-8 bg-card border border-border rounded-xl p-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-1.5">
           <Eye className="h-3.5 w-3.5" />
           {t("subscription.visTitle")}
@@ -857,10 +872,10 @@ export default function Subscription() {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* ── FAQ ───────────────────────────────────────────────────────────── */}
-      <div className="mt-5 border border-border rounded-xl overflow-hidden divide-y divide-border">
+      {!purchasesDisabled && <div className="mt-5 border border-border rounded-xl overflow-hidden divide-y divide-border">
         {[
           { q: t("subscription.faq1Q"), a: t("subscription.faq1A", { days: 5 }) },
           { q: t("subscription.faq2Q"), a: t("subscription.faq2A") },
@@ -876,7 +891,7 @@ export default function Subscription() {
             <p className="px-4 pb-3 pt-0 text-xs text-muted-foreground leading-relaxed">{faq.a}</p>
           </details>
         ))}
-      </div>
+      </div>}
 
       {/* ── Cancel dialog ─────────────────────────────────────────────────── */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -905,7 +920,7 @@ export default function Subscription() {
       </Dialog>
 
       {/* ── Payment method picker dialog ──────────────────────────────────── */}
-      <Dialog open={payMethodOpen} onOpenChange={v => { if (!walletLoading && !subscribing) setPayMethodOpen(v); }}>
+      {!purchasesDisabled && <Dialog open={payMethodOpen} onOpenChange={v => { if (!walletLoading && !subscribing) setPayMethodOpen(v); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -1023,7 +1038,7 @@ export default function Subscription() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
       </div>{/* end px-4 pt-4 */}
     </div>
   );

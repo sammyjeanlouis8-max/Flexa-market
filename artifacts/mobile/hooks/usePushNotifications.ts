@@ -123,7 +123,8 @@ export function usePushNotifications(
       if (injectJs) {
         const platform = Platform.OS;
         injectJs(
-          `(function(){window.__expoPushToken=${JSON.stringify(token)};window.__expoPushPlatform=${JSON.stringify(platform)};` +
+          `(function(){try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;}catch(e){return;}` +
+          `window.__expoPushToken=${JSON.stringify(token)};window.__expoPushPlatform=${JSON.stringify(platform)};` +
           `if(typeof window.__onExpoPushToken==='function')window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
           `})();true;`
         );

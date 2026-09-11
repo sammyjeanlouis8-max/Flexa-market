@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { MAX_BOOST_VIDEO_BYTES, uploadNormalizedBoostVideo } from "@/lib/boostVideoUpload";
 import BoostWizard from "@/components/BoostWizard";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,6 +88,7 @@ export default function MyBoosts() {
   const { token, user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const purchasesDisabled = isAndroidApp();
   const [boosts, setBoosts] = useState<ActiveBoost[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(() => {
@@ -266,14 +268,14 @@ export default function MyBoosts() {
               <h3 className="font-bold text-foreground text-base">{t("myBoosts.empty")}</h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">{t("myBoosts.emptyDesc")}</p>
             </div>
-            <button
+            {!purchasesDisabled && <button
               type="button"
               onClick={openWizard}
               className="inline-flex items-center gap-2 bg-primary text-primary-foreground font-bold px-6 py-2.5 rounded-full shadow-md hover:opacity-90 transition-opacity text-sm"
             >
               <Zap className="h-4 w-4" />
               {t("myBoosts.boostCta")}
-            </button>
+            </button>}
           </div>
 
         ) : (
@@ -401,7 +403,7 @@ export default function MyBoosts() {
                           }
                         </button>
                       )}
-                      {(boost.isExpired || expiringSoon) && (
+                      {(boost.isExpired || expiringSoon) && !isAndroidApp() && (
                         <button
                           type="button"
                           onClick={() => navigate(`/boost/${boost.listingId}`)}
@@ -445,14 +447,14 @@ export default function MyBoosts() {
             </div>
 
             {/* Launch new boost CTA */}
-            <button
+            {!purchasesDisabled && <button
               type="button"
               onClick={openWizard}
               className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed border-primary/30 text-primary text-sm font-bold hover:bg-primary/5 transition-colors"
             >
               <Zap className="h-4 w-4" />
               {t("myBoosts.boostAgain")}
-            </button>
+            </button>}
           </>
         )}
       </div>

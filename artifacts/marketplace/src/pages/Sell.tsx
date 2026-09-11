@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
 import ListingCard from "@/components/ListingCard";
 import { apiFetch } from "@/lib/api";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -75,6 +76,7 @@ function getStorageUrl(objectPath: string): string {
 }
 
 export default function Sell() {
+  const purchasesDisabled = isAndroidApp();
   const { user, isLoading: authLoading } = useAuth();
   const { isRestricted, showRestrictionToast } = useRestriction();
   const isAdmin = !!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin;
@@ -567,14 +569,16 @@ export default function Sell() {
           <span className="text-2xl leading-none mt-0.5">🚫</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{t("sell.freeLimit", { count: myListingCount.activeCount, max: 4 })}</p>
-            <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">{t("sell.freeLimitDesc")}</p>
-            <button
+            <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+              {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.freeLimitDesc")}
+            </p>
+            {!purchasesDisabled && <button
               type="button"
               onClick={() => setLocation("/subscription")}
               className="mt-2 text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg px-3 py-1.5"
             >
               {t("sell.seePlans")}
-            </button>
+            </button>}
           </div>
         </div>
       )}
@@ -1059,10 +1063,12 @@ export default function Sell() {
               <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20">
                 <Video className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("sell.videoUpgradeTitle")}</p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{t("sell.videoUpgradeMsg")}</p>
+                  {!purchasesDisabled && <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("sell.videoUpgradeTitle")}</p>}
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.videoUpgradeMsg")}
+                  </p>
                 </div>
-                <Button
+                {!purchasesDisabled && <Button
                   type="button"
                   size="sm"
                   variant="outline"
@@ -1071,7 +1077,7 @@ export default function Sell() {
                   data-testid="button-video-upgrade"
                 >
                   {t("sell.videoUpgradeBtn")}
-                </Button>
+                </Button>}
               </div>
             )}
           </div>

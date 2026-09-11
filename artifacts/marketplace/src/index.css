@@ -5,6 +5,22 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Home-only mobile density: six products in two rows on typical phones.
+   Keep search, seller pages, carousels and desktop card sizing unchanged. */
+@media (max-width: 767px) {
+  .home-product-grid .listing-card-media {
+    aspect-ratio: 4 / 3;
+  }
+  .home-product-grid .listing-card-info {
+    padding: 6px;
+  }
+  .home-product-grid .listing-card-title {
+    font-size: 12px;
+    line-height: 15px;
+    min-height: 30px;
+  }
+}
+
 :root {
   --flexa-vv-bottom: 0px;
   --flexa-vv-width: 100vw;

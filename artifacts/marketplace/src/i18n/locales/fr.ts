@@ -1,4 +1,7 @@
 export default {
+  androidPurchasePolicy: {
+    unavailable: "Les achats ne sont pas disponibles dans cette application.",
+  },
   tr: {
     listingNotFound: "Annonce introuvable",
     promoVideo: "Vidéo promo",

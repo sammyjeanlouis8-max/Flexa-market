@@ -19,6 +19,7 @@ import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
 import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -199,6 +200,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
   const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isOwner = !!(currentUserId && track.artist_user_id && currentUserId === track.artist_user_id);
+  const purchasesDisabled = isAndroidApp();
 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
 
@@ -221,7 +223,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
           </div>
         </div>
         {/* Buy CTA — shown only when track is locked */}
-        {isPaidLocked && (
+        {isPaidLocked && !purchasesDisabled && (
           <div className="px-5 py-3 border-b border-white/5">
             <button
               onClick={() => { onBuy?.(); onClose(); }}
@@ -621,6 +623,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
   const [errMsg,        setErrMsg]        = useState("");
   const [walletBal,     setWalletBal]     = useState<number | null>(null);
   const { t } = useTranslation();
+  const purchasesDisabled = isAndroidApp();
 
   const getToken = () =>
     localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
@@ -637,6 +640,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
 
   // ── Pay via Stripe checkout ─────────────────────────────────────────────────
   const handleBuy = async () => {
+    if (purchasesDisabled) return;
     setLoading(true); setErrMsg("");
     try {
       const res  = await fetch(`/api/music/${track.id}/buy`, {
@@ -651,6 +655,7 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
 
   // ── Pay via FM wallet (instant) ─────────────────────────────────────────────
   const handleBuyWallet = async () => {
+    if (purchasesDisabled) return;
     setLoadingWallet(true); setErrMsg("");
     try {
       const res  = await fetch(`/api/music/${track.id}/buy/wallet`, {
@@ -672,6 +677,17 @@ function SongPaywallView({ track, userId, playCount, onBought, onBack }: {
 
   const price = Number(track.price_usd ?? 0);
   const PLATFORM_PCT = 20;
+
+  if (purchasesDisabled) {
+    return (
+      <div className="music-view-root flex min-h-screen flex-col items-center justify-center gap-5 px-5 text-center text-white">
+        <p className="text-sm font-medium">{t("androidPurchasePolicy.unavailable")}</p>
+        <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-3 text-sm font-bold">
+          {t("music.listenFree")}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", display: "flex", flexDirection: "column" }}>
@@ -805,6 +821,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   const [errMsg,  setErrMsg]  = useState("");
   const [walletBal, setWalletBal] = useState<number | null>(null);
   const { t } = useTranslation();
+  const purchasesDisabled = isAndroidApp();
 
   // Fetch wallet balance on mount so we can show it in the FM button
   useEffect(() => {
@@ -821,6 +838,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
 
   // Pay via Stripe
   const handleStripe = async () => {
+    if (purchasesDisabled) return;
     setLoadingStripe(true); setErrMsg("");
     try {
       const res = await fetch("/api/music/artist/subscribe", {
@@ -850,6 +868,7 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
 
   // Pay via FM Wallet (Flex Card)
   const handleWallet = async () => {
+    if (purchasesDisabled) return;
     setLoadingWallet(true); setErrMsg("");
     try {
       const res = await fetch("/api/music/artist/subscribe/wallet", {
@@ -870,6 +889,17 @@ function ArtistPlanView({ songCount, onBack }: { songCount: number; onBack: () =
   };
 
   const canPayWallet = walletBal !== null && walletBal >= 50;
+
+  if (purchasesDisabled) {
+    return (
+      <div className="music-view-root flex min-h-screen flex-col items-center justify-center gap-5 px-5 text-center text-white">
+        <p className="text-sm font-medium">{t("androidPurchasePolicy.unavailable")}</p>
+        <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-3 text-sm font-bold">
+          {t("common.back", "Back")}
+        </button>
+      </div>
+    );
+  }
 
   const perks = [
     { icon: <Music2 size={22} />, title: t("music.artistPlanPerk1Title"), desc: t("music.artistPlanPerk1Desc") },
@@ -1638,7 +1668,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                           <span>{fmtPlays(track.play_count)}</span>
                         </div>
                       </div>
-                      {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                      {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                         <span className="text-violet-300 text-xs font-bold shrink-0">${Number(track.price_usd).toFixed(2)}</span>
                       )}
                       {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
@@ -1678,7 +1708,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-violet-400" : "text-white"}`}>{track.title}</p>
-                          {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                          {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                             <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
                               ${Number(track.price_usd).toFixed(2)}
@@ -2442,7 +2472,7 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className={`text-sm font-semibold truncate ${isActive ? "text-violet-400" : "text-white"}`}>{track.title}</p>
-                      {track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                      {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                         <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                           style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
                           ${Number(track.price_usd).toFixed(2)}

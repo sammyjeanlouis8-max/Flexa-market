@@ -21,7 +21,11 @@ config.resolver.nodeModulesPaths = [
 // that one import to a browser-safe assertion function.
 const assertShim = path.resolve(projectRoot, "shims/assert.js");
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === "assert") {
+  const importer = context.originModulePath || "";
+  if (
+    moduleName === "assert" &&
+    /(?:^|[\\/])@ide[\\/]backoff(?:[\\/]|$)/.test(importer)
+  ) {
     return { type: "sourceFile", filePath: assertShim };
   }
   return context.resolveRequest(context, moduleName, platform);

@@ -16,6 +16,7 @@ import {
   AppStateStatus,
   BackHandler,
   Image,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -26,6 +27,12 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import WebView from "react-native-webview";
 import * as Notifications from "expo-notifications";
 import { usePushNotifications } from "./hooks/usePushNotifications";
+import {
+  ANDROID_UA_SUFFIX,
+  classifyWebUrl,
+  isTrustedFlexaUrl,
+  platformBridgeScript,
+} from "./security/webviewPolicy";
 
 const WEBSITE = "https://flexamarket.com";
 
@@ -60,6 +67,7 @@ export default function App() {
   const [loadError, setLoadError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const currentLoadFailedRef = useRef(false);
+  const currentUrlRef = useRef(WEBSITE);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
@@ -95,7 +103,7 @@ export default function App() {
       if (nextState === "background") {
         if (heartbeatRef.current) return; // already running
         heartbeatRef.current = setInterval(() => {
-          if (!webRef.current) return;
+          if (!webRef.current || !isTrustedFlexaUrl(currentUrlRef.current)) return;
           webRef.current.injectJavaScript(
             `(function(){` +
               // Ping socket.io if present
@@ -125,7 +133,7 @@ export default function App() {
 
   // ── Push token registration ────────────────────────────────────────────
   const injectJs = useCallback((script: string) => {
-    if (webRef.current) {
+    if (webRef.current && isTrustedFlexaUrl(currentUrlRef.current)) {
       webRef.current.injectJavaScript(script);
     } else {
       pendingScript.current = script;
@@ -147,6 +155,7 @@ export default function App() {
   // loads.  We store it and, if we already have an Expo push token, call the
   // registration API immediately — no WebView injection timing issues.
   const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    if (!isTrustedFlexaUrl(currentUrlRef.current)) return;
     try {
       const msg = JSON.parse(event.nativeEvent.data);
 
@@ -185,17 +194,18 @@ export default function App() {
     }
 
     // Drain any script that arrived before the page was ready
-    if (pendingScript.current) {
+    if (pendingScript.current && isTrustedFlexaUrl(currentUrlRef.current)) {
       webRef.current?.injectJavaScript(pendingScript.current);
       pendingScript.current = null;
     }
 
     // Always re-inject the token after each navigation
     const token = tokenRef.current;
-    if (token) {
+    if (token && isTrustedFlexaUrl(currentUrlRef.current)) {
       const platform = Platform.OS;
       webRef.current?.injectJavaScript(
         `(function(){` +
+          `try{if(location.protocol!=="https:"||!(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com")))return;}catch(e){return;}` +
           `window.__expoPushToken=${JSON.stringify(token)};` +
           `window.__expoPushPlatform=${JSON.stringify(platform)};` +
           `if(typeof window.__onExpoPushToken==='function')` +
@@ -207,7 +217,7 @@ export default function App() {
     // Navigate to URL from the notification that cold-started the app.
     // Consumed once — subsequent loads must not re-fire.
     const notifUrl = pendingNotifUrl.current;
-    if (notifUrl) {
+    if (notifUrl && isTrustedFlexaUrl(notifUrl)) {
       pendingNotifUrl.current = null;
       webRef.current?.injectJavaScript(
         `(function(){` +
@@ -244,10 +254,10 @@ export default function App() {
       <SafeAreaView
         style={styles.container}
         // The marketplace WebView owns the bottom safe-area inset itself
-          // (the chat composer uses env(safe-area-inset-bottom)). Reserving it
-          // here as well shrinks the WebView and leaves a white native strip
-          // over the lower half of the composer on iPhone.
-          edges={Platform.OS === "ios" ? ["top"] : []}
+        // (the chat composer uses env(safe-area-inset-bottom)). Reserving it
+        // here as well shrinks the WebView and leaves a white native strip
+        // over the lower half of the composer on iPhone.
+        edges={Platform.OS === "ios" ? ["top"] : []}
       >
         <WebView
           ref={webRef}
@@ -260,18 +270,45 @@ export default function App() {
           mediaPlaybackRequiresUserAction={false}
           allowsFullscreenVideo
           setSupportMultipleWindows={false}
+          applicationNameForUserAgent={
+            Platform.OS === "android" ? ANDROID_UA_SUFFIX : undefined
+          }
+          injectedJavaScriptBeforeContentLoaded={platformBridgeScript(Platform.OS)}
           originWhitelist={["https://*"]}
           mixedContentMode="never"
           cacheEnabled
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
-          onNavigationStateChange={(s) => setCanGoBack(s.canGoBack)}
-          onLoadStart={handleLoadStart}
+          onNavigationStateChange={(s) => {
+            currentUrlRef.current = s.url;
+            setCanGoBack(s.canGoBack);
+          }}
+          onLoadStart={(event) => {
+            currentUrlRef.current = event.nativeEvent.url;
+            handleLoadStart();
+          }}
           onLoadEnd={onLoadEnd}
           onError={handleLoadError}
           onHttpError={(event) => {
             if (event.nativeEvent.statusCode >= 500) handleLoadError();
           }}
           onMessage={onMessage}
+          onShouldStartLoadWithRequest={(request) => {
+            const route = classifyWebUrl(request.url);
+            if (route === "flexa" || route === "stripe") return true;
+            if (route === "external") Linking.openURL(request.url).catch(() => {});
+            return false;
+          }}
+          onOpenWindow={(event) => {
+            const targetUrl = event.nativeEvent.targetUrl;
+            const route = classifyWebUrl(targetUrl);
+            if (route === "flexa" || route === "stripe") {
+              webRef.current?.injectJavaScript(
+                `window.location.href=${JSON.stringify(targetUrl)};true;`,
+              );
+            } else if (route === "external") {
+              Linking.openURL(targetUrl).catch(() => {});
+            }
+          }}
         />
 
         {isLoading && !loadError && (

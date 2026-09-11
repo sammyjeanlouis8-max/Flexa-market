@@ -72,6 +72,10 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
     unreadCount: count().as("unread_count"),
   })
     .from(messagesTable)
+    .innerJoin(conversationsTable, and(
+      eq(messagesTable.conversationId, conversationsTable.id),
+      or(eq(conversationsTable.buyerId, userId), eq(conversationsTable.sellerId, userId)),
+    ))
     .where(and(eq(messagesTable.isRead, false), ne(messagesTable.senderId, userId)))
     .groupBy(messagesTable.conversationId)
     .as("unread_counts");

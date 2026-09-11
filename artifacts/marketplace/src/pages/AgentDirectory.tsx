@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import {
   Wifi, WifiOff, Building2, RefreshCw, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 
 function getToken() {
   return localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
@@ -233,9 +234,14 @@ export default function AgentDirectory() {
 
   const agents = data?.agents ?? [];
 
+  const queryClient = useQueryClient();
   const startChatMut = useMutation({
-    mutationFn: (agentUserId: number) => apiPost(`/agents/${agentUserId}/start-chat`, {}),
+    mutationFn: (agentUserId: number) => {
+      preloadAgentChat();
+      return apiPost(`/agents/${agentUserId}/start-chat`, {});
+    },
     onSuccess: (data) => {
+      prepareAgentChat(queryClient, data);
       setChatLoading(null);
       toast({
         title: t("wallet.agentChatOpened"),

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
 function formatCardNumber(acct: string | null | undefined): string {
@@ -1021,8 +1022,12 @@ export default function WalletPage() {
   });
 
   const startChatAgentMut = useMutation({
-    mutationFn: (agentUserId: number) => apiPost(`/agents/${agentUserId}/start-chat`, {}),
+    mutationFn: (agentUserId: number) => {
+      preloadAgentChat();
+      return apiPost(`/agents/${agentUserId}/start-chat`, {});
+    },
     onSuccess: (data) => {
+      prepareAgentChat(qc, data);
       toast({ title: t("wallet.agentChatOpened"), description: t("wallet.agentChatOpenedDesc") });
       setLocation(`/messages/${data.conversationId}`);
     },

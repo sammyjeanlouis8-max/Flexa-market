@@ -160,11 +160,21 @@ router.post("/agents/:userId/start-chat", requireAuth, requireNotRestricted, asy
 
   // Verify the agent is approved
   const [agentApp] = await db
-    .select()
+    .select({ id: agentApplicationsTable.id, name: usersTable.name, avatar: usersTable.avatar })
     .from(agentApplicationsTable)
+    .innerJoin(usersTable, eq(usersTable.id, agentApplicationsTable.userId))
     .where(and(eq(agentApplicationsTable.userId, agentUserId), eq(agentApplicationsTable.status, "approved")))
     .limit(1);
   if (!agentApp) { res.status(404).json({ error: "Agent not found or not approved" }); return; }
+
+  const conversationSummary = (conv: typeof conversationsTable.$inferSelect) => ({
+    id: conv.id, listingId: null, listingTitle: "💼 Agent Recharge",
+    listingImage: null, listingPrice: 0,
+    otherUserId: agentUserId, otherUserName: agentApp.name,
+    otherUserAvatar: agentApp.avatar, unreadCount: 0,
+    lastMessage: conv.lastMessage ?? null,
+    lastMessageAt: conv.lastMessageAt?.toISOString() ?? null,
+  });
 
   // Find existing direct agent-recharge conversation
   const [existing] = await db
@@ -178,7 +188,7 @@ router.post("/agents/:userId/start-chat", requireAuth, requireNotRestricted, asy
     .limit(1);
 
   if (existing) {
-    res.json({ conversationId: existing.id, isNew: false });
+    res.json({ conversationId: existing.id, isNew: false, conversation: conversationSummary(existing) });
     return;
   }
 
@@ -191,8 +201,10 @@ router.post("/agents/:userId/start-chat", requireAuth, requireNotRestricted, asy
   } as any).returning();
 
   // Fetch user's wallet account number for auto-message
-  const [myUser] = await db.select().from(usersTable).where(eq(usersTable.id, myUserId));
-  const [myWallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, myUserId));
+  const [[myUser], [myWallet]] = await Promise.all([
+    db.select({ name: usersTable.name, avatar: usersTable.avatar }).from(usersTable).where(eq(usersTable.id, myUserId)),
+    db.select({ accountNumber: promoWalletTable.accountNumber }).from(promoWalletTable).where(eq(promoWalletTable.userId, myUserId)),
+  ]);
   const accountNumber = myWallet?.accountNumber ?? "—";
   const userName = myUser?.name ?? "—";
 
@@ -220,7 +232,13 @@ router.post("/agents/:userId/start-chat", requireAuth, requireNotRestricted, asy
   emitNewMessage(conv.id, msgPayload);
   emitConvUpdate(conv.id, { lastMessage: autoContent.slice(0, 80), lastMessageAt: autoMsg.createdAt.toISOString() });
 
-  res.json({ conversationId: conv.id, isNew: true });
+  res.json({
+    conversationId: conv.id, isNew: true,
+    conversation: conversationSummary({
+      ...conv, lastMessage: autoContent.slice(0, 80), lastMessageAt: autoMsg.createdAt,
+    }),
+    initialMessages: [msgPayload],
+  });
 });
 
 // GET /api/agents/my — get my agent application

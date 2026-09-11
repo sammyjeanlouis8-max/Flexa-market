@@ -79,7 +79,7 @@ export default function DriverSelfieMobile() {
     }
 
     if (!mountedRef.current) { stream?.getTracks().forEach(t => t.stop()); return; }
-    if (!stream) { setPhase("error"); setErrMsg("Kamera a pa vle ouvri. Reasèye."); return; }
+    if (!stream) { setPhase("error"); setErrMsg("Unable to open the camera. Try again."); return; }
 
     streamRef.current = stream;
     setPhase("live");
@@ -129,7 +129,7 @@ export default function DriverSelfieMobile() {
         if (!res.ok || !d.ok) { setPhase("error"); setErrMsg(d.error ?? "Upload echwe."); return; }
         setPhase("done");
       } catch {
-        if (mountedRef.current) { setPhase("error"); setErrMsg("Koneksyon echwe. Reasèye."); }
+        if (mountedRef.current) { setPhase("error"); setErrMsg("Connection failed. Try again."); }
       }
     }, "image/jpeg", 0.9);
   };
@@ -178,7 +178,7 @@ export default function DriverSelfieMobile() {
           <p className="text-gray-400 text-sm">Al nan Paramèt → Safari/Chrome → aktive pèmisyon kamera.</p>
           <button onClick={startCamera}
             className="mt-2 w-full h-12 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2">
-            <RefreshCw className="h-4 w-4" /> Reasèye
+            <RefreshCw className="h-4 w-4" /> Try again
           </button>
         </div>
       )}
@@ -192,7 +192,7 @@ export default function DriverSelfieMobile() {
           {sid && st && (
             <button onClick={startCamera}
               className="w-full h-12 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2">
-              <RefreshCw className="h-4 w-4" /> Reasèye
+              <RefreshCw className="h-4 w-4" /> Try again
             </button>
           )}
         </div>

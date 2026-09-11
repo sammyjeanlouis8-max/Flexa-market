@@ -3313,7 +3313,7 @@ router.get("/track/:trackingNumber", async (req, res): Promise<void> => {
     .limit(1);
 
   if (!delivery) {
-    res.status(404).json({ error: "Nimewo tracking sa pa jwenn. Tcheke l epi eseye ankò." });
+    res.status(404).json({ error: "Tracking number not found. Check it and try again." });
     return;
   }
 

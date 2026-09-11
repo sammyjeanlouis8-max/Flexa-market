@@ -426,7 +426,7 @@ router.get("/music/artist/plan", requireAuth, async (req: any, res) => {
     });
   } catch (err: any) {
     req.log.error({ err, userId: req.user?.id }, "Artist Plan status failed");
-    res.status(500).json({ error: "Nou pa ka verifye Plan Artis la kounye a. Eseye ankò." });
+    res.status(500).json({ error: "We can't verify the Artist Plan right now. Try again." });
   }
 });
 
@@ -478,7 +478,7 @@ router.post("/music/artist/subscribe", requireAuth, async (req: any, res) => {
     res.json({ url: checkoutUrl.toString(), sessionId: session.id });
   } catch (err: any) {
     req.log.error({ err, userId: req.user?.id }, "Artist Plan Stripe checkout failed");
-    res.status(500).json({ error: "Nou pa ka louvri peman kat la kounye a. Eseye ankò." });
+    res.status(500).json({ error: "We can't open card checkout right now. Try again." });
   }
 });
 
@@ -594,7 +594,7 @@ router.post("/music/artist/subscribe/wallet", requireAuth, requireCardNotBlocked
     });
   } catch (err: any) {
     req.log.error({ err, userId }, "Artist Plan wallet payment failed");
-    res.status(500).json({ error: "Peman FM Wallet la pa pase. Okenn lajan pa retire; eseye ankò." });
+    res.status(500).json({ error: "The FM Wallet payment failed. No funds were deducted. Try again." });
   }
 });
 

@@ -99,7 +99,7 @@ router.post(
       selfieUrl = selfieRes.url;
     } catch (err: unknown) {
       logger.error({ err }, "KYC file upload failed");
-      res.status(500).json({ error: "Echèk telechajman foto — eseye ankò" }); return;
+      res.status(500).json({ error: "Photo upload failed. Try again." }); return;
     }
 
     await db.execute(sql`

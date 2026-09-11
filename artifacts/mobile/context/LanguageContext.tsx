@@ -908,7 +908,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const t = useCallback(
-    (key: string): string => T[lang]?.[key] ?? T.en[key] ?? T.ht[key] ?? key,
+    (key: string): string => {
+      const english = T.en[key];
+      if (english && (/retry|tryAgain/i.test(key) || /\btry\b[^.!?\n]*\bagain\b|\bretry\b/i.test(english))) return english;
+      return T[lang]?.[key] ?? english ?? T.ht[key] ?? key;
+    },
     [lang]
   );
 

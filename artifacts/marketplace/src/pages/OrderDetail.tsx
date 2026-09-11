@@ -684,12 +684,12 @@ export default function OrderDetail() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if ((data as any)?.alreadyProcessed) { setBusCodeSuccess(true); return; }
-        setBusCodeError((data as any)?.error ?? "Erè — eseye ankò");
+        setBusCodeError((data as any)?.error ?? "Something went wrong. Try again.");
       } else {
         setBusCodeSuccess(true);
         await load();
       }
-    } catch { setBusCodeError("Erè koneksyon — eseye ankò"); }
+    } catch { setBusCodeError("Connection error. Try again."); }
     finally { setBusCodeBusy(false); }
   };
 

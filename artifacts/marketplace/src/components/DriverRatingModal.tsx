@@ -86,7 +86,7 @@ export default function DriverRatingModal({ deliveryId, driverName, driverAvatar
         return;
       }
       setStep("success");
-    } catch { setError("Echèk rezo. Eseye ankò."); }
+    } catch { setError("Network error. Try again."); }
     finally { setLoading(false); }
   };
 

@@ -1531,7 +1531,7 @@ export default function Sell() {
                   display: "inline-flex", alignItems: "center", gap: 6,
                 }}
               >
-                🔄 Eseye ankò
+                🔄 Try again
               </button>
             </div>
           )}

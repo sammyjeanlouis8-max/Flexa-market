@@ -2142,7 +2142,7 @@ export default function Admin() {
         body: JSON.stringify({ key, value }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) { toast({ title: "Erè", description: (data as any)?.error || "Eseye ankò", variant: "destructive" }); return; }
+      if (!r.ok) { toast({ title: "Erè", description: (data as any)?.error || "Try again", variant: "destructive" }); return; }
       setPlatformFees(prev => prev ? { ...prev, [key]: value } : prev);
       setFeesDraft(prev => { const n = { ...prev }; delete n[key]; return n; });
       toast({ title: `✓ ${key} chanje a ${value}` });
@@ -2227,7 +2227,7 @@ export default function Admin() {
         body: JSON.stringify({ rate: r, spread: s, dopRate: d }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Eseye ankò", variant: "destructive" }); return; }
+      if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Try again", variant: "destructive" }); return; }
       setExchangeRateInfo(data);
       toast({ title: `Taux chanje ✓ HTG: ${r} (+${s} spread=${data.displayRate}) · DOP: ${d}` });
       // Force immediate wallet refresh so the new HTG/DOP amounts show right away
@@ -2246,7 +2246,7 @@ export default function Admin() {
         body: JSON.stringify({ rate: buyerFeeDraft }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Eseye ankò", variant: "destructive" }); return; }
+      if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Try again", variant: "destructive" }); return; }
       setBuyerFeeInfo(data);
       toast({ title: `Frè achte (kat) fikse a ${(buyerFeeDraft * 100).toFixed(1)}%` });
     } finally { setBuyerFeeSaving(false); }
@@ -2842,8 +2842,8 @@ export default function Admin() {
             )}
             {tauxLoadState === "error" && (
               <div className="text-sm text-rose-600 dark:text-rose-400 space-y-2">
-                <p>Nou pa t ka chaje taux aktyèl yo. Eseye ankò anvan ou anrejistre.</p>
-                <Button variant="outline" size="sm" onClick={openTaux}>Eseye ankò</Button>
+                <p>We couldn't load the current rates. Try again before saving.</p>
+                <Button variant="outline" size="sm" onClick={openTaux}>Try again</Button>
               </div>
             )}
             {tauxLoadState === "ready" && (

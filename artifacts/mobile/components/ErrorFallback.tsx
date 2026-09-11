@@ -19,14 +19,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   return (
     <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
       <Feather name="alert-triangle" size={48} color="#F97316" />
-      <Text style={styles.title}>Yon erè te rive</Text>
+      <Text style={styles.title}>Something went wrong</Text>
       <Text style={styles.message}>{error.message}</Text>
       <Pressable style={styles.btn} onPress={handleRestart}>
         <Feather name="refresh-cw" size={16} color="#fff" />
-        <Text style={styles.btnText}>Reyamase App la</Text>
+        <Text style={styles.btnText}>Restart app</Text>
       </Pressable>
       <Pressable style={[styles.btn, { backgroundColor: "#1e293b" }]} onPress={resetError}>
-        <Text style={styles.btnText}>Eseye Ankò</Text>
+        <Text style={styles.btnText}>Try again</Text>
       </Pressable>
     </View>
   );

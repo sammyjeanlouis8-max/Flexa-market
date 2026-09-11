@@ -358,7 +358,7 @@ export default function DeliveryTrackingScreen() {
       setDriver(data.driver ?? null);
       setError("");
     } catch {
-      if (!silent) setError("Erreur koneksyon. Eseye ankò.");
+      if (!silent) setError("Connection error. Please try again.");
     } finally {
       if (!silent) setLoading(false);
     }
@@ -401,7 +401,7 @@ export default function DeliveryTrackingScreen() {
         <Ionicons name="alert-circle" size={48} color="#ef4444" />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={() => fetchData()}>
-          <Text style={styles.retryBtnText}>Eseye Ankò</Text>
+          <Text style={styles.retryBtnText}>Try again</Text>
         </TouchableOpacity>
       </View>
     );

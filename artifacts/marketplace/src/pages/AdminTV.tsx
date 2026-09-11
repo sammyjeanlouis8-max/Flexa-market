@@ -1116,7 +1116,7 @@ export default function AdminTV() {
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {needsSessionRetry
-            ? "Rete sou paj sa a epi eseye ankò. Flexa TV pa pral voye ou tounen Home."
+            ? "Stay on this page and try again. Flexa TV will not redirect you to Home."
             : "Ou bezwen yon kont admin pou jere pwogram Flexa TV yo."}
         </p>
         <div className="mt-6 flex justify-center gap-3">
@@ -1126,7 +1126,7 @@ export default function AdminTV() {
               onClick={refreshUser}
               className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-violet-700"
             >
-              Eseye ankò
+              Try again
             </button>
           )}
           <button

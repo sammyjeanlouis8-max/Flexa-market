@@ -1069,7 +1069,7 @@ export default function DeliveryTracking() {
         await fetchTracking();
       } else {
         const err = await res.json().catch(() => ({}));
-        toast({ title: err.error ?? "Erè — eseye ankò", variant: "destructive" });
+        toast({ title: err.error ?? "Something went wrong. Try again.", variant: "destructive" });
       }
     } catch { toast({ title: "Koneksyon echwe", variant: "destructive" }); }
     finally { setSellerAccepting(false); }

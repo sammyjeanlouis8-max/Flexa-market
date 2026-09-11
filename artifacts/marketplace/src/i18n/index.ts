@@ -4,6 +4,7 @@ import { initReactI18next } from "react-i18next";
 import en from "./locales/en";
 import fr from "./locales/fr";
 import ht from "./locales/ht";
+import { withEnglishRetryCopy } from "./englishRetryCopy";
 
 // ── Async locale loaders ───────────────────────────────────────────────────────
 // EN, FR and HT are bundled synchronously because they are the three maintained
@@ -121,8 +122,8 @@ i18n
   .init({
     resources: {
       en: { translation: en },
-      fr: { translation: fr },
-      ht: { translation: ht },
+      fr: { translation: withEnglishRetryCopy(fr, en) },
+      ht: { translation: withEnglishRetryCopy(ht, en) },
     },
     lng: initialLng,
     fallbackLng: "en",
@@ -157,7 +158,7 @@ export async function preloadLanguage(lang: SupportedLanguage): Promise<void> {
   if (!loader) return;
   try {
     const mod = await loader();
-    i18n.addResourceBundle(lang, "translation", mod.default ?? mod);
+    i18n.addResourceBundle(lang, "translation", withEnglishRetryCopy((mod.default ?? mod) as typeof en, en));
   } catch {
     console.error(`[i18n] Failed to load bundle for language: "${lang}"`);
   }

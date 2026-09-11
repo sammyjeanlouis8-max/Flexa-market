@@ -130,7 +130,7 @@ function CheckoutModal({
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Erè — eseye ankò"); return; }
+      if (!res.ok) { setError(data.error ?? "Something went wrong. Try again."); return; }
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {
       setError("Erè rezo — verifye koneksyon ou");

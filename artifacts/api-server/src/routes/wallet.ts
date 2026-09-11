@@ -106,7 +106,7 @@ function checkLookupLimit(userId: number): { ok: true } | { ok: false; error: st
     lookupAttemptMap.set(userId, { count: 1, resetAt: now + HOUR_MS });
   } else {
     if (att.count >= MAX_LOOKUPS_PER_HOUR) {
-      return { ok: false, error: "Twòp rechèch. Tann yon è epi eseye ankò." };
+      return { ok: false, error: "Too many attempts. Wait one hour and try again." };
     }
     att.count += 1;
   }
@@ -626,7 +626,7 @@ router.post("/wallet/promo/unlock", requireAuth, async (req, res): Promise<void>
       return;
     }
     if (err.message === "race_condition") {
-      res.status(409).json({ error: "Balans promo chanje — eseye ankò" });
+      res.status(409).json({ error: "The promo balance changed. Try again." });
       return;
     }
     throw err;
@@ -662,7 +662,7 @@ router.post("/wallet/promo/convert", requireAuth, async (req, res): Promise<void
   )).returning({ id: promoWalletTable.id });
 
   if (!updated) {
-    res.status(409).json({ error: "Balans debloke chanje — eseye ankò" });
+    res.status(409).json({ error: "The unlocked balance changed. Try again." });
     return;
   }
 
@@ -1590,7 +1590,7 @@ router.post("/wallet/redeem-card", requireAuth, async (req, res): Promise<void> 
   const normalized = code.trim().toUpperCase();
 
   const [card] = await db.select().from(rechargeCardsTable).where(eq(rechargeCardsTable.code, normalized)).limit(1);
-  if (!card) { res.status(404).json({ error: "Kòd la pa valid. Tcheke l epi eseye ankò." }); return; }
+  if (!card) { res.status(404).json({ error: "Invalid code. Check it and try again." }); return; }
   if (card.status === "redeemed") { res.status(400).json({ error: "Kòd sa a deja itilize." }); return; }
   if (card.status === "cancelled") { res.status(400).json({ error: "Kòd sa a anile." }); return; }
   if (card.status === "expired" || (card.expiresAt && new Date(card.expiresAt) < new Date())) {

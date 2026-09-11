@@ -1958,10 +1958,10 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
       } else {
         // Surface the server error so user knows what happened
         const err = await r.json().catch(() => ({}));
-        alert(err?.error ?? `Erè ${r.status} — eseye ankò`);
+        alert(err?.error ?? `Error ${r.status}. Try again.`);
       }
     } catch (e) {
-      alert("Koneksyon an echwe — verifye entènèt ou epi eseye ankò");
+      alert("Connection failed. Check your internet connection and try again.");
     } finally {
       setSubmitting(false);
     }

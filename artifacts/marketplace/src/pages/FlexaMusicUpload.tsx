@@ -179,7 +179,7 @@ export default function FlexaMusicUpload() {
       let coverResult: {storageKey:string;url:string}|null = null;
       if (coverFile) {
         if (!sig.cover?.uploadUrl) {
-          throw new Error("Nou pa t resevwa yon lyen pou telechaje thumbnail la. Eseye ankò.");
+          throw new Error("No thumbnail upload URL was received. Try again.");
         }
         const coverData = await new Promise<{storageKey:string;url:string}>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -192,17 +192,17 @@ export default function FlexaMusicUpload() {
                 const data = JSON.parse(xhr.responseText) as { url?: string };
                 const returnedUrl = data.url;
                 if (!returnedUrl) {
-                  reject(new Error("Wasabi pa t retounen kle thumbnail la. Eseye ankò."));
+                  reject(new Error("The storage service did not return a thumbnail key. Try again."));
                   return;
                 }
                 const storageKey = new URL(returnedUrl, location.origin).searchParams.get("key") ?? "";
                 if (!storageKey) {
-                  reject(new Error("Wasabi pa t retounen kle thumbnail la. Eseye ankò."));
+                  reject(new Error("The storage service did not return a thumbnail key. Try again."));
                   return;
                 }
                 resolve({ storageKey, url: returnedUrl });
               } catch {
-                reject(new Error("Repons thumbnail la pa valab. Eseye ankò."));
+                reject(new Error("The thumbnail upload response was invalid. Try again."));
               }
             } else {
               let message = `Thumbnail upload failed: HTTP ${xhr.status}`;

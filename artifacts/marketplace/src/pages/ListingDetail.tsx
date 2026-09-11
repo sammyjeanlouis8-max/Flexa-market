@@ -740,7 +740,7 @@ export default function ListingDetail() {
     } catch (error: any) {
       toast({
         title: "Aksyon admin lan echwe",
-        description: error?.message ?? "Tanpri eseye ankò.",
+        description: error?.message ?? "Please try again.",
         variant: "destructive",
       });
     } finally {

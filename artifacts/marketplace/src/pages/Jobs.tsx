@@ -176,7 +176,7 @@ function PhotoUploadField({
       const url = await uploadFile(file);
       onChange(url);
     } catch {
-      toast({ title: "Erè upload — eseye ankò", variant: "destructive" });
+      toast({ title: "Upload failed. Try again.", variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -411,7 +411,7 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast({ title: err?.error ?? "Erè — eseye ankò", variant: "destructive" }); return;
+        toast({ title: err?.error ?? "Something went wrong. Try again.", variant: "destructive" }); return;
       }
       toast({ title: "Aplikasyon soumèt! Nou ap revize l anvan 24-48h." });
       onDone();
@@ -868,7 +868,7 @@ function ApplyToJobDialog({ job, onApplied, onCancel, lang }: {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast({ title: err?.error ?? "Erè — eseye ankò", variant: "destructive" }); return;
+        toast({ title: err?.error ?? "Something went wrong. Try again.", variant: "destructive" }); return;
       }
       toast({ title: "Aplikasyon soumèt bay anplwayè a!" });
       onApplied();
@@ -1071,7 +1071,7 @@ function ReportJobDialog({ job, onClose }: { job: JobItem; onClose: () => void }
       toast({ title: "Rapò soumèt! Nou ap revize sa." });
       onClose();
     } catch {
-      toast({ title: "Erè — eseye ankò", variant: "destructive" });
+      toast({ title: "Something went wrong. Try again.", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }

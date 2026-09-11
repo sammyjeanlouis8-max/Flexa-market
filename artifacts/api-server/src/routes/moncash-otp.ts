@@ -141,7 +141,7 @@ router.post("/moncash/otp/send", requireAuth, async (req, res): Promise<void> =>
       return;
     }
     OTP_STORE.delete(oKey(boostId, listingId));
-    res.status(503).json({ error: "Email pa disponib kounye a. Eseye ankò." });
+    res.status(503).json({ error: "Email is currently unavailable. Try again." });
     return;
   }
 

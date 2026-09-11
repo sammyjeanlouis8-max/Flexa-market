@@ -858,7 +858,7 @@ export default function LoanPage() {
       } else if (d.result === "failed") {
         toast({ title: t("loanPage.toastPaymentFailed"), description: t("loanPage.toastPaymentFailedDesc"), variant: "destructive" });
       } else {
-        toast({ title: d.error ?? "Erè. Eseye ankò.", variant: "destructive" });
+        toast({ title: d.error ?? "Something went wrong. Try again.", variant: "destructive" });
       }
     } finally { setRetrying(null); }
   };
@@ -932,7 +932,7 @@ export default function LoanPage() {
         const r2 = await fetch("/api/loans/eligibility", { headers: { Authorization: `Bearer ${token}` } });
         if (r2.ok) setEligData(await r2.json());
       } else {
-        toast({ title: data.error ?? "Erè. Eseye ankò.", variant: "destructive" });
+        toast({ title: data.error ?? "Something went wrong. Try again.", variant: "destructive" });
       }
     } finally {
       setSubmitting(false);

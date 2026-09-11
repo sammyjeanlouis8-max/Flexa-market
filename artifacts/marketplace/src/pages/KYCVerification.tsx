@@ -92,7 +92,7 @@ export default function KYCVerification() {
       setSuccess(true);
       setKycInfo({ status: "pending" });
     } catch (e: any) {
-      setError(e.message ?? "Erè envwaye. Eseye ankò.");
+      setError(e.message ?? "Submission failed. Try again.");
     } finally {
       setSubmitting(false);
     }

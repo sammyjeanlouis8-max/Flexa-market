@@ -256,7 +256,7 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
       setEscalated(true);
       setTimeout(() => onEscalate(r.id), 1000);
     } catch {
-      addBotMsg("Oops, yon erè pase. Tanpri eseye ankò nan kèk segonn.");
+      addBotMsg("Something went wrong. Please try again in a few seconds.");
       setEscalating(false);
     }
   }, [topic, addBotMsg, onEscalate]);

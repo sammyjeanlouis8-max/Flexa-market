@@ -287,7 +287,7 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
         RETURNING id`,
   ) as any[];
   if ((lockRows as any[]).length === 0) {
-    res.status(409).json({ error: "Demann sa a ap trete pa yon lòt admin. Eseye ankò nan yon moman." }); return;
+    res.status(409).json({ error: "Another admin is processing this request. Try again in a moment." }); return;
   }
 
   const noteVal = String(note ?? "").trim();
@@ -470,8 +470,8 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
     logger.error({ returnId, err: err?.message, isStripe }, "Return decision failed — lock rolled back to prior status");
     res.status(isStripe ? 502 : 500).json({
       error: isStripe
-        ? `Ranbousman Stripe echwe: ${err.message}. Eseye ankò.`
-        : "Erè sistèm — eseye ankò nan yon moman.",
+        ? `Stripe refund failed: ${err.message}. Try again.`
+        : "System error. Try again in a moment.",
     });
   }
 });

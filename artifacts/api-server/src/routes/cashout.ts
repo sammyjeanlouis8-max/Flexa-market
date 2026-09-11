@@ -191,7 +191,7 @@ router.post("/cashout/stripe", requireAuth, requireCardNotBlocked, async (req, r
     .returning();
 
   if (!result.length) {
-    res.status(400).json({ error: "Balans chanje — eseye ankò" });
+    res.status(400).json({ error: "The balance changed. Try again." });
     return;
   }
 
@@ -212,7 +212,7 @@ router.post("/cashout/stripe", requireAuth, requireCardNotBlocked, async (req, r
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${parsed}`, updatedAt: new Date() })
       .where(eq(promoWalletTable.userId, req.userId!));
     logger.error({ err: stripeErr, userId: req.userId, parsed }, "Stripe transfer failed — wallet refunded");
-    res.status(502).json({ error: "Stripe transfer echwe — lajan ou pa dedwi. Eseye ankò." });
+    res.status(502).json({ error: "The Stripe transfer failed. Your funds were not deducted. Try again." });
     return;
   }
 

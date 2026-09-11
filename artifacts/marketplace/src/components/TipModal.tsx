@@ -140,7 +140,7 @@ export default function TipModal({ deliveryId, driverName, driverAvatar, onClose
       setStep("success");
       setTimeout(() => setConfetti(true), 100);
     } catch {
-      setError("Echèk rezo. Eseye ankò.");
+      setError("Network error. Try again.");
     } finally {
       setLoading(false);
     }

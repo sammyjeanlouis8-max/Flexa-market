@@ -356,9 +356,9 @@ export default function App() {
             <View style={styles.offlineIcon}>
               <Text style={styles.offlineIconText}>!</Text>
             </View>
-            <Text style={styles.errorTitle}>Koneksyon an pa disponib</Text>
+            <Text style={styles.errorTitle}>Connection unavailable</Text>
             <Text style={styles.errorMessage}>
-              Nou pa ka louvri Flexa Market kounye a. Verifye entènèt ou epi eseye ankò.
+              We can't open Flexa Market right now. Check your internet connection and try again.
             </Text>
             <Pressable
               onPress={retryLoad}
@@ -374,7 +374,7 @@ export default function App() {
               {isRetrying ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.retryButtonText}>Eseye ankò</Text>
+                <Text style={styles.retryButtonText}>Try again</Text>
               )}
             </Pressable>
             <Text style={styles.connectionHint}>

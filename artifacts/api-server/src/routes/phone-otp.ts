@@ -94,7 +94,7 @@ router.post("/otp/send", optionalAuth, async (req, res): Promise<void> => {
       new Date(oldest.createdAt).getTime() + RATE_WINDOW_MS - Date.now();
     const retryAfterSecs = Math.ceil(Math.max(retryAfterMs, 0) / 1000);
     res.status(429).json({
-      error: `Twòp demann. Tann ${retryAfterSecs}s anvan eseye ankò.`,
+      error: `Too many requests. Wait ${retryAfterSecs}s before trying again.`,
       retryAfterSecs,
     });
     return;
@@ -120,14 +120,14 @@ router.post("/otp/send", optionalAuth, async (req, res): Promise<void> => {
 
     if (!emailSent && !isDev) {
       res.status(503).json({
-        error: "Nou pa kapab voye kòd la kounye a. Eseye ankò nan kèk minit.",
+        error: "We can't send the code right now. Try again in a few minutes.",
       });
       return;
     }
   } catch (err: any) {
     logger.error({ email, err: err?.message }, "OTP email-send threw unexpectedly");
     if (!isDev) {
-      res.status(503).json({ error: "Erè voye kòd la. Eseye ankò." });
+      res.status(503).json({ error: "Could not send the code. Try again." });
       return;
     }
   }

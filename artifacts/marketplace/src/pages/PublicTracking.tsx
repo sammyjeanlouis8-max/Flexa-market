@@ -199,7 +199,7 @@ export default function PublicTracking() {
       const r = await fetch(`/api/track/${encodeURIComponent(tn.trim().toUpperCase())}`);
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        setError((data as any)?.error || "Nimewo tracking sa pa jwenn. Verifye l epi eseye ankò.");
+        setError((data as any)?.error || "Tracking number not found. Check it and try again.");
         setDelivery(null);
       } else {
         const data = await r.json();
@@ -207,7 +207,7 @@ export default function PublicTracking() {
         setLocation(`/track/${tn.trim().toUpperCase()}`, { replace: true });
       }
     } catch {
-      setError("Pa ka konekte ak sèvè a. Tcheke koneksyon ou epi eseye ankò.");
+      setError("Unable to reach the server. Check your connection and try again.");
     } finally {
       setLoading(false);
     }

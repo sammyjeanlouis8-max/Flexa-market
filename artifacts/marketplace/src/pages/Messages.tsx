@@ -253,7 +253,7 @@ class ThreadBoundary extends Component<
       }}>
         <MessageCircle style={{ width: 44, height: 44, color: "#3b82f6", opacity: 0.7 }} />
         <p style={{ color: "#94a3b8", fontSize: 14, margin: 0, maxWidth: 240, lineHeight: 1.6 }}>
-          Gen yon ti pwoblèm koneksyon. Eseye ankò.
+          There was a connection problem. Please try again.
         </p>
         <button
           onClick={() => this.setState({ hasError: false, retryCount: 0, isRetrying: false })}
@@ -263,7 +263,7 @@ class ThreadBoundary extends Component<
             padding: "10px 26px", fontSize: 14, fontWeight: 700, cursor: "pointer",
           }}
         >
-          Rekòmanse
+          Try again
         </button>
       </div>
     );
@@ -2151,7 +2151,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
                   cursor: messagesFetching ? "wait" : "pointer", opacity: messagesFetching ? 0.6 : 1,
                 }}
               >
-                {t("messages.retry", "Eseye ankò")}
+                {t("messages.retry", { defaultValue: "Try again", lng: "en" })}
               </button>
             </div>
           </div>

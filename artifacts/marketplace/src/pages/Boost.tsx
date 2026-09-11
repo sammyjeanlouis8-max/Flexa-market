@@ -671,7 +671,7 @@ export default function BoostPage() {
           variant: "destructive",
         });
       } else {
-        toast({ title: "Boost echwe", description: e?.error ?? "Eseye ankò", variant: "destructive" });
+        toast({ title: "Boost echwe", description: e?.error ?? "Try again", variant: "destructive" });
       }
     } finally {
       setAdminFreeLoading(false);

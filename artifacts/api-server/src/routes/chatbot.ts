@@ -197,8 +197,8 @@ const TOPIC_RESPONSES: TopicEntry[] = [
 
 // ── Fallback responses when AI is unavailable ─────────────────────────────────
 const FALLBACK: LangMap = {
-  ht: "Mwen pa ka reponn kounye a 😕 — AI asistan an okipe. Men ou ka:\n• Itilize bouton topik yo anlè a pou enfòmasyon rapid\n• Klike **Talk to an agent** pou yon ajan reyèl\n• Oswa eseye ankò nan kèk minit.",
-  fr: "Je ne peux pas répondre maintenant 😕 — l'assistant AI est occupé. Vous pouvez :\n• Utiliser les boutons de sujets ci-dessus pour des infos rapides\n• Cliquer **Talk to an agent** pour un agent réel\n• Ou réessayer dans quelques minutes.",
+  ht: "The AI assistant is busy right now. You can:\n• Use the topic buttons above for quick information\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
+  fr: "The AI assistant is busy right now. You can:\n• Use the topic buttons above for quick information\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
   en: "I can't respond right now 😕 — the AI assistant is busy. You can:\n• Use the topic buttons above for quick info\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
   es: "No puedo responder ahora 😕 — el asistente AI está ocupado. Puedes:\n• Usar los botones de temas de arriba para info rápida\n• Hacer clic en **Talk to an agent** para un agente real\n• O intentarlo de nuevo en unos minutos.",
   pt: "Não posso responder agora 😕 — o assistente AI está ocupado. Você pode:\n• Usar os botões de tópicos acima para info rápida\n• Clicar em **Talk to an agent** para um agente real\n• Ou tentar novamente em alguns minutos.",

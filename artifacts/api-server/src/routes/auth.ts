@@ -218,7 +218,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       if (referrer && !referrer.isBanned) {
         referredByUserId = referrer.id;
       } else if (!referrer) {
-        res.status(400).json({ error: "Kod promo sa a pa valid. Tcheke li epi eseye ankò." });
+        res.status(400).json({ error: "Invalid promo code. Check it and try again." });
         return;
       }
     } else {

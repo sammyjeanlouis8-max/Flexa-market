@@ -107,9 +107,9 @@ router.post("/calculator/ask", requireAuth, calcLimiter, async (req, res) => {
     req.log.error({ err }, "[calculator] Anthropic request failed");
     const status = typeof err?.status === "number" ? err.status : 500;
     if (status === 429) {
-      res.status(429).json({ error: "Twòp demann — tann yon moman epi eseye ankò." });
+      res.status(429).json({ error: "Too many requests. Wait a moment and try again." });
     } else {
-      res.status(500).json({ error: "Kalkilatè a pa reponn. Eseye ankò." });
+      res.status(500).json({ error: "The calculator is not responding. Try again." });
     }
   }
 });

@@ -135,7 +135,7 @@ router.post("/recovery/start", async (req, res): Promise<void> => {
       sql`${accountRecoverySessionsTable.createdAt} >= ${tenMinAgo}`
     ));
   if (Number(cnt) >= 3) {
-    res.status(429).json({ error: "Twòp demann. Tann 10 minit anvan eseye ankò." });
+    res.status(429).json({ error: "Too many requests. Wait 10 minutes before trying again." });
     return;
   }
 
@@ -231,7 +231,7 @@ router.post("/recovery/verify-otp", async (req, res): Promise<void> => {
   // Lockout check
   if (session.lockedUntil && new Date(session.lockedUntil) > now) {
     const secsLeft = Math.ceil((new Date(session.lockedUntil).getTime() - now.getTime()) / 1000);
-    res.status(429).json({ error: `Kont bloke. Eseye ankò nan ${Math.ceil(secsLeft / 60)} minit.`, lockedUntilSecs: secsLeft });
+    res.status(429).json({ error: `Account locked. Try again in ${Math.ceil(secsLeft / 60)} minutes.`, lockedUntilSecs: secsLeft });
     return;
   }
 
@@ -376,7 +376,7 @@ router.post("/recovery/get-questions", async (req, res): Promise<void> => {
   // Lockout check
   if (session.lockedUntil && new Date(session.lockedUntil) > now) {
     const secsLeft = Math.ceil((new Date(session.lockedUntil).getTime() - now.getTime()) / 1000);
-    res.status(429).json({ error: `Kont bloke. Eseye ankò nan ${Math.ceil(secsLeft / 60)} minit.`, lockedUntilSecs: secsLeft });
+    res.status(429).json({ error: `Account locked. Try again in ${Math.ceil(secsLeft / 60)} minutes.`, lockedUntilSecs: secsLeft });
     return;
   }
 

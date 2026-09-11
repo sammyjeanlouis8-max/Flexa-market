@@ -107,25 +107,9 @@ const SplashScreen = ({ showRetry = false, onRetry }: { showRetry?: boolean; onR
     );
   }
 
-  // Recovery UI — explicit, user-driven retry. No timers, no loops.
-  // Language detection — error boundary is outside the i18n React Provider so we
-  // read navigator.language directly to show the message in the user's language.
-  const lang = (() => {
-    try {
-      const l = (navigator.language || "ht").toLowerCase();
-      if (l.startsWith("fr")) return "fr";
-      if (l.startsWith("en")) return "en";
-      if (l.startsWith("es")) return "es";
-      return "ht";
-    } catch { return "ht"; }
-  })();
-  const MSGS: Record<string, { error: string; retry: string }> = {
-    ht: { error: "Gen yon ti pwoblèm pou chaje paj la.", retry: "Eseye ankò" },
-    fr: { error: "Un problème est survenu lors du chargement de la page.", retry: "Réessayer" },
-    en: { error: "There was a problem loading the page.", retry: "Try again" },
-    es: { error: "Hubo un problema al cargar la página.", retry: "Intentar de nuevo" },
-  };
-  const { error: errorMsg, retry: retryLabel } = MSGS[lang] ?? MSGS.ht;
+  // Recovery copy stays English independently of the selected app language.
+  const errorMsg = "There was a problem loading the page.";
+  const retryLabel = "Try again";
 
   return (
     <div style={{

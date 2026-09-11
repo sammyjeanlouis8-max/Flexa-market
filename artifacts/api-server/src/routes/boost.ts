@@ -94,7 +94,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     )
     .limit(1);
   if (inFlight) {
-    res.status(429).json({ error: "Yon boost deja an tren tretman — tann yon ti moman epi eseye ankò." });
+    res.status(429).json({ error: "A boost is already being processed. Wait a moment and try again." });
     return;
   }
 

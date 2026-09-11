@@ -37,6 +37,7 @@ final class WebViewController: UIViewController {
     }
 
     deinit {
+        retryWorkItem?.cancel()
         NotificationCenter.default.removeObserver(self)
         webView?.configuration.userContentController
             .removeScriptMessageHandler(forName: "requestPushPermission")
@@ -193,23 +194,35 @@ final class WebViewController: UIViewController {
     /// Auto-retry loading a few times before ever showing the offline page.
     private var retryCount = 0
     private let maxAutoRetries = 3
+    private var retryWorkItem: DispatchWorkItem?
 
-    private func handleLoadFailure() {
+    private func handleLoadFailure(_ error: Error) {
+        let nsError = error as NSError
+        // Redirects and superseded requests are not connection failures.
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
+        guard retryWorkItem == nil else { return }
         if retryCount < maxAutoRetries {
             retryCount += 1
             let delay = Double(retryCount) * 2.0
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            spinner.startAnimating()
+            let work = DispatchWorkItem { [weak self] in
+                self?.retryWorkItem = nil
                 self?.loadSite()
             }
+            retryWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
         } else {
-            retryCount = 0
+            spinner.stopAnimating()
             showOffline()
         }
     }
 
     private func showOffline() {
         guard offlineView == nil else { return }
-        let ov = OfflineView { [weak self] in self?.loadSite() }
+        let ov = OfflineView { [weak self] in
+            self?.retryCount = 0
+            self?.loadSite()
+        }
         ov.frame = view.bounds
         ov.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(ov)
@@ -236,10 +249,19 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView,
                  didStartProvisionalNavigation _: WKNavigation!) {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        offlineView?.removeFromSuperview()
+        offlineView = nil
         spinner.startAnimating()
     }
 
     func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
+        retryWorkItem?.cancel()
+        retryWorkItem = nil
+        retryCount = 0
+        offlineView?.removeFromSuperview()
+        offlineView = nil
         spinner.stopAnimating()
         // Inject APNs token if we already have one (handles app re-open after token was received)
         if let token = NotificationDelegate.shared.apnsToken {
@@ -258,13 +280,13 @@ extension WebViewController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView,
-                 didFailProvisionalNavigation _: WKNavigation!, withError _: Error) {
-        spinner.stopAnimating(); handleLoadFailure()
+                 didFailProvisionalNavigation _: WKNavigation!, withError error: Error) {
+        handleLoadFailure(error)
     }
 
     func webView(_ webView: WKWebView,
-                 didFail _: WKNavigation!, withError _: Error) {
-        spinner.stopAnimating(); handleLoadFailure()
+                 didFail _: WKNavigation!, withError error: Error) {
+        handleLoadFailure(error)
     }
 
     func webView(_ webView: WKWebView,

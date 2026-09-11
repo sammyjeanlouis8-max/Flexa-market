@@ -67,6 +67,12 @@ export default function App() {
   const [loadError, setLoadError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const currentLoadFailedRef = useRef(false);
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearErrorTimer = useCallback(() => {
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    errorTimerRef.current = null;
+  }, []);
+  useEffect(() => clearErrorTimer, [clearErrorTimer]);
   const currentUrlRef = useRef(WEBSITE);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -188,6 +194,7 @@ export default function App() {
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
     if (!currentLoadFailedRef.current) {
+      clearErrorTimer();
       setLoadError(false);
       setIsLoading(false);
       setIsRetrying(false);
@@ -232,22 +239,33 @@ export default function App() {
   }, []);
 
   const handleLoadStart = useCallback(() => {
+    clearErrorTimer();
     currentLoadFailedRef.current = false;
+    setLoadError(false);
     setIsLoading(true);
-  }, []);
+  }, [clearErrorTimer]);
 
   const handleLoadError = useCallback(() => {
+    if (currentLoadFailedRef.current) return;
     currentLoadFailedRef.current = true;
-    setIsLoading(false);
-    setIsRetrying(false);
-    setLoadError(true);
-  }, []);
+    setIsLoading(true);
+    clearErrorTimer();
+    errorTimerRef.current = setTimeout(() => {
+      errorTimerRef.current = null;
+      setIsLoading(false);
+      setIsRetrying(false);
+      setLoadError(true);
+    }, 1_200);
+  }, [clearErrorTimer]);
 
   const retryLoad = useCallback(() => {
+    clearErrorTimer();
+    setLoadError(false);
+    setIsLoading(true);
     setIsRetrying(true);
     currentLoadFailedRef.current = false;
     webRef.current?.reload();
-  }, []);
+  }, [clearErrorTimer]);
 
   return (
     <SafeAreaProvider>
@@ -287,9 +305,14 @@ export default function App() {
             handleLoadStart();
           }}
           onLoadEnd={onLoadEnd}
-          onError={handleLoadError}
+          renderError={() => <View style={{ flex: 1, backgroundColor: "#fff" }} />}
+          onError={(event) => {
+            if (Platform.OS === "ios" && event.nativeEvent.code === -999) return;
+            handleLoadError();
+          }}
           onHttpError={(event) => {
-            if (event.nativeEvent.statusCode >= 500) handleLoadError();
+            // Subresource failures must not replace a healthy main document.
+            if (event.nativeEvent.url === currentUrlRef.current && event.nativeEvent.statusCode >= 400) handleLoadError();
           }}
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(request) => {

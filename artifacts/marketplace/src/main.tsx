@@ -26,26 +26,36 @@ function isChunkError(err: unknown): boolean {
 }
 
 const CHUNK_RELOAD_KEY = "fm_chunk_reload";
-function autoReloadOnceForChunk() {
+let chunkReloadPending = false;
+function autoReloadOnceForChunk(): boolean {
+  if (chunkReloadPending) return true;
   try {
-    if (sessionStorage.getItem(CHUNK_RELOAD_KEY)) return; // already tried once
-    sessionStorage.setItem(CHUNK_RELOAD_KEY, "1");
-    // Clear all caches so the fresh chunks are fetched cleanly
+    const previous = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0);
+    if (Date.now() - previous < 60_000) return false;
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
+    chunkReloadPending = true;
+    let reloaded = false;
+    const reload = () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    };
+    // A stalled cache deletion must not prevent recovery.
+    setTimeout(reload, 1_500);
     if ("caches" in window) {
       caches.keys()
         .then((keys: string[]) => Promise.all(keys.map((k) => caches.delete(k))))
-        .finally(() => location.reload());
+        .catch(() => {})
+        .finally(reload);
     } else {
-      location.reload();
+      reload();
     }
-  } catch { location.reload(); }
+    return true;
+  } catch {
+    // Without a persistent guard, auto-reloading could loop indefinitely.
+    return false;
+  }
 }
-
-// Clear the one-shot flag on a successful load so the next deploy can still
-// trigger a reload.
-window.addEventListener("load", () => {
-  try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch {}
-});
 
 // Level-1a: unhandled promise rejections (dynamic import failures)
 window.addEventListener("unhandledrejection", (ev) => {
@@ -151,14 +161,22 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
 
   static getDerivedStateFromError(err: unknown): Partial<EBState> {
     const chunk = isChunkError(err);
-    if (chunk) autoReloadOnceForChunk();
     const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    return { hasError: true, isChunk: chunk, lastError: msg };
+    // Start in recovery on the FIRST fallback render, not only in didCatch.
+    return { hasError: true, isChunk: chunk, isRetrying: true, lastError: msg };
   }
 
   componentDidCatch(error: unknown) {
     console.error("[GlobalErrorBoundary] caught:", error);
-    if (this.state.isChunk) return;
+    if (this._retryTimer) clearTimeout(this._retryTimer);
+    if (this.state.isChunk) {
+      if (autoReloadOnceForChunk()) {
+        this._retryTimer = setTimeout(() => this.setState({ isRetrying: false }), 8_000);
+      } else {
+        this.setState({ isRetrying: false });
+      }
+      return;
+    }
     const { retryCount } = this.state;
     if (retryCount < MAX_AUTO_RETRIES) {
       this.setState({ isRetrying: true });
@@ -204,7 +222,7 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
     return (
       <>
         <SplashScreen showRetry onRetry={this.handleManualRetry} />
-        {this.state.lastError && (
+        {import.meta.env.DEV && this.state.lastError && (
           <div style={{
             position: "fixed", bottom: 0, left: 0, right: 0,
             background: "#1e1e1e", color: "#f87171", fontSize: 11,

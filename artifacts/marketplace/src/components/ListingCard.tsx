@@ -340,14 +340,14 @@ export default function ListingCard({
               size="sm"
               variant="outline"
               className={cn(
-                "w-full mt-2 h-7 text-xs font-bold rounded-full border-amber-400 text-amber-500 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-500 gap-1",
+                "listing-card-boost w-full mt-2 h-7 text-xs font-bold rounded-full border-amber-400 text-amber-500 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-500 gap-1",
                 listing.isBoosted && "border-green-400 text-green-500 hover:bg-green-50 hover:border-green-500 hover:text-green-700"
               )}
               onClick={handleBoostClick}
               data-testid={`button-boost-${listing.id}`}
             >
               <Zap className={cn("h-3 w-3", listing.isBoosted ? "fill-green-500" : "fill-amber-400")} />
-              {listing.isBoosted ? t("buttons.boosted", { defaultValue: "Boosted ✓" }) : t("buttons.boost", { defaultValue: "Boost listing" })}
+              <span className="min-w-0">{listing.isBoosted ? t("buttons.boosted", { defaultValue: "Boosted ✓" }) : t("buttons.boost", { defaultValue: "Boost listing" })}</span>
             </Button>
           )}
         </div>

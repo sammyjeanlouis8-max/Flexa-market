@@ -19,6 +19,20 @@
     line-height: 15px;
     min-height: 30px;
   }
+  .home-product-grid .listing-card-boost {
+    font-size: 10px;
+    line-height: 12px;
+    padding: 3px 4px;
+    gap: 2px;
+    height: auto;
+    min-height: 28px;
+    white-space: normal;
+  }
+  .home-product-grid .listing-card-boost svg {
+    width: 10px;
+    height: 10px;
+    flex-shrink: 0;
+  }
 }
 
 :root {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
@@ -247,7 +248,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
   // Split layout: video pinned to TOP, controls bar pinned to BOTTOM.
   // Marketplace content stays visible in the middle.
-  return (
+  // Escape app-shell's isolated stacking context so both fixed layers stay
+  // above body-level purchase bars and outside the shell's overflow clipping.
+  return createPortal(
     <>
       {/* ── VIDEO — fixed top of screen ─────────────────────────────────── */}
       <div
@@ -357,6 +360,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
       {/* ── CONTROLS BAR — fixed bottom of screen ───────────────────────── */}
       {/* CTA first, then Skip/countdown below — both pinned to bottom */}
       <div
+        data-testid="boost-controls-bar"
         className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)", touchAction: "manipulation" }}
       >
@@ -433,6 +437,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
           )}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

@@ -11,7 +11,7 @@
  *  - Safe-area insets injected as CSS variables (--sat / --sab)
  */
 
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -171,7 +171,7 @@ export default function HomeTab() {
 
   const deliverVideo = useCallback(async (uri: string) => {
     try {
-      const info = await FileSystem.getInfoAsync(uri, { size: true });
+      const info = await FileSystem.getInfoAsync(uri);
       if (((info as any).size ?? 0) > MAX_BRIDGE_BYTES) {
         injectJs(`window.__flexaVideoCancel&&window.__flexaVideoCancel();alert('Vidéo a twò gwo (limit: 40 MB).');true;`);
         return;

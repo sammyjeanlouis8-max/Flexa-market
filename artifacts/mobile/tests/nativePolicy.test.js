@@ -33,6 +33,18 @@ test("background upload module supplies the Android version required by Expo", (
   assert.match(gradle, /defaultConfig\s*\{[\s\S]*versionName\s+['"]1\.0\.0['"]/);
 });
 
+test("background upload worker uses the HttpURLConnection streaming method", () => {
+  const worker = fs.readFileSync(
+    path.join(
+      __dirname,
+      "../modules/flexa-background-upload/android/src/main/java/expo/modules/flexabackgroundupload/FlexaUploadWorker.kt",
+    ),
+    "utf8",
+  );
+  assert.match(worker, /setFixedLengthStreamingMode\(count\)/);
+  assert.doesNotMatch(worker, /^\s*fixedLengthStreamingMode\(count\)/m);
+});
+
 test("dependency check accepts exact lock versions and never repairs files", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flexa-deps-"));
   const projectDir = path.join(root, "artifacts", "mobile");

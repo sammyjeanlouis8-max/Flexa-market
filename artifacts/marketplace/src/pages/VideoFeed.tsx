@@ -1073,20 +1073,28 @@ function VideoCard({
       setLoadFailed(false);
 
       const tryPlay = () => {
+        if (!isActiveRef.current || activationGenerationRef.current !== activationGeneration) return;
         // Every automatically activated card starts muted until its first visible
         // frame. If the user had already unlocked audio, markVisibleFrame restores
         // sound as soon as video and audio can begin together.
         el.muted = true;
         setMuted(true);
 
-        el.play()
-          .catch(showPlaybackFailure);
+        // Safari/WebViews commonly reject play() transiently while a newly active
+        // element is changing source or has not loaded data yet. Keep the card in
+        // autoplay mode and retry from media-readiness events; only an actual media
+        // error or the bounded visible-frame timeout should enter retry UI.
+        void el.play().catch(() => {});
       };
+      const activationGeneration = activationGenerationRef.current;
+      el.addEventListener("canplay", tryPlay);
+      el.addEventListener("loadeddata", tryPlay);
 
       // Always call play() immediately — on iOS Safari this is what triggers buffering.
       // Do NOT wait for canplay: if readyState is low, calling play() causes the browser
       // to start loading and fire onplay/canplay automatically.
       tryPlay();
+      armVisualReadinessCheck(el);
 
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = setTimeout(() => setShowWhatsAppBtn(true), 1500);
@@ -1097,6 +1105,7 @@ function VideoCard({
 
       return () => {
         el.removeEventListener("canplay", tryPlay);
+        el.removeEventListener("loadeddata", tryPlay);
         activationGenerationRef.current += 1;
         isActiveRef.current = false;
         cancelPendingReloadResume();
@@ -1116,7 +1125,7 @@ function VideoCard({
     return () => {
       if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current);
     };
-  }, [cancelPendingReloadResume, cancelVisualReadinessChecks, isActive, showPlaybackFailure]);
+  }, [armVisualReadinessCheck, cancelPendingReloadResume, cancelVisualReadinessChecks, isActive]);
 
   // Touch handlers: hold-to-pause + double-tap like + single-tap mute
   const handleTouchStart = useCallback(() => {

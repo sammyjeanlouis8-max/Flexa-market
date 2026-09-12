@@ -57,6 +57,13 @@ test("release optimization uses supported Android-only Expo configuration", () =
   const plugin = app.plugins.find((entry) => Array.isArray(entry) && entry[0] === "expo-build-properties");
   assert.ok(plugin);
   assert.deepEqual(plugin[1], {
-    android: { enableMinifyInReleaseBuilds: true, enableShrinkResourcesInReleaseBuilds: true },
+    android: {
+      compileSdkVersion: 35,
+      targetSdkVersion: 35,
+      minSdkVersion: 24,
+      enableMinifyInReleaseBuilds: true,
+      enableShrinkResourcesInReleaseBuilds: true,
+    },
+    ios: { deploymentTarget: "15.1" },
   });
 });

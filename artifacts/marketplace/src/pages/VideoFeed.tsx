@@ -836,6 +836,7 @@ function VideoCard({
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [pausedByUser, setPausedByUser] = useState(false);
   const liked = isFavorited(video.id);
   const [likeCount, setLikeCount] = useState(video.likeCount);
   const [shareCount, setShareCount] = useState(video.sharesCount);
@@ -1059,6 +1060,10 @@ function VideoCard({
     activationGenerationRef.current += 1;
     cancelPendingReloadResume();
     if (isActive) {
+      // A newly visible card always starts in autoplay mode. Do not carry the
+      // previous card's paused UI into this one while its first frame buffers.
+      setPausedByUser(false);
+      setPlaying(true);
       activatedAtRef.current = Date.now();
       stallAttemptsRef.current = 0;
       hardReloadTriedRef.current = false;
@@ -1161,10 +1166,17 @@ function VideoCard({
         return;
       }
       // single-tap toggles play/pause
-      if (el.paused) { el.play().catch(() => {}); setPlaying(true); }
-      else { el.pause(); setPlaying(false); }
+      if (el.paused) {
+        setPausedByUser(false);
+        el.play().catch(showPlaybackFailure);
+        setPlaying(true);
+      } else {
+        setPausedByUser(true);
+        el.pause();
+        setPlaying(false);
+      }
     }
-  }, [liked, token, video.id, muted]);
+  }, [liked, token, video.id, muted, showPlaybackFailure]);
 
   const handleLike = async () => {
     if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
@@ -1425,7 +1437,7 @@ function VideoCard({
       />
 
       {/* ── Pause overlay ── */}
-      {!playing && (
+      {isActive && pausedByUser && !loadFailed && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-black/30 backdrop-blur-sm rounded-full p-5">
             <Play className="h-10 w-10 text-white fill-white drop-shadow-lg" />

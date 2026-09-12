@@ -25,6 +25,14 @@ test("Android blocks broad storage and battery permissions", () => {
   }
 });
 
+test("background upload module supplies the Android version required by Expo", () => {
+  const gradle = fs.readFileSync(
+    path.join(__dirname, "../modules/flexa-background-upload/android/build.gradle"),
+    "utf8",
+  );
+  assert.match(gradle, /defaultConfig\s*\{[\s\S]*versionName\s+['"]1\.0\.0['"]/);
+});
+
 test("dependency check accepts exact lock versions and never repairs files", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flexa-deps-"));
   const projectDir = path.join(root, "artifacts", "mobile");

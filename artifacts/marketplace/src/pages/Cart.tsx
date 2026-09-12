@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
@@ -370,7 +371,7 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
 /* ══════════════════════════════════════════════════════════ */
 export default function Cart() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { items, removeItem, clearCart, updateQuantity } = useCart();
   const token = typeof window !== "undefined" ? localStorage.getItem("flexamarket_token") : null;
@@ -390,8 +391,8 @@ export default function Cart() {
   const [deliveryFeesLoading, setDeliveryFeesLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
-  }, [user, setLocation]);
+    if (!user && !isLoading) setLocation("/auth/login");
+  }, [user, isLoading, setLocation]);
 
   useEffect(() => {
     setSelected(prev => {
@@ -715,9 +716,10 @@ export default function Cart() {
         </div>
       )}
 
-      {/* ══ STICKY BOTTOM SUMMARY BAR ══ */}
-      {items.length > 0 && (
+      {/* Escape the scroll container's paint containment so fixed means viewport-fixed. */}
+      {items.length > 0 && createPortal(
         <div
+          data-testid="cart-checkout-bar"
           className="fixed left-0 right-0 z-[60]"
           style={{
             bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
@@ -827,11 +829,12 @@ export default function Cart() {
               )}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ══ CHECKOUT MODAL ══ */}
-      {showCheckout && (
+      {/* Keep cart dialogs above the body-level checkout bar. */}
+      {showCheckout && createPortal(
         <CheckoutModal
           selectedItems={selectedItems}
           total={total}
@@ -845,11 +848,12 @@ export default function Cart() {
             setSuccessOrders(orders);
           }}
           onClose={() => setShowCheckout(false)}
-        />
+        />,
+        document.body
       )}
 
       {/* ══ CLEAR CONFIRM MODAL ══ */}
-      {showClearConfirm && (
+      {showClearConfirm && createPortal(
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-5" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}>
           <div className="rounded-3xl p-6 w-full max-w-sm space-y-4" style={{ background: "#ffffff", border: `1px solid ${border}`, boxShadow: "0 20px 60px rgba(0,0,0,0.15)" }}>
             <div className="flex items-center gap-3">
@@ -870,7 +874,8 @@ export default function Cart() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

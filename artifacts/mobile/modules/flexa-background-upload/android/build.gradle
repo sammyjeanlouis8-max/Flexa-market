@@ -11,6 +11,9 @@ android {
 
   defaultConfig {
     minSdk 24
+    // Expo's module publication plugin requires an explicit Android library
+    // versionName during configuration, even for non-published local modules.
+    versionName '1.0.0'
   }
 }
 

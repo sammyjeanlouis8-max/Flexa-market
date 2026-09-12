@@ -31,7 +31,6 @@
       "entitlements": {
         "aps-environment": "production"
       },
-      "deploymentTarget": "15.1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Flexa Market uses your camera to take photos and videos of items you want to sell, so buyers can see your products clearly before purchasing.",
@@ -50,9 +49,6 @@
       "package": "com.flexa.market",
       "googleServicesFile": "./google-services.json",
       "versionCode": 3,
-      "compileSdkVersion": 35,
-      "targetSdkVersion": 35,
-      "minSdkVersion": 24,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -87,8 +83,14 @@
         "expo-build-properties",
         {
           "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "minSdkVersion": 24,
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
           }
         }
       ],

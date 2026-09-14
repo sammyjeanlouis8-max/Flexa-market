@@ -1221,6 +1221,22 @@ export default function WalletPage() {
   const previewBonus = quoteData ? quoteData.bonusUsd : (balance ? parseFloat((previewUsd * (parseFloat(String(balance.bonusPct)) || 0) / 100).toFixed(2)) : 0);
   const previewTotal = quoteData ? quoteData.netAmountUsd || quoteData.creditAmountUsd || (previewUsd + previewBonus) : parseFloat((previewUsd + previewBonus).toFixed(2));
 
+  const cashoutAmt = parseFloat(cashoutAmount) || 0;
+  const isMoncashOrNatcash = cashoutMethod === "moncash" || cashoutMethod === "natcash";
+
+  useEffect(() => {
+    if (step !== "cashout" || !isMoncashOrNatcash || cashoutAmt < 1) return;
+
+    if (debouncedQuote.current) clearTimeout(debouncedQuote.current);
+    debouncedQuote.current = setTimeout(() => {
+      getQuote({ direction: "cashout", provider: cashoutMethod, amountUsd: cashoutAmt });
+    }, 400);
+
+    return () => {
+      if (debouncedQuote.current) clearTimeout(debouncedQuote.current);
+    };
+  }, [step, cashoutAmt, cashoutMethod, getQuote, isMoncashOrNatcash]);
+
 
   const finalCardUsd = customCardUsd ? parseFloat(customCardUsd) : cardAmountUsd;
   const sendAmt = parseFloat(sendAmount) || 0;
@@ -2115,19 +2131,7 @@ export default function WalletPage() {
   // ── CASHOUT step ─────────────────────────────────────────────────────────
   // =========================================================================
   if (step === "cashout") {
-    const cashoutAmt = parseFloat(cashoutAmount) || 0;
     const hasStripe = !!(user?.stripeAccountId && user?.stripeAccountStatus === "active");
-    const isMoncashOrNatcash = cashoutMethod === "moncash" || cashoutMethod === "natcash";
-
-    // Auto-fetch quote
-    useEffect(() => {
-      if (isMoncashOrNatcash && cashoutAmt >= 1) {
-        if (debouncedQuote.current) clearTimeout(debouncedQuote.current);
-        debouncedQuote.current = setTimeout(() => {
-          getQuote({ direction: "cashout", provider: cashoutMethod, amountUsd: cashoutAmt });
-        }, 400);
-      }
-    }, [cashoutAmount, cashoutMethod, getQuote, isMoncashOrNatcash, cashoutAmt]);
 
     const canSubmit = cashoutAmt >= 1 &&
       cashoutAmt <= availableUsd &&

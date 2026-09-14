@@ -22,25 +22,12 @@ EXPO_TOKEN=<from session/secret>
 ```
 Build uses `credentialsSource: "remote"` — no p8 file needed for `eas build`.
 
-## iOS submit — ASC API key required
-For `eas submit --platform ios`, the key must be written to disk first:
-```
-cat > /tmp/AuthKey_JR8LBAM37G.p8 << 'EOF'
------BEGIN PRIVATE KEY-----
-MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQgmgRey4PzfsmKlxdn
-zhxo3wSVGgaJ663kHpkAaCWt+/CgCgYIKoZIzj0DAQehRANCAAQjwaH9CP+sShpO
-ixwFWFe7/20W2Gv35gekFztrKl2gC+bLqNJKASjn0yHPyS1f9dcx8eDR0xK43LtB
-5QMYywEa
------END PRIVATE KEY-----
-EOF
-```
-Key details (also in eas.json submit.production.ios):
-- Key ID: `JR8LBAM37G`  (name: "EAS Submit 2026", App Manager)
-- Issuer ID: `747bde63-c170-4c5d-aaf2-098c45831671`
-- Apple Team: `D782MM56VY` (samuel jean louis, Individual)
-- ASC App ID: `6754947270`
+## iOS submission credentials
+The previously exposed App Store Connect API key was revoked on 2026-09-13. Never store private keys, key identifiers, issuer identifiers, Apple account details, or submission credentials in this repository. Use secure credential storage managed by the build/submission provider.
 
-**Why:** EAS submit non-interactive mode requires a local p8 file path; the key is not stored on EAS servers.
+**Why:** Repository history is not a secure credential store, even after a key is revoked.
+
+**How to apply:** Configure submission credentials only through secure secrets or the provider's credential manager.
 
 ## Provisioning profile management
 - Old stale profile (no Push Notifications): deleted via EAS GraphQL mutation `deleteAppleProvisioningProfiles`

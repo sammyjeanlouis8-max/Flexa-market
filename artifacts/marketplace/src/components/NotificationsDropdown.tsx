@@ -110,6 +110,7 @@ export default function NotificationsDropdown() {
       case "subscription_billing_reminder": return t("notifications.subscriptionBillingReminder");
       case "subscription_grace_expired": return t("notifications.subscriptionGraceExpired");
       case "subscription_welcome": return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
+      case "exchange_rate_changed": return n.message ?? t("notifications.defaultNotif");
       case "new_listing": return n.message ?? `${n.actorName} ajoute yon nouvo pwodwi.`;
       case "listing_approved":
       case "moderation_approved": return t("notifications.listingApproved");
@@ -185,6 +186,9 @@ export default function NotificationsDropdown() {
       case "password_reset":
         return "/settings";
 
+      case "exchange_rate_changed":
+        return "/admin";
+
       default:
         return n.listingId ? `/listings/${n.listingId}` : "/";
     }
@@ -210,6 +214,7 @@ export default function NotificationsDropdown() {
       case "delivery_delivered": return "✅";
       case "delivery_paid": return "💰";
       case "driver_assigned": return "🚗";
+      case "exchange_rate_changed": return "💱";
       case "boost_approved":
       case "boost_activated": return "⚡";
       case "transfer_received": return "💸";

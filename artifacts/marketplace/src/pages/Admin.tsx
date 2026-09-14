@@ -360,6 +360,7 @@ export default function Admin() {
         ? "admin"
         : "user";
   const isSuperAdmin = canonicalRole === "superadmin";
+  const isAdminOrSuperAdmin = canonicalRole === "admin" || canonicalRole === "superadmin";
   const isModerator = canonicalRole === "moderator";
   const hasAdminPanelAccess = !!user && (
     canonicalRole === "superadmin" ||
@@ -2817,7 +2818,7 @@ export default function Admin() {
         </button>
 
         {/* Taux (exchange rates) */}
-        {isSuperAdmin && (
+        {isAdminOrSuperAdmin && (
         <button
           type="button"
           onClick={openTaux}

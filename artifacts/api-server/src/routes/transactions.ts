@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
-import { requireAuth, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
@@ -1520,7 +1520,7 @@ router.get("/exchange-rate", async (_req, res): Promise<void> => {
 
 // ─── Admin: exchange rate ───────────────────────────────────────────────────
 
-router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<void> => {
+router.put("/admin/exchange-rate", requireAdmin, async (req, res): Promise<void> => {
   const rateRaw   = req.body?.rate;
   const spreadRaw = req.body?.spread;
   const dopRaw    = req.body?.dopRate;
@@ -1544,11 +1544,65 @@ router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<
     c = parseFloat(String(cashoutRaw));
     if (!Number.isFinite(c) || c <= 0) { res.status(400).json({ error: "Invalid cashout HTG rate" }); return; }
   }
+  const before = await getAllRates();
   if (r !== null) await setExchangeRate(r);
   if (s !== null) await setSpread(s);
   if (d !== null) await setDopRate(d);
   if (c !== null) await setCashoutHtgRate(c);
   const all = await getAllRates();
+  const changes: string[] = [];
+  if (all.htg.displayRate !== before.htg.displayRate) changes.push(`Rechaj HTG: ${before.htg.displayRate} → ${all.htg.displayRate}`);
+  if (all.htg.cashoutRate !== before.htg.cashoutRate) changes.push(`Retrè HTG: ${before.htg.cashoutRate} → ${all.htg.cashoutRate}`);
+  if (all.dop.rate !== before.dop.rate) changes.push(`DOP: ${before.dop.rate} → ${all.dop.rate}`);
+
+  if (changes.length > 0) {
+    const actorId = req.userId!;
+    const actorName = req.user?.name ?? "Admin";
+    const message = `${actorName} chanje taux yo — ${changes.join(" · ")}`;
+    try {
+      const admins = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.isBanned, false),
+          or(
+            eq(usersTable.isAdmin, true),
+            eq(usersTable.isSuperAdmin, true),
+            inArray(usersTable.role, ["admin", "superadmin"]),
+          ),
+        ));
+
+      if (admins.length > 0) {
+        await db.insert(notificationsTable).values(admins.map(admin => ({
+          userId: admin.id,
+          actorId,
+          type: "exchange_rate_changed",
+          message,
+          isRead: false,
+        })));
+
+        await Promise.all(admins.map(async admin => {
+          await Promise.all([
+            sendExpoPushToUser(admin.id, {
+              title: "Taux chanjman",
+              body: message,
+              data: { type: "exchange_rate_changed", url: "/admin" },
+              sound: "default",
+              priority: "high",
+            }),
+            sendPushToUser(admin.id, {
+              title: "Taux chanjman",
+              body: message,
+              url: "/admin",
+              tag: "exchange-rate-changed",
+            }),
+          ]);
+        }));
+      }
+    } catch (error) {
+      logger.warn({ error, actorId, changes }, "Failed to notify admins about exchange-rate change");
+    }
+  }
   res.json({
     rate:        all.htg.rate,
     spread:      all.htg.spread,
@@ -1560,7 +1614,7 @@ router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<
   });
 });
 
-router.get("/admin/exchange-rate", requireSuperAdmin, async (_req, res): Promise<void> => {
+router.get("/admin/exchange-rate", requireAdmin, async (_req, res): Promise<void> => {
   const all = await getAllRates();
   res.json({
     rate:        all.htg.rate,

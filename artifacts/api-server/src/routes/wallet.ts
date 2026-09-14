@@ -199,8 +199,12 @@ export async function applyRechargeCredits(
   userId: number,
   grossAmountUsd: number,
   paymentRef?: string | null,
+  database: any = db,
 ): Promise<{ netUsd: number; feeUsd: number; isFirstRecharge: boolean }> {
-  const wallet = await getOrCreateWallet(userId);
+  let [wallet] = await database.select().from(promoWalletTable).where(eq(promoWalletTable.userId, userId));
+  if (!wallet) {
+    [wallet] = await database.insert(promoWalletTable).values({ userId }).returning();
+  }
   const isFirstRecharge = !wallet.firstRechargeDone;
 
   const rechargeFeePct = await getDynamicFeeRate("recharge_fee_pct", RECHARGE_FEE_PCT);
@@ -208,20 +212,20 @@ export async function applyRechargeCredits(
   const netUsd = parseFloat((grossAmountUsd - feeUsd).toFixed(2));
 
   // Credit net amount to wallet
-  await db.update(promoWalletTable)
+  await database.update(promoWalletTable)
     .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${netUsd}`, updatedAt: new Date() })
     .where(eq(promoWalletTable.userId, userId));
 
   // Mark first recharge done (no longer deducts $2 — just tracks the flag)
   if (isFirstRecharge) {
-    await db.update(promoWalletTable)
+    await database.update(promoWalletTable)
       .set({ firstRechargeDone: true, updatedAt: new Date() })
       .where(and(eq(promoWalletTable.userId, userId), eq(promoWalletTable.firstRechargeDone, false)));
   }
 
   // Log the recharge fee for transparency
   if (feeUsd > 0) {
-    await db.insert(walletTransactionsTable).values({
+    await database.insert(walletTransactionsTable).values({
       userId,
       type: "recharge_fee",
       amountUsd: -feeUsd,
@@ -229,7 +233,7 @@ export async function applyRechargeCredits(
       paymentRef: paymentRef ?? undefined,
       note: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — rechaj brut $${grossAmountUsd.toFixed(2)}`,
     });
-    await db.insert(notificationsTable).values({
+    await database.insert(notificationsTable).values({
       userId,
       type: "wallet_fee",
       isRead: false,

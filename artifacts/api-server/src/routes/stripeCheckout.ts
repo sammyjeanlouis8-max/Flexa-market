@@ -823,10 +823,11 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         type:                   "boost",
         amount:                 boost.price,
         currency:               "USD",
-        paymentMethod:          "card",
+        paymentMethod:          "stripe",
         paymentStatus:          "completed",
         paymentRef,
         stripeCheckoutSessionId: sessionId,
+        stripePaymentIntentId:  paymentIntentId,
         description:            `Boost ${boost.plan} for listing #${listingId} via Stripe`,
       }).onConflictDoNothing();
     });
@@ -856,21 +857,37 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     // The AND status='pending' clause is the idempotency gate: if Stripe retries
     // the webhook the row is already "completed" so .returning() yields nothing
     // and we return early — preventing a second wallet credit.
-    const [updated] = await db.update(walletTransactionsTable)
-      .set({ status: "completed", note: `Card Stripe: ${sessionId}` })
-      .where(and(
-        eq(walletTransactionsTable.paymentRef, paymentRef),
-        eq(walletTransactionsTable.status, "pending"),
-      ))
-      .returning();
+    const rechargeResult = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(walletTransactionsTable)
+        .set({ status: "completed", note: `Card Stripe: ${sessionId}` })
+        .where(and(
+          eq(walletTransactionsTable.paymentRef, paymentRef),
+          eq(walletTransactionsTable.status, "pending"),
+        ))
+        .returning();
+      if (!updated) return null;
+      const credits = await applyRechargeCredits(userId, amountUsd, paymentRef, tx);
+      await tx.insert(transactionsTable).values({
+        userId,
+        type: "wallet_recharge",
+        amount: amountUsd,
+        buyerTotal: amountUsd,
+        currency: "USD",
+        paymentMethod: "stripe",
+        paymentStatus: "completed",
+        paymentRef: sessionId,
+        stripeCheckoutSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+        commissionAmount: credits.feeUsd,
+        description: `FM Card recharge via Stripe (${paymentRef})`,
+      }).onConflictDoNothing();
+      return credits;
+    });
 
-    if (!updated) {
+    if (!rechargeResult) {
       logger.warn({ paymentRef, sessionId }, "Wallet recharge already processed or not found — skipping (idempotent)");
       return;
     }
-
-    // Credit wallet — net after 2.5% fee; locks $2 security balance on first recharge
-    await applyRechargeCredits(userId, amountUsd, paymentRef);
 
     // Pay $1 referral bonus to referrer (+ $1 to new user, handled inside)
     await payReferralBonusIfEligible(userId, amountUsd);

@@ -161,10 +161,12 @@ function listWhere(query: Record<string, unknown>) {
   // Stripe. Only show rows carrying a Stripe-owned identifier.
   const conditions: any[] = [
     eq(transactionsTable.paymentMethod, "stripe"),
-    // A PaymentIntent proves this was a real debit/credit-card flow in Stripe.
-    // Keep every lifecycle state for customer reporting and investigation;
-    // captured-volume metrics below still count successful money movement only.
-    isNotNull(transactionsTable.stripePaymentIntentId),
+    // PaymentIntent proves a charge attempt; Checkout Session also keeps
+    // pre-charge pending/expired attempts and subscription card checkouts.
+    or(
+      isNotNull(transactionsTable.stripePaymentIntentId),
+      isNotNull(transactionsTable.stripeCheckoutSessionId),
+    ),
   ];
   const status = typeof query.status === "string" ? query.status.trim() : "";
   if (status && status !== "all") {
@@ -223,6 +225,9 @@ function summary(tx: typeof transactionsTable.$inferSelect, buyer: any, seller: 
     seller: seller ?? null,
     listing: listing ?? null,
     grossCents,
+    commissionCents: Math.round(Number(tx.commissionAmount ?? 0) * 100),
+    buyerFeeCents: Math.round(Number(tx.buyerFeeAmount ?? 0) * 100),
+    sellerEarningsCents: Math.round(Number(tx.sellerEarnings ?? 0) * 100),
     refundedCents,
     refundableRemainingCents: Math.max(0, grossCents - refundedCents),
     settlement: {
@@ -289,11 +294,23 @@ router.get("/admin/stripe-transactions", requireSuperAdmin, async (req, res): Pr
       return;
     }
     const where = listWhere(query);
+    const originalCentsExpr = sql<number>`ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100)`;
+    const refundedCentsExpr = sql<number>`(SELECT COALESCE(SUM(r.amount_cents), 0) FROM stripe_refund_ledger r WHERE r.transaction_id = ${transactionsTable.id} AND r.provider_status = 'succeeded')`;
+    const retainedRatioExpr = sql<number>`GREATEST(0, 1 - (${refundedCentsExpr})::numeric / NULLIF(${originalCentsExpr}, 0))`;
     const [metricsRow] = await db.select({
       grossCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
       successfulCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
       refundedCents: sql<number>`COALESCE(SUM((SELECT COALESCE(SUM(r.amount_cents), 0) FROM stripe_refund_ledger r WHERE r.transaction_id = ${transactionsTable.id} AND r.provider_status = 'succeeded')), 0)`,
       totalCount: count(),
+      sellerEarningsCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.type} = 'purchase' AND ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.sellerEarnings}, 0) * 100 * ${retainedRatioExpr}) ELSE 0 END), 0)`,
+      flexaRevenueCents: sql<number>`COALESCE(SUM(CASE
+        WHEN ${transactionsTable.paymentStatus} NOT IN ('completed', 'partially_refunded', 'refunded') THEN 0
+        WHEN ${transactionsTable.type} = 'purchase' THEN ROUND((COALESCE(${transactionsTable.commissionAmount}, 0) + COALESCE(${transactionsTable.buyerFeeAmount}, 0)) * 100 * ${retainedRatioExpr})
+        WHEN ${transactionsTable.type} IN ('boost', 'subscription', 'vendor_subscription') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100 * ${retainedRatioExpr})
+        WHEN ${transactionsTable.type} IN ('wallet_recharge', 'wallet_topup') THEN ROUND(COALESCE(${transactionsTable.commissionAmount}, 0) * 100 * ${retainedRatioExpr})
+        ELSE 0 END), 0)`,
+      awaitingSellerPayoutCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.type} = 'purchase' AND ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded') AND ${transactionsTable.escrowReleased} = false THEN ROUND(COALESCE(${transactionsTable.sellerEarnings}, 0) * 100 * ${retainedRatioExpr}) ELSE 0 END), 0)`,
+      releasedSellerPayoutCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.type} = 'purchase' AND ${transactionsTable.escrowReleased} = true THEN ROUND(COALESCE(${transactionsTable.sellerEarnings}, 0) * 100) ELSE 0 END), 0)`,
     })
       .from(transactionsTable)
       .leftJoin(usersTable, eq(transactionsTable.userId, usersTable.id))
@@ -324,8 +341,53 @@ router.get("/admin/stripe-transactions", requireSuperAdmin, async (req, res): Pr
     const grossCents = Number(metricsRow?.grossCents ?? 0);
     const successfulCents = Number(metricsRow?.successfulCents ?? 0);
     const refundedCents = Number(metricsRow?.refundedCents ?? 0);
+    const categoryRows = await db.select({
+      type: transactionsTable.type,
+      count: count(),
+      capturedCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
+    }).from(transactionsTable)
+      .leftJoin(usersTable, eq(transactionsTable.userId, usersTable.id))
+      .where(where)
+      .groupBy(transactionsTable.type);
+    const monthlyRows = await db.select({
+      month: sql<string>`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM')`,
+      capturedCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
+      sellerEarningsCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.type} = 'purchase' AND ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.sellerEarnings}, 0) * 100 * ${retainedRatioExpr}) ELSE 0 END), 0)`,
+      flexaRevenueCents: sql<number>`COALESCE(SUM(CASE
+        WHEN ${transactionsTable.paymentStatus} NOT IN ('completed', 'partially_refunded', 'refunded') THEN 0
+        WHEN ${transactionsTable.type} = 'purchase' THEN ROUND((COALESCE(${transactionsTable.commissionAmount}, 0) + COALESCE(${transactionsTable.buyerFeeAmount}, 0)) * 100 * ${retainedRatioExpr})
+        WHEN ${transactionsTable.type} IN ('boost', 'subscription', 'vendor_subscription') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100 * ${retainedRatioExpr})
+        WHEN ${transactionsTable.type} IN ('wallet_recharge', 'wallet_topup') THEN ROUND(COALESCE(${transactionsTable.commissionAmount}, 0) * 100 * ${retainedRatioExpr})
+        ELSE 0 END), 0)`,
+    }).from(transactionsTable)
+      .leftJoin(usersTable, eq(transactionsTable.userId, usersTable.id))
+      .where(where)
+      .groupBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM')`)
+      .orderBy(sql`TO_CHAR(${transactionsTable.createdAt}, 'YYYY-MM')`);
     res.json({
-      metrics: { grossCents, successfulCents, refundedCents, netCents: successfulCents - refundedCents, totalCount: Number(metricsRow?.totalCount ?? 0) },
+      metrics: {
+        grossCents,
+        successfulCents,
+        refundedCents,
+        netCents: successfulCents - refundedCents,
+        totalCount: Number(metricsRow?.totalCount ?? 0),
+        sellerEarningsCents: Number(metricsRow?.sellerEarningsCents ?? 0),
+        flexaRevenueCents: Number(metricsRow?.flexaRevenueCents ?? 0),
+        awaitingSellerPayoutCents: Number(metricsRow?.awaitingSellerPayoutCents ?? 0),
+        releasedSellerPayoutCents: Number(metricsRow?.releasedSellerPayoutCents ?? 0),
+      },
+      categories: categoryRows.map(row => ({
+        type: row.type,
+        sourceType: row.type === "purchase" ? "order" : row.type.includes("subscription") ? "subscription" : row.type.includes("wallet") ? "wallet" : row.type,
+        count: Number(row.count),
+        capturedCents: Number(row.capturedCents),
+      })),
+      monthly: monthlyRows.map(row => ({
+        month: row.month,
+        capturedCents: Number(row.capturedCents),
+        sellerEarningsCents: Number(row.sellerEarningsCents),
+        flexaRevenueCents: Number(row.flexaRevenueCents),
+      })),
       items,
       pagination: { page, limit, totalCount: Number(metricsRow?.totalCount ?? 0), totalPages: Math.ceil(Number(metricsRow?.totalCount ?? 0) / limit) },
     });
@@ -437,6 +499,9 @@ async function reserveStripeRefund(
       if (!transaction || transaction.paymentMethod !== "stripe" || !COMPLETED_PAYMENT_STATUSES.includes(transaction.paymentStatus)) {
         throw new Error("Only a completed Stripe card payment can be refunded");
       }
+      if (transaction.type !== "purchase") {
+        throw new Error("This payment cannot be refunded here until its wallet credit or service entitlement can be reversed safely");
+      }
       const [reserved] = await tx.select({
         amount: sql<number>`COALESCE(SUM(${stripeRefundLedgerTable.amountCents}), 0)`,
       }).from(stripeRefundLedgerTable).where(and(
@@ -493,6 +558,9 @@ router.post("/admin/stripe-transactions/:id/refunds", requireSuperAdmin, async (
     if (!transaction) { res.status(404).json({ error: "Stripe transaction not found" }); return; }
     if (!COMPLETED_PAYMENT_STATUSES.includes(transaction.paymentStatus)) {
       res.status(409).json({ error: "Only a completed Stripe card payment can be refunded" }); return;
+    }
+    if (transaction.type !== "purchase") {
+      res.status(409).json({ error: "Use the dedicated service reversal flow before refunding this non-purchase payment" }); return;
     }
     const duplicate = await existingRequest(requestId);
     if (duplicate) {

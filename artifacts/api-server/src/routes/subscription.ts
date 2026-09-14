@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable } from "@workspace/db";
+import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable, transactionsTable } from "@workspace/db";
 import { PLAN_CONFIG, type SubscriptionPlan } from "@workspace/db";
 import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or, inArray } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
@@ -756,6 +756,36 @@ export async function handleSubscriptionInvoicePaid(invoice: Stripe.Invoice): Pr
       .set({ subscriptionExpiresAt: newExpiry, updatedAt: new Date() })
       .where(eq(usersTable.id, existing.userId));
 
+    const paymentIntentId = typeof (invoice as any).payment_intent === "string"
+      ? (invoice as any).payment_intent
+      : (invoice as any).payment_intent?.id ?? null;
+    const amountUsd = Number((invoice as any).amount_paid ?? 0) / 100;
+    if (amountUsd > 0) {
+      const [ledger] = await db.select().from(transactionsTable)
+        .where(eq(transactionsTable.paymentRef, invoice.id));
+      if (ledger) {
+        await db.update(transactionsTable).set({
+          amount: amountUsd,
+          buyerTotal: amountUsd,
+          paymentStatus: "completed",
+          stripePaymentIntentId: paymentIntentId,
+        }).where(eq(transactionsTable.id, ledger.id));
+      } else {
+        await db.insert(transactionsTable).values({
+          userId: existing.userId,
+          type: "vendor_subscription",
+          amount: amountUsd,
+          buyerTotal: amountUsd,
+          currency: String((invoice as any).currency ?? "usd").toUpperCase(),
+          paymentMethod: "stripe",
+          paymentStatus: "completed",
+          paymentRef: invoice.id,
+          stripePaymentIntentId: paymentIntentId,
+          description: `Vendor subscription ${existing.plan} Stripe invoice`,
+        }).onConflictDoNothing();
+      }
+    }
+
     logger.info({ userId: existing.userId, newExpiry }, "Subscription renewed");
   } catch (err) {
     logger.error({ err, subId }, "handleSubscriptionInvoicePaid error");
@@ -779,6 +809,32 @@ export async function handleSubscriptionPaymentFailed(invoice: Stripe.Invoice): 
   await db.update(vendorSubscriptionsTable)
     .set({ status: "grace_period", graceUntil, updatedAt: new Date() })
     .where(eq(vendorSubscriptionsTable.id, existing.id));
+
+  const paymentIntentId = typeof (invoice as any).payment_intent === "string"
+    ? (invoice as any).payment_intent
+    : (invoice as any).payment_intent?.id ?? null;
+  const amountUsd = Number((invoice as any).amount_due ?? 0) / 100;
+  const [ledger] = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.paymentRef, invoice.id));
+  if (ledger) {
+    await db.update(transactionsTable).set({
+      paymentStatus: "failed",
+      stripePaymentIntentId: paymentIntentId,
+    }).where(eq(transactionsTable.id, ledger.id));
+  } else if (amountUsd > 0) {
+    await db.insert(transactionsTable).values({
+      userId: existing.userId,
+      type: "vendor_subscription",
+      amount: amountUsd,
+      buyerTotal: amountUsd,
+      currency: String((invoice as any).currency ?? "usd").toUpperCase(),
+      paymentMethod: "stripe",
+      paymentStatus: "failed",
+      paymentRef: invoice.id,
+      stripePaymentIntentId: paymentIntentId,
+      description: `Failed vendor subscription ${existing.plan} Stripe invoice`,
+    }).onConflictDoNothing();
+  }
 
   // Insert in-app notification — use user's own ID as actorId (system notification)
   try {

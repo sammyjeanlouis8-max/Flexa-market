@@ -444,8 +444,79 @@ export async function stripeWebhookHandler(req: Request, res: Response): Promise
   }
 
   try {
-    await handleStripeEvent(event);
-    res.json({ received: true });
+    const object = event.data.object as Record<string, any>;
+    const relatedReferences = Array.from(new Set([
+      object?.id,
+      typeof object?.payment_intent === "string" ? object.payment_intent : object?.payment_intent?.id,
+      typeof object?.charge === "string" ? object.charge : object?.charge?.id,
+      typeof object?.checkout_session === "string" ? object.checkout_session : object?.checkout_session?.id,
+      typeof object?.subscription === "string" ? object.subscription : object?.subscription?.id,
+      typeof object?.invoice === "string" ? object.invoice : object?.invoice?.id,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0)));
+    const inserted = await db.execute(sql`
+      INSERT INTO stripe_webhook_events (
+        stripe_event_id, event_type, livemode, provider_created_at, object_reference,
+        related_references, event_payload, lease_expires_at
+      ) VALUES (
+        ${event.id}, ${event.type}, ${event.livemode},
+        TO_TIMESTAMP(${event.created}), ${object?.id ?? null},
+        ${relatedReferences}, ${JSON.stringify(event)}::jsonb, NOW() + INTERVAL '5 minutes'
+      )
+      ON CONFLICT (stripe_event_id) DO NOTHING
+      RETURNING id
+    `);
+    if (!inserted.rows.length) {
+      const claimedRetry = await db.execute(sql`
+        UPDATE stripe_webhook_events
+        SET attempt_count = attempt_count + 1,
+            processing_status = 'processing',
+            last_error = NULL,
+            lease_expires_at = NOW() + INTERVAL '5 minutes'
+        WHERE stripe_event_id = ${event.id}
+          AND (
+            processing_status = 'failed'
+            OR (processing_status = 'processing' AND lease_expires_at < NOW())
+          )
+        RETURNING id
+      `);
+      if (!claimedRetry.rows.length) {
+        const state = await db.execute(sql`
+          UPDATE stripe_webhook_events
+          SET attempt_count = attempt_count + 1
+          WHERE stripe_event_id = ${event.id}
+          RETURNING processing_status
+        `);
+        const status = (state.rows[0] as any)?.processing_status;
+        if (status === "processed") {
+          res.json({ received: true, duplicate: true });
+          return;
+        }
+        // Do not acknowledge an event that is merely in-flight. Stripe will
+        // redeliver it and the expired lease can then be reclaimed safely.
+        res.status(503).json({ error: "Webhook event is still processing; retry required" });
+        return;
+      }
+    }
+
+    try {
+      await handleStripeEvent(event);
+      await db.execute(sql`
+        UPDATE stripe_webhook_events
+        SET processing_status = 'processed', processed_at = NOW(), last_error = NULL,
+            lease_expires_at = NULL
+        WHERE stripe_event_id = ${event.id}
+      `);
+      res.json({ received: true });
+    } catch (processingError) {
+      await db.execute(sql`
+        UPDATE stripe_webhook_events
+        SET processing_status = 'failed',
+            last_error = ${processingError instanceof Error ? processingError.message.slice(0, 1000) : "Unknown webhook processing error"},
+            lease_expires_at = NULL
+        WHERE stripe_event_id = ${event.id}
+      `);
+      throw processingError;
+    }
   } catch (err) {
     logger.error({ err, eventType: event.type }, "Stripe webhook handler error");
     res.status(500).json({ error: "Webhook handler failed" });
@@ -550,13 +621,6 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
     ? dispute.charge : (dispute.charge as any)?.id ?? null;
   const amountUsd = dispute.amount / 100;
 
-  // Idempotency: skip if already recorded
-  const existing = await db.execute(sql`SELECT id FROM chargebacks WHERE stripe_dispute_id = ${dispute.id} LIMIT 1`);
-  if ((existing.rows as any[]).length > 0) {
-    logger.info({ disputeId: dispute.id }, "Dispute already recorded — skipping (idempotent)");
-    return;
-  }
-
   // Find user via wallet transaction first, then fall back to regular transaction
   let userId: number | null = null;
   if (paymentIntentId) {
@@ -572,89 +636,146 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
     }
   }
 
-  // Insert chargeback record
-  await db.execute(sql`
-    INSERT INTO chargebacks (user_id, stripe_dispute_id, stripe_charge_id, stripe_payment_intent_id, amount_usd, status, wallet_deducted, user_restricted)
-    VALUES (${userId}, ${dispute.id}, ${chargeId}, ${paymentIntentId}, ${amountUsd}, 'open', false, false)
-    ON CONFLICT (stripe_dispute_id) DO NOTHING
-  `);
-
-  if (userId) {
-    // Deduct disputed amount from wallet (may go negative — debt flagged)
-    await db.execute(sql`
-      UPDATE promo_wallets SET balance_usd = balance_usd - ${amountUsd}, updated_at = NOW()
-      WHERE user_id = ${userId}
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO chargebacks (user_id, stripe_dispute_id, stripe_charge_id, stripe_payment_intent_id, amount_usd, status, wallet_deducted, user_restricted)
+      VALUES (${userId}, ${dispute.id}, ${chargeId}, ${paymentIntentId}, ${amountUsd}, 'open', false, false)
+      ON CONFLICT (stripe_dispute_id) DO NOTHING
     `);
-    await db.insert(walletTransactionsTable).values({
-      userId,
-      type: "chargeback_debit",
-      amountUsd: -amountUsd,
-      paymentRef: dispute.id,
-      status: "completed",
-      note: `Chargeback dispute ${dispute.id} — $${amountUsd.toFixed(2)} dedwi otomatikman`,
-    });
-
-    // Restrict user account automatically
-    await db.execute(sql`
-      UPDATE users SET is_restricted = true,
-        restriction_reason = ${"Chargeback dispute ouvè: " + dispute.id}
-      WHERE id = ${userId}
-    `);
-
-    // Mark deductions in chargeback record
-    await db.execute(sql`
-      UPDATE chargebacks SET wallet_deducted = true, user_restricted = true
+    const claimed = userId ? await tx.execute(sql`
+      UPDATE chargebacks
+      SET wallet_deducted = true, user_restricted = true, user_id = COALESCE(user_id, ${userId})
       WHERE stripe_dispute_id = ${dispute.id}
-    `);
-
-    // Notify user
-    await db.insert(notificationsTable).values({
-      userId, actorId: userId, type: "system_alert",
-      message: `⚠️ Yon dispute chajbak ouvè sou kont ou pou $${amountUsd.toFixed(2)}. Kont ou sispann tanporèman. Kontakte sipò.`,
-    }).catch(() => {});
-  }
+        AND wallet_deducted = false
+      RETURNING id
+    `) : { rows: [] };
+    if (userId && claimed.rows.length) {
+      const userState = await tx.execute(sql`
+        SELECT is_restricted, restriction_reason FROM users WHERE id = ${userId} FOR UPDATE
+      `);
+      const wasRestricted = Boolean((userState.rows[0] as any)?.is_restricted);
+      const walletResult = await tx.execute(sql`
+        SELECT balance_usd FROM promo_wallets WHERE user_id = ${userId} FOR UPDATE
+      `);
+      const availableBalance = Math.max(0, Number((walletResult.rows[0] as any)?.balance_usd ?? 0));
+      const walletDebitUsd = Math.min(availableBalance, amountUsd);
+      const outstandingDebtUsd = Math.max(0, amountUsd - walletDebitUsd);
+      await tx.execute(sql`
+        UPDATE promo_wallets SET balance_usd = balance_usd - ${walletDebitUsd}, updated_at = NOW()
+        WHERE user_id = ${userId}
+      `);
+      if (walletDebitUsd > 0) {
+        await tx.insert(walletTransactionsTable).values({
+          userId,
+          type: "chargeback_debit",
+          amountUsd: -walletDebitUsd,
+          paymentRef: dispute.id,
+          status: "completed",
+          note: `Chargeback dispute ${dispute.id} — $${walletDebitUsd.toFixed(2)} dedwi; $${outstandingDebtUsd.toFixed(2)} rete kòm dèt`,
+        });
+      }
+      await tx.execute(sql`
+        UPDATE chargebacks
+        SET wallet_debited_usd = ${walletDebitUsd},
+            outstanding_debt_usd = ${outstandingDebtUsd}
+        WHERE stripe_dispute_id = ${dispute.id}
+      `);
+      if (!wasRestricted) {
+        await tx.execute(sql`
+          UPDATE users SET is_restricted = true,
+            restriction_reason = ${"Chargeback dispute ouvè: " + dispute.id}
+          WHERE id = ${userId}
+        `);
+        await tx.execute(sql`
+          UPDATE chargebacks SET restriction_applied = true
+          WHERE stripe_dispute_id = ${dispute.id}
+        `);
+      }
+      await tx.insert(notificationsTable).values({
+        userId, actorId: userId, type: "system_alert",
+        message: `⚠️ Yon dispute chajbak ouvè sou kont ou pou $${amountUsd.toFixed(2)}. Kont ou sispann tanporèman. Kontakte sipò.`,
+      });
+    }
+  });
 
   logger.warn({ disputeId: dispute.id, userId, amountUsd, chargeId }, "Stripe chargeback dispute created — wallet deducted, user restricted");
 }
 
 async function handleDisputeClosed(dispute: Stripe.Dispute): Promise<void> {
   const amountUsd = dispute.amount / 100;
-  const rows = await db.execute(sql`SELECT * FROM chargebacks WHERE stripe_dispute_id = ${dispute.id} LIMIT 1`);
-  const cb = (rows.rows as any[])[0];
-  if (!cb) {
-    logger.warn({ disputeId: dispute.id }, "Dispute closed but no chargeback record found");
-    return;
-  }
-
   const won = dispute.status === "won";
-
-  if (won && cb.user_id && cb.wallet_deducted) {
-    // Restore wallet — we won the dispute, money is back
-    await db.execute(sql`
-      UPDATE promo_wallets SET balance_usd = balance_usd + ${amountUsd}, updated_at = NOW()
-      WHERE user_id = ${cb.user_id}
+  const handled = await db.transaction(async (tx) => {
+    const rows = await tx.execute(sql`
+      SELECT * FROM chargebacks WHERE stripe_dispute_id = ${dispute.id} FOR UPDATE
     `);
-    await db.insert(walletTransactionsTable).values({
-      userId: cb.user_id,
-      type: "chargeback_reversal",
-      amountUsd,
-      paymentRef: dispute.id,
-      status: "completed",
-      note: `Dispute ${dispute.id} genyen — $${amountUsd.toFixed(2)} retounen`,
-    });
-    // Unrestrict user
-    await db.execute(sql`UPDATE users SET is_restricted = false WHERE id = ${cb.user_id}`);
-
-    await db.insert(notificationsTable).values({
-      userId: cb.user_id, actorId: cb.user_id, type: "system_alert",
-      message: `✅ Dispute chajbak ${dispute.id} rezoud nan favè ou. $${amountUsd.toFixed(2)} retounen sou wallet ou.`,
-    }).catch(() => {});
+    const cb = (rows.rows as any[])[0];
+    if (!cb) return false;
+    if (["won", "lost"].includes(cb.status)) return true;
+    if (won && cb.user_id && cb.wallet_deducted) {
+      const walletDebitedUsd = Math.max(0, Number(cb.wallet_debited_usd ?? 0));
+      await tx.execute(sql`
+        UPDATE promo_wallets SET balance_usd = balance_usd + ${walletDebitedUsd}, updated_at = NOW()
+        WHERE user_id = ${cb.user_id}
+      `);
+      if (walletDebitedUsd > 0) {
+        await tx.insert(walletTransactionsTable).values({
+          userId: cb.user_id,
+          type: "chargeback_reversal",
+          amountUsd: walletDebitedUsd,
+          paymentRef: dispute.id,
+          status: "completed",
+          note: `Dispute ${dispute.id} genyen — $${walletDebitedUsd.toFixed(2)} retounen`,
+        });
+      }
+      await tx.insert(notificationsTable).values({
+        userId: cb.user_id, actorId: cb.user_id, type: "system_alert",
+        message: `✅ Dispute chajbak ${dispute.id} rezoud nan favè ou. $${walletDebitedUsd.toFixed(2)} retounen sou wallet ou.`,
+      });
+    }
+    await tx.execute(sql`
+      UPDATE chargebacks
+      SET status = ${won ? "won" : "lost"},
+          resolved_at = NOW(),
+          outstanding_debt_usd = ${won ? 0 : Number(cb.outstanding_debt_usd ?? 0)}
+      WHERE stripe_dispute_id = ${dispute.id}
+    `);
+    if (cb.user_id) {
+      const restrictionRelevantDisputes = await tx.execute(sql`
+        SELECT 1 FROM chargebacks
+        WHERE user_id = ${cb.user_id}
+          AND (
+            status = 'open'
+            OR (status = 'lost' AND outstanding_debt_usd > 0)
+          )
+        LIMIT 1
+      `);
+      if (!restrictionRelevantDisputes.rows.length) {
+        const appliedRestriction = await tx.execute(sql`
+          SELECT stripe_dispute_id
+          FROM chargebacks
+          WHERE user_id = ${cb.user_id}
+            AND restriction_applied = true
+            AND status = 'won'
+          ORDER BY created_at ASC
+          LIMIT 1
+        `);
+        const ownerDisputeId = (appliedRestriction.rows[0] as any)?.stripe_dispute_id;
+        if (ownerDisputeId) {
+          await tx.execute(sql`
+            UPDATE users
+            SET is_restricted = false, restriction_reason = NULL
+            WHERE id = ${cb.user_id}
+              AND restriction_reason = ${"Chargeback dispute ouvè: " + ownerDisputeId}
+          `);
+        }
+      }
+    }
+    return true;
+  });
+  if (!handled) {
+    logger.warn({ disputeId: dispute.id }, "Dispute closed but no chargeback record found");
+    throw new Error(`Chargeback record missing for closed dispute ${dispute.id}`);
   }
-
-  await db.execute(sql`
-    UPDATE chargebacks SET status = ${won ? "won" : "lost"}, resolved_at = NOW()
-    WHERE stripe_dispute_id = ${dispute.id}
-  `);
 
   logger.info({ disputeId: dispute.id, status: won ? "won" : "lost", amountUsd }, "Stripe dispute closed");
 }

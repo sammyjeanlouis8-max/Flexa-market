@@ -5017,6 +5017,9 @@ export default {
       reasonPlaceholder: "Expliquez pourquoi ce remboursement est nécessaire",
       processing: "Traitement en cours…",
       success: "Remboursement enregistré avec succès",
+      approved: "Remboursement approuvé et envoyé à Stripe",
+      approvalRequired: "Une seconde approbation est requise",
+      approve: "Approuver le remboursement",
       serviceReversalRequired: "Annulez d'abord le crédit Carte FM, le boost ou l'abonnement dans son processus dédié avant d'émettre un remboursement.",
       mode: {
         stripe: "Stripe",

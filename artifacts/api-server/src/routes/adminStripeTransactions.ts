@@ -27,8 +27,9 @@ import { logAdminAction } from "../lib/auditLogger";
 
 const router = Router();
 const sellerUsersTable = alias(usersTable, "seller_user");
-const REFUNDABLE_STATUSES = ["succeeded", "pending"];
+const REFUNDABLE_STATUSES = ["succeeded", "pending", "processing", "approval_required", "reconciliation_required"];
 const COMPLETED_PAYMENT_STATUSES = ["completed", "partially_refunded", "refunded"];
+const DUAL_APPROVAL_REFUND_CENTS = 50_000;
 
 type RefundLedgerRow = typeof stripeRefundLedgerTable.$inferSelect;
 
@@ -408,6 +409,29 @@ router.get("/admin/stripe-transactions/:id", requireSuperAdmin, async (req, res)
       .orderBy(desc(stripeRefundLedgerTable.createdAt));
     const refundedCents = refunds.filter(r => r.providerStatus === "succeeded")
       .reduce((sum, r) => sum + r.amountCents, 0);
+    const disputes = row.tx.stripePaymentIntentId
+      ? (await db.execute(sql`
+          SELECT id, stripe_dispute_id, stripe_charge_id, amount_usd,
+                 wallet_debited_usd, outstanding_debt_usd, status,
+                 wallet_deducted, user_restricted, created_at, resolved_at
+          FROM chargebacks
+          WHERE stripe_payment_intent_id = ${row.tx.stripePaymentIntentId}
+          ORDER BY created_at DESC
+        `)).rows
+      : [];
+    const webhookEvents = (await db.execute(sql`
+      SELECT stripe_event_id, event_type, processing_status, attempt_count,
+             received_at, processed_at, last_error, object_reference
+      FROM stripe_webhook_events
+      WHERE object_reference = ${row.tx.stripePaymentIntentId}
+         OR object_reference = ${row.tx.stripeCheckoutSessionId}
+         OR related_references && ARRAY_REMOVE(
+           ARRAY[${row.tx.stripePaymentIntentId}::text, ${row.tx.stripeCheckoutSessionId}::text],
+           NULL
+         )
+      ORDER BY received_at DESC
+      LIMIT 100
+    `)).rows;
     let live: any = null;
     if (row.tx.stripePaymentIntentId) {
       try {
@@ -448,6 +472,8 @@ router.get("/admin/stripe-transactions/:id", requireSuperAdmin, async (req, res)
       },
       refundableRemainingCents: Math.max(0, (live?.amountReceived ?? live?.amount ?? originalLocalCents(row.tx)) - refundedCents),
       refundHistory: refunds,
+      disputes,
+      webhookEvents,
     });
   } catch (err) {
     req.log?.error({ err, transactionId: id }, "Admin Stripe transaction detail failed");
@@ -616,6 +642,24 @@ router.post("/admin/stripe-transactions/:id/refunds", requireSuperAdmin, async (
       res.status(status).json(await refundResponse(transactionId, reserved.ledger));
       return;
     }
+    if (reserved.ledger.amountCents >= DUAL_APPROVAL_REFUND_CENTS) {
+      const [awaitingApproval] = await db.update(stripeRefundLedgerTable).set({
+        providerStatus: "approval_required",
+        metadata: { approvalThresholdCents: DUAL_APPROVAL_REFUND_CENTS },
+        updatedAt: new Date(),
+      }).where(eq(stripeRefundLedgerTable.id, reserved.ledger.id)).returning();
+      await logAdminAction(req, {
+        actionType: "stripe_refund_approval_requested",
+        actionCategory: "fintech",
+        description: `Second approval requested for Stripe refund on transaction ${transactionId}`,
+        targetType: "stripe_refund",
+        targetId: awaitingApproval.id,
+        metadata: { requestId, amountCents: awaitingApproval.amountCents },
+        riskLevel: "critical",
+      });
+      res.status(202).json(await refundResponse(transactionId, awaitingApproval));
+      return;
+    }
 
     let refund: Stripe.Refund;
     try {
@@ -673,6 +717,79 @@ router.post("/admin/stripe-transactions/:id/refunds", requireSuperAdmin, async (
   } catch (err) {
     req.log?.error({ err, transactionId, requestId }, "Admin Stripe refund operation failed");
     res.status(500).json({ error: "Failed to create Stripe refund" });
+  }
+});
+
+router.post("/admin/stripe-transactions/:id/refunds/:refundId/approve", requireSuperAdmin, async (req, res): Promise<void> => {
+  const transactionId = asId(req.params.id);
+  const refundId = asId(req.params.refundId);
+  if (!transactionId || !refundId) { res.status(400).json({ error: "Invalid transaction or refund id" }); return; }
+  try {
+    const reserved = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT id FROM stripe_refund_ledger WHERE id = ${refundId} FOR UPDATE`);
+      const [ledger] = await tx.select().from(stripeRefundLedgerTable)
+        .where(and(eq(stripeRefundLedgerTable.id, refundId), eq(stripeRefundLedgerTable.transactionId, transactionId)));
+      if (!ledger) throw new Error("Refund request not found");
+      const retryableReconciliation = ledger.providerStatus === "reconciliation_required";
+      const staleProcessing = ledger.providerStatus === "processing"
+        && Date.now() - ledger.updatedAt.getTime() > 5 * 60 * 1000;
+      if (ledger.providerStatus !== "approval_required" && !retryableReconciliation && !staleProcessing) {
+        throw new Error("Refund is not awaiting approval or reconciliation");
+      }
+      if (ledger.actorId === req.userId) throw new Error("A different Super Admin must approve this high-value refund");
+      const [transaction] = await tx.select().from(transactionsTable).where(eq(transactionsTable.id, transactionId));
+      if (!transaction || transaction.type !== "purchase" || !transaction.stripePaymentIntentId) {
+        throw new Error("Refund is no longer eligible for Stripe processing");
+      }
+      const [processing] = await tx.update(stripeRefundLedgerTable).set({
+        providerStatus: "processing",
+        approvedById: req.userId!,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(stripeRefundLedgerTable.id, refundId)).returning();
+      return { ledger: processing, transaction };
+    });
+
+    const stripe = await getStripeClient();
+    let refund: Stripe.Refund;
+    try {
+      refund = await stripe.refunds.create({
+        payment_intent: reserved.transaction.stripePaymentIntentId!,
+        amount: reserved.ledger.amountCents,
+        reason: "requested_by_customer",
+        metadata: { adminRequestId: reserved.ledger.requestId, transactionId: String(transactionId), approvedBy: String(req.userId) },
+      }, { idempotencyKey: reserved.ledger.idempotencyKey });
+    } catch (err: any) {
+      const [failed] = await db.update(stripeRefundLedgerTable).set({
+        providerStatus: "reconciliation_required",
+        failureCode: typeof err?.code === "string" ? err.code : "stripe_provider_error",
+        failureMessage: typeof err?.message === "string" ? err.message.slice(0, 1000) : "Stripe refund result is unknown",
+        updatedAt: new Date(),
+      }).where(eq(stripeRefundLedgerTable.id, refundId)).returning();
+      res.status(502).json({ error: "Stripe refund result requires reconciliation; retry will reuse the same idempotency key", refund: failed });
+      return;
+    }
+    const [completed] = await db.update(stripeRefundLedgerTable).set({
+      stripeRefundId: refund.id,
+      providerStatus: refund.status ?? "succeeded",
+      updatedAt: new Date(),
+    }).where(eq(stripeRefundLedgerTable.id, refundId)).returning();
+    if (completed.providerStatus === "succeeded") {
+      await setAggregatePaymentStatus(transactionId, originalLocalCents(reserved.transaction));
+    }
+    await logAdminAction(req, {
+      actionType: "stripe_refund_approved_and_processed",
+      actionCategory: "fintech",
+      description: `High-value Stripe refund approved and processed for transaction ${transactionId}`,
+      targetType: "stripe_refund",
+      targetId: refundId,
+      metadata: { amountCents: completed.amountCents, stripeRefundId: refund.id, requestedBy: completed.actorId, approvedBy: req.userId },
+      riskLevel: "critical",
+    });
+    res.json(await refundResponse(transactionId, completed));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to approve refund";
+    res.status(message.includes("different Super Admin") ? 403 : 409).json({ error: message });
   }
 });
 

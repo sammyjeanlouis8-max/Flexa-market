@@ -5018,6 +5018,9 @@ export default {
       reasonPlaceholder: "Eksplike poukisa refund sa a nesesè",
       processing: "Ap trete…",
       success: "Refund la anrejistre avèk siksè",
+      approved: "Refund la apwouve epi voye bay Stripe",
+      approvalRequired: "Li bezwen yon dezyèm apwobasyon",
+      approve: "Apwouve refund la",
       serviceReversalRequired: "Anile kredi Kat FM, boost oswa abònman an nan sistèm pa li anvan ou fè refund la.",
       mode: {
         stripe: "Stripe",

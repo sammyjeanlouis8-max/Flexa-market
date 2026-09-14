@@ -5022,6 +5022,9 @@ export default {
       reasonPlaceholder: "Explain why this refund is needed",
       processing: "Processing…",
       success: "Refund recorded successfully",
+      approved: "Refund approved and sent to Stripe",
+      approvalRequired: "Second approval required",
+      approve: "Approve refund",
       serviceReversalRequired: "Reverse the FM Card credit, boost, or subscription entitlement in its dedicated workflow before issuing a refund.",
       mode: {
         stripe: "Stripe",

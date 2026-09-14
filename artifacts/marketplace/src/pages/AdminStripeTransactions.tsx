@@ -132,6 +132,19 @@ export default function AdminStripeTransactions() {
     },
   });
 
+  const approveRefundMutation = useMutation({
+    mutationFn: (refundId: number) =>
+      apiFetch(`/api/admin/stripe-transactions/${selectedId}/refunds/${refundId}/approve`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast({ title: t("adminStripeTransactions.refund.approved", "Refund approved and sent to Stripe") });
+      queryClient.invalidateQueries({ queryKey: ["admin-stripe-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-stripe-transaction", selectedId] });
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
+  });
+
   const handleRefundSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!refundReason.trim()) {
@@ -731,15 +744,74 @@ export default function AdminStripeTransactions() {
                     <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{t("adminStripeTransactions.details.refundHistory")}</h3>
                     <div className="space-y-3">
                       {(detailData as any).refundHistory.map((r: any, i: number) => (
-                        <div key={i} className="flex justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                        <div key={i} className="flex justify-between gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
                           <div>
                             <p className="text-sm font-bold font-mono text-slate-900 dark:text-white">{formatMoney(r.amountCents, r.currency)}</p>
                             <p className="text-[11px] font-medium text-muted-foreground mt-0.5">{new Date(r.createdAt).toLocaleString()}</p>
                             {r.reason && <p className="text-[11px] mt-1.5 italic text-slate-600 dark:text-slate-400">"{r.reason}"</p>}
                           </div>
-                          <Badge variant="secondary" className="h-fit text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                            {t(`adminStripeTransactions.refund.mode.${r.mode}`, { defaultValue: r.mode })}
-                          </Badge>
+                          <div className="flex flex-col items-end gap-2">
+                            <Badge variant="secondary" className="h-fit text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {r.providerStatus === "approval_required"
+                                ? t("adminStripeTransactions.refund.approvalRequired", "Second approval required")
+                                : r.providerStatus}
+                            </Badge>
+                            {["approval_required", "reconciliation_required"].includes(r.providerStatus) && Number(r.actorId) !== Number((user as any)?.id) && (
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs"
+                                disabled={approveRefundMutation.isPending}
+                                onClick={() => approveRefundMutation.mutate(r.id)}
+                              >
+                                {approveRefundMutation.isPending && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                                {t("adminStripeTransactions.refund.approve", "Approve refund")}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(detailData as any).disputes?.length > 0 && (
+                  <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+                    <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("adminStripeTransactions.details.disputes", "Stripe disputes")}
+                    </h3>
+                    <div className="space-y-3">
+                      {(detailData as any).disputes.map((d: any) => (
+                        <div key={d.id} className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-xs font-bold">{d.stripe_dispute_id}</span>
+                            <Badge variant="secondary">{d.status}</Badge>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {formatMoney(Math.round(Number(d.amount_usd) * 100), "USD")} · {new Date(d.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(detailData as any).webhookEvents?.length > 0 && (
+                  <div className="pt-6 border-t border-slate-200 dark:border-slate-800">
+                    <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      {t("adminStripeTransactions.details.webhookTimeline", "Verified Stripe webhook timeline")}
+                    </h3>
+                    <div className="space-y-2">
+                      {(detailData as any).webhookEvents.map((event: any) => (
+                        <div key={event.stripe_event_id} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 text-xs dark:border-slate-800">
+                          <div>
+                            <p className="font-semibold">{event.event_type}</p>
+                            <p className="mt-1 font-mono text-[10px] text-muted-foreground">{event.stripe_event_id}</p>
+                            {event.last_error && <p className="mt-1 text-red-600">{event.last_error}</p>}
+                          </div>
+                          <div className="text-right">
+                            <Badge variant={event.processing_status === "processed" ? "secondary" : "destructive"}>{event.processing_status}</Badge>
+                            <p className="mt-1 text-[10px] text-muted-foreground">{new Date(event.received_at).toLocaleString()}</p>
+                          </div>
                         </div>
                       ))}
                     </div>

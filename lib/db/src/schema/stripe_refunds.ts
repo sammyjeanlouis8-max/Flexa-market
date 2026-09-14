@@ -22,6 +22,8 @@ export const stripeRefundLedgerTable = pgTable("stripe_refund_ledger", {
   providerStatus: text("provider_status").notNull().default("pending"),
   externalReference: text("external_reference"),
   actorId: integer("actor_id").references(() => usersTable.id),
+  approvedById: integer("approved_by_id").references(() => usersTable.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
   failureCode: text("failure_code"),
   failureMessage: text("failure_message"),
   failureMetadata: jsonb("failure_metadata"),
@@ -36,6 +38,7 @@ export const stripeRefundLedgerTable = pgTable("stripe_refund_ledger", {
     .where(sql`${t.stripeRefundId} IS NOT NULL`),
   transactionIndex: index("stripe_refund_ledger_transaction_idx").on(t.transactionId, t.createdAt),
   statusIndex: index("stripe_refund_ledger_status_idx").on(t.providerStatus),
+  approvalIndex: index("stripe_refund_ledger_approval_idx").on(t.providerStatus, t.createdAt),
 }));
 
 export type StripeRefundLedger = typeof stripeRefundLedgerTable.$inferSelect;

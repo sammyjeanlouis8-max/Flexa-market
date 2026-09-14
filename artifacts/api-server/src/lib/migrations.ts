@@ -1689,6 +1689,35 @@ export async function runStartupMigrations(): Promise<void> {
     name: "stripe_refund_ledger.status_idx",
     sql: "CREATE INDEX IF NOT EXISTS stripe_refund_ledger_status_idx ON stripe_refund_ledger(provider_status)",
   });
+  migrations.push({ name: "stripe_refund_ledger.add_approved_by", sql: "ALTER TABLE stripe_refund_ledger ADD COLUMN IF NOT EXISTS approved_by_id INTEGER REFERENCES users(id)" });
+  migrations.push({ name: "stripe_refund_ledger.add_approved_at", sql: "ALTER TABLE stripe_refund_ledger ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ" });
+  migrations.push({ name: "stripe_refund_ledger.approval_idx", sql: "CREATE INDEX IF NOT EXISTS stripe_refund_ledger_approval_idx ON stripe_refund_ledger(provider_status, created_at DESC)" });
+  migrations.push({
+    name: "stripe_webhook_events.create_table",
+    sql: `CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      id BIGSERIAL PRIMARY KEY,
+      stripe_event_id TEXT NOT NULL UNIQUE,
+      event_type TEXT NOT NULL,
+      livemode BOOLEAN NOT NULL DEFAULT FALSE,
+      provider_created_at TIMESTAMPTZ,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      processed_at TIMESTAMPTZ,
+      processing_status TEXT NOT NULL DEFAULT 'processing',
+      attempt_count INTEGER NOT NULL DEFAULT 1,
+      last_error TEXT,
+      object_reference TEXT,
+      related_references TEXT[] NOT NULL DEFAULT '{}',
+      event_payload JSONB,
+      lease_expires_at TIMESTAMPTZ
+    )`,
+  });
+  migrations.push({ name: "stripe_webhook_events.add_related_references", sql: "ALTER TABLE stripe_webhook_events ADD COLUMN IF NOT EXISTS related_references TEXT[] NOT NULL DEFAULT '{}'" });
+  migrations.push({ name: "stripe_webhook_events.add_event_payload", sql: "ALTER TABLE stripe_webhook_events ADD COLUMN IF NOT EXISTS event_payload JSONB" });
+  migrations.push({ name: "stripe_webhook_events.add_lease", sql: "ALTER TABLE stripe_webhook_events ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ" });
+  migrations.push({
+    name: "stripe_webhook_events.status_idx",
+    sql: "CREATE INDEX IF NOT EXISTS stripe_webhook_events_status_idx ON stripe_webhook_events(processing_status, received_at DESC)",
+  });
 
   // ── AI Guardian decisions table ──────────────────────────────────────────────
   migrations.push({
@@ -1745,6 +1774,9 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "chargebacks.idx_user",    sql: "CREATE INDEX IF NOT EXISTS idx_chargebacks_user    ON chargebacks(user_id)" });
   migrations.push({ name: "chargebacks.idx_dispute", sql: "CREATE INDEX IF NOT EXISTS idx_chargebacks_dispute ON chargebacks(stripe_dispute_id)" });
   migrations.push({ name: "chargebacks.idx_status",  sql: "CREATE INDEX IF NOT EXISTS idx_chargebacks_status  ON chargebacks(status)" });
+  migrations.push({ name: "chargebacks.add_wallet_debited_usd", sql: "ALTER TABLE chargebacks ADD COLUMN IF NOT EXISTS wallet_debited_usd NUMERIC(12,2) NOT NULL DEFAULT 0" });
+  migrations.push({ name: "chargebacks.add_outstanding_debt_usd", sql: "ALTER TABLE chargebacks ADD COLUMN IF NOT EXISTS outstanding_debt_usd NUMERIC(12,2) NOT NULL DEFAULT 0" });
+  migrations.push({ name: "chargebacks.add_restriction_applied", sql: "ALTER TABLE chargebacks ADD COLUMN IF NOT EXISTS restriction_applied BOOLEAN NOT NULL DEFAULT false" });
 
   // ── Wallet balance floor constraints (DB-level hard guarantee) ────────────
   // These CHECK constraints make it impossible for any code path — including

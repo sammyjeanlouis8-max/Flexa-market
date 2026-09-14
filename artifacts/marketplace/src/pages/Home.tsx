@@ -655,6 +655,39 @@ export default function Home() {
     [boostedFeedData?.listings, activeCategory]
   );
 
+  // Keep boosted listings first, but never leave a single-card gap in the
+  // featured row. A regular listing temporarily fills the second slot and is
+  // replaced automatically as soon as another boosted listing is available.
+  const featuredCards = useMemo((): NormalListing[] => {
+    const seen = new Set<number>();
+    const boosts: NormalListing[] = [];
+    const fallbacks: NormalListing[] = [];
+
+    const addUnique = (items: NormalListing[], target: NormalListing[], boostedOnly: boolean) => {
+      for (const listing of items) {
+        if (seen.has(listing.id)) continue;
+        if (boostedOnly && !listing.isBoosted) continue;
+        if (!boostedOnly && listing.isBoosted) continue;
+        seen.add(listing.id);
+        target.push(listing);
+      }
+    };
+
+    addUnique(boostedListings, boosts, true);
+    addUnique(featuredFiltered, boosts, true);
+
+    if (boosts.length === 0) return [];
+
+    const recentCandidates = (stats?.recentListings ?? []).filter(
+      (listing: NormalListing) => !activeCategory || listing.categorySlug === activeCategory
+    );
+    addUnique(recentCandidates, fallbacks, false);
+    addUnique(allListings, fallbacks, false);
+
+    const missingSlots = Math.max(0, 2 - boosts.length);
+    return [...boosts, ...fallbacks.slice(0, missingSlots)].slice(0, 8);
+  }, [boostedListings, featuredFiltered, stats?.recentListings, allListings, activeCategory]);
+
   // ── Build interleaved feed (stable boost positions that grow with pages) ──
   const feedItems = useMemo((): FeedItem[] => {
     const filterKey = `${activeCategory ?? "all"}__${isAdmin ? `admin-${effectiveAdminCountry ?? "all"}` : scope}`;
@@ -1192,7 +1225,7 @@ export default function Home() {
               ))}
             </div>
           </section>
-        ) : featuredFiltered.length > 0 ? (
+        ) : featuredCards.length > 0 ? (
           <section>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-1.5">
@@ -1210,7 +1243,7 @@ export default function Home() {
               className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
-              {featuredFiltered.map((l: NormalListing) => (
+              {featuredCards.map((l: NormalListing) => (
                 <div key={l.id} className="flex-shrink-0 w-44 sm:w-52">
                   <ListingCard listing={l} compact />
                 </div>

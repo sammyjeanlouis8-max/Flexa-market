@@ -2695,7 +2695,7 @@ export default function Admin() {
       )}
 
       {/* ── Application Management Hub — always visible ── */}
-      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="admin-management-grid mb-4 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {/* Driver Applications */}
         <button
           type="button"

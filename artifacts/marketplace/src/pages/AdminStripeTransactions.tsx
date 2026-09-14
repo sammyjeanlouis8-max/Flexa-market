@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/auth";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Search, ArrowLeft, DollarSign,
+  Search, DollarSign, Activity, RefreshCw, ShieldCheck, TrendingUp,
   AlertTriangle, RotateCcw, FileText, ChevronLeft, ChevronRight, Eye, ShieldAlert,
   Loader2
 } from "lucide-react";
@@ -91,7 +91,7 @@ export default function AdminStripeTransactions() {
   };
 
   // Queries
-  const { data: listData, isLoading: isLoadingList } = useQuery({
+  const { data: listData, isLoading: isLoadingList, isFetching: isRefreshing, refetch: refreshList } = useQuery({
     queryKey: ["admin-stripe-transactions", debouncedSearch, status, source, dateFrom, dateTo, page],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -106,6 +106,8 @@ export default function AdminStripeTransactions() {
       return apiFetch(`/api/admin/stripe-transactions?${params.toString()}`, { method: "GET" });
     },
     enabled: isSuperAdmin,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: detailData, isLoading: isLoadingDetail } = useQuery({
@@ -176,6 +178,8 @@ export default function AdminStripeTransactions() {
   const metrics = (listData as any)?.metrics;
   const items = (listData as any)?.items || [];
   const pagination = (listData as any)?.pagination;
+  const visiblePending = items.filter((item: any) => ["pending", "processing"].includes(item.status)).length;
+  const visibleFailed = items.filter((item: any) => ["failed", "canceled"].includes(item.status)).length;
 
   const formatMoney = (cents: number, currency = "USD") => new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -211,47 +215,76 @@ export default function AdminStripeTransactions() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/admin")} className="rounded-full">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("adminStripeTransactions.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("adminStripeTransactions.subtitle")}</p>
+    <div className="min-h-[calc(100dvh-4rem)] bg-[#f5f7fb] dark:bg-slate-950">
+      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#172554_48%,#312e81_100%)] text-white">
+        <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-blue-400/15 blur-3xl" />
+        <div className="relative max-w-6xl mx-auto px-4 py-7 md:px-8 md:py-10">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold tracking-wide text-blue-100">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {t("adminStripeTransactions.secureConsole")}
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight">{t("adminStripeTransactions.title")}</h1>
+              <p className="mt-1 max-w-xl text-sm text-blue-100/80">{t("adminStripeTransactions.subtitle")}</p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => refreshList()}
+              disabled={isRefreshing}
+              className="h-10 shrink-0 border border-white/15 bg-white/10 px-3 text-white hover:bg-white/20"
+            >
+              <RefreshCw className={`h-4 w-4 md:mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span className="hidden md:inline">{t("adminStripeTransactions.refresh")}</span>
+            </Button>
+          </div>
+          <div className="mt-6 flex flex-wrap items-center gap-3 text-xs">
+            <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-400/15 px-3 py-2 text-emerald-200">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              {t("adminStripeTransactions.liveMonitoring")}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-blue-100">
+              <Activity className="h-3.5 w-3.5" />
+              {t("adminStripeTransactions.autoRefresh")}
+            </span>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
+      <div className="max-w-6xl mx-auto px-4 py-5 md:px-8 md:py-8 space-y-5">
+      <div className="-mt-10 relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border-0 shadow-lg shadow-slate-900/5 rounded-2xl">
+          <CardContent className="p-4 md:p-5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("adminStripeTransactions.metrics.totalVolume")}</p>
-            <p className="text-2xl font-black text-foreground">{formatMoney(metrics?.grossCents ?? 0)}</p>
+            <p className="text-xl md:text-2xl font-black text-foreground">{formatMoney(metrics?.grossCents ?? 0)}</p>
+            <p className="mt-1 text-[10px] text-emerald-600">{t("adminStripeTransactions.metrics.capturedOnly")}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-lg shadow-slate-900/5 rounded-2xl">
+          <CardContent className="p-4 md:p-5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("adminStripeTransactions.metrics.refunded")}</p>
-            <p className="text-2xl font-black text-blue-600 dark:text-blue-400">{formatMoney(metrics?.refundedCents ?? 0)}</p>
+            <p className="text-xl md:text-2xl font-black text-blue-600 dark:text-blue-400">{formatMoney(metrics?.refundedCents ?? 0)}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">{t("adminStripeTransactions.metrics.ledgerVerified")}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-lg shadow-slate-900/5 rounded-2xl">
+          <CardContent className="p-4 md:p-5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("adminStripeTransactions.metrics.net")}</p>
-            <p className="text-2xl font-black text-green-600 dark:text-green-400">{formatMoney(metrics?.netCents ?? 0)}</p>
+            <p className="text-xl md:text-2xl font-black text-green-600 dark:text-green-400">{formatMoney(metrics?.netCents ?? 0)}</p>
+            <p className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground"><TrendingUp className="h-3 w-3" />{t("adminStripeTransactions.metrics.afterRefunds")}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
+        <Card className="border-0 shadow-lg shadow-slate-900/5 rounded-2xl">
+          <CardContent className="p-4 md:p-5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("adminStripeTransactions.metrics.count")}</p>
-            <p className="text-2xl font-black text-foreground">{metrics?.totalCount ?? 0}</p>
+            <p className="text-xl md:text-2xl font-black text-foreground">{metrics?.totalCount ?? 0}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">{visiblePending} {t("adminStripeTransactions.pendingShort")} · {visibleFailed} {t("adminStripeTransactions.failedShort")}</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col flex-wrap lg:flex-row gap-3">
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 flex flex-col flex-wrap lg:flex-row gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -307,7 +340,7 @@ export default function AdminStripeTransactions() {
       </div>
 
       {/* Data Table */}
-      <Card className="rounded-2xl overflow-hidden border-border/50 bg-card">
+      <Card className="rounded-2xl overflow-hidden border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
           <Table>
@@ -375,7 +408,12 @@ export default function AdminStripeTransactions() {
             </div>
           ) : (
             items.map((item: any) => (
-              <div key={item.id} className="p-4 flex flex-col gap-3 active:bg-muted/30" onClick={() => setSelectedId(item.id)}>
+              <button type="button" key={item.id} className="relative p-4 pl-5 flex flex-col gap-3 active:bg-muted/30 text-left" onClick={() => setSelectedId(item.id)}>
+                <span className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${
+                  ["completed", "succeeded"].includes(item.status) ? "bg-emerald-500" :
+                  item.status === "refunded" || item.status === "partially_refunded" ? "bg-blue-500" :
+                  ["failed", "canceled"].includes(item.status) ? "bg-rose-500" : "bg-amber-400"
+                }`} />
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-medium text-sm text-foreground">{item.user?.name || t("adminStripeTransactions.unknownUser")}</div>
@@ -395,7 +433,7 @@ export default function AdminStripeTransactions() {
                     {new Date(item.createdAt).toLocaleDateString()}
                   </div>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -427,6 +465,10 @@ export default function AdminStripeTransactions() {
           </div>
         )}
       </Card>
+      <div className="flex items-center justify-center gap-2 pb-[calc(20px+env(safe-area-inset-bottom,0px))] text-[11px] text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+        {t("adminStripeTransactions.stripeOnlyNotice")}
+      </div>
 
       {/* Details Sheet */}
       <Sheet open={selectedId !== null} onOpenChange={(o) => !o && setSelectedId(null)}>
@@ -598,6 +640,7 @@ export default function AdminStripeTransactions() {
           </form>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

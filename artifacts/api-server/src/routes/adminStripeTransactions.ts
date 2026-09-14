@@ -14,6 +14,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
   lte,
   or,
   sql,
@@ -156,7 +157,15 @@ function queryDate(value: unknown, field: string): Date | undefined {
 }
 
 function listWhere(query: Record<string, unknown>) {
-  const conditions: any[] = [eq(transactionsTable.paymentMethod, "stripe")];
+  // A legacy/local paymentMethod value alone is not proof that money reached
+  // Stripe. Only show rows carrying a Stripe-owned identifier.
+  const conditions: any[] = [
+    eq(transactionsTable.paymentMethod, "stripe"),
+    or(
+      isNotNull(transactionsTable.stripePaymentIntentId),
+      isNotNull(transactionsTable.stripeCheckoutSessionId),
+    ),
+  ];
   const status = typeof query.status === "string" ? query.status.trim() : "";
   if (status && status !== "all") {
     if (!/^[a-z_]{1,40}$/.test(status)) throw new Error("Invalid status");
@@ -281,7 +290,7 @@ router.get("/admin/stripe-transactions", requireSuperAdmin, async (req, res): Pr
     }
     const where = listWhere(query);
     const [metricsRow] = await db.select({
-      grossCents: sql<number>`COALESCE(SUM(ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100)), 0)`,
+      grossCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
       successfulCents: sql<number>`COALESCE(SUM(CASE WHEN ${transactionsTable.paymentStatus} IN ('completed', 'partially_refunded', 'refunded') THEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) ELSE 0 END), 0)`,
       refundedCents: sql<number>`COALESCE(SUM((SELECT COALESCE(SUM(r.amount_cents), 0) FROM stripe_refund_ledger r WHERE r.transaction_id = ${transactionsTable.id} AND r.provider_status = 'succeeded')), 0)`,
       totalCount: count(),

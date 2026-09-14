@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Printer, ChevronLeft, Truck, CheckCircle2, Package, Clock, MapPin,
-  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle,
+  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -264,14 +264,14 @@ function VerificationCodeCard({ code, isBus = false }: { code: string; isBus?: b
                 {/* Bus: prominent "send code to seller" callout right under digits */}
                 {isBus && (
                   <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300/70 dark:border-amber-700/50 rounded-2xl p-4 flex items-start gap-3 text-left">
-                    <span className="text-xl shrink-0 mt-0.5">⚠️</span>
+                    <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-black text-sm text-amber-800 dark:text-amber-300 uppercase tracking-wide">Kisa pou w fè ak kòd sa a?</p>
                       <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
                         Lè ou <span className="font-bold">resevwa atik la</span> nan men transpòtè a — voye kòd sa a bay <span className="font-bold">machann nan pa mesaj</span>. Li ap antre l nan app li pou libere lajan l imedyatman.
                       </p>
                       <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1.5 font-semibold">
-                        ⛔ Pa bay kòd la si ou pa resevwa atik la!
+                        <XCircle className="h-3 w-3 inline mr-1" /> Pa bay kòd la si ou pa resevwa atik la!
                       </p>
                     </div>
                   </div>
@@ -332,14 +332,14 @@ function VerificationCodeCard({ code, isBus = false }: { code: string; isBus?: b
                 {/* Copy */}
                 <button onClick={copy} className="flex items-center gap-1.5 mx-auto text-xs text-[#6C63FF] font-semibold py-1">
                   {copied
-                    ? <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Kòd kopye ✓</>
+                    ? <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Kòd kopye</>
                     : <><Copy className="h-4 w-4" /> Kopye kòd la</>}
                 </button>
 
                 {/* Important info */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl p-4 text-left">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-base">ℹ️</span>
+                    <Info className="h-5 w-5 text-blue-500 shrink-0" />
                     <p className="font-black text-[11px] text-blue-700 dark:text-blue-400 uppercase tracking-wide">ENFÒMASYON ENPÒTAN</p>
                   </div>
                   <ul className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
@@ -481,7 +481,7 @@ export default function OrderDetail() {
   }, [orderId, token]);
 
   useEffect(() => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) { setLocation("/auth/login"); return; }
     if (!orderId) { setError("Invalid order"); return; }
     load();
     loadReturnInfo();
@@ -578,7 +578,7 @@ export default function OrderDetail() {
         title: shipMode === "fm"
           ? "Livrezon voye bay chofè FM!"
           : shipMode === "bus"
-          ? "Kòmand voye pa bis! 🚌"
+          ? "Kòmand voye pa bis!"
           : t("orderDetail.toastDeliverySubmitted"),
         description: shipMode === "fm"
           ? "Chofè ki disponib yo ap wè kòmann nan. Youn ap aksepte l touswit."
@@ -611,11 +611,11 @@ export default function OrderDetail() {
         setOrder(prev =>
           prev ? { ...prev, escrowReleased: true, orderStatus: "completed" } : prev,
         );
-        toast({ title: "Ranmase fèt! ✅", description: "Vandè a resevwa lajan l nan pòtfèy li." });
+        toast({ title: "Ranmase fèt!", description: "Vandè a resevwa lajan l nan pòtfèy li." });
       } else if (status === "arrived") {
-        toast({ title: "Vandè a konnen ou rive! 📍" });
+        toast({ title: "Vandè a konnen ou rive!" });
       } else {
-        toast({ title: "Vandè a konnen ou nan wout! 🚶" });
+        toast({ title: "Vandè a konnen ou nan wout!" });
       }
       await load();
     }
@@ -760,14 +760,14 @@ export default function OrderDetail() {
           />
         ) : (
           <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-muted flex items-center justify-center">
-            <span className="text-muted-foreground text-2xl">📦</span>
+            <Package className="h-8 w-8 text-muted-foreground/50" />
           </div>
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-xs text-muted-foreground">{order.orderRef}</span>
             <Badge variant="secondary" className="capitalize text-xs">{order.paymentMethod}</Badge>
-            {order.isHaiti && <Badge variant="outline" className="text-xs">🇭🇹 {t("orderDetail.haitiBadge")}</Badge>}
+            {order.isHaiti && <Badge variant="outline" className="text-xs">Local: HT</Badge>}{order.listingCountry === "Dominican Republic" && !order.isHaiti && <Badge variant="outline" className="text-xs">Local: DR</Badge>}
           </div>
           <h1 className="text-lg font-extrabold mt-1 leading-tight">{order.listing.title}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -995,7 +995,7 @@ export default function OrderDetail() {
                       picked_up:       { label: "Pako Pran", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
                       on_the_way:      { label: "Chofè an Wout", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300" },
                       arrived:         { label: "Chofè Rive", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" },
-                      delivered:       { label: "Livrezon Fèt ✓", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
+                      delivered:       { label: "Livrezon Fèt", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
                     };
                     const meta = statusMap[order.fmDelivery!.status] ?? { label: order.fmDelivery!.status, color: "bg-muted text-muted-foreground" };
                     return (
@@ -1118,7 +1118,7 @@ export default function OrderDetail() {
           {order.orderStatus === "ready_to_ship" &&
            !["shipped", "delivered", "completed", "cancelled", "return_refunded"].includes(order.orderStatus) && (
             <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/20 border border-red-200/60 dark:border-red-800/30 rounded-xl px-3.5 py-3">
-              <span className="text-xl shrink-0 mt-0.5">⚠️</span>
+              <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-sm text-red-800 dark:text-red-300">Ou pa kapab satisfè kòmand sa?</p>
                 <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
@@ -1185,7 +1185,7 @@ export default function OrderDetail() {
                   </div>
                   {busCodeError && (
                     <p className="text-xs text-destructive font-semibold flex items-center gap-1.5">
-                      <span>⚠️</span>{busCodeError}
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 inline" /> {busCodeError}
                     </p>
                   )}
                 </>
@@ -1205,12 +1205,12 @@ export default function OrderDetail() {
               </div>
               {order.orderStatus === "en_route" && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-semibold">
-                  🚶 Achetè nan wout — li ap vini!
+                  <span className="flex items-center gap-1.5"><Footprints className="h-5 w-5 shrink-0" /> Achetè nan wout — li ap vini!</span>
                 </div>
               )}
               {order.orderStatus === "arrived" && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-xs font-semibold">
-                  📍 Achetè rive — remèt kòmand lan pou resevwa lajan ou!
+                  <span className="flex items-center gap-1.5"><MapPin className="h-5 w-5 shrink-0" /> Achetè rive — remèt kòmand lan pou resevwa lajan ou!</span>
                 </div>
               )}
               {order.buyerProposedDeliveryFee !== null && order.buyerProposedDeliveryFee !== undefined && (
@@ -1318,7 +1318,7 @@ export default function OrderDetail() {
                       onClick={() => setShipMode("bus")}
                       className={`relative flex-1 py-2.5 px-2 text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${shipMode === "bus" ? "bg-primary text-white" : isCross ? "bg-violet-600 text-white hover:bg-violet-700" : "bg-background text-muted-foreground hover:bg-muted"}`}
                     >
-                      🚌 Bis/Transpò
+                      <span className="flex items-center"><Bus className="h-4 w-4 mr-2" /> Bis/Transpò</span>
                       {isCross && shipMode !== "bus" && (
                         <span className="text-[9px] font-black uppercase tracking-wider opacity-90 leading-none">
                           REKÒMANDE
@@ -1332,7 +1332,7 @@ export default function OrderDetail() {
               {/* FM driver info banner */}
               {shipMode === "fm" && (
                 <div className="flex items-start gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl px-3 py-2.5">
-                  <span className="text-emerald-600 text-base shrink-0">✅</span>
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
                   <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">
                     Livrezon an ap parèt nan lis chofè FM ki disponib yo. Premye chofè ki aksepte l ap reklame l epi ou ap resevwa yon notifikasyon.
                   </p>
@@ -1378,7 +1378,7 @@ export default function OrderDetail() {
               {shipMode === "bus" && (
                 <div className="space-y-3">
                   <div className="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-xl px-3 py-2.5">
-                    <span className="text-blue-600 text-base shrink-0">🚌</span>
+                    <Bus className="h-5 w-5 text-blue-500 shrink-0" />
                     <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
                       Sistem ap jenere yon <span className="font-bold">kòd 6 chif</span> pou achtè a. Li dwe bay kòd la bay <span className="font-bold">machann nan pa mesaj</span> lè li resevwa atik la — machann antre l pou libere lajan imedyatman.
                     </p>
@@ -1409,7 +1409,7 @@ export default function OrderDetail() {
                   {/* DR-specific: destination city + tracking link */}
                   {order.listingCountry === "Dominican Republic" && (
                     <div className="space-y-3 pt-1 border-t border-blue-200/50 dark:border-blue-800/30">
-                      <p className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wide">📦 Livrezon Repiblik Dominikèn</p>
+                      <p className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Livrezon Repiblik Dominikèn</p>
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">Vil destinasyon nan RD</Label>
                         <MobileSelect
@@ -1492,7 +1492,7 @@ export default function OrderDetail() {
                   : shipMode === "fm"
                     ? "Voye bay chofè FM"
                     : shipMode === "bus"
-                    ? "Konfime Voye pa Bis 🚌"
+                    ? "Konfime Voye pa Bis"
                     : t("orderDetail.submitDelivery")
                 }
               </Button>
@@ -1551,7 +1551,7 @@ export default function OrderDetail() {
                   : step.s.includes(order.orderStatus) ? "border-primary text-primary bg-primary/10"
                   : "border-muted-foreground/30 text-muted-foreground"
                 )}>
-                  {step.done ? "✓" : i + 1}
+                  {step.done ? <CheckCircle2 className="h-3 w-3 text-white" /> : i + 1}
                 </div>
                 <span className={cn("text-[10px] font-medium",
                   step.done ? "text-primary" : step.s.includes(order.orderStatus) ? "text-primary" : "text-muted-foreground"
@@ -1567,7 +1567,7 @@ export default function OrderDetail() {
               <p className="text-sm text-muted-foreground">Ou rive devan magazen an? Klike pou fè vandè a konnen.</p>
               <Button onClick={() => handlePickupUpdate("arrived")} disabled={busy} className="gap-1.5 w-full" data-testid="button-pickup-arrived">
                 <MapPin className="h-4 w-4" />
-                {busy ? "Ap voye…" : "📍 Mwen Rive!"}
+                {busy ? "Ap voye…" : <span className="flex items-center"><MapPin className="h-4 w-4 mr-1.5" /> Mwen Rive!</span>}
               </Button>
             </div>
           ) : order.orderStatus === "arrived" ? (
@@ -1575,14 +1575,14 @@ export default function OrderDetail() {
               <p className="text-sm text-muted-foreground">Ou resevwa atik la? Klike pou konfime — lajan ale jwenn vandè a imedyatman.</p>
               <Button onClick={() => handlePickupUpdate("collected")} disabled={busy} className="gap-1.5 w-full bg-green-600 hover:bg-green-700 text-white" data-testid="button-pickup-collected">
                 <CheckCircle2 className="h-4 w-4" />
-                {busy ? "Ap trete…" : "✅ Ranmase / Kolekte"}
+                {busy ? "Ap trete…" : <span className="flex items-center"><CheckCircle2 className="h-4 w-4 mr-1.5" /> Ranmase / Kolekte</span>}
               </Button>
             </div>
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">Ou prèt pou ale nan magazen an? Klike pou avèti vandè a.</p>
               <Button onClick={() => handlePickupUpdate("en_route")} disabled={busy} className="gap-1.5 w-full" data-testid="button-pickup-en-route">
-                🚶 {busy ? "Ap voye…" : "Nan Wout — m'ap vini!"}
+                <span className="flex items-center"><Footprints className="h-4 w-4 mr-1.5" /> {busy ? "Ap voye…" : "Nan Wout — m\'ap vini!"}</span>
               </Button>
             </div>
           )}
@@ -1752,7 +1752,7 @@ export default function OrderDetail() {
                 {returnInfo.status === "refunded" && returnInfo.refund_amount && (
                   <div className="space-y-1">
                     <p className="text-base font-black text-green-700 dark:text-green-400">
-                      ${parseFloat(returnInfo.refund_amount).toFixed(2)} ranbouse ✅
+                      ${parseFloat(returnInfo.refund_amount).toFixed(2)} ranbouse
                     </p>
                     {returnInfo.refund_method === "stripe_card" ? (
                       <p className="text-xs text-muted-foreground flex items-center gap-1.5">

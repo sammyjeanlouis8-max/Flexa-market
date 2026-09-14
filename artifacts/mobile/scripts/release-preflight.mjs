@@ -4,15 +4,18 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const mobileDir = path.resolve(scriptDir, "..");
+const workspaceDir = path.resolve(mobileDir, "../..");
 
-const [appJsonText, easJsonText, appSource] = await Promise.all([
+const [appJsonText, easJsonText, appSource, workspacePackageText] = await Promise.all([
   readFile(path.join(mobileDir, "app.json"), "utf8"),
   readFile(path.join(mobileDir, "eas.json"), "utf8"),
   readFile(path.join(mobileDir, "App.tsx"), "utf8"),
+  readFile(path.join(workspaceDir, "package.json"), "utf8"),
 ]);
 
 const appConfig = JSON.parse(appJsonText).expo;
 const easConfig = JSON.parse(easJsonText);
+const workspacePackage = JSON.parse(workspacePackageText);
 const failures = [];
 
 function requireCondition(condition, message) {
@@ -66,6 +69,11 @@ requireCondition(
   !appSource.includes("N ap prepare mache a pou ou") &&
     !appSource.includes("Sa ka pran kèk segonn"),
   "Creole startup copy is still present in App.tsx.",
+);
+requireCondition(
+  !workspacePackage.dependencies?.expo &&
+    !workspacePackage.devDependencies?.expo,
+  "Expo must only be declared by the mobile package; a workspace-root Expo dependency creates duplicate native modules.",
 );
 
 if (failures.length > 0) {

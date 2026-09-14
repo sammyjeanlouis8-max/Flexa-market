@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@types/web-push": "^3.6.4",
-    "expo": "~54.0.35",
     "lru-cache": "5.1.1",
     "stripe": "^22.1.0",
     "stripe-replit-sync": "^1.0.0",

@@ -60,3 +60,7 @@ jobs:
 
       - name: Check Expo dependency alignment
         run: CI=1 pnpm --filter @workspace/mobile exec expo install --check
+
+      - name: Reject duplicate native modules
+        working-directory: artifacts/mobile
+        run: pnpm dlx expo-doctor@1.18.0

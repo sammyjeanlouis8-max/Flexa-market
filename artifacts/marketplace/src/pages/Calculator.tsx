@@ -318,12 +318,17 @@ export default function CalculatorPage() {
 
   return (
     <div
-      className="flex justify-center"
-      style={{ background: "#0d0d0d", height: "calc(100dvh - 56px)", overflow: "hidden" }}
+      className="flex items-start justify-center px-3 py-3"
+      style={{ background: "#0d0d0d", minHeight: "calc(100dvh - 56px)", overflow: "auto" }}
     >
       <div
-        className="w-full flex flex-col"
-        style={{ background: "#111", maxWidth: 420 }}
+        className="w-full flex flex-col rounded-2xl overflow-hidden"
+        style={{
+          background: "#111",
+          maxWidth: 360,
+          height: "min(600px, calc(100dvh - 80px))",
+          boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+        }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
@@ -346,10 +351,10 @@ export default function CalculatorPage() {
 
         {/* Display */}
         <div
-          className="mx-2 rounded-xl px-3 pt-2 pb-3 mb-2 flex flex-col items-end justify-end flex-shrink-0"
+          className="mx-2 rounded-xl px-3 pt-2 pb-2 mb-2 flex flex-col items-end justify-end flex-shrink-0"
           style={{
             background: "#1a2318",
-            minHeight: 76,
+            minHeight: 68,
             boxShadow: "inset 0 2px 8px rgba(0,0,0,0.6)",
           }}
         >
@@ -403,7 +408,7 @@ export default function CalculatorPage() {
                 }}
                 className={`
                   relative flex flex-col items-center justify-center
-                  rounded-xl select-none active:scale-95
+                  rounded-lg select-none active:scale-95
                   transition-transform duration-75 w-full h-full
                   ${colorClass}
                 `}

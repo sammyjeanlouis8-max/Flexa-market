@@ -1135,8 +1135,8 @@ export default function ListingDetail() {
       {/* ══════════ HERO IMAGE — full bleed ══════════ */}
       <div
         ref={heroRef}
-        className="relative w-full bg-black overflow-hidden"
-        style={{ aspectRatio: "3/2", maxHeight: "min(65vw, 440px)", touchAction: zoom > 1 ? "none" : "pan-y" }}
+        className="relative w-full bg-muted/40 dark:bg-black overflow-hidden aspect-[4/5] sm:aspect-square md:aspect-[3/2] max-h-[85vh] md:max-h-[min(65vw,440px)]"
+        style={{ touchAction: zoom > 1 ? "none" : "pan-y" }}
         onTouchStart={onHeroTouchStart}
         onTouchMove={onHeroTouchMove}
         onTouchEnd={onHeroTouchEnd}
@@ -1162,9 +1162,9 @@ export default function ListingDetail() {
             <button
               onClick={() => setVideoMuted(m => !m)}
               className="absolute bottom-12 right-3 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 z-10"
-              aria-label={videoMuted ? "Unmute" : "Mute"}
+              aria-label={videoMuted ? "Unmute video" : "Mute video"}
             >
-              {videoMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              {videoMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
             </button>
           </div>
         ) : currentMedia && !failedMediaUrls.has(currentMedia.url) ? (
@@ -1195,66 +1195,74 @@ export default function ListingDetail() {
         {/* Back button overlay */}
         <button
           onClick={() => history.back()}
-          className="absolute top-4 left-3 z-20 w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center active:scale-90 transition-transform"
+          className="absolute top-4 left-3 z-20 w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center active:scale-90 transition-transform"
+          aria-label="Go back"
           data-testid="button-back"
         >
-          <ChevronLeft className="h-5 w-5 text-white" />
+          <ChevronLeft className="h-5 w-5 text-white" aria-hidden="true" />
         </button>
 
         {/* Top-right overlay: fav + share */}
         <div className="absolute top-4 right-3 z-20 flex gap-2">
           <button
             onClick={handleFav}
+            aria-label={isFav ? "Remove favorite" : "Add to favorites"}
             data-testid="button-favorite"
-            className={`w-9 h-9 rounded-full backdrop-blur-sm flex items-center justify-center active:scale-90 transition-all ${isFav ? "bg-red-500 shadow-lg" : "bg-black/50"}`}
+            className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center active:scale-90 transition-all ${isFav ? "bg-red-500 shadow-lg" : "bg-black/40"}`}
           >
-            <Heart className={`h-4 w-4 text-white ${isFav ? "fill-white" : ""}`} />
+            <Heart className={`h-4 w-4 text-white ${isFav ? "fill-white" : ""}`} aria-hidden="true" />
           </button>
           <button
             onClick={handleShare}
+            aria-label="Share listing"
             data-testid="button-share-listing"
-            className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center active:scale-90 transition-transform"
+            className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center active:scale-90 transition-transform"
           >
-            <Share2 className="h-4 w-4 text-white" />
+            <Share2 className="h-4 w-4 text-white" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Nav arrows */}
+        {/* Nav arrows - Desktop only, since mobile uses swipe */}
         {totalMedia > 1 && (
           <>
             <button
               onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 backdrop-blur-sm text-white rounded-full p-1.5 z-10"
+              aria-label="Previous image"
+              className="hidden md:block absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white rounded-full p-2 z-10 transition-colors"
               data-testid="button-img-prev"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-6 w-6" aria-hidden="true" />
             </button>
             <button
               onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 backdrop-blur-sm text-white rounded-full p-1.5 z-10"
+              aria-label="Next image"
+              className="hidden md:block absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white rounded-full p-2 z-10 transition-colors"
               data-testid="button-img-next"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-6 w-6" aria-hidden="true" />
             </button>
           </>
         )}
 
         {/* Image counter */}
         {totalMedia > 1 && (
-          <div className="absolute bottom-3 right-3 z-10 px-2.5 py-0.5 rounded-full bg-black/60 text-white text-xs font-bold tabular-nums">
+          <div
+            className="absolute bottom-4 right-4 z-10 px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-sm text-white text-xs font-semibold tabular-nums tracking-wide shadow-sm"
+            aria-hidden="true"
+          >
             {imgIndex + 1}/{totalMedia}
           </div>
         )}
 
         {/* Dot indicator */}
         {totalMedia > 1 && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 z-10" aria-hidden="true">
             {mediaItems.map((item, i) => (
               <div
                 key={i}
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1.5 rounded-full transition-all duration-300 ${
                   i === imgIndex
-                    ? item.type === "video" ? "bg-orange-400 w-3" : "bg-white w-3"
+                    ? item.type === "video" ? "bg-orange-400 w-4 shadow-sm" : "bg-white w-4 shadow-sm"
                     : item.type === "video" ? "bg-orange-300/60 w-1.5" : "bg-white/50 w-1.5"
                 }`}
               />
@@ -1264,22 +1272,22 @@ export default function ListingDetail() {
 
         {/* Boosted badge */}
         {listing.isBoosted && (
-          <div className="absolute top-14 left-3 z-10 bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
-            <Zap className="h-3 w-3" /> {t("listing.featured")}
+          <div className="absolute top-16 left-3 z-10 bg-primary text-primary-foreground text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+            <Zap className="h-3 w-3" aria-hidden="true" /> {t("listing.featured")}
           </div>
         )}
 
         {/* Promo video badge */}
         {currentMedia?.isPromo && (
-          <div className="absolute top-14 right-3 z-10 bg-orange-500 text-white text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md">
-            <Film className="h-3 w-3" /> {t("tr.promoVideo")}
+          <div className="absolute top-16 right-3 z-10 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+            <Film className="h-3 w-3" aria-hidden="true" /> {t("tr.promoVideo")}
           </div>
         )}
       </div>
 
-      {/* Thumbnail strip */}
+      {/* Thumbnail strip - Desktop only */}
       {totalMedia > 1 && (
-        <div className="flex gap-2 px-4 mt-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="hidden md:flex gap-2 px-4 mt-3 overflow-x-auto pb-2 scrollbar-none" aria-label="Image thumbnails">
           {mediaItems.map((item, i) => (
             <button
               key={i}

@@ -2929,7 +2929,11 @@ export default function WalletPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setCashoutRetraitOnly(true); setCashoutMethod("agent_transfer"); navigateTo("cashout"); }}
+            onClick={() => {
+              setCashoutRetraitOnly(false);
+              setCashoutMethod(isHaiti ? "moncash" : "agent");
+              navigateTo("cashout");
+            }}
             className="fm-choice-retrait group relative rounded-2xl shadow-xl text-left overflow-hidden"
           >
             <div className="px-4 py-6 flex flex-col gap-3 relative">

@@ -1572,25 +1572,27 @@ router.put("/admin/exchange-rate", requireAdmin, async (req, res): Promise<void>
           ),
         ));
 
-      if (admins.length > 0) {
-        await db.insert(notificationsTable).values(admins.map(admin => ({
-          userId: admin.id,
+      const recipientIds = Array.from(new Set([actorId, ...admins.map(admin => admin.id)]));
+
+      if (recipientIds.length > 0) {
+        await db.insert(notificationsTable).values(recipientIds.map(userId => ({
+          userId,
           actorId,
           type: "exchange_rate_changed",
           message,
           isRead: false,
         })));
 
-        await Promise.all(admins.map(async admin => {
+        await Promise.all(recipientIds.map(async userId => {
           await Promise.all([
-            sendExpoPushToUser(admin.id, {
+            sendExpoPushToUser(userId, {
               title: "Taux chanjman",
               body: message,
               data: { type: "exchange_rate_changed", url: "/admin" },
               sound: "default",
               priority: "high",
             }),
-            sendPushToUser(admin.id, {
+            sendPushToUser(userId, {
               title: "Taux chanjman",
               body: message,
               url: "/admin",

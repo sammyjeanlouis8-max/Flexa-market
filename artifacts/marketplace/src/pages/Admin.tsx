@@ -350,7 +350,10 @@ export default function Admin() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const explicitRole = (user as any)?.role;
+  const explicitRole = String((user as any)?.role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
   const hasExplicitStaffRole = ["support", "moderator", "admin", "superadmin"].includes(explicitRole);
   const canonicalRole = hasExplicitStaffRole
     ? explicitRole
@@ -360,7 +363,6 @@ export default function Admin() {
         ? "admin"
         : "user";
   const isSuperAdmin = canonicalRole === "superadmin";
-  const isAdminOrSuperAdmin = canonicalRole === "admin" || canonicalRole === "superadmin";
   const isModerator = canonicalRole === "moderator";
   const hasAdminPanelAccess = !!user && (
     canonicalRole === "superadmin" ||
@@ -376,6 +378,15 @@ export default function Admin() {
     scopeDepartment?: string | null;
     scopeCity?: string | null;
   } | null>(null);
+  const currentAdminRole = String(me?.role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+  const isAdminOrSuperAdmin =
+    canonicalRole === "admin" ||
+    canonicalRole === "superadmin" ||
+    currentAdminRole === "admin" ||
+    currentAdminRole === "superadmin";
   const can = (perm: string) => !!me?.permissions?.[perm];
   // Wallet admin state
   const [walletRecharges, setWalletRecharges] = useState<any[]>([]);

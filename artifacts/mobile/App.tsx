@@ -336,9 +336,11 @@ export default function App() {
             />
             <Text style={styles.brandName}>Flexa Market</Text>
             <ActivityIndicator size="large" color="#F97316" style={styles.loader} />
-            <Text style={styles.loadingTitle}>N ap prepare mache a pou ou</Text>
+            <Text style={styles.loadingTitle}>
+              We&apos;re getting the marketplace ready for you
+            </Text>
             <Text style={styles.loadingMessage}>
-              Sa ka pran kèk segonn si koneksyon an dousman.
+              This may take a few seconds if your connection is slow.
             </Text>
           </View>
         )}

@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.flexamarket.mobile",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {

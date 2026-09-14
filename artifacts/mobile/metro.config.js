@@ -6,10 +6,12 @@ const workspaceRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch the entire workspace root so Metro can resolve bundle paths that are
-// relative to the workspace (e.g. artifacts/mobile/node_modules/expo-router/entry).
-// The blockList below prevents .local/ from ever being crawled or bundled.
-config.watchFolders = [workspaceRoot];
+// Preserve Expo's default watch folders and add the workspace root so Metro
+// can resolve hoisted workspace dependencies without hiding Expo defaults.
+config.watchFolders = [
+  ...(config.watchFolders ?? []),
+  workspaceRoot,
+];
 
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),

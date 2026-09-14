@@ -156,9 +156,17 @@ function buildFeedWithBoosts(
 ): FeedItem[] {
   const today = new Date().toDateString();
   const seenCounts = state.seenToday?.date === today ? state.seenToday.counts : {};
+  const validNormal = normal.filter(
+    (listing): listing is NormalListing =>
+      Boolean(listing && typeof listing.id === "number")
+  );
+  const validBoosted = boosted.filter(
+    (listing): listing is NormalListing =>
+      Boolean(listing && typeof listing.id === "number")
+  );
 
   // Filter eligible boosts: not ignored, seen < 2 today, not appearing in normal feed already
-  const eligible = boosted.filter(l => {
+  const eligible = validBoosted.filter(l => {
     if (state.ignored.includes(l.id)) return false;
     if ((seenCounts[l.id] ?? 0) >= 2) return false;
     return true;
@@ -169,7 +177,7 @@ function buildFeedWithBoosts(
     eligible.length > 0 &&
     (!state.lastBoostTime || Date.now() - state.lastBoostTime >= 15 * 60 * 1000);
 
-  const result: FeedItem[] = normal.map((l, i) => ({
+  const result: FeedItem[] = validNormal.map((l, i) => ({
     type: "normal",
     listing: l,
     key: `normal-${l.id}-${i}`,

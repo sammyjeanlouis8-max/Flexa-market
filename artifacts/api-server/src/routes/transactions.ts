@@ -1551,14 +1551,14 @@ router.put("/admin/exchange-rate", requireAdmin, async (req, res): Promise<void>
   if (c !== null) await setCashoutHtgRate(c);
   const all = await getAllRates();
   const changes: string[] = [];
-  if (all.htg.displayRate !== before.htg.displayRate) changes.push(`Rechaj HTG: ${before.htg.displayRate} → ${all.htg.displayRate}`);
-  if (all.htg.cashoutRate !== before.htg.cashoutRate) changes.push(`Retrè HTG: ${before.htg.cashoutRate} → ${all.htg.cashoutRate}`);
+  if (all.htg.displayRate !== before.htg.displayRate) changes.push(`Recharge HTG : ${before.htg.displayRate} → ${all.htg.displayRate}`);
+  if (all.htg.cashoutRate !== before.htg.cashoutRate) changes.push(`Retrait HTG : ${before.htg.cashoutRate} → ${all.htg.cashoutRate}`);
   if (all.dop.rate !== before.dop.rate) changes.push(`DOP: ${before.dop.rate} → ${all.dop.rate}`);
 
   if (changes.length > 0) {
     const actorId = req.userId!;
     const actorName = req.user?.name ?? "Admin";
-    const message = `${actorName} chanje taux yo — ${changes.join(" · ")}`;
+    const message = `${actorName} a modifié les taux — ${changes.join(" · ")}`;
     try {
       const admins = await db
         .select({ id: usersTable.id })
@@ -1586,14 +1586,14 @@ router.put("/admin/exchange-rate", requireAdmin, async (req, res): Promise<void>
         await Promise.all(recipientIds.map(async userId => {
           await Promise.all([
             sendExpoPushToUser(userId, {
-              title: "Taux chanjman",
+              title: "Taux modifiés",
               body: message,
               data: { type: "exchange_rate_changed", url: "/admin" },
               sound: "default",
               priority: "high",
             }),
             sendPushToUser(userId, {
-              title: "Taux chanjman",
+              title: "Taux modifiés",
               body: message,
               url: "/admin",
               tag: "exchange-rate-changed",

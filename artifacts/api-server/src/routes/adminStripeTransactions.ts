@@ -161,15 +161,10 @@ function listWhere(query: Record<string, unknown>) {
   // Stripe. Only show rows carrying a Stripe-owned identifier.
   const conditions: any[] = [
     eq(transactionsTable.paymentMethod, "stripe"),
-    // A Checkout Session or a failed/pending PaymentIntent is only an attempt.
-    // This operations ledger contains money that actually moved through a
-    // debit/credit card on Stripe.
+    // A PaymentIntent proves this was a real debit/credit-card flow in Stripe.
+    // Keep every lifecycle state for customer reporting and investigation;
+    // captured-volume metrics below still count successful money movement only.
     isNotNull(transactionsTable.stripePaymentIntentId),
-    inArray(transactionsTable.paymentStatus, [
-      "completed",
-      "partially_refunded",
-      "refunded",
-    ]),
   ];
   const status = typeof query.status === "string" ? query.status.trim() : "";
   if (status && status !== "all") {

@@ -178,6 +178,8 @@ export default function AdminStripeTransactions() {
   const metrics = (listData as any)?.metrics;
   const items = (listData as any)?.items || [];
   const pagination = (listData as any)?.pagination;
+  const visiblePending = items.filter((item: any) => ["pending", "processing"].includes(item.status)).length;
+  const visibleFailed = items.filter((item: any) => ["failed", "canceled"].includes(item.status)).length;
 
   const formatMoney = (cents: number, currency = "USD") => new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -276,7 +278,7 @@ export default function AdminStripeTransactions() {
           <CardContent className="p-4 md:p-5">
             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">{t("adminStripeTransactions.metrics.count")}</p>
             <p className="text-xl md:text-2xl font-black text-foreground">{metrics?.totalCount ?? 0}</p>
-            <p className="mt-1 text-[10px] text-muted-foreground">{t("adminStripeTransactions.metrics.verifiedCardOnly")}</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">{visiblePending} {t("adminStripeTransactions.pendingShort")} · {visibleFailed} {t("adminStripeTransactions.failedShort")}</p>
           </CardContent>
         </Card>
       </div>

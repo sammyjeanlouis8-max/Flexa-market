@@ -3,16 +3,19 @@ import { eq } from "drizzle-orm";
 
 export const EXCHANGE_RATE_KEY  = "htg_to_usd_rate";
 export const EXCHANGE_SPREAD_KEY = "exchange_spread";
+export const CASHOUT_HTG_RATE_KEY = "cashout_htg_to_usd_rate";
 export const DOP_RATE_KEY       = "dop_to_usd_rate";
 
 export const DEFAULT_EXCHANGE_RATE = 130;
 export const DEFAULT_SPREAD        = 2;
+export const DEFAULT_CASHOUT_HTG_RATE = 130;
 export const DEFAULT_DOP_RATE      = 59;
 
 type CacheEntry = { value: number; at: number };
 const cache: Record<string, CacheEntry | null> = {
   rate:   null,
   spread: null,
+  cashout: null,
   dop:    null,
 };
 const CACHE_MS = 60_000;
@@ -43,12 +46,15 @@ export const getExchangeRate = () => readSetting(EXCHANGE_RATE_KEY,  DEFAULT_EXC
 export const setExchangeRate = (rate: number) => writeSetting(EXCHANGE_RATE_KEY, rate, "rate");
 export const getSpread       = () => readSetting(EXCHANGE_SPREAD_KEY, DEFAULT_SPREAD,        "spread");
 export const setSpread       = (spread: number) => writeSetting(EXCHANGE_SPREAD_KEY, spread, "spread", true);
+export const getCashoutHtgRate = () => readSetting(CASHOUT_HTG_RATE_KEY, DEFAULT_CASHOUT_HTG_RATE, "cashout");
+export const setCashoutHtgRate = (rate: number) => writeSetting(CASHOUT_HTG_RATE_KEY, rate, "cashout");
 export const getDopRate      = () => readSetting(DOP_RATE_KEY,        DEFAULT_DOP_RATE,       "dop");
 export const setDopRate      = (rate: number) => writeSetting(DOP_RATE_KEY, rate, "dop");
 
 export function invalidateExchangeCache(): void {
   cache.rate   = null;
   cache.spread = null;
+  cache.cashout = null;
   cache.dop    = null;
 }
 
@@ -58,12 +64,17 @@ export async function getDisplayRate(): Promise<{ rate: number; spread: number; 
 }
 
 export async function getAllRates(): Promise<{
-  htg: { rate: number; spread: number; displayRate: number };
+  htg: { rate: number; spread: number; displayRate: number; cashoutRate: number };
   dop: { rate: number };
 }> {
-  const [rate, spread, dopRate] = await Promise.all([getExchangeRate(), getSpread(), getDopRate()]);
+  const [rate, spread, cashoutRate, dopRate] = await Promise.all([
+    getExchangeRate(),
+    getSpread(),
+    getCashoutHtgRate(),
+    getDopRate(),
+  ]);
   return {
-    htg: { rate, spread, displayRate: rate + spread },
+    htg: { rate, spread, displayRate: rate + spread, cashoutRate },
     dop: { rate: dopRate },
   };
 }

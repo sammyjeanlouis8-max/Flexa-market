@@ -67,7 +67,7 @@ router.post("/wallet/haiti/quote", requireAuth, async (req, res): Promise<void> 
       provider,
       amountHtg: direction === "topup" ? amount : undefined,
       amountUsd: direction === "cashout" ? amount : undefined,
-      rateUsed: settings.rateHtgToUsd,
+      rateUsed: direction === "cashout" ? settings.cashoutRateHtgToUsd : settings.rateHtgToUsd,
       bonusPct: settings.bonusPct,
       feePct: 0.02,
     });

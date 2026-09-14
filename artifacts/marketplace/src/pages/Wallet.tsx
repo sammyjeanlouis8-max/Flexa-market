@@ -54,6 +54,7 @@ interface WalletBalance {
   balanceHtg: number;
   balanceDop: number;
   rateHtgToUsd: number;
+  cashoutRateHtgToUsd: number;
   rateDopToUsd: number;
   bonusPct: number;
   accountNumber: string | null;
@@ -2197,7 +2198,7 @@ export default function WalletPage() {
             feeRatePct={CASHOUT_FEE_PCT}
             mode="cashout"
             balance={availableUsd}
-            rateHtgToUsd={balance?.rateHtgToUsd}
+            rateHtgToUsd={balance?.cashoutRateHtgToUsd}
             serverQuote={(isMoncashOrNatcash && quoteData) ? quoteData : undefined}
           />
         )}

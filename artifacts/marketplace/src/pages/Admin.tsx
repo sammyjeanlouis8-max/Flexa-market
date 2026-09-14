@@ -2072,9 +2072,10 @@ export default function Admin() {
   const [stripeDraft, setStripeDraft] = useState<number>(0.10);
   const [methodRatesSaving, setMethodRatesSaving] = useState(false);
   // Exchange rate (HTG/USD) + spread
-  const [exchangeRateInfo, setExchangeRateInfo] = useState<{ rate: number; spread: number; displayRate: number; dopRate?: number } | null>(null);
+  const [exchangeRateInfo, setExchangeRateInfo] = useState<{ rate: number; spread: number; displayRate: number; cashoutRate: number; dopRate?: number } | null>(null);
   const [exchangeRateDraft, setExchangeRateDraft] = useState<string>("130");
   const [spreadDraft, setSpreadDraft] = useState<string>("2");
+  const [cashoutRateDraft, setCashoutRateDraft] = useState<string>("130");
   const [dopRateDraft, setDopRateDraft] = useState<string>("59");
   const [exchangeRateSaving, setExchangeRateSaving] = useState(false);
   const [tauxOpen, setTauxOpen] = useState(false);
@@ -2090,6 +2091,7 @@ export default function Admin() {
       setExchangeRateInfo(e);
       if (e.rate) setExchangeRateDraft(String(e.rate));
       if (e.spread !== undefined && e.spread !== null) setSpreadDraft(String(e.spread));
+      if (e.cashoutRate) setCashoutRateDraft(String(e.cashoutRate));
       if (e.dopRate) setDopRateDraft(String(e.dopRate));
       setTauxLoadState("ready");
     } catch { setTauxLoadState("error"); }
@@ -2201,6 +2203,7 @@ export default function Admin() {
         setExchangeRateInfo(e);
         setExchangeRateDraft(String(e.rate));
         setSpreadDraft(String(e.spread));
+        if (e.cashoutRate) setCashoutRateDraft(String(e.cashoutRate));
         if (e.dopRate) setDopRateDraft(String(e.dopRate));
       }
       if (r5.ok) {
@@ -2217,19 +2220,21 @@ export default function Admin() {
       const tk = localStorage.getItem("flexamarket_token");
       const r = parseFloat(exchangeRateDraft);
       const s = parseFloat(spreadDraft);
+      const c = parseFloat(cashoutRateDraft);
       const d = parseFloat(dopRateDraft);
-      if (!isFinite(r) || r <= 0) { toast({ title: "Taux HTG pa valab", variant: "destructive" }); return; }
-      if (!isFinite(s) || s < 0)  { toast({ title: "Spread pa valab", variant: "destructive" }); return; }
-      if (!isFinite(d) || d <= 0) { toast({ title: "Taux DOP pa valab", variant: "destructive" }); return; }
+      if (!isFinite(r) || r <= 0) { toast({ title: t("adminExchange.invalidTopupRate"), variant: "destructive" }); return; }
+      if (!isFinite(s) || s < 0)  { toast({ title: t("adminExchange.invalidSpread"), variant: "destructive" }); return; }
+      if (!isFinite(c) || c <= 0) { toast({ title: t("adminExchange.invalidCashoutRate"), variant: "destructive" }); return; }
+      if (!isFinite(d) || d <= 0) { toast({ title: t("adminExchange.invalidDopRate"), variant: "destructive" }); return; }
       const res = await fetch("/api/admin/exchange-rate", {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
-        body: JSON.stringify({ rate: r, spread: s, dopRate: d }),
+        body: JSON.stringify({ rate: r, spread: s, cashoutRate: c, dopRate: d }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast({ title: "Erè", description: (data as any)?.error || "Try again", variant: "destructive" }); return; }
       setExchangeRateInfo(data);
-      toast({ title: `Taux chanje ✓ HTG: ${r} (+${s} spread=${data.displayRate}) · DOP: ${d}` });
+      toast({ title: t("adminExchange.savedToast", { topupRate: data.displayRate, cashoutRate: c, dopRate: d }) });
       // Force immediate wallet refresh so the new HTG/DOP amounts show right away
       queryClient.invalidateQueries({ queryKey: ["/wallet/balance"] });
       queryClient.invalidateQueries({ queryKey: ["/exchange-rate"] });
@@ -2823,8 +2828,8 @@ export default function Admin() {
             <ArrowLeftRight className="h-5 w-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">💱 Taux</p>
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">Mete taux ajou — 🇭🇹 Ayiti (HTG) & 🇩🇴 St Domingue (DOP)</p>
+            <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">💱 {t("adminExchange.shortTitle")}</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{t("adminExchange.cardSubtitle")}</p>
           </div>
           <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
@@ -2834,41 +2839,44 @@ export default function Admin() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
-                <ArrowLeftRight className="h-5 w-5 text-emerald-600" /> 💱 Taux Chanj
+                <ArrowLeftRight className="h-5 w-5 text-emerald-600" /> 💱 {t("adminExchange.title")}
               </DialogTitle>
             </DialogHeader>
             {tauxLoadState === "loading" && (
-              <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Ap chaje taux aktyèl yo…</p>
+              <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> {t("adminExchange.loading")}</p>
             )}
             {tauxLoadState === "error" && (
               <div className="text-sm text-rose-600 dark:text-rose-400 space-y-2">
-                <p>We couldn't load the current rates. Try again before saving.</p>
-                <Button variant="outline" size="sm" onClick={openTaux}>Try again</Button>
+                <p>{t("adminExchange.loadError")}</p>
+                <Button variant="outline" size="sm" onClick={openTaux}>{t("adminExchange.tryAgain")}</Button>
               </div>
             )}
             {tauxLoadState === "ready" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 p-3 space-y-2">
-                <p className="text-sm font-black">🇭🇹 Ayiti — HTG / USD</p>
-                <Label className="text-xs">Taux mache a (HTG pou 1 USD)</Label>
+                <p className="text-sm font-black">🇭🇹 {t("adminExchange.haiti")}</p>
+                <Label className="text-xs">{t("adminExchange.marketRate")}</Label>
                 <Input type="number" inputMode="decimal" value={exchangeRateDraft} onChange={(e) => setExchangeRateDraft(e.target.value)} data-testid="input-taux-htg" />
-                <Label className="text-xs">Spread (benefis platfòm)</Label>
+                <Label className="text-xs">{t("adminExchange.spread")}</Label>
                 <Input type="number" inputMode="decimal" value={spreadDraft} onChange={(e) => setSpreadDraft(e.target.value)} data-testid="input-taux-spread" />
                 <p className="text-xs text-muted-foreground">
-                  Afichaj kliyan: <strong>{(parseFloat(exchangeRateDraft || "0") + parseFloat(spreadDraft || "0")) || 0} HTG/USD</strong>
+                  {t("adminExchange.topupCustomerRate")}: <strong>{(parseFloat(exchangeRateDraft || "0") + parseFloat(spreadDraft || "0")) || 0} HTG/USD</strong>
                 </p>
+                <Label className="text-xs">{t("adminExchange.cashoutRate")}</Label>
+                <Input type="number" inputMode="decimal" value={cashoutRateDraft} onChange={(e) => setCashoutRateDraft(e.target.value)} data-testid="input-taux-cashout-htg" />
+                <p className="text-xs text-muted-foreground">{t("adminExchange.cashoutRateHint")}</p>
               </div>
               <div className="rounded-xl border border-blue-200 dark:border-blue-800 p-3 space-y-2">
-                <p className="text-sm font-black">🇩🇴 St Domingue — DOP / USD</p>
-                <Label className="text-xs">Taux (DOP pou 1 USD)</Label>
+                <p className="text-sm font-black">🇩🇴 {t("adminExchange.dominicanRepublic")}</p>
+                <Label className="text-xs">{t("adminExchange.dopRate")}</Label>
                 <Input type="number" inputMode="decimal" value={dopRateDraft} onChange={(e) => setDopRateDraft(e.target.value)} data-testid="input-taux-dop" />
               </div>
             </div>
             )}
             <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setTauxOpen(false)}>Fèmen</Button>
+              <Button variant="outline" onClick={() => setTauxOpen(false)}>{t("adminExchange.close")}</Button>
               <Button onClick={saveExchangeRate} disabled={exchangeRateSaving || tauxLoadState !== "ready"} className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-save-taux">
-                {exchangeRateSaving ? "Ap anrejistre…" : "Anrejistre Taux"}
+                {exchangeRateSaving ? t("adminExchange.saving") : t("adminExchange.save")}
               </Button>
             </DialogFooter>
           </DialogContent>

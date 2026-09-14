@@ -71,14 +71,15 @@ export function makeHaitiQuote(input: {
   const amountUsd = parsePositiveMoney(input.amountUsd);
   if (amountUsd === null) throw new Error("amountUsd must be finite and positive");
   const feeUsd = roundMoney(amountUsd * feePct);
+  const netAmountUsd = roundMoney(amountUsd - feeUsd);
   return {
-    amountHtg: roundMoney(amountUsd * rateUsed),
+    amountHtg: roundMoney(netAmountUsd * rateUsed),
     amountUsd,
     rateUsed,
     direction: input.direction,
     provider: input.provider,
     feeUsd,
-    netAmountUsd: roundMoney(amountUsd - feeUsd),
+    netAmountUsd,
   };
 }
 

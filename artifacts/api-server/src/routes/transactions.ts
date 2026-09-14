@@ -17,7 +17,7 @@ import {
   MIN_RATE, MAX_RATE,
   DEFAULT_RATE_MONCASH, DEFAULT_RATE_STRIPE, DEFAULT_BUYER_FEE_STRIPE,
 } from "../lib/commission";
-import { getDisplayRate, setExchangeRate, setSpread, getExchangeRate, getSpread, getDopRate, setDopRate, getAllRates, convertToUsd } from "../lib/exchange-rate";
+import { getDisplayRate, setExchangeRate, setSpread, getExchangeRate, getSpread, getDopRate, setDopRate, getAllRates, convertToUsd, setCashoutHtgRate } from "../lib/exchange-rate";
 
 const router = Router();
 
@@ -1511,6 +1511,7 @@ router.get("/exchange-rate", async (_req, res): Promise<void> => {
     rate:        all.htg.rate,
     spread:      all.htg.spread,
     displayRate: all.htg.displayRate,
+    cashoutRate: all.htg.cashoutRate,
     dopRate:     all.dop.rate,
     htg:         all.htg,
     dop:         all.dop,
@@ -1523,9 +1524,10 @@ router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<
   const rateRaw   = req.body?.rate;
   const spreadRaw = req.body?.spread;
   const dopRaw    = req.body?.dopRate;
+  const cashoutRaw = req.body?.cashoutRate;
   // Validate the full payload before persisting anything, so a bad field
   // can't leave a partially-updated rate configuration.
-  let r: number | null = null, s: number | null = null, d: number | null = null;
+  let r: number | null = null, s: number | null = null, d: number | null = null, c: number | null = null;
   if (rateRaw !== undefined && rateRaw !== null) {
     r = parseFloat(String(rateRaw));
     if (!Number.isFinite(r) || r <= 0) { res.status(400).json({ error: "Invalid HTG rate" }); return; }
@@ -1538,14 +1540,20 @@ router.put("/admin/exchange-rate", requireSuperAdmin, async (req, res): Promise<
     d = parseFloat(String(dopRaw));
     if (!Number.isFinite(d) || d <= 0) { res.status(400).json({ error: "Invalid DOP rate" }); return; }
   }
+  if (cashoutRaw !== undefined && cashoutRaw !== null) {
+    c = parseFloat(String(cashoutRaw));
+    if (!Number.isFinite(c) || c <= 0) { res.status(400).json({ error: "Invalid cashout HTG rate" }); return; }
+  }
   if (r !== null) await setExchangeRate(r);
   if (s !== null) await setSpread(s);
   if (d !== null) await setDopRate(d);
+  if (c !== null) await setCashoutHtgRate(c);
   const all = await getAllRates();
   res.json({
     rate:        all.htg.rate,
     spread:      all.htg.spread,
     displayRate: all.htg.displayRate,
+    cashoutRate: all.htg.cashoutRate,
     dopRate:     all.dop.rate,
     htg:         all.htg,
     dop:         all.dop,
@@ -1558,6 +1566,7 @@ router.get("/admin/exchange-rate", requireSuperAdmin, async (_req, res): Promise
     rate:        all.htg.rate,
     spread:      all.htg.spread,
     displayRate: all.htg.displayRate,
+    cashoutRate: all.htg.cashoutRate,
     dopRate:     all.dop.rate,
     htg:         all.htg,
     dop:         all.dop,

@@ -35,7 +35,7 @@ describe("Haiti local-money quote contract", () => {
       amountUsd: 10.005,
       rateUsed: 132.5,
       feePct: 0.02,
-    })).toMatchObject({ amountUsd: 10.01, feeUsd: 0.2, netAmountUsd: 9.81, amountHtg: 1326.33 });
+    })).toMatchObject({ amountUsd: 10.01, feeUsd: 0.2, netAmountUsd: 9.81, amountHtg: 1299.83 });
   });
 });
 

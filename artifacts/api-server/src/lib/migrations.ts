@@ -1253,6 +1253,8 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "cashout_requests.screenshot_url",        sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS screenshot_url text" });
   migrations.push({ name: "cashout_requests.user_note",             sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS user_note text" });
   migrations.push({ name: "cashout_requests.payout_method_note",    sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_method_note text" });
+  migrations.push({ name: "cashout_requests.idempotency_key",        sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS idempotency_key text" });
+  migrations.push({ name: "cashout_requests.idempotency_idx",        sql: "CREATE UNIQUE INDEX IF NOT EXISTS cashout_requests_idempotency_key_unique_idx ON cashout_requests(idempotency_key) WHERE idempotency_key IS NOT NULL" });
   migrations.push({ name: "cashout_requests.idx_agent_app",         sql: "CREATE INDEX IF NOT EXISTS idx_cashout_assigned_agent ON cashout_requests(assigned_agent_app_id) WHERE assigned_agent_app_id IS NOT NULL" });
   migrations.push({ name: "agent_applications.fm_wallet_number",    sql: "ALTER TABLE agent_applications ADD COLUMN IF NOT EXISTS fm_wallet_number text" });
   migrations.push({ name: "agent_applications.supported_methods",   sql: "ALTER TABLE agent_applications ADD COLUMN IF NOT EXISTS supported_methods text" });

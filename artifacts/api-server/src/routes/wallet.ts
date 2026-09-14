@@ -38,7 +38,7 @@ const RECHARGE_FEE_PCT = 0.02;
 const _walletFeeCache = new Map<string, { value: number; expiresAt: number }>();
 const WALLET_FEE_CACHE_MS = 30_000;
 
-async function getDynamicFeeRate(key: string, defaultRate: number): Promise<number> {
+export async function getDynamicFeeRate(key: string, defaultRate: number): Promise<number> {
   const cached = _walletFeeCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.value;
   try {
@@ -115,7 +115,7 @@ function checkLookupLimit(userId: number): { ok: true } | { ok: false; error: st
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function getWalletSettings(): Promise<{ rateHtgToUsd: number; rateDopToUsd: number; bonusPct: number; moncashPlatformNumber: string }> {
+export async function getWalletSettings(): Promise<{ rateHtgToUsd: number; rateDopToUsd: number; bonusPct: number; moncashPlatformNumber: string }> {
   const rows = await db.select().from(platformSettingsTable)
     .where(sql`${platformSettingsTable.key} IN ('htg_to_usd_rate', 'exchange_spread', 'dop_to_usd_rate', 'wallet_bonus_pct', 'moncash_platform_number')`);
   const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -149,7 +149,7 @@ type WalletRow = {
   firstRechargeDone: boolean;
 };
 
-async function getOrCreateWallet(userId: number): Promise<WalletRow> {
+export async function getOrCreateWallet(userId: number): Promise<WalletRow> {
   const [existing] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, userId));
   if (existing) {
     // Back-fill account_number if missing
@@ -966,6 +966,13 @@ router.post("/wallet/topup/confirm", requireFinanceAdmin, async (req, res): Prom
   }
 
   if (action === "confirm") {
+    // Hosted MonCash wallet checkouts are credited only by the verified
+    // provider return callback. Keep this legacy admin route available for
+    // manual references, but do not allow it to bypass provider verification.
+    if (paymentRef.startsWith("wallet_topup_")) {
+      res.status(409).json({ error: "Hosted MonCash payments require provider verification" });
+      return;
+    }
     // Atomic conditional update: only succeeds if still pending.
     // Two admins clicking simultaneously → only one succeeds; the other gets 409.
     const [confirmed] = await db.update(walletTransactionsTable)

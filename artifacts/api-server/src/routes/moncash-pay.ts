@@ -14,7 +14,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, platformSettingsTable, boostsTable, listingsTable, transactionsTable, notificationsTable } from "@workspace/db";
+import { db, boostsTable, listingsTable, transactionsTable, notificationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
@@ -25,33 +25,15 @@ import {
   type MonCashConfig,
   type MonCashMode,
 } from "../lib/moncash";
+import { getMonCashRuntimeConfig } from "../lib/haiti-money";
+import { verifyHaitiMonCashTopup } from "./haiti-money";
 
 const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function readMonCashConfig(): Promise<Record<string, unknown>> {
-  const [row] = await db
-    .select()
-    .from(platformSettingsTable)
-    .where(eq(platformSettingsTable.key, "payment_provider_moncash"));
-
-  const defaults = {
-    enabled: false,
-    mode: "sandbox",
-    clientId: "",
-    clientSecret: "",
-    callbackUrl: "",
-    phoneNumber: "+509 3600-3636",
-  };
-
-  if (!row) return defaults;
-  try {
-    const parsed = JSON.parse(row.value);
-    return { ...defaults, ...parsed };
-  } catch {
-    return defaults;
-  }
+  return getMonCashRuntimeConfig() as unknown as Promise<Record<string, unknown>>;
 }
 
 /** orderId format: boost_{boostId}_{listingId}_{unixMs} */
@@ -125,7 +107,7 @@ router.post("/moncash/pay", requireAuth, async (req, res): Promise<void> => {
     mode:         (cfg.mode === "live" ? "live" : "sandbox") as MonCashMode,
     clientId,
     clientSecret,
-    returnUrl:    buildReturnUrl(req as any),
+    returnUrl:    String(cfg.callbackUrl ?? "") || buildReturnUrl(req as any),
   };
 
   try {
@@ -141,7 +123,7 @@ router.post("/moncash/pay", requireAuth, async (req, res): Promise<void> => {
 
     res.json({ redirectUrl });
   } catch (err: any) {
-    req.log.error({ err }, "[moncash/pay] failed to create payment");
+    logger.error("[moncash/pay] failed to create payment");
     res.status(502).json({ error: "MonCash payment creation failed", detail: err?.message });
   }
 });
@@ -172,7 +154,7 @@ router.get("/moncash/return", async (req, res): Promise<void> => {
     mode:         (cfg.mode === "live" ? "live" : "sandbox") as MonCashMode,
     clientId,
     clientSecret,
-    returnUrl:    buildReturnUrl(req as any),
+    returnUrl:    String(cfg.callbackUrl ?? "") || buildReturnUrl(req as any),
   };
 
   let txn: Awaited<ReturnType<typeof retrieveTransactionByTransactionId>>;
@@ -180,8 +162,21 @@ router.get("/moncash/return", async (req, res): Promise<void> => {
     const token = await getAccessToken(monCashCfg);
     txn = await retrieveTransactionByTransactionId(monCashCfg, token, transactionId);
   } catch (err: any) {
-    logger.error({ err }, "[moncash/return] transaction retrieval failed");
+    logger.error("[moncash/return] transaction retrieval failed");
     res.redirect("/?moncash=error");
+    return;
+  }
+
+  // Wallet topups use the same verified MonCash return callback as boosts.
+  // The reference is generated server-side, so arbitrary references cannot
+  // cause a wallet credit.
+  if (txn.reference.startsWith("wallet_topup_")) {
+    const outcome = await verifyHaitiMonCashTopup(txn.transactionId, txn.reference, txn.cost);
+    if (!outcome.ok) {
+      res.redirect("/?moncash=amount_mismatch");
+      return;
+    }
+    res.redirect(outcome.alreadyProcessed ? "/?wallet_topup=already_processed" : "/?wallet_topup=paid");
     return;
   }
 
@@ -261,7 +256,7 @@ router.get("/moncash/return", async (req, res): Promise<void> => {
       }).catch(() => {});
     });
   } catch (err: any) {
-    logger.error({ err }, "[moncash/return] DB activation failed");
+    logger.error("[moncash/return] DB activation failed");
     res.redirect("/?moncash=error");
     return;
   }

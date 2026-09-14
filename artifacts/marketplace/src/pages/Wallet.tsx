@@ -430,22 +430,24 @@ function FeeBreakdown({
   mode,
   balance,
   rateHtgToUsd,
+  serverQuote,
 }: {
   amount: number;
   feeRatePct: number;
   mode: "transfer" | "cashout";
   balance: number;
   rateHtgToUsd?: number;
+  serverQuote?: any;
 }) {
   const { t } = useTranslation();
   if (!amount || amount <= 0) return null;
 
-  const fee = Math.round(amount * (feeRatePct / 100) * 100) / 100;
-  const net = Math.round((amount - fee) * 100) / 100;
+  const fee = serverQuote?.feeUsd ?? Math.round(amount * (feeRatePct / 100) * 100) / 100;
+  const net = serverQuote?.netAmountUsd ?? Math.round((amount - fee) * 100) / 100;
   const insufficient = amount > balance + 0.001;
   const minAmount = mode === "transfer" ? 0.01 : 1;
   const tooSmall = amount < minAmount;
-  const netHtg = rateHtgToUsd && net > 0 ? Math.round(net * rateHtgToUsd) : null;
+  const netHtg = serverQuote?.amountHtg ?? (rateHtgToUsd && net > 0 ? Math.round(net * rateHtgToUsd) : null);
 
   return (
     <div className={`rounded-xl border p-4 space-y-2.5 transition-all ${insufficient ? "border-red-300 dark:border-red-700 bg-red-50/60 dark:bg-red-950/20" : "border-border bg-muted/30"}`}>
@@ -597,7 +599,7 @@ function AgentSelectStep({
 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-type Step = "home" | "choice" | "topup" | "moncash" | "moncash_confirm" | "moncash_submit" | "moncash_done" | "send" | "send_confirm" | "card" | "cashout" | "cashout_phone_verify" | "cashout_done" | "crypto" | "cashout_agent_select" | "cashout_agent_pay" | "cashout_agent_proof" | "cashout_agent_done" | "redeem_card" | "my_card";
+type Step = "home" | "choice" | "topup" | "moncash" | "natcash" | "moncash_confirm" | "moncash_submit" | "moncash_done" | "send" | "send_confirm" | "card" | "cashout" | "cashout_phone_verify" | "cashout_done" | "crypto" | "cashout_agent_select" | "cashout_agent_pay" | "cashout_agent_proof" | "cashout_agent_done" | "redeem_card" | "my_card";
 
 export default function WalletPage() {
   const { user } = useAuth();
@@ -611,7 +613,7 @@ export default function WalletPage() {
   const [stepStack, setStepStack] = useState<Step[]>([]);
 
   function navigateTo(next: Step) {
-    if (purchasesDisabled && ["choice", "topup", "moncash", "moncash_confirm", "moncash_submit", "moncash_done", "card", "crypto"].includes(next)) {
+    if (purchasesDisabled && ["choice", "topup", "moncash", "natcash", "moncash_confirm", "moncash_submit", "moncash_done", "card", "crypto"].includes(next)) {
       toast({ title: t("androidPurchasePolicy.unavailable") });
       return;
     }
@@ -666,7 +668,7 @@ export default function WalletPage() {
 
   // Cashout state
   const [cashoutAmount, setCashoutAmount] = useState("");
-  const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "agent" | "agent_transfer" | "stripe_card">("moncash");
+  const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "natcash" | "agent" | "agent_transfer" | "stripe_card">("moncash");
   const [cashoutRetraitOnly, setCashoutRetraitOnly] = useState(false);
   const [cashoutPhone, setCashoutPhone] = useState(user?.phone ?? "");
   const [cashoutAgentLoc, setCashoutAgentLoc] = useState("");
@@ -693,6 +695,11 @@ export default function WalletPage() {
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpError, setOtpError] = useState("");
 
+  const makeIdempotencyKey = () =>
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
+
   // Topup method selection
   const isHaiti = user?.country === "Haiti";
   const isDominican = user?.country === "Dominican Republic";
@@ -700,7 +707,32 @@ export default function WalletPage() {
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin" || user?.role === "super_admin");
   const isSuperAdmin = !!(user?.isSuperAdmin || user?.role === "super_admin");
   const isApprovedAgent = !!(user?.role === "agent" || isAdmin);
-  const [selectedTopupMethod, setSelectedTopupMethod] = useState<"card" | "agents" | "crypto">("card");
+  const [selectedTopupMethod, setSelectedTopupMethod] = useState<string>("moncash");
+
+  const { data: haitiProviders, isLoading: isLoadingProviders } = useQuery({
+    queryKey: ["/wallet/haiti/providers"],
+    queryFn: () => apiGet("/wallet/haiti/providers"),
+    enabled: !!isHaiti,
+  });
+
+  const { mutate: getQuote, data: quoteData, isPending: isQuoteLoading } = useMutation({
+    mutationFn: (body: any) => apiPost("/wallet/haiti/quote", body),
+  });
+
+  const haitiInitiateMut = useMutation({
+    mutationFn: (body: { provider: string, amountHtg: number, phone?: string }) =>
+      purchasesDisabled
+        ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable") || "Purchases disabled on Android"))
+        : apiPost("/wallet/haiti/initiate", body),
+    onSuccess: (data) => {
+      if (data.redirectUrl) {
+        window.location.href = data.redirectUrl;
+      }
+    },
+    onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
+  });
+
+  const debouncedQuote = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Platform revenue card (super admin only) ─────────────────────────────
   const [platformRev, setPlatformRev] = useState<{
@@ -975,18 +1007,20 @@ export default function WalletPage() {
     mutationFn: (withdrawalToken?: string) => apiPost("/cashout/request", {
       amountUsd: parseFloat(cashoutAmount),
       method: cashoutMethod,
-      phone: cashoutMethod === "moncash" ? cashoutPhone.trim() : undefined,
+      phone: (cashoutMethod === "moncash" || cashoutMethod === "natcash") ? cashoutPhone.trim() : undefined,
       agentLocation: cashoutMethod === "agent" ? cashoutAgentLoc.trim() : undefined,
       withdrawalToken,
+      idempotencyKey,
     }),
     onSuccess: (data) => {
+      setIdempotencyKey(makeIdempotencyKey());
       setCashoutResult({ requestId: data.requestId });
       navigateTo("cashout_done");
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       qc.invalidateQueries({ queryKey: ["/cashout/my"] });
     },
-    onError: (e: Error) => toast({ title: "Erè", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
   });
 
   // Stripe cashout mutation — instant, no admin review
@@ -1173,9 +1207,20 @@ export default function WalletPage() {
 
   // ── Computed values ────────────────────────────────────────────────────────
   const finalHtg = customHtg ? parseFloat(customHtg) : selectedHtg;
-  const previewUsd = balance ? parseFloat((finalHtg / (parseFloat(String(balance.rateHtgToUsd)) || 1)).toFixed(2)) : 0;
-  const previewBonus = balance ? parseFloat((previewUsd * (parseFloat(String(balance.bonusPct)) || 0) / 100).toFixed(2)) : 0;
-  const previewTotal = parseFloat((previewUsd + previewBonus).toFixed(2));
+
+  useEffect(() => {
+    if ((step === "moncash" || step === "natcash") && finalHtg >= 100) {
+      if (debouncedQuote.current) clearTimeout(debouncedQuote.current);
+      debouncedQuote.current = setTimeout(() => {
+        getQuote({ direction: "topup", provider: step, amountHtg: finalHtg });
+      }, 400);
+    }
+  }, [step, finalHtg, getQuote]);
+
+  const previewUsd = quoteData ? quoteData.amountUsd : (balance ? parseFloat((finalHtg / (parseFloat(String(balance.rateHtgToUsd)) || 1)).toFixed(2)) : 0);
+  const previewBonus = quoteData ? quoteData.bonusUsd : (balance ? parseFloat((previewUsd * (parseFloat(String(balance.bonusPct)) || 0) / 100).toFixed(2)) : 0);
+  const previewTotal = quoteData ? quoteData.netAmountUsd || quoteData.creditAmountUsd || (previewUsd + previewBonus) : parseFloat((previewUsd + previewBonus).toFixed(2));
+
 
   const finalCardUsd = customCardUsd ? parseFloat(customCardUsd) : cardAmountUsd;
   const sendAmt = parseFloat(sendAmount) || 0;
@@ -1391,20 +1436,23 @@ export default function WalletPage() {
   }
 
   // =========================================================================
-  // ── MONCASH step ─────────────────────────────────────────────────────────
+  // ── MONCASH / NATCASH step ───────────────────────────────────────────────
   // =========================================================================
-  if (step === "moncash") {
+  if (step === "moncash" || step === "natcash") {
+    const isReady = step === "moncash" ? haitiProviders?.moncash?.ready : haitiProviders?.natcash?.ready;
+    const providerName = step === "moncash" ? "MonCash" : "NatCash";
+
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-6">
         <BackButton onClick={() => goBack()} />
         <div>
-          <h1 className="text-2xl font-black">{t("wallet.moncashTitle")}</h1>
+          <h1 className="text-2xl font-black">{providerName} Recharge</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("wallet.moncashSubtitle")}</p>
         </div>
 
         <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 flex items-center justify-between text-sm flex-wrap gap-2">
           <span className="text-muted-foreground">{t("wallet.todayRate")}</span>
-          <span className="font-bold text-primary">1 USD = G {balance?.rateHtgToUsd ?? 130}</span>
+          <span className="font-bold text-primary">1 USD = G {quoteData?.rateUsed ?? balance?.rateHtgToUsd ?? 130}</span>
           {(balance?.bonusPct ?? 0) > 0 && (
             <Badge className="bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 font-bold">
               +{balance?.bonusPct}% bonus
@@ -1444,28 +1492,60 @@ export default function WalletPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">G</span>
             <Input type="number" min={100} placeholder="500" value={customHtg} onChange={e => setCustomHtg(e.target.value)} className="pl-8" style={{ fontSize: 16 }} />
           </div>
-          {customHtg && parseFloat(customHtg) >= 100 && (
-            <p className="text-xs text-muted-foreground mt-1">
-              ≈ <span className="font-bold text-primary">${previewTotal.toFixed(2)}</span>
-              {previewBonus > 0 && <span className="text-green-400 ml-1">(+${previewBonus.toFixed(2)} bonus)</span>}
-            </p>
+          {finalHtg >= 100 && (
+            <div className="mt-2 text-sm text-muted-foreground p-3 rounded-lg border border-border bg-muted/30 flex items-center justify-between">
+              {isQuoteLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  <span>Loading quote...</span>
+                </div>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">Net Credit</span>
+                  <div className="text-right">
+                    <span className="font-bold text-primary">${previewTotal.toFixed(2)}</span>
+                    {previewBonus > 0 && <span className="text-green-500 text-xs ml-1">(+${previewBonus.toFixed(2)} bonus)</span>}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">{t("wallet.yourMoncashNumber")}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2">Phone Number</p>
           <div className="relative">
             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input type="tel" placeholder="+509 ..." value={phone} onChange={e => setPhone(e.target.value)} className="pl-9" style={{ fontSize: 16 }} />
           </div>
         </div>
 
+        {isReady ? (
+          <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl p-3">
+            <p className="text-xs text-blue-800 dark:text-blue-300">
+              You will be redirected securely to {providerName}. Flexa does not store your PIN or OTP.
+            </p>
+          </div>
+        ) : step === "natcash" ? (
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3">
+            <p className="text-xs text-amber-800 dark:text-amber-300">
+              {t("wallet.awaitingApiActivation", "Awaiting API activation")}
+            </p>
+          </div>
+        ) : null}
+
         <Button
           className="w-full h-12 font-bold text-base"
-          disabled={!finalHtg || finalHtg < 100 || initiateMut.isPending}
-          onClick={() => initiateMut.mutate(finalHtg)}
+          disabled={!finalHtg || finalHtg < 100 || initiateMut.isPending || haitiInitiateMut.isPending || (step === "natcash" && !isReady) || isQuoteLoading || !phone}
+          onClick={() => {
+            if (isReady) {
+              haitiInitiateMut.mutate({ provider: step, amountHtg: finalHtg, phone });
+            } else if (step === "moncash") {
+              initiateMut.mutate(finalHtg);
+            }
+          }}
         >
-          {initiateMut.isPending
+          {initiateMut.isPending || haitiInitiateMut.isPending
             ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("wallet.creating")}</>
             : t("wallet.continueRecharge", { amount: finalHtg.toLocaleString() })
           }
@@ -1647,7 +1727,29 @@ export default function WalletPage() {
   // ── TOPUP step ───────────────────────────────────────────────────────────
   // =========================================================================
   if (step === "topup") {
-    const methods: { id: "card" | "agents" | "crypto"; label: string; sub: string; badge?: string; icon: React.ReactNode; color: string }[] = [
+    const methods: { id: string; label: string; sub: string; badge?: string; disabled?: boolean; icon: React.ReactNode; color: string }[] = [];
+
+    if (isHaiti) {
+      methods.push({
+        id: "moncash",
+        label: "MonCash (HTG)",
+        sub: "Recharge via MonCash (Official)",
+        badge: haitiProviders?.moncash?.ready ? "Ready" : undefined,
+        icon: <Phone className="h-6 w-6" />,
+        color: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400",
+      });
+      methods.push({
+        id: "natcash",
+        label: "NatCash (HTG)",
+        sub: "Recharge via NatCash",
+        badge: haitiProviders?.natcash?.ready ? "Ready" : t("wallet.awaitingApiActivation", "Awaiting API activation"),
+        disabled: !haitiProviders?.natcash?.ready,
+        icon: <Phone className="h-6 w-6" />,
+        color: "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400",
+      });
+    }
+
+    methods.push(
       {
         id: "card",
         label: t("wallet.topupMethodCard"),
@@ -1669,8 +1771,8 @@ export default function WalletPage() {
         sub: t("wallet.topupMethodCryptoSub"),
         icon: <span className="text-2xl font-black leading-none">₮</span>,
         color: "text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400",
-      },
-    ];
+      }
+    );
 
     return (
       <div className="max-w-md mx-auto px-4 py-8 space-y-5">
@@ -1688,12 +1790,13 @@ export default function WalletPage() {
               <button
                 key={m.id}
                 type="button"
+                disabled={m.disabled}
                 onClick={() => setSelectedTopupMethod(m.id)}
                 className={cn(
                   "w-full flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left",
                   selected
                     ? "border-primary bg-primary/5 shadow-sm"
-                    : "border-border bg-card hover:border-primary/30 hover:bg-muted/20"
+                    : m.disabled ? "border-border bg-muted/20 opacity-60 cursor-not-allowed" : "border-border bg-card hover:border-primary/30 hover:bg-muted/20"
                 )}
               >
                 <div className={cn(
@@ -1711,7 +1814,10 @@ export default function WalletPage() {
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-foreground">{m.label}</p>
                     {m.badge && (
-                      <span className="text-[10px] font-bold bg-green-500/15 text-green-600 dark:text-green-400 px-1.5 py-0.5 rounded-full">
+                      <span className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                        m.disabled ? "bg-muted text-muted-foreground" : "bg-green-500/15 text-green-600 dark:text-green-400"
+                      )}>
                         {m.badge}
                       </span>
                     )}
@@ -1725,9 +1831,11 @@ export default function WalletPage() {
 
         <Button
           className="w-full h-12 font-bold text-base"
+          disabled={methods.find(m => m.id === selectedTopupMethod)?.disabled}
           onClick={() => {
             if (selectedTopupMethod === "agents") { setLocation("/wallet/agents"); }
             else if (selectedTopupMethod === "crypto") { navigateTo("crypto"); }
+            else if (selectedTopupMethod === "moncash" || selectedTopupMethod === "natcash") { navigateTo(selectedTopupMethod as Step); }
             else { navigateTo("card"); }
           }}
         >
@@ -2009,9 +2117,21 @@ export default function WalletPage() {
   if (step === "cashout") {
     const cashoutAmt = parseFloat(cashoutAmount) || 0;
     const hasStripe = !!(user?.stripeAccountId && user?.stripeAccountStatus === "active");
+    const isMoncashOrNatcash = cashoutMethod === "moncash" || cashoutMethod === "natcash";
+
+    // Auto-fetch quote
+    useEffect(() => {
+      if (isMoncashOrNatcash && cashoutAmt >= 1) {
+        if (debouncedQuote.current) clearTimeout(debouncedQuote.current);
+        debouncedQuote.current = setTimeout(() => {
+          getQuote({ direction: "cashout", provider: cashoutMethod, amountUsd: cashoutAmt });
+        }, 400);
+      }
+    }, [cashoutAmount, cashoutMethod, getQuote, isMoncashOrNatcash, cashoutAmt]);
+
     const canSubmit = cashoutAmt >= 1 &&
       cashoutAmt <= availableUsd &&
-      (cashoutMethod === "moncash" ? cashoutPhone.trim().length >= 8
+      (isMoncashOrNatcash ? cashoutPhone.trim().length >= 8
         : cashoutMethod === "stripe_card" ? hasStripe
         : cashoutMethod === "agent_transfer" ? true
         : cashoutAgentLoc.trim().length >= 3);
@@ -2074,21 +2194,23 @@ export default function WalletPage() {
             mode="cashout"
             balance={availableUsd}
             rateHtgToUsd={balance?.rateHtgToUsd}
+            serverQuote={(isMoncashOrNatcash && quoteData) ? quoteData : undefined}
           />
         )}
 
         {/* Method */}
         <div className="space-y-2">
           <label className="text-sm font-semibold">Metòd Retrait</label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {(cashoutRetraitOnly
               ? (["agent_transfer"] as const)
               : isHaiti
-                ? (["moncash", "agent", "agent_transfer"] as const)
+                ? (["moncash", "natcash", "agent", "agent_transfer"] as const)
                 : (["agent", "agent_transfer"] as const)
             ).map(m => {
               const cfg = {
-                moncash:       { icon: <Phone className="h-5 w-5 text-violet-500" />,  label: "MonCash",          sub: "Via admin" },
+                moncash:       { icon: <Phone className="h-5 w-5 text-red-500" />,     label: "MonCash",          sub: "Via API" },
+                natcash:       { icon: <Phone className="h-5 w-5 text-blue-500" />,    label: "NatCash",          sub: "Via API" },
                 agent:         { icon: <MapPin className="h-5 w-5 text-orange-500" />, label: "Ajant Pickup",     sub: "Kòd sekrè" },
                 agent_transfer: { icon: <Users className="h-5 w-5 text-green-500" />,  label: "Ajan Otorize",     sub: "⚡ Rapid" },
               }[m];
@@ -2124,10 +2246,10 @@ export default function WalletPage() {
         </div>
 
         {/* Method-specific input */}
-        {cashoutMethod === "moncash" && (
+        {isMoncashOrNatcash && (
           <div className="space-y-2">
             <label className="text-sm font-semibold flex items-center gap-1.5">
-              <Phone className="h-3.5 w-3.5 text-muted-foreground" />Nimewo MonCash ou
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" />{cashoutMethod === "moncash" ? "Nimewo MonCash ou" : "Nimewo NatCash ou"}
             </label>
             <Input
               type="tel"
@@ -2204,7 +2326,7 @@ export default function WalletPage() {
               cashoutStripeMut.mutate();
               return;
             }
-            setOtpPhone(cashoutMethod === "moncash" ? cashoutPhone.trim() : (user?.phone ?? ""));
+            setOtpPhone(isMoncashOrNatcash ? cashoutPhone.trim() : (user?.phone ?? ""));
             setOtpSent(false);
             setOtpCode("");
             setOtpError("");
@@ -2214,11 +2336,11 @@ export default function WalletPage() {
           }}
         >
           {cashoutStripeMut.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <ArrowDownCircle className="h-5 w-5 mr-2" />}
-          {cashoutMethod === "agent_transfer" ? "Chwazi Ajan Otorize ⚡"
-            : cashoutMethod === "stripe_card" ? "Voye nan Stripe ⚡"
-            : "Kontinye — Verifye Telefòn"}
+          {cashoutMethod === "agent_transfer" ? t("wallet.chooseAuthorizedAgent", "Chwazi Ajan Otorize ⚡")
+            : cashoutMethod === "stripe_card" ? t("wallet.sendToStripe", "Voye nan Stripe ⚡")
+            : t("wallet.continueVerifyPhone", "Continue — Verify Phone")}
         </Button>
-        <p className="text-center text-xs text-muted-foreground">Minimòm $1.00 · Maksimòm selon balans · Frè 2%</p>
+        <p className="text-center text-xs text-muted-foreground">{t("wallet.cashoutLimitsDesc", "Minimum $1.00 · Maximum based on balance · 2% fee")}</p>
       </div>
     );
   }
@@ -2505,29 +2627,29 @@ export default function WalletPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <KeyRound className="h-6 w-6 text-violet-500" />
-            <h1 className="text-2xl font-black">Verifye Telefòn Ou</h1>
+            <h1 className="text-2xl font-black">{t("wallet.verifyPhoneTitle")}</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Nou voye yon kòd 6 chif via SMS ak WhatsApp pou konfime retrait ou a
+            {t("wallet.verifyPhoneDescription")}
           </p>
         </div>
 
         {/* Summary card */}
         <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-center justify-between">
           <div>
-            <p className="text-xs text-muted-foreground mb-0.5">Montan retrait</p>
+            <p className="text-xs text-muted-foreground mb-0.5">{t("wallet.withdrawalAmount")}</p>
             <p className="text-2xl font-black text-violet-500">${parseFloat(cashoutAmount || "0").toFixed(2)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-muted-foreground mb-0.5">Metòd</p>
-            <p className="text-sm font-bold">{cashoutMethod === "moncash" ? "📱 MonCash" : "🤝 Ajant"}</p>
+            <p className="text-xs text-muted-foreground mb-0.5">{t("wallet.methodLabel")}</p>
+            <p className="text-sm font-bold">{cashoutMethod === "moncash" ? "MonCash" : cashoutMethod === "natcash" ? "NatCash" : "Agent"}</p>
           </div>
         </div>
 
         {/* Phone input */}
         <div className="space-y-2">
           <label className="text-sm font-semibold flex items-center gap-1.5">
-            <Phone className="h-3.5 w-3.5 text-muted-foreground" />Nimewo telefòn (E.164)
+            <Phone className="h-3.5 w-3.5 text-muted-foreground" />{t("wallet.phoneNumberE164")}
           </label>
           <div className="flex gap-2">
             <Input
@@ -2552,11 +2674,11 @@ export default function WalletPage() {
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : otpSent && !canResend
                   ? `${mins}:${secs}`
-                  : "Voye Kòd"}
+                  : t("wallet.sendCodeBtn")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Kòd la pral voye via <strong>SMS</strong> ak <strong>WhatsApp</strong> an menm tan
+            {t("wallet.codeSentViaHint")}
           </p>
         </div>
 
@@ -2565,9 +2687,9 @@ export default function WalletPage() {
           <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-bold text-amber-800 dark:text-amber-400">Mode devlopman — Kòd a:</p>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-400">{t("wallet.developmentCode")}</p>
               <p className="font-mono text-lg font-black tracking-widest text-amber-700 dark:text-amber-300 mt-0.5">{otpDevCode}</p>
-              <p className="text-xs text-amber-400 mt-0.5">Kòd sa a pa parèt nan pwodiksyon reyèl</p>
+              <p className="text-xs text-amber-400 mt-0.5">{t("wallet.developmentCodeHint")}</p>
             </div>
           </div>
         )}
@@ -2576,7 +2698,7 @@ export default function WalletPage() {
         {otpSent && (
           <div className="space-y-3">
             <div className="space-y-2">
-              <label className="text-sm font-semibold">Kòd OTP 6 chif</label>
+              <label className="text-sm font-semibold">{t("wallet.otpCodeLabel")}</label>
               <Input
                 type="text"
                 inputMode="numeric"
@@ -2592,7 +2714,7 @@ export default function WalletPage() {
               {otpCountdown > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />Kòd ekspire nan
+                    <Clock className="h-3 w-3" />{t("wallet.codeExpiresIn")}
                   </span>
                   <span className={`font-mono font-bold ${otpCountdown < 60 ? "text-red-500" : "text-primary"}`}>
                     {mins}:{secs}
@@ -2600,17 +2722,17 @@ export default function WalletPage() {
                 </div>
               )}
               {otpCountdown === 0 && (
-                <p className="text-xs text-red-500 text-center">Kòd la ekspire. Voye yon nouvo kòd.</p>
+                <p className="text-xs text-red-500 text-center">{t("wallet.codeExpired")}</p>
               )}
             </div>
 
             {/* Delivery channels */}
             <div className="flex gap-2 justify-center text-xs text-muted-foreground">
               <span className="flex items-center gap-1 rounded-full bg-muted/50 px-2 py-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />SMS livrezon
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{t("wallet.smsDelivery")}
               </span>
               <span className="flex items-center gap-1 rounded-full bg-muted/50 px-2 py-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />WhatsApp livrezon
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{t("wallet.whatsappDelivery")}
               </span>
             </div>
           </div>
@@ -2634,12 +2756,12 @@ export default function WalletPage() {
           }}
         >
           {isSubmitting
-            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ap verifye…</>
-            : <><CheckCircle2 className="h-5 w-5 mr-2" />Verifye ak Soumèt Retrait</>}
+            ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("wallet.verifying")}</>
+            : <><CheckCircle2 className="h-5 w-5 mr-2" />{t("wallet.verifyAndSubmitCashout")}</>}
         </Button>
 
         <p className="text-center text-xs text-muted-foreground">
-          Pa resevwa kòd? Tcheke SMS ak WhatsApp ou. Kòd la valid pou 5 minit.
+          {t("wallet.didNotReceiveCode")}
         </p>
       </div>
     );
@@ -2656,30 +2778,30 @@ export default function WalletPage() {
         </div>
 
         <div>
-          <h2 className="text-2xl font-black mb-1">Demann Soumèt!</h2>
-          <p className="text-sm text-muted-foreground">Demann retrait #<span className="font-bold">{cashoutResult.requestId}</span> anrejistre</p>
+          <h2 className="text-2xl font-black mb-1">{t("wallet.requestSubmitted")}</h2>
+          <p className="text-sm text-muted-foreground">{t("wallet.cashoutRequestId")}<span className="font-bold">{cashoutResult.requestId}</span> {t("wallet.registered").toLowerCase()}</p>
         </div>
 
         <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5 text-left space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-violet-400">Kòman sa travay:</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-violet-400">{t("wallet.howItWorks")}:</p>
           {cashoutMethod === "agent" ? (
             <ol className="space-y-2 text-sm text-foreground">
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>Admin apwouve demann ou (24h)</li>
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>Ou resevwa yon kòd sekrè 6 karaktè</li>
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>Ou ale jwenn ajant la epi montre l kòd la</li>
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">4</span>Ajant verifye kòd la epi peye ou</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>{t("wallet.cashoutAgentStep1", "Admin approves your request (24h)")}</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>{t("wallet.cashoutAgentStep2", "You receive a 6-character secret code")}</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>{t("wallet.cashoutAgentStep3", "Go to the agent and show the code")}</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">4</span>{t("wallet.cashoutAgentStep4", "Agent verifies the code and pays you")}</li>
             </ol>
           ) : (
             <ol className="space-y-2 text-sm text-foreground">
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>Admin apwouve demann ou (24h)</li>
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>Admin voye lajan nan nimewo MonCash ou</li>
-              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>Ou resevwa notifikasyon peman an</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>{t("wallet.cashoutDigitalStep1", "Admin approves your request (24h)")}</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>{t("wallet.cashoutDigitalStep2", "Funds are sent to your digital account")}</li>
+              <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>{t("wallet.cashoutDigitalStep3", "You receive a payment notification")}</li>
             </ol>
           )}
         </div>
 
         <div className="rounded-xl bg-muted/50 border border-border p-3">
-          <p className="text-xs text-muted-foreground">Tcheke estati demann ou nan seksyon "Retrait Mwen" anba a.</p>
+          <p className="text-xs text-muted-foreground">{t("wallet.cashoutCheckStatus")}</p>
         </div>
 
         <Button

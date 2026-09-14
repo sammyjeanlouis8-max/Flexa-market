@@ -5,6 +5,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
+import { isHaitiPhone, roundMoney } from "../lib/haiti-money";
 
 const router = Router();
 
@@ -35,29 +36,32 @@ function requireAgent(req: any, res: any, next: any) {
 router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, res): Promise<void> => {
   const { amountUsd, method, phone, agentLocation, assignedAgentAppId, screenshotUrl, userNote } = req.body as {
     amountUsd: number;
-    method: "moncash" | "agent" | "agent_transfer";
+    method: "moncash" | "natcash" | "agent" | "agent_transfer";
     phone?: string;
     agentLocation?: string;
     assignedAgentAppId?: number;
     screenshotUrl?: string;
     userNote?: string;
   };
+  const rawIdempotencyKey = String(req.get("Idempotency-Key") ?? req.body?.idempotencyKey ?? "").trim();
+  const idempotencyKey = rawIdempotencyKey ? `${req.userId}:${rawIdempotencyKey.slice(0, 160)}` : null;
 
-  const parsed = parseFloat(String(amountUsd));
-  if (!parsed || parsed <= 0 || !isFinite(parsed)) {
+  const rawParsed = parseFloat(String(amountUsd));
+  if (!Number.isFinite(rawParsed) || rawParsed <= 0) {
     res.status(400).json({ error: "Montan an invalide" });
     return;
   }
+  const parsed = roundMoney(rawParsed);
   if (parsed < 1) {
     res.status(400).json({ error: "Minimòm retrait: $1.00 USD" });
     return;
   }
-  if (!method || !["moncash", "agent", "agent_transfer"].includes(method)) {
+  if (!method || !["moncash", "natcash", "agent", "agent_transfer"].includes(method)) {
     res.status(400).json({ error: "Metòd la invalide" });
     return;
   }
-  if (method === "moncash" && !phone?.trim()) {
-    res.status(400).json({ error: "Nimewo telefòn obligatwa pou MonCash" });
+  if ((method === "moncash" || method === "natcash") && (!isHaitiPhone(phone) || req.user?.country !== "Haiti")) {
+    res.status(400).json({ error: "Yon nimewo telefòn Ayiti obligatwa pou metòd lokal sa a" });
     return;
   }
   if (method === "agent" && !agentLocation?.trim()) {
@@ -83,6 +87,18 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
     }
   }
 
+  // Fast idempotent replay path must run before the balance check: the first
+  // request has already reduced the balance by the time a client retries.
+  if (idempotencyKey) {
+    const [existing] = await db.select({ id: cashoutRequestsTable.id })
+      .from(cashoutRequestsTable)
+      .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
+    if (existing) {
+      res.json({ ok: true, idempotent: true, requestId: existing.id });
+      return;
+    }
+  }
+
   const [wallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
   const cashoutMinFloor = wallet?.firstRechargeDone ? POST_RECHARGE_MIN_USD : 0;
   const availableForCashout = Math.max(0, (wallet?.balanceUsd ?? 0) - cashoutMinFloor);
@@ -93,40 +109,78 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
   }
 
   // Server-authoritative fee calculation (never trust frontend)
-  const feeUsd = Math.round(parsed * CASHOUT_FEE_PCT * 100) / 100;
-  const netAmountUsd = Math.round((parsed - feeUsd) * 100) / 100;
+  const feeUsd = roundMoney(parsed * CASHOUT_FEE_PCT);
+  const netAmountUsd = roundMoney(parsed - feeUsd);
+  const methodLabel = method === "moncash" ? "MonCash" : method === "natcash" ? "NatCash" : method === "agent_transfer" ? "Ajan Otorize" : "Ajant";
 
-  // Deduct from wallet atomically (floor enforced in WHERE clause)
-  await db.update(promoWalletTable)
-    .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
-    .where(and(
-      eq(promoWalletTable.userId, req.userId!),
-      sql`${promoWalletTable.balanceUsd} >= ${parsed + cashoutMinFloor - 0.001}`,
-    ));
+  // The debit, request, and audit ledger are one unit. In particular, never
+  // insert a request after a zero-row conditional debit.
+  let result: any;
+  try {
+    result = await db.transaction(async (tx) => {
+      if (idempotencyKey) {
+        const [existing] = await tx.select().from(cashoutRequestsTable)
+          .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
+        if (existing) return { kind: "existing", request: existing };
+      }
 
-  const methodLabel = method === "moncash" ? "MonCash" : method === "agent_transfer" ? "Ajan Otorize" : "Ajant";
+      const [debited] = await tx.update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
+        .where(and(
+          eq(promoWalletTable.userId, req.userId!),
+          sql`${promoWalletTable.balanceUsd} >= ${parsed - 0.001} + CASE WHEN ${promoWalletTable.firstRechargeDone} THEN ${POST_RECHARGE_MIN_USD} ELSE 0 END`,
+        ))
+        .returning({ id: promoWalletTable.id });
+      if (!debited) return { kind: "insufficient" };
 
-  // Store net amount (what admin/agent pays out to user)
-  const [request] = await db.insert(cashoutRequestsTable).values({
-    userId: req.userId!,
-    amountUsd: netAmountUsd,
-    method,
-    phone: phone?.trim() ?? null,
-    agentLocation: agentLocation?.trim() ?? null,
-    status: "pending",
-    assignedAgentAppId: assignedAgentAppId ?? null,
-    screenshotUrl: screenshotUrl?.trim() ?? null,
-    userNote: userNote?.trim() ?? null,
-  } as any).returning();
+      const [request] = await tx.insert(cashoutRequestsTable).values({
+        userId: req.userId!,
+        amountUsd: netAmountUsd,
+        method,
+        phone: phone?.trim() ?? null,
+        agentLocation: agentLocation?.trim() ?? null,
+        status: "pending",
+        assignedAgentAppId: assignedAgentAppId ?? null,
+        screenshotUrl: screenshotUrl?.trim() ?? null,
+        userNote: userNote?.trim() ?? null,
+        idempotencyKey,
+      } as any).returning();
 
-  // Transaction records the gross deduction from user's perspective
-  await db.insert(walletTransactionsTable).values({
-    userId: req.userId!,
-    type: "cashout_pending",
-    amountUsd: -parsed,
-    status: "pending",
-    note: `Retrait ${methodLabel} #${request.id} — frè 2%: $${feeUsd.toFixed(2)} — nèt: $${netAmountUsd.toFixed(2)}`,
-  });
+      await tx.insert(walletTransactionsTable).values({
+        userId: req.userId!,
+        type: "cashout_pending",
+        amountUsd: -parsed,
+        status: "pending",
+        paymentRef: idempotencyKey ?? undefined,
+        note: `Retrait ${methodLabel} #${request.id} — frè 2%: $${feeUsd.toFixed(2)} — nèt: $${netAmountUsd.toFixed(2)}`,
+      });
+      return { kind: "created", request };
+    });
+  } catch (err) {
+    // A concurrent request with the same idempotency key may win the unique
+    // index. Return that winner rather than risking a second debit.
+    if (idempotencyKey) {
+      const [existing] = await db.select().from(cashoutRequestsTable)
+        .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
+      if (existing) {
+        res.json({ ok: true, idempotent: true, requestId: existing.id });
+        return;
+      }
+    }
+    logger.error({ userId: req.userId }, "Cashout transaction failed");
+    res.status(500).json({ error: "Cashout request could not be created" });
+    return;
+  }
+
+  if (result.kind === "insufficient") {
+    res.status(400).json({ error: "The balance changed. Try again." });
+    return;
+  }
+  if (result.kind === "existing") {
+    res.json({ ok: true, idempotent: true, requestId: result.request.id });
+    return;
+  }
+  const request = result.request;
 
   logger.info({ userId: req.userId, requestId: request.id, grossAmountUsd: parsed, feeUsd, netAmountUsd, method, assignedAgentAppId }, "Cashout request created");
   res.json({ ok: true, requestId: request.id, feeUsd, netAmountUsd, grossAmountUsd: parsed });

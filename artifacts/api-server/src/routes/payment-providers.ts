@@ -55,8 +55,13 @@ const DEFAULT_CONFIG: Record<ProviderId, Record<string, unknown>> = {
     enabled: false,
     mode: "sandbox",       // "sandbox" | "live"
     apiBaseUrl: "",
-    merchantNumber: "",
-    merchantPassword: "",
+    merchantId: "",
+    partnerId: "",
+    username: "",
+    password: "",
+    privateKey: "",
+    functionCode: "",
+    callbackUrl: "",
     // Phone number customers send manual boost / checkout payments to.
     phoneNumber: "+509 3900-3636",
   },
@@ -66,7 +71,7 @@ const DEFAULT_CONFIG: Record<ProviderId, Record<string, unknown>> = {
 const SECRET_FIELDS: Record<ProviderId, string[]> = {
   stripe: ["secretKey", "webhookSecret"],
   moncash: ["clientSecret"],
-  natcash: ["merchantPassword"],
+  natcash: ["password", "privateKey"],
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -203,7 +208,7 @@ function checkMissingCredentials(provider: ProviderId, cfg: Record<string, unkno
   const required: Record<ProviderId, string[]> = {
     stripe: ["publishableKey", "secretKey"],
     moncash: ["clientId", "clientSecret"],
-    natcash: ["apiBaseUrl", "merchantNumber", "merchantPassword"],
+    natcash: ["apiBaseUrl", "merchantId", "partnerId", "username", "password", "privateKey", "functionCode", "callbackUrl"],
   };
   return required[provider].filter((f) => {
     const v = cfg[f];

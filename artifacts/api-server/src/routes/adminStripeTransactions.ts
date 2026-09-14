@@ -161,10 +161,15 @@ function listWhere(query: Record<string, unknown>) {
   // Stripe. Only show rows carrying a Stripe-owned identifier.
   const conditions: any[] = [
     eq(transactionsTable.paymentMethod, "stripe"),
-    or(
-      isNotNull(transactionsTable.stripePaymentIntentId),
-      isNotNull(transactionsTable.stripeCheckoutSessionId),
-    ),
+    // A Checkout Session or a failed/pending PaymentIntent is only an attempt.
+    // This operations ledger contains money that actually moved through a
+    // debit/credit card on Stripe.
+    isNotNull(transactionsTable.stripePaymentIntentId),
+    inArray(transactionsTable.paymentStatus, [
+      "completed",
+      "partially_refunded",
+      "refunded",
+    ]),
   ];
   const status = typeof query.status === "string" ? query.status.trim() : "";
   if (status && status !== "all") {

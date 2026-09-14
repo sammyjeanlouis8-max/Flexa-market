@@ -46,6 +46,55 @@ type Listing = {
   stockQuantity?: number | null;
 };
 
+function MosaicImageTile({
+  src,
+  alt,
+  className,
+  fallbackLabel,
+  onLoad,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  fallbackLabel: string;
+  onLoad?: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5",
+          className
+        )}
+        role="img"
+        aria-label={fallbackLabel}
+      >
+        <ImageIcon className="h-6 w-6 text-primary/40" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      onLoad={onLoad}
+      onError={() => {
+        setFailed(true);
+        onLoad?.();
+      }}
+    />
+  );
+}
+
 function formatDistance(km: number | null | undefined): string | null {
   if (km == null) return null;
   if (km < 1) return `${Math.round(km * 1000)} m`;
@@ -57,18 +106,22 @@ export default function ListingCard({
   listing,
   compact = false,
   preview = false,
+  mosaicLayout = false,
 }: {
   listing: Listing;
   compact?: boolean;
   /** When true, renders as a static card — no link navigation, no like/boost buttons */
   preview?: boolean;
+  /** When true, renders up to 4 images in an adaptive grid mosaic instead of just the first image */
+  mosaicLayout?: boolean;
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
-  const img = listing.images?.find((image) => image.trim().length > 0) ?? null;
+  const validImages = listing.images?.filter((img) => img && img.trim().length > 0) || [];
+  const img = validImages[0] ?? null;
   const flag = listing.country ? COUNTRY_FLAGS[listing.country] : null;
   const displayLocation = listing.city ?? listing.location;
   const isOwner = user && listing.sellerId ? user.id === listing.sellerId : false;
@@ -135,23 +188,93 @@ export default function ListingCard({
       >
         {/* === IMAGE === */}
         <div className={cn("listing-card-media relative overflow-hidden bg-muted", compact ? "aspect-square" : "aspect-[4/3]")}>
-          {img && !imageFailed ? (
-            <img
-              src={img}
-              alt={listing.title}
-              loading="lazy"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              style={{
-                filter: imgLoaded ? "none" : "blur(6px)",
-                transition: "filter 0.3s ease, transform 0.3s ease",
-                transform: imgLoaded ? "scale(1)" : "scale(1.04)",
-              }}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => {
-                setImgLoaded(true);
-                setImageFailed(true);
-              }}
-            />
+          {validImages.length > 0 && !imageFailed ? (
+            mosaicLayout && validImages.length > 1 ? (
+              <div
+                className="w-full h-full relative group-hover:scale-105 transition-transform duration-300 bg-white dark:bg-black"
+                style={{
+                  filter: imgLoaded ? "none" : "blur(6px)",
+                  transition: "filter 0.3s ease, transform 0.3s ease",
+                  transform: imgLoaded ? "scale(1)" : "scale(1.04)",
+                }}
+              >
+                {validImages.length === 2 && (
+                  <div className="flex w-full h-full gap-0.5">
+                    <MosaicImageTile
+                      src={validImages[0]}
+                      alt={`${listing.title} 1`}
+                      className="w-1/2 h-full object-cover"
+                      fallbackLabel={t("sell.images")}
+                      onLoad={() => setImgLoaded(true)}
+                    />
+                    <MosaicImageTile
+                      src={validImages[1]}
+                      alt={`${listing.title} 2`}
+                      className="w-1/2 h-full object-cover"
+                      fallbackLabel={t("sell.images")}
+                    />
+                  </div>
+                )}
+                {validImages.length === 3 && (
+                  <div className="flex w-full h-full gap-0.5">
+                    <div className="w-2/3 h-full">
+                      <MosaicImageTile
+                        src={validImages[0]}
+                        alt={`${listing.title} 1`}
+                        className="w-full h-full object-cover"
+                        fallbackLabel={t("sell.images")}
+                        onLoad={() => setImgLoaded(true)}
+                      />
+                    </div>
+                    <div className="w-1/3 h-full flex flex-col gap-0.5">
+                      <MosaicImageTile
+                        src={validImages[1]}
+                        alt={`${listing.title} 2`}
+                        className="w-full h-1/2 object-cover"
+                        fallbackLabel={t("sell.images")}
+                      />
+                      <MosaicImageTile
+                        src={validImages[2]}
+                        alt={`${listing.title} 3`}
+                        className="w-full h-1/2 object-cover"
+                        fallbackLabel={t("sell.images")}
+                      />
+                    </div>
+                  </div>
+                )}
+                {validImages.length >= 4 && (
+                  <div className="grid grid-cols-2 grid-rows-2 w-full h-full gap-0.5">
+                    {validImages.slice(0, 4).map((image, index) => (
+                      <MosaicImageTile
+                        key={`${image}-${index}`}
+                        src={image}
+                        alt={`${listing.title} ${index + 1}`}
+                        className="w-full h-full object-cover"
+                        fallbackLabel={t("sell.images")}
+                        onLoad={index === 0 ? () => setImgLoaded(true) : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <img
+                src={img!}
+                alt={listing.title}
+                loading="lazy"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                style={{
+                  filter: imgLoaded ? "none" : "blur(6px)",
+                  transition: "filter 0.3s ease, transform 0.3s ease",
+                  transform: imgLoaded ? "scale(1)" : "scale(1.04)",
+                }}
+                onLoad={() => setImgLoaded(true)}
+                onError={() => {
+                  setImgLoaded(true);
+                  setImageFailed(true);
+                }}
+              />
+            )
           ) : (
             <div
               className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5"

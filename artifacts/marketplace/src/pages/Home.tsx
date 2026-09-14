@@ -1226,14 +1226,14 @@ export default function Home() {
               <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
               <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
             </div>
-            <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+            <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
               {flexaFamilyFiltered.map((l: NormalListing) => (
                 <div key={l.id} className="relative">
                   <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
                     <Crown className="h-2.5 w-2.5" />
                     VIP
                   </div>
-                  <ListingCard listing={l} compact />
+                  <ListingCard listing={l} compact mosaicLayout />
                 </div>
               ))}
             </div>
@@ -1309,14 +1309,14 @@ export default function Home() {
           </div>
 
           {feedLoading ? (
-            <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+            <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
               {[...Array(10)].map((_, i) => (
-                <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
+                <Skeleton key={i} className="aspect-square md:aspect-[3/4] rounded-xl" />
               ))}
             </div>
           ) : feedItems.length > 0 ? (
             <>
-              <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+              <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
                 {feedItems.map(item => {
                   if (item.type === "boosted") {
                     return (
@@ -1328,10 +1328,10 @@ export default function Home() {
                       />
                     );
                   }
-                  return <ListingCard key={item.key} listing={item.listing} />;
+                  return <ListingCard key={item.key} listing={item.listing} mosaicLayout />;
                 })}
                 {isFetchingNextPage && [...Array(4)].map((_, i) => (
-                  <Skeleton key={`skel-next-${i}`} className="aspect-[3/4] rounded-xl" />
+                  <Skeleton key={`skel-next-${i}`} className="aspect-square md:aspect-[3/4] rounded-xl" />
                 ))}
               </div>
 
@@ -1363,9 +1363,9 @@ export default function Home() {
               (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
             );
             return recentFiltered.length > 0 ? (
-              <div className="home-product-grid grid grid-cols-2 min-[360px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3">
+              <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
                 {recentFiltered.map((l: NormalListing) => (
-                  <ListingCard key={l.id} listing={l} />
+                  <ListingCard key={l.id} listing={l} mosaicLayout />
                 ))}
               </div>
             ) : null;

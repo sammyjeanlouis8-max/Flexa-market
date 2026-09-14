@@ -2148,14 +2148,14 @@ export default function WalletPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <ArrowDownCircle className="h-6 w-6 text-violet-500" />
-            <h1 className="text-2xl font-black">Retire Lajan</h1>
+            <h1 className="text-2xl font-black">{t("wallet.cashoutTitle")}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Voye lajan ou nan men ou oswa nan men yon ajant</p>
+          <p className="text-sm text-muted-foreground">{t("wallet.cashoutSubtitle")}</p>
         </div>
 
         {/* Amount */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Montan (USD)</label>
+          <label className="text-sm font-semibold">{t("wallet.amountLabel", { currency: "USD" })}</label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm">$</span>
             <Input
@@ -2170,14 +2170,22 @@ export default function WalletPage() {
             />
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Balans disponib</span>
+            <span>{t("wallet.availBalance")}</span>
             <button
               className="font-bold text-primary hover:underline"
               onClick={() => setCashoutAmount(availableUsd.toFixed(2))}
             >
-              ${availableUsd.toFixed(2)} (tout)
+              ${availableUsd.toFixed(2)} {t("wallet.allBalance")}
             </button>
           </div>
+          {balance?.cashoutRateHtgToUsd ? (
+            <div className="flex items-center justify-between rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs dark:border-violet-800/60 dark:bg-violet-950/20">
+              <span className="font-semibold text-violet-800 dark:text-violet-300">{t("wallet.cashoutRateLabel")}</span>
+              <span className="font-black text-violet-700 dark:text-violet-300">
+                {t("wallet.cashoutRateDisplay", { rate: balance.cashoutRateHtgToUsd })}
+              </span>
+            </div>
+          ) : null}
           <div className="flex gap-2 flex-wrap">
             {[5, 10, 25, 50].filter(a => a <= availableUsd).map(a => (
               <button
@@ -2205,7 +2213,7 @@ export default function WalletPage() {
 
         {/* Method */}
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Metòd Retrait</label>
+          <label className="text-sm font-semibold">{t("wallet.cashoutMethodLabel")}</label>
           <div className="grid grid-cols-2 gap-2">
             {(cashoutRetraitOnly
               ? (["agent_transfer"] as const)
@@ -2214,10 +2222,10 @@ export default function WalletPage() {
                 : (["agent", "agent_transfer"] as const)
             ).map(m => {
               const cfg = {
-                moncash:       { icon: <Phone className="h-5 w-5 text-red-500" />,     label: "MonCash",          sub: "Via API" },
-                natcash:       { icon: <Phone className="h-5 w-5 text-blue-500" />,    label: "NatCash",          sub: "Via API" },
-                agent:         { icon: <MapPin className="h-5 w-5 text-orange-500" />, label: "Ajant Pickup",     sub: "Kòd sekrè" },
-                agent_transfer: { icon: <Users className="h-5 w-5 text-green-500" />,  label: "Ajan Otorize",     sub: "⚡ Rapid" },
+                moncash:       { icon: <Phone className="h-5 w-5 text-red-500" />,     label: "MonCash",          sub: t("wallet.viaApi") },
+                natcash:       { icon: <Phone className="h-5 w-5 text-blue-500" />,    label: "NatCash",          sub: t("wallet.viaApi") },
+                agent:         { icon: <MapPin className="h-5 w-5 text-orange-500" />, label: t("wallet.agentPickup"), sub: t("wallet.secretCode") },
+                agent_transfer: { icon: <Users className="h-5 w-5 text-green-500" />,  label: t("wallet.authorizedAgent"), sub: t("wallet.rapid") },
               }[m];
               return (
                 <button
@@ -2254,7 +2262,8 @@ export default function WalletPage() {
         {isMoncashOrNatcash && (
           <div className="space-y-2">
             <label className="text-sm font-semibold flex items-center gap-1.5">
-              <Phone className="h-3.5 w-3.5 text-muted-foreground" />{cashoutMethod === "moncash" ? "Nimewo MonCash ou" : "Nimewo NatCash ou"}
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+              {cashoutMethod === "moncash" ? t("wallet.yourMoncashNumber") : t("wallet.yourNatcashNumber")}
             </label>
             <Input
               type="tel"
@@ -2263,29 +2272,29 @@ export default function WalletPage() {
               placeholder="+509 3612 3456"
               style={{ fontSize: 16 }}
             />
-            <p className="text-xs text-muted-foreground">Admin ap voye lajan nan nimewo sa a</p>
+            <p className="text-xs text-muted-foreground">{t("wallet.cashoutPhoneHint")}</p>
           </div>
         )}
         {cashoutMethod === "agent" && (
           <div className="space-y-2">
             <label className="text-sm font-semibold flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 text-muted-foreground" />Kote ajant lan
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground" />{t("wallet.agentLocation")}
             </label>
             <Input
               value={cashoutAgentLoc}
               onChange={e => setCashoutAgentLoc(e.target.value)}
-              placeholder="ex: Pòtoprens, Delmas 31"
+              placeholder={t("wallet.agentLocationPlaceholder")}
               style={{ fontSize: 16 }}
             />
-            <p className="text-xs text-muted-foreground">Ajant an ap verifye kòd sekrè ou a</p>
+            <p className="text-xs text-muted-foreground">{t("wallet.agentSecretHint")}</p>
           </div>
         )}
         {cashoutMethod === "agent_transfer" && (
           <div className="rounded-xl border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-950/20 p-3 flex items-start gap-2">
             <Users className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
             <div className="text-xs text-green-800 dark:text-green-400">
-              <p className="font-bold mb-0.5">Ajan Otorize — Retrait Rapid ⚡</p>
-              <p>Kontinye pou chwazi yon ajan sou rezo nou an. Ou pral voye kòb ou nan nimewo FM yo epi voye screenshot. Ajan an pral livye cash ou via metòd yo chwazi.</p>
+              <p className="font-bold mb-0.5">{t("wallet.authorizedAgentInfoTitle")}</p>
+              <p>{t("wallet.authorizedAgentInfo")}</p>
             </div>
           </div>
         )}
@@ -2294,8 +2303,8 @@ export default function WalletPage() {
           <div className="rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/20 p-3 flex items-start gap-2">
             <CreditCard className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
             <div className="text-xs text-blue-800 dark:text-blue-400">
-              <p className="font-bold mb-0.5">Stripe Card — Imedya ⚡</p>
-              <p>Lajan pral ale dirèkteman nan kont Stripe ou a. Stripe pral transfere l nan kat ou oswa kont bank ou otomatikman (1-2 jou biznis).</p>
+              <p className="font-bold mb-0.5">{t("wallet.stripeInfoTitle")}</p>
+              <p>{t("wallet.stripeInfo")}</p>
             </div>
           </div>
         )}
@@ -2312,10 +2321,10 @@ export default function WalletPage() {
           <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 dark:text-amber-300">
             {cashoutMethod === "agent_transfer"
-              ? "Lajan ou a pral dedwi imedyatman. Ajan otorize ap konfime livrezon an."
+              ? t("wallet.authorizedAgentWarning")
               : cashoutMethod === "stripe_card"
-              ? "Lajan pral dedwi imedyatman epi transfere nan Stripe ou a. Pa gen retou posib."
-              : "Lajan ou ap retire a pral dedwi nan balans ou touswit. Admin ap apwouve demann ou nan 24 zè."}
+              ? t("wallet.stripeWarning")
+               : t("wallet.cashoutDigitalWarning")}
           </p>
         </div>
 

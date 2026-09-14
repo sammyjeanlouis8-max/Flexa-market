@@ -1640,6 +1640,56 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "order_returns.add_refund_method",    sql: "ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS refund_method TEXT DEFAULT 'wallet'" });
   migrations.push({ name: "order_returns.add_stripe_refund_id", sql: "ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS stripe_refund_id TEXT" });
 
+  // ── Super Admin Stripe refund operations ledger ─────────────────────────────
+  // This is deliberately separate from order_returns: one payment can have
+  // multiple Stripe and offline partial refunds, each with its own idempotency
+  // key and provider lifecycle.
+  migrations.push({
+    name: "stripe_refund_ledger.create_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS stripe_refund_ledger (
+        id                 SERIAL PRIMARY KEY,
+        transaction_id     INTEGER NOT NULL REFERENCES transactions(id),
+        mode               TEXT NOT NULL DEFAULT 'stripe',
+        amount_cents       INTEGER NOT NULL CHECK (amount_cents > 0),
+        currency           TEXT NOT NULL,
+        reason             TEXT NOT NULL,
+        request_id         TEXT NOT NULL,
+        idempotency_key    TEXT NOT NULL,
+        stripe_refund_id   TEXT,
+        provider_status    TEXT NOT NULL DEFAULT 'pending',
+        external_reference TEXT,
+        actor_id           INTEGER REFERENCES users(id),
+        failure_code       TEXT,
+        failure_message    TEXT,
+        failure_metadata   JSONB,
+        metadata           JSONB,
+        created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `,
+  });
+  migrations.push({
+    name: "stripe_refund_ledger.request_unique",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS stripe_refund_ledger_request_id_unique ON stripe_refund_ledger(request_id)",
+  });
+  migrations.push({
+    name: "stripe_refund_ledger.idempotency_unique",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS stripe_refund_ledger_idempotency_key_unique ON stripe_refund_ledger(idempotency_key)",
+  });
+  migrations.push({
+    name: "stripe_refund_ledger.stripe_refund_unique",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS stripe_refund_ledger_stripe_refund_id_unique ON stripe_refund_ledger(stripe_refund_id) WHERE stripe_refund_id IS NOT NULL",
+  });
+  migrations.push({
+    name: "stripe_refund_ledger.transaction_idx",
+    sql: "CREATE INDEX IF NOT EXISTS stripe_refund_ledger_transaction_idx ON stripe_refund_ledger(transaction_id, created_at)",
+  });
+  migrations.push({
+    name: "stripe_refund_ledger.status_idx",
+    sql: "CREATE INDEX IF NOT EXISTS stripe_refund_ledger_status_idx ON stripe_refund_ledger(provider_status)",
+  });
+
   // ── AI Guardian decisions table ──────────────────────────────────────────────
   migrations.push({
     name: "ai_guardian_decisions.create_table",

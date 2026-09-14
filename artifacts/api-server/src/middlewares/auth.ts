@@ -29,6 +29,8 @@ declare global {
     interface Request {
       userId?: number;
       user?: typeof usersTable.$inferSelect;
+      // Installed by the request logger middleware in app.ts.
+      log?: any;
     }
   }
 }

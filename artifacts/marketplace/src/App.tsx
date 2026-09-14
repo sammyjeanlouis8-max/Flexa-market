@@ -119,6 +119,7 @@ const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const AdminTransactions              = lazy(() => import("@/pages/AdminTransactions"));
+const AdminStripeTransactions        = lazy(() => import("@/pages/AdminStripeTransactions"));
 const AdminVipSubscriptions          = lazy(() => import("@/pages/AdminVipSubscriptions"));
 const FlexaMusicEarnings             = lazy(() => import("@/pages/FlexaMusicEarnings"));
 const FlexaMusicUpload               = lazy(() => import("@/pages/FlexaMusicUpload"));
@@ -293,6 +294,7 @@ function LayoutRoutes() {
           <Route path="/music/earnings" component={FlexaMusicEarnings} />
           <Route path="/admin/music" component={AdminMusic} />
           <Route path="/admin/transactions" component={AdminTransactions} />
+          <Route path="/admin/stripe-transactions" component={AdminStripeTransactions} />
           <Route path="/admin/vip-subscriptions" component={AdminVipSubscriptions} />
           <Route path="/admin/tv" component={AdminTV} />
           <Route path="/admin/tv/programs/new" component={AdminTVProgramForm} />

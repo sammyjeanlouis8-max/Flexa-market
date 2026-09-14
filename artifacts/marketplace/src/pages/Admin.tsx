@@ -3028,6 +3028,24 @@ export default function Admin() {
           </button>
         )}
 
+        {/* Stripe Transactions — super admin only */}
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setLocation("/admin/stripe-transactions")}
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-950/20 hover:from-indigo-100 hover:to-blue-100 dark:hover:from-indigo-900/40 dark:hover:to-blue-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+          >
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0 shadow shadow-indigo-200 dark:shadow-indigo-900/50">
+              <CreditCard className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black text-indigo-900 dark:text-indigo-100">{t("adminStripeTransactions.launcherTitle")}</p>
+              <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">{t("adminStripeTransactions.launcherSubtitle")}</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-indigo-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
       </div>
       </>
       )}

@@ -14,6 +14,7 @@ import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import Stripe from "stripe";
 import { getNextArtistPlanExpiry } from "../lib/artistPlan";
+import { reconcileStripeRefund } from "./adminStripeTransactions";
 
 const router = Router();
 
@@ -489,6 +490,22 @@ async function handleStripeEvent(event: Stripe.Event): Promise<void> {
     case "payout.failed": {
       const payout = event.data.object as Stripe.Payout;
       logger.warn({ payoutId: payout.id, failureMessage: payout.failure_message }, "Payout failed");
+      break;
+    }
+    case "charge.refunded": {
+      const charge = event.data.object as Stripe.Charge;
+      const refunds = charge.refunds?.data ?? [];
+      for (const refund of refunds) await reconcileStripeRefund(refund);
+      break;
+    }
+    case "refund.created":
+    case "refund.updated":
+    case "refund.failed": {
+      const refund = event.data.object as Stripe.Refund;
+      // Refund lifecycle reconciliation is intentionally limited to the local
+      // refund ledger and aggregate payment status. It never changes wallets,
+      // escrow, transfers, or seller balances.
+      await reconcileStripeRefund(refund);
       break;
     }
     case "invoice.paid": {

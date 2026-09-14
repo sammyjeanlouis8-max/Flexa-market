@@ -151,6 +151,16 @@ export default function GlobalBroadcastPlayer() {
   const isOnViewerTV = location === "/tv";
   const isOnAdminTV  = location.startsWith("/admin");
 
+  // Admin pages must never keep the public TV audio session alive in the
+  // background. The player is rendered only inside the visible /tv slot.
+  useEffect(() => {
+    if (!isOnAdminTV) return;
+    videoRef.current?.pause();
+    ytCmd(iframeRef.current, "pauseVideo");
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  }, [isOnAdminTV]);
+
 
   // ── Slot tracking: poll every 200ms ─────────────────────────────────────────
   useEffect(() => {
@@ -309,8 +319,8 @@ export default function GlobalBroadcastPlayer() {
   // ── Compute iframe position ──────────────────────────────────────────────────
   // (slotVisible declared earlier, before the slotConnecting useEffect)
 
-  // Mini-player removed — hide completely when not in slot or admin view
-  if (!slotVisible && !isOnAdminTV) return null;
+  // Mini-player removed — never keep an invisible player alive off the TV page.
+  if (!slotVisible) return null;
 
   // Iframe container geometry
   const iframeStyle: React.CSSProperties = isOnAdminTV

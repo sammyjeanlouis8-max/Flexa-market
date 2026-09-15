@@ -13,6 +13,7 @@ import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import type { Request, Response } from "express";
 import Stripe from "stripe";
+import { deriveStripeConnectStatus } from "../lib/stripeConnectStatus";
 import { getNextArtistPlanExpiry } from "../lib/artistPlan";
 import { reconcileStripeRefund } from "./adminStripeTransactions";
 import {
@@ -1386,7 +1387,7 @@ async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent): Promise<void
 }
 
 async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
-  const status = account.charges_enabled && account.details_submitted ? "active" : "pending";
+  const status = deriveStripeConnectStatus(account);
 
   // Find user by stripeAccountId
   const users = await db

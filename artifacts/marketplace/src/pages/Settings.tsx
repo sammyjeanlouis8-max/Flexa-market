@@ -154,6 +154,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
   };
 
   const isActive = status === "active";
+  const isConnected = status === "connected";
   const isPending = status === "pending";
 
   return (
@@ -165,7 +166,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
           {required && <Badge className="ml-1 bg-primary/10 text-primary border-0 text-[10px]">{t("settings.required")}</Badge>}
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
-          ) : isActive ? (
+          ) : isActive || isConnected ? (
             <Badge className="ml-auto bg-green-100 text-green-700 border-0 text-xs">
               <CheckCircle2 className="h-3 w-3 mr-1" />{t("settings.connected")} ✅
             </Badge>
@@ -192,6 +193,14 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
             <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
               {t("settings.stripeDashboard")}
+            </Button>
+          </>
+        ) : isConnected ? (
+          <>
+            <p className="text-sm text-muted-foreground">{t("settings.stripeConnectedPendingDesc")}</p>
+            <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+              {t("settings.stripeReviewBtn")}
             </Button>
           </>
         ) : isPending ? (
@@ -481,6 +490,7 @@ function HaitiPayoutPanel() {
   const moncashRejected = !account?.moncashVerified && !!account?.moncashRejectedReason;
 
   const stripeActive = stripeStatus === "active";
+  const stripeConnected = stripeStatus === "connected";
   const stripePending = stripeStatus === "pending";
 
   const makeBadge = (verified: any, pending: any, rejected: any) =>
@@ -554,8 +564,10 @@ function HaitiPayoutPanel() {
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
           ) : (
             <>
-              {makeBadge(stripeActive, stripePending, false)}
-              {!stripeActive && !stripePending && (
+              {stripeConnected
+                ? <Badge className="ml-1.5 bg-green-100 text-green-700 border-0 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("settings.connected")}</Badge>
+                : makeBadge(stripeActive, stripePending, false)}
+              {!stripeActive && !stripeConnected && !stripePending && (
                 <Badge className="ml-auto bg-blue-100 text-blue-700 border-0 text-[10px]">{t("settings.recommended")}</Badge>
               )}
             </>
@@ -568,7 +580,11 @@ function HaitiPayoutPanel() {
                 {t("settings.instantPayout")}
               </p>
               <p className="text-sm text-muted-foreground">
-                {stripeActive ? t("settings.stripeActiveDesc") : t("settings.stripeConnectDesc")}
+                {stripeActive
+                  ? t("settings.stripeActiveDesc")
+                  : stripeConnected
+                    ? t("settings.stripeConnectedPendingDesc")
+                    : t("settings.stripeConnectDesc")}
               </p>
             </div>
             <ul className="text-xs text-muted-foreground space-y-1">
@@ -577,7 +593,13 @@ function HaitiPayoutPanel() {
             </ul>
             <Button size="sm" variant={stripeActive ? "outline" : "default"} onClick={stripeActive ? openDashboard : startOnboarding} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : stripeActive ? <ExternalLink className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              {stripeActive ? t("settings.stripeDashboard") : stripePending ? t("settings.stripeCompleteBtn") : t("settings.stripeConnectBtn")}
+              {stripeActive
+                ? t("settings.stripeDashboard")
+                : stripeConnected
+                  ? t("settings.stripeReviewBtn")
+                  : stripePending
+                    ? t("settings.stripeCompleteBtn")
+                    : t("settings.stripeConnectBtn")}
             </Button>
             {actionError && (
               <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">

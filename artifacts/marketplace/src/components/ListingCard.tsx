@@ -107,6 +107,7 @@ export default function ListingCard({
   compact = false,
   preview = false,
   mosaicLayout = false,
+  previewFallbackImage,
 }: {
   listing: Listing;
   compact?: boolean;
@@ -114,6 +115,8 @@ export default function ListingCard({
   preview?: boolean;
   /** When true, renders up to 4 images in an adaptive grid mosaic instead of just the first image */
   mosaicLayout?: boolean;
+  /** Backup image used only by editable listing previews when a draft/upload URL fails. */
+  previewFallbackImage?: string;
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -269,7 +272,11 @@ export default function ListingCard({
                   transform: imgLoaded ? "scale(1)" : "scale(1.04)",
                 }}
                 onLoad={() => setImgLoaded(true)}
-                onError={() => {
+                onError={(event) => {
+                  if (previewFallbackImage && event.currentTarget.src !== new URL(previewFallbackImage, window.location.href).href) {
+                    event.currentTarget.src = previewFallbackImage;
+                    return;
+                  }
                   setImgLoaded(true);
                   setImageFailed(true);
                 }}

@@ -131,6 +131,7 @@ export default function Sell() {
   const [paymentReady, setPaymentReady] = useState<boolean | null>(null);
   const [cardPayoutMethod, setCardPayoutMethod] = useState<"fm_wallet" | "stripe" | null>(null);
   const [stripeAccountActive, setStripeAccountActive] = useState(false);
+  const [stripeAccountConnected, setStripeAccountConnected] = useState(false);
   const [savingPayoutMethod, setSavingPayoutMethod] = useState(false);
   const [isStripeCountry, setIsStripeCountry] = useState(false);
   const [intlShippingCost, setIntlShippingCost] = useState<string>("");
@@ -191,9 +192,12 @@ export default function Sell() {
     }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     Promise.all([stripeCheck, payoutCheck]).then(([stripeData, payoutData]) => {
-      const stripeActive = stripeData?.stripeAccountStatus === "active";
+      const stripeStatus = stripeData?.stripeAccountStatus;
+      const stripeActive = stripeStatus === "active";
+      const stripeConnected = stripeActive || stripeStatus === "connected";
       const currentMethod = payoutData?.cardPayoutMethod ?? null;
       setStripeAccountActive(stripeActive);
+      setStripeAccountConnected(stripeConnected);
       setCardPayoutMethod(currentMethod);
       // Kat FM: seller chose fm_wallet → always ready (earnings auto-credited to FM wallet)
       const hasKatFM = currentMethod === "fm_wallet";
@@ -1604,7 +1608,7 @@ export default function Sell() {
                   {t("sell.preview", "Aperçu — how buyers will see your listing")}
                 </p>
                 <div className="max-w-[220px]">
-                  <ListingCard listing={previewListing} preview />
+                  <ListingCard listing={previewListing} preview previewFallbackImage={sellPreviewCar} />
                 </div>
               </div>
             );
@@ -1728,15 +1732,19 @@ export default function Sell() {
                     </div>
                     <div>
                       <p className="text-sm font-black text-foreground leading-none">Stripe</p>
-                      <p className={`text-[10px] font-semibold mt-0.5 ${stripeAccountActive ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                        {stripeAccountActive ? "Konekte" : "Pa konekte"}
+                      <p className={`text-[10px] font-semibold mt-0.5 ${stripeAccountConnected ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                        {stripeAccountConnected
+                          ? stripeAccountActive
+                            ? t("settings.connected")
+                            : `${t("settings.connected")} · ${t("settings.pending")}`
+                          : t("settings.notConnected")}
                       </p>
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     Resevwa peman pa kat kredi dirèkteman nan kont bank ou.
                   </p>
-                  {cardPayoutMethod === "stripe" && !stripeAccountActive && (
+                  {cardPayoutMethod === "stripe" && !stripeAccountConnected && (
                     <a
                       href="/settings"
                       onClick={e => e.stopPropagation()}

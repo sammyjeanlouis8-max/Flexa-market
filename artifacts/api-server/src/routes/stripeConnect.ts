@@ -3,6 +3,7 @@ import { db, usersTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripePublishableKey } from "../lib/stripeClient";
+import { deriveStripeConnectStatus } from "../lib/stripeConnectStatus";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -49,6 +50,7 @@ router.get("/stripe/connect/status", requireAuth, async (req: any, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
 
     let details: Record<string, unknown> = {};
+    let effectiveStatus = user.stripeAccountStatus;
 
     if (user.stripeAccountId) {
       try {
@@ -58,7 +60,8 @@ router.get("/stripe/connect/status", requireAuth, async (req: any, res) => {
         const payoutsEnabled = account.payouts_enabled;
         const detailsSubmitted = account.details_submitted;
 
-        const status = chargesEnabled && detailsSubmitted ? "active" : "pending";
+        const status = deriveStripeConnectStatus(account);
+        effectiveStatus = status;
         if (status !== user.stripeAccountStatus) {
           await db
             .update(usersTable)
@@ -66,7 +69,16 @@ router.get("/stripe/connect/status", requireAuth, async (req: any, res) => {
             .where(eq(usersTable.id, req.userId));
         }
 
-        details = { chargesEnabled, payoutsEnabled, detailsSubmitted, country: account.country };
+        details = {
+          chargesEnabled,
+          payoutsEnabled,
+          detailsSubmitted,
+          transfersCapability: account.capabilities?.transfers ?? null,
+          requirementsCurrentlyDue: account.requirements?.currently_due ?? [],
+          requirementsPendingVerification: account.requirements?.pending_verification ?? [],
+          disabledReason: account.requirements?.disabled_reason ?? null,
+          country: account.country,
+        };
       } catch (err) {
         logger.warn({ err }, "Could not retrieve Stripe account details");
       }
@@ -74,7 +86,7 @@ router.get("/stripe/connect/status", requireAuth, async (req: any, res) => {
 
     return res.json({
       stripeAccountId: user.stripeAccountId,
-      stripeAccountStatus: user.stripeAccountStatus,
+      stripeAccountStatus: effectiveStatus,
       ...details,
     });
   } catch (err) {

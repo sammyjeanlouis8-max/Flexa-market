@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
+import { matchesTaggedSession, type SessionTagged } from "@/lib/authSession";
 import {
   ArrowLeft, Clock, CheckCircle, TrendingUp, Loader2, Users, ShoppingBag,
   Copy, Share2, Wallet,
@@ -37,7 +38,7 @@ function firstOfNextMonth(currentMonth: string): string {
 
 export default function CommissionPromo() {
   const { t } = useTranslation();
-  const { token } = useAuth();
+  const { token, isLoading: authLoading } = useAuth();
   const [, navigate] = useLocation();
 
   const [data, setData]           = useState<CommissionSummary | null>(null);
@@ -45,18 +46,98 @@ export default function CommissionPromo() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [toast, setToast]         = useState<{ msg: string; ok: boolean } | null>(null);
 
-  const authHeader = token ? `Bearer ${token}` : "";
+  const tokenRef = useRef<string | null>(token);
+  const sessionGenerationRef = useRef(0);
+  const loadIdRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const withdrawAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+  const withdrawIdRef = useRef(0);
+  const dataTagRef = useRef<SessionTagged<CommissionSummary> | null>(null);
+  if (tokenRef.current !== token) {
+    tokenRef.current = token;
+    sessionGenerationRef.current += 1;
+    // Hide data from the previous identity synchronously during this render.
+    dataTagRef.current = null;
+  }
 
-  const load = () => {
+  const isCurrentSession = (requestToken: string, requestGeneration: number) =>
+    mountedRef.current &&
+    tokenRef.current === requestToken &&
+    sessionGenerationRef.current === requestGeneration;
+
+  const load = useCallback(() => {
+    const requestToken = tokenRef.current;
+    const requestGeneration = sessionGenerationRef.current;
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = null;
+    if (!requestToken) {
+      ++loadIdRef.current;
+      dataTagRef.current = null;
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    const loadId = ++loadIdRef.current;
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
-    fetch("/api/promo-purchase-commissions/my", { headers: { Authorization: authHeader } })
-      .then(r => r.json())
-      .then(d => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
-  };
+    fetch("/api/promo-purchase-commissions/my", {
+      headers: { Authorization: `Bearer ${requestToken}` },
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error(`Request failed (${response.status})`);
+        return response.json();
+      })
+      .then(d => {
+        if (loadId === loadIdRef.current && isCurrentSession(requestToken, requestGeneration)) {
+          dataTagRef.current = {
+            value: d as CommissionSummary,
+            token: requestToken,
+            generation: requestGeneration,
+          };
+          setData(d);
+        }
+      })
+      .catch(() => {
+        if (
+          loadId === loadIdRef.current &&
+          isCurrentSession(requestToken, requestGeneration) &&
+          !controller.signal.aborted
+        ) {
+          setData(null);
+        }
+      })
+      .finally(() => {
+        if (loadId === loadIdRef.current && mountedRef.current) setLoading(false);
+      });
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  const currentSession = {
+    token: tokenRef.current,
+    generation: sessionGenerationRef.current,
+  };
+  const taggedData = dataTagRef.current;
+  const displayData = matchesTaggedSession(taggedData, currentSession)
+    ? taggedData?.value ?? null
+    : null;
+
+  useEffect(() => {
+    withdrawAbortRef.current?.abort();
+    withdrawAbortRef.current = null;
+    setWithdrawing(false);
+    if (authLoading) return;
+    load();
+  }, [authLoading, token, load]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      loadAbortRef.current?.abort();
+      withdrawAbortRef.current?.abort();
+    };
+  }, []);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -65,21 +146,50 @@ export default function CommissionPromo() {
 
   /* ── Withdraw ── */
   const handleWithdraw = async () => {
-    if (!data || data.availableAmount <= 0 || withdrawing) return;
+    if (!displayData || displayData.availableAmount <= 0 || withdrawing) return;
+    const requestToken = tokenRef.current;
+    const requestGeneration = sessionGenerationRef.current;
+    const requestDataTag = dataTagRef.current;
+    if (!requestToken) return;
+    const requestId = ++withdrawIdRef.current;
+    const controller = new AbortController();
+    withdrawAbortRef.current = controller;
     setWithdrawing(true);
     try {
       const res = await fetch("/api/promo-purchase-commissions/withdraw", {
         method: "POST",
-        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${requestToken}`, "Content-Type": "application/json" },
+        signal: controller.signal,
       });
       const json = await res.json();
+      if (
+        !isCurrentSession(requestToken, requestGeneration) ||
+        !matchesTaggedSession(requestDataTag, {
+          token: tokenRef.current,
+          generation: sessionGenerationRef.current,
+        }) ||
+        requestId !== withdrawIdRef.current
+      ) {
+        return;
+      }
       if (!res.ok) { showToast(json.error || t("commissionPromo.withdrawError"), false); return; }
       showToast(t("commissionPromo.withdrawSuccess", { amount: json.withdrawn.toFixed(2) }), true);
       load();
     } catch {
-      showToast(t("commissionPromo.withdrawError"), false);
+      if (isCurrentSession(requestToken, requestGeneration) && !controller.signal.aborted) {
+        showToast(t("commissionPromo.withdrawError"), false);
+      }
     } finally {
-      setWithdrawing(false);
+      if (
+        isCurrentSession(requestToken, requestGeneration) &&
+        matchesTaggedSession(requestDataTag, {
+          token: tokenRef.current,
+          generation: sessionGenerationRef.current,
+        }) &&
+        requestId === withdrawIdRef.current
+      ) {
+        setWithdrawing(false);
+      }
     }
   };
 
@@ -112,7 +222,7 @@ export default function CommissionPromo() {
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
 
         {/* ─── Referral code card ─── */}
-        {(data?.referralCode || loading) && (
+        {(displayData?.referralCode || loading) && (
           <div className="bg-gradient-to-br from-slate-800 to-slate-700 rounded-2xl p-4 space-y-3 border border-slate-600">
             <div className="flex items-center gap-2">
               <Share2 size={16} className="text-orange-400" />
@@ -128,11 +238,11 @@ export default function CommissionPromo() {
                 {/* Code display */}
                 <div className="flex items-center gap-3 bg-slate-950 rounded-xl px-4 py-3">
                   <span className="flex-1 text-2xl font-black tracking-[0.15em] text-orange-400 font-mono">
-                    {data?.referralCode}
+                    {displayData?.referralCode}
                   </span>
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(data?.referralCode ?? "");
+                      navigator.clipboard.writeText(displayData?.referralCode ?? "");
                       showToast(t("commissionPromo.codeCopied"), true);
                     }}
                     className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
@@ -145,7 +255,7 @@ export default function CommissionPromo() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => {
-                      const msg = t("commissionPromo.shareMsg", { code: data?.referralCode ?? "" });
+                      const msg = t("commissionPromo.shareMsg", { code: displayData?.referralCode ?? "" });
                       navigator.clipboard.writeText(msg);
                       showToast(t("commissionPromo.linkCopied"), true);
                     }}
@@ -155,7 +265,7 @@ export default function CommissionPromo() {
                   </button>
                   <button
                     onClick={() => {
-                      const msg = t("commissionPromo.shareMsg", { code: data?.referralCode ?? "" });
+                      const msg = t("commissionPromo.shareMsg", { code: displayData?.referralCode ?? "" });
                       if (navigator.share) {
                         navigator.share({ text: msg }).catch(() => {});
                       } else {
@@ -180,7 +290,7 @@ export default function CommissionPromo() {
               <Users size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">{t("commissionPromo.statReferrals")}</span>
             </div>
-            <div className="text-3xl font-extrabold text-white">{loading ? "—" : (data?.totalReferrals ?? 0)}</div>
+            <div className="text-3xl font-extrabold text-white">{loading ? "—" : (displayData?.totalReferrals ?? 0)}</div>
             <p className="text-xs text-slate-500">{t("commissionPromo.statReferralsSub")}</p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 flex flex-col gap-2">
@@ -188,7 +298,7 @@ export default function CommissionPromo() {
               <ShoppingBag size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">{t("commissionPromo.statBuyers")}</span>
             </div>
-            <div className="text-3xl font-extrabold text-orange-400">{loading ? "—" : (data?.buyersWhoSpent ?? 0)}</div>
+            <div className="text-3xl font-extrabold text-orange-400">{loading ? "—" : (displayData?.buyersWhoSpent ?? 0)}</div>
             <p className="text-xs text-slate-500">{t("commissionPromo.statBuyersSub")}</p>
           </div>
         </div>
@@ -209,15 +319,15 @@ export default function CommissionPromo() {
                 </span>
               </div>
               <div className="text-4xl font-extrabold text-white mb-1">
-                ${(data?.pendingAmount ?? 0).toFixed(2)}
+                ${(displayData?.pendingAmount ?? 0).toFixed(2)}
               </div>
               <p className="text-sm text-white/75">
-                {t("commissionPromo.pendingCount", { count: data?.pendingCount ?? 0 })}
+                {t("commissionPromo.pendingCount", { count: displayData?.pendingCount ?? 0 })}
               </p>
               {/* Clear unlock date */}
               <div className="mt-4 bg-white/20 rounded-xl px-3 py-2 text-xs text-white/90">
                 🔒 {t("commissionPromo.pendingLockedUntil", {
-                  date: data?.currentMonth ? firstOfNextMonth(data.currentMonth) : "—",
+                  date: displayData?.currentMonth ? firstOfNextMonth(displayData.currentMonth) : "—",
                 })}
               </div>
             </div>
@@ -232,10 +342,10 @@ export default function CommissionPromo() {
                 </span>
               </div>
               <div className="text-4xl font-extrabold text-white mb-1">
-                ${(data?.availableAmount ?? 0).toFixed(2)}
+                ${(displayData?.availableAmount ?? 0).toFixed(2)}
               </div>
               <p className="text-sm text-white/75">
-                {t("commissionPromo.availableCount", { count: data?.availableCount ?? 0 })}
+                {t("commissionPromo.availableCount", { count: displayData?.availableCount ?? 0 })}
               </p>
 
               {/* FM card destination note */}
@@ -247,7 +357,7 @@ export default function CommissionPromo() {
               {/* Withdraw button */}
               <button
                 onClick={handleWithdraw}
-                disabled={(data?.availableAmount ?? 0) <= 0 || withdrawing}
+                disabled={(displayData?.availableAmount ?? 0) <= 0 || withdrawing}
                 className="mt-3 w-full bg-white text-emerald-800 font-bold py-3 rounded-xl text-sm transition-all hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {withdrawing ? (
@@ -256,7 +366,7 @@ export default function CommissionPromo() {
                   <>
                     <Wallet size={16} />
                     {t("commissionPromo.withdraw")}
-                    {(data?.availableAmount ?? 0) > 0 ? ` $${data!.availableAmount.toFixed(2)} → Kat FM` : ""}
+                    {(displayData?.availableAmount ?? 0) > 0 ? ` $${displayData!.availableAmount.toFixed(2)} → Kat FM` : ""}
                   </>
                 )}
               </button>
@@ -267,7 +377,7 @@ export default function CommissionPromo() {
               <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-2">
                 <TrendingUp size={14} /> {t("commissionPromo.history")}
               </h2>
-              {(data?.history ?? []).length === 0 ? (
+              {(displayData?.history ?? []).length === 0 ? (
                 <div className="text-center py-10 text-slate-500">
                   <div className="text-4xl mb-3">💸</div>
                   <p className="text-sm">{t("commissionPromo.noHistory")}</p>
@@ -275,7 +385,7 @@ export default function CommissionPromo() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {(data?.history ?? []).map(row => (
+                  {(displayData?.history ?? []).map(row => (
                     <div key={row.id} className="bg-slate-900 rounded-xl px-4 py-3 flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-white">

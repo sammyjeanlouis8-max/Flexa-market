@@ -1,7 +1,14 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import { useGetMe } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { setLanguage, SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/i18n";
+import {
+  matchesSession,
+  matchesTokenBoundRefetch,
+  silentlyRefreshToken,
+  type SessionIdentity,
+  type TokenBoundRefetch,
+} from "@/lib/authSession";
 
 type User = {
   id: number;
@@ -52,11 +59,13 @@ const TOKEN_COOKIE = "fm_token";
 const COOKIE_MAX_AGE = 365 * 24 * 3600; // 1 year in seconds
 
 function setCookieToken(token: string) {
-  document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax`;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${TOKEN_COOKIE}=${encodeURIComponent(token)}; path=/; max-age=${COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
 }
 
 function clearCookieToken() {
-  document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${TOKEN_COOKIE}=; path=/; max-age=0; SameSite=Lax${secure}`;
 }
 
 function getCookieToken(): string | null {
@@ -71,6 +80,24 @@ function getCookieToken(): string | null {
 // How long (ms) to wait for /auth/me before giving up and rendering the app
 // without a user — prevents infinite spinner on slow API cold starts.
 const AUTH_TIMEOUT_MS = 9_000;
+
+type AuthMeVerification = {
+  status: number | null;
+  data: unknown;
+};
+
+async function verifyTokenBoundAuthMe(token: string): Promise<AuthMeVerification> {
+  try {
+    const response = await fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json().catch(() => null);
+    return { status: response.status, data };
+  } catch {
+    // A network failure is not evidence that a session is invalid.
+    return { status: null, data: null };
+  }
+}
 
 type AuthContextType = {
   user: User | null;
@@ -104,7 +131,12 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => {
     const current = localStorage.getItem("flexamarket_token");
-    if (current) return current;
+    if (current) {
+      // Keep the cookie mirror current for browsers that clear storage after
+      // an external redirect (notably Safari).
+      setCookieToken(current);
+      return current;
+    }
     const legacy = localStorage.getItem("bazarhub_token");
     if (legacy) {
       localStorage.setItem("flexamarket_token", legacy);
@@ -135,8 +167,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authTimedOut, setAuthTimedOut] = useState(false);
 
   const queryClient = useQueryClient();
+  // These refs are the authoritative session identity. They are changed
+  // synchronously by setToken, before persistence or React state updates, so
+  // an old async response can never resurrect a replaced/logged-out session.
+  const tokenRef = useRef<string | null>(token);
+  const sessionGenerationRef = useRef(0);
+  const skipRefreshForRef = useRef<{ token: string; generation: number } | null>(null);
+  const refreshFlightRef = useRef<Promise<void> | null>(null);
+  const refetchRef = useRef<TokenBoundRefetch | null>(null);
+  const redirectingRef = useRef(false);
 
   const setToken = (t: string | null) => {
+    const nextGeneration = sessionGenerationRef.current + 1;
+    sessionGenerationRef.current = nextGeneration;
+    tokenRef.current = t;
     if (t) {
       localStorage.setItem("flexamarket_token", t);
       setCookieToken(t); // mirror into cookie for Safari ITP resilience
@@ -173,82 +217,211 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => setToken(null);
 
-  // ── Global 401 handler ─────────────────────────────────────────────────────
-  // Any page that calls apiFetch() and gets a 401 dispatches "auth:unauthorized".
-  // We listen here and redirect to login so the user never sees a broken screen.
-  useEffect(() => {
-    const handle = () => {
-      if (!token) return; // already logged out
-      localStorage.removeItem("flexamarket_token");
-      localStorage.removeItem(PASSWORD_UPGRADE_KEY);
-      clearCookieToken();
-      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-      const currentPath = window.location.pathname + window.location.search;
-      const isAuthPage = currentPath.includes("/auth/");
-      const nextParam = (!isAuthPage && currentPath !== "/" && currentPath !== (import.meta.env.BASE_URL ?? "/"))
-        ? `?next=${encodeURIComponent(currentPath)}`
-        : "";
-      window.location.replace(`${base}/auth/login${nextParam}`);
-    };
-    window.addEventListener("auth:unauthorized", handle);
-    return () => window.removeEventListener("auth:unauthorized", handle);
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Silent token refresh ────────────────────────────────────────────────────
-  // Decode JWT exp from base64 (no crypto needed in browser).
-  // If the token will expire within 60 days, exchange it for a fresh 365d one.
-  useEffect(() => {
-    if (!token) return;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const expiresAt = (payload.exp ?? 0) * 1000;
-      const msUntilExpiry = expiresAt - Date.now();
-      const sixtyDays = 60 * 24 * 60 * 60 * 1000;
-      if (msUntilExpiry > 0 && msUntilExpiry < sixtyDays) {
-        fetch("/api/auth/refresh", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then(r => r.ok ? r.json() : null)
-          .then(data => { if (data?.token) setToken(data.token); })
-          .catch(() => {});
+  // Rotate the token on startup and whenever a page resumes. Only transient
+  // network/server failures are non-destructive; definitive auth failures are
+  // handled for the current session generation below.
+  const redirectToLogin = () => {
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
+    logout();
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const currentPath = window.location.pathname + window.location.search;
+    const isAuthPage = currentPath.includes("/auth/");
+    const nextParam = (!isAuthPage && currentPath !== "/" && currentPath !== (import.meta.env.BASE_URL ?? "/"))
+      ? `?next=${encodeURIComponent(currentPath)}`
+      : "";
+    window.location.replace(`${base}/auth/login${nextParam}`);
+  };
+
+  const redirectToSuspended = () => {
+    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+    const suspendedPath = `${base}/auth/suspended`;
+    if (
+      window.location.pathname === suspendedPath ||
+      window.location.pathname.endsWith("/auth/suspended")
+    ) {
+      return;
+    }
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
+    window.location.replace(`${base}/auth/suspended`);
+  };
+
+  const isCurrentSession = (expectedToken: string, expectedGeneration: number) =>
+    matchesSession(
+      { token: tokenRef.current, generation: sessionGenerationRef.current },
+      { token: expectedToken, generation: expectedGeneration },
+    );
+
+  const refreshSilently = (expectedToken: string, expectedGeneration: number, revalidate: boolean) => {
+    const flight = silentlyRefreshToken(expectedToken).then(async result => {
+      if (!isCurrentSession(expectedToken, expectedGeneration)) return;
+
+      if (result.kind === "invalid") {
+        redirectToLogin();
+        return;
       }
-    } catch { /* malformed token — ignore */ }
+      if (result.kind === "suspended") {
+        redirectToSuspended();
+        return;
+      }
+      if (result.kind === "unavailable") {
+        redirectToLogin();
+        return;
+      }
+
+      // A pageshow/visibility resume must verify the current token too. For a
+      // successful rotation, verify the old token before installing its
+      // replacement; this keeps the generated query and the response bound to
+      // one session identity and avoids refetching an old query after rotation.
+      if (revalidate) {
+        const expectedSession: SessionIdentity = {
+          token: expectedToken,
+          generation: expectedGeneration,
+        };
+        const boundRefetch = refetchRef.current;
+        const verification = matchesTokenBoundRefetch(boundRefetch, expectedSession)
+          ? await boundRefetch.refetch().catch(() => null)
+          : await verifyTokenBoundAuthMe(expectedToken);
+        if (!isCurrentSession(expectedToken, expectedGeneration)) return;
+        const verificationError = (verification as any)?.error;
+        const verificationStatus = verificationError?.status ?? (verification as AuthMeVerification | null)?.status;
+        const verificationData = verificationError?.data ?? (verification as AuthMeVerification | null)?.data;
+        if (verificationStatus === 401) {
+          redirectToLogin();
+          return;
+        }
+        if (verificationStatus === 403 && (verificationData as any)?.suspended) {
+          redirectToSuspended();
+          return;
+        }
+        if (verificationStatus === 403) {
+          redirectToLogin();
+          return;
+        }
+      }
+
+      if (result.kind === "success") {
+        // setToken increments the generation synchronously. Mark the next
+        // token as already refreshed so the token-key effect does not rotate
+        // it again immediately.
+        const nextGeneration = sessionGenerationRef.current + 1;
+        skipRefreshForRef.current = { token: result.token, generation: nextGeneration };
+        setToken(result.token);
+      }
+      // Only transient network/5xx errors are intentionally non-destructive.
+    });
+    return flight;
+  };
+
+  useEffect(() => {
+    if (!token || window.location.pathname.endsWith("/auth/suspended")) return;
+    const generation = sessionGenerationRef.current;
+    if (
+      skipRefreshForRef.current?.token === token &&
+      skipRefreshForRef.current?.generation === generation
+    ) {
+      skipRefreshForRef.current = null;
+      return;
+    }
+    void refreshSilently(token, generation, false);
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data: user, isLoading: queryIsLoading, isError, error, refetch } = useGetMe({
-    query: { enabled: !!token, retry: 0, queryKey: ["getMe", token] },
+  useEffect(() => {
+    const resume = () => {
+      const currentToken = tokenRef.current;
+      if (
+        !currentToken ||
+        window.location.pathname.endsWith("/auth/suspended") ||
+        refreshFlightRef.current
+      ) return;
+      const generation = sessionGenerationRef.current;
+      const flight = refreshSilently(currentToken, generation, true);
+      refreshFlightRef.current = flight;
+      void flight.finally(() => {
+        if (refreshFlightRef.current === flight) refreshFlightRef.current = null;
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") resume();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capture the token in the request itself as well as in the query key. This
+  // prevents a delayed request for an old token from being sent with a newly
+  // rotated localStorage token.
+  const authQueryToken = token;
+  const authQueryGeneration = sessionGenerationRef.current;
+  const {
+    data: user,
+    isLoading: queryIsLoading,
+    isError,
+    error,
+    refetch,
+    queryKey: authQueryKey,
+  } = useGetMe({
+    query: {
+      enabled: !!authQueryToken,
+      retry: 0,
+      queryKey: ["getMe", authQueryToken, authQueryGeneration],
+    },
+    request: authQueryToken
+      ? { headers: { Authorization: `Bearer ${authQueryToken}` } }
+      : undefined,
   });
+  refetchRef.current = authQueryToken
+    ? {
+        token: authQueryToken,
+        generation: authQueryGeneration,
+        refetch: refetch as unknown as () => Promise<unknown>,
+      }
+    : null;
 
   // When /auth/me returns 401 the stored token is no longer valid (banned account,
   // invalidated session, etc.).  Clear it immediately and redirect to login so the
   // user can sign in with a different account instead of being stuck on a broken state.
+  const currentAuthQueryToken =
+    typeof authQueryKey?.[1] === "string" ? authQueryKey[1] : null;
+  const currentAuthQueryGeneration =
+    typeof authQueryKey?.[2] === "number" ? authQueryKey[2] : null;
   useEffect(() => {
-    if (!isError || !token) return;
+    // This check must use the authoritative synchronous refs, not only the
+    // committed React state captured by this effect. An old committed effect
+    // can run after a logout/login transition.
+    if (
+      !isError ||
+      !token ||
+      currentAuthQueryToken !== token ||
+      currentAuthQueryGeneration !== authQueryGeneration ||
+      !isCurrentSession(currentAuthQueryToken, currentAuthQueryGeneration ?? -1)
+    ) return;
     const status = (error as any)?.status;
     const data = (error as any)?.data;
     if (status === 403 && data?.suspended) {
       // Banned account — redirect to suspended screen without clearing token
       // (token stays so the suspended page doesn't need a re-login).
-      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-      window.location.replace(`${base}/auth/suspended`);
+      redirectToSuspended();
     } else if (status === 401) {
       // Remove the invalid token first so the redirect boots with a clean slate.
-      localStorage.removeItem("flexamarket_token");
-      localStorage.removeItem(PASSWORD_UPGRADE_KEY);
-      localStorage.removeItem(LANG_MODAL_DISMISSED_KEY);
-      clearCookieToken();
-      const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
       // Preserve the current page as ?next= so the user lands back here after
       // logging in — critical when Safari drops the session after a Stripe redirect.
-      const currentPath = window.location.pathname + window.location.search;
-      const isAuthPage = currentPath.includes("/auth/");
-      const nextParam = (!isAuthPage && currentPath !== "/" && currentPath !== (import.meta.env.BASE_URL ?? "/"))
-        ? `?next=${encodeURIComponent(currentPath)}`
-        : "";
-      window.location.replace(`${base}/auth/login${nextParam}`);
+      redirectToLogin();
     }
-  }, [isError, error]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    isError,
+    error,
+    token,
+    currentAuthQueryToken,
+    currentAuthQueryGeneration,
+    authQueryGeneration,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start auth timeout whenever a token-gated fetch is in-flight.
   useEffect(() => {

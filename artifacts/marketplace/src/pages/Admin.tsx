@@ -49,7 +49,6 @@ async function adminFetch(path: string, method = "POST", body?: object) {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    if (res.status === 401) window.dispatchEvent(new CustomEvent("auth:unauthorized"));
     const d = await res.json().catch(() => ({}));
     throw new Error(d.error ?? "Request failed");
   }

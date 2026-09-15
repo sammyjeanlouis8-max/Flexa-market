@@ -38,7 +38,7 @@ export default function Login() {
   const onSubmit = (values: z.infer<typeof schema>) => {
     login.mutate({ data: values }, {
       onSuccess: (res: any) => {
-        setToken(res.token);
+        setToken(res.token, res.user);
         setRequiresPasswordUpgrade(!!res.requiresPasswordUpgrade);
         // Return to the page the user was on before the session expired
         // (e.g. /wallet?card_success=1 after a Stripe redirect on iOS Safari).

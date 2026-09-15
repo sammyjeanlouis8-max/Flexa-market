@@ -102,7 +102,7 @@ async function verifyTokenBoundAuthMe(token: string): Promise<AuthMeVerification
 type AuthContextType = {
   user: User | null;
   token: string | null;
-  setToken: (token: string | null) => void;
+  setToken: (token: string | null, user?: User | null) => void;
   logout: () => void;
   refreshUser: () => void;
   isLoading: boolean;
@@ -154,6 +154,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
+  // A successful login already returns the user. Keep that value available
+  // immediately instead of briefly rendering the guest UI while /auth/me runs.
+  const [loginUser, setLoginUser] = useState<User | null>(null);
 
   const [requiresPasswordUpgrade, setRequiresPasswordUpgradeState] = useState<boolean>(() => {
     return localStorage.getItem(PASSWORD_UPGRADE_KEY) === "true";
@@ -177,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refetchRef = useRef<TokenBoundRefetch | null>(null);
   const redirectingRef = useRef(false);
 
-  const setToken = (t: string | null) => {
+  const setToken = (t: string | null, nextUser?: User | null) => {
     const nextGeneration = sessionGenerationRef.current + 1;
     sessionGenerationRef.current = nextGeneration;
     tokenRef.current = t;
@@ -186,6 +189,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // turn a successful login into an immediately logged-out UI.
     setTokenState(t);
     setAuthTimedOut(false);
+    if (!t) setLoginUser(null);
+    else if (nextUser) setLoginUser(nextUser);
 
     if (t) {
       try {
@@ -452,6 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Log when user data arrives or errors out.
   useEffect(() => {
     if (user) {
+      setLoginUser(user as User);
       console.log("[Auth] User loaded:", (user as User).email);
     }
   }, [user]);
@@ -495,7 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user: user as User | null ?? null,
+      user: (user as User | null) ?? loginUser,
       token,
       setToken,
       logout,

@@ -1341,7 +1341,9 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
         .from(listingsTable)
         .where(eq(listingsTable.id, id))
         .for("update");
-      if (!existing) return { status: 404 as const, error: "Not found" };
+      // DELETE is idempotent. Retried admin actions and stale cached detail
+      // pages should succeed when the listing is already gone.
+      if (!existing) return { status: 200 as const, alreadyMissing: true };
 
       const isOwner = existing.sellerId === req.userId;
       const isScopedModerator =

@@ -1563,7 +1563,12 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
   const id = parseInt(req.params.id, 10);
   const { reason } = req.body as { reason?: string };
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
-  if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  // Rejection is idempotent. A stale admin detail/queue can outlive a
+  // concurrent permanent deletion; the requested end state is already true.
+  if (!listing) {
+    res.json({ message: "Listing already removed", alreadyMissing: true });
+    return;
+  }
   const scopeErr = assertListingInScope(req.user!, listing);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
   const wasApproved = listing.moderationStatus === "approved";

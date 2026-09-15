@@ -84,7 +84,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeConnectError"));
+      if (!res.ok || !data.url) throw new Error(t("settings.stripeConnectError"));
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
@@ -105,7 +105,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeDashboardError"));
+      if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
@@ -456,7 +456,7 @@ function HaitiPayoutPanel() {
     try {
       const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeConnectError"));
+      if (!res.ok || !data.url) throw new Error(t("settings.stripeConnectError"));
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
@@ -474,7 +474,7 @@ function HaitiPayoutPanel() {
     try {
       const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeDashboardError"));
+      if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));

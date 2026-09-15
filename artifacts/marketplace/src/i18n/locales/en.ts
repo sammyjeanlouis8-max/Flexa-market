@@ -1052,6 +1052,8 @@ export default {
     stripeCompleteBtn: "Complete Stripe Setup",
     stripeDashboard: "Stripe Dashboard",
     stripeConnectError: "We couldn't open Stripe setup. Please try again.",
+    stripeExternalBrowserCopied: "For Stripe to work on your phone, the link was copied. Close this page, open Safari or Chrome, and paste the link into the address bar. If it expires, return and tap the button again.",
+    stripeExternalBrowserPrompt: "Copy this Stripe link and open it in Safari or Chrome:",
     stripePlatformProfileRequired: "Stripe Connect is not fully activated on the platform. The platform administrator must confirm loss responsibility in the Stripe Connect profile.",
     stripeDashboardError: "We couldn't open the Stripe dashboard. Please try again.",
     stripeSessionExpired: "Your session expired. Sign in again to continue.",

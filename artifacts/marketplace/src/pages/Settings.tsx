@@ -37,6 +37,29 @@ import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
 
+async function handOffStripeUrlToBrowser(url: string, promptText: string): Promise<boolean> {
+  const nativeBridge = (window as typeof window & {
+    ReactNativeWebView?: { postMessage(message: string): void };
+  }).ReactNativeWebView;
+  if (!nativeBridge) return false;
+
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    const input = document.createElement("textarea");
+    input.value = url;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    const copied = document.execCommand("copy");
+    input.remove();
+    if (!copied) window.prompt(promptText, url);
+  }
+  return true;
+}
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface PayoutAccount {
   id: number;
@@ -59,6 +82,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   const { t } = useTranslation();
   const { token } = useAuth();
 
@@ -77,6 +101,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
       return;
     }
     setActionError(null);
+    setActionNotice(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/onboard", {
@@ -91,6 +116,10 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
             : t("settings.stripeConnectError"),
         );
       }
+      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
+        setActionNotice(t("settings.stripeExternalBrowserCopied"));
+        return;
+      }
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
@@ -104,6 +133,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
       return;
     }
     setActionError(null);
+    setActionNotice(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/dashboard", {
@@ -112,6 +142,10 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
       });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
+      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
+        setActionNotice(t("settings.stripeExternalBrowserCopied"));
+        return;
+      }
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
@@ -190,6 +224,11 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
           <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
             {actionError}
+          </p>
+        )}
+        {actionNotice && (
+          <p role="status" className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+            {actionNotice}
           </p>
         )}
         <TrustFooter />
@@ -420,6 +459,7 @@ function HaitiPayoutPanel() {
   const [stripeLoading, setStripeLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -458,6 +498,7 @@ function HaitiPayoutPanel() {
       return;
     }
     setActionError(null);
+    setActionNotice(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
@@ -468,6 +509,10 @@ function HaitiPayoutPanel() {
             ? t("settings.stripePlatformProfileRequired")
             : t("settings.stripeConnectError"),
         );
+      }
+      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
+        setActionNotice(t("settings.stripeExternalBrowserCopied"));
+        return;
       }
       window.location.assign(data.url);
     } catch (error) {
@@ -482,11 +527,16 @@ function HaitiPayoutPanel() {
       return;
     }
     setActionError(null);
+    setActionNotice(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
+      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
+        setActionNotice(t("settings.stripeExternalBrowserCopied"));
+        return;
+      }
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
@@ -533,6 +583,11 @@ function HaitiPayoutPanel() {
               <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
                 <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                 {actionError}
+              </p>
+            )}
+            {actionNotice && (
+              <p role="status" className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                {actionNotice}
               </p>
             )}
           </div>

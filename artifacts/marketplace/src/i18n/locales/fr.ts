@@ -1056,6 +1056,8 @@ export default {
     stripeCompleteBtn: "Compléter la configuration Stripe",
     stripeDashboard: "Tableau de bord Stripe",
     stripeConnectError: "Impossible d'ouvrir la configuration Stripe. Veuillez réessayer.",
+    stripeExternalBrowserCopied: "Pour que Stripe fonctionne sur votre téléphone, le lien a été copié. Fermez cette page, ouvrez Safari ou Chrome, puis collez le lien dans la barre d’adresse. S’il expire, revenez et appuyez de nouveau sur le bouton.",
+    stripeExternalBrowserPrompt: "Copiez ce lien Stripe et ouvrez-le dans Safari ou Chrome :",
     stripePlatformProfileRequired: "Stripe Connect n'est pas encore entièrement activé sur la plateforme. L'administrateur doit confirmer la responsabilité des pertes dans le profil Stripe Connect.",
     stripeDashboardError: "Impossible d'ouvrir le tableau de bord Stripe. Veuillez réessayer.",
     stripeSessionExpired: "Votre session a expiré. Reconnectez-vous pour continuer.",

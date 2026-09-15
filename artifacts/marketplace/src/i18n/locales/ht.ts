@@ -1052,6 +1052,8 @@ export default {
     stripeCompleteBtn: "Konplete Konfigirasyon Stripe",
     stripeDashboard: "Tablo Stripe",
     stripeConnectError: "Nou pa t kapab ouvri konfigirasyon Stripe la. Eseye ankò.",
+    stripeExternalBrowserCopied: "Pou Stripe ka mache sou telefòn ou, lyen an kopye. Fèmen paj sa a, louvri Safari oswa Chrome, epi kole lyen an nan ba adrès la. Si lyen an ekspire, retounen epi peze bouton an ankò.",
+    stripeExternalBrowserPrompt: "Kopye lyen Stripe sa a epi louvri li nan Safari oswa Chrome:",
     stripePlatformProfileRequired: "Stripe Connect poko aktive nèt sou platfòm nan. Administratè platfòm lan dwe valide responsablite pou pèt yo nan pwofil Stripe Connect la.",
     stripeDashboardError: "Nou pa t kapab ouvri tablo Stripe la. Eseye ankò.",
     stripeSessionExpired: "Sesyon ou fini. Konekte ankò pou kontinye.",

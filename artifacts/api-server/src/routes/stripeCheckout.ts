@@ -6,7 +6,7 @@ import { sendEmail } from "../lib/email";
 import { orderPlacedBuyerEmail, orderSoldSellerEmail } from "../lib/emailTemplates";
 import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, handleSubscriptionDeleted, handleSubscriptionPaymentFailed, handleSubscriptionUpdated } from "./subscription";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
-import { payReferralBonusIfEligible, applyRechargeCredits } from "./wallet";
+import { payReferralBonusIfEligible, applyRechargeCredits, getRechargeFeeRate } from "./wallet";
 import { quoteForListing } from "../lib/commission";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
@@ -1028,6 +1028,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     const paymentRef = meta.paymentRef;
     const userId = meta.userId ? Number(meta.userId) : null;
     const amountUsd = session.amount_total ? session.amount_total / 100 : null;
+    const metadataFeeRate = Number(meta.rechargeFeePct);
+    const feeRateSnapshot = Number.isFinite(metadataFeeRate) && metadataFeeRate >= 0 && metadataFeeRate <= 0.99
+      ? metadataFeeRate
+      : null;
 
     if (!paymentRef || !userId || !amountUsd) {
       logger.warn({ meta, sessionId }, "Wallet recharge session missing metadata");
@@ -1046,8 +1050,49 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
           eq(walletTransactionsTable.status, "pending"),
         ))
         .returning();
-      if (!updated) return null;
-      const credits = await applyRechargeCredits(userId, amountUsd, paymentRef, tx);
+      let credits: Awaited<ReturnType<typeof applyRechargeCredits>> | null = null;
+      if (updated) {
+        credits = await applyRechargeCredits(userId, amountUsd, paymentRef, tx, feeRateSnapshot ?? undefined);
+      } else {
+        // A paid session may have been credited by the wallet auto/admin retry
+        // before this shared completion handler ran. Confirm that exact recharge
+        // is already completed, then repair only the missing finance audit row.
+        const [completedRecharge] = await tx.select({ id: walletTransactionsTable.id })
+          .from(walletTransactionsTable)
+          .where(and(
+            eq(walletTransactionsTable.paymentRef, paymentRef),
+            eq(walletTransactionsTable.type, "recharge"),
+            eq(walletTransactionsTable.status, "completed"),
+          ));
+        if (!completedRecharge) return null;
+      }
+
+      const [feeRow] = await tx.select({
+        total: sql<number>`coalesce(sum(abs(${walletTransactionsTable.amountUsd})), 0)::float`,
+      }).from(walletTransactionsTable).where(and(
+        inArray(walletTransactionsTable.paymentRef, [paymentRef, `${paymentRef}:fee`, `${paymentRef}:credit`]),
+        eq(walletTransactionsTable.type, "recharge_fee"),
+        eq(walletTransactionsTable.status, "completed"),
+      ));
+      let recordedFeeUsd = credits?.feeUsd ?? Number(feeRow?.total ?? 0);
+      if (!credits && recordedFeeUsd === 0) {
+        // Legacy auto/admin retry credited the net wallet amount before its fee
+        // ledger insert collided with the parent paymentRef. Rebuild that
+        // accounting row only; never credit or debit the wallet here.
+        const historicalFeeRate = feeRateSnapshot ?? await getRechargeFeeRate();
+        recordedFeeUsd = parseFloat((amountUsd * historicalFeeRate).toFixed(2));
+        if (recordedFeeUsd > 0) {
+          await tx.insert(walletTransactionsTable).values({
+            userId,
+            type: "recharge_fee",
+            amountUsd: -recordedFeeUsd,
+            status: "completed",
+            paymentRef: `${paymentRef}:fee`,
+            note: `Frè rechaj istorik ${(historicalFeeRate * 100).toFixed(1)}% — rekonsilye ak Stripe ${sessionId}`,
+          }).onConflictDoNothing();
+        }
+      }
+
       await tx.insert(transactionsTable).values({
         userId,
         type: "wallet_recharge",
@@ -1063,10 +1108,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
         stripeVerifiedCurrency: (session.currency ?? "usd").toUpperCase(),
         stripeVerifiedAt: new Date(),
-        commissionAmount: credits.feeUsd,
+        commissionAmount: recordedFeeUsd,
         description: `FM Card recharge via Stripe (${paymentRef})`,
       }).onConflictDoNothing();
-      return credits;
+      return { credits, creditedNow: Boolean(updated) };
     });
 
     if (!rechargeResult) {
@@ -1074,15 +1119,15 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       return;
     }
 
-    // Pay $1 referral bonus to referrer (+ $1 to new user, handled inside)
-    await payReferralBonusIfEligible(userId, amountUsd);
-
-    // Notify user that their wallet was credited
-    await db.insert(notificationsTable).values({
-      userId, actorId: userId, type: "wallet_recharged",
-    }).catch(() => {});
-
-    logger.info({ userId, amountUsd, paymentRef, sessionId }, "Wallet card recharge completed");
+    if (rechargeResult.creditedNow) {
+      await payReferralBonusIfEligible(userId, amountUsd);
+      await db.insert(notificationsTable).values({
+        userId, actorId: userId, type: "wallet_recharged",
+      }).catch(() => {});
+      logger.info({ userId, amountUsd, paymentRef, sessionId }, "Wallet card recharge completed");
+    } else {
+      logger.info({ userId, amountUsd, paymentRef, sessionId }, "Wallet recharge finance audit repaired");
+    }
     return;
   }
 

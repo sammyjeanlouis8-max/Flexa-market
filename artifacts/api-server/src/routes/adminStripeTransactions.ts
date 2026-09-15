@@ -5,6 +5,7 @@ import {
   stripeRefundLedgerTable,
   transactionsTable,
   usersTable,
+  walletTransactionsTable,
 } from "@workspace/db";
 import {
   and,
@@ -336,6 +337,42 @@ async function reconcileVisibleRowsWithStripe(where: any): Promise<void> {
   }
 }
 
+async function reconcileRecentWalletRecharges(): Promise<void> {
+  const recharges = await db.select({
+    id: walletTransactionsTable.id,
+    note: walletTransactionsTable.note,
+  }).from(walletTransactionsTable)
+    .where(and(
+      eq(walletTransactionsTable.type, "recharge"),
+      inArray(walletTransactionsTable.status, ["pending", "completed"]),
+      ilike(walletTransactionsTable.note, "%session:cs_%"),
+    ))
+    .orderBy(desc(walletTransactionsTable.createdAt))
+    .limit(100);
+
+  if (!recharges.length) return;
+  const stripe = await getStripeClient();
+  const { handleCheckoutCompleted } = await import("./stripeCheckout");
+
+  for (const recharge of recharges) {
+    const sessionId = recharge.note?.match(/session:(cs_[A-Za-z0-9_]+)/)?.[1];
+    if (!sessionId) continue;
+    const [existingAudit] = await db.select({ id: transactionsTable.id })
+      .from(transactionsTable)
+      .where(eq(transactionsTable.stripeCheckoutSessionId, sessionId));
+    if (existingAudit) continue;
+
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status === "paid" && session.metadata?.type === "wallet_recharge") {
+        await handleCheckoutCompleted(session);
+      }
+    } catch {
+      // Keep the finance page available; a later refresh can retry reconciliation.
+    }
+  }
+}
+
 function summary(tx: typeof transactionsTable.$inferSelect, buyer: any, seller: any, listing: any, refundedCents: number) {
   const grossCents = verifiedStripeCents(tx);
   const localExpectedCents = originalLocalCents(tx);
@@ -433,6 +470,7 @@ router.get("/admin/stripe-transactions", requireSuperAdmin, async (req, res): Pr
       res.status(400).json({ error: "page must be >= 1 and limit must be between 1 and 100" });
       return;
     }
+    await reconcileRecentWalletRecharges();
     await reconcileVisibleRowsWithStripe(listWhere(query, false));
     const where = listWhere(query);
     const originalCentsExpr = sql<number>`ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100)`;

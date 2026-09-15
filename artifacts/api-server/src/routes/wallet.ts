@@ -53,6 +53,10 @@ export async function getDynamicFeeRate(key: string, defaultRate: number): Promi
     return defaultRate;
   }
 }
+
+export async function getRechargeFeeRate(): Promise<number> {
+  return getDynamicFeeRate("recharge_fee_pct", RECHARGE_FEE_PCT);
+}
 /** Minimum real balance reserved BEFORE first recharge — $0 (new users not yet constrained) */
 export const MIN_REAL_BALANCE_USD = 0;
 /** Minimum balance that must ALWAYS remain after the user has made their first recharge */
@@ -200,6 +204,7 @@ export async function applyRechargeCredits(
   grossAmountUsd: number,
   paymentRef?: string | null,
   database: any = db,
+  feeRateOverride?: number,
 ): Promise<{ netUsd: number; feeUsd: number; isFirstRecharge: boolean }> {
   let [wallet] = await database.select().from(promoWalletTable).where(eq(promoWalletTable.userId, userId));
   if (!wallet) {
@@ -207,7 +212,11 @@ export async function applyRechargeCredits(
   }
   const isFirstRecharge = !wallet.firstRechargeDone;
 
-  const rechargeFeePct = await getDynamicFeeRate("recharge_fee_pct", RECHARGE_FEE_PCT);
+  const rechargeFeePct = Number.isFinite(feeRateOverride)
+    && feeRateOverride! >= 0
+    && feeRateOverride! <= 0.99
+    ? feeRateOverride!
+    : await getRechargeFeeRate();
   const feeUsd = parseFloat((grossAmountUsd * rechargeFeePct).toFixed(2));
   const netUsd = parseFloat((grossAmountUsd - feeUsd).toFixed(2));
 
@@ -230,7 +239,9 @@ export async function applyRechargeCredits(
       type: "recharge_fee",
       amountUsd: -feeUsd,
       status: "completed",
-      paymentRef: paymentRef ?? undefined,
+      // The parent recharge already owns paymentRef, which is unique. Give the
+      // fee a deterministic child reference so retries cannot duplicate it.
+      paymentRef: paymentRef ? `${paymentRef}:fee` : undefined,
       note: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — rechaj brut $${grossAmountUsd.toFixed(2)}`,
     });
     await database.insert(notificationsTable).values({
@@ -1212,6 +1223,7 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
   }
 
   const paymentRef = `WLT-CARD-${req.userId}-${Date.now()}`;
+  const rechargeFeePct = await getRechargeFeeRate();
 
   // Create pending transaction first (for idempotency)
   const [tx] = await db.insert(walletTransactionsTable).values({
@@ -1248,6 +1260,7 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
       userId: String(req.userId!),
       paymentRef,
       txId: String(tx.id),
+      rechargeFeePct: String(rechargeFeePct),
     },
     // complete-redirect credits wallet server-side before the browser arrives
     success_url: `${baseUrl}/api/stripe/checkout/complete-redirect?session_id={CHECKOUT_SESSION_ID}`,
@@ -1256,7 +1269,7 @@ router.post("/wallet/topup/card/session", requireAuth, async (req, res): Promise
 
   // Back-fill the session ID into the note so the admin retry endpoint can find it later
   await db.update(walletTransactionsTable)
-    .set({ note: `Card (Stripe) | session:${session.id}` })
+    .set({ note: `Card (Stripe) | session:${session.id} | feePct:${rechargeFeePct}` })
     .where(eq(walletTransactionsTable.id, tx.id));
 
   logger.info({ userId: req.userId, paymentRef, amountUsd, sessionId: session.id }, "Wallet card topup session created");
@@ -1312,18 +1325,15 @@ router.get("/wallet/stripe/auto-retry", requireAuth, async (req: any, res): Prom
         const session = await stripe.checkout.sessions.retrieve(sessionId);
         if (session.payment_status !== "paid") continue;
 
-        // Idempotency gate — only credit if the row is still "pending"
-        const [updated] = await db.update(walletTransactionsTable)
-          .set({ status: "completed", note: `Card (Stripe) | session:${sessionId} | auto-retry` })
-          .where(and(
-            eq(walletTransactionsTable.paymentRef, tx.paymentRef!),
-            eq(walletTransactionsTable.status, "pending"),
-          ))
-          .returning();
-
-        if (updated) {
-          await applyRechargeCredits(userId, tx.amountUsd, tx.paymentRef ?? undefined);
-          logger.info({ userId, paymentRef: tx.paymentRef, sessionId, amountUsd: tx.amountUsd }, "stripe/auto-retry: credited");
+        // Use the same atomic completion path as the webhook/redirect so wallet
+        // credit and the finance audit transaction can never diverge.
+        const { handleCheckoutCompleted } = await import("./stripeCheckout");
+        await handleCheckoutCompleted(session);
+        const [completed] = await db.select({ status: walletTransactionsTable.status })
+          .from(walletTransactionsTable)
+          .where(eq(walletTransactionsTable.id, tx.id));
+        if (completed?.status === "completed") {
+          logger.info({ userId, paymentRef: tx.paymentRef, sessionId, amountUsd: tx.amountUsd }, "stripe/auto-retry: credited and audited");
           credited++;
         }
       } catch { /* session lookup failed — will retry next load */ }
@@ -1513,18 +1523,14 @@ router.post("/wallet/admin/stripe-retry", requireFinanceAdmin, async (req: any, 
         continue;
       }
 
-      // Idempotency gate — only credit if still pending
-      const [updated] = await db.update(walletTransactionsTable)
-        .set({ status: "completed", note: `Card (Stripe) | session:${sessionId} | admin-retry` })
-        .where(and(
-          eq(walletTransactionsTable.paymentRef, tx.paymentRef!),
-          eq(walletTransactionsTable.status, "pending"),
-        ))
-        .returning();
+      const { handleCheckoutCompleted } = await import("./stripeCheckout");
+      await handleCheckoutCompleted(session);
+      const [completed] = await db.select({ status: walletTransactionsTable.status })
+        .from(walletTransactionsTable)
+        .where(eq(walletTransactionsTable.id, tx.id));
 
-      if (updated) {
-        await applyRechargeCredits(userId, tx.amountUsd, tx.paymentRef ?? undefined);
-        logger.info({ userId, paymentRef: tx.paymentRef, sessionId, amountUsd: tx.amountUsd }, "Admin stripe-retry: wallet credited");
+      if (completed?.status === "completed") {
+        logger.info({ userId, paymentRef: tx.paymentRef, sessionId, amountUsd: tx.amountUsd }, "Admin stripe-retry: wallet credited and audited");
         results.push({ paymentRef: tx.paymentRef, sessionId, status: "credited", amountUsd: tx.amountUsd });
       } else {
         results.push({ paymentRef: tx.paymentRef, sessionId, status: "already_processed" });

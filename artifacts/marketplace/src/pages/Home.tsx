@@ -69,10 +69,9 @@ type NormalListing = {
   nearYou?: boolean;
 };
 
-// ─── VideoPromoSection ────────────────────────────────────────────────────────
-// Horizontal scroll carousel of active boosted promo videos on the homepage.
-// Fetches /api/videos/feed?page=1&limit=6 and refreshes every 2 min so newly
-// activated boosts appear without a reload.
+// ─── Video promo grid items ───────────────────────────────────────────────────
+// Active boosted videos participate in the same continuous grid as products so
+// they never reserve a separate row or leave product-sized holes beside them.
 
 interface PromoVideoItem {
   id: number;
@@ -86,7 +85,6 @@ interface PromoVideoItem {
 function VideoPromoSection() {
   const { t } = useTranslation();
   const { token } = useAuth();
-  const [, setLocation] = useLocation();
   const [videos, setVideos] = useState<PromoVideoItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -115,54 +113,23 @@ function VideoPromoSection() {
 
   if (loading) {
     return (
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <Video className="h-4 w-4 text-primary" />
-          <h2 className="text-base font-bold text-foreground">{t("home.videoPromo", { defaultValue: "Video Promo" })}</h2>
-        </div>
-        <div className="flex gap-3 overflow-x-hidden -mx-4 px-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex-shrink-0 w-36 h-52 bg-muted rounded-xl animate-pulse" />
-          ))}
-        </div>
-      </section>
+      <Skeleton className="h-full min-h-[360px] w-full rounded-2xl md:min-h-[420px]" />
     );
   }
 
   if (videos.length === 0) return null;
 
   return (
-    <section>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-1.5">
-          <Video className="h-4 w-4 text-primary" />
-          <h2 className="text-base font-bold text-foreground">{t("home.videoPromo", { defaultValue: "Video Promo" })}</h2>
-          <span className="inline-flex items-center gap-1 bg-primary/10 text-primary text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse inline-block" />
-            LIVE
-          </span>
-        </div>
-        <button
-          onClick={() => setLocation("/videos")}
-          className="flex items-center gap-0.5 text-xs text-primary font-semibold"
-          data-testid="button-video-promo-see-all"
+    <>
+      {videos.map(v => (
+        <Link
+          key={`promo-video-${v.id}`}
+          href={`/videos?video=${v.id}`}
+          className="group relative block h-full min-h-[360px] w-full overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.015] active:scale-[0.98] md:min-h-[420px]"
+          style={{ textDecoration: "none" }}
+          data-testid={`button-promo-video-${v.id}`}
+          data-promax-group="video_promo"
         >
-          {t("buttons.seeAll", { defaultValue: "See All" })} <ChevronRight className="h-3 w-3" />
-        </button>
-      </div>
-
-      <div
-        className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-3 -mx-4 px-4 scrollbar-none"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        {videos.map(v => (
-          <Link
-            key={v.id}
-            href={`/videos?video=${v.id}`}
-            className="group relative block h-60 w-40 flex-shrink-0 snap-start scroll-mx-4 overflow-hidden rounded-2xl bg-black shadow-lg transition-transform duration-300 hover:scale-[1.025] active:scale-[0.98] sm:h-64 sm:w-44"
-            style={{ textDecoration: "none" }}
-            data-testid={`button-promo-video-${v.id}`}
-          >
             <PromoVideoPoster
               videoUrl={v.videoUrl}
               thumbnailUrl={v.thumbnailUrl}
@@ -181,7 +148,11 @@ function VideoPromoSection() {
             </div>
 
             {/* Sponsored badge */}
-            <div className="absolute top-2 left-2">
+            <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-primary/80 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
+                <Video className="h-3 w-3" />
+                {t("home.videoPromo", { defaultValue: "Video Promo" })}
+              </span>
               <span className="rounded-full border border-white/25 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white backdrop-blur-md">
                 {t("boostAd.sponsored", { defaultValue: "Sponsored" })}
               </span>
@@ -194,25 +165,9 @@ function VideoPromoSection() {
               )}
               <p className="line-clamp-2 text-sm font-black leading-tight text-white">{v.title}</p>
             </div>
-          </Link>
-        ))}
-
-        {/* "See all" card at end */}
-        <Link
-          href="/videos"
-          className="flex h-60 w-40 flex-shrink-0 snap-start flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 transition-transform active:scale-95 sm:h-64 sm:w-44"
-          style={{ textDecoration: "none" }}
-          data-testid="button-video-promo-all"
-        >
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Play className="h-5 w-5 text-primary fill-primary ml-0.5" />
-          </div>
-          <p className="text-xs font-semibold text-primary text-center px-2">
-            {t("home.watchAllVideos", { defaultValue: "Watch All Videos" })}
-          </p>
         </Link>
-      </div>
-    </section>
+      ))}
+    </>
   );
 }
 
@@ -877,7 +832,15 @@ export default function Home() {
               className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
               aria-label="Marketplace products"
             >
-              {promaxGroups.flatMap(({ key, listings }) =>
+              {promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
+                listings.map((listing) => (
+                  <div key={listing.id} data-promax-group={key} className="min-w-0">
+                    <ListingCard listing={listing} mosaicLayout />
+                  </div>
+                )),
+              )}
+              <VideoPromoSection />
+              {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">
                     <ListingCard listing={listing} mosaicLayout />
@@ -887,9 +850,6 @@ export default function Home() {
             </div>
           )
         )}
-
-        {/* === VIDEO PROMO SECTION === */}
-        <VideoPromoSection />
 
         {/* === PERSONALISED SECTION — only for logged-in non-admin users who have search history === */}
         {user && !isAdmin && personalizedListings.length > 0 && (

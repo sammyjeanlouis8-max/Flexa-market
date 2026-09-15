@@ -181,19 +181,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const nextGeneration = sessionGenerationRef.current + 1;
     sessionGenerationRef.current = nextGeneration;
     tokenRef.current = t;
+    // Commit the live session before touching browser persistence. Safari and
+    // embedded WebViews can throw on localStorage/cookie writes; that must not
+    // turn a successful login into an immediately logged-out UI.
+    setTokenState(t);
+    setAuthTimedOut(false);
+
     if (t) {
-      localStorage.setItem("flexamarket_token", t);
-      setCookieToken(t); // mirror into cookie for Safari ITP resilience
+      try {
+        localStorage.setItem("flexamarket_token", t);
+      } catch {
+        // Keep the in-memory session. The cookie mirror below remains a
+        // persistence fallback when WebView localStorage is unavailable.
+      }
+      try {
+        setCookieToken(t); // mirror into cookie for Safari ITP resilience
+      } catch {
+        // The in-memory session is already active.
+      }
     } else {
-      localStorage.removeItem("flexamarket_token");
-      localStorage.removeItem(PASSWORD_UPGRADE_KEY);
-      localStorage.removeItem(LANG_MODAL_DISMISSED_KEY);
-      clearCookieToken();
+      try {
+        localStorage.removeItem("flexamarket_token");
+        localStorage.removeItem(PASSWORD_UPGRADE_KEY);
+        localStorage.removeItem(LANG_MODAL_DISMISSED_KEY);
+      } catch {
+        // State and refs are already cleared.
+      }
+      try {
+        clearCookieToken();
+      } catch {
+        // State and refs are already cleared.
+      }
       setRequiresPasswordUpgradeState(false);
       setShowLanguageModal(false);
     }
-    setTokenState(t);
-    setAuthTimedOut(false);
   };
 
   const setRequiresPasswordUpgrade = (value: boolean) => {

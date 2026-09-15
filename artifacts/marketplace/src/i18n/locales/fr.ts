@@ -1056,6 +1056,7 @@ export default {
     stripeCompleteBtn: "Compléter la configuration Stripe",
     stripeDashboard: "Tableau de bord Stripe",
     stripeConnectError: "Impossible d'ouvrir la configuration Stripe. Veuillez réessayer.",
+    stripePlatformProfileRequired: "Stripe Connect n'est pas encore entièrement activé sur la plateforme. L'administrateur doit confirmer la responsabilité des pertes dans le profil Stripe Connect.",
     stripeDashboardError: "Impossible d'ouvrir le tableau de bord Stripe. Veuillez réessayer.",
     stripeSessionExpired: "Votre session a expiré. Reconnectez-vous pour continuer.",
     stripeConnectedBanner: "Stripe Connecté ✅ — Paiements automatiques actifs pour votre compte.",

@@ -1052,6 +1052,7 @@ export default {
     stripeCompleteBtn: "Konplete Konfigirasyon Stripe",
     stripeDashboard: "Tablo Stripe",
     stripeConnectError: "Nou pa t kapab ouvri konfigirasyon Stripe la. Eseye ankò.",
+    stripePlatformProfileRequired: "Stripe Connect poko aktive nèt sou platfòm nan. Administratè platfòm lan dwe valide responsablite pou pèt yo nan pwofil Stripe Connect la.",
     stripeDashboardError: "Nou pa t kapab ouvri tablo Stripe la. Eseye ankò.",
     stripeSessionExpired: "Sesyon ou fini. Konekte ankò pou kontinye.",
     stripeConnectedBanner: "Stripe Konekte ✅ — Peman otomatik aktif pou kont ou.",

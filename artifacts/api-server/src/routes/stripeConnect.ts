@@ -7,6 +7,11 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
+function requiresConnectPlatformProfileReview(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return message.includes("responsibilities of managing losses for connected accounts");
+}
+
 const BASE_URL = (() => {
   if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
@@ -123,6 +128,12 @@ router.post("/stripe/connect/onboard", requireAuth, async (req: any, res) => {
     return res.json({ url: accountLink.url });
   } catch (err) {
     logger.error({ err }, "stripe/connect/onboard error");
+    if (requiresConnectPlatformProfileReview(err)) {
+      return res.status(503).json({
+        code: "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED",
+        error: "Stripe Connect platform profile review is required",
+      });
+    }
     return res.status(500).json({ error: "Failed to create Stripe Connect link" });
   }
 });

@@ -1052,6 +1052,7 @@ export default {
     stripeCompleteBtn: "Complete Stripe Setup",
     stripeDashboard: "Stripe Dashboard",
     stripeConnectError: "We couldn't open Stripe setup. Please try again.",
+    stripePlatformProfileRequired: "Stripe Connect is not fully activated on the platform. The platform administrator must confirm loss responsibility in the Stripe Connect profile.",
     stripeDashboardError: "We couldn't open the Stripe dashboard. Please try again.",
     stripeSessionExpired: "Your session expired. Sign in again to continue.",
     stripeConnectedBanner: "Stripe Connected ✅ — Automatic payouts active for your account.",

@@ -84,7 +84,13 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(t("settings.stripeConnectError"));
+      if (!res.ok || !data.url) {
+        throw new Error(
+          data.code === "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED"
+            ? t("settings.stripePlatformProfileRequired")
+            : t("settings.stripeConnectError"),
+        );
+      }
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
@@ -456,7 +462,13 @@ function HaitiPayoutPanel() {
     try {
       const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(t("settings.stripeConnectError"));
+      if (!res.ok || !data.url) {
+        throw new Error(
+          data.code === "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED"
+            ? t("settings.stripePlatformProfileRequired")
+            : t("settings.stripeConnectError"),
+        );
+      }
       window.location.assign(data.url);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));

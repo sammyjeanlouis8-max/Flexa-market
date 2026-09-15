@@ -23,9 +23,11 @@ import {
 } from "../lib/boostVideoAsset";
 import {
   derivePromaxViewerGroup,
+  deriveLegacyPromaxGroup,
   getPromaxOrderMetadataForHour,
   isActiveBoost,
   isActiveVip,
+  paginateLegacyPage,
   orderPromaxItems,
   type PromaxGroup,
 } from "../lib/promaxRotation";
@@ -248,7 +250,7 @@ async function formatListing(
 
 router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, hourKey, promaxDemotedIds, promaxDemotionsPinned, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, hourKey, promaxDemotedIds, promaxDemotionsPinned, promaxDisabled, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = parseInt(page, 10) || 1;
   const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
   const offset = (pageNum - 1) * limitNum;
@@ -317,14 +319,18 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   const requestedHourKey = typeof hourKey === "string" && hourKey.trim() ? hourKey.trim() : undefined;
   const promaxResolution = await getPromaxOrderMetadataForHour(requestedHourKey);
   const promaxOrder = promaxResolution.order;
-  const promaxSnapshot = promaxResolution.snapshot;
-  if (!promaxSnapshot) {
-    if (requestedHourKey) {
-      res.status(410).json({ error: "PROMAX page token has expired. Restart pagination.", code: "PROMAX_SNAPSHOT_EXPIRED" });
-    } else {
-      res.status(503).json({ error: "PROMAX feed is initializing. Please retry.", code: "PROMAX_NOT_READY" });
-    }
+  const promaxSnapshot = promaxDisabled === "1" || promaxDisabled === "true"
+    ? null
+    : promaxResolution.snapshot;
+  if (!promaxSnapshot && requestedHourKey) {
+    res.status(410).json({ error: "PROMAX page token has expired. Restart pagination.", code: "PROMAX_SNAPSHOT_EXPIRED" });
     return;
+  }
+  // A missing snapshot (including a client-requested legacy fallback) must
+  // never widen the authenticated viewer's country scope. Paid audience
+  // bypasses are only evaluated by the verified PROMAX path below.
+  if (!promaxSnapshot && req.userId && req.user?.country && !isAdmin) {
+    baseConditions.push(eq(listingsTable.country!, req.user.country));
   }
   const paidBoostRows = await db.select({
     id: boostsTable.id,
@@ -435,7 +441,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     // candidate set before slicing is necessary so a late-page item cannot
     // jump ahead merely because the database's legacy order returned it first.
     if (promaxSnapshot) return filterOrganicCountryRows(await query);
-    return query.limit(limitNum).offset(offset);
+    return query;
   }
 
   if (scope === "nearby" && geoUser) {
@@ -474,6 +480,33 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     effectiveScope = "country";
     runConditions = [...baseConditions];
     rows = await runQuery(runConditions);
+  }
+
+  // PROMAX is an ordering enhancement, not a prerequisite for the product
+  // feed. If the current snapshot is unavailable during startup/generation,
+  // preserve the normal legacy query order and pagination instead of making
+  // products disappear behind a 503.
+  if (!promaxSnapshot) {
+    const legacyPage = paginateLegacyPage(rows, pageNum, limitNum);
+    const listings = await Promise.all(legacyPage.items.map((row) =>
+      formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUser, {
+        distanceKm: row.distanceKm,
+        proximityLevel: scoreToLevel(Number(row.proximity ?? 0)),
+        promaxGroup: deriveLegacyPromaxGroup(isActiveVip(row.users ?? {}, promaxNow)),
+        promaxPosition: null,
+      }),
+    ));
+    res.json({
+      listings,
+      total: legacyPage.total,
+      page: pageNum,
+      totalPages: legacyPage.totalPages,
+      scope: effectiveScope,
+      expandedFromScope,
+      promaxRotation: null,
+      promaxFallback: true,
+    });
+    return;
   }
 
   const total = rows.length;

@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildPromaxSnapshot,
   derivePromaxGroup,
+  deriveLegacyPromaxGroup,
   derivePromaxViewerGroup,
   isActiveBoost,
   isActiveVip,
   nextPromaxHourDelayMs,
+  paginateLegacyPage,
   orderPromaxItems,
+  isLegacyFallbackCountryVisible,
   paginatePromaxSnapshot,
   PromaxSnapshotCache,
   PROMAX_RETRY_DELAY_MS,
@@ -23,6 +26,18 @@ describe("PROMAX strict grouping", () => {
     expect(derivePromaxGroup(true, false)).toBe("booster_ordinary");
     expect(derivePromaxGroup(false, true)).toBe("vip");
     expect(derivePromaxGroup(false, false)).toBe("ordinary");
+  });
+
+  it("classifies fail-open rows into renderable organic groups", () => {
+    expect(deriveLegacyPromaxGroup(true)).toBe("vip");
+    expect(deriveLegacyPromaxGroup(false)).toBe("ordinary");
+  });
+
+  it("keeps promaxDisabled fallback country-only even for paid audiences", () => {
+    expect(isLegacyFallbackCountryVisible("Haiti", "Haiti")).toBe(true);
+    expect(isLegacyFallbackCountryVisible("Haiti", "USA")).toBe(false);
+    // Audience match cannot authorize a cross-country legacy fallback row.
+    expect(isLegacyFallbackCountryVisible("Haiti", "USA")).toBe(false);
   });
 
   it("does not treat expired boost or VIP status as active", () => {
@@ -134,6 +149,16 @@ describe("PROMAX hourly fairness", () => {
       { id: 31, activeBoost: false, activeVip: false },
     ], "2030-01-01T12:00:00.000Z", null, now);
     expect(paginatePromaxSnapshot(snapshot, 1, 20)).toEqual([30, 31]);
+  });
+
+  it("keeps legacy product pagination available when the snapshot is unavailable", () => {
+    const products = [{ id: 101, title: "first" }, { id: 102, title: "second" }, { id: 103, title: "third" }];
+    const pageOne = paginateLegacyPage(products, 1, 2);
+    const pageTwo = paginateLegacyPage(products, 2, 2);
+    expect(pageOne.items).toEqual(products.slice(0, 2));
+    expect(pageTwo.items).toEqual(products.slice(2));
+    expect(pageOne.total).toBe(3);
+    expect(pageOne.totalPages).toBe(2);
   });
 
   it("pins pages to one snapshot token and schedules on the UTC boundary", () => {

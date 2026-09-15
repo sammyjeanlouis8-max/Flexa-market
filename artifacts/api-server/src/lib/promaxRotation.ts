@@ -69,6 +69,17 @@ export function derivePromaxViewerGroup(
   return derivePromaxGroup(activeBoost && paidBoost && placementEligible, activeVip);
 }
 
+export function deriveLegacyPromaxGroup(activeVip: boolean): PromaxGroup {
+  return activeVip ? "vip" : "ordinary";
+}
+
+export function isLegacyFallbackCountryVisible(
+  viewerCountry: string | null | undefined,
+  listingCountry: string | null | undefined,
+): boolean {
+  return !viewerCountry || viewerCountry === listingCountry;
+}
+
 export function isActiveBoost(
   listing: { isBoosted?: boolean | null; boostExpiresAt?: Date | string | null },
   now: Date = new Date(),
@@ -192,6 +203,26 @@ export function paginatePromaxSnapshot(
   const allIds = snapshot.groups.flatMap((group) => group.listingIds);
   const start = Math.max(0, page - 1) * limit;
   return allIds.slice(start, start + limit);
+}
+
+/**
+ * Legacy pagination used when PROMAX has no verified current snapshot. This
+ * deliberately only slices the already-ranked query result; it never changes
+ * listing data or applies paid-placement gating.
+ */
+export function paginateLegacyPage<T>(
+  items: T[],
+  page: number,
+  limit: number,
+): { items: T[]; total: number; totalPages: number } {
+  const safeLimit = Math.max(1, limit);
+  const safePage = Math.max(1, page);
+  const start = (safePage - 1) * safeLimit;
+  return {
+    items: items.slice(start, start + safeLimit),
+    total: items.length,
+    totalPages: Math.ceil(items.length / safeLimit),
+  };
 }
 
 /**

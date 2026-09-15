@@ -47,7 +47,12 @@ export async function apiFetch<T = unknown>(
     const message =
       (body && typeof body === "object" && "error" in body && body.error) ||
       `Request failed (${res.status})`;
-    throw new Error(message);
+    const error = new Error(message) as Error & { status: number; code?: string };
+    error.status = res.status;
+    if (body && typeof body === "object" && typeof body.code === "string") {
+      error.code = body.code;
+    }
+    throw error;
   }
   return body as T;
 }

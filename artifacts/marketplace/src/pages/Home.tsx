@@ -17,6 +17,8 @@ import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-quer
 import { apiFetch } from "@/lib/api";
 import {
   getPromaxNextPageParam,
+  getRenderablePromaxGroup,
+  isPromaxSnapshotExpiredError,
   serializePromaxPageParam,
   type PromaxFeedPage,
   type PromaxPageParam,
@@ -272,6 +274,7 @@ export default function Home() {
   const {
     data: feedPages,
     isLoading: feedLoading,
+    error: feedError,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
@@ -297,13 +300,24 @@ export default function Home() {
       if (frozenPromaxParams.demotionsPinned) {
         params.set("promaxDemotionsPinned", frozenPromaxParams.demotionsPinned);
       }
+      if (frozenPromaxParams.promaxDisabled) {
+        params.set("promaxDisabled", frozenPromaxParams.promaxDisabled);
+      }
       return apiFetch<PromaxFeedPage<NormalListing>>(`/api/listings?${params}`);
     },
-    initialPageParam: { page: 1, hourKey: null, demotedIds: [], demotionsPinned: false } satisfies PromaxPageParam,
+    initialPageParam: { page: 1, hourKey: null, demotedIds: [], demotionsPinned: false, promaxDisabled: false } satisfies PromaxPageParam,
     getNextPageParam: (last, allPages, _lastPageParam, allPageParams) =>
       getPromaxNextPageParam(last, allPages, allPageParams),
     staleTime: 2 * 60 * 1000,
   });
+
+  // A cached infinite query may retain an expired PROMAX hour token. Reset
+  // the whole sequence so React Query starts page one without the stale pin;
+  // retrying page two with a new current snapshot would otherwise skip rows.
+  useEffect(() => {
+    if (!isPromaxSnapshotExpiredError(feedError)) return;
+    queryClient.resetQueries({ queryKey: ["listings-infinite", feedFilterKey], exact: true });
+  }, [feedError, feedFilterKey, queryClient]);
 
   // Flatten all pages into one list
   const allListings = useMemo(
@@ -333,7 +347,7 @@ export default function Home() {
       key,
       listings: allListings
         .filter((listing) => {
-          if (seen.has(listing.id) || listing.promaxGroup !== key) return false;
+          if (seen.has(listing.id) || getRenderablePromaxGroup(listing) !== key) return false;
           if (activeCategory && listing.categorySlug !== activeCategory) return false;
           seen.add(listing.id);
           return true;

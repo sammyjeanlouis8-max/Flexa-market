@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable } from "@workspace/db";
+import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable, shipmentsTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
@@ -18,6 +18,12 @@ import {
   DEFAULT_RATE_MONCASH, DEFAULT_RATE_STRIPE, DEFAULT_BUYER_FEE_STRIPE,
 } from "../lib/commission";
 import { getDisplayRate, setExchangeRate, setSpread, getExchangeRate, getSpread, getDopRate, setDopRate, getAllRates, convertToUsd, setCashoutHtgRate } from "../lib/exchange-rate";
+import {
+  PAYOUT_BLOCKED_ORDER_STATUSES,
+  PAYOUT_BLOCKED_PAYMENT_STATUSES,
+  isPayoutBlocked,
+  payoutEligibilityPredicate,
+} from "../lib/settlementEligibility";
 
 const router = Router();
 
@@ -30,7 +36,6 @@ const CARRIERS = [
 // Haiti: 3-day auto-release; Non-Haiti: 7-day auto-release
 const AUTO_RELEASE_DAYS_HAITI = 3;
 const AUTO_RELEASE_DAYS_OTHER = 7;
-
 // ─── Escrow release ────────────────────────────────────────────────────────────
 
 export async function releaseEscrow(
@@ -43,6 +48,12 @@ export async function releaseEscrow(
     .where(eq(transactionsTable.id, txId));
 
   if (!tx || tx.escrowReleased || !tx.sellerUserId) return;
+  // Carrier delivery is evidence of movement, not permission to pay. These
+  // guards run before every payment-method-specific settlement branch.
+  if (isPayoutBlocked(tx.orderStatus, tx.paymentStatus)) {
+    logger.warn({ txId, orderStatus: tx.orderStatus, paymentStatus: tx.paymentStatus, triggeredBy }, "Escrow release blocked: order/payment is not payout eligible");
+    return;
+  }
   if (tx.paymentStatus !== "completed") {
     logger.warn({ txId, paymentStatus: tx.paymentStatus, triggeredBy }, "Escrow release blocked: payment is not completed");
     return;
@@ -185,25 +196,42 @@ export async function releaseEscrow(
     stripeAccountStatus: sellerRecord?.stripeAccountStatus,
   });
   const now = new Date();
-  const staleBefore = new Date(now.getTime() - 10 * 60 * 1000);
-  const [claimed] = await db
-    .update(transactionsTable)
-    .set({
-      settlementStatus: "processing",
-      settlementMethod: isLegacyPrepaid ? "legacy_checkout" : route,
-      settlementAttemptedAt: now,
-      settlementError: null,
-    })
-    .where(and(
-      eq(transactionsTable.id, txId),
-      eq(transactionsTable.escrowReleased, false),
-      tx.settlementStatus === "legacy_review"
-        ? eq(transactionsTable.settlementStatus, "legacy_review")
-        : sql`(${transactionsTable.settlementStatus} IN ('pending', 'failed')
-            OR (${transactionsTable.settlementStatus} = 'processing'
-                AND ${transactionsTable.settlementAttemptedAt} < ${staleBefore}))`,
-    ))
-    .returning({ id: transactionsTable.id });
+  // Claim the settlement while holding the transaction row lock. Refund
+  // reservations use the same lock, so neither side can pass its eligibility
+  // check after the other has claimed the row.
+  const [claimed] = await db.transaction(async claimTx => {
+    const [lockedTx] = await claimTx.select().from(transactionsTable)
+      .where(eq(transactionsTable.id, txId))
+      .for("update");
+    if (!lockedTx || lockedTx.escrowReleased ||
+        !PAYOUT_BLOCKED_ORDER_STATUSES.every(status => lockedTx.orderStatus !== status) ||
+        !PAYOUT_BLOCKED_PAYMENT_STATUSES.every(status => lockedTx.paymentStatus !== status) ||
+        lockedTx.paymentStatus !== "completed") return [];
+    const settlementStateAllowed = lockedTx.settlementStatus === "legacy_review"
+      ? eq(transactionsTable.settlementStatus, "legacy_review")
+      : inArray(transactionsTable.settlementStatus, ["pending", "failed"]);
+    const [activeRefund] = await claimTx.select({ id: stripeRefundLedgerTable.id })
+      .from(stripeRefundLedgerTable)
+      .where(and(
+        eq(stripeRefundLedgerTable.transactionId, txId),
+        inArray(stripeRefundLedgerTable.providerStatus, ["succeeded", "pending", "processing", "approval_required", "reconciliation_required"]),
+      ))
+      .limit(1);
+    if (activeRefund) return [];
+    return claimTx.update(transactionsTable)
+      .set({
+        settlementStatus: "processing",
+        settlementMethod: isLegacyPrepaid ? "legacy_checkout" : route,
+        settlementAttemptedAt: now,
+        settlementError: null,
+      })
+      .where(and(
+        eq(transactionsTable.id, txId),
+        settlementStateAllowed,
+        payoutEligibilityPredicate(),
+      ))
+      .returning({ id: transactionsTable.id });
+  });
 
   if (!claimed) return;
 
@@ -249,6 +277,7 @@ export async function releaseEscrow(
         eq(transactionsTable.id, txId),
         eq(transactionsTable.escrowReleased, false),
         eq(transactionsTable.settlementStatus, "processing"),
+        payoutEligibilityPredicate(),
       ))
       .returning({ id: transactionsTable.id });
 
@@ -297,6 +326,12 @@ export async function releaseEscrow(
     logger.warn({ txId, triggeredBy }, "releaseEscrow: already settled by a concurrent call");
     return;
   }
+  // Refund/dispute webhooks that observed processing are durably deferred;
+  // apply their explicit post-payout recovery state only after this claim has
+  // committed paid/escrowReleased.
+  await import("../lib/settlementRecovery")
+    .then(({ applyDeferredRecoveryForSettlement }) => applyDeferredRecoveryForSettlement(txId))
+    .catch(error => logger.error({ error, txId }, "Deferred settlement recovery will retry asynchronously"));
 
   // Notify seller
   await db.insert(notificationsTable).values({
@@ -646,10 +681,13 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
       amount: transactionsTable.amount,
       currency: transactionsTable.currency,
       paymentMethod: transactionsTable.paymentMethod,
+      paymentStatus: transactionsTable.paymentStatus,
       orderStatus: transactionsTable.orderStatus,
       trackingNumber: transactionsTable.trackingNumber,
       carrier: transactionsTable.carrier,
       trackingStatus: transactionsTable.trackingStatus,
+      shipmentId: shipmentsTable.trackingId,
+      estimatedDelivery: shipmentsTable.estimatedDelivery,
       escrowReleased: transactionsTable.escrowReleased,
       shippedAt: transactionsTable.shippedAt,
       deliveredAt: transactionsTable.deliveredAt,
@@ -666,6 +704,7 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
     .innerJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
     .leftJoin(deliveriesTable, eq(deliveriesTable.transactionId, transactionsTable.id))
+    .leftJoin(shipmentsTable, eq(shipmentsTable.orderId, transactionsTable.id))
     .where(and(
       eq(transactionsTable.userId, req.userId!),
       eq(transactionsTable.type, "purchase"),
@@ -693,6 +732,8 @@ router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
       trackingNumber: transactionsTable.trackingNumber,
       carrier: transactionsTable.carrier,
       trackingStatus: transactionsTable.trackingStatus,
+      shipmentId: shipmentsTable.trackingId,
+      estimatedDelivery: shipmentsTable.estimatedDelivery,
       escrowReleased: transactionsTable.escrowReleased,
       shippedAt: transactionsTable.shippedAt,
       deliveredAt: transactionsTable.deliveredAt,
@@ -721,6 +762,7 @@ router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
     .leftJoin(buyerAlias, eq(transactionsTable.userId, buyerAlias.id))
     .leftJoin(deliveriesTable, eq(deliveriesTable.transactionId, transactionsTable.id))
     .leftJoin(driverUserAlias, eq(driverUserAlias.id, deliveriesTable.driverUserId))
+    .leftJoin(shipmentsTable, eq(shipmentsTable.orderId, transactionsTable.id))
     .where(and(
       eq(listingsTable.sellerId, req.userId!),
       eq(transactionsTable.type, "purchase"),
@@ -852,6 +894,7 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     amount: tx.amount,
     currency: tx.currency,
     paymentMethod: tx.paymentMethod,
+    paymentStatus: tx.paymentStatus,
     orderStatus: tx.orderStatus,
     shippedAt: tx.shippedAt,
     deliveredAt: tx.deliveredAt,
@@ -1133,12 +1176,27 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
     if (!carrier?.trim()) {
       res.status(400).json({ error: "Carrier is required" }); return;
     }
+    // Carrier shipments must be registered with the server-side provider
+    // adapter before this order is marked shipped. Local Haiti/DR delivery
+    // intentionally remains on the FM driver path above.
+    try {
+      const { registerShipmentForOrder } = await import("../lib/shipmentTracking");
+      await registerShipmentForOrder(orderId, req.userId!, carrier, trackingNumber);
+      updateData = {
+        // Registration atomically persisted the carrier fields and shipped
+        // state. Do not replay the stale pre-provider orderStatus here.
+        listingCountry: listingCountry ?? null,
+      };
+    } catch (error: any) {
+      const status = Number(error?.statusCode) || (error?.code === "AFTERSHIP_NOT_CONFIGURED" ? 503 : 502);
+      res.status(status).json({
+        error: String(error?.message ?? "Unable to register shipment"),
+        code: error?.code ?? "SHIPMENT_REGISTRATION_FAILED",
+      });
+      return;
+    }
     updateData = {
       ...updateData,
-      trackingNumber: trackingNumber.trim(),
-      carrier: carrier.trim(),
-      trackingStatus: "in_transit",
-      trackingLastUpdated: now,
       autoReleaseAt: new Date(now.getTime() + AUTO_RELEASE_DAYS_OTHER * 86400000),
     };
   }
@@ -2056,7 +2114,8 @@ router.post("/transactions/:id/cancel", requireAuth, async (req, res): Promise<v
       .from(transactionsTable)
       .where(eq(transactionsTable.id, txId))
       .for("update");
-    if (!lockedTx || lockedTx.userId !== userId || lockedTx.orderStatus === "cancelled") {
+    if (!lockedTx || lockedTx.userId !== userId || lockedTx.orderStatus === "cancelled" ||
+        lockedTx.escrowReleased || ["processing", "paid"].includes(lockedTx.settlementStatus)) {
       return { kind: "order_changed" as const };
     }
 
@@ -2222,7 +2281,9 @@ router.post("/orders/:id/seller-reject", requireAuth, async (req, res): Promise<
     if (
       !lockedTx ||
       lockedTx.sellerUserId !== userId ||
-      lockedTx.orderStatus !== "ready_to_ship"
+      lockedTx.orderStatus !== "ready_to_ship" ||
+      lockedTx.escrowReleased ||
+      ["processing", "paid"].includes(lockedTx.settlementStatus)
     ) {
       return { kind: "order_changed" as const };
     }

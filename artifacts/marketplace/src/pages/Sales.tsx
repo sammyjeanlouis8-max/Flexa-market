@@ -13,10 +13,13 @@ type Sale = {
   amount: number;
   currency: string;
   paymentMethod: string;
+  paymentStatus: string;
   orderStatus: string;
   trackingNumber: string | null;
   carrier: string | null;
   trackingStatus: string | null;
+  shipmentId: number | null;
+  estimatedDelivery: string | null;
   escrowReleased: boolean;
   listingCountry: string | null;
   shippedAt: string | null;
@@ -45,6 +48,21 @@ type Summary = {
   netEarnings: number;
   promoActive: boolean;
   promoDaysRemaining: number;
+};
+
+const statusLabel = (status: string | null | undefined, kind: "order" | "payment" | "shipping") => {
+  const labels: Record<string, string> = {
+    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
+    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
+    completed: "Terminée", cancelled: "Annulée", failed: "Échoué",
+    paid: "Payé", refunded: "Remboursé", partially_refunded: "Partiellement remboursé",
+    label_created: "Étiquette créée", in_transit: "En transit",
+    out_for_delivery: "En cours de livraison", exception: "Exception",
+    returned: "Colis retourné",
+  };
+  if (kind === "payment" && status === "completed") return "Payé";
+  if (kind === "shipping" && !status) return "Non expédiée";
+  return labels[status ?? ""] ?? status ?? "Non disponible";
 };
 
 export default function Sales() {
@@ -341,6 +359,12 @@ export default function Sales() {
                           </>
                         )}
                       </div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
+                        <span><strong className="text-foreground">Commande :</strong> {statusLabel(s.orderStatus, "order")}</span>
+                        <span><strong className="text-foreground">Paiement :</strong> {statusLabel(s.paymentStatus, "payment")}</span>
+                        <span><strong className="text-foreground">Expédition :</strong> {statusLabel(s.shipmentId ? (s.trackingStatus ?? (s.deliveryStatus === "delivered" ? "delivered" : null)) : null, "shipping")}</span>
+                      </div>
+                      {s.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-1">Livraison estimée : {new Date(s.estimatedDelivery).toLocaleDateString()}</p>}
                     </div>
 
                     {s.driverName && s.driverPhone && (
@@ -383,7 +407,7 @@ export default function Sales() {
                         className="w-full font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400"
                         onClick={() => setLocation(`/orders/${s.id}`)}
                       >
-                        <Eye className="h-4 w-4 mr-1.5" /> Manage Order
+                        <Eye className="h-4 w-4 mr-1.5" /> {s.trackingNumber ? "Voir le suivi" : "Gérer la commande"}
                       </Button>
                     )}
                     

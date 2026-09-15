@@ -3,7 +3,7 @@ import {
   db, usersTable, transactionsTable, promoWalletTable,
   walletTransactionsTable, notificationsTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
@@ -264,7 +264,11 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
           t.amount                   AS tx_amount,
           t.listing_id,
           t.payment_method           AS tx_payment_method,
-          t.stripe_payment_intent_id AS tx_stripe_pi
+          t.stripe_payment_intent_id AS tx_stripe_pi,
+          t.order_status             AS tx_order_status,
+          t.payment_status           AS tx_payment_status,
+          t.settlement_status        AS tx_settlement_status,
+          t.escrow_released          AS tx_escrow_released
         FROM order_returns r
         JOIN transactions t ON t.id = r.order_id
         WHERE r.id = ${returnId} LIMIT 1`,
@@ -291,6 +295,28 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
   }
 
   const noteVal = String(note ?? "").trim();
+  let returnSettlementReserved = false;
+  if (decision === "approve") {
+    const [reserved] = await db.update(transactionsTable).set({
+      // This state is not payout-claimable. It serializes the refund provider
+      // call against releaseEscrow's row-locked settlement claim.
+      settlementStatus: "refund_processing",
+      settlementError: null,
+    }).where(and(
+      eq(transactionsTable.id, Number(ret.order_id)),
+      eq(transactionsTable.settlementStatus, String(ret.tx_settlement_status ?? "")),
+      eq(transactionsTable.escrowReleased, false),
+      notInArray(transactionsTable.orderStatus, ["cancelled", "refunded", "partially_refunded", "disputed", "returned", "return_refunded"]),
+      notInArray(transactionsTable.paymentStatus, ["refunded", "partially_refunded", "disputed", "failed", "cancelled"]),
+      notInArray(transactionsTable.settlementStatus, ["processing", "paid", "refund_processing"]),
+    )).returning({ id: transactionsTable.id });
+    if (!reserved) {
+      await db.execute(sql`UPDATE order_returns SET status = ${ret.status} WHERE id = ${returnId} AND status = 'processing'`);
+      res.status(409).json({ error: "Payout/refund settlement is already processing; this return requires manual recovery" });
+      return;
+    }
+    returnSettlementReserved = true;
+  }
 
   // ── All post-lock side effects wrapped in try/catch ───────────────────────
   // Guarantees: if ANY operation fails after acquiring the lock, the record is
@@ -385,7 +411,12 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
 
       // ── Finalize: mark order + return as refunded ──────────────────────────
       await db.update(transactionsTable)
-        .set({ orderStatus: "return_refunded" })
+        .set({
+          orderStatus: "return_refunded",
+          paymentStatus: "refunded",
+          settlementStatus: "refunded",
+          settlementError: null,
+        })
         .where(eq(transactionsTable.id, Number(ret.order_id)));
 
       await db.execute(
@@ -461,6 +492,15 @@ router.post("/admin/returns/:returnId/decide", requireAuth, requireAdmin, async 
     }
 
   } catch (err: any) {
+    if (returnSettlementReserved) {
+      await db.update(transactionsTable).set({
+        settlementStatus: String(ret.tx_settlement_status ?? "pending"),
+        settlementError: null,
+      }).where(and(
+        eq(transactionsTable.id, Number(ret.order_id)),
+        eq(transactionsTable.settlementStatus, "refund_processing"),
+      )).catch(rbErr => logger.error({ returnId, rbErr: rbErr?.message }, "Settlement rollback also failed"));
+    }
     // ── Best-effort rollback: restore prior status so admin can retry ─────────
     await db.execute(
       sql`UPDATE order_returns SET status = ${ret.status} WHERE id = ${returnId} AND status = 'processing'`,

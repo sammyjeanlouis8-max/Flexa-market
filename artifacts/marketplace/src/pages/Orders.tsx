@@ -13,10 +13,13 @@ type Order = {
   id: number;
   amount: number;
   currency: string;
+  paymentStatus: string;
   orderStatus: string;
   trackingNumber: string | null;
   carrier: string | null;
   trackingStatus: string | null;
+  shipmentId: number | null;
+  estimatedDelivery: string | null;
   escrowReleased: boolean;
   listingCountry: string | null;
   shippedAt: string | null;
@@ -28,6 +31,22 @@ type Order = {
   sellerId: number;
   sellerName: string | null;
   deliveryStatus: string | null;
+};
+
+const statusLabel = (status: string | null | undefined, kind: "order" | "payment" | "shipping") => {
+  const labels: Record<string, string> = {
+    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
+    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
+    completed: "Terminée", cancelled: "Annulée", failed: "Échoué",
+    completed_payment: "Payé", paid: "Payé", refunded: "Remboursé",
+    partially_refunded: "Partiellement remboursé", not_shipped: "Non expédiée",
+    label_created: "Étiquette créée", in_transit: "En transit",
+    out_for_delivery: "En cours de livraison", exception: "Exception",
+    returned: "Colis retourné",
+  };
+  if (kind === "payment" && status === "completed") return "Payé";
+  if (kind === "shipping" && !status) return "Non expédiée";
+  return labels[status ?? ""] ?? status ?? "Non disponible";
 };
 
 export default function Orders() {
@@ -260,7 +279,7 @@ export default function Orders() {
                           #{String(o.id).padStart(6, "0")}
                         </span>
                         <FulfillmentBadge status={o.orderStatus} type="order" />
-                        {o.trackingStatus && (
+                        {o.shipmentId && o.trackingStatus && (
                           <FulfillmentBadge status={o.trackingStatus} type="tracking" />
                         )}
                         {o.listingCountry === "Haiti" && (
@@ -304,6 +323,12 @@ export default function Orders() {
                           </>
                         )}
                       </div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
+                        <span><strong className="text-foreground">Commande :</strong> {statusLabel(o.orderStatus, "order")}</span>
+                        <span><strong className="text-foreground">Paiement :</strong> {statusLabel(o.paymentStatus, "payment")}</span>
+                        <span><strong className="text-foreground">Expédition :</strong> {statusLabel(o.shipmentId ? (o.trackingStatus ?? (o.deliveryStatus === "delivered" ? "delivered" : null)) : null, "shipping")}</span>
+                      </div>
+                      {o.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-1">Livraison estimée : {new Date(o.estimatedDelivery).toLocaleDateString()}</p>}
                     </div>
                   </div>
                   
@@ -341,8 +366,8 @@ export default function Orders() {
                         </Button>
                       ) : null}
                       
-                      <Button size="icon" variant="secondary" className="h-9 w-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors" onClick={e => { e.stopPropagation(); setConfirmingId(null); setLocation(`/orders/${o.id}`); }}>
-                        <Eye className="h-4 w-4" />
+                      <Button size="sm" variant="secondary" className="h-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors gap-1.5" onClick={e => { e.stopPropagation(); setConfirmingId(null); setLocation(`/orders/${o.id}`); }}>
+                        <Eye className="h-4 w-4" /> {o.trackingNumber ? "Suivre le colis" : "Voir la commande"}
                       </Button>
                     </div>
                   </div>

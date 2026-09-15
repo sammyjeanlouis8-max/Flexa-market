@@ -50,6 +50,7 @@ type Order = {
   amount: number;
   currency: string;
   paymentMethod: string;
+  paymentStatus: string;
   orderStatus: string;
   shippedAt: string | null;
   deliveredAt: string | null;
@@ -84,6 +85,25 @@ type Order = {
     name: string | null; phone: string | null; email: string | null;
     street: string | null; city: string | null; region: string | null; country: string | null;
   };
+};
+
+type TrackingData = {
+  shipment: {
+    trackingId: number;
+    carrier: string;
+    trackingNumber: string;
+    trackingStatus: string;
+    estimatedDelivery: string | null;
+    lastLocation: string | null;
+    lastUpdate: string | null;
+  } | null;
+  events: Array<{
+    id: number;
+    eventStatus: string;
+    eventDescription: string | null;
+    location: string | null;
+    eventTimestamp: string;
+  }>;
 };
 
 // ── Haiti city → department map ───────────────────────────────────────────────
@@ -401,6 +421,21 @@ const TRACKING_STATUS_COLOR: Record<string, string> = {
   exception:        "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
+function frenchStatus(status: string | null | undefined, kind: "order" | "payment" | "shipping"): string {
+  const labels: Record<string, string> = {
+    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
+    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
+    completed: "Terminée", cancelled: "Annulée", completed_payment: "Payé",
+    paid: "Payé", refunded: "Remboursé", partially_refunded: "Partiellement remboursé",
+    label_created: "Étiquette créée", in_transit: "En transit",
+    out_for_delivery: "En cours de livraison", exception: "Exception",
+    returned: "Colis retourné",
+  };
+  if (kind === "payment" && status === "completed") return "Payé";
+  if (kind === "shipping" && !status) return "Non expédiée";
+  return labels[status ?? ""] ?? status ?? "Non disponible";
+}
+
 function DaysLeft({ isoDate, t }: { isoDate: string; t: (key: string) => string }) {
   const ms = new Date(isoDate).getTime() - Date.now();
   if (ms <= 0) return <span className="text-amber-400 font-semibold">{t("orderDetail.releasingSoon")}</span>;
@@ -416,6 +451,7 @@ export default function OrderDetail() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [order, setOrder] = useState<Order | null>(null);
+  const [trackingData, setTrackingData] = useState<TrackingData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -467,6 +503,10 @@ export default function OrderDetail() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError((data as any)?.error || t("orderDetail.loading")); return; }
       setOrder(data as Order);
+      const trackingRes = await fetch(`/api/orders/${orderId}/tracking`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (trackingRes.ok) setTrackingData(await trackingRes.json() as TrackingData);
       setError(null);
     } catch { setError(t("orderDetail.toastNetworkError")); }
   }, [orderId, token, t]);
@@ -541,7 +581,7 @@ export default function OrderDetail() {
     if (!carrier) {
       toast({ title: t("orderDetail.toastCarrierRequired"), variant: "destructive" }); return;
     }
-    const ok = await apiCall(`/api/orders/${orderId}/ship`, { trackingNumber, carrier });
+    const ok = await apiCall(`/api/orders/${orderId}/tracking`, { trackingNumber, carrier });
     if (ok) {
       toast({ title: t("orderDetail.toastMarkedShipped"), description: `Tracking: ${carrier} ${trackingNumber}` });
       await load();
@@ -741,8 +781,9 @@ export default function OrderDetail() {
 
   const idx = stageIndex(order.orderStatus);
   const img = order.listing.images?.[0] ?? null;
-  const trackStatusKey = order.trackingStatus ?? "pending";
-  const trackColor = TRACKING_STATUS_COLOR[trackStatusKey] ?? TRACKING_STATUS_COLOR.pending!;
+  const trackStatusKey = trackingData?.shipment ? trackingData.shipment.trackingStatus : null;
+  const trackColor = trackStatusKey ? (TRACKING_STATUS_COLOR[trackStatusKey] ?? TRACKING_STATUS_COLOR.pending!) : TRACKING_STATUS_COLOR.pending!;
+  const currentShippingStatus = trackingData?.shipment ? trackingData.shipment.trackingStatus : null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
@@ -781,6 +822,14 @@ export default function OrderDetail() {
           <div className="text-xl font-black text-primary">${order.amount.toFixed(2)}</div>
           <div className="text-xs uppercase tracking-wider text-muted-foreground">{order.currency}</div>
         </div>
+      </div>
+
+      {/* Independent state dimensions prevent delivery from being confused
+          with payment or order completion. */}
+      <div className="rounded-2xl border border-border bg-card p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut de la commande</p><p className="font-bold mt-1">{frenchStatus(order.orderStatus, "order")}</p></div>
+        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut du paiement</p><p className="font-bold mt-1">{frenchStatus(order.paymentStatus, "payment")}</p></div>
+        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut de l’expédition</p><p className="font-bold mt-1">{frenchStatus(currentShippingStatus, "shipping")}</p></div>
       </div>
 
       {/* ── Commission breakdown ── */}
@@ -876,14 +925,14 @@ export default function OrderDetail() {
       </div>
 
       {/* ── Carrier tracking (non-Haiti) ── */}
-      {!order.isHaiti && order.trackingNumber && (
+      {!order.isHaiti && order.trackingNumber && trackingData?.shipment && (
         <div className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
             <Truck className="h-4 w-4" /> {t("orderDetail.carrierTracking")}
           </h2>
           <div className="flex items-center gap-3 flex-wrap">
             <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold", trackColor)}>
-              {trackingLabel(trackStatusKey)}
+              {trackingLabel(trackStatusKey ?? "pending")}
             </span>
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm font-bold">{order.trackingNumber}</span>
@@ -894,6 +943,16 @@ export default function OrderDetail() {
             <p className="text-xs text-muted-foreground mt-2">
               {t("orderDetail.lastUpdated", { date: new Date(order.trackingLastUpdated).toLocaleString() })}
             </p>
+          )}
+          {trackingData?.shipment && (
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+              {trackingData.shipment.estimatedDelivery && (
+                <span><strong className="text-foreground">Livraison estimée :</strong> {new Date(trackingData.shipment.estimatedDelivery).toLocaleDateString()}</span>
+              )}
+              {trackingData.shipment.lastLocation && (
+                <span><strong className="text-foreground">Dernière localisation :</strong> {trackingData.shipment.lastLocation}</span>
+              )}
+            </div>
           )}
           {order.carrier && order.trackingNumber && (
             <Button
@@ -913,6 +972,25 @@ export default function OrderDetail() {
             >
               <ExternalLink className="h-3.5 w-3.5" /> {t("orderDetail.trackOn", { carrier: order.carrier })}
             </Button>
+          )}
+          {trackingData?.shipment && trackingData.events.length > 0 && (
+            <div className="mt-5 border-t border-border pt-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Historique réel du transporteur</p>
+              <ol className="space-y-3">
+                {trackingData.events.slice().reverse().map(event => (
+                  <li key={event.id} className="flex gap-3 text-sm">
+                    <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{frenchStatus(event.eventStatus, "shipping")}</p>
+                      {event.eventDescription && <p className="text-muted-foreground">{event.eventDescription}</p>}
+                      <p className="text-xs text-muted-foreground">
+                        {event.location ? `${event.location} · ` : ""}{new Date(event.eventTimestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
         </div>
       )}

@@ -24,6 +24,11 @@ import Stripe from "stripe";
 import { requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
 import { logAdminAction } from "../lib/auditLogger";
+import {
+  monotonicProviderStatus,
+  shouldDeferSettlementMutation,
+  upsertSettlementRecoveryReservationInTransaction,
+} from "../lib/settlementRecovery";
 
 const router = Router();
 const sellerUsersTable = alias(usersTable, "seller_user");
@@ -102,9 +107,23 @@ async function setAggregatePaymentStatus(transactionId: number, originalCents: n
     : refunded > 0
       ? "partially_refunded"
       : "completed";
-  await db.update(transactionsTable)
-    .set({ paymentStatus: status })
-    .where(eq(transactionsTable.id, transactionId));
+  await db.transaction(async tx => {
+    const [locked] = await tx.select({
+      settlementStatus: transactionsTable.settlementStatus,
+      escrowReleased: transactionsTable.escrowReleased,
+    }).from(transactionsTable)
+      .where(eq(transactionsTable.id, transactionId))
+      .for("update");
+    if (!locked) return;
+    await tx.update(transactionsTable)
+      .set({
+        paymentStatus: status,
+        ...(locked.settlementStatus === "paid" || locked.escrowReleased
+          ? { settlementError: "Post-payout refund recorded; seller recovery/debt workflow required" }
+          : {}),
+      })
+      .where(eq(transactionsTable.id, transactionId));
+  });
 }
 
 /**
@@ -117,53 +136,74 @@ export async function reconcileStripeRefund(refund: Stripe.Refund): Promise<void
     ? refund.payment_intent
     : refund.payment_intent?.id ?? null;
   const status = refund.status ?? "pending";
-  const existing = await db.select()
-    .from(stripeRefundLedgerTable)
-    .where(eq(stripeRefundLedgerTable.stripeRefundId, refund.id));
-
-  let ledger = existing[0];
-  if (!ledger && paymentIntentId) {
-    const [tx] = await db.select()
-      .from(transactionsTable)
-      .where(eq(transactionsTable.stripePaymentIntentId, paymentIntentId));
-    if (tx) {
-      const inserted = await db.insert(stripeRefundLedgerTable).values({
-        transactionId: tx.id,
-        mode: "stripe",
-        amountCents: refund.amount,
-        currency: refund.currency.toUpperCase(),
-        reason: "provider_webhook_reconciliation",
-        requestId: `stripe-webhook:${refund.id}`,
-        idempotencyKey: `stripe-webhook:${refund.id}`,
-        stripeRefundId: refund.id,
-        providerStatus: status,
-        failureCode: refund.failure_reason ?? null,
-        failureMessage: refund.failure_reason ?? null,
-        metadata: { source: "stripe_webhook", chargeId: typeof refund.charge === "string" ? refund.charge : refund.charge?.id ?? null },
-      }).onConflictDoNothing({ target: stripeRefundLedgerTable.requestId }).returning();
-      ledger = inserted[0];
+  const result = await db.transaction(async tx => {
+    // The transaction row is locked before settlementStatus is inspected.
+    // Reservation/ledger mutation and the lock-time decision are one commit.
+    const [lockedTx] = paymentIntentId
+      ? await tx.select().from(transactionsTable)
+        .where(eq(transactionsTable.stripePaymentIntentId, paymentIntentId))
+        .for("update")
+      : [];
+    const existing = await tx.select().from(stripeRefundLedgerTable)
+      .where(or(
+        eq(stripeRefundLedgerTable.stripeRefundId, refund.id),
+        eq(stripeRefundLedgerTable.requestId, `stripe-webhook:${refund.id}`),
+      )).for("update");
+    const ledger = existing[0];
+    let transactionId = lockedTx?.id ?? ledger?.transactionId;
+    let rowTx = lockedTx;
+    if (!rowTx && transactionId) {
+      [rowTx] = await tx.select().from(transactionsTable)
+        .where(eq(transactionsTable.id, transactionId))
+        .for("update");
     }
-  }
-
-  if (!ledger) {
-    // A webhook for a payment not represented locally is not actionable, but it
-    // is still safe to acknowledge. No local financial state is changed.
-    return;
-  }
-
-  const [updated] = await db.update(stripeRefundLedgerTable)
-    .set({
-      providerStatus: status,
+    if (!rowTx || !transactionId) return { ledger: undefined, deferred: false };
+    const mergedStatus = monotonicProviderStatus(ledger?.providerStatus, status);
+    const ledgerValues = {
+      transactionId,
+      mode: "stripe",
+      amountCents: refund.amount,
+      currency: refund.currency.toUpperCase(),
+      reason: "provider_webhook_reconciliation",
+      requestId: `stripe-webhook:${refund.id}`,
+      idempotencyKey: `stripe-webhook:${refund.id}`,
       stripeRefundId: refund.id,
-      failureCode: refund.failure_reason ?? null,
-      failureMessage: refund.failure_reason ?? null,
-      updatedAt: new Date(),
-    })
-    .where(eq(stripeRefundLedgerTable.id, ledger.id))
-    .returning();
-
-  if (updated?.providerStatus === "succeeded") {
-    const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, updated.transactionId));
+      providerStatus: mergedStatus,
+      failureCode: mergedStatus === status ? refund.failure_reason ?? null : ledger?.failureCode ?? null,
+      failureMessage: mergedStatus === status ? refund.failure_reason ?? null : ledger?.failureMessage ?? null,
+      metadata: { source: "stripe_webhook", deferredDuringSettlement: rowTx.settlementStatus === "processing" },
+    };
+    let updatedLedger: RefundLedgerRow;
+    if (ledger) {
+      [updatedLedger] = await tx.update(stripeRefundLedgerTable).set({
+        amountCents: ledgerValues.amountCents,
+        currency: ledgerValues.currency,
+        providerStatus: ledgerValues.providerStatus,
+        stripeRefundId: ledgerValues.stripeRefundId,
+        failureCode: ledgerValues.failureCode,
+        failureMessage: ledgerValues.failureMessage,
+        metadata: ledgerValues.metadata,
+        updatedAt: new Date(),
+      }).where(eq(stripeRefundLedgerTable.id, ledger.id)).returning();
+    } else {
+      [updatedLedger] = await tx.insert(stripeRefundLedgerTable).values(ledgerValues)
+        .onConflictDoNothing({ target: stripeRefundLedgerTable.requestId }).returning();
+    }
+    const deferred = shouldDeferSettlementMutation(rowTx.settlementStatus);
+    if (deferred) {
+      await upsertSettlementRecoveryReservationInTransaction(tx, {
+        transactionId,
+        kind: "refund",
+        referenceId: refund.id,
+        reason: "Stripe refund webhook arrived while escrow settlement was processing",
+        payload: { amountCents: refund.amount, providerStatus: mergedStatus },
+      });
+    }
+    return { ledger: updatedLedger, deferred };
+  });
+  if (!result.ledger || result.deferred) return;
+  if (result.ledger.providerStatus === "succeeded") {
+    const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, result.ledger.transactionId));
     if (tx) await setAggregatePaymentStatus(tx.id, originalLocalCents(tx));
   }
 }
@@ -627,7 +667,8 @@ async function reserveStripeRefund(
         .where(eq(stripeRefundLedgerTable.requestId, requestId));
       if (duplicate) return { ledger: duplicate, duplicate: true };
       const [transaction] = await tx.select().from(transactionsTable).where(eq(transactionsTable.id, transactionId));
-      if (!transaction || transaction.paymentMethod !== "stripe" || !COMPLETED_PAYMENT_STATUSES.includes(transaction.paymentStatus)) {
+      if (!transaction || transaction.paymentMethod !== "stripe" || !COMPLETED_PAYMENT_STATUSES.includes(transaction.paymentStatus) ||
+          transaction.escrowReleased || ["processing", "paid"].includes(transaction.settlementStatus)) {
         throw new Error("Only a completed Stripe card payment can be refunded");
       }
       if (transaction.type !== "purchase") {
@@ -842,8 +883,11 @@ router.post("/admin/stripe-transactions/:id/refunds/:refundId/approve", requireS
         throw new Error("Refund is not awaiting approval or reconciliation");
       }
       if (ledger.actorId === req.userId) throw new Error("A different Super Admin must approve this high-value refund");
-      const [transaction] = await tx.select().from(transactionsTable).where(eq(transactionsTable.id, transactionId));
-      if (!transaction || transaction.type !== "purchase" || !transaction.stripePaymentIntentId) {
+      const [transaction] = await tx.select().from(transactionsTable)
+        .where(eq(transactionsTable.id, transactionId))
+        .for("update");
+      if (!transaction || transaction.type !== "purchase" || !transaction.stripePaymentIntentId ||
+          transaction.escrowReleased || ["processing", "paid"].includes(transaction.settlementStatus)) {
         throw new Error("Refund is no longer eligible for Stripe processing");
       }
       const [processing] = await tx.update(stripeRefundLedgerTable).set({

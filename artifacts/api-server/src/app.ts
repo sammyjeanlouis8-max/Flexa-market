@@ -7,6 +7,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { stripeWebhookHandler } from "./routes/stripeCheckout";
 import { androidDigitalPurchaseGuard } from "./middlewares/androidDigitalPurchaseGuard";
+import { afterShipWebhookHandler } from "./routes/trackingCenter";
 
 const app: Express = express();
 
@@ -31,6 +32,11 @@ app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhookHandler,
+);
+app.post(
+  "/api/shipping/aftership/webhook",
+  express.raw({ type: "application/json", limit: "256kb" }),
+  afterShipWebhookHandler,
 );
 
 // ─── Standard middleware (applied AFTER webhook route) ────────────────────────

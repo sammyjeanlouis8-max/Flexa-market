@@ -9,6 +9,9 @@ export const notificationsTable = pgTable("notifications", {
   actorId: integer("actor_id").notNull().references(() => usersTable.id),
   type: text("type").notNull(),
   listingId: integer("listing_id").references(() => listingsTable.id),
+  // Optional order/shipment reference. Kept nullable for existing notification
+  // types; shipment notifications use it for deterministic deduplication.
+  referenceId: integer("reference_id"),
   commentId: integer("comment_id"),
   message: text("message"),
   isRead: boolean("is_read").notNull().default(false),
@@ -23,6 +26,9 @@ export const notificationsTable = pgTable("notifications", {
   newListingDedupeIdx: uniqueIndex("notifications_new_listing_dedupe_idx")
     .on(t.userId, t.type, t.listingId)
     .where(sql`${t.type} = 'new_listing'`),
+  shipmentDedupeIdx: uniqueIndex("notifications_shipment_dedupe_idx")
+    .on(t.userId, t.type, t.referenceId)
+    .where(sql`${t.type} LIKE 'shipment_%' AND ${t.referenceId} IS NOT NULL`),
 }));
 
 export type Notification = typeof notificationsTable.$inferSelect;

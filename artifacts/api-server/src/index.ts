@@ -23,6 +23,8 @@ import {
 } from "./lib/boostVideoUploadReadiness";
 import { startBoostVideoUploadCleanupWorker } from "./lib/boostVideoUploadCleanup";
 import { startBoostVideoUploadProcessingWorker } from "./routes/storage";
+import { startAfterShipPollingWorker } from "./lib/shipmentTracking";
+import { startSettlementRecoveryWorker } from "./lib/settlementRecovery";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
@@ -129,6 +131,8 @@ httpServer.listen(port, () => {
     setInterval(() => { runMusicMonthlyReminder().catch(() => {}); }, 60 * 60 * 1000);
     runMusicMonthlyReminder().catch(() => {});
     logger.info("API server ready");
+      startAfterShipPollingWorker();
+      startSettlementRecoveryWorker();
 
     // ── Graceful shutdown ──────────────────────────────────────────────────
     // When Render deploys a new version it sends SIGTERM to the old instance.

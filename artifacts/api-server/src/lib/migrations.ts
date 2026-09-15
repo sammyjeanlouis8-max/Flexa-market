@@ -2576,6 +2576,115 @@ export async function runStartupMigrations(): Promise<void> {
       ON notifications(user_id, type, listing_id)
       WHERE type = 'new_listing'`,
   });
+  // Provider-neutral shipment snapshots and immutable carrier events.  Keep
+  // this separate from transactions so local FM-driver delivery remains
+  // independent of carrier tracking.
+  migrations.push({
+    name: "shipments.create",
+    sql: `CREATE TABLE IF NOT EXISTS shipments (
+      tracking_id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      seller_id INTEGER NOT NULL REFERENCES users(id),
+      buyer_id INTEGER NOT NULL REFERENCES users(id),
+      provider TEXT NOT NULL DEFAULT 'aftership',
+      provider_tracking_id TEXT,
+      carrier TEXT NOT NULL,
+      tracking_number TEXT NOT NULL,
+      tracking_status TEXT NOT NULL DEFAULT 'label_created',
+      origin_country TEXT,
+      destination_country TEXT,
+      origin_postal_code TEXT,
+      destination_postal_code TEXT,
+      estimated_delivery TIMESTAMPTZ,
+      last_location TEXT,
+      last_update TIMESTAMPTZ,
+      last_event_timestamp TIMESTAMPTZ,
+      next_poll_at TIMESTAMPTZ,
+      raw_snapshot JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "shipments.indexes",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS shipments_provider_tracking_uidx
+      ON shipments(provider, tracking_number);
+      CREATE INDEX IF NOT EXISTS shipments_order_idx ON shipments(order_id);
+      CREATE INDEX IF NOT EXISTS shipments_buyer_idx ON shipments(buyer_id);
+      CREATE INDEX IF NOT EXISTS shipments_seller_idx ON shipments(seller_id);`,
+  });
+  migrations.push({
+    name: "shipments.next_poll_at",
+    sql: "ALTER TABLE shipments ADD COLUMN IF NOT EXISTS next_poll_at TIMESTAMPTZ",
+  });
+  migrations.push({
+    name: "shipments.dedupe_order_rows",
+    sql: `DELETE FROM shipments older
+      USING shipments newer
+      WHERE older.order_id = newer.order_id
+        AND older.tracking_id > newer.tracking_id`,
+  });
+  migrations.push({
+    name: "shipments.order_unique",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS shipments_order_uidx ON shipments(order_id)",
+  });
+  migrations.push({
+    name: "shipments.poll_due_idx",
+    sql: "CREATE INDEX IF NOT EXISTS shipments_poll_due_idx ON shipments(next_poll_at, created_at)",
+  });
+  migrations.push({
+    name: "shipment_events.create",
+    sql: `CREATE TABLE IF NOT EXISTS shipment_events (
+      id SERIAL PRIMARY KEY,
+      shipment_id INTEGER NOT NULL REFERENCES shipments(tracking_id) ON DELETE CASCADE,
+      event_status TEXT NOT NULL,
+      event_description TEXT,
+      location TEXT,
+      event_timestamp TIMESTAMPTZ NOT NULL,
+      carrier_event_id TEXT,
+      raw_event JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "shipment_events.indexes",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS shipment_events_carrier_event_uidx
+      ON shipment_events(shipment_id, carrier_event_id);
+      CREATE INDEX IF NOT EXISTS shipment_events_shipment_time_idx
+      ON shipment_events(shipment_id, event_timestamp);`,
+  });
+  migrations.push({
+    name: "notifications.reference_id",
+    sql: "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS reference_id INTEGER",
+  });
+  migrations.push({
+    name: "notifications.shipment_dedupe",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS notifications_shipment_dedupe_idx
+      ON notifications(user_id, type, reference_id)
+      WHERE type LIKE 'shipment_%' AND reference_id IS NOT NULL`,
+  });
+  migrations.push({
+    name: "settlement_recovery_reservations.create",
+    sql: `CREATE TABLE IF NOT EXISTS settlement_recovery_reservations (
+      id SERIAL PRIMARY KEY,
+      transaction_id INTEGER NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      reference_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reason TEXT NOT NULL,
+      payload JSONB,
+      created_by_user_id INTEGER REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ
+    )`,
+  });
+  migrations.push({
+    name: "settlement_recovery_reservations.indexes",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS settlement_recovery_reservation_uidx
+      ON settlement_recovery_reservations(transaction_id, kind, reference_id);
+      CREATE INDEX IF NOT EXISTS settlement_recovery_pending_idx
+      ON settlement_recovery_reservations(status, created_at);`,
+  });
 
   let applied = 0;
   let failed = 0;

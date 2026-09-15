@@ -15,6 +15,10 @@ import type { Request, Response } from "express";
 import Stripe from "stripe";
 import { getNextArtistPlanExpiry } from "../lib/artistPlan";
 import { reconcileStripeRefund } from "./adminStripeTransactions";
+import {
+  shouldDeferSettlementMutation,
+  upsertSettlementRecoveryReservationInTransaction,
+} from "../lib/settlementRecovery";
 
 const router = Router();
 
@@ -620,7 +624,6 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   const chargeId = typeof dispute.charge === "string"
     ? dispute.charge : (dispute.charge as any)?.id ?? null;
   const amountUsd = dispute.amount / 100;
-
   // Find user via wallet transaction first, then fall back to regular transaction
   let userId: number | null = null;
   if (paymentIntentId) {
@@ -637,6 +640,27 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
   }
 
   await db.transaction(async (tx) => {
+    // Lock the transaction before inspecting settlementStatus or mutating
+    // chargeback/recovery state. This removes the processing-state TOCTOU.
+    const [linkedTransaction] = paymentIntentId
+      ? await tx.select({
+        id: transactionsTable.id,
+        settlementStatus: transactionsTable.settlementStatus,
+        escrowReleased: transactionsTable.escrowReleased,
+      }).from(transactionsTable)
+        .where(eq(transactionsTable.stripePaymentIntentId, paymentIntentId))
+        .for("update")
+      : [];
+    const deferSettlementMutation = shouldDeferSettlementMutation(linkedTransaction?.settlementStatus);
+    if (deferSettlementMutation && linkedTransaction) {
+      await upsertSettlementRecoveryReservationInTransaction(tx, {
+        transactionId: linkedTransaction.id,
+        kind: "dispute",
+        referenceId: dispute.id,
+        reason: "Stripe dispute webhook arrived while escrow settlement was processing",
+        payload: { amountUsd, disputeStatus: dispute.status ?? "open" },
+      });
+    }
     await tx.execute(sql`
       INSERT INTO chargebacks (user_id, stripe_dispute_id, stripe_charge_id, stripe_payment_intent_id, amount_usd, status, wallet_deducted, user_restricted)
       VALUES (${userId}, ${dispute.id}, ${chargeId}, ${paymentIntentId}, ${amountUsd}, 'open', false, false)
@@ -649,6 +673,14 @@ async function handleDisputeCreated(dispute: Stripe.Dispute): Promise<void> {
         AND wallet_deducted = false
       RETURNING id
     `) : { rows: [] };
+    if (linkedTransaction && !deferSettlementMutation) {
+      await tx.update(transactionsTable).set({
+        paymentStatus: "disputed",
+        settlementError: linkedTransaction.settlementStatus === "paid" || linkedTransaction.escrowReleased
+          ? "Post-payout dispute recorded; seller recovery/debt workflow required"
+          : "Stripe dispute opened; payout blocked",
+      }).where(eq(transactionsTable.id, linkedTransaction.id));
+    }
     if (userId && claimed.rows.length) {
       const userState = await tx.execute(sql`
         SELECT is_restricted, restriction_reason FROM users WHERE id = ${userId} FOR UPDATE
@@ -1266,37 +1298,46 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session): Promise<
 }
 
 async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent): Promise<void> {
-  await db
-    .update(transactionsTable)
-    .set({
-      paymentStatus: sql`CASE
-        WHEN ${transactionsTable.paymentStatus} IN ('partially_refunded', 'refunded')
-        THEN ${transactionsTable.paymentStatus}
-        WHEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) = ${pi.amount_received || pi.amount}
-         AND UPPER(${transactionsTable.currency}) = ${pi.currency.toUpperCase()}
-        THEN 'completed'
-        ELSE 'amount_mismatch'
-      END`,
-      stripePaymentIntentId: pi.id,
-      stripeVerifiedAmountCents: pi.amount_received || pi.amount,
-      stripeVerifiedStatus: pi.status,
-      stripeVerifiedCurrency: pi.currency.toUpperCase(),
-      stripeVerifiedAt: new Date(),
-    })
-    .where(eq(transactionsTable.stripePaymentIntentId, pi.id));
+  await db.transaction(async tx => {
+    const [locked] = await tx.select().from(transactionsTable)
+      .where(eq(transactionsTable.stripePaymentIntentId, pi.id))
+      .for("update");
+    if (!locked || locked.escrowReleased || ["processing", "paid"].includes(locked.settlementStatus) ||
+        locked.paymentStatus === "disputed") return;
+    await tx.update(transactionsTable)
+      .set({
+        paymentStatus: sql`CASE
+          WHEN ${transactionsTable.paymentStatus} IN ('partially_refunded', 'refunded', 'disputed')
+          THEN ${transactionsTable.paymentStatus}
+          WHEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) = ${pi.amount_received || pi.amount}
+           AND UPPER(${transactionsTable.currency}) = ${pi.currency.toUpperCase()}
+          THEN 'completed'
+          ELSE 'amount_mismatch'
+        END`,
+        stripePaymentIntentId: pi.id,
+        stripeVerifiedAmountCents: pi.amount_received || pi.amount,
+        stripeVerifiedStatus: pi.status,
+        stripeVerifiedCurrency: pi.currency.toUpperCase(),
+        stripeVerifiedAt: new Date(),
+      })
+      .where(eq(transactionsTable.id, locked.id));
+  });
 }
 
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent): Promise<void> {
-  await db
-    .update(transactionsTable)
-    .set({
+  await db.transaction(async tx => {
+    const [locked] = await tx.select().from(transactionsTable)
+      .where(eq(transactionsTable.stripePaymentIntentId, pi.id))
+      .for("update");
+    if (!locked || locked.escrowReleased || ["processing", "paid"].includes(locked.settlementStatus)) return;
+    await tx.update(transactionsTable).set({
       paymentStatus: "failed",
       stripeVerifiedAmountCents: pi.amount_received || pi.amount,
       stripeVerifiedStatus: pi.status,
       stripeVerifiedCurrency: pi.currency.toUpperCase(),
       stripeVerifiedAt: new Date(),
-    })
-    .where(eq(transactionsTable.stripePaymentIntentId, pi.id));
+    }).where(eq(transactionsTable.id, locked.id));
+  });
 }
 
 async function handleAccountUpdated(account: Stripe.Account): Promise<void> {

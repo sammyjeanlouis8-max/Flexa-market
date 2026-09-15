@@ -72,3 +72,12 @@ export function isWithinPromaxDailyBudget(
   if (dailyBudget == null) return true;
   return impressionCount < Math.floor(dailyBudget * BOOST_IMPRESSIONS_PER_USD);
 }
+
+export function isUndefinedTableError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "42P01",
+  );
+}

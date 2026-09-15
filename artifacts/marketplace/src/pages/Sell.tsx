@@ -25,6 +25,7 @@ import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
+import sellPreviewCar from "@/assets/sell-preview-car.webp";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -1569,13 +1570,16 @@ export default function Sell() {
             const selSub = selCat
               ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId)
               : null;
-            const previewImages = uploadedImages.map(img => img.previewUrl);
+            const selectedPreviewImages = uploadedImages.map(img => img.previewUrl);
+            const previewImages = selectedPreviewImages.length > 0
+              ? selectedPreviewImages
+              : [sellPreviewCar];
             const hasContent = vals.title?.trim() || previewImages.length > 0;
             if (!hasContent) return null;
             const previewListing = {
               id: -1,
               title: vals.title?.trim() || t("sell.titlePlaceholder", "Your listing title"),
-              price: Number(vals.price) || 0,
+              price: Number(vals.price) || 127000,
               currency,
               images: previewImages,
               location: vals.location || vals.city || "",

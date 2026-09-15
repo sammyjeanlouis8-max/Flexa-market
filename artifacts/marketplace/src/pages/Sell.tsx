@@ -1,4 +1,4 @@
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
@@ -98,12 +98,14 @@ export default function Sell() {
   const [currency, setCurrency] = useState<"USD" | "HTG" | "DOP">("USD");
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
+  const [uploadingSource, setUploadingSource] = useState<"gallery" | "camera" | null>(null);
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [sheetStep, setSheetStep] = useState<"parents" | "subs">("parents");
   const [pendingParent, setPendingParent] = useState<{ id: number; slug: string; name: string; icon: string; children?: { id: number; slug: string; name: string; icon: string }[] } | null>(null);
-  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const photoSectionRef = useRef<HTMLDivElement | null>(null);
+  const paymentSectionRef = useRef<HTMLDivElement | null>(null);
   const { data: categories } = useGetCategories();
   const createListing = useCreateListing();
   const updateListing = useUpdateListing();
@@ -307,7 +309,7 @@ export default function Sell() {
     return null;
   };
 
-  const handleFiles = async (files: FileList | File[]) => {
+  const handleFiles = async (files: FileList | File[], source: "gallery" | "camera") => {
     setUploadErrorMessage(null);
     const fileArray = Array.from(files);
     const currentCount = uploadedImages.length;
@@ -320,6 +322,7 @@ export default function Sell() {
       if (err) { toast({ title: "Invalid file", description: err, variant: "destructive" }); continue; }
       const slotIndex = currentCount + i;
       setUploadingSlot(slotIndex);
+      setUploadingSource(source);
       try {
         const result = await uploadFile(file);
         if (!result) {
@@ -343,6 +346,7 @@ export default function Sell() {
         toast({ title: "Upload failed", description: message, variant: "destructive" });
       } finally {
         setUploadingSlot(null);
+        setUploadingSource(null);
       }
     }
   };
@@ -354,6 +358,16 @@ export default function Sell() {
   const onSubmit = (values: z.infer<typeof schema>) => {
     if (isRestricted) { showRestrictionToast(); return; }
     setSubmitError(null);
+    if (uploadingSlot !== null || videoUploading || savingPayoutMethod) {
+      const msg = uploadingSlot !== null
+        ? "Tann foto a fini monte anvan ou pibliye."
+        : videoUploading
+          ? "Tann videyo a fini monte anvan ou pibliye."
+          : "Tann metòd peman an fini anrejistre anvan ou pibliye.";
+      setSubmitError(msg);
+      toast({ title: "Operasyon an poko fini", description: msg, variant: "destructive" });
+      return;
+    }
     const minPhotos = isEditMode ? 1 : MIN_IMAGES;
     if (uploadedImages.length < minPhotos) {
       const msg = isEditMode
@@ -361,6 +375,7 @@ export default function Sell() {
         : t("tr.minPhotos", { count: MIN_IMAGES });
       setSubmitError(msg);
       toast({ title: t("tr.photoRequired"), description: msg, variant: "destructive" });
+      photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     if (!isEditMode && paymentReady !== true) {
@@ -373,6 +388,7 @@ export default function Sell() {
         description: msg,
         variant: "destructive",
       });
+      paymentSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
@@ -443,6 +459,33 @@ export default function Sell() {
         { data: payload as any },
         { onSuccess: handleSuccess, onError: handleError },
       );
+    }
+  };
+
+  const onInvalidSubmit = (errors: FieldErrors<z.infer<typeof schema>>) => {
+    const firstInvalidField = Object.keys(errors)[0];
+    const fieldMessage = firstInvalidField
+      ? errors[firstInvalidField as keyof typeof errors]?.message
+      : null;
+    const message = typeof fieldMessage === "string"
+      ? fieldMessage
+      : "Ranpli chan obligatwa ki make an wouj yo anvan ou pibliye.";
+
+    setSubmitError(message);
+    toast({
+      title: "Gen enfòmasyon ki manke",
+      description: message,
+      variant: "destructive",
+    });
+
+    if (firstInvalidField) {
+      window.requestAnimationFrame(() => {
+        const field =
+          document.querySelector<HTMLElement>(`[name="${firstInvalidField}"]`) ??
+          document.querySelector<HTMLElement>(`[data-form-field="${firstInvalidField}"]`);
+        field?.scrollIntoView({ behavior: "smooth", block: "center" });
+        field?.focus({ preventScroll: true });
+      });
     }
   };
 
@@ -578,6 +621,16 @@ export default function Sell() {
   useEffect(() => { saveDraft(); }, [currency, uploadedImages, listingVideoUrl, saveDraft]);
 
   const canAddMore = uploadedImages.length < MAX_IMAGES;
+  const requiredPhotoCount = isEditMode ? 1 : MIN_IMAGES;
+  const isPublishBusy =
+    isPending || uploadingSlot !== null || videoUploading || savingPayoutMethod;
+  const publishBusyLabel = uploadingSlot !== null
+    ? "Foto ap monte…"
+    : videoUploading
+      ? "Videyo ap monte…"
+      : savingPayoutMethod
+        ? "N ap anrejistre peman…"
+        : null;
 
   return (
     <div className="max-w-xl mx-auto px-4 py-8">
@@ -617,7 +670,7 @@ export default function Sell() {
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-5" noValidate>
 
           {/* ── Draft restored banner ─────────────────────────────────── */}
           {draftRestored && (
@@ -655,12 +708,19 @@ export default function Sell() {
           )}
 
           {/* Image upload section */}
-          <div>
-            <label className="text-sm font-medium text-foreground flex items-center mb-2">
+          <div
+            ref={photoSectionRef}
+            role="group"
+            aria-labelledby="sell-photos-label"
+            aria-describedby={`sell-photo-requirement${uploadErrorMessage ? " sell-photo-error" : ""}`}
+            aria-invalid={uploadedImages.length < requiredPhotoCount}
+            aria-busy={uploadingSlot !== null}
+          >
+            <div id="sell-photos-label" className="text-sm font-medium text-foreground flex items-center mb-2">
               {t("sell.photos")}
-              <ReqDot filled={uploadedImages.length >= MIN_IMAGES} />
+              <ReqDot filled={uploadedImages.length >= requiredPhotoCount} />
               <span className="text-muted-foreground font-normal ml-1.5">({uploadedImages.length}/{MAX_IMAGES})</span>
-            </label>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {uploadedImages.map((img, i) => (
                 <div
@@ -681,6 +741,7 @@ export default function Sell() {
                   <button
                     type="button"
                     onClick={() => removeImage(i)}
+                    aria-label={`Retire foto ${i + 1}`}
                     className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                     data-testid={`button-remove-image-${i}`}
                   >
@@ -690,47 +751,65 @@ export default function Sell() {
               ))}
               {canAddMore && (
                 <>
-                  <div
-                    className="relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 cursor-pointer flex flex-col items-center justify-center gap-1"
-                    onClick={() => fileInputRefs.current[uploadedImages.length]?.click()}
+                  <label
+                    className={cn(
+                      "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
+                      uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                    )}
                     data-testid="button-add-image"
+                    aria-label={uploadingSource === "gallery" ? "Foto yo ap monte" : "Chwazi foto nan galri"}
                   >
-                    {uploadingSlot === uploadedImages.length ? (
-                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
+                    {uploadingSource === "gallery" ? (
+                      <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
+                        <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
+                        <span className="text-xs text-muted-foreground pointer-events-none">Foto ap monte…</span>
+                      </span>
                     ) : (
                       <>
-                        <ImagePlus className="h-6 w-6 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">{t("sell.gallery")}</span>
+                        <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
+                        <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
                       </>
                     )}
                     <input
-                      ref={el => { fileInputRefs.current[uploadedImages.length] = el; }}
                       type="file"
                       accept="image/*"
                       multiple
-                      className="hidden"
+                      className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
                       data-testid={`input-image-${uploadedImages.length}`}
                       onChange={e => {
-                        if (e.target.files && e.target.files.length > 0) handleFiles(e.target.files);
+                        if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files, "gallery");
                         e.target.value = "";
                       }}
                       disabled={uploadingSlot !== null}
                     />
-                  </div>
+                  </label>
                   <label
-                    className="relative aspect-square rounded-lg border-2 border-dashed border-primary/40 hover:border-primary transition-colors bg-primary/5 cursor-pointer flex flex-col items-center justify-center gap-1"
+                    className={cn(
+                      "relative aspect-square rounded-lg border-2 border-dashed border-primary/40 hover:border-primary transition-colors bg-primary/5 flex flex-col items-center justify-center gap-1 overflow-hidden",
+                      uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                    )}
                     data-testid="button-camera-image"
+                    aria-label={uploadingSource === "camera" ? "Foto a ap monte" : "Pran yon foto ak kamera"}
                   >
-                    <Camera className="h-6 w-6 text-primary" />
-                    <span className="text-xs text-primary">{t("sell.camera")}</span>
+                    {uploadingSource === "camera" ? (
+                      <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
+                        <Loader2 className="h-6 w-6 text-primary animate-spin pointer-events-none" />
+                        <span className="text-xs text-primary pointer-events-none">Foto ap monte…</span>
+                      </span>
+                    ) : (
+                      <>
+                        <Camera className="h-6 w-6 text-primary pointer-events-none" />
+                        <span className="text-xs text-primary pointer-events-none">{t("sell.camera")}</span>
+                      </>
+                    )}
                     <input
                       type="file"
                       accept="image/*"
                       capture="environment"
-                      className="hidden"
+                      className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
                       onChange={e => {
                         const file = e.target.files?.[0];
-                        if (file) handleFiles([file]);
+                        if (file) void handleFiles([file], "camera");
                         e.target.value = "";
                       }}
                       disabled={uploadingSlot !== null}
@@ -742,13 +821,13 @@ export default function Sell() {
             {uploadedImages.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
             )}
-            <p className={cn("text-xs mt-1 font-medium", uploadedImages.length < MIN_IMAGES ? "text-red-500" : "text-green-600")}>
-              {uploadedImages.length < MIN_IMAGES
-                ? `Mete omwen ${MIN_IMAGES} foto (maksimòm ${MAX_IMAGES}).`
+            <p id="sell-photo-requirement" className={cn("text-xs mt-1 font-medium", uploadedImages.length < requiredPhotoCount ? "text-red-500" : "text-green-600")}>
+              {uploadedImages.length < requiredPhotoCount
+                ? `Mete omwen ${requiredPhotoCount} foto (maksimòm ${MAX_IMAGES}).`
                 : `Foto yo bon ✓ (maksimòm ${MAX_IMAGES}).`}
             </p>
             {uploadErrorMessage && (
-              <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+              <div id="sell-photo-error" className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
                 <p className="font-semibold">Foto a pa t monte.</p>
                 <p>{uploadErrorMessage}</p>
                 <p className="mt-1">Eseye ankò oswa chwazi yon lòt foto JPG/PNG ki pi piti pase 10 MB.</p>
@@ -890,44 +969,47 @@ export default function Sell() {
             };
 
             return (
-              <FormItem>
+              <FormItem data-form-field="categoryId">
                 <FormLabel>{t("sell.category")}<ReqDot filled={Number(field.value) > 0} /></FormLabel>
 
                 {/* Trigger row */}
-                <button
-                  type="button"
-                  onClick={openSheet}
-                  data-testid="select-category"
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-colors",
-                    selectedCat
-                      ? "border-primary/40 bg-primary/5 text-foreground"
-                      : "border-border bg-background text-muted-foreground hover:bg-muted/50"
-                  )}
-                >
-                  {selectedCat ? (
-                    <>
-                      <span className="text-2xl leading-none shrink-0">{selectedCat.icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-foreground truncate">
-                          {t(`categories.${selectedCat.slug}`, { defaultValue: selectedCat.name })}
-                        </div>
-                        {selectedSub && (
-                          <div className="text-xs text-muted-foreground truncate mt-0.5">
-                            {selectedSub.name}
+                <FormControl>
+                  <button
+                    type="button"
+                    name="categoryId"
+                    onClick={openSheet}
+                    data-testid="select-category"
+                    className={cn(
+                      "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-colors",
+                      selectedCat
+                        ? "border-primary/40 bg-primary/5 text-foreground"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                    )}
+                  >
+                    {selectedCat ? (
+                      <>
+                        <span className="text-2xl leading-none shrink-0">{selectedCat.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-foreground truncate">
+                            {t(`categories.${selectedCat.slug}`, { defaultValue: selectedCat.name })}
                           </div>
-                        )}
-                      </div>
-                      <Check className="h-4 w-4 text-primary shrink-0" />
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xl shrink-0">📂</span>
-                      <span className="flex-1 text-sm">{t("sell.selectCategory", "Select a category…")}</span>
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    </>
-                  )}
-                </button>
+                          {selectedSub && (
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">
+                              {selectedSub.name}
+                            </div>
+                          )}
+                        </div>
+                        <Check className="h-4 w-4 text-primary shrink-0" />
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-xl shrink-0">📂</span>
+                        <span className="flex-1 text-sm">{t("sell.selectCategory", "Select a category…")}</span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </>
+                    )}
+                  </button>
+                </FormControl>
 
                 <FormMessage />
 
@@ -1031,7 +1113,7 @@ export default function Sell() {
           }} />
 
           <FormField control={form.control} name="stockQuantity" render={({ field }) => (
-            <FormItem>
+            <FormItem data-form-field="country">
               <FormLabel>{t("sell.stockQuantity", "Kantite an stock")}</FormLabel>
               <FormControl>
                 <Input
@@ -1185,28 +1267,35 @@ export default function Sell() {
                 )}
               </FormLabel>
               {isAdmin ? (
-                <select
-                  value={field.value ?? ""}
-                  onChange={e => {
-                    field.onChange(e.target.value);
-                    form.setValue("city", "");
-                    form.setValue("state", "");
-                    setCityDisplayValue("");
-                    setUseOtherCity(false);
-                  }}
-                  className="h-9 w-full rounded-md border border-cyan-300 dark:border-cyan-700 bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
-                  style={{ fontSize: "16px" }}
-                >
-                  <option value="">— {t("sell.selectCountry", "Chwazi peyi")} —</option>
-                  {SUPPORTED_COUNTRIES.map(c => (
-                    <option key={c} value={c}>{COUNTRY_FLAGS[c] ? `${COUNTRY_FLAGS[c]} ` : ""}{c}</option>
-                  ))}
-                </select>
+                <FormControl>
+                  <select
+                    name={field.name}
+                    ref={field.ref}
+                    value={field.value ?? ""}
+                    onBlur={field.onBlur}
+                    onChange={e => {
+                      field.onChange(e.target.value);
+                      form.setValue("city", "");
+                      form.setValue("state", "");
+                      setCityDisplayValue("");
+                      setUseOtherCity(false);
+                    }}
+                    className="h-9 w-full rounded-md border border-cyan-300 dark:border-cyan-700 bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                    style={{ fontSize: "16px" }}
+                  >
+                    <option value="">— {t("sell.selectCountry", "Chwazi peyi")} —</option>
+                    {SUPPORTED_COUNTRIES.map(c => (
+                      <option key={c} value={c}>{COUNTRY_FLAGS[c] ? `${COUNTRY_FLAGS[c]} ` : ""}{c}</option>
+                    ))}
+                  </select>
+                </FormControl>
               ) : (
-                <div className="flex h-9 items-center justify-between rounded-md border border-input bg-muted/40 px-3 text-sm select-none">
-                  <span>{countryFlag ? `${countryFlag} ` : ""}{field.value || "—"}</span>
-                  <span className="text-xs text-muted-foreground">{t("sell.fromProfile", "From your profile")}</span>
-                </div>
+                <FormControl>
+                  <div tabIndex={-1} className="flex h-9 items-center justify-between rounded-md border border-input bg-muted/40 px-3 text-sm select-none">
+                    <span>{countryFlag ? `${countryFlag} ` : ""}{field.value || "—"}</span>
+                    <span className="text-xs text-muted-foreground">{t("sell.fromProfile", "From your profile")}</span>
+                  </div>
+                </FormControl>
               )}
               <FormMessage />
             </FormItem>
@@ -1250,7 +1339,7 @@ export default function Sell() {
 
           <div className="grid grid-cols-2 gap-4">
             <FormField control={form.control} name="city" render={({ field }) => (
-              <FormItem>
+              <FormItem data-form-field="city">
                 <FormLabel>
                   {t("sell.city")}
                   <ReqDot filled={!!(field.value ?? "").trim()} />
@@ -1262,31 +1351,36 @@ export default function Sell() {
                 </FormLabel>
                 {cityOptions.length > 0 ? (
                   <>
-                    <select
-                      value={useOtherCity ? OTHER_CITY : cityDisplayValue}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === OTHER_CITY) {
-                          setUseOtherCity(true);
-                          setCityDisplayValue(OTHER_CITY);
-                          field.onChange("");
-                        } else {
-                          setUseOtherCity(false);
-                          setCityDisplayValue(v);
-                          field.onChange(v);
-                          autoFillState(v);
-                        }
-                      }}
-                      data-testid="select-city"
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      style={{ fontSize: "16px" }}
-                    >
-                      <option value="" disabled>{t("sell.cityPlaceholder")}</option>
-                      {cityOptions.map((c) => (
-                        <option key={c} value={c} data-testid={`city-option-${c}`}>{c}</option>
-                      ))}
-                      <option value={OTHER_CITY} data-testid="city-option-other">Lòt vil…</option>
-                    </select>
+                    <FormControl>
+                      <select
+                        name={field.name}
+                        ref={field.ref}
+                        value={useOtherCity ? OTHER_CITY : cityDisplayValue}
+                        onBlur={field.onBlur}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === OTHER_CITY) {
+                            setUseOtherCity(true);
+                            setCityDisplayValue(OTHER_CITY);
+                            field.onChange("");
+                          } else {
+                            setUseOtherCity(false);
+                            setCityDisplayValue(v);
+                            field.onChange(v);
+                            autoFillState(v);
+                          }
+                        }}
+                        data-testid="select-city"
+                        className="h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        style={{ fontSize: "16px" }}
+                      >
+                        <option value="" disabled>{t("sell.cityPlaceholder")}</option>
+                        {cityOptions.map((c) => (
+                          <option key={c} value={c} data-testid={`city-option-${c}`}>{c}</option>
+                        ))}
+                        <option value={OTHER_CITY} data-testid="city-option-other">Lòt vil…</option>
+                      </select>
+                    </FormControl>
                     {useOtherCity && (
                       <FormControl>
                         <Input
@@ -1564,11 +1658,13 @@ export default function Sell() {
               </p>
               <button
                 type="button"
-                onClick={() => form.handleSubmit(onSubmit)()}
+                onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
+                disabled={isPublishBusy}
                 style={{
                   fontSize: 13, fontWeight: 600, color: "#ffffff",
                   background: "#DC2626", border: "none", borderRadius: 8,
-                  padding: "7px 16px", cursor: "pointer",
+                  padding: "7px 16px", cursor: isPublishBusy ? "wait" : "pointer",
+                  opacity: isPublishBusy ? 0.65 : 1,
                   display: "inline-flex", alignItems: "center", gap: 6,
                 }}
               >
@@ -1579,7 +1675,7 @@ export default function Sell() {
 
           {/* ── Payment method selector (hidden in edit mode) ──────── */}
           {paymentReady !== null && !isEditMode && (
-            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div ref={paymentSectionRef} className="rounded-2xl border border-border bg-card overflow-hidden">
               {/* Header */}
               <div className="px-4 pt-4 pb-3 border-b border-border/60">
                 <div className="flex items-center gap-2">
@@ -1690,12 +1786,15 @@ export default function Sell() {
           <Button
             type="submit"
             className="w-full font-bold"
-            disabled={isPending}
+            disabled={isPublishBusy}
+            aria-busy={isPublishBusy}
             data-testid="button-submit-listing"
           >
-            {isPending
-              ? (isEditMode ? "Ap sovgade…" : t("sell.publishing"))
-              : (isEditMode ? "Sovgade chanjman yo" : t("sell.publishListing"))}
+            {publishBusyLabel
+              ? publishBusyLabel
+              : isPending
+                ? (isEditMode ? "Ap sovgade…" : t("sell.publishing"))
+                : (isEditMode ? "Sovgade chanjman yo" : t("sell.publishListing"))}
           </Button>
         </form>
       </Form>

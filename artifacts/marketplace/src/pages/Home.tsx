@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 
-import { Search, ChevronRight, Zap, TrendingUp, Package, MapPin, Navigation, ShieldCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video, Crown } from "lucide-react";
+import { Search, ChevronRight, Package, MapPin, Navigation, ShieldCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
@@ -873,45 +873,17 @@ export default function Home() {
           </div>
         ) : (
           promaxGroups.some(group => group.listings.length > 0) && (
-            <div className="space-y-6">
-              {promaxGroups.map(({ key, listings }) => {
-              if (listings.length === 0) return null;
-              const labels = {
-                booster_vip: "⚡ Boosters VIP",
-                booster_ordinary: "⚡ Boosters",
-                vip: "👑 Flexa VIP",
-                ordinary: activeCategory
-                  ? categories?.find(c => c.slug === activeCategory)?.name ?? t("home.justListed")
-                  : t("home.justListed"),
-              };
-              return (
-                <section key={key} data-promax-group={key}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-1.5">
-                      {key === "vip" ? (
-                        <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
-                      ) : key === "ordinary" ? (
-                        <TrendingUp className="h-4 w-4 text-primary" />
-                      ) : (
-                        <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
-                      )}
-                      <h2 className="text-base font-bold text-foreground">{labels[key]}</h2>
-                    </div>
-                    <button
-                      onClick={() => setLocation(key === "ordinary" ? "/search" : "/search?boosted=true")}
-                      className="flex items-center gap-0.5 text-xs text-primary font-semibold"
-                    >
-                      {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
-                    </button>
+            <div
+              className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
+              aria-label="Marketplace products"
+            >
+              {promaxGroups.flatMap(({ key, listings }) =>
+                listings.map((listing) => (
+                  <div key={listing.id} data-promax-group={key} className="min-w-0">
+                    <ListingCard listing={listing} mosaicLayout />
                   </div>
-                  <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                    {listings.map((listing) => (
-                      <ListingCard key={listing.id} listing={listing} mosaicLayout />
-                    ))}
-                  </div>
-                </section>
-              );
-              })}
+                )),
+              )}
             </div>
           )
         )}

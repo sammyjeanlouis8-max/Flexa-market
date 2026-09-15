@@ -37,6 +37,7 @@ import {
   matchesPromaxAudience,
 } from "../lib/promaxBoostGating";
 import { logger } from "../lib/logger";
+import { getAdminScopeCities, listingInAdminScope, parseAdminCountries } from "../lib/adminScope";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -113,8 +114,8 @@ function toStreamingVideoUrl(url: string): string {
 /** Returns the full country-scope list for a scoped admin from JWT fields. */
 function getAdminScopeCountriesList(user: any): string[] {
   if (!user || user.isSuperAdmin) return [];
-  const raw = user.adminScopeCountries;
-  if (raw) { try { const p = JSON.parse(raw) as string[]; if (p.length > 0) return p; } catch { /* ignore */ } }
+  const parsedCountries = parseAdminCountries(user);
+  if (parsedCountries.length > 0) return parsedCountries;
   if (user.adminScopeCountry) return [user.adminScopeCountry];
   // Legacy admin accounts may predate explicit scope fields. Their profile
   // country is the safe fallback rather than silently granting global access.
@@ -137,12 +138,30 @@ function enforceAdminCountryScope(conditions: any[], user: any, country?: string
     conditions.push(list.includes(country)
       ? eq(listingsTable.country!, country)
       : sql`false`);
-    return;
+  } else {
+    if (list.length === 1) conditions.push(eq(listingsTable.country!, list[0]));
+    else if (list.length > 1) conditions.push(inArray(listingsTable.country!, list) as any);
+    else conditions.push(sql`false`);
   }
 
-  if (list.length === 1) conditions.push(eq(listingsTable.country!, list[0]));
-  else if (list.length > 1) conditions.push(inArray(listingsTable.country!, list) as any);
-  else conditions.push(sql`false`);
+  // Country is only the first layer of an admin scope.  Department/city
+  // assignments use the same SCOPE_OPTIONS city lists as user scope checks.
+  const scopedCities = getAdminScopeCities(user);
+  if (user.adminScopeCity) {
+    conditions.push(or(
+      eq(listingsTable.city!, user.adminScopeCity),
+      and(isNull(listingsTable.city), eq(listingsTable.location, user.adminScopeCity)),
+    ) as any);
+  } else if (user.adminScopeDepartment) {
+    if (scopedCities.length === 0) {
+      conditions.push(sql`false`);
+    } else {
+      conditions.push(or(
+        inArray(listingsTable.city!, scopedCities),
+        and(isNull(listingsTable.city), inArray(listingsTable.location, scopedCities)),
+      ) as any);
+    }
+  }
 }
 
 async function formatListing(
@@ -1101,14 +1120,22 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     // Only notify admins who are global (no country scope) OR scoped to the same country as the listing.
     // Super-admins always get notified (they have no scope restriction).
     const admins = await db
-      .select({ id: usersTable.id, adminScopeCountry: usersTable.adminScopeCountry, isSuperAdmin: usersTable.isSuperAdmin })
+      .select({
+        id: usersTable.id,
+        adminScopeCountry: usersTable.adminScopeCountry,
+        adminScopeCountries: usersTable.adminScopeCountries,
+        adminScopeDepartment: usersTable.adminScopeDepartment,
+        adminScopeCity: usersTable.adminScopeCity,
+        country: usersTable.country,
+        isSuperAdmin: usersTable.isSuperAdmin,
+      })
       .from(usersTable)
       .where(eq(usersTable.isAdmin, true));
-    const relevantAdmins = admins.filter((a) =>
-      a.isSuperAdmin ||
-      !a.adminScopeCountry ||
-      a.adminScopeCountry === listingCountry
-    );
+    const relevantAdmins = admins.filter((a) => listingInAdminScope(a as any, {
+      country: listingCountry,
+      city: listing.city,
+      location: listing.location,
+    }));
     if (relevantAdmins.length > 0) {
       await db.insert(notificationsTable).values(relevantAdmins.map((a) => ({
         userId: a.id,
@@ -1164,14 +1191,22 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
     .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
     .where(eq(listingsTable.id, id));
-  if (!row) { res.status(404).json({ error: "Listing not found" }); return; }
-  if (!hasUsableListingImage(row.listings.images) && !hasRole(req.user, "admin")) {
+   if (!row) { res.status(404).json({ error: "Listing not found" }); return; }
+   const isAdminD = hasRole(req.user, "admin");
+   const isOwnerD = req.userId === row.listings.sellerId;
+   if (isAdminD && !isOwnerD && !listingInAdminScope(req.user!, {
+     country: row.listings.country,
+     city: row.listings.city,
+     location: row.listings.location,
+   })) {
+     res.status(404).json({ error: "Listing not found" });
+     return;
+   }
+   if (!hasUsableListingImage(row.listings.images) && !isAdminD) {
     res.status(404).json({ error: "Listing not found" });
     return;
   }
 
-  const isAdminD = hasRole(req.user, "admin");
-  const isOwnerD = req.userId === row.listings.sellerId;
   if (req.userId && req.user?.country && !isAdminD && !isOwnerD &&
       row.listings.country && row.listings.country !== req.user.country) {
     res.status(404).json({ error: "Listing not found" }); return;

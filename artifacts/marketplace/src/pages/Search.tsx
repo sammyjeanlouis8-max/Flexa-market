@@ -93,7 +93,7 @@ function FilterPanel({
           <Label className="text-sm font-semibold mb-2 block">{t("search.country")}</Label>
           <MobileSelect
             value={adminCountry ?? "all"}
-            onValueChange={v => setAdminCountry(v === "all" ? null : v)}
+            onValueChange={v => { setAdminCountry(v === "all" ? null : v); setPage(1); }}
             placeholder={`🌍 ${t("home.allCountriesDesc", "All Countries")}`}
             options={[
               { value: "all", label: `🌍 ${t("home.allCountriesDesc", "All Countries")}` },
@@ -340,8 +340,9 @@ export default function SearchPage() {
   const isMultiCountryAdminSearch = isAdmin && !isSuperAdmin && adminScopeCountriesListSearch.length > 1;
   const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdminSearch)
     ? null
-    : ((user as any)?.adminScopeCountry ?? user?.country ?? null);
+    : (adminScopeCountriesListSearch[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
   const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdminSearch ? adminCountry : scopeLock);
+  const summaryCountry: string | null | undefined = isAdmin ? effectiveAdminCountry : userCountry;
 
   const selectedParent = useMemo(
     () => categories?.find(c => c.slug === category),
@@ -594,7 +595,7 @@ export default function SearchPage() {
               {categories?.find(c => c.slug === category)?.icon}{" "}
               {categories?.find(c => c.slug === category)?.name}
               <button
-                onClick={() => { setCategory(""); setSubcategory(""); }}
+                onClick={() => { setCategory(""); setSubcategory(""); setPage(1); }}
                 className="ml-1 hover:text-destructive"
               >
                 <X className="h-3 w-3" />
@@ -605,7 +606,7 @@ export default function SearchPage() {
             <Badge variant="outline" className="flex items-center gap-1 px-2 py-1">
               {(selectedParent as any)?.children?.find((s: any) => s.slug === subcategory)?.icon}{" "}
               {(selectedParent as any)?.children?.find((s: any) => s.slug === subcategory)?.name}
-              <button onClick={() => setSubcategory("")} className="ml-1 hover:text-destructive">
+              <button onClick={() => { setSubcategory(""); setPage(1); }} className="ml-1 hover:text-destructive">
                 <X className="h-3 w-3" />
               </button>
             </Badge>
@@ -628,8 +629,8 @@ export default function SearchPage() {
             <p className="text-sm text-muted-foreground">
               {isLoading
                 ? t("search.searching")
-                : userCountry
-                ? t("search.listingsFoundIn", { count: data?.total ?? 0, country: userCountry })
+                : summaryCountry
+                ? t("search.listingsFoundIn", { count: data?.total ?? 0, country: summaryCountry })
                 : t("search.listingsFound", { count: data?.total ?? 0 })}
             </p>
           </div>

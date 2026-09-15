@@ -5,7 +5,7 @@ import {
   hasRole,
   isAdminAccessSuspended,
 } from "../middlewares/auth";
-import { userInAdminScope } from "../lib/adminScope";
+import { listingInAdminScope, userInAdminScope } from "../lib/adminScope";
 
 const baseUser = {
   id: 1,
@@ -93,5 +93,41 @@ describe("moderator geographic scope", () => {
 
     expect(userInAdminScope(admin, { ...baseUser, country: "Haiti", location: "Delmas" })).toBe(true);
     expect(userInAdminScope(admin, { ...baseUser, country: "USA", location: "New York, NY" })).toBe(false);
+  });
+});
+
+describe("listing geographic scope", () => {
+  it("honors JSON countries and a mapped department", () => {
+    const admin = {
+      ...baseUser,
+      role: "admin",
+      adminScopeCountries: JSON.stringify(["Haiti", "USA"]),
+      adminScopeDepartment: "Ouest",
+    };
+
+    expect(listingInAdminScope(admin, { country: "Haiti", city: "Delmas" })).toBe(true);
+    expect(listingInAdminScope(admin, { country: "USA", city: "New York, NY" })).toBe(false);
+    expect(listingInAdminScope(admin, { country: "Dominican Republic", city: "Delmas" })).toBe(false);
+  });
+
+  it("allows a super admin globally and hides an out-of-scope detail", () => {
+    const scoped = { ...baseUser, role: "admin", adminScopeCountry: "Haiti", adminScopeCity: "Delmas" };
+    const superAdmin = { ...baseUser, role: "superadmin", isSuperAdmin: true };
+
+    expect(listingInAdminScope(scoped, { country: "Haiti", city: "Pétion-Ville" })).toBe(false);
+    expect(listingInAdminScope(superAdmin, { country: "USA", city: "Chicago, IL" })).toBe(true);
+  });
+
+  it("fails closed when an admin has no assigned or profile country", () => {
+    const unscoped = {
+      ...baseUser,
+      role: "admin",
+      country: null,
+      adminScopeCountry: null,
+      adminScopeCountries: null,
+    };
+
+    expect(userInAdminScope(unscoped, { ...baseUser, country: "Haiti" })).toBe(false);
+    expect(listingInAdminScope(unscoped, { country: "Haiti", city: "Delmas" })).toBe(false);
   });
 });

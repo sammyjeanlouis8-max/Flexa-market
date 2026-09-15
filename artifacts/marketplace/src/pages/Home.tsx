@@ -207,7 +207,9 @@ export default function Home() {
   })();
   const isMultiCountryAdmin = isAdmin && !isSuperAdmin && adminScopeCountriesList.length > 1;
   // scopeLock: only for single-country admin; multi-country and super admin use a picker
-  const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdmin) ? null : ((user as any)?.adminScopeCountry ?? user?.country ?? null);
+  const scopeLock: string | null = (isSuperAdmin || isMultiCountryAdmin)
+    ? null
+    : (adminScopeCountriesList[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
   // The country actually used in all queries
   const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdmin ? adminCountry : scopeLock);
   // Country comes from profile only — GPS handles it server-side for logged-in users
@@ -403,7 +405,7 @@ export default function Home() {
         await refreshUser?.();
 
         // Invalidate the server-owned feed for immediate refresh
-        queryClient.invalidateQueries({ queryKey: ["listings"] });
+        queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
       }
 
       saveCachedPosition(user.id, { lat, lng, city, timestamp: Date.now() });
@@ -478,7 +480,7 @@ export default function Home() {
         body: JSON.stringify({ location: city }),
       });
       await refreshUser?.();
-      queryClient.invalidateQueries({ queryKey: ["listings"] });
+      queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
     } catch {}
   }, [setLocationMode, refreshUser, queryClient]);
 

@@ -54,21 +54,64 @@ export function parseAdminCountries(admin: AdminUser): string[] {
   }
 }
 
+/** Country assignments, including the legacy single-country field. */
+export function getAdminScopeCountries(admin: AdminUser): string[] {
+  const parsedCountries = parseAdminCountries(admin);
+  if (parsedCountries.length > 0) return parsedCountries;
+  if (admin.adminScopeCountry) return [admin.adminScopeCountry];
+  // Legacy admins without explicit scope remain limited to their profile
+  // country; absence of scope metadata must not silently grant global access.
+  return admin.country ? [admin.country] : [];
+}
+
+/**
+ * Returns the cities represented by a department assignment.  The scope
+ * options are intentionally the source of truth here; an unknown department
+ * does not silently become a global scope.
+ */
+export function getAdminScopeCities(admin: AdminUser): string[] {
+  if (admin.adminScopeCity) return [admin.adminScopeCity];
+
+  if (!admin.adminScopeDepartment) return [];
+  const countries = getAdminScopeCountries(admin);
+  return [...new Set(countries.flatMap((country) =>
+    SCOPE_OPTIONS[country]?.citiesByDept[admin.adminScopeDepartment!] ?? []
+  ))];
+}
+
+/** Checks a listing-shaped target against an administrator's full scope. */
+export function listingInAdminScope(
+  admin: AdminUser,
+  target: { country?: string | null; city?: string | null; location?: string | null },
+): boolean {
+  if (admin.isSuperAdmin) return true;
+
+  const countries = getAdminScopeCountries(admin);
+  if (countries.length === 0 || !target.country || !countries.includes(target.country)) return false;
+
+  const scopedCities = getAdminScopeCities(admin);
+  if (admin.adminScopeCity) {
+    const targetCity = target.city || target.location;
+    return targetCity === admin.adminScopeCity;
+  }
+  if (admin.adminScopeDepartment) {
+    const targetCity = target.city || target.location;
+    return scopedCities.length > 0 && !!targetCity && scopedCities.includes(targetCity);
+  }
+
+  return true;
+}
+
 export function userInAdminScope(admin: AdminUser, target: AdminUser): boolean {
   if (admin.isSuperAdmin) return true;
 
-  const parsedCountries = parseAdminCountries(admin);
-  const countries = parsedCountries.length > 0
-    ? parsedCountries
-    : admin.adminScopeCountry
-      ? [admin.adminScopeCountry]
-      : [];
+  const countries = getAdminScopeCountries(admin);
 
-  if (countries.length > 0 && (!target.country || !countries.includes(target.country))) return false;
+  if (countries.length === 0 || !target.country || !countries.includes(target.country)) return false;
   if (admin.adminScopeCity && target.location !== admin.adminScopeCity) return false;
 
-  if (!admin.adminScopeCity && admin.adminScopeDepartment && admin.adminScopeCountry) {
-    const departmentCities = SCOPE_OPTIONS[admin.adminScopeCountry]?.citiesByDept[admin.adminScopeDepartment] ?? [];
+  if (!admin.adminScopeCity && admin.adminScopeDepartment) {
+    const departmentCities = getAdminScopeCities(admin);
     if (departmentCities.length === 0) return false;
     if (!target.location || !departmentCities.includes(target.location)) return false;
   }

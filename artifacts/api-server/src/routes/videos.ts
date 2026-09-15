@@ -1,10 +1,200 @@
 import { Router } from "express";
 import { db, listingsTable, usersTable, commentsTable, followsTable } from "@workspace/db";
-import { eq, and, isNotNull, isNull, sql, desc, lte, or, inArray } from "drizzle-orm";
-import { optionalAuth } from "../middlewares/auth";
+import { eq, and, sql, desc, inArray } from "drizzle-orm";
+import { getRole, hasRole, optionalAuth } from "../middlewares/auth";
 import { extractWasabiKey } from "../lib/s3";
+import { getAdminScopeCities, getAdminScopeCountries, SCOPE_OPTIONS } from "../lib/adminScope";
 
 const router = Router();
+
+type VideoViewerScope = {
+  isSuperAdmin: boolean;
+  isAdmin: boolean;
+  visibleCountries: string[];
+  globalCountryAccess: boolean;
+  scopeCities: string[];
+  hasCityScope: boolean;
+  state: string | null;
+  city: string | null;
+};
+
+function canonicalCountries(countries: string[]): string[] {
+  const seen = new Set<string>();
+  return countries.reduce<string[]>((result, country) => {
+    const canonical = country.trim();
+    const key = canonical.toLowerCase();
+    if (canonical && !seen.has(key)) {
+      seen.add(key);
+      result.push(canonical);
+    }
+    return result;
+  }, []);
+}
+
+/**
+ * Resolve the same role and geographic scope for feed and analytics. In
+ * particular, a legacy admin without explicit assignments is limited to the
+ * profile country; it is never treated as global.
+ */
+export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requestedCountry = ""): VideoViewerScope {
+  const user = req.user;
+  const role = getRole(user);
+  const isSuperAdmin = role === "superadmin";
+  const isAdmin = hasRole(user, "admin") && !isSuperAdmin;
+  const cfCountry: Record<string, string> = {
+    HT: "Haiti", DO: "Dominican Republic", US: "USA", FR: "France", CA: "Canada",
+    MX: "Mexico", BR: "Brazil", CL: "Chile", GB: "United Kingdom", DE: "Germany",
+    ES: "Spain", IT: "Italy", MQ: "Martinique", GP: "Guadeloupe",
+    GF: "French Guiana", CU: "Cuba", JM: "Jamaica", PR: "Puerto Rico",
+    TT: "Trinidad and Tobago",
+  };
+  const fallbackCountry = cfCountry[String(req.headers["cf-ipcountry"] ?? "").trim().toUpperCase()] ?? "Haiti";
+  const assignedCountries = isAdmin
+    ? canonicalCountries([
+        ...getAdminScopeCountries(user!),
+        ...(!getAdminScopeCountries(user!).length && user?.country ? [user.country] : []),
+      ])
+    : [];
+  const selectedCountry = requestedCountry
+    ? assignedCountries.find(country => country.toLowerCase() === requestedCountry.toLowerCase()) ?? null
+    : null;
+  const visibleCountries = isSuperAdmin
+    ? (requestedCountry ? [requestedCountry] : [])
+    : isAdmin
+      ? (requestedCountry
+        ? (selectedCountry ? [selectedCountry] : ["__denied__"])
+        : (assignedCountries.length > 0 ? assignedCountries : ["__denied__"]))
+      : canonicalCountries([user?.country ?? fallbackCountry]);
+
+  let scopeCities: string[] = [];
+  const hasCityScope = isAdmin && !!(user?.adminScopeCity || user?.adminScopeDepartment);
+  if (isAdmin && user) {
+    if (user.adminScopeCity) {
+      scopeCities = [user.adminScopeCity];
+    } else if (user.adminScopeDepartment) {
+      // getAdminScopeCities remains the source of truth for explicit scope
+      // assignments; SCOPE_OPTIONS supplies the profile-country legacy case.
+      scopeCities = getAdminScopeCities(user);
+      if (scopeCities.length === 0) {
+        scopeCities = assignedCountries.flatMap(country => {
+          const canonical = Object.keys(SCOPE_OPTIONS).find(
+            option => option.toLowerCase() === country.toLowerCase(),
+          );
+          return canonical ? (SCOPE_OPTIONS[canonical].citiesByDept[user.adminScopeDepartment!] ?? []) : [];
+        });
+      }
+    }
+  }
+
+  return {
+    isSuperAdmin,
+    isAdmin,
+    visibleCountries,
+    globalCountryAccess: isSuperAdmin && !requestedCountry,
+    scopeCities: canonicalCountries(scopeCities),
+    hasCityScope,
+    state: user?.state ?? null,
+    city: user?.location ?? null,
+  };
+}
+
+function buildVideoListingEligibility(alias: string, scope: VideoViewerScope): ReturnType<typeof sql> {
+  const l = (column: string) => sql.raw(`${alias}.${column}`);
+  const countryCondition = scope.globalCountryAccess
+    ? sql`true`
+    : scope.visibleCountries.length === 0 || scope.visibleCountries.includes("__denied__")
+      ? sql`false`
+      : sql`lower(coalesce(${l("boost_audience_country")}, ${l("country")}, '')) in (${sql.join(
+          scope.visibleCountries.map(country => sql`${country.toLowerCase()}`),
+          sql`,`,
+        )})`;
+  const adminCityCondition = scope.isAdmin && !scope.isSuperAdmin && scope.hasCityScope
+    ? scope.scopeCities.length > 0
+      ? sql`(
+          (
+            ${l("status")} = 'available'
+            AND lower(coalesce(${l("city")}, ${l("location")})) in (${sql.join(
+              scope.scopeCities.map(city => sql`${city.toLowerCase()}`),
+              sql`,`,
+            )})
+          )
+          OR (
+            ${l("status")} = 'hidden'
+            AND (
+              lower(${l("boost_audience_city")}) in (${sql.join(
+                scope.scopeCities.map(city => sql`${city.toLowerCase()}`),
+                sql`,`,
+              )})
+              OR EXISTS (
+                SELECT 1
+                FROM unnest(${l("boost_audience_cities")}) AS target_city
+                WHERE lower(target_city) in (${sql.join(
+                  scope.scopeCities.map(city => sql`${city.toLowerCase()}`),
+                  sql`,`,
+                )})
+              )
+              OR (
+                ${l("boost_audience_city")} IS NULL
+                AND COALESCE(cardinality(${l("boost_audience_cities")}), 0) = 0
+              )
+            )
+          )
+        )`
+      : sql`false`
+    : sql`true`;
+  const regularStateCondition = !scope.isAdmin && !scope.isSuperAdmin && scope.state
+    ? sql`(${l("boost_audience_state")} IS NULL OR lower(${l("boost_audience_state")}) = ${scope.state.toLowerCase()})`
+    : sql`true`;
+  const regularCityCondition = !scope.isAdmin && !scope.isSuperAdmin && scope.city
+    ? sql`(
+        (lower(${l("boost_audience_city")}) = ${scope.city.toLowerCase()})
+        OR EXISTS (
+          SELECT 1 FROM unnest(${l("boost_audience_cities")}) AS target_city
+          WHERE lower(target_city) = ${scope.city.toLowerCase()}
+        )
+        OR (${l("boost_audience_city")} IS NULL
+          AND COALESCE(cardinality(${l("boost_audience_cities")}), 0) = 0)
+      )`
+    : sql`true`;
+
+  return sql`(
+    ${l("moderation_status")} = 'approved'
+    AND (
+      (
+        ${l("status")} = 'available'
+        AND (${l("stock_quantity")} IS NULL OR ${l("stock_quantity")} > 0)
+      )
+      OR (
+        ${l("status")} = 'hidden'
+        AND ${l("price")} = 0
+        AND ${l("description")} = 'Video promotion boost'
+      )
+    )
+    AND ${l("is_boosted")} = true
+    AND ${l("boost_video_url")} IS NOT NULL
+    AND ${l("boost_expires_at")} > NOW()
+    AND (${l("boost_start_at")} IS NULL OR ${l("boost_start_at")} <= NOW())
+    AND ${countryCondition}
+    AND ${adminCityCondition}
+    AND ${regularStateCondition}
+    AND ${regularCityCondition}
+  )`;
+}
+
+function buildActivePaidBoostEligibility(
+  listingAlias: string,
+  boostAlias: string,
+  scope: VideoViewerScope,
+): ReturnType<typeof sql> {
+  const b = (column: string) => sql.raw(`${boostAlias}.${column}`);
+  const l = (column: string) => sql.raw(`${listingAlias}.${column}`);
+  return sql`(
+    ${b("listing_id")} = ${l("id")}
+    AND ${b("payment_status")} = 'paid'
+    AND ${b("expires_at")} > NOW()
+    AND ${buildVideoListingEligibility(listingAlias, scope)}
+  )`;
+}
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
@@ -92,60 +282,11 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     //   2. Cloudflare/proxy header (CF-IPCountry)
     //   3. Accept-Language hint  (es → DR, pt → Brazil, en → US, fr/ht → Haiti)
     //   4. Default → Haiti (this is a Haitian marketplace)
-    const isSuperAdmin = !!(req.user as any)?.isSuperAdmin;
-    const isAdmin      = !!(req.user as any)?.isAdmin && !isSuperAdmin;
-    const isAnyAdmin   = isSuperAdmin || isAdmin;
     const requestedCountry = typeof req.query.country === "string"
       ? req.query.country.trim()
       : "";
-
-    const cfHint = String(req.headers["cf-ipcountry"] ?? "").trim().toUpperCase();
-
-    // Map Cloudflare's ISO 3166-1 alpha-2 codes to the full country names
-    // stored in the database. Accept-Language is NOT used — it is unreliable
-    // as a country signal (e.g. English-speaking users in Haiti would be
-    // wrongly bucketed as "United States"). CF-IPCountry is authoritative on
-    // production; for dev/local (no Cloudflare header) we default to Haiti.
-    const ISO_TO_COUNTRY: Record<string, string> = {
-      HT: "Haiti", DO: "Dominican Republic", US: "USA",
-      FR: "France", CA: "Canada", MX: "Mexico", BR: "Brazil",
-      CL: "Chile", GB: "United Kingdom", DE: "Germany", ES: "Spain", IT: "Italy",
-      MQ: "Martinique", GP: "Guadeloupe", GF: "French Guiana",
-      CU: "Cuba", JM: "Jamaica", PR: "Puerto Rico", TT: "Trinidad and Tobago",
-    };
-
-    const langFallback =
-      (cfHint.length === 2 && ISO_TO_COUNTRY[cfHint])
-        ? ISO_TO_COUNTRY[cfHint]
-        : "Haiti"; // default — this is a Haitian marketplace
-
-    // Resolve every country a scoped admin may manage. Legacy admin accounts
-    // without explicit scope fields safely fall back to their profile country.
-    const adminScopeCountry = (req.user as any)?.adminScopeCountry as string | null | undefined;
-    const adminScopeCountries = (() => {
-      if (!isAdmin) return [] as string[];
-      const raw = (req.user as any)?.adminScopeCountries;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            const countries = parsed.filter((value): value is string =>
-              typeof value === "string" && value.trim().length > 0,
-            );
-            if (countries.length > 0) return countries;
-          }
-        } catch { /* use single-country fallback */ }
-      }
-      const fallback = adminScopeCountry ?? req.user?.country;
-      return fallback ? [fallback] : [];
-    })();
-    const visibleCountries = isSuperAdmin
-      ? (requestedCountry ? [requestedCountry] : [])
-      : isAdmin
-        ? requestedCountry
-          ? (adminScopeCountries.includes(requestedCountry) ? [requestedCountry] : ["__denied__"])
-          : adminScopeCountries
-        : [req.user?.country ?? langFallback];
+    const viewerScope = resolveViewerScope(req, requestedCountry);
+    const { isSuperAdmin, isAdmin, visibleCountries } = viewerScope;
 
     // ── Pagination ──────────────────────────────────────────────────────────
     const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10));
@@ -164,24 +305,19 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     const seed = Math.abs(parseInt(String(req.query.seed ?? "0"), 10)) || 0;
     const selectedId = Math.max(0, parseInt(String(req.query.selected ?? "0"), 10) || 0);
 
-    const now = new Date();
-
     // ── Mandatory boost conditions (cannot be bypassed) ─────────────────────
     // Requirement §2: isBoosted, within [boostStartAt, boostExpiresAt], video present.
     // Requirement §6: Boost status is irrelevant to boost audience; non-boosted
     //                 videos MUST NOT appear.
     const conditions: Parameters<typeof and>[0][] = [
-      // Include both 'available' (boosted products) and 'hidden' (video-only ghost listings).
-      // Ghost listings created by /boost/video-only never go through moderation and always
-      // have status='hidden' — they must still appear in the promo video feed.
-      or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")) as ReturnType<typeof eq>,
-      eq(listingsTable.isBoosted, true),
-      isNotNull(listingsTable.boostVideoUrl),
-      // boostExpiresAt > NOW()
-      sql`${listingsTable.boostExpiresAt} > ${now.toISOString()}` as ReturnType<typeof eq>,
-      // boostStartAt <= NOW()  (NULL boostStartAt treated as already started for
-      // backward compat with boosts activated before this column was added)
-      sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})` as ReturnType<typeof eq>,
+      // The complete paid/approved/visibility/audience contract is shared by
+      // the feed and the atomic analytics updates below.
+      buildVideoListingEligibility("listings", viewerScope) as ReturnType<typeof eq>,
+      sql`EXISTS (
+        SELECT 1
+        FROM boosts active_boost
+        WHERE ${buildActivePaidBoostEligibility("listings", "active_boost", viewerScope)}
+      )` as ReturnType<typeof eq>,
     ];
 
     // ── Exclude already-seen videos ─────────────────────────────────────────
@@ -189,47 +325,6 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       conditions.push(
         sql`${listingsTable.id} NOT IN (${sql.join(excludeIds.map(id => sql`${id}`), sql`,`)})` as ReturnType<typeof eq>,
       );
-    }
-
-    // ── Country gate ────────────────────────────────────────────────────────
-    // Super admin with no selected country sees every country. Scoped admins
-    // see all assigned countries, or one assigned country when selected.
-    const userState = req.user?.state    ?? null;
-    const userCity  = req.user?.location ?? null;
-
-    if (visibleCountries.length > 0) {
-      // Use COALESCE(boostAudienceCountry, listing.country) so a seller in DR who
-      // boosts a "USA" listing targeting DR audience still appears in the DR video feed.
-      conditions.push(
-        sql`lower(coalesce(${listingsTable.boostAudienceCountry}, ${listingsTable.country}, '')) in (${sql.join(
-          visibleCountries.map(country => sql`${country.toLowerCase()}`),
-          sql`,`,
-        )})` as ReturnType<typeof eq>,
-      );
-
-      // State isolation: only exclude when BOTH the boost AND the viewer have a state
-      // AND they don't match. If the viewer has no state we cannot confirm a mismatch,
-      // so we show the video (inclusive by default).
-      if (!isAnyAdmin && userState) {
-        conditions.push(
-          or(
-            isNull(listingsTable.boostAudienceState),
-            sql`lower(${listingsTable.boostAudienceState}) = ${userState.toLowerCase()}` as ReturnType<typeof eq>,
-          ) as ReturnType<typeof eq>,
-        );
-      }
-      // Viewer has no state → no state filter (show all boosts for this country).
-
-      // City isolation: same inclusive logic — only filter when viewer has a city set.
-      if (!isAnyAdmin && userCity) {
-        conditions.push(
-          or(
-            isNull(listingsTable.boostAudienceCity),
-            sql`lower(${listingsTable.boostAudienceCity}) = ${userCity.toLowerCase()}` as ReturnType<typeof eq>,
-          ) as ReturnType<typeof eq>,
-        );
-      }
-      // Viewer has no city → no city filter.
     }
 
     // ── Query ────────────────────────────────────────────────────────────────
@@ -241,6 +336,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         price:            listingsTable.price,
         currency:         listingsTable.currency,
         country:          listingsTable.country,
+        status:           listingsTable.status,
         images:           listingsTable.images,
         boostVideoUrl:    listingsTable.boostVideoUrl,
         boostStartAt:     listingsTable.boostStartAt,
@@ -248,6 +344,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         viewCount:        listingsTable.viewCount,
         favoriteCount:    listingsTable.favoriteCount,
         sharesCount:      listingsTable.sharesCount,
+        stockQuantity:    listingsTable.stockQuantity,
         createdAt:        listingsTable.createdAt,
         boostWhatsappNumber: listingsTable.boostWhatsappNumber,
         sellerId:         listingsTable.sellerId,
@@ -357,6 +454,8 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         price:            r.price,
         currency:         r.currency,
         country:          r.country ?? null,
+        stockQuantity:     r.stockQuantity ?? null,
+        isVideoOnly:       r.status === "hidden",
         sellerId:         r.sellerId,
         sellerName:       r.sellerName ?? "Unknown",
         sellerAvatar:     r.sellerAvatar ?? null,
@@ -382,10 +481,11 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos,
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
-      viewingCountry: requestedCountry
-        || (visibleCountries.length === 1 && visibleCountries[0] !== "__denied__"
-          ? visibleCountries[0]
-          : null),
+      // Return the canonical assigned spelling for scoped admins (rather than
+      // echoing a differently-cased query parameter).
+      viewingCountry: visibleCountries.length === 1 && visibleCountries[0] !== "__denied__"
+        ? visibleCountries[0]
+        : null,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch video feed");
@@ -405,38 +505,36 @@ router.post("/videos/:id/impression", optionalAuth, async (req, res): Promise<vo
   const listingId = parseInt(String(req.params.id), 10);
   if (!listingId || listingId <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  // Validate it's still an active boosted video
-  const [row] = await db
-    .select({ id: listingsTable.id, boostExpiresAt: listingsTable.boostExpiresAt })
-    .from(listingsTable)
-    .where(
-      and(
-        eq(listingsTable.id, listingId),
-        eq(listingsTable.isBoosted, true),
-        isNotNull(listingsTable.boostVideoUrl),
-      ),
-    )
-    .limit(1);
+  try {
+    const requestedCountry = typeof req.query.country === "string"
+      ? req.query.country.trim()
+      : "";
+    const viewerScope = resolveViewerScope(req, requestedCountry);
+    // Validation and increment are one statement: the candidate boost is
+    // selected only when its joined listing still satisfies feed eligibility.
+    const updated = await db.execute(
+      sql`UPDATE boosts AS target
+          SET impressions = target.impressions + 1
+          WHERE target.id = (
+            SELECT candidate.id
+            FROM boosts AS candidate
+            JOIN listings AS listing ON listing.id = candidate.listing_id
+            WHERE candidate.listing_id = ${listingId}
+              AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
+            ORDER BY candidate.created_at DESC
+            LIMIT 1
+          )
+          RETURNING target.id`,
+    ) as unknown as { rowCount?: number; rows?: unknown[] };
+    const updatedCount = updated.rowCount ?? updated.rows?.length ?? 0;
+    if (updatedCount < 1) { res.status(404).json({ error: "Not found" }); return; }
 
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-
-  // Increment impressions on the most recent paid boost for this listing.
-  // PostgreSQL does not support ORDER BY / LIMIT in UPDATE directly —
-  // use a subquery to identify the target row first.
-  await db.execute(
-    sql`UPDATE boosts SET impressions = impressions + 1
-        WHERE id = (
-          SELECT id FROM boosts
-          WHERE listing_id = ${listingId}
-            AND payment_status = 'paid'
-            AND expires_at > NOW()
-          ORDER BY created_at DESC
-          LIMIT 1
-        )`,
-  );
-
-  req.log.info({ listingId, viewerId: req.userId ?? null }, "video:impression");
-  res.json({ ok: true });
+    req.log?.info?.({ listingId, viewerId: req.userId ?? null }, "video:impression");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log?.error?.({ err, listingId }, "Failed to record video impression");
+    res.status(500).json({ error: "Failed to record video impression" });
+  }
 });
 
 /**
@@ -449,32 +547,34 @@ router.post("/videos/:id/buy-click", optionalAuth, async (req, res): Promise<voi
   const listingId = parseInt(String(req.params.id), 10);
   if (!listingId || listingId <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [row] = await db
-    .select({ id: listingsTable.id })
-    .from(listingsTable)
-    .where(
-      and(
-        eq(listingsTable.id, listingId),
-        eq(listingsTable.isBoosted, true),
-        isNotNull(listingsTable.boostVideoUrl),
-      ),
-    )
-    .limit(1);
+  try {
+    const requestedCountry = typeof req.query.country === "string"
+      ? req.query.country.trim()
+      : "";
+    const viewerScope = resolveViewerScope(req, requestedCountry);
+    const updated = await db.execute(
+      sql`UPDATE boosts AS target
+          SET clicks = target.clicks + 1
+          WHERE target.id = (
+            SELECT candidate.id
+            FROM boosts AS candidate
+            JOIN listings AS listing ON listing.id = candidate.listing_id
+            WHERE candidate.listing_id = ${listingId}
+              AND ${buildActivePaidBoostEligibility("listing", "candidate", viewerScope)}
+            ORDER BY candidate.created_at DESC
+            LIMIT 1
+          )
+          RETURNING target.id`,
+    ) as unknown as { rowCount?: number; rows?: unknown[] };
+    const updatedCount = updated.rowCount ?? updated.rows?.length ?? 0;
+    if (updatedCount < 1) { res.status(404).json({ error: "Not found" }); return; }
 
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
-
-  // Increment clicks on the active boost
-  await db.execute(
-    sql`UPDATE boosts SET clicks = clicks + 1
-        WHERE listing_id = ${listingId}
-          AND payment_status = 'paid'
-          AND expires_at > NOW()
-        ORDER BY created_at DESC
-        LIMIT 1`,
-  );
-
-  req.log.info({ listingId, viewerId: req.userId ?? null }, "video:buy-click");
-  res.json({ ok: true });
+    req.log?.info?.({ listingId, viewerId: req.userId ?? null }, "video:buy-click");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log?.error?.({ err, listingId }, "Failed to record video buy click");
+    res.status(500).json({ error: "Failed to record video buy click" });
+  }
 });
 
 export default router;

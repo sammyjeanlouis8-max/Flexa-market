@@ -1271,8 +1271,21 @@ function VideoCard({
     onCommentOpen(video.id);
   };
 
+  const trackBuyClick = useCallback(() => {
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const selectedCountry = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("country")
+      : null;
+    const suffix = selectedCountry ? `?country=${encodeURIComponent(selectedCountry)}` : "";
+    fetch(`/api/videos/${video.id}/buy-click${suffix}`, {
+      method: "POST",
+      headers,
+    }).catch(() => {});
+  }, [token, video.id]);
+
   const handleWhatsApp = useCallback(() => {
-    fetch(`/api/videos/${video.id}/buy-click`, { method: "POST" }).catch(() => {});
+    trackBuyClick();
     // Prefer boost-specific WhatsApp number, fall back to seller's profile phone
     const rawPhone = video.sellerWhatsapp || video.sellerPhone || "";
     const phone = rawPhone.replace(/[^\d+]/g, "").replace(/^\+/, "");
@@ -1281,7 +1294,7 @@ function VideoCard({
       `Bonjou! Mwen wè videyo pwodwi ou a sou FLEXA MARKET epi mwen enterese. Èske ou disponib?`
     );
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank", "noopener,noreferrer");
-  }, [video.id, video.sellerWhatsapp, video.sellerPhone]);
+  }, [trackBuyClick, video.sellerWhatsapp, video.sellerPhone]);
 
   if (!video.videoUrl) return null;
 
@@ -1608,7 +1621,7 @@ function VideoCard({
           <div className="shrink-0 flex flex-col gap-1.5">
             {/* Achte — only for product boosts (price > 0) */}
             {hasPrice && (
-              <Link href={`/listings/${video.id}`} onClick={() => { fetch(`/api/videos/${video.id}/buy-click`, { method: "POST" }).catch(() => {}); }}>
+              <Link href={`/listings/${video.id}`} onClick={trackBuyClick}>
                 <span className="flex items-center gap-1.5 bg-primary text-white font-black px-3 py-1.5 rounded-lg shadow-lg text-[11px] leading-none whitespace-nowrap">
                   <ShoppingBag className="h-3 w-3" />
                   Achte
@@ -1800,6 +1813,11 @@ export default function VideoFeed() {
           return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
         })(),
   );
+  const selectedCountryRef = useRef<string | null>(
+    typeof window === "undefined"
+      ? null
+      : (new URLSearchParams(window.location.search).get("country")?.trim() || null),
+  );
   const initialSelectionAppliedRef = useRef(selectedVideoIdRef.current === null);
 
   // ── AI recommendation state ──────────────────────────────────────────────
@@ -1818,6 +1836,9 @@ export default function VideoFeed() {
       ? [...seenIdsRef.current].join(",")
       : "";
     let url = `/api/videos/feed?page=${p}&limit=10&seed=${seed}`;
+    if (selectedCountryRef.current) {
+      url += `&country=${encodeURIComponent(selectedCountryRef.current)}`;
+    }
     if (excludeList) url += `&exclude=${encodeURIComponent(excludeList)}`;
     if (replaceAll && selectedVideoIdRef.current) {
       url += `&selected=${selectedVideoIdRef.current}`;
@@ -1917,7 +1938,10 @@ export default function VideoFeed() {
         const headers: Record<string, string> = {};
         if (token) headers["Authorization"] = `Bearer ${token}`;
         // Use seed=0 for the poll so RANDOM() ordering surfaces newest content
-        const res = await fetch("/api/videos/feed?page=1&limit=10&seed=0", { headers });
+        const countrySuffix = selectedCountryRef.current
+          ? `&country=${encodeURIComponent(selectedCountryRef.current)}`
+          : "";
+        const res = await fetch(`/api/videos/feed?page=1&limit=10&seed=0${countrySuffix}`, { headers });
         if (!res.ok) return;
         const data = await res.json();
         if (requestGeneration !== feedGenerationRef.current) return;

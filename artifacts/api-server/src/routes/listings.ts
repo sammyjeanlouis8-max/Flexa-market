@@ -4,7 +4,7 @@ import { db, listingsTable, usersTable, categoriesTable, favoritesTable, boostsT
 import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from "drizzle-orm";
 
 import { alias } from "drizzle-orm/pg-core";
-import { requireAuth, optionalAuth, requireNotRestricted, hasRole } from "../middlewares/auth";
+import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccessSuspended } from "../middlewares/auth";
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
@@ -162,6 +162,29 @@ function enforceAdminCountryScope(conditions: any[], user: any, country?: string
       ) as any);
     }
   }
+}
+
+/** Matches the admin-list visibility rules for destructive listing actions. */
+function listingInDestructiveAdminScope(user: any, listing: typeof listingsTable.$inferSelect): boolean {
+  if (user?.isSuperAdmin) return true;
+
+  const countries = parseAdminCountries(user);
+  if (countries.length > 0) {
+    if (!listing.country || !countries.includes(listing.country)) return false;
+  } else if (user?.adminScopeCountry && listing.country !== user.adminScopeCountry) {
+    return false;
+  }
+
+  const targetCity = listing.city || listing.location;
+  if (user?.adminScopeCity) return targetCity === user.adminScopeCity;
+  if (user?.adminScopeDepartment) {
+    const scopedCities = getAdminScopeCities(user);
+    return scopedCities.length > 0 && !!targetCity && scopedCities.includes(targetCity);
+  }
+
+  // Admin accounts without an explicit geographic assignment are global in
+  // the admin listing query, so the action guard must use the same boundary.
+  return true;
 }
 
 async function formatListing(
@@ -1310,103 +1333,135 @@ router.delete("/listings/:id", requireAuth, async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
   try {
-    const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
-    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-    if (existing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    const outcome = await db.transaction(async (tx) => {
+      // Lock the listing so concurrent/retried DELETE requests cannot issue the
+      // same paid-boost refund twice or partially repeat the cleanup.
+      const [existing] = await tx
+        .select()
+        .from(listingsTable)
+        .where(eq(listingsTable.id, id))
+        .for("update");
+      if (!existing) return { status: 404 as const, error: "Not found" };
 
-    // ── Prorate-refund any active paid boost before deleting ─────────────────
-    const [activeBoost] = await db
-      .select()
-      .from(boostsTable)
-      .where(and(
-        eq(boostsTable.listingId, id),
-        eq(boostsTable.paymentStatus, "paid"),
-        gt(boostsTable.expiresAt, new Date()),
-      ))
-      .orderBy(desc(boostsTable.createdAt))
-      .limit(1);
+      const isOwner = existing.sellerId === req.userId;
+      const isScopedModerator =
+        hasRole(req.user, "moderator") &&
+        !isAdminAccessSuspended(req.user) &&
+        listingInDestructiveAdminScope(req.user, existing);
+      if (!isOwner && !isScopedModerator) {
+        return { status: 403 as const, error: "Forbidden" };
+      }
 
-    if (activeBoost) {
-      const now = new Date();
-      const startAt = (existing as any).boostStartAt
-        ? new Date((existing as any).boostStartAt)
-        : (activeBoost.createdAt ?? now);
-      const expiresAt = activeBoost.expiresAt!;
-      const totalMs = expiresAt.getTime() - new Date(startAt).getTime();
-      const remainingMs = Math.max(0, expiresAt.getTime() - now.getTime());
-      const refundRatio = totalMs > 0 ? remainingMs / totalMs : 0;
-      const budget = (activeBoost as any).budget ?? 0;
-      const refundUsd = parseFloat((budget * refundRatio).toFixed(2));
+      let refundNotification: { amount: number; title: string } | null = null;
+      const [activeBoost] = await tx
+        .select()
+        .from(boostsTable)
+        .where(and(
+          eq(boostsTable.listingId, id),
+          eq(boostsTable.paymentStatus, "paid"),
+          gt(boostsTable.expiresAt, new Date()),
+        ))
+        .orderBy(desc(boostsTable.createdAt))
+        .limit(1);
 
-      if (refundUsd > 0) {
-        await db
-          .update(promoWalletTable)
-          .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundUsd}`, updatedAt: new Date() })
-          .where(eq(promoWalletTable.userId, existing.sellerId));
+      if (activeBoost) {
+        const now = new Date();
+        const startAt = (existing as any).boostStartAt
+          ? new Date((existing as any).boostStartAt)
+          : (activeBoost.createdAt ?? now);
+        const expiresAt = activeBoost.expiresAt!;
+        const totalMs = expiresAt.getTime() - new Date(startAt).getTime();
+        const remainingMs = Math.max(0, expiresAt.getTime() - now.getTime());
+        const refundRatio = totalMs > 0 ? remainingMs / totalMs : 0;
+        const budget = (activeBoost as any).budget ?? 0;
+        const refundUsd = parseFloat((budget * refundRatio).toFixed(2));
 
-        await db.insert(walletTransactionsTable).values({
-          userId: existing.sellerId,
-          type: "boost_refund",
-          amountUsd: refundUsd,
-          status: "completed",
-          note: `Rembourseman boost — lis efase: ${existing.title}`,
-        });
+        if (refundUsd > 0) {
+          await tx
+            .update(promoWalletTable)
+            .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundUsd}`, updatedAt: new Date() })
+            .where(eq(promoWalletTable.userId, existing.sellerId));
+          await tx.insert(walletTransactionsTable).values({
+            userId: existing.sellerId,
+            type: "boost_refund",
+            amountUsd: refundUsd,
+            status: "completed",
+            note: `Rembourseman boost — lis efase: ${existing.title}`,
+          });
+          refundNotification = { amount: refundUsd, title: existing.title };
+        }
+      }
 
-        await db.insert(notificationsTable).values({
+      // Preserve financial/chat/review history, but remove listing-specific data.
+      await tx.update(transactionsTable).set({ listingId: null }).where(eq(transactionsTable.listingId, id));
+      await tx.update(deliveriesTable).set({ listingId: null }).where(eq(deliveriesTable.listingId, id));
+      await tx.update(conversationsTable).set({ listingId: null }).where(eq(conversationsTable.listingId, id));
+      await tx.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, id));
+      await tx.delete(notificationsTable).where(eq(notificationsTable.listingId, id));
+
+      const listingComments = await tx
+        .select({ id: commentsTable.id })
+        .from(commentsTable)
+        .where(eq(commentsTable.listingId, id));
+      if (listingComments.length > 0) {
+        await tx
+          .delete(commentLikesTable)
+          .where(inArray(commentLikesTable.commentId, listingComments.map((comment) => comment.id)));
+      }
+      await tx.delete(commentsTable).where(eq(commentsTable.listingId, id));
+      await tx.delete(listingViewsTable).where(eq(listingViewsTable.listingId, id));
+      await tx.delete(offersTable).where(eq(offersTable.listingId, id));
+      await tx.delete(favoritesTable).where(eq(favoritesTable.listingId, id));
+
+      const listingBoosts = await tx
+        .select({ id: boostsTable.id })
+        .from(boostsTable)
+        .where(eq(boostsTable.listingId, id));
+      if (listingBoosts.length > 0) {
+        await tx
+          .delete(boostDailyImpressionsTable)
+          .where(inArray(boostDailyImpressionsTable.boostId, listingBoosts.map((boost) => boost.id)));
+      }
+      await tx.delete(boostsTable).where(eq(boostsTable.listingId, id));
+      await tx.delete(listingsTable).where(eq(listingsTable.id, id));
+
+      // Removed listings were already subtracted by moderation. Available and
+      // sold approved listings still contribute to the stored listing counters.
+      if (existing.status !== "removed" && existing.moderationStatus === "approved") {
+        await tx
+          .update(categoriesTable)
+          .set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` })
+          .where(eq(categoriesTable.id, existing.categoryId));
+        if (existing.subcategoryId) {
+          await tx
+            .update(categoriesTable)
+            .set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` })
+            .where(eq(categoriesTable.id, existing.subcategoryId));
+        }
+        await tx
+          .update(usersTable)
+          .set({ listingCount: sql`GREATEST(${usersTable.listingCount} - 1, 0)` })
+          .where(eq(usersTable.id, existing.sellerId));
+      }
+
+      if (refundNotification) {
+        await tx.insert(notificationsTable).values({
           userId: existing.sellerId,
           actorId: existing.sellerId,
           type: "boost_refund",
-          listingId: id,
-          message: `$${refundUsd.toFixed(2)} remboursé sou FM Wallet ou — boost pou "${existing.title}" anile akòz efaseman lis la.`,
+          listingId: null,
+          message: `$${refundNotification.amount.toFixed(2)} remboursé sou FM Wallet ou — boost pou "${refundNotification.title}" anile akòz efaseman lis la.`,
           isRead: false,
         });
       }
+
+      return { status: 200 as const };
+    });
+
+    if (outcome.status !== 200) {
+      res.status(outcome.status).json({ error: outcome.error });
+      return;
     }
-
-    // ── Clean up all FK-dependent records ────────────────────────────────────
-    // PostgreSQL defaults FK constraints to RESTRICT (no cascade), so any
-    // child rows that survive into the final DELETE will cause a 500.
-    // Order matters: nullable-FK records are SET NULL first (preserving
-    // financial/chat/review history), then hard-FK records are deleted.
-
-    // 1. Nullable FK references — preserve the rows but clear the listing link
-    await db.update(transactionsTable).set({ listingId: null }).where(eq(transactionsTable.listingId, id));
-    await db.update(deliveriesTable).set({ listingId: null }).where(eq(deliveriesTable.listingId, id));
-    await db.update(conversationsTable).set({ listingId: null }).where(eq(conversationsTable.listingId, id));
-    await db.update(reviewsTable).set({ listingId: null }).where(eq(reviewsTable.listingId, id));
-
-    // 2. Hard / listing-specific FK references — delete entirely
-    await db.delete(notificationsTable).where(eq(notificationsTable.listingId, id));
-    // comment_likes and listing_views declare ON DELETE CASCADE in the schema,
-    // but the production constraints may predate that — delete explicitly first.
-    const listingComments = await db
-      .select({ id: commentsTable.id })
-      .from(commentsTable)
-      .where(eq(commentsTable.listingId, id));
-    if (listingComments.length > 0) {
-      await db
-        .delete(commentLikesTable)
-        .where(inArray(commentLikesTable.commentId, listingComments.map((c) => c.id)));
-    }
-    await db.delete(commentsTable).where(eq(commentsTable.listingId, id));
-    await db.delete(listingViewsTable).where(eq(listingViewsTable.listingId, id));
-    await db.delete(offersTable).where(eq(offersTable.listingId, id));
-    await db.delete(favoritesTable).where(eq(favoritesTable.listingId, id));
-    // boost_daily_impressions references boosts; schema declares ON DELETE CASCADE
-    // but the production constraint may predate that — delete explicitly first.
-    const listingBoosts = await db
-      .select({ id: boostsTable.id })
-      .from(boostsTable)
-      .where(eq(boostsTable.listingId, id));
-    if (listingBoosts.length > 0) {
-      await db
-        .delete(boostDailyImpressionsTable)
-        .where(inArray(boostDailyImpressionsTable.boostId, listingBoosts.map((b) => b.id)));
-    }
-    await db.delete(boostsTable).where(eq(boostsTable.listingId, id));
-
-    // 3. Finally remove the listing itself
-    await db.delete(listingsTable).where(eq(listingsTable.id, id));
     res.json({ message: "Deleted" });
   } catch (err) {
     req.log.error({ err }, "[listings] delete failed");

@@ -74,10 +74,18 @@ export function isWithinPromaxDailyBudget(
 }
 
 export function isUndefinedTableError(error: unknown): boolean {
-  return Boolean(
-    error &&
-    typeof error === "object" &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "42P01",
-  );
+  let current = error;
+  const visited = new Set<unknown>();
+
+  for (let depth = 0; depth < 6; depth += 1) {
+    if (!current || typeof current !== "object" || visited.has(current)) return false;
+    if ("code" in current && (current as { code?: unknown }).code === "42P01") return true;
+
+    visited.add(current);
+    current = "cause" in current
+      ? (current as { cause?: unknown }).cause
+      : undefined;
+  }
+
+  return false;
 }

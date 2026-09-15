@@ -204,7 +204,15 @@ describe("PROMAX hourly fairness", () => {
 
   it("fails open only for an unavailable impression table", () => {
     expect(isUndefinedTableError({ code: "42P01" })).toBe(true);
+    expect(isUndefinedTableError({
+      name: "DrizzleQueryError",
+      cause: { code: "42P01" },
+    })).toBe(true);
     expect(isUndefinedTableError({ code: "23505" })).toBe(false);
+    expect(isUndefinedTableError({
+      name: "DrizzleQueryError",
+      cause: { code: "23505" },
+    })).toBe(false);
     expect(isUndefinedTableError(new Error("database unavailable"))).toBe(false);
   });
 

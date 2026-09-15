@@ -90,7 +90,9 @@ export default function ListingDetail() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [removeVideoConfirmOpen, setRemoveVideoConfirmOpen] = useState(false);
   const [removeVideoLoading, setRemoveVideoLoading] = useState(false);
-  const [adminActioning, setAdminActioning] = useState<"approve" | "reject" | "remove" | null>(null);
+  const [adminActioning, setAdminActioning] = useState<"approve" | "reject" | "delete" | null>(null);
+  const [adminConfirmAction, setAdminConfirmAction] = useState<"reject" | "delete" | null>(null);
+  const [adminReason, setAdminReason] = useState("");
   const [offerOpen, setOfferOpen] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
   const [offerMsg, setOfferMsg] = useState("");
@@ -698,21 +700,10 @@ export default function ListingDetail() {
     ]);
   };
 
-  const handleAdminListingAction = async (action: "approve" | "reject" | "remove") => {
-    let reason = "";
-    if (action === "reject" || action === "remove") {
-      const entered = window.prompt(
-        action === "reject"
-          ? "Ekri rezon rejè a pou vandè a wè li:"
-          : "Ekri rezon ou retire pwodwi a pou vandè a wè li:",
-        "Pwodwi a pa respekte règleman Flexa Market.",
-      );
-      if (entered === null) return;
-      reason = entered.trim();
-      if (!reason) {
-        toast({ title: "Rezon an obligatwa", variant: "destructive" });
-        return;
-      }
+  const handleAdminListingAction = async (action: "approve" | "reject" | "delete", reason = "") => {
+    if (action === "reject" && !reason.trim()) {
+      toast({ title: t("listing.adminReasonRequired"), variant: "destructive" });
+      return;
     }
 
     setAdminActioning(action);
@@ -722,26 +713,26 @@ export default function ListingDetail() {
       } else if (action === "reject") {
         await apiFetch(`/api/admin/moderation/${id}/reject`, {
           method: "POST",
-          body: JSON.stringify({ reason }),
+          body: JSON.stringify({ reason: reason.trim() }),
         });
       } else {
-        await apiFetch(`/api/admin/listings/${id}/remove`, {
-          method: "POST",
-          body: JSON.stringify({ reason }),
-        });
+        await apiFetch(`/api/listings/${id}`, { method: "DELETE" });
       }
       await refreshListingAfterAdminAction();
+      setAdminConfirmAction(null);
+      setAdminReason("");
       toast({
         title: action === "approve"
-          ? "Pwodwi a apwouve"
+          ? t("listing.adminApproved")
           : action === "reject"
-            ? "Pwodwi a rejte"
-            : "Pwodwi a retire",
+            ? t("listing.adminRejected")
+            : t("listing.adminDeleted"),
       });
+      if (action === "delete") setLocation(`/profile/${listing.sellerId}`);
     } catch (error: any) {
       toast({
-        title: "Aksyon admin lan echwe",
-        description: error?.message ?? "Please try again.",
+        title: t("listing.adminActionFailed"),
+        description: error?.message ?? t("listing.tryAgain"),
         variant: "destructive",
       });
     } finally {
@@ -1687,45 +1678,49 @@ export default function ListingDetail() {
           <div className="px-4 py-4 space-y-2 border-y bg-amber-50/40 dark:bg-amber-950/10">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300">
               <Shield className="h-4 w-4" />
-              Kontwòl administratè
+              {t("listing.adminControls")}
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" onClick={() => setLocation(`/sell?edit=${id}`)} data-testid="button-admin-edit-listing">
-                <Pencil className="h-4 w-4 mr-1.5" /> Modifye
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" className="h-8 px-3 text-xs" onClick={() => setLocation(`/sell?edit=${id}`)} data-testid="button-admin-edit-listing">
+                <Pencil className="h-3.5 w-3.5 mr-1" /> {t("listing.adminEdit")}
               </Button>
               <Button
-                className="bg-green-600 hover:bg-green-700 text-white"
+                size="sm"
+                className="h-8 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
                 disabled={adminActioning !== null}
                 onClick={() => handleAdminListingAction("approve")}
                 data-testid="button-admin-approve-listing"
               >
-                <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                {adminActioning === "approve" ? "..." : "Apwouve"}
+                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                {adminActioning === "approve" ? "..." : t("listing.adminApprove")}
               </Button>
               <Button
+                size="sm"
                 variant="destructive"
+                className="h-8 px-3 text-xs"
                 disabled={adminActioning !== null}
-                onClick={() => handleAdminListingAction("reject")}
+                onClick={() => { setAdminReason(""); setAdminConfirmAction("reject"); }}
                 data-testid="button-admin-reject-listing"
               >
-                <AlertTriangle className="h-4 w-4 mr-1.5" />
-                {adminActioning === "reject" ? "..." : "Rejte"}
+                <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                {adminActioning === "reject" ? "..." : t("listing.adminReject")}
               </Button>
               <Button
+                size="sm"
                 variant="outline"
-                className="border-red-300 text-red-700 hover:bg-red-50 dark:text-red-300"
+                className="h-8 px-3 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:text-red-300"
                 disabled={adminActioning !== null}
-                onClick={() => handleAdminListingAction("remove")}
-                data-testid="button-admin-remove-listing"
+                onClick={() => setAdminConfirmAction("delete")}
+                data-testid="button-admin-delete-listing"
               >
-                <Trash2 className="h-4 w-4 mr-1.5" />
-                {adminActioning === "remove" ? "..." : "Retire"}
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                {adminActioning === "delete" ? "..." : t("listing.adminDelete")}
               </Button>
             </div>
             {!isAndroidApp() && <Button variant="outline" size="sm" className="w-full border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-admin-boost-listing">
               <Zap className="h-4 w-4 mr-1" />
               <Shield className="h-3.5 w-3.5 mr-1.5 opacity-70" />
-              Boost (Admin)
+              {t("listing.adminBoost")}
             </Button>}
           </div>
         )}
@@ -1901,6 +1896,79 @@ export default function ListingDetail() {
               data-testid="button-restock-confirm"
             >
               {restocking ? t("buttons.saving") : t("listing.addToStock", { count: restockQty })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={adminConfirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && adminActioning === null) {
+            setAdminConfirmAction(null);
+            setAdminReason("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className={cn("flex items-center gap-2", adminConfirmAction === "delete" && "text-destructive")}>
+              {adminConfirmAction === "delete"
+                ? <Trash2 className="h-5 w-5" />
+                : <AlertTriangle className="h-5 w-5" />}
+              {adminConfirmAction === "delete"
+                ? t("listing.adminDeleteTitle")
+                : t("listing.adminRejectTitle")}
+            </DialogTitle>
+          </DialogHeader>
+
+          {adminConfirmAction === "reject" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{t("listing.adminRejectPrompt")}</p>
+              <Textarea
+                value={adminReason}
+                onChange={(event) => setAdminReason(event.target.value)}
+                placeholder={t("listing.adminReasonPlaceholder")}
+                rows={3}
+                autoFocus
+                data-testid="input-admin-reject-reason"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground py-2">
+              {t("listing.adminDeleteMessage")}
+            </p>
+          )}
+
+          <DialogFooter className="flex gap-2 pt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setAdminConfirmAction(null); setAdminReason(""); }}
+              disabled={adminActioning !== null}
+            >
+              {t("buttons.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="flex-1"
+              onClick={() => {
+                if (adminConfirmAction === "reject") {
+                  void handleAdminListingAction("reject", adminReason);
+                } else if (adminConfirmAction === "delete") {
+                  void handleAdminListingAction("delete");
+                }
+              }}
+              disabled={adminActioning !== null || (adminConfirmAction === "reject" && !adminReason.trim())}
+              data-testid="button-admin-confirm-action"
+            >
+              {adminActioning
+                ? "..."
+                : adminConfirmAction === "delete"
+                  ? t("listing.adminConfirmDelete")
+                  : t("listing.adminConfirmReject")}
             </Button>
           </DialogFooter>
         </DialogContent>

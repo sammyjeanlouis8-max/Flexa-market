@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Camera, Images, ImagePlus, Video, AlertTriangle } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -98,7 +98,7 @@ export default function Sell() {
   const [currency, setCurrency] = useState<"USD" | "HTG" | "DOP">("USD");
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
-  const [uploadingSource, setUploadingSource] = useState<"gallery" | "camera" | null>(null);
+  const [uploadingSource, setUploadingSource] = useState<"gallery" | null>(null);
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
@@ -309,7 +309,7 @@ export default function Sell() {
     return null;
   };
 
-  const handleFiles = async (files: FileList | File[], source: "gallery" | "camera") => {
+  const handleFiles = async (files: FileList | File[]) => {
     setUploadErrorMessage(null);
     const fileArray = Array.from(files);
     const currentCount = uploadedImages.length;
@@ -322,7 +322,7 @@ export default function Sell() {
       if (err) { toast({ title: "Invalid file", description: err, variant: "destructive" }); continue; }
       const slotIndex = currentCount + i;
       setUploadingSlot(slotIndex);
-      setUploadingSource(source);
+      setUploadingSource("gallery");
       try {
         const result = await uploadFile(file);
         if (!result) {
@@ -750,72 +750,38 @@ export default function Sell() {
                 </div>
               ))}
               {canAddMore && (
-                <>
-                  <label
-                    className={cn(
-                      "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
-                      uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
-                    )}
-                    data-testid="button-add-image"
-                    aria-label={uploadingSource === "gallery" ? "Foto yo ap monte" : "Chwazi foto nan galri"}
-                  >
-                    {uploadingSource === "gallery" ? (
-                      <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
-                        <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
-                        <span className="text-xs text-muted-foreground pointer-events-none">Foto ap monte…</span>
-                      </span>
-                    ) : (
-                      <>
-                        <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
-                        <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
-                      data-testid={`input-image-${uploadedImages.length}`}
-                      onChange={e => {
-                        if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files, "gallery");
-                        e.target.value = "";
-                      }}
-                      disabled={uploadingSlot !== null}
-                    />
-                  </label>
-                  <label
-                    className={cn(
-                      "relative aspect-square rounded-lg border-2 border-dashed border-primary/40 hover:border-primary transition-colors bg-primary/5 flex flex-col items-center justify-center gap-1 overflow-hidden",
-                      uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
-                    )}
-                    data-testid="button-camera-image"
-                    aria-label={uploadingSource === "camera" ? "Foto a ap monte" : "Pran yon foto ak kamera"}
-                  >
-                    {uploadingSource === "camera" ? (
-                      <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
-                        <Loader2 className="h-6 w-6 text-primary animate-spin pointer-events-none" />
-                        <span className="text-xs text-primary pointer-events-none">Foto ap monte…</span>
-                      </span>
-                    ) : (
-                      <>
-                        <Camera className="h-6 w-6 text-primary pointer-events-none" />
-                        <span className="text-xs text-primary pointer-events-none">{t("sell.camera")}</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) void handleFiles([file], "camera");
-                        e.target.value = "";
-                      }}
-                      disabled={uploadingSlot !== null}
-                    />
-                  </label>
-                </>
+                <label
+                  className={cn(
+                    "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
+                    uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                  )}
+                  data-testid="button-add-image"
+                  aria-label={uploadingSource === "gallery" ? "Foto yo ap monte" : "Chwazi kamera oswa galri"}
+                >
+                  {uploadingSource === "gallery" ? (
+                    <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
+                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
+                      <span className="text-xs text-muted-foreground pointer-events-none">Foto ap monte…</span>
+                    </span>
+                  ) : (
+                    <>
+                      <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
+                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                    data-testid={`input-image-${uploadedImages.length}`}
+                    onChange={e => {
+                      if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                    disabled={uploadingSlot !== null}
+                  />
+                </label>
               )}
             </div>
             {uploadedImages.length === 0 && (

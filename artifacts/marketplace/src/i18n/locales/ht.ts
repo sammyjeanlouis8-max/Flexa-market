@@ -640,6 +640,7 @@ export default {
     successDesc: "Lis ou a kounye a an dirèk.",
     createError: "Yon bagay mal pase. Tanpri verifye tout chan yo epi eseye ankò.",
     preview: "Apersi — kijan achetè yo pral wè lis ou a",
+    previewSampleCarTitle: "Car",
     selectCountryFirst: "Chwazi yon peyi anvan",
     state: "Eta / Depatman",
     stateAutoFilled: "ranpli otomatik depi vil la",

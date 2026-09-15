@@ -1575,20 +1575,23 @@ export default function Sell() {
               ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId)
               : null;
             const selectedPreviewImages = uploadedImages.map(img => img.previewUrl);
-            const previewImages = selectedPreviewImages.length > 0
+            const usingSampleListing = selectedPreviewImages.length === 0;
+            const previewImages = !usingSampleListing
               ? selectedPreviewImages
               : [sellPreviewCar];
             const hasContent = vals.title?.trim() || previewImages.length > 0;
             if (!hasContent) return null;
             const previewListing = {
               id: -1,
-              title: vals.title?.trim() || t("sell.titlePlaceholder", "Your listing title"),
+              title: usingSampleListing
+                ? t("sell.previewSampleCarTitle")
+                : vals.title?.trim() || t("sell.titlePlaceholder", "Your listing title"),
               price: Number(vals.price) || 127000,
               currency,
               images: previewImages,
-              location: vals.location || vals.city || "",
-              city: vals.city || null,
-              country: vals.country || null,
+              location: usingSampleListing ? "Miami" : vals.location || vals.city || "",
+              city: usingSampleListing ? "Miami" : vals.city || null,
+              country: usingSampleListing ? "United States" : vals.country || null,
               condition: vals.condition || "good",
               isBoosted: false,
               status: "active",

@@ -640,6 +640,7 @@ export default {
     successDesc: "Votre annonce est maintenant en ligne.",
     createError: "Une erreur s'est produite. Veuillez vérifier tous les champs et réessayer.",
     preview: "Aperçu — comment les acheteurs verront votre annonce",
+    previewSampleCarTitle: "Car",
     selectCountryFirst: "Sélectionnez d'abord un pays",
     state: "État / Département",
     stateAutoFilled: "rempli automatiquement depuis la ville",

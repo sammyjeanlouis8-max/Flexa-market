@@ -640,6 +640,7 @@ export default {
     successDesc: "Your listing is now live.",
     createError: "Something went wrong. Please check all fields and try again.",
     preview: "Preview — how buyers will see your listing",
+    previewSampleCarTitle: "Car",
     selectCountryFirst: "Select a country first",
     state: "State / Department",
     stateAutoFilled: "auto-filled from city",

@@ -382,7 +382,10 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos,
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
-      viewingCountry: isSuperAdmin ? null : userCountry,
+      viewingCountry: requestedCountry
+        || (visibleCountries.length === 1 && visibleCountries[0] !== "__denied__"
+          ? visibleCountries[0]
+          : null),
     });
   } catch (err) {
     req.log.error({ err }, "Failed to fetch video feed");

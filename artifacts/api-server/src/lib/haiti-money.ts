@@ -18,6 +18,10 @@ export interface MonCashRuntimeConfig {
   clientId: string;
   clientSecret: string;
   callbackUrl: string;
+  adapter: "bazik" | "digicel";
+  bazikUserId: string;
+  bazikSecretKey: string;
+  bazikWebhookSecret: string;
 }
 
 export interface NatCashRuntimeConfig {
@@ -38,6 +42,12 @@ const MONCASH_ENV = {
   clientId: "MONCASH_CLIENT_ID",
   clientSecret: "MONCASH_CLIENT_SECRET",
   callbackUrl: "MONCASH_CALLBACK_URL",
+} as const;
+
+const BAZIK_ENV = {
+  userId: "BAZIK_USER_ID",
+  secretKey: "BAZIK_SECRET_KEY",
+  webhookSecret: "BAZIK_WEBHOOK_SECRET",
 } as const;
 
 /**
@@ -86,12 +96,20 @@ function envBoolean(name: string, fallback: boolean): boolean {
 
 export async function getMonCashRuntimeConfig(): Promise<MonCashRuntimeConfig> {
   const stored = await readStoredProvider("moncash");
+  const bazikUserId = envString(BAZIK_ENV.userId, "");
+  const bazikSecretKey = envString(BAZIK_ENV.secretKey, "");
+  const bazikWebhookSecret = envString(BAZIK_ENV.webhookSecret, "");
+  const bazikConfigured = !!bazikUserId && !!bazikSecretKey && !!bazikWebhookSecret;
   return {
-    enabled: envBoolean(MONCASH_ENV.enabled, stored.enabled === true),
+    enabled: envBoolean(MONCASH_ENV.enabled, stored.enabled === true || bazikConfigured),
     mode: envString(MONCASH_ENV.mode, String(stored.mode ?? "sandbox")) === "live" ? "live" : "sandbox",
     clientId: envString(MONCASH_ENV.clientId, String(stored.clientId ?? "")),
     clientSecret: envString(MONCASH_ENV.clientSecret, String(stored.clientSecret ?? "")),
     callbackUrl: envString(MONCASH_ENV.callbackUrl, String(stored.callbackUrl ?? "")),
+    adapter: bazikConfigured ? "bazik" : "digicel",
+    bazikUserId,
+    bazikSecretKey,
+    bazikWebhookSecret,
   };
 }
 export async function getNatCashRuntimeConfig(): Promise<NatCashRuntimeConfig> {

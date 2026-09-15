@@ -13,8 +13,17 @@ export interface HaitiQuote {
   creditAmountUsd?: number;
 }
 
-export function monCashReady(config: { enabled: boolean; clientId: string; clientSecret: string }): boolean {
-  return config.enabled && !!config.clientId && !!config.clientSecret;
+export function monCashReady(config: {
+  enabled: boolean;
+  clientId: string;
+  clientSecret: string;
+  bazikUserId?: string;
+  bazikSecretKey?: string;
+  bazikWebhookSecret?: string;
+}): boolean {
+  const digicelReady = !!config.clientId && !!config.clientSecret;
+  const bazikReady = !!config.bazikUserId && !!config.bazikSecretKey && !!config.bazikWebhookSecret;
+  return config.enabled && (digicelReady || bazikReady);
 }
 
 /** There is intentionally no NatCash adapter yet. */

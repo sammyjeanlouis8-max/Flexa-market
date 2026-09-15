@@ -1014,6 +1014,10 @@ router.post("/wallet/topup/confirm", requireFinanceAdmin, async (req, res): Prom
     logger.info({ adminId: req.userId, paymentRef, amountUsd: confirmed.amountUsd }, "Wallet topup confirmed");
     res.json({ ok: true, amountUsd: confirmed.amountUsd });
   } else {
+    if (paymentRef.startsWith("wallet_topup_")) {
+      res.status(409).json({ error: "Hosted MonCash payments cannot be rejected before provider reconciliation" });
+      return;
+    }
     const [rejected] = await db.update(walletTransactionsTable)
       .set({ status: "rejected", confirmedBy: req.userId!, confirmedAt: new Date() })
       .where(and(

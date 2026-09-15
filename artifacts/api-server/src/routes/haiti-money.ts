@@ -4,6 +4,12 @@ import { requireAuth } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { createPayment, getAccessToken, type MonCashConfig, type MonCashMode } from "../lib/moncash";
 import {
+  bazikCreationDefinitelyRejected,
+  createBazikMonCashPayment,
+  getBazikAccessToken,
+  type BazikConfig,
+} from "../lib/bazik";
+import {
   getMonCashRuntimeConfig,
   getNatCashRuntimeConfig,
   isHaitiPhone,
@@ -26,6 +32,12 @@ function callbackUrl(req: any, configured: string): string {
   const host = String(req.headers.host ?? "localhost");
   const proto = String(req.headers["x-forwarded-proto"] ?? "https");
   return `${proto}://${host}/api/moncash/return`;
+}
+
+function requestOrigin(req: any): string {
+  const host = String(req.headers.host ?? "localhost");
+  const proto = String(req.headers["x-forwarded-proto"] ?? "https");
+  return `${proto}://${host}`;
 }
 
 router.get("/wallet/haiti/providers", requireAuth, async (_req, res): Promise<void> => {
@@ -134,14 +146,51 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
     clientSecret: config.clientSecret,
     returnUrl: callbackUrl(req, config.callbackUrl),
   };
+  let bazikCreationStarted = false;
   try {
-    const token = await getAccessToken(monCashCfg);
-    const checkout = await createPayment(monCashCfg, token, paymentRef, quote.amountHtg);
+    let checkout: { redirectUrl: string };
+    if (config.adapter === "bazik") {
+      const bazikConfig: BazikConfig = {
+        userId: config.bazikUserId,
+        secretKey: config.bazikSecretKey,
+        webhookSecret: config.bazikWebhookSecret,
+      };
+      const origin = requestOrigin(req);
+      const token = await getBazikAccessToken(bazikConfig);
+      bazikCreationStarted = true;
+      const bazikCheckout = await createBazikMonCashPayment({
+        config: bazikConfig,
+        accessToken: token,
+        amountHtg: quote.amountHtg,
+        referenceId: paymentRef,
+        description: "Flexa Market FM Card recharge",
+        successUrl: `${origin}/api/bazik/return?reference=${encodeURIComponent(paymentRef)}`,
+        errorUrl: `${origin}/?moncash=cancelled`,
+        webhookUrl: `${origin}/api/bazik/webhook`,
+      });
+      const [bound] = await db.update(walletTransactionsTable)
+        .set({ userTransferRef: bazikCheckout.orderId })
+        .where(and(
+          eq(walletTransactionsTable.id, pending.id),
+          eq(walletTransactionsTable.status, "pending"),
+        ))
+        .returning({ id: walletTransactionsTable.id });
+      if (!bound) throw new Error("Pending wallet recharge disappeared before Bazik order binding");
+      checkout = { redirectUrl: bazikCheckout.redirectUrl! };
+    } else {
+      const token = await getAccessToken(monCashCfg);
+      checkout = await createPayment(monCashCfg, token, paymentRef, quote.amountHtg);
+    }
     logger.info({ userId: req.userId, paymentRef, provider }, "Haiti wallet topup initiated");
     res.json({ redirectUrl: checkout.redirectUrl, paymentRef, quote });
   } catch (err) {
-    await db.update(walletTransactionsTable).set({ status: "rejected" })
-      .where(eq(walletTransactionsTable.paymentRef, paymentRef));
+    const shouldReject = config.adapter !== "bazik"
+      || !bazikCreationStarted
+      || bazikCreationDefinitelyRejected(err);
+    if (shouldReject) {
+      await db.update(walletTransactionsTable).set({ status: "rejected" })
+        .where(eq(walletTransactionsTable.paymentRef, paymentRef));
+    }
     logger.error({ userId: req.userId, paymentRef }, "Haiti wallet topup checkout failed");
     res.status(502).json({ error: "MonCash payment creation failed" });
   }
@@ -155,11 +204,13 @@ export async function verifyHaitiMonCashTopup(
   transactionId: string,
   reference: string,
   cost: number,
+  providerOrderId?: string,
 ): Promise<{ ok: boolean; alreadyProcessed?: boolean }> {
   const [pending] = await db.select().from(walletTransactionsTable)
     .where(eq(walletTransactionsTable.paymentRef, reference));
   if (!pending || pending.type !== "recharge") return { ok: false };
-  if (pending.status !== "pending") return { ok: true, alreadyProcessed: true };
+  if (pending.status === "completed") return { ok: true, alreadyProcessed: true };
+  if (pending.status !== "pending") return { ok: false };
   if (!Number.isFinite(cost) || Math.abs(cost - (pending.amountHtg ?? 0)) > 0.01) return { ok: false };
 
   await getOrCreateWallet(pending.userId);
@@ -173,7 +224,7 @@ export async function verifyHaitiMonCashTopup(
     // same transaction and rolls back if any required write fails.
     const [verified] = await tx.update(walletTransactionsTable).set({
       status: "completed",
-      userTransferRef: transactionId,
+      userTransferRef: providerOrderId ?? transactionId,
     }).where(and(
       eq(walletTransactionsTable.id, pending.id),
       eq(walletTransactionsTable.status, "pending"),

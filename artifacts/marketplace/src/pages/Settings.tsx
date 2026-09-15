@@ -58,41 +58,58 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
   const [status, setStatus] = useState<string>("not_connected");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const { t } = useTranslation();
-
-  const tk = () => localStorage.getItem("flexamarket_token") ?? "";
+  const { token } = useAuth();
 
   useEffect(() => {
-    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${tk()}` } })
+    if (!token) return;
+    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setStatus(d.stripeAccountStatus ?? "not_connected"); })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [token]);
 
   const startOnboarding = async () => {
+    if (!token) {
+      setActionError(t("settings.stripeSessionExpired"));
+      return;
+    }
+    setActionError(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/onboard", {
         method: "POST",
-        headers: { Authorization: `Bearer ${tk()}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch { /* noop */ }
+      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeConnectError"));
+      window.location.assign(data.url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
+    }
     finally { setActionLoading(false); }
   };
 
   const openDashboard = async () => {
+    if (!token) {
+      setActionError(t("settings.stripeSessionExpired"));
+      return;
+    }
+    setActionError(null);
     setActionLoading(true);
     try {
       const res = await fetch("/api/stripe/connect/dashboard", {
         method: "POST",
-        headers: { Authorization: `Bearer ${tk()}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
-    } catch { /* noop */ }
+      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeDashboardError"));
+      window.location.assign(data.url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
+    }
     finally { setActionLoading(false); }
   };
 
@@ -105,20 +122,20 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
         <div className="flex items-center gap-2">
           <CreditCard className="h-5 w-5 text-primary" />
           <span className="font-semibold text-sm">Stripe Connect</span>
-          {required && <Badge className="ml-1 bg-primary/10 text-primary border-0 text-[10px]">Obligatwa</Badge>}
+          {required && <Badge className="ml-1 bg-primary/10 text-primary border-0 text-[10px]">{t("settings.required")}</Badge>}
           {loading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
           ) : isActive ? (
             <Badge className="ml-auto bg-green-100 text-green-700 border-0 text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" />Konekte ✅
+              <CheckCircle2 className="h-3 w-3 mr-1" />{t("settings.connected")} ✅
             </Badge>
           ) : isPending ? (
             <Badge className="ml-auto bg-yellow-100 text-yellow-700 border-0 text-xs">
-              <Clock className="h-3 w-3 mr-1" />Annatant
+              <Clock className="h-3 w-3 mr-1" />{t("settings.pending")}
             </Badge>
           ) : (
             <Badge className="ml-auto bg-muted text-muted-foreground border-0 text-xs">
-              <XCircle className="h-3 w-3 mr-1" />Pa Konekte
+              <XCircle className="h-3 w-3 mr-1" />{t("settings.notConnected")}
             </Badge>
           )}
         </div>
@@ -134,7 +151,7 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
             </ul>
             <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
               {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-              Stripe Dashboard
+              {t("settings.stripeDashboard")}
             </Button>
           </>
         ) : isPending ? (
@@ -163,6 +180,12 @@ function StripeConnectPanel({ required = false }: { required?: boolean }) {
             </Button>
           </>
         )}
+        {actionError && (
+          <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            {actionError}
+          </p>
+        )}
         <TrustFooter />
       </div>
     </Card>
@@ -176,28 +199,28 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const { t } = useTranslation();
+  const { token } = useAuth();
 
   useEffect(() => { setInput(account?.moncashNumber ?? ""); }, [account?.moncashNumber]);
-
-  const tk = () => localStorage.getItem("flexamarket_token") ?? "";
 
   const save = async () => {
     setError(null); setSuccess(false);
     const num = input.trim();
-    if (!num) { setError("Antre nimewo MonCash ou"); return; }
-    if (!/^509\d{8}$/.test(num)) { setError("Nimewo a dwe kòmanse pa 509 epi gen 11 chif (egzanp: 50937001234)"); return; }
+    if (!num) { setError(t("settings.moncashNumberRequired")); return; }
+    if (!/^509\d{8}$/.test(num)) { setError(t("settings.moncashNumberInvalid")); return; }
+    if (!token) { setError(t("settings.stripeSessionExpired")); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/seller/payout-account/moncash", {
         method: "PUT",
-        headers: { Authorization: `Bearer ${tk()}`, "Content-Type": "application/json" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ moncashNumber: num }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Echèk"); return; }
+      if (!res.ok) { setError(data.error ?? t("settings.saveError")); return; }
       onSaved(data);
       setSuccess(true);
-    } catch { setError("Erè rezo"); }
+    } catch { setError(t("settings.networkError")); }
     finally { setSaving(false); }
   };
 
@@ -209,7 +232,7 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
     <div className="space-y-3">
       {isRejected && (
         <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-xs text-red-700 dark:text-red-400">
-          <p className="font-semibold mb-1">Rezon rejè :</p>
+          <p className="font-semibold mb-1">{t("settings.rejectionReason")}:</p>
           <p>{account!.moncashRejectedReason}</p>
         </div>
       )}
@@ -245,14 +268,14 @@ function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; 
         />
         <Button size="sm" onClick={save} disabled={saving} className="h-9 shrink-0">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-1">{saving ? "Ap sove…" : "Sove"}</span>
+          <span className="ml-1">{saving ? t("settings.saving") : t("settings.save")}</span>
         </Button>
       </div>
 
       {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />{error}</p>}
-      {success && <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />Sove! Annatant vèrifikasyon admin.</p>}
+      {success && <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />{t("settings.savedPendingVerification")}</p>}
       {isPending && !success && (
-        <p className="text-xs text-yellow-600 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Annatant vèrifikasyon admin</p>
+        <p className="text-xs text-yellow-600 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{t("settings.pendingVerification")}</p>
       )}
     </div>
   );
@@ -336,7 +359,7 @@ function CardPayoutMethodPanel() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Aprè chak vant pa kat, kòb ou (apre komisyon 10%) ajoute <strong>otomatikman</strong> nan pòtfèy FM ou. Pa bezwen konfigire Stripe. Ou ka retire kòb la nan MonCash ou labank.
+              {t("settings.fmWalletPayoutDesc")}
             </p>
           </div>
         </button>
@@ -360,18 +383,18 @@ function CardPayoutMethodPanel() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">Stripe Connect</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
-                Avanse
+                {t("settings.advanced")}
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Nesesite konfigirasyon Stripe pèsonèl. Kòb ale dirèkteman nan kont Stripe ou (si li aktif). Pou vandè ki abitye ak Stripe.
+              {t("settings.stripePayoutMethodDesc")}
             </p>
           </div>
         </button>
 
         {saving && (
           <p className="text-xs text-center text-muted-foreground animate-pulse">
-            Saving…
+            {t("settings.saving")}
           </p>
         )}
       </div>
@@ -383,29 +406,29 @@ function CardPayoutMethodPanel() {
 function HaitiPayoutPanel() {
   const [account, setAccount] = useState<PayoutAccount | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"stripe" | "moncash">("stripe");
   const { t } = useTranslation();
+  const { token } = useAuth();
 
   // Stripe status
   const [stripeStatus, setStripeStatus] = useState<string>("not_connected");
   const [stripeLoading, setStripeLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-
-  const tk = () => localStorage.getItem("flexamarket_token") ?? "";
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/seller/payout-account", { headers: { Authorization: `Bearer ${tk()}` } })
+    if (!token) return;
+    fetch("/api/seller/payout-account", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => setAccount(d))
       .catch(() => setAccount(null))
       .finally(() => setLoading(false));
 
-    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${tk()}` } })
+    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setStripeStatus(d.stripeAccountStatus ?? "not_connected"); })
       .catch(() => {})
       .finally(() => setStripeLoading(false));
-  }, []);
+  }, [token]);
 
   const moncashVerified = account?.moncashVerified;
   const moncashPending = account?.moncashNumber && !account?.moncashVerified && !account?.moncashRejectedReason;
@@ -416,123 +439,112 @@ function HaitiPayoutPanel() {
 
   const makeBadge = (verified: any, pending: any, rejected: any) =>
     verified
-      ? <Badge className="ml-1.5 bg-green-100 text-green-700 border-0 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Aktif</Badge>
+      ? <Badge className="ml-1.5 bg-green-100 text-green-700 border-0 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("settings.active")}</Badge>
       : pending
-      ? <Badge className="ml-1.5 bg-yellow-100 text-yellow-700 border-0 text-[10px]"><Clock className="h-2.5 w-2.5 mr-0.5" />Annatant</Badge>
+      ? <Badge className="ml-1.5 bg-yellow-100 text-yellow-700 border-0 text-[10px]"><Clock className="h-2.5 w-2.5 mr-0.5" />{t("settings.pending")}</Badge>
       : rejected
-      ? <Badge className="ml-1.5 bg-red-100 text-red-700 border-0 text-[10px]"><AlertCircle className="h-2.5 w-2.5 mr-0.5" />Rejte</Badge>
+      ? <Badge className="ml-1.5 bg-red-100 text-red-700 border-0 text-[10px]"><AlertCircle className="h-2.5 w-2.5 mr-0.5" />{t("settings.rejected")}</Badge>
       : null;
 
   const startOnboarding = async () => {
+    if (!token) {
+      setActionError(t("settings.stripeSessionExpired"));
+      return;
+    }
+    setActionError(null);
     setActionLoading(true);
     try {
-      const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${tk()}` } });
+      const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch { /* noop */ }
+      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeConnectError"));
+      window.location.assign(data.url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
+    }
     finally { setActionLoading(false); }
   };
 
   const openDashboard = async () => {
+    if (!token) {
+      setActionError(t("settings.stripeSessionExpired"));
+      return;
+    }
+    setActionError(null);
     setActionLoading(true);
     try {
-      const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${tk()}` } });
+      const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
-    } catch { /* noop */ }
+      if (!res.ok || !data.url) throw new Error(data.error || t("settings.stripeDashboardError"));
+      window.location.assign(data.url);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
+    }
     finally { setActionLoading(false); }
   };
 
   return (
-    <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border bg-muted/30 flex items-center justify-between">
-        <span className="font-semibold text-sm">{t("settings.payoutMethodTitle")}</span>
-        {(loading || stripeLoading) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-      </div>
-
-      {/* Tabs: Stripe first (recommended), MonCash second */}
-      <div className="flex border-b border-border">
-        <button
-          onClick={() => setTab("stripe")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors ${tab === "stripe" ? "border-b-2 border-primary text-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          <CreditCard className="h-3.5 w-3.5" />
-          Stripe
-          {stripeLoading
-            ? null
-            : makeBadge(stripeActive, stripePending, false)
-          }
-          {!stripeLoading && !stripeActive && !stripePending && (
-            <Badge className="ml-1.5 bg-blue-100 text-blue-700 border-0 text-[10px]">{t("settings.recommended")}</Badge>
-          )}
-        </button>
-        <button
-          onClick={() => setTab("moncash")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors ${tab === "moncash" ? "border-b-2 border-primary text-primary bg-primary/5" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          <Smartphone className="h-3.5 w-3.5" />
-          MonCash
-          {makeBadge(moncashVerified, moncashPending, moncashRejected)}
-        </button>
-      </div>
-
-      {!loading && !stripeLoading && (
-        <div className="p-4 space-y-3">
-          {/* ── Stripe tab ─────────────────────────────────────────── */}
-          {tab === "stripe" && (
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                  {t("settings.instantPayout")}
-                </p>
-                {stripeActive ? (
-                  <p className="text-sm text-muted-foreground">{t("settings.stripeActiveDesc")}</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">{t("settings.stripeConnectDesc")}</p>
-                )}
-              </div>
-
-              {stripeActive ? (
-                <>
-                  <ul className="text-xs text-muted-foreground space-y-1">
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoFast")}</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoNoWait")}</li>
-                  </ul>
-                  <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
-                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-                    Stripe Dashboard
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <ul className="text-xs text-muted-foreground space-y-1">
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletInstantPayout")}</li>
-                    <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletIdentityVerified")}</li>
-                  </ul>
-                  <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
-                    {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-                    {stripePending ? t("settings.stripeCompleteBtn") : t("settings.stripeConnectBtn")}
-                  </Button>
-                </>
+    <div className="space-y-3">
+      <Card className="overflow-hidden">
+        <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
+          <CreditCard className="h-4 w-4 text-primary" />
+          <span className="font-semibold text-sm">Stripe Connect</span>
+          {stripeLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
+          ) : (
+            <>
+              {makeBadge(stripeActive, stripePending, false)}
+              {!stripeActive && !stripePending && (
+                <Badge className="ml-auto bg-blue-100 text-blue-700 border-0 text-[10px]">{t("settings.recommended")}</Badge>
               )}
-            </div>
+            </>
           )}
-
-          {/* ── MonCash tab ─────────────────────────────────────────── */}
-          {tab === "moncash" && (
-            <MonCashSubPanel account={account} onSaved={setAccount} />
-          )}
-
-          <TrustFooter />
         </div>
-      )}
-    </Card>
+        {!stripeLoading && (
+          <div className="p-4 space-y-3">
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                {t("settings.instantPayout")}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {stripeActive ? t("settings.stripeActiveDesc") : t("settings.stripeConnectDesc")}
+              </p>
+            </div>
+            <ul className="text-xs text-muted-foreground space-y-1">
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{stripeActive ? t("settings.bulletAutoFast") : t("settings.bulletInstantPayout")}</li>
+              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{stripeActive ? t("settings.bulletAutoNoWait") : t("settings.bulletIdentityVerified")}</li>
+            </ul>
+            <Button size="sm" variant={stripeActive ? "outline" : "default"} onClick={stripeActive ? openDashboard : startOnboarding} disabled={actionLoading} className="w-full">
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : stripeActive ? <ExternalLink className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+              {stripeActive ? t("settings.stripeDashboard") : stripePending ? t("settings.stripeCompleteBtn") : t("settings.stripeConnectBtn")}
+            </Button>
+            {actionError && (
+              <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                {actionError}
+              </p>
+            )}
+          </div>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
+          <Smartphone className="h-4 w-4 text-primary" />
+          <span className="font-semibold text-sm">{t("settings.moncashTitle")}</span>
+          <span className="ml-auto">{makeBadge(moncashVerified, moncashPending, moncashRejected)}</span>
+        </div>
+        {!loading && (
+          <div className="p-4">
+            <MonCashSubPanel account={account} onSaved={setAccount} />
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
 // ─── Payment Status Summary Banner ────────────────────────────────────────────
-function PaymentStatusBanner({ stripeStatus, country }: { stripeStatus?: string | null; country?: string | null }) {
-  const isMoncash = country ? MONCASH_COUNTRIES.has(country) : false;
+function PaymentStatusBanner({ stripeStatus }: { stripeStatus?: string | null }) {
   const { t } = useTranslation();
 
   if (stripeStatus === "active") {
@@ -540,15 +552,6 @@ function PaymentStatusBanner({ stripeStatus, country }: { stripeStatus?: string 
       <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         <span>{t("settings.stripeConnectedBanner")}</span>
-      </div>
-    );
-  }
-
-  if (isMoncash) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span>{t("settings.moncashAvailableBanner")}</span>
       </div>
     );
   }
@@ -697,7 +700,7 @@ export default function Settings() {
           {t("settings.paymentSection")}
         </h2>
 
-        <PaymentStatusBanner stripeStatus={user.stripeAccountStatus} country={user.country} />
+        <PaymentStatusBanner stripeStatus={user.stripeAccountStatus} />
 
         {isStripeSupported ? (
           <StripeConnectPanel required />

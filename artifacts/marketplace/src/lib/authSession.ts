@@ -2,7 +2,6 @@ export type SilentRefreshResult =
   | { kind: "success"; token: string }
   | { kind: "invalid"; status: 401 }
   | { kind: "suspended"; status: 403 }
-  | { kind: "unavailable"; status: 403 }
   | { kind: "transient"; status?: number };
 
 export type SessionIdentity = {
@@ -85,7 +84,7 @@ export function silentlyRefreshToken(token: string): Promise<SilentRefreshResult
       if (response.status === 403) {
         return data?.suspended
           ? { kind: "suspended", status: 403 } as const
-          : { kind: "unavailable", status: 403 } as const;
+          : { kind: "transient", status: 403 } as const;
       }
       return { kind: "transient", status: response.status } as const;
     })

@@ -57,7 +57,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data);
-      } else {
+      } else if (res.status === 401) {
+        // Only a definitive invalid-token response may destroy the saved
+        // session. Temporary server/proxy errors must leave the user signed in.
         await AsyncStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);

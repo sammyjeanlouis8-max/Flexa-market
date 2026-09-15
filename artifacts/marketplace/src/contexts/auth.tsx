@@ -266,11 +266,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         redirectToSuspended();
         return;
       }
-      if (result.kind === "unavailable") {
-        redirectToLogin();
-        return;
-      }
-
       // A pageshow/visibility resume must verify the current token too. For a
       // successful rotation, verify the old token before installing its
       // replacement; this keeps the generated query and the response bound to
@@ -296,10 +291,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectToSuspended();
           return;
         }
-        if (verificationStatus === 403) {
-          redirectToLogin();
-          return;
-        }
+        // A non-suspension 403 can be produced by a temporary authorization
+        // or proxy problem. Preserve the session unless the API confirms 401.
       }
 
       if (result.kind === "success") {

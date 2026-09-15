@@ -7,6 +7,7 @@ import {
   isActiveBoost,
   isActiveVip,
   nextPromaxHourDelayMs,
+  promaxSnapshotPruneCutoff,
   paginateLegacyPage,
   orderPromaxItems,
   isLegacyFallbackCountryVisible,
@@ -16,7 +17,7 @@ import {
   shouldRetryPromaxStartup,
   type PromaxCandidate,
 } from "../lib/promaxRotation";
-import { isWithinPromaxDailyBudget, matchesPromaxAudience } from "../lib/promaxBoostGating";
+import { isUndefinedTableError, isWithinPromaxDailyBudget, matchesPromaxAudience } from "../lib/promaxBoostGating";
 
 const now = new Date("2030-01-01T12:30:00.000Z");
 
@@ -172,6 +173,11 @@ describe("PROMAX hourly fairness", () => {
     expect(nextPromaxHourDelayMs(Date.parse("2030-01-01T12:59:59.000Z"))).toBe(1025);
   });
 
+  it("computes snapshot pruning cutoff as a concrete Date parameter", () => {
+    const generatedAt = new Date("2030-01-01T12:00:00.000Z");
+    expect(promaxSnapshotPruneCutoff(generatedAt)).toEqual(new Date("2030-01-01T06:00:00.000Z"));
+  });
+
   it("enforces paid boost audience and daily budget contracts", () => {
     expect(matchesPromaxAudience({
       listingCountry: "Haiti",
@@ -194,6 +200,12 @@ describe("PROMAX hourly fairness", () => {
     }, { country: "Haiti", location: "Cap-Haïtien", gender: "female" })).toBe(false);
     expect(isWithinPromaxDailyBudget(5, 999)).toBe(true);
     expect(isWithinPromaxDailyBudget(5, 1000)).toBe(false);
+  });
+
+  it("fails open only for an unavailable impression table", () => {
+    expect(isUndefinedTableError({ code: "42P01" })).toBe(true);
+    expect(isUndefinedTableError({ code: "23505" })).toBe(false);
+    expect(isUndefinedTableError(new Error("database unavailable"))).toBe(false);
   });
 
   it("demotes a gated placement without hiding its organic listing", () => {

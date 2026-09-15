@@ -32,9 +32,11 @@ import {
   type PromaxGroup,
 } from "../lib/promaxRotation";
 import {
+  isUndefinedTableError,
   isWithinPromaxDailyBudget,
   matchesPromaxAudience,
 } from "../lib/promaxBoostGating";
+import { logger } from "../lib/logger";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -345,15 +347,21 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   }
   const paidBoostIds = [...paidBoostByListing.values()];
   const today = promaxNow.toISOString().slice(0, 10);
-  const impressionRows = paidBoostIds.length > 0
-    ? await db.select({
+  let impressionRows: { boostId: number; impressionCount: number }[] = [];
+  if (paidBoostIds.length > 0) {
+    try {
+      impressionRows = await db.select({
         boostId: boostDailyImpressionsTable.boostId,
         impressionCount: boostDailyImpressionsTable.impressionCount,
       }).from(boostDailyImpressionsTable).where(and(
         eq(boostDailyImpressionsTable.date, today),
         inArray(boostDailyImpressionsTable.boostId, paidBoostIds),
-      ))
-    : [];
+      ));
+    } catch (error) {
+      if (!isUndefinedTableError(error)) throw error;
+      logger.warn({ err: error }, "PROMAX impression table unavailable; treating cap counts as zero");
+    }
+  }
   const impressionsByBoost = new Map(impressionRows.map((row) => [row.boostId, row.impressionCount]));
   const promaxViewer = req.user ? {
     country: req.user.country,

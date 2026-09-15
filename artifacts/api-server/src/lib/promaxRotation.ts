@@ -188,6 +188,10 @@ export function nextPromaxHourDelayMs(nowMs: number): number {
   return hour - (nowMs % hour) + 25;
 }
 
+export function promaxSnapshotPruneCutoff(now: Date): Date {
+  return new Date(now.getTime() - 6 * 60 * 60 * 1000);
+}
+
 export function shouldRetryPromaxStartup(
   snapshot: PromaxSnapshot | null,
   healthy: boolean,
@@ -415,8 +419,9 @@ export async function generatePromaxSnapshot(now: Date = new Date()): Promise<Pr
       if (!persisted || persisted.hourKey !== hourKey) {
         throw new Error("PROMAX snapshot persistence verification failed");
       }
+      const pruneCutoff = promaxSnapshotPruneCutoff(now);
       await tx.delete(promaxRotationSnapshotsTable)
-        .where(sql`${promaxRotationSnapshotsTable.generatedAt} < ${now} - INTERVAL '6 hours'`);
+        .where(sql`${promaxRotationSnapshotsTable.generatedAt} < ${pruneCutoff}`);
       return generated;
     });
     lastGenerationHealthy = true;

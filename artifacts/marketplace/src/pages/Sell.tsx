@@ -1659,17 +1659,17 @@ export default function Sell() {
                     <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
                   )}
                   <p className="text-sm font-bold text-foreground">
-                    Metòd pou resevwa kòb ou
+                    {t("sell.payoutSectionTitle")}
                   </p>
                   {paymentReady && (
                     <span className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                      Aktif
+                      {t("sell.payoutActive")}
                     </span>
                   )}
                 </div>
                 {!paymentReady && (
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    Chwazi youn nan opsyon yo pou w ka pibliye pwodwi ou
+                    {t("sell.payoutSelectPrompt")}
                   </p>
                 )}
               </div>
@@ -1699,11 +1699,13 @@ export default function Sell() {
                     </div>
                     <div>
                       <p className="text-sm font-black text-foreground leading-none">Kat FM</p>
-                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">Toujou disponib</p>
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                        {t("sell.fmCardAlwaysAvailable")}
+                      </p>
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Kòb vant ou tonbe dirèkteman nan pòtfèy FM ou — pa bezwen konfigire anyen.
+                    {t("sell.fmCardPayoutDescription")}
                   </p>
                   {savingPayoutMethod && cardPayoutMethod !== "fm_wallet" && (
                     <Loader2 className="h-3 w-3 animate-spin text-primary absolute bottom-2 right-2" />
@@ -1742,7 +1744,7 @@ export default function Sell() {
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    Resevwa peman pa kat kredi dirèkteman nan kont bank ou.
+                    {t("sell.stripePayoutDescription")}
                   </p>
                   {cardPayoutMethod === "stripe" && !stripeAccountConnected && (
                     <a
@@ -1750,7 +1752,7 @@ export default function Sell() {
                       onClick={e => e.stopPropagation()}
                       className="text-[11px] font-bold text-[#635BFF] underline underline-offset-2 hover:no-underline"
                     >
-                      Konekte Stripe nan Paramèt →
+                      {t("sell.connectStripeSettings")} →
                     </a>
                   )}
                   {savingPayoutMethod && cardPayoutMethod !== "stripe" && (
@@ -1771,8 +1773,8 @@ export default function Sell() {
             {publishBusyLabel
               ? publishBusyLabel
               : isPending
-                ? (isEditMode ? "Ap sovgade…" : t("sell.publishing"))
-                : (isEditMode ? "Sovgade chanjman yo" : t("sell.publishListing"))}
+                ? (isEditMode ? t("sell.savingChanges") : t("sell.publishing"))
+                : (isEditMode ? t("sell.saveChanges") : t("sell.publishListing"))}
           </Button>
         </form>
       </Form>

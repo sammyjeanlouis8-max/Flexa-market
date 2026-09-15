@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 
-import { Search, ChevronRight, Zap, TrendingUp, Package, ArrowRight, MapPin, Navigation, AlertCircle, ShieldCheck, BadgeCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video, Crown } from "lucide-react";
+import { Search, ChevronRight, Zap, TrendingUp, Package, MapPin, Navigation, ShieldCheck, X, RefreshCw, ChevronDown, Pencil, CheckCircle2, Loader2, Play, Video, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
@@ -15,7 +15,12 @@ import { useTranslation } from "react-i18next";
 import { MobileSelect } from "@/components/ui/mobile-select";
 import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import { formatPrice } from "@/lib/currency";
+import {
+  getPromaxNextPageParam,
+  serializePromaxPageParam,
+  type PromaxFeedPage,
+  type PromaxPageParam,
+} from "@/lib/promaxPagination";
 import {
   haversineKm,
   reverseGeocode,
@@ -44,6 +49,8 @@ type NormalListing = {
   country?: string | null;
   condition: string;
   isBoosted: boolean;
+  promaxGroup?: "booster_vip" | "booster_ordinary" | "vip" | "ordinary" | null;
+  promaxPosition?: number | null;
   status: string;
   sellerName: string;
   sellerRating: number;
@@ -59,151 +66,6 @@ type NormalListing = {
   proximityLevel?: string | null;
   nearYou?: boolean;
 };
-
-type FeedItem =
-  | { type: "normal"; listing: NormalListing; key: string }
-  | { type: "boosted"; listing: NormalListing; key: string };
-
-type BoostState = {
-  ignored: number[];
-  seenToday: { date: string; counts: Record<number, number> } | null;
-  lastBoostTime: number;
-};
-
-const DEFAULT_BOOST_STATE: BoostState = { ignored: [], seenToday: null, lastBoostTime: 0 };
-
-// ─── Boost State (localStorage) ───────────────────────────────────────────────
-
-function getBoostKey(userId: number | undefined) {
-  return userId ? `flexa_boost_${userId}` : "flexa_boost_guest";
-}
-
-function loadBoostState(userId: number | undefined): BoostState {
-  try {
-    const raw = localStorage.getItem(getBoostKey(userId));
-    if (!raw) return { ...DEFAULT_BOOST_STATE };
-    return { ...DEFAULT_BOOST_STATE, ...JSON.parse(raw) };
-  } catch {
-    return { ...DEFAULT_BOOST_STATE };
-  }
-}
-
-function saveBoostState(userId: number | undefined, state: BoostState) {
-  try {
-    localStorage.setItem(getBoostKey(userId), JSON.stringify(state));
-  } catch {}
-}
-
-function useBoostState(userId: number | undefined) {
-  const [state, setStateRaw] = useState<BoostState>(() => loadBoostState(userId));
-
-  const setState = useCallback(
-    (updater: (prev: BoostState) => BoostState) => {
-      setStateRaw(prev => {
-        const next = updater(prev);
-        saveBoostState(userId, next);
-        return next;
-      });
-    },
-    [userId]
-  );
-
-  // Re-load when userId changes (login/logout)
-  useEffect(() => {
-    setStateRaw(loadBoostState(userId));
-  }, [userId]);
-
-  const markIgnored = useCallback(
-    (listingId: number) => {
-      setState(prev => ({
-        ...prev,
-        ignored: prev.ignored.includes(listingId)
-          ? prev.ignored
-          : [...prev.ignored, listingId],
-      }));
-    },
-    [setState]
-  );
-
-  const markSeen = useCallback(
-    (listingId: number) => {
-      setState(prev => {
-        const today = new Date().toDateString();
-        const existing = prev.seenToday?.date === today ? prev.seenToday.counts : {};
-        return {
-          ...prev,
-          lastBoostTime: Date.now(),
-          seenToday: {
-            date: today,
-            counts: { ...existing, [listingId]: (existing[listingId] ?? 0) + 1 },
-          },
-        };
-      });
-    },
-    [setState]
-  );
-
-  return { state, markIgnored, markSeen };
-}
-
-// ─── Feed builder ─────────────────────────────────────────────────────────────
-
-function buildFeedWithBoosts(
-  normal: NormalListing[],
-  boosted: NormalListing[],
-  state: BoostState,
-  boostPositions: number[]
-): FeedItem[] {
-  const today = new Date().toDateString();
-  const seenCounts = state.seenToday?.date === today ? state.seenToday.counts : {};
-  const validNormal = normal.filter(
-    (listing): listing is NormalListing =>
-      Boolean(listing && typeof listing.id === "number")
-  );
-  const validBoosted = boosted.filter(
-    (listing): listing is NormalListing =>
-      Boolean(listing && typeof listing.id === "number")
-  );
-
-  // Filter eligible boosts: not ignored, seen < 2 today, not appearing in normal feed already
-  const eligible = validBoosted.filter(l => {
-    if (state.ignored.includes(l.id)) return false;
-    if ((seenCounts[l.id] ?? 0) >= 2) return false;
-    return true;
-  });
-
-  // Enforce 15-min gap between boost sessions
-  const canShowBoost =
-    eligible.length > 0 &&
-    (!state.lastBoostTime || Date.now() - state.lastBoostTime >= 15 * 60 * 1000);
-
-  const result: FeedItem[] = validNormal.map((l, i) => ({
-    type: "normal",
-    listing: l,
-    key: `normal-${l.id}-${i}`,
-  }));
-
-  if (!canShowBoost || boostPositions.length === 0) return result;
-
-  // Insert boosts at pre-computed positions (from highest index to lowest to preserve positions)
-  let boostIdx = 0;
-  for (const pos of boostPositions) {
-    if (boostIdx >= eligible.length) break;
-    if (pos > result.length) break;
-    // Never insert two boosts back-to-back (check neighbours)
-    const prev = result[pos - 1];
-    const next = result[pos];
-    if (prev?.type === "boosted" || next?.type === "boosted") continue;
-    result.splice(pos, 0, {
-      type: "boosted",
-      listing: eligible[boostIdx],
-      key: `boosted-${eligible[boostIdx].id}-at-${pos}`,
-    });
-    boostIdx++;
-  }
-
-  return result;
-}
 
 // ─── VideoPromoSection ────────────────────────────────────────────────────────
 // Horizontal scroll carousel of active boosted promo videos on the homepage.
@@ -352,160 +214,6 @@ function VideoPromoSection() {
   );
 }
 
-// ─── BoostedPostCard ──────────────────────────────────────────────────────────
-
-function BoostedPostCard({
-  listing,
-  onSkip,
-  onSeen,
-}: {
-  listing: NormalListing;
-  onSkip: (id: number) => void;
-  onSeen: (id: number) => void;
-}) {
-  const [, setLocation] = useLocation();
-  const [secondsLeft, setSecondsLeft] = useState(10);
-  const [skippable, setSkippable] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const seenRef = useRef(false);
-
-  // Mark seen once on mount
-  useEffect(() => {
-    if (!seenRef.current) {
-      seenRef.current = true;
-      onSeen(listing.id);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 10-second countdown
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      setSkippable(true);
-      return;
-    }
-    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [secondsLeft]);
-
-  const handleSkip = () => {
-    if (!skippable) return;
-    setDismissed(true);
-    onSkip(listing.id);
-  };
-
-  if (dismissed) return null;
-
-  const img = listing.images?.[0] ?? null;
-
-  return (
-    <div className="col-span-2 sm:col-span-3 lg:col-span-4">
-      <div className="rounded-xl border-2 border-amber-400/70 bg-card overflow-hidden shadow-[0_2px_12px_rgba(251,191,36,0.2)] transition-all">
-        {/* Sponsor header bar */}
-        <div className="flex items-center justify-between px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
-          <div className="flex items-center gap-1.5">
-            <Zap className="h-3 w-3 text-amber-500 fill-amber-500" />
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">
-              Piblisite
-            </span>
-          </div>
-          <button
-            onClick={handleSkip}
-            disabled={!skippable}
-            className={cn(
-              "flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-semibold transition-all border",
-              skippable
-                ? "bg-white dark:bg-card text-foreground border-border hover:bg-muted cursor-pointer"
-                : "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-70"
-            )}
-          >
-            {skippable ? (
-              <>
-                <X className="h-3 w-3" />
-                Pase
-              </>
-            ) : (
-              `Pase ${secondsLeft}s`
-            )}
-          </button>
-        </div>
-
-        {/* Listing preview — horizontal layout.
-            Video-only boosts (status="hidden") have no product page — render
-            as a non-interactive div so there is no clickable product link. */}
-        {listing.status === "hidden" ? (
-          <div className="flex gap-3 p-3 w-full text-left">
-            {img ? (
-              <img
-                src={img}
-                alt={listing.title}
-                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
-                onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
-              />
-            ) : (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
-                <Zap className="h-6 w-6 text-primary/40" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
-                {listing.title}
-              </p>
-              <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
-                <MapPin className="h-3 w-3 flex-shrink-0" />
-                <span className="text-xs truncate">{listing.city ?? listing.location}</span>
-              </div>
-              <span className="text-xs text-muted-foreground">pa {listing.sellerName}</span>
-            </div>
-          </div>
-        ) : (
-          <button
-            className="flex gap-3 p-3 w-full text-left hover:bg-muted/40 transition-colors"
-            onClick={() => setLocation(`/listings/${listing.id}`)}
-          >
-            {img ? (
-              <img
-                src={img}
-                alt={listing.title}
-                className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg flex-shrink-0"
-                onError={(e) => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='8' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
-              />
-            ) : (
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg flex-shrink-0 bg-muted flex items-center justify-center">
-                <Zap className="h-6 w-6 text-primary/40" />
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-foreground text-base">
-                {formatPrice(listing.price, listing.country, listing.currency)}
-              </p>
-              <p className="text-sm text-foreground font-medium mt-0.5 line-clamp-2 leading-snug">
-                {listing.title}
-              </p>
-              <div className="flex items-center gap-1 mt-1.5 text-muted-foreground">
-                <MapPin className="h-3 w-3 flex-shrink-0" />
-                <span className="text-xs truncate">{listing.city ?? listing.location}</span>
-              </div>
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                {listing.sellerIsVerified && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400 px-1.5 py-0.5 text-xs font-bold">
-                    <BadgeCheck className="h-3 w-3 fill-blue-500 text-white dark:text-blue-950" />
-                    Verifye
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  pa {listing.sellerName}
-                </span>
-              </div>
-            </div>
-            <ArrowRight className="h-4 w-4 text-muted-foreground self-center flex-shrink-0" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -554,33 +262,10 @@ export default function Home() {
   const detectingRef = useRef(false);
   const hasGps = !!(user && (user as any).latitude != null && (user as any).longitude != null);
 
-  // ── Boost state (localStorage) ──
-  const { state: boostState, markIgnored, markSeen } = useBoostState(user?.id);
-
-  // ── Stable boost positions (extend as pages load, reset on filter change) ──
-  const boostPositionsRef = useRef<number[]>([]);
-  const lastFilterKeyRef = useRef("");
-  const lastProcessedLengthRef = useRef(0);
-
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const feedFilterKey = `${activeCategory ?? "all"}__${isAdmin ? `admin-${effectiveAdminCountry ?? "all"}` : scope}__${activeCountry ?? "none"}`;
 
   // ── Queries ──
-  // Pass the correct country so recentListings/featuredListings are always
-  // scoped to what the viewer is allowed to see:
-  //   • super admin + specific country → filter to that country
-  //   • super admin + "All Countries"  → no filter (see everything)
-  //   • scoped admin                   → locked to their assigned country
-  //   • regular user                   → filter to their country
-  const statsCountry = isAdmin ? (effectiveAdminCountry ?? null) : (activeCountry ?? null);
-  const { data: stats, isLoading } = useQuery({
-    queryKey: ["/api/stats/home", statsCountry],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (statsCountry) params.set("country", statsCountry);
-      return apiFetch<any>(`/api/stats/home${statsCountry ? `?${params}` : ""}`);
-    },
-    staleTime: 5 * 60 * 1000,
-  });
   const { data: categories } = useGetCategories();
 
   // ── Infinite scroll feed ──
@@ -591,10 +276,10 @@ export default function Home() {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ["listings-infinite", activeCategory, isAdmin ? `admin-${effectiveAdminCountry ?? "all"}` : scope, activeCountry ?? "none"],
-    queryFn: ({ pageParam }) => {
+    queryKey: ["listings-infinite", feedFilterKey],
+    queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({
-        page: String(pageParam),
+        page: String(pageParam.page),
         limit: "20",
         ...(activeCategory ? { category: activeCategory } : {}),
         // When a category is selected, skip scope/proximity filtering so we
@@ -604,29 +289,29 @@ export default function Home() {
           ? effectiveAdminCountry ? { country: effectiveAdminCountry } : {}
           : !activeCategory && scope !== "country" ? { scope } : {}),
       });
-      return apiFetch<{ listings: NormalListing[]; page: number; totalPages: number }>(
-        `/api/listings?${params}`
-      );
+      const frozenPromaxParams = serializePromaxPageParam(pageParam);
+      if (frozenPromaxParams.hourKey) params.set("hourKey", frozenPromaxParams.hourKey);
+      if (frozenPromaxParams.demotedIds) {
+        params.set("promaxDemotedIds", frozenPromaxParams.demotedIds);
+      }
+      if (frozenPromaxParams.demotionsPinned) {
+        params.set("promaxDemotionsPinned", frozenPromaxParams.demotionsPinned);
+      }
+      return apiFetch<PromaxFeedPage<NormalListing>>(`/api/listings?${params}`);
     },
-    initialPageParam: 1,
-    getNextPageParam: (last) => last.page < last.totalPages ? last.page + 1 : undefined,
+    initialPageParam: { page: 1, hourKey: null, demotedIds: [], demotionsPinned: false } satisfies PromaxPageParam,
+    getNextPageParam: (last, allPages, _lastPageParam, allPageParams) =>
+      getPromaxNextPageParam(last, allPages, allPageParams),
     staleTime: 2 * 60 * 1000,
   });
 
   // Flatten all pages into one list
   const allListings = useMemo(
-    () => (feedPages?.pages ?? []).flatMap(p => p.listings),
+    () => (feedPages?.pages ?? [])
+      .flatMap((page) => Array.isArray(page?.listings) ? page.listings : [])
+      .filter((listing): listing is NormalListing => Boolean(listing && Number.isInteger(listing.id))),
     [feedPages?.pages]
   );
-
-  // Boosted feed — audience-targeted boosted listings
-  const { data: boostedFeedData } = useQuery({
-    queryKey: ["boosted-feed", user?.id, activeCategory],
-    queryFn: () =>
-      apiFetch<{ listings: NormalListing[] }>("/api/listings/boosted-feed"),
-    enabled: !!user?.id,
-    staleTime: 5 * 60 * 1000,
-  });
 
   // Personalised feed — listings matching the user's top search terms
   const { data: personalizedData } = useQuery({
@@ -636,86 +321,41 @@ export default function Home() {
     enabled: !!user?.id && !isAdmin,
     staleTime: 3 * 60 * 1000,
   });
-  // Respect the selected category in every section (featured, VIP, personalized)
+  // Respect the selected category in the personalised section.
   const personalizedListings = (personalizedData?.listings ?? []).filter(
     l => !activeCategory || l.categorySlug === activeCategory
   );
-  const featuredFiltered = (stats?.featuredListings ?? []).filter(
-    (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
-  );
-  const flexaFamilyFiltered = (stats?.flexaFamilyListings ?? []).filter(
-    (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
-  );
   const personalizedSearches = personalizedData?.searches ?? [];
-
-  const boostedListings = useMemo(
-    () => (boostedFeedData?.listings ?? []).filter(l =>
-      !activeCategory || l.categorySlug === activeCategory
-    ),
-    [boostedFeedData?.listings, activeCategory]
-  );
-
-  // Keep boosted listings first, but never leave a single-card gap in the
-  // featured row. A regular listing temporarily fills the second slot and is
-  // replaced automatically as soon as another boosted listing is available.
-  const featuredCards = useMemo((): NormalListing[] => {
+  const promaxGroups = useMemo(() => {
+    const groupKeys = ["booster_vip", "booster_ordinary", "vip", "ordinary"] as const;
     const seen = new Set<number>();
-    const boosts: NormalListing[] = [];
-    const fallbacks: NormalListing[] = [];
+    return groupKeys.map((key) => ({
+      key,
+      listings: allListings
+        .filter((listing) => {
+          if (seen.has(listing.id) || listing.promaxGroup !== key) return false;
+          if (activeCategory && listing.categorySlug !== activeCategory) return false;
+          seen.add(listing.id);
+          return true;
+        }),
+    }));
+  }, [allListings, activeCategory]);
 
-    const addUnique = (items: NormalListing[], target: NormalListing[], boostedOnly: boolean) => {
-      for (const listing of items) {
-        if (seen.has(listing.id)) continue;
-        if (boostedOnly && !listing.isBoosted) continue;
-        if (!boostedOnly && listing.isBoosted) continue;
-        seen.add(listing.id);
-        target.push(listing);
+  const recordedBoostImpressionsRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    // Impression accounting is tied to a paid booster card entering the
+    // server-ordered Home feed, not to a client-side random placement.
+    for (const group of promaxGroups) {
+      if (group.key !== "booster_vip" && group.key !== "booster_ordinary") continue;
+      for (const listing of group.listings) {
+        if (recordedBoostImpressionsRef.current.has(listing.id)) continue;
+        recordedBoostImpressionsRef.current.add(listing.id);
+        void fetch(`/api/listings/${listing.id}/impression`, { method: "POST" }).catch(() => {
+          recordedBoostImpressionsRef.current.delete(listing.id);
+        });
       }
-    };
-
-    addUnique(boostedListings, boosts, true);
-    addUnique(featuredFiltered, boosts, true);
-
-    if (boosts.length === 0) return [];
-
-    const recentCandidates = (stats?.recentListings ?? []).filter(
-      (listing: NormalListing) => !activeCategory || listing.categorySlug === activeCategory
-    );
-    addUnique(recentCandidates, fallbacks, false);
-    addUnique(allListings, fallbacks, false);
-
-    const missingSlots = Math.max(0, 2 - boosts.length);
-    return [...boosts, ...fallbacks.slice(0, missingSlots)].slice(0, 8);
-  }, [boostedListings, featuredFiltered, stats?.recentListings, allListings, activeCategory]);
-
-  // ── Build interleaved feed (stable boost positions that grow with pages) ──
-  const feedItems = useMemo((): FeedItem[] => {
-    const filterKey = `${activeCategory ?? "all"}__${isAdmin ? `admin-${effectiveAdminCountry ?? "all"}` : scope}`;
-    const normal = allListings.filter(l => !activeCategory || l.categorySlug === activeCategory);
-
-    if (normal.length === 0) return [];
-
-    // Reset boost positions when query filter changes (new feed)
-    if (filterKey !== lastFilterKeyRef.current) {
-      lastFilterKeyRef.current = filterKey;
-      boostPositionsRef.current = [];
-      lastProcessedLengthRef.current = 0;
     }
-
-    // Extend boost positions as more items load (1 boost per 12–20 normal items)
-    if (normal.length > lastProcessedLengthRef.current) {
-      let pos = boostPositionsRef.current.length > 0
-        ? boostPositionsRef.current[boostPositionsRef.current.length - 1] + Math.floor(Math.random() * 9) + 12
-        : Math.floor(Math.random() * 9) + 12;
-      while (pos <= normal.length) {
-        boostPositionsRef.current.push(pos);
-        pos += Math.floor(Math.random() * 9) + 12;
-      }
-      lastProcessedLengthRef.current = normal.length;
-    }
-
-    return buildFeedWithBoosts(normal, boostedListings, boostState, boostPositionsRef.current);
-  }, [allListings, boostedListings, boostState, activeCategory, isAdmin, effectiveAdminCountry, scope]);
+  }, [promaxGroups]);
 
   // ── Load persisted locationMode when user is ready ──
   useEffect(() => {
@@ -791,9 +431,8 @@ export default function Home() {
         // Refresh user so feed queries (keyed on user.location) re-run
         await refreshUser?.();
 
-        // Invalidate feed + boosted queries for immediate refresh
+        // Invalidate the server-owned feed for immediate refresh
         queryClient.invalidateQueries({ queryKey: ["listings"] });
-        queryClient.invalidateQueries({ queryKey: ["boosted-feed"] });
       }
 
       saveCachedPosition(user.id, { lat, lng, city, timestamp: Date.now() });
@@ -869,7 +508,6 @@ export default function Home() {
       });
       await refreshUser?.();
       queryClient.invalidateQueries({ queryKey: ["listings"] });
-      queryClient.invalidateQueries({ queryKey: ["boosted-feed"] });
     } catch {}
   }, [setLocationMode, refreshUser, queryClient]);
 
@@ -1212,65 +850,56 @@ export default function Home() {
           </div>
         )}
 
-        {/* === FEATURED BOOSTED LISTINGS (horizontal carousel) === */}
-        {isLoading ? (
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <Zap className="h-4 w-4 text-amber-500" />
-              <h2 className="text-base font-bold text-foreground">{t("home.featured")}</h2>
-            </div>
-            <div className="flex gap-3 overflow-x-hidden">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="flex-shrink-0 w-48 h-52 rounded-xl" />
-              ))}
-            </div>
-          </section>
-        ) : featuredCards.length > 0 ? (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-1.5">
-                <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
-                <h2 className="text-base font-bold text-foreground">{t("home.featured")}</h2>
-              </div>
-              <button
-                onClick={() => setLocation("/search?boosted=true")}
-                className="flex items-center gap-0.5 text-xs text-primary font-semibold"
-              >
-                {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
-              </button>
-            </div>
-            <div
-              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {featuredCards.map((l: NormalListing) => (
-                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52">
-                  <ListingCard listing={l} compact />
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {/* === FLEXA VIP SECTION — grid, tier-sorted (VIP > Premium > Standard) === */}
-        {flexaFamilyFiltered.length > 0 && (
-          <section>
-            <div className="flex items-center gap-1.5 mb-3">
-              <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
-              <h2 className="text-base font-bold text-foreground">👑 Flexa VIP</h2>
-            </div>
-            <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-              {flexaFamilyFiltered.map((l: NormalListing) => (
-                <div key={l.id} className="relative">
-                  <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-amber-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full pointer-events-none">
-                    <Crown className="h-2.5 w-2.5" />
-                    VIP
+        {/* === PROMAX GROUPS — server-owned hourly order, strict/no mixing === */}
+        {feedLoading ? (
+          <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            {[...Array(10)].map((_, i) => (
+              <Skeleton key={i} className="aspect-square md:aspect-[3/4] rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          promaxGroups.some(group => group.listings.length > 0) && (
+            <div className="space-y-6">
+              {promaxGroups.map(({ key, listings }) => {
+              if (listings.length === 0) return null;
+              const labels = {
+                booster_vip: "⚡ Boosters VIP",
+                booster_ordinary: "⚡ Boosters",
+                vip: "👑 Flexa VIP",
+                ordinary: activeCategory
+                  ? categories?.find(c => c.slug === activeCategory)?.name ?? t("home.justListed")
+                  : t("home.justListed"),
+              };
+              return (
+                <section key={key} data-promax-group={key}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                      {key === "vip" ? (
+                        <Crown className="h-4 w-4 text-amber-500 fill-amber-500" />
+                      ) : key === "ordinary" ? (
+                        <TrendingUp className="h-4 w-4 text-primary" />
+                      ) : (
+                        <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
+                      )}
+                      <h2 className="text-base font-bold text-foreground">{labels[key]}</h2>
+                    </div>
+                    <button
+                      onClick={() => setLocation(key === "ordinary" ? "/search" : "/search?boosted=true")}
+                      className="flex items-center gap-0.5 text-xs text-primary font-semibold"
+                    >
+                      {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
+                    </button>
                   </div>
-                  <ListingCard listing={l} compact mosaicLayout />
-                </div>
-              ))}
+                  <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                    {listings.map((listing) => (
+                      <ListingCard key={listing.id} listing={listing} mosaicLayout />
+                    ))}
+                  </div>
+                </section>
+              );
+              })}
             </div>
-          </section>
+          )
         )}
 
         {/* === VIDEO PROMO SECTION === */}
@@ -1321,88 +950,26 @@ export default function Home() {
           </section>
         )}
 
-        {/* === MAIN FEED (city-first, boosted interleaved) === */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <h2 className="text-base font-bold text-foreground">
-                {activeCategory
-                  ? categories?.find(c => c.slug === activeCategory)?.name ?? t("home.justListed")
-                  : t("home.justListed")}
-              </h2>
-            </div>
-            <button
-              onClick={() => setLocation(activeCategory ? `/search?category=${activeCategory}` : "/search")}
-              className="flex items-center gap-0.5 text-xs text-primary font-semibold"
-              data-testid="button-view-all"
-            >
-              {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
-            </button>
+        {/* Infinite pagination stays in normal document flow; no reserved rows. */}
+        <div ref={sentinelRef} className="h-px" />
+        {isFetchingNextPage ? (
+          <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">{t("home.loadingMore", { defaultValue: "Loading more…" })}</span>
           </div>
-
-          {feedLoading ? (
-            <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-              {[...Array(10)].map((_, i) => (
-                <Skeleton key={i} className="aspect-square md:aspect-[3/4] rounded-xl" />
-              ))}
+        ) : !hasNextPage && promaxGroups.some(group => group.listings.length > 0) ? (
+          <div className="flex flex-col items-center py-8 gap-2">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
             </div>
-          ) : feedItems.length > 0 ? (
-            <>
-              <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                {feedItems.map(item => {
-                  if (item.type === "boosted") {
-                    return (
-                      <BoostedPostCard
-                        key={item.key}
-                        listing={item.listing}
-                        onSkip={markIgnored}
-                        onSeen={markSeen}
-                      />
-                    );
-                  }
-                  return <ListingCard key={item.key} listing={item.listing} mosaicLayout />;
-                })}
-                {isFetchingNextPage && [...Array(4)].map((_, i) => (
-                  <Skeleton key={`skel-next-${i}`} className="aspect-square md:aspect-[3/4] rounded-xl" />
-                ))}
-              </div>
-
-              {/* Sentinel: triggers next page load when scrolled into view */}
-              <div ref={sentinelRef} className="h-px" />
-
-              {/* Bottom state: spinner while fetching, "all caught up" when done */}
-              {isFetchingNextPage ? (
-                <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">{t("home.loadingMore", { defaultValue: "Loading more…" })}</span>
-                </div>
-              ) : !hasNextPage ? (
-                <div className="flex flex-col items-center py-8 gap-2">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold text-foreground">
-                    {t("home.allCaughtUp", { defaultValue: "You're all caught up!" })}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("home.allCaughtUpDesc", { defaultValue: "Check back later for new listings." })}
-                  </p>
-                </div>
-              ) : null}
-            </>
-          ) : (() => {
-            const recentFiltered = (stats?.recentListings ?? []).filter(
-              (l: NormalListing) => !activeCategory || l.categorySlug === activeCategory
-            );
-            return recentFiltered.length > 0 ? (
-              <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                {recentFiltered.map((l: NormalListing) => (
-                  <ListingCard key={l.id} listing={l} mosaicLayout />
-                ))}
-              </div>
-            ) : null;
-          })() ?? (
+            <p className="text-sm font-semibold text-foreground">
+              {t("home.allCaughtUp", { defaultValue: "You're all caught up!" })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t("home.allCaughtUpDesc", { defaultValue: "Check back later for new listings." })}
+            </p>
+          </div>
+        ) : promaxGroups.every(group => group.listings.length === 0) && !feedLoading ? (
             <div className="text-center py-16 bg-muted/30 border border-border rounded-2xl">
               <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-semibold text-foreground">{t("home.noListings")}</p>
@@ -1411,8 +978,7 @@ export default function Home() {
                 {t("nav.sell")}
               </Button>
             </div>
-          )}
-        </section>
+        ) : null}
 
         {/* === SELL CTA CARD === */}
         {!user && (

@@ -41,3 +41,4 @@ export * from "./admin_appeals";
 export * from "./stripe_refunds";
 export * from "./shipments";
 export * from "./settlementRecovery";
+export * from "./promax_rotation";

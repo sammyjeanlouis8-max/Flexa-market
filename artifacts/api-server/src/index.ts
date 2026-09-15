@@ -25,6 +25,7 @@ import { startBoostVideoUploadCleanupWorker } from "./lib/boostVideoUploadCleanu
 import { startBoostVideoUploadProcessingWorker } from "./routes/storage";
 import { startAfterShipPollingWorker } from "./lib/shipmentTracking";
 import { startSettlementRecoveryWorker } from "./lib/settlementRecovery";
+import { startPromaxRotationWorker } from "./lib/promaxRotation";
 
 registerProcessErrorHandlers();
 validateEmailConfig();
@@ -86,7 +87,10 @@ httpServer.listen(port, () => {
     .catch((err) => {
       logger.error({ err }, "seedCategories failed (server already running)");
     })
-    .then(() => {
+    .then(async () => {
+      // Do not expose a legacy mixed-order feed while PROMAX is still
+      // generating.  The worker only starts after this synchronous check.
+      await startPromaxRotationWorker();
       logger.info("DB initialisation complete — API server fully ready");
       // Run jobs only after migrations complete so all columns exist
       // security deposit system removed — no longer charged or refunded

@@ -21,6 +21,18 @@ import {
   canonicalizeListingVideoUrl,
   normalizedVideoStorageKey,
 } from "../lib/boostVideoAsset";
+import {
+  derivePromaxViewerGroup,
+  getPromaxOrderMetadataForHour,
+  isActiveBoost,
+  isActiveVip,
+  orderPromaxItems,
+  type PromaxGroup,
+} from "../lib/promaxRotation";
+import {
+  isWithinPromaxDailyBudget,
+  matchesPromaxAudience,
+} from "../lib/promaxBoostGating";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -120,7 +132,12 @@ async function formatListing(
   cat: { name: string; slug: string; icon: string } | null,
   subcat: { name: string; slug: string } | null,
   user?: GeoUser | null,
-  precomputed?: { distanceKm?: number | null; proximityLevel?: string | null } | null,
+  precomputed?: {
+    distanceKm?: number | null;
+    proximityLevel?: string | null;
+    promaxGroup?: PromaxGroup | null;
+    promaxPosition?: number | null;
+  } | null,
 ) {
   let distanceKm: number | null = precomputed?.distanceKm ?? null;
   let proximityLevel: string = precomputed?.proximityLevel ?? "unknown";
@@ -172,6 +189,8 @@ async function formatListing(
     status: listing.status,
     isBoosted: listing.isBoosted,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
+    promaxGroup: precomputed?.promaxGroup ?? null,
+    promaxPosition: precomputed?.promaxPosition ?? null,
     boostVideoUrl: resolvedBoostVideoUrl,
     boostAudience: listing.isBoosted
       ? {
@@ -229,12 +248,18 @@ async function formatListing(
 
 router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, hourKey, promaxDemotedIds, promaxDemotionsPinned, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = parseInt(page, 10) || 1;
   const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
   const offset = (pageNum - 1) * limitNum;
+  const promaxNow = new Date();
 
-  const baseConditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql()];
+  const baseConditions = [
+    eq(listingsTable.status, "available"),
+    eq(listingsTable.moderationStatus, "approved"),
+    listingHasUsableImageSql(),
+    or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
+  ];
   if (q) baseConditions.push(or(ilike(listingsTable.title, `%${q}%`), ilike(listingsTable.description, `%${q}%`))!);
   if (category) baseConditions.push(eq(categoriesTable.slug, category));
   if (subcategory) baseConditions.push(eq(subcategoriesTable.slug, subcategory));
@@ -247,7 +272,29 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
-    baseConditions.push(eq(listingsTable.country!, req.user.country));
+    // A country bypass is allowed only for a currently active paid boost.
+    // Viewer audience/budget filtering below is applied to the same row set
+    // before every fallback and total, so stale audience fields cannot leak.
+    const activePaidBoostForCountry = sql`(
+      ${listingsTable.isBoosted} = true
+      AND ${listingsTable.boostExpiresAt} > ${promaxNow}
+      AND EXISTS (
+        SELECT 1 FROM boosts b
+        WHERE b.listing_id = ${listingsTable.id}
+          AND b.payment_status = 'paid'
+          AND b.expires_at > ${promaxNow}
+      )
+    )`;
+    baseConditions.push(or(
+      eq(listingsTable.country!, req.user.country),
+      and(
+        activePaidBoostForCountry,
+        or(
+          eq(listingsTable.boostAudienceCountry, "ALL"),
+          eq(listingsTable.boostAudienceCountry, req.user.country),
+        ),
+      ),
+    ) as any);
   } else if (isAdmin) {
     enforceAdminCountryScope(baseConditions, req.user, country || undefined);
   } else if (!req.userId && country) {
@@ -267,6 +314,83 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
   const proximitySql = geoUser ? buildProximitySql(geoUser) : sql<number>`(0)::int`;
   const distanceSql = geoUser ? buildDistanceSql(geoUser) : sql<number | null>`NULL::real`;
+  const requestedHourKey = typeof hourKey === "string" && hourKey.trim() ? hourKey.trim() : undefined;
+  const promaxResolution = await getPromaxOrderMetadataForHour(requestedHourKey);
+  const promaxOrder = promaxResolution.order;
+  const promaxSnapshot = promaxResolution.snapshot;
+  if (!promaxSnapshot) {
+    if (requestedHourKey) {
+      res.status(410).json({ error: "PROMAX page token has expired. Restart pagination.", code: "PROMAX_SNAPSHOT_EXPIRED" });
+    } else {
+      res.status(503).json({ error: "PROMAX feed is initializing. Please retry.", code: "PROMAX_NOT_READY" });
+    }
+    return;
+  }
+  const paidBoostRows = await db.select({
+    id: boostsTable.id,
+    listingId: boostsTable.listingId,
+  }).from(boostsTable).where(and(
+    eq(boostsTable.paymentStatus, "paid"),
+    gt(boostsTable.expiresAt, promaxNow),
+  )).orderBy(desc(boostsTable.createdAt));
+  const paidBoostByListing = new Map<number, number>();
+  for (const boost of paidBoostRows) {
+    if (!paidBoostByListing.has(boost.listingId)) paidBoostByListing.set(boost.listingId, boost.id);
+  }
+  const paidBoostIds = [...paidBoostByListing.values()];
+  const today = promaxNow.toISOString().slice(0, 10);
+  const impressionRows = paidBoostIds.length > 0
+    ? await db.select({
+        boostId: boostDailyImpressionsTable.boostId,
+        impressionCount: boostDailyImpressionsTable.impressionCount,
+      }).from(boostDailyImpressionsTable).where(and(
+        eq(boostDailyImpressionsTable.date, today),
+        inArray(boostDailyImpressionsTable.boostId, paidBoostIds),
+      ))
+    : [];
+  const impressionsByBoost = new Map(impressionRows.map((row) => [row.boostId, row.impressionCount]));
+  const promaxViewer = req.user ? {
+    country: req.user.country,
+    location: req.user.location,
+    gender: (req.user as any).gender,
+    dateOfBirth: (req.user as any).dateOfBirth,
+  } : null;
+  const requestedDemotions = new Set(
+    typeof promaxDemotedIds === "string"
+      ? promaxDemotedIds.split(",").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+      : [],
+  );
+  const hasPinnedDemotions = promaxDemotionsPinned === "1" || promaxDemotionsPinned === "true";
+  const sequenceDemotions = new Set(requestedDemotions);
+  const isPromaxPlacementEligible = (listing: typeof listingsTable.$inferSelect): boolean => {
+    if (!isActiveBoost(listing, promaxNow)) return false;
+    const boostId = paidBoostByListing.get(listing.id);
+    if (!boostId) return false;
+    return matchesPromaxAudience({
+      listingCountry: listing.country,
+      audienceCountry: listing.boostAudienceCountry,
+      audienceCity: listing.boostAudienceCity,
+      audienceCities: listing.boostAudienceCities,
+      audienceGender: listing.boostAudienceGender,
+      audienceAgeMin: listing.boostAudienceAgeMin,
+      audienceAgeMax: listing.boostAudienceAgeMax,
+    }, promaxViewer) && isWithinPromaxDailyBudget(
+      listing.boostDailyBudget,
+      impressionsByBoost.get(boostId) ?? 0,
+    );
+  };
+  const filterOrganicCountryRows = <T extends { listings: typeof listingsTable.$inferSelect }>(items: T[]): T[] =>
+    items.filter((row) => {
+      // A same-country listing remains eligible organically when its paid
+      // placement is gated. Cross-country rows still need a valid paid
+      // audience match to bypass the viewer's country scope.
+      if (!promaxViewer?.country || row.listings.country === promaxViewer.country) return true;
+      if (!isActiveBoost(row.listings, promaxNow) || !paidBoostByListing.has(row.listings.id)) return false;
+      if (hasPinnedDemotions) return !requestedDemotions.has(row.listings.id);
+      const eligible = isPromaxPlacementEligible(row.listings);
+      if (!eligible) sequenceDemotions.add(row.listings.id);
+      return eligible;
+    });
   // Subscription tier boost: VIP=3, Premium=2, Standard=1, Basic=0
   const subTierSql = sql<number>`(CASE ${usersTable.subscriptionPlan}
     WHEN 'vip' THEN 3
@@ -280,7 +404,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   let runConditions = [...baseConditions];
 
   async function runQuery(conds: typeof runConditions) {
-    return db.select({
+    const query = db.select({
         listings: listingsTable,
         users: usersTable,
         categories: categoriesTable,
@@ -306,8 +430,12 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
         desc(subTierSql),
         // 6. Freshness as final tie-break
         desc(listingsTable.createdAt),
-      )
-      .limit(limitNum).offset(offset);
+      );
+    // The persisted PROMAX snapshot is the server-owned order.  Fetching the
+    // candidate set before slicing is necessary so a late-page item cannot
+    // jump ahead merely because the database's legacy order returned it first.
+    if (promaxSnapshot) return filterOrganicCountryRows(await query);
+    return query.limit(limitNum).offset(offset);
   }
 
   if (scope === "nearby" && geoUser) {
@@ -348,17 +476,57 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     rows = await runQuery(runConditions);
   }
 
-  const countRows = await db.select({ count: sql<number>`count(*)` }).from(listingsTable)
-    .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
-    .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
-    .where(and(...runConditions));
-  const total = Number(countRows[0]?.count ?? 0);
+  const total = rows.length;
+  const paidBoostListings = new Set(paidBoostByListing.keys());
+  const demotedListingIds = hasPinnedDemotions
+    ? requestedDemotions
+    : new Set([
+      ...sequenceDemotions,
+      ...rows
+      .filter((row) =>
+        isActiveBoost(row.listings, promaxNow) &&
+        paidBoostByListing.has(row.listings.id) &&
+        !isPromaxPlacementEligible(row.listings),
+      )
+       .map((row) => row.listings.id),
+     ]);
+  const promaxDisplayPositions = new Map<number, number>();
+  const ordered = orderPromaxItems(rows.map((row, legacyPosition) => {
+    const activeBoost = isActiveBoost(row.listings, promaxNow);
+    const activeVip = isActiveVip(row.users ?? {}, promaxNow);
+    const group = derivePromaxViewerGroup(
+      activeBoost,
+      paidBoostListings.has(row.listings.id),
+      !demotedListingIds.has(row.listings.id),
+      activeVip,
+    );
+    return { id: row.listings.id, group, legacyPosition, row };
+  }), promaxSnapshot);
+  rows = ordered.map((entry, position) => {
+    promaxDisplayPositions.set(entry.id, position);
+    return entry.row;
+  }).slice(offset, offset + limitNum);
 
   const listings = await Promise.all(rows.map(r =>
-    formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
-      distanceKm: r.distanceKm,
-      proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
-    })
+    (() => {
+      const activeBoost = isActiveBoost(r.listings, promaxNow);
+      const activeVip = isActiveVip(r.users ?? {}, promaxNow);
+      const promaxGroup = derivePromaxViewerGroup(
+        activeBoost,
+        paidBoostListings.has(r.listings.id),
+        !demotedListingIds.has(r.listings.id),
+        activeVip,
+      );
+      const promaxPosition = promaxDisplayPositions.get(r.listings.id)
+        ?? promaxOrder.get(r.listings.id)?.position
+        ?? null;
+      return formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUser, {
+        distanceKm: r.distanceKm,
+        proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
+        promaxGroup,
+        promaxPosition,
+      });
+    })()
   ));
   res.json({
     listings,
@@ -367,6 +535,20 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     totalPages: Math.ceil(total / limitNum),
     scope: effectiveScope,
     expandedFromScope,
+    promaxRotation: (() => {
+      const snapshot = promaxSnapshot;
+      return snapshot
+        ? {
+            hourKey: snapshot.hourKey,
+            demotedListingIds: [...demotedListingIds],
+            demotionsPinned: true,
+            groups: snapshot.groups.map((group) => ({
+              key: group.key,
+              listingIds: group.listingIds,
+            })),
+          }
+        : null;
+    })(),
   });
   } catch (err: any) {
     req.log.error({ err }, "GET LISTINGS ERROR");
@@ -548,6 +730,7 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
     listingHasUsableImageSql(),
+    or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
     sql`${listingsTable.boostExpiresAt} > NOW()` as any,
     sql`${listingsTable.sellerId} != ${req.userId}` as any,
   ];
@@ -1678,6 +1861,7 @@ router.post("/listings/:id/impression", optionalAuth, async (req, res): Promise<
   const id = parseInt(String(req.params.id), 10);
   if (!id) { res.status(400).json({ error: "Invalid listing" }); return; }
   try {
+    const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
     const [boost] = await db
       .select({ id: boostsTable.id })
       .from(boostsTable)
@@ -1689,7 +1873,17 @@ router.post("/listings/:id/impression", optionalAuth, async (req, res): Promise<
       .orderBy(desc(boostsTable.createdAt))
       .limit(1);
     if (boost) {
-      const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+      const [listing] = await db.select({ dailyBudget: listingsTable.boostDailyBudget })
+        .from(listingsTable).where(eq(listingsTable.id, id)).limit(1);
+      const [daily] = await db.select({ impressionCount: boostDailyImpressionsTable.impressionCount })
+        .from(boostDailyImpressionsTable).where(and(
+          eq(boostDailyImpressionsTable.boostId, boost.id),
+          eq(boostDailyImpressionsTable.date, today),
+        )).limit(1);
+      if (!isWithinPromaxDailyBudget(listing?.dailyBudget, daily?.impressionCount ?? 0)) {
+        res.json({ ok: true, capped: true });
+        return;
+      }
       await Promise.all([
         // Increment lifetime impressions
         db

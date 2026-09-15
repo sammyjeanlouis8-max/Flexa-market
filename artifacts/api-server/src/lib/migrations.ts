@@ -95,6 +95,41 @@ export async function ensureBoostVideoUploadSchema(): Promise<void> {
 export async function runStartupMigrations(): Promise<void> {
   const migrations: Array<{ name: string; sql: string }> = [
     {
+      name: "promax_rotation_snapshots.create",
+      sql: `CREATE TABLE IF NOT EXISTS promax_rotation_snapshots (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        hour_key TEXT NOT NULL,
+        generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        groups JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    },
+    {
+      name: "promax_rotation_snapshots.hour_key_unique",
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS promax_rotation_snapshots_hour_key_unique
+        ON promax_rotation_snapshots(hour_key)`,
+    },
+    {
+      name: "promax_rotation_snapshots.legacy_id_sequence",
+      sql: `DO $$ BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'promax_rotation_snapshots'
+            AND column_name = 'id'
+            AND is_identity = 'NO'
+        ) THEN
+          CREATE SEQUENCE IF NOT EXISTS promax_rotation_snapshots_id_seq;
+          PERFORM setval(
+            'promax_rotation_snapshots_id_seq',
+            COALESCE((SELECT MAX(id) FROM promax_rotation_snapshots), 0) + 1,
+            false
+          );
+          ALTER TABLE promax_rotation_snapshots
+            ALTER COLUMN id SET DEFAULT nextval('promax_rotation_snapshots_id_seq');
+        END IF;
+      END $$`,
+    },
+    {
       name: "cross_app_wallet_transfers.create",
       sql: `CREATE TABLE IF NOT EXISTS cross_app_wallet_transfers (
         id SERIAL PRIMARY KEY,

@@ -917,6 +917,30 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
     if (boost.paymentStatus === "paid") { logger.info({ boostId }, "Boost already paid (idempotent webhook)"); return; }
 
     const paymentRef = paymentIntentId ?? sessionId;
+    const boostExpectedCents = Math.round(boost.price * 100);
+    const boostProviderCents = session.amount_total ?? 0;
+    const boostProviderCurrency = (session.currency ?? "").toUpperCase();
+    if (boostProviderCents !== boostExpectedCents || boostProviderCurrency !== "USD") {
+      await db.insert(transactionsTable).values({
+        userId: boost.userId ?? 0,
+        listingId,
+        type: "boost",
+        amount: boost.price,
+        currency: "USD",
+        paymentMethod: "stripe",
+        paymentStatus: "amount_mismatch",
+        paymentRef,
+        stripeCheckoutSessionId: sessionId,
+        stripePaymentIntentId: paymentIntentId,
+        stripeVerifiedAmountCents: boostProviderCents,
+        stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
+        stripeVerifiedCurrency: boostProviderCurrency,
+        stripeVerifiedAt: new Date(),
+        description: `Blocked boost ${boost.plan}: Stripe amount or currency mismatch`,
+      }).onConflictDoNothing();
+      logger.error({ boostId, boostExpectedCents, boostProviderCents, boostProviderCurrency }, "Boost activation blocked: Stripe verification mismatch");
+      return;
+    }
 
     await db.transaction(async (tx) => {
       await tx.update(boostsTable)
@@ -949,6 +973,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         paymentRef,
         stripeCheckoutSessionId: sessionId,
         stripePaymentIntentId:  paymentIntentId,
+        stripeVerifiedAmountCents: boostProviderCents,
+        stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
+        stripeVerifiedCurrency: boostProviderCurrency,
+        stripeVerifiedAt: new Date(),
         description:            `Boost ${boost.plan} for listing #${listingId} via Stripe`,
       }).onConflictDoNothing();
     });
@@ -999,6 +1027,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
         paymentRef: sessionId,
         stripeCheckoutSessionId: sessionId,
         stripePaymentIntentId: paymentIntentId,
+        stripeVerifiedAmountCents: session.amount_total ?? Math.round(amountUsd * 100),
+        stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
+        stripeVerifiedCurrency: (session.currency ?? "usd").toUpperCase(),
+        stripeVerifiedAt: new Date(),
         commissionAmount: credits.feeUsd,
         description: `FM Card recharge via Stripe (${paymentRef})`,
       }).onConflictDoNothing();
@@ -1024,6 +1056,29 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
 
   // ── Standard listing purchase ────────────────────────────────────────────
   const listingId = meta.listingId ? Number(meta.listingId) : null;
+  const [pendingPurchase] = await db.select().from(transactionsTable)
+    .where(eq(transactionsTable.stripeCheckoutSessionId, sessionId));
+  if (!pendingPurchase) {
+    logger.warn({ sessionId }, "Stripe standard order: transaction not found");
+    return;
+  }
+  const providerAmountCents = session.amount_total ?? 0;
+  const expectedAmountCents = Math.round((pendingPurchase.buyerTotal ?? pendingPurchase.amount) * 100);
+  const providerCurrency = (session.currency ?? "").toUpperCase();
+  const expectedCurrency = pendingPurchase.currency.toUpperCase();
+  if (providerAmountCents !== expectedAmountCents || providerCurrency !== expectedCurrency) {
+    await db.update(transactionsTable).set({
+      paymentStatus: "amount_mismatch",
+      stripePaymentIntentId: paymentIntentId,
+      stripeVerifiedAmountCents: providerAmountCents,
+      stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
+      stripeVerifiedCurrency: providerCurrency,
+      stripeVerifiedAt: new Date(),
+      settlementError: `Stripe mismatch: expected ${expectedAmountCents} ${expectedCurrency}, provider reported ${providerAmountCents} ${providerCurrency}`,
+    }).where(eq(transactionsTable.id, pendingPurchase.id));
+    logger.error({ sessionId, expectedAmountCents, providerAmountCents, expectedCurrency, providerCurrency }, "Stripe order blocked: provider amount or currency mismatch");
+    return;
+  }
 
   // Update pending transaction → completed.
   // WHERE paymentStatus='pending' is the idempotency gate: duplicate webhook retries
@@ -1035,6 +1090,10 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       orderStatus: "ready_to_ship",
       stripePaymentIntentId: paymentIntentId,
       paymentRef: sessionId,
+      stripeVerifiedAmountCents: session.amount_total ?? 0,
+      stripeVerifiedStatus: session.payment_status === "paid" ? "paid" : session.payment_status,
+      stripeVerifiedCurrency: (session.currency ?? "usd").toUpperCase(),
+      stripeVerifiedAt: new Date(),
     })
     .where(and(
       eq(transactionsTable.stripeCheckoutSessionId, sessionId),
@@ -1209,14 +1268,34 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session): Promise<
 async function handlePaymentIntentSucceeded(pi: Stripe.PaymentIntent): Promise<void> {
   await db
     .update(transactionsTable)
-    .set({ paymentStatus: "completed", stripePaymentIntentId: pi.id })
+    .set({
+      paymentStatus: sql`CASE
+        WHEN ${transactionsTable.paymentStatus} IN ('partially_refunded', 'refunded')
+        THEN ${transactionsTable.paymentStatus}
+        WHEN ROUND(COALESCE(${transactionsTable.buyerTotal}, ${transactionsTable.amount}) * 100) = ${pi.amount_received || pi.amount}
+         AND UPPER(${transactionsTable.currency}) = ${pi.currency.toUpperCase()}
+        THEN 'completed'
+        ELSE 'amount_mismatch'
+      END`,
+      stripePaymentIntentId: pi.id,
+      stripeVerifiedAmountCents: pi.amount_received || pi.amount,
+      stripeVerifiedStatus: pi.status,
+      stripeVerifiedCurrency: pi.currency.toUpperCase(),
+      stripeVerifiedAt: new Date(),
+    })
     .where(eq(transactionsTable.stripePaymentIntentId, pi.id));
 }
 
 async function handlePaymentIntentFailed(pi: Stripe.PaymentIntent): Promise<void> {
   await db
     .update(transactionsTable)
-    .set({ paymentStatus: "failed" })
+    .set({
+      paymentStatus: "failed",
+      stripeVerifiedAmountCents: pi.amount_received || pi.amount,
+      stripeVerifiedStatus: pi.status,
+      stripeVerifiedCurrency: pi.currency.toUpperCase(),
+      stripeVerifiedAt: new Date(),
+    })
     .where(eq(transactionsTable.stripePaymentIntentId, pi.id));
 }
 

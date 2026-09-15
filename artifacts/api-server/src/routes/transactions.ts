@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable } from "@workspace/db";
+import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
@@ -46,6 +46,35 @@ export async function releaseEscrow(
   if (tx.paymentStatus !== "completed") {
     logger.warn({ txId, paymentStatus: tx.paymentStatus, triggeredBy }, "Escrow release blocked: payment is not completed");
     return;
+  }
+  if (tx.paymentMethod === "stripe" && tx.settlementStatus !== "legacy_review") {
+    const expectedCents = Math.round((tx.buyerTotal ?? tx.amount) * 100);
+    const verifiedPaymentMatches =
+      ["succeeded", "paid"].includes(tx.stripeVerifiedStatus ?? "") &&
+      tx.stripeVerifiedAmountCents === expectedCents &&
+      (tx.stripeVerifiedCurrency ?? "").toUpperCase() === tx.currency.toUpperCase();
+    if (!verifiedPaymentMatches) {
+      await db.update(transactionsTable).set({
+        settlementError: "Seller payout blocked: Stripe provider amount, currency, or captured status is not an exact match",
+      }).where(eq(transactionsTable.id, txId));
+      logger.error({ txId, expectedCents, verifiedCents: tx.stripeVerifiedAmountCents, verifiedStatus: tx.stripeVerifiedStatus }, "Escrow release blocked: Stripe verification mismatch");
+      return;
+    }
+  }
+  if (tx.paymentMethod === "stripe") {
+    const [refundState] = await db.select({
+      refundedCents: sql<number>`COALESCE(SUM(${stripeRefundLedgerTable.amountCents}), 0)`,
+    }).from(stripeRefundLedgerTable).where(and(
+      eq(stripeRefundLedgerTable.transactionId, txId),
+      eq(stripeRefundLedgerTable.providerStatus, "succeeded"),
+    ));
+    if (Number(refundState?.refundedCents ?? 0) > 0) {
+      await db.update(transactionsTable).set({
+        settlementError: "Seller payout blocked: Stripe payment has a successful full or partial refund",
+      }).where(eq(transactionsTable.id, txId));
+      logger.error({ txId, refundedCents: refundState?.refundedCents }, "Escrow release blocked: refunded Stripe payment");
+      return;
+    }
   }
 
   const [deliveredRecord] = await db
@@ -115,13 +144,21 @@ export async function releaseEscrow(
       const paymentIsValid =
         paymentIntent.status === "succeeded" &&
         paymentIntent.currency.toLowerCase() === tx.currency.toLowerCase() &&
-        paymentIntent.amount_received >= expectedCents;
+        paymentIntent.amount_received === expectedCents;
       if (!paymentIsValid) {
         await db.update(transactionsTable)
           .set({ settlementError: "Legacy settlement needs manual review: PaymentIntent is not a matching successful payment" })
           .where(eq(transactionsTable.id, txId));
         return;
       }
+      await db.update(transactionsTable)
+        .set({
+          stripeVerifiedAmountCents: paymentIntent.amount_received || paymentIntent.amount,
+          stripeVerifiedStatus: paymentIntent.status,
+          stripeVerifiedCurrency: paymentIntent.currency.toUpperCase(),
+          stripeVerifiedAt: new Date(),
+        })
+        .where(eq(transactionsTable.id, txId));
 
       const [walletCredit] = await db
         .select({ id: walletTransactionsTable.id })

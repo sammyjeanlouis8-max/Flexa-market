@@ -1669,6 +1669,10 @@ export async function runStartupMigrations(): Promise<void> {
       )
     `,
   });
+  migrations.push({ name: "transactions.add_stripe_verified_amount_cents", sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_verified_amount_cents INTEGER" });
+  migrations.push({ name: "transactions.add_stripe_verified_status", sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_verified_status TEXT" });
+  migrations.push({ name: "transactions.add_stripe_verified_currency", sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_verified_currency TEXT" });
+  migrations.push({ name: "transactions.add_stripe_verified_at", sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_verified_at TIMESTAMPTZ" });
   migrations.push({
     name: "stripe_refund_ledger.request_unique",
     sql: "CREATE UNIQUE INDEX IF NOT EXISTS stripe_refund_ledger_request_id_unique ON stripe_refund_ledger(request_id)",

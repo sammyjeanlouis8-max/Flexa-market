@@ -769,6 +769,10 @@ export async function handleSubscriptionInvoicePaid(invoice: Stripe.Invoice): Pr
           buyerTotal: amountUsd,
           paymentStatus: "completed",
           stripePaymentIntentId: paymentIntentId,
+          stripeVerifiedAmountCents: Number((invoice as any).amount_paid ?? 0),
+          stripeVerifiedStatus: "paid",
+          stripeVerifiedCurrency: String((invoice as any).currency ?? "usd").toUpperCase(),
+          stripeVerifiedAt: new Date(),
         }).where(eq(transactionsTable.id, ledger.id));
       } else {
         await db.insert(transactionsTable).values({
@@ -781,6 +785,10 @@ export async function handleSubscriptionInvoicePaid(invoice: Stripe.Invoice): Pr
           paymentStatus: "completed",
           paymentRef: invoice.id,
           stripePaymentIntentId: paymentIntentId,
+          stripeVerifiedAmountCents: Number((invoice as any).amount_paid ?? 0),
+          stripeVerifiedStatus: "paid",
+          stripeVerifiedCurrency: String((invoice as any).currency ?? "usd").toUpperCase(),
+          stripeVerifiedAt: new Date(),
           description: `Vendor subscription ${existing.plan} Stripe invoice`,
         }).onConflictDoNothing();
       }
@@ -820,6 +828,10 @@ export async function handleSubscriptionPaymentFailed(invoice: Stripe.Invoice): 
     await db.update(transactionsTable).set({
       paymentStatus: "failed",
       stripePaymentIntentId: paymentIntentId,
+      stripeVerifiedAmountCents: Number((invoice as any).amount_due ?? 0),
+      stripeVerifiedStatus: "failed",
+      stripeVerifiedCurrency: String((invoice as any).currency ?? "usd").toUpperCase(),
+      stripeVerifiedAt: new Date(),
     }).where(eq(transactionsTable.id, ledger.id));
   } else if (amountUsd > 0) {
     await db.insert(transactionsTable).values({
@@ -832,6 +844,10 @@ export async function handleSubscriptionPaymentFailed(invoice: Stripe.Invoice): 
       paymentStatus: "failed",
       paymentRef: invoice.id,
       stripePaymentIntentId: paymentIntentId,
+      stripeVerifiedAmountCents: Number((invoice as any).amount_due ?? 0),
+      stripeVerifiedStatus: "failed",
+      stripeVerifiedCurrency: String((invoice as any).currency ?? "usd").toUpperCase(),
+      stripeVerifiedAt: new Date(),
       description: `Failed vendor subscription ${existing.plan} Stripe invoice`,
     }).onConflictDoNothing();
   }

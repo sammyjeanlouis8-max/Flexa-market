@@ -62,6 +62,15 @@ interface UseUploadOptions {
   basePath?: string;
   onSuccess?: (response: UploadResponse) => void;
   onError?: (error: Error) => void;
+  /** Preserve the legacy null-on-error behavior unless a caller needs exact errors. */
+  throwOnError?: boolean;
+}
+
+class UploadHttpError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "UploadHttpError";
+  }
 }
 
 /**
@@ -123,7 +132,10 @@ export function useUpload(options: UseUploadOptions = {}) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to get upload URL");
+        throw new UploadHttpError(
+          errorData.error || `Failed to get upload URL (HTTP ${response.status})`,
+          response.status,
+        );
       }
 
       return response.json();
@@ -146,7 +158,11 @@ export function useUpload(options: UseUploadOptions = {}) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload file to storage");
+        const errorData = await response.json().catch(() => ({}));
+        throw new UploadHttpError(
+          errorData.error || `Failed to upload file to storage (HTTP ${response.status})`,
+          response.status,
+        );
       }
 
       // The upload proxy returns the final storage URL. It may be an absolute
@@ -170,6 +186,34 @@ export function useUpload(options: UseUploadOptions = {}) {
     []
   );
 
+  const uploadMultipartFallback = useCallback(
+    async (file: File): Promise<string> => {
+      const token = typeof window !== "undefined"
+        ? (window.localStorage.getItem("flexamarket_token") ?? window.sessionStorage.getItem("flexamarket_token"))
+        : null;
+      const body = new FormData();
+      body.append("file", file, file.name);
+      const response = await fetch("/api/storage/uploads/image-fallback", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new UploadHttpError(
+          errorData.error || `Upload failed (HTTP ${response.status})`,
+          response.status,
+        );
+      }
+      const data = await response.json();
+      if (typeof data?.url !== "string" || !data.url) {
+        throw new Error("Upload completed without a usable image URL");
+      }
+      return data.url;
+    },
+    [],
+  );
+
   const uploadFile = useCallback(
     async (file: File): Promise<UploadResponse | null> => {
       setIsUploading(true);
@@ -182,17 +226,57 @@ export function useUpload(options: UseUploadOptions = {}) {
         const convertedFile = await convertImageToJpeg(file);
 
         setProgress(10);
-        const uploadResponse = await requestUploadUrl(convertedFile);
+        let uploadResponse: UploadResponse | null = null;
+        let resolvedPath: string;
+        const fallbackEligible =
+          convertedFile.type.startsWith("image/") &&
+          convertedFile.size <= 10 * 1024 * 1024;
+        const useImageFallback = async (primaryError: unknown): Promise<string> => {
+          if (!fallbackEligible) throw primaryError;
+          try {
+            return await uploadMultipartFallback(convertedFile);
+          } catch (fallbackError) {
+            const primaryMessage = primaryError instanceof Error ? primaryError.message : "Primary upload failed";
+            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Fallback upload failed";
+            throw new Error(`${primaryMessage}. ${fallbackMessage}`);
+          }
+        };
 
-        setProgress(30);
-        const resolvedPath = await uploadToPresignedUrl(
-          convertedFile,
-          uploadResponse.uploadURL,
-          uploadResponse.objectPath
-        );
+        try {
+          uploadResponse = await requestUploadUrl(convertedFile);
+        } catch (presignError) {
+          // A failed presign request cannot have stored the file, so all
+          // transport and HTTP failures may safely use the bounded fallback.
+          resolvedPath = await useImageFallback(presignError);
+        }
+
+        if (uploadResponse) {
+          setProgress(30);
+          try {
+            resolvedPath = await uploadToPresignedUrl(
+              convertedFile,
+              uploadResponse.uploadURL,
+              uploadResponse.objectPath
+            );
+          } catch (putError) {
+            // A non-2xx response proves the PUT was rejected. A thrown network
+            // error is ambiguous (the file may have committed), so do not
+            // retry it through another endpoint and create an orphan duplicate.
+            if (!(putError instanceof UploadHttpError)) throw putError;
+            resolvedPath = await useImageFallback(putError);
+          }
+        }
 
         const finalResponse: UploadResponse = {
-          ...uploadResponse,
+          ...(uploadResponse ?? {
+            uploadURL: "/api/storage/uploads/image-fallback",
+            objectPath: resolvedPath,
+            metadata: {
+              name: convertedFile.name,
+              size: convertedFile.size,
+              contentType: convertedFile.type || "application/octet-stream",
+            },
+          }),
           objectPath: resolvedPath,
         };
 
@@ -203,12 +287,13 @@ export function useUpload(options: UseUploadOptions = {}) {
         const error = err instanceof Error ? err : new Error("Upload failed");
         setError(error);
         options.onError?.(error);
+        if (options.throwOnError) throw error;
         return null;
       } finally {
         setIsUploading(false);
       }
     },
-    [requestUploadUrl, uploadToPresignedUrl, options]
+    [requestUploadUrl, uploadToPresignedUrl, uploadMultipartFallback, options]
   );
 
   const getUploadParameters = useCallback(

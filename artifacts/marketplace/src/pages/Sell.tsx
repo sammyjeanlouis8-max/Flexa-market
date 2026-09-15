@@ -98,6 +98,7 @@ export default function Sell() {
   const [currency, setCurrency] = useState<"USD" | "HTG" | "DOP">("USD");
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [catSheetOpen, setCatSheetOpen] = useState(false);
   const [sheetStep, setSheetStep] = useState<"parents" | "subs">("parents");
@@ -116,7 +117,10 @@ export default function Sell() {
   const { data: existingListing } = useGetListing(editId ?? 0);
   const [editPrefilled, setEditPrefilled] = useState(false);
 
-  const { uploadFile } = useUpload();
+  const { uploadFile } = useUpload({
+    onError: (error) => setUploadErrorMessage(error.message),
+    throwOnError: true,
+  });
 
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -304,6 +308,7 @@ export default function Sell() {
   };
 
   const handleFiles = async (files: FileList | File[]) => {
+    setUploadErrorMessage(null);
     const fileArray = Array.from(files);
     const currentCount = uploadedImages.length;
     const remaining = MAX_IMAGES - currentCount;
@@ -317,15 +322,25 @@ export default function Sell() {
       setUploadingSlot(slotIndex);
       try {
         const result = await uploadFile(file);
-        if (!result) { toast({ title: "Upload failed", description: "Could not upload the image.", variant: "destructive" }); continue; }
+        if (!result) {
+          toast({
+            title: "Upload failed",
+            description: uploadErrorMessage ?? "Could not upload the image. Check your connection and try again.",
+            variant: "destructive",
+          });
+          continue;
+        }
         const newImage: UploadedImage = {
           objectPath: result.objectPath,
           previewUrl: getStorageUrl(result.objectPath),
           fileName: file.name,
         };
         setUploadedImages(prev => prev.length < MAX_IMAGES ? [...prev, newImage] : prev);
-      } catch {
-        toast({ title: "Upload failed", description: "Could not upload the image.", variant: "destructive" });
+        setUploadErrorMessage(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not upload the image.";
+        setUploadErrorMessage(message);
+        toast({ title: "Upload failed", description: message, variant: "destructive" });
       } finally {
         setUploadingSlot(null);
       }
@@ -346,6 +361,18 @@ export default function Sell() {
         : t("tr.minPhotos", { count: MIN_IMAGES });
       setSubmitError(msg);
       toast({ title: t("tr.photoRequired"), description: msg, variant: "destructive" });
+      return;
+    }
+    if (!isEditMode && paymentReady !== true) {
+      const msg = paymentReady === null
+        ? "N ap verifye metòd peman ou. Tann yon ti moman epi eseye ankò."
+        : "Chwazi Kat FM oswa konekte Stripe pou resevwa kòb vant ou.";
+      setSubmitError(msg);
+      toast({
+        title: paymentReady === null ? "Verifikasyon an poko fini" : "Metòd peman obligatwa",
+        description: msg,
+        variant: "destructive",
+      });
       return;
     }
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
@@ -720,6 +747,13 @@ export default function Sell() {
                 ? `Mete omwen ${MIN_IMAGES} foto (maksimòm ${MAX_IMAGES}).`
                 : `Foto yo bon ✓ (maksimòm ${MAX_IMAGES}).`}
             </p>
+            {uploadErrorMessage && (
+              <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+                <p className="font-semibold">Foto a pa t monte.</p>
+                <p>{uploadErrorMessage}</p>
+                <p className="mt-1">Eseye ankò oswa chwazi yon lòt foto JPG/PNG ki pi piti pase 10 MB.</p>
+              </div>
+            )}
 
             {/* ── Professional photo tips card ── */}
             <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
@@ -1656,7 +1690,7 @@ export default function Sell() {
           <Button
             type="submit"
             className="w-full font-bold"
-            disabled={isPending || (!isEditMode && paymentReady === false) || uploadedImages.length < (isEditMode ? 1 : MIN_IMAGES)}
+            disabled={isPending}
             data-testid="button-submit-listing"
           >
             {isPending

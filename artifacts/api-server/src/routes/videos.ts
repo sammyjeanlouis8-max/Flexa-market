@@ -94,9 +94,10 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     //   4. Default → Haiti (this is a Haitian marketplace)
     const isSuperAdmin = !!(req.user as any)?.isSuperAdmin;
     const isAdmin      = !!(req.user as any)?.isAdmin && !isSuperAdmin;
-    // Super-admins see all videos (no country filter).
-    // Regular admins see only videos from their scope country (adminScopeCountry ?? country).
-    const skipCountryFilter = isSuperAdmin;
+    const isAnyAdmin   = isSuperAdmin || isAdmin;
+    const requestedCountry = typeof req.query.country === "string"
+      ? req.query.country.trim()
+      : "";
 
     const cfHint = String(req.headers["cf-ipcountry"] ?? "").trim().toUpperCase();
 
@@ -118,12 +119,33 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
         ? ISO_TO_COUNTRY[cfHint]
         : "Haiti"; // default — this is a Haitian marketplace
 
-    // For regular admins use their scope country (adminScopeCountry ?? country).
-    // For regular users use their profile country. Fall back to CF/IP hint.
+    // Resolve every country a scoped admin may manage. Legacy admin accounts
+    // without explicit scope fields safely fall back to their profile country.
     const adminScopeCountry = (req.user as any)?.adminScopeCountry as string | null | undefined;
-    const userCountry = isAdmin
-      ? (adminScopeCountry ?? req.user?.country ?? langFallback)
-      : (req.user?.country ?? langFallback);
+    const adminScopeCountries = (() => {
+      if (!isAdmin) return [] as string[];
+      const raw = (req.user as any)?.adminScopeCountries;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const countries = parsed.filter((value): value is string =>
+              typeof value === "string" && value.trim().length > 0,
+            );
+            if (countries.length > 0) return countries;
+          }
+        } catch { /* use single-country fallback */ }
+      }
+      const fallback = adminScopeCountry ?? req.user?.country;
+      return fallback ? [fallback] : [];
+    })();
+    const visibleCountries = isSuperAdmin
+      ? (requestedCountry ? [requestedCountry] : [])
+      : isAdmin
+        ? requestedCountry
+          ? (adminScopeCountries.includes(requestedCountry) ? [requestedCountry] : ["__denied__"])
+          : adminScopeCountries
+        : [req.user?.country ?? langFallback];
 
     // ── Pagination ──────────────────────────────────────────────────────────
     const page   = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10));
@@ -170,21 +192,25 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     }
 
     // ── Country gate ────────────────────────────────────────────────────────
-    // Admins and super-admins bypass the filter for full-market visibility.
+    // Super admin with no selected country sees every country. Scoped admins
+    // see all assigned countries, or one assigned country when selected.
     const userState = req.user?.state    ?? null;
     const userCity  = req.user?.location ?? null;
 
-    if (!skipCountryFilter && userCountry) {
+    if (visibleCountries.length > 0) {
       // Use COALESCE(boostAudienceCountry, listing.country) so a seller in DR who
       // boosts a "USA" listing targeting DR audience still appears in the DR video feed.
       conditions.push(
-        sql`lower(coalesce(${listingsTable.boostAudienceCountry}, ${listingsTable.country}, '')) = ${userCountry.toLowerCase()}` as ReturnType<typeof eq>,
+        sql`lower(coalesce(${listingsTable.boostAudienceCountry}, ${listingsTable.country}, '')) in (${sql.join(
+          visibleCountries.map(country => sql`${country.toLowerCase()}`),
+          sql`,`,
+        )})` as ReturnType<typeof eq>,
       );
 
       // State isolation: only exclude when BOTH the boost AND the viewer have a state
       // AND they don't match. If the viewer has no state we cannot confirm a mismatch,
       // so we show the video (inclusive by default).
-      if (userState) {
+      if (!isAnyAdmin && userState) {
         conditions.push(
           or(
             isNull(listingsTable.boostAudienceState),
@@ -195,7 +221,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       // Viewer has no state → no state filter (show all boosts for this country).
 
       // City isolation: same inclusive logic — only filter when viewer has a city set.
-      if (userCity) {
+      if (!isAnyAdmin && userCity) {
         conditions.push(
           or(
             isNull(listingsTable.boostAudienceCity),

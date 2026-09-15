@@ -82,7 +82,7 @@ interface PromoVideoItem {
   boostEndAt: string | null;
 }
 
-function VideoPromoSection() {
+function VideoPromoSection({ countryFilter }: { countryFilter: string | null }) {
   const { t } = useTranslation();
   const { token } = useAuth();
   const [videos, setVideos] = useState<PromoVideoItem[]>([]);
@@ -92,7 +92,9 @@ function VideoPromoSection() {
     try {
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
-      const res = await fetch("/api/videos/feed?page=1&limit=6", { headers });
+      const params = new URLSearchParams({ page: "1", limit: "6" });
+      if (countryFilter) params.set("country", countryFilter);
+      const res = await fetch(`/api/videos/feed?${params}`, { headers });
       if (!res.ok) return;
       const data = await res.json();
       const live = (data.videos ?? []).filter((v: PromoVideoItem) => {
@@ -103,7 +105,7 @@ function VideoPromoSection() {
     } catch { /* non-critical */ } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, countryFilter]);
 
   useEffect(() => {
     load();
@@ -839,7 +841,7 @@ export default function Home() {
                   </div>
                 )),
               )}
-              <VideoPromoSection />
+              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : null} />
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">

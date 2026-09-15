@@ -115,19 +115,34 @@ function getAdminScopeCountriesList(user: any): string[] {
   if (!user || user.isSuperAdmin) return [];
   const raw = user.adminScopeCountries;
   if (raw) { try { const p = JSON.parse(raw) as string[]; if (p.length > 0) return p; } catch { /* ignore */ } }
-  return user.adminScopeCountry ? [user.adminScopeCountry] : [];
+  if (user.adminScopeCountry) return [user.adminScopeCountry];
+  // Legacy admin accounts may predate explicit scope fields. Their profile
+  // country is the safe fallback rather than silently granting global access.
+  return user.country ? [user.country] : [];
 }
 
-/** Appends country-scope conditions for a scoped admin with no explicit country filter. */
+/** Appends country-scope conditions without allowing scoped admins to widen access. */
 function enforceAdminCountryScope(conditions: any[], user: any, country?: string): void {
-  // Explicit country always wins — even for super admin who selected a specific country
-  if (country) { conditions.push(eq(listingsTable.country!, country)); return; }
-  // Super admin with no country selected → see everything
   const isSuperAdmin = user?.isSuperAdmin;
-  if (isSuperAdmin) return;
+  // Super admin may select any one country or omit it to see every country.
+  if (isSuperAdmin) {
+    if (country) conditions.push(eq(listingsTable.country!, country));
+    return;
+  }
+
   const list = getAdminScopeCountriesList(user);
+  if (country) {
+    // The UI only offers assigned countries, but the API must enforce the
+    // same boundary in case a caller tampers with the query parameter.
+    conditions.push(list.includes(country)
+      ? eq(listingsTable.country!, country)
+      : sql`false`);
+    return;
+  }
+
   if (list.length === 1) conditions.push(eq(listingsTable.country!, list[0]));
   else if (list.length > 1) conditions.push(inArray(listingsTable.country!, list) as any);
+  else conditions.push(sql`false`);
 }
 
 async function formatListing(
@@ -364,10 +379,13 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   }
   const impressionsByBoost = new Map(impressionRows.map((row) => [row.boostId, row.impressionCount]));
   const promaxViewer = req.user ? {
-    country: req.user.country,
-    location: req.user.location,
-    gender: (req.user as any).gender,
-    dateOfBirth: (req.user as any).dateOfBirth,
+    // Admin visibility is controlled by enforceAdminCountryScope above, not
+    // by the admin's shopper profile country. For a selected admin country,
+    // use that country only for PROMAX ordering/audience evaluation.
+    country: isAdmin ? (country || null) : req.user.country,
+    location: isAdmin ? null : req.user.location,
+    gender: isAdmin ? null : (req.user as any).gender,
+    dateOfBirth: isAdmin ? null : (req.user as any).dateOfBirth,
   } : null;
   const requestedDemotions = new Set(
     typeof promaxDemotedIds === "string"
@@ -395,6 +413,9 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   };
   const filterOrganicCountryRows = <T extends { listings: typeof listingsTable.$inferSelect }>(items: T[]): T[] =>
     items.filter((row) => {
+      // Admin country access was already enforced in the SQL conditions.
+      // Shopper audience rules must never hide products from an admin view.
+      if (isAdmin) return true;
       // A same-country listing remains eligible organically when its paid
       // placement is gated. Cross-country rows still need a valid paid
       // audience match to bypass the viewer's country scope.

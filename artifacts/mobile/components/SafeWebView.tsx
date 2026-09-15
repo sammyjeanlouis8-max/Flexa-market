@@ -201,7 +201,7 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
             setTimeout(() => router.push('/stripe-checkout?url=' + encodeURIComponent(url)), 0);
             return false;
           }
-          if (route === 'flexa') return true;
+          if (route === 'flexa' || route === 'moncash') return true;
           if (route === 'external') Linking.openURL(url).catch(() => {});
           return false;
         }}
@@ -210,7 +210,7 @@ export default function SafeWebView({ uri, showBack = true }: SafeWebViewProps) 
           const route = classifyWebUrl(targetUrl);
           if (route === 'stripe') {
             router.push('/stripe-checkout?url=' + encodeURIComponent(targetUrl));
-          } else if (route === 'flexa') {
+          } else if (route === 'flexa' || route === 'moncash') {
             webRef.current?.injectJavaScript(
               `window.location.href=${JSON.stringify(targetUrl)};true;`,
             );

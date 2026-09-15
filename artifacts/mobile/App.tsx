@@ -309,14 +309,14 @@ export default function App() {
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(request) => {
             const route = classifyWebUrl(request.url);
-            if (route === "flexa" || route === "stripe") return true;
+            if (route === "flexa" || route === "stripe" || route === "moncash") return true;
             if (route === "external") Linking.openURL(request.url).catch(() => {});
             return false;
           }}
           onOpenWindow={(event) => {
             const targetUrl = event.nativeEvent.targetUrl;
             const route = classifyWebUrl(targetUrl);
-            if (route === "flexa" || route === "stripe") {
+            if (route === "flexa" || route === "stripe" || route === "moncash") {
               webRef.current?.injectJavaScript(
                 `window.location.href=${JSON.stringify(targetUrl)};true;`,
               );

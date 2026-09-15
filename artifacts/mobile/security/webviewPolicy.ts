@@ -1,6 +1,6 @@
 export const ANDROID_UA_SUFFIX = "FlexaMarketAndroid/1.0";
 
-export type WebRoute = "flexa" | "stripe" | "external" | "blocked";
+export type WebRoute = "flexa" | "stripe" | "moncash" | "external" | "blocked";
 
 const FLEXA_HOST = "flexamarket.com";
 
@@ -31,9 +31,23 @@ export function isTrustedStripeUrl(url: string): boolean {
   }
 }
 
+export function isTrustedMonCashUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "button.digicelgroup.com" ||
+        parsed.hostname.endsWith(".button.digicelgroup.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function classifyWebUrl(url: string): WebRoute {
   if (isTrustedFlexaUrl(url)) return "flexa";
   if (isTrustedStripeUrl(url)) return "stripe";
+  if (isTrustedMonCashUrl(url)) return "moncash";
   try {
     const { protocol } = new URL(url);
     if (protocol === "tel:" || protocol === "mailto:") return "external";

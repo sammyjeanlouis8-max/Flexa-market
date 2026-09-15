@@ -4,6 +4,7 @@ import {
   ANDROID_UA_SUFFIX,
   classifyWebUrl,
   isTrustedFlexaUrl,
+  isTrustedMonCashUrl,
   isTrustedStripeUrl,
   platformBridgeScript,
 } from "../security/webviewPolicy.ts";
@@ -25,6 +26,14 @@ test("Stripe routing preserves legitimate HTTPS checkout only", () => {
   assert.equal(classifyWebUrl("https://example.com"), "blocked");
   assert.equal(classifyWebUrl("tel:+15551234567"), "external");
   assert.equal(classifyWebUrl("mailto:help@flexamarket.com"), "external");
+});
+
+test("MonCash checkout stays in the WebView without trusting lookalike hosts", () => {
+  assert.equal(isTrustedMonCashUrl("https://button.digicelgroup.com/MonCashPayment/Payment"), true);
+  assert.equal(classifyWebUrl("https://button.digicelgroup.com/MonCashPayment/Payment"), "moncash");
+  assert.equal(isTrustedMonCashUrl("http://button.digicelgroup.com/MonCashPayment/Payment"), false);
+  assert.equal(isTrustedMonCashUrl("https://button.digicelgroup.com.evil.test"), false);
+  assert.equal(isTrustedMonCashUrl("https://digicelgroup.com"), false);
 });
 
 test("native marker keeps a stable suffix and origin-gated bridge", () => {

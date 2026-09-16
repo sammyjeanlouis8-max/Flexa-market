@@ -10,9 +10,14 @@ const GROQ_MODEL    = "llama-3.1-8b-instant";
 const GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions";
 
 const anthropicBaseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
-const anthropicApiKey  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
-const anthropicClient  = anthropicBaseURL && anthropicApiKey
-  ? new Anthropic({ baseURL: anthropicBaseURL, apiKey: anthropicApiKey, timeout: 12000 })
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY
+  ?? process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
+const anthropicClient = anthropicApiKey
+  ? new Anthropic({
+      ...(anthropicBaseURL ? { baseURL: anthropicBaseURL } : {}),
+      apiKey: anthropicApiKey,
+      timeout: 25000,
+    })
   : null;
 
 const SYSTEM_PROMPT = `You are FlexaBot, the general-purpose AI assistant inside FLEXA MARKET.

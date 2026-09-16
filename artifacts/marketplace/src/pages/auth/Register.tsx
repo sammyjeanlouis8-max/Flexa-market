@@ -153,7 +153,7 @@ export default function Register() {
     <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-24 sm:h-32 w-auto max-w-[60vw] object-contain mx-auto mb-2" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-2" />
           <h1 className="text-3xl font-extrabold text-foreground mt-4">{t("auth.createAccount")}</h1>
           <p className="text-muted-foreground mt-1">{t("auth.joinSubtitle")}</p>
         </div>

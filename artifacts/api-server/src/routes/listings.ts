@@ -1005,8 +1005,8 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     return;
   }
    const imageUrls = cleanListingImages(parsed.data.images);
-   if (!hasUsableListingImage(imageUrls)) {
-    res.status(400).json({ error: "At least one product photo is required." });
+   if (imageUrls.length < 2 || !hasUsableListingImage(imageUrls)) {
+     res.status(400).json({ error: "At least two valid product photos are required." });
     return;
   }
 

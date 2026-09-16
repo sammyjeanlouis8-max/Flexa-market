@@ -332,8 +332,8 @@ export default function Sell() {
         const result = await uploadFile(file);
         if (!result) {
           toast({
-            title: "Upload failed",
-            description: uploadErrorMessage ?? "Could not upload the image. Check your connection and try again.",
+            title: t("sell.uploadFailedTitle"),
+            description: uploadErrorMessage ?? t("sell.uploadFailedDescription"),
             variant: "destructive",
           });
           continue;
@@ -348,7 +348,7 @@ export default function Sell() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not upload the image.";
         setUploadErrorMessage(message);
-        toast({ title: "Upload failed", description: message, variant: "destructive" });
+        toast({ title: t("sell.uploadFailedTitle"), description: message, variant: "destructive" });
       } finally {
         setUploadingSlot(null);
         setUploadingSource(null);
@@ -365,12 +365,12 @@ export default function Sell() {
     setSubmitError(null);
     if (uploadingSlot !== null || videoUploading || savingPayoutMethod) {
       const msg = uploadingSlot !== null
-        ? "Tann foto a fini monte anvan ou pibliye."
+        ? t("sell.waitForPhotoUpload")
         : videoUploading
-          ? "Tann videyo a fini monte anvan ou pibliye."
-          : "Tann metòd peman an fini anrejistre anvan ou pibliye.";
+          ? t("sell.waitForVideoUpload")
+          : t("sell.waitForPaymentSave");
       setSubmitError(msg);
-      toast({ title: "Operasyon an poko fini", description: msg, variant: "destructive" });
+      toast({ title: t("sell.operationPending"), description: msg, variant: "destructive" });
       return;
     }
     const minPhotos = isEditMode ? 1 : MIN_IMAGES;
@@ -385,11 +385,11 @@ export default function Sell() {
     }
     if (!isEditMode && paymentReady !== true) {
       const msg = paymentReady === null
-        ? "N ap verifye metòd peman ou. Tann yon ti moman epi eseye ankò."
-        : "Chwazi Kat FM oswa konekte Stripe pou resevwa kòb vant ou.";
+        ? t("sell.paymentCheckingDescription")
+        : t("sell.paymentRequiredDescription");
       setSubmitError(msg);
       toast({
-        title: paymentReady === null ? "Verifikasyon an poko fini" : "Metòd peman obligatwa",
+        title: paymentReady === null ? t("sell.paymentCheckingTitle") : t("sell.paymentRequiredTitle"),
         description: msg,
         variant: "destructive",
       });
@@ -761,7 +761,7 @@ export default function Sell() {
                     uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
                   )}
                   data-testid="button-add-image"
-                  aria-label={uploadingSource === "gallery" ? "Foto yo ap monte" : "Chwazi kamera oswa galri"}
+                  aria-label={uploadingSource === "gallery" ? t("sell.photosUploading") : t("sell.chooseCameraOrGallery")}
                 >
                   {uploadingSource === "gallery" ? (
                     <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
@@ -794,14 +794,14 @@ export default function Sell() {
             )}
             <p id="sell-photo-requirement" className={cn("text-xs mt-1 font-medium", uploadedImages.length < requiredPhotoCount ? "text-red-500" : "text-green-600")}>
               {uploadedImages.length < requiredPhotoCount
-                ? `Mete omwen ${requiredPhotoCount} foto (maksimòm ${MAX_IMAGES}).`
-                : `Foto yo bon ✓ (maksimòm ${MAX_IMAGES}).`}
+                ? t("sell.photoRequirement", { min: requiredPhotoCount, max: MAX_IMAGES })
+                : t("sell.photosReady", { max: MAX_IMAGES })}
             </p>
             {uploadErrorMessage && (
               <div id="sell-photo-error" className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
-                <p className="font-semibold">Foto a pa t monte.</p>
+                <p className="font-semibold">{t("sell.uploadFailedHeading")}</p>
                 <p>{uploadErrorMessage}</p>
-                <p className="mt-1">Eseye ankò oswa chwazi yon lòt foto JPG/PNG ki pi piti pase 10 MB.</p>
+                <p className="mt-1">{t("sell.uploadRetryHint")}</p>
               </div>
             )}
 

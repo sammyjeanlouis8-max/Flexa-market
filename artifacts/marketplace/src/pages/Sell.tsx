@@ -1400,16 +1400,16 @@ export default function Sell() {
           {selectedCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold flex items-center gap-1.5">⚖️ Pwa &amp; Dimansyon Pakè</p>
+                <p className="text-sm font-semibold flex items-center gap-1.5">⚖️ {t("sell.packageWeightTitle")}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {isLocalDeliveryCountry
-                    ? "Pwa ede chofè a prepare pou livrezon. Moto pou &lt;30 lbs, machin pou plis."
-                    : "Transportè entènasyonal (FedEx, UPS, DHL) kalkile pri selon pwa. Antre pwa pou achtè ka wè pri otomatik."}
+                    ? t("sell.packageWeightLocalDescription")
+                    : t("sell.packageWeightInternationalDescription")}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">Pwa (livres / lbs) *</label>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">{t("sell.packageWeightLabel")} *</label>
                   <Input
                     type="number" min="0.1" step="0.1"
                     placeholder="ex: 2.5"
@@ -1424,24 +1424,28 @@ export default function Sell() {
                 <div className="flex items-center justify-center">
                   {weightLbs && Number(weightLbs) > 0 && (
                     <div className={`rounded-lg px-3 py-2 text-center text-xs font-medium ${Number(weightLbs) <= 5 ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : Number(weightLbs) <= 30 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"}`}>
-                      {Number(weightLbs) <= 5 ? "📦 Pake lejè" : Number(weightLbs) <= 30 ? "📦 Pake mwayen" : "🚗 Gwo pake"}
+                      {Number(weightLbs) <= 5
+                        ? `📦 ${t("sell.lightPackage")}`
+                        : Number(weightLbs) <= 30
+                          ? `📦 ${t("sell.mediumPackage")}`
+                          : `🚗 ${t("sell.largePackage")}`}
                     </div>
                   )}
                 </div>
               </div>
               {!isLocalDeliveryCountry && (
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">Dimansyon pakè (pouces / inches) — opsyonèl</label>
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">{t("sell.packageDimensionsLabel")}</label>
                   <div className="grid grid-cols-3 gap-2">
-                    <Input type="number" min="0" step="0.1" placeholder="Longè (L)" value={pkgLength} onChange={e => setPkgLength(e.target.value)} data-testid="input-pkg-length" />
-                    <Input type="number" min="0" step="0.1" placeholder="Lajè (W)" value={pkgWidth}  onChange={e => setPkgWidth(e.target.value)}  data-testid="input-pkg-width"  />
-                    <Input type="number" min="0" step="0.1" placeholder="Wotè (H)" value={pkgHeight} onChange={e => setPkgHeight(e.target.value)} data-testid="input-pkg-height" />
+                    <Input type="number" min="0" step="0.1" placeholder={t("sell.packageLengthPlaceholder")} value={pkgLength} onChange={e => setPkgLength(e.target.value)} data-testid="input-pkg-length" />
+                    <Input type="number" min="0" step="0.1" placeholder={t("sell.packageWidthPlaceholder")} value={pkgWidth}  onChange={e => setPkgWidth(e.target.value)}  data-testid="input-pkg-width"  />
+                    <Input type="number" min="0" step="0.1" placeholder={t("sell.packageHeightPlaceholder")} value={pkgHeight} onChange={e => setPkgHeight(e.target.value)} data-testid="input-pkg-height" />
                   </div>
                   {pkgLength && pkgWidth && pkgHeight && Number(pkgLength) > 0 && Number(pkgWidth) > 0 && Number(pkgHeight) > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Pwa dimensional: <strong>{(Number(pkgLength) * Number(pkgWidth) * Number(pkgHeight) / 139).toFixed(1)} lbs</strong>
+                      {t("sell.dimensionalWeight")}: <strong>{(Number(pkgLength) * Number(pkgWidth) * Number(pkgHeight) / 139).toFixed(1)} lbs</strong>
                       {weightLbs && Number(weightLbs) > 0 && (
-                        <> — Transportè pral itilize: <strong>{Math.max(Number(weightLbs), Number(pkgLength) * Number(pkgWidth) * Number(pkgHeight) / 139).toFixed(1)} lbs</strong></>
+                        <> — {t("sell.carrierWillUse")}: <strong>{Math.max(Number(weightLbs), Number(pkgLength) * Number(pkgWidth) * Number(pkgHeight) / 139).toFixed(1)} lbs</strong></>
                       )}
                     </p>
                   )}
@@ -1454,8 +1458,8 @@ export default function Sell() {
           {selectedCountry && isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold">Metòd livrezon</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Chwazi ki tip chaofè ou vle pou livrezon atik ou a.</p>
+                <p className="text-sm font-semibold">{t("sell.deliveryMethodTitle")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("sell.deliveryMethodDescription")}</p>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -1470,7 +1474,7 @@ export default function Sell() {
                   data-testid="seller-delivery-motorcycle"
                 >
                   <span className="text-lg">🏍️</span>
-                  <span>Moto</span>
+                  <span>{t("sell.deliveryMotorcycle")}</span>
                 </button>
                 <button
                   type="button"
@@ -1484,7 +1488,7 @@ export default function Sell() {
                   data-testid="seller-delivery-car"
                 >
                   <span className="text-lg">🚗</span>
-                  <span>Machin</span>
+                  <span>{t("sell.deliveryCar")}</span>
                 </button>
                 <button
                   type="button"
@@ -1498,7 +1502,7 @@ export default function Sell() {
                   data-testid="seller-delivery-bus"
                 >
                   <span className="text-lg">🚌</span>
-                  <span>Bis Pwovens</span>
+                  <span>{t("sell.deliveryBus")}</span>
                 </button>
                 <button
                   type="button"
@@ -1512,17 +1516,17 @@ export default function Sell() {
                   data-testid="seller-delivery-self"
                 >
                   <span className="text-lg">🚶</span>
-                  <span>Machann Livre</span>
+                  <span>{t("sell.deliverySelf")}</span>
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
                 {sellerDeliveryMethod === "motorcycle"
-                  ? "Plis vit, pri mwens chè. Bon pou ti pake."
+                  ? t("sell.deliveryMotorcycleDescription")
                   : sellerDeliveryMethod === "car"
-                  ? "Pi bon pou gwo atik oswa pake ki lou."
+                  ? t("sell.deliveryCarDescription")
                   : sellerDeliveryMethod === "bus"
-                  ? "Voye pa bis pwovens — achtè konfime resepsyon lè li resevwa."
-                  : "Ou menm ou livre — achtè konfime lè li resevwa atik la."}
+                  ? t("sell.deliveryBusDescription")
+                  : t("sell.deliverySelfDescription")}
               </p>
             </div>
           )}
@@ -1531,18 +1535,18 @@ export default function Sell() {
           {selectedCountry && !isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold">Shipping options</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Set the shipping cost and accepted carriers for international buyers.</p>
+                <p className="text-sm font-semibold">{t("sell.shippingOptionsTitle")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("sell.shippingOptionsDescription")}</p>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Shipping cost (USD)</label>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">{t("sell.shippingCostLabel")}</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm pointer-events-none">$</span>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="0.00 (leave blank for free shipping)"
+                    placeholder={t("sell.shippingCostPlaceholder")}
                     className="pl-7"
                     value={intlShippingCost}
                     onChange={e => setIntlShippingCost(e.target.value)}
@@ -1551,7 +1555,7 @@ export default function Sell() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">Accepted carriers</label>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">{t("sell.acceptedCarriersLabel")}</label>
                 <div className="flex flex-wrap gap-2">
                   {(["UPS", "FedEx", "DHL", "USPS", "Other"] as const).map(carrier => {
                     const active = intlCarriers.includes(carrier);
@@ -1566,12 +1570,12 @@ export default function Sell() {
                         )}
                         data-testid={`carrier-${carrier.toLowerCase()}`}
                       >
-                        {carrier}
+                        {carrier === "Other" ? t("sell.otherCarrier") : carrier}
                       </button>
                     );
                   })}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Select all carriers you can ship with. Buyers choose at checkout.</p>
+                <p className="text-xs text-muted-foreground mt-1">{t("sell.acceptedCarriersHint")}</p>
               </div>
             </div>
           )}

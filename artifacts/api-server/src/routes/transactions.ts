@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, transactionsTable, usersTable, listingsTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable, shipmentsTable } from "@workspace/db";
+import { db, transactionsTable, usersTable, listingsTable, offersTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable, shipmentsTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { sendPushToUser } from "../lib/push";
@@ -14,6 +14,7 @@ import {
   getMoncashRate, setMoncashRate, getStripeRate, setStripeRate,
   getBuyerFeeRate, setBuyerFeeRate,
   quoteForListing,
+  quoteStripeMarketplacePurchase,
   MIN_RATE, MAX_RATE,
   DEFAULT_RATE_MONCASH, DEFAULT_RATE_STRIPE, DEFAULT_BUYER_FEE_STRIPE,
 } from "../lib/commission";
@@ -593,9 +594,23 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
   const deliveryFeeUsd = deliveryFeeRaw !== null && deliveryFeeRaw > 0 ? deliveryFeeRaw : null;
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  const offerId = req.query.offerId ? parseInt(String(req.query.offerId), 10) : null;
+  let quotePriceNative = listing.price;
+  if (offerId) {
+    const [offer] = await db.select()
+      .from(offersTable)
+      .where(and(
+        eq(offersTable.id, offerId),
+        eq(offersTable.listingId, listingId),
+        eq(offersTable.buyerId, req.userId!),
+        eq(offersTable.status, "accepted"),
+      ));
+    if (!offer) { res.status(400).json({ error: "Offer not found or not accepted for this listing" }); return; }
+    quotePriceNative = offer.counterAmount ?? offer.amount;
+  }
   // Convert non-USD price to USD before computing commission breakdown
   const quoteCurrency = (listing as any).currency ?? "USD";
-  let quotePrice = listing.price;
+  let quotePrice = quotePriceNative;
   if (quoteCurrency === "HTG") {
     const { displayRate } = await getDisplayRate();
     quotePrice = parseFloat((quotePrice / displayRate).toFixed(2));
@@ -603,7 +618,12 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
     const dopRate = await getDopRate();
     quotePrice = parseFloat((quotePrice / dopRate).toFixed(2));
   }
-  const q = await quoteForListing({ ...listing, price: quotePrice }, method, deliveryFeeUsd);
+  const q = method === "card" || method === "stripe"
+    ? await quoteStripeMarketplacePurchase(
+        { sellerId: listing.sellerId, price: quotePrice },
+        deliveryFeeUsd,
+      )
+    : await quoteForListing({ ...listing, price: quotePrice }, method, deliveryFeeUsd);
   // Referral surcharge: $0.50 added to purchases > $14.99 for buyers who were referred
   let referralFee = 0;
   if (quotePrice > 14.99) {

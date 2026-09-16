@@ -7,7 +7,7 @@ import { orderPlacedBuyerEmail, orderSoldSellerEmail } from "../lib/emailTemplat
 import { handleSubscriptionCheckoutCompleted, handleSubscriptionInvoicePaid, handleSubscriptionDeleted, handleSubscriptionPaymentFailed, handleSubscriptionUpdated } from "./subscription";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { payReferralBonusIfEligible, applyRechargeCredits, getRechargeFeeRate } from "./wallet";
-import { quoteForListing } from "../lib/commission";
+import { quoteStripeMarketplacePurchase } from "../lib/commission";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripeWebhookSecret } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
@@ -20,6 +20,7 @@ import {
   shouldDeferSettlementMutation,
   upsertSettlementRecoveryReservationInTransaction,
 } from "../lib/settlementRecovery";
+import { convertToUsd, getAllRates } from "../lib/exchange-rate";
 
 const router = Router();
 
@@ -110,6 +111,14 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       listingPriceUsd = offerRow.counterAmount ?? offerRow.amount;
     }
 
+    const listingCurrency = listing.currency ?? "USD";
+    const exchangeRates = await getAllRates();
+    listingPriceUsd = convertToUsd(
+      listingPriceUsd,
+      listingCurrency,
+      exchangeRates.htg.displayRate,
+      exchangeRates.dop.rate,
+    );
     const stripe = await getStripeClient();
 
     // Sanitise the optional delivery fee passed from the frontend
@@ -118,41 +127,59 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     const safePickupCity = typeof deliveryPickupCity === "string" ? deliveryPickupCity : null;
 
     // Commission + buyer fee breakdown (unified system — delivery fee added on top of product price)
-    const quote = await quoteForListing({ ...listing, price: listingPriceUsd }, "stripe", safeDeliveryFee);
+    const quote = await quoteStripeMarketplacePurchase(
+      { sellerId: listing.sellerId, price: listingPriceUsd },
+      safeDeliveryFee,
+    );
 
-    // Buyer pays: listing price + 2.5% buyer fee + delivery fee
+    // Buyer pays: listing price + 3% buyer service fee + delivery fee.
     // All amounts in USD (Stripe always charges in USD for this platform)
     // listingPriceUsd is already set above (possibly overridden by accepted offer price)
     const buyerTotalUsd = quote.buyerTotal;
-    const buyerTotalCents = Math.round(buyerTotalUsd * 100);
-    const descParts: string[] = [];
-    if (listing.description?.slice(0, 120)) descParts.push(listing.description.slice(0, 120));
-    if (quote.buyerFeeAmount > 0) descParts.push(`Frè sèvis $${quote.buyerFeeAmount.toFixed(2)} (${(quote.buyerFeeRate * 100).toFixed(1)}%)`);
-    if (safeDeliveryFee > 0) descParts.push(`Livrezon $${safeDeliveryFee.toFixed(2)}`);
+    const productCents = Math.round(quote.totalAmount * 100);
+    const buyerFeeCents = Math.round(quote.buyerFeeAmount * 100);
+    const deliveryCents = Math.round(quote.deliveryFeeUsd * 100);
+    const buyerTotalCents = productCents + buyerFeeCents + deliveryCents;
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [{
+      quantity: 1,
+      price_data: {
+        currency: "usd",
+        unit_amount: productCents,
+        product_data: {
+          name: listing.title,
+          description: listing.description?.slice(0, 180) || undefined,
+          metadata: {
+            listingId: String(listing.id),
+            sellerId: String(listing.sellerId),
+          },
+        },
+      },
+    }];
+    if (buyerFeeCents > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: buyerFeeCents,
+          product_data: { name: "Frè sèvis Flexa (3%)" },
+        },
+      });
+    }
+    if (deliveryCents > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: deliveryCents,
+          product_data: { name: "Livrezon" },
+        },
+      });
+    }
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ["card"],
       mode: "payment",
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            // Buyer is charged listing price + buyer service fee + delivery fee
-            unit_amount: buyerTotalCents,
-            product_data: {
-              name: listing.title,
-              description: descParts.join(" — ") || undefined,
-              // images intentionally omitted — presigned object-storage URLs
-              // are rejected by Stripe's CDN; skip to avoid checkout failure.
-              metadata: {
-                listingId: String(listing.id),
-                sellerId: String(listing.sellerId),
-              },
-            },
-          },
-        },
-      ],
+      line_items: lineItems,
       success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${BASE_URL}/listings/${listing.id}`,
       metadata: {
@@ -198,7 +225,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       deliveryPickupCity: safePickupCity,
       deliveryDestCity: shippingCity ?? null,
       buyerTotal: buyerTotalUsd,
-      listingCurrency: listing.currency ?? "USD",
+      listingCurrency,
       listingPriceOriginal: listing.price,
       stripeCheckoutSessionId: session.id,
       listingCountry: listing.country ?? null,

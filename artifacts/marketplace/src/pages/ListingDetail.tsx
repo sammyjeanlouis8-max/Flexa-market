@@ -360,13 +360,16 @@ export default function ListingDetail() {
   useEffect(() => {
     if (!buyNowOpen || !token || !listingIdForQuote) { setQuote(null); return; }
     let cancelled = false;
-    const url = `/api/commission/quote?listingId=${listingIdForQuote}` + (quoteMethod ? `&method=${quoteMethod}` : "") + (deliveryFeeUsd > 0 ? `&deliveryFeeUsd=${deliveryFeeUsd}` : "");
+    const url = `/api/commission/quote?listingId=${listingIdForQuote}`
+      + (quoteMethod ? `&method=${quoteMethod}` : "")
+      + (deliveryFeeUsd > 0 ? `&deliveryFeeUsd=${deliveryFeeUsd}` : "")
+      + (offerIdForPurchase !== null ? `&offerId=${offerIdForPurchase}` : "");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (!cancelled && d) setQuote({ ...(d as Quote), deliveryFeeUsd: deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined }); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [buyNowOpen, token, listingIdForQuote, quoteMethod, deliveryFeeUsd]);
+  }, [buyNowOpen, token, listingIdForQuote, quoteMethod, deliveryFeeUsd, offerIdForPurchase]);
 
   // Auto-calculate delivery fee when buyer enters their city (Haiti/DR only, debounced)
   const listingCity = (listing as any)?.city as string | undefined;

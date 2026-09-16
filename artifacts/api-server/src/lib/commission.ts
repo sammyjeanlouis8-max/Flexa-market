@@ -1,11 +1,11 @@
-import { db, platformSettingsTable, categoriesTable } from "@workspace/db";
+import { db, platformSettingsTable, categoriesTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 // ╔══════════════════════════════════════════════════════════════════╗
 // ║  ⚠️  LOCKED FINANCIAL CONSTANTS — DO NOT CHANGE WITHOUT APPROVAL ║
 // ║  Validated by scripts/src/validate-deploy.ts on every deploy.   ║
-// ║  Commission : 7% all methods (MonCash + Stripe + Wallet)        ║
-// ║  Buyer fee  : 0% — completely removed for all payment methods   ║
+// ║  Legacy configurable rates below remain 7% seller / 0% buyer.   ║
+// ║  Regular Stripe listing purchases use the fixed rules below.    ║
 // ╚══════════════════════════════════════════════════════════════════╝
 export const DEFAULT_COMMISSION_RATE = 0.07;  // ⚠️ LOCKED 7%
 export const COMMISSION_KEY = "commission_rate_default";
@@ -18,6 +18,12 @@ export const MAX_RATE = 0.50;
 export const DEFAULT_RATE_MONCASH = 0.07;  // ⚠️ LOCKED 7%
 export const DEFAULT_RATE_STRIPE  = 0.07;  // ⚠️ LOCKED 7%
 export const DEFAULT_BUYER_FEE_STRIPE = 0; // ⚠️ LOCKED 0% — no buyer service fee
+
+// Regular Stripe marketplace purchases only. These rates must not be reused
+// for wallet, mobile-money, boost, subscription, or FM Card recharge flows.
+export const STRIPE_MARKETPLACE_BUYER_FEE_RATE = 0.03;
+export const STRIPE_MARKETPLACE_PRO_SELLER_FEE_RATE = 0.07;
+export const STRIPE_MARKETPLACE_FREE_SELLER_FEE_RATE = 0.09;
 
 export type PaymentMethod = "card" | "moncash" | "natcash" | "usdt" | "sepa" | "apple" | "wallet";
 
@@ -112,6 +118,85 @@ export type CommissionBreakdown = {
   deliveryFeeUsd: number;
   buyerTotal: number;
 };
+
+export function hasActivePaidSellerPlan(
+  plan: string | null | undefined,
+  expiresAt: Date | string | null | undefined,
+  now = new Date(),
+): boolean {
+  if (!plan || plan === "basic") return false;
+  // Existing subscription semantics treat a non-basic plan with no expiry as
+  // active (for example an admin-granted/lifetime paid plan).
+  if (!expiresAt) return true;
+  const expiry = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+  return Number.isFinite(expiry.getTime()) && expiry.getTime() > now.getTime();
+}
+
+export function calculateStripeMarketplaceAmounts(
+  subtotalUsd: number,
+  deliveryFeeUsd: number,
+  sellerIsPro: boolean,
+) {
+  const subtotalCents = Math.max(0, Math.round(subtotalUsd * 100));
+  const deliveryCents = Math.max(0, Math.round(deliveryFeeUsd * 100));
+  const buyerFeeCents = Math.round(subtotalCents * STRIPE_MARKETPLACE_BUYER_FEE_RATE);
+  const sellerFeeRate = sellerIsPro
+    ? STRIPE_MARKETPLACE_PRO_SELLER_FEE_RATE
+    : STRIPE_MARKETPLACE_FREE_SELLER_FEE_RATE;
+  const sellerFeeCents = Math.round(subtotalCents * sellerFeeRate);
+
+  return {
+    subtotalCents,
+    deliveryCents,
+    buyerFeeCents,
+    sellerFeeRate,
+    sellerFeeCents,
+    sellerEarningsCents: subtotalCents - sellerFeeCents,
+    buyerTotalCents: subtotalCents + buyerFeeCents + deliveryCents,
+  };
+}
+
+/**
+ * Fixed split for regular Stripe listing purchases:
+ * - buyer pays 3% on the product subtotal
+ * - active paid-plan seller pays 7%; free/expired seller pays 9%
+ * Delivery is passed through and never included in either percentage.
+ */
+export async function quoteStripeMarketplacePurchase(
+  listing: { sellerId: number; price: number },
+  deliveryFeeUsd?: number | null,
+): Promise<CommissionBreakdown> {
+  const [seller] = await db
+    .select({
+      subscriptionPlan: usersTable.subscriptionPlan,
+      subscriptionExpiresAt: usersTable.subscriptionExpiresAt,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, listing.sellerId));
+
+  const sellerIsPro = hasActivePaidSellerPlan(
+    seller?.subscriptionPlan,
+    seller?.subscriptionExpiresAt,
+  );
+  const amounts = calculateStripeMarketplaceAmounts(
+    listing.price,
+    deliveryFeeUsd ?? 0,
+    sellerIsPro,
+  );
+
+  return {
+    totalAmount: amounts.subtotalCents / 100,
+    rate: amounts.sellerFeeRate,
+    commissionAmount: amounts.sellerFeeCents / 100,
+    sellerEarnings: amounts.sellerEarningsCents / 100,
+    reason: "stripe_rate",
+    paymentMethod: "stripe",
+    buyerFeeRate: STRIPE_MARKETPLACE_BUYER_FEE_RATE,
+    buyerFeeAmount: amounts.buyerFeeCents / 100,
+    deliveryFeeUsd: amounts.deliveryCents / 100,
+    buyerTotal: amounts.buyerTotalCents / 100,
+  };
+}
 
 /**
  * Compute commission split. Priority:

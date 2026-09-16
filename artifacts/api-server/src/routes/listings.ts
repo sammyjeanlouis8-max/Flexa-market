@@ -49,6 +49,7 @@ const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Brazil: ["São Paulo","Rio de Janeiro","Brasília","Salvador","Belo Horizonte","Fortaleza","Curitiba","Recife"],
   Chile: ["Santiago","Valparaíso","Viña del Mar","Concepción","Antofagasta","La Serena","Temuco","Iquique"],
 };
+const LOCAL_DELIVERY_METHODS = new Set(["motorcycle", "car", "bus", "self_delivery"]);
 
 const STATE_BY_CITY: Record<string, string> = {
   "Port-au-Prince": "Ouest", "Pétion-Ville": "Ouest", "Delmas": "Ouest", "Carrefour": "Ouest",
@@ -1017,6 +1018,14 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   // Country for this listing: prefer the form value, fall back to seller profile
   const listingCountry = (parsed.data.country ?? "").trim() || seller?.country || null;
+  const isLocalDeliveryCountry = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
+  const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
+    ? req.body.deliveryMethod
+    : null;
+  if (submittedDeliveryMethod && !LOCAL_DELIVERY_METHODS.has(submittedDeliveryMethod)) {
+    res.status(400).json({ error: "Invalid local delivery method." });
+    return;
+  }
 
   const rawCity = (parsed.data.city ?? "").trim();
   if (rawCity === "__other__") { res.status(400).json({ error: "Invalid city" }); return; }
@@ -1114,6 +1123,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     city: rawCity || null,
     state: listingState,
     country: listingCountry,
+    deliveryMethod: isLocalDeliveryCountry ? (submittedDeliveryMethod ?? "motorcycle") : null,
     sellerId: req.userId!,
     status: insertStatus,
     moderationStatus,
@@ -1324,6 +1334,15 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "A listing must keep at least one product photo." });
     return;
   }
+  const updatedCountry = (parsed.data.country ?? existing.country ?? "").trim();
+  const isLocalDeliveryCountry = updatedCountry === "Haiti" || updatedCountry === "Dominican Republic";
+  const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
+    ? req.body.deliveryMethod
+    : null;
+  if (submittedDeliveryMethod && !LOCAL_DELIVERY_METHODS.has(submittedDeliveryMethod)) {
+    res.status(400).json({ error: "Invalid local delivery method." });
+    return;
+  }
 
   // Defense in depth — the OpenAPI-generated schema currently allows any
   // string for `status`, but only three values are meaningful in our state
@@ -1347,6 +1366,9 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     ...parsed.data,
     ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
     ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
+    deliveryMethod: isLocalDeliveryCountry
+      ? (submittedDeliveryMethod ?? existing.deliveryMethod ?? "motorcycle")
+      : null,
   }).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));

@@ -31,6 +31,7 @@ const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
 const OTHER_CITY = "__other__";
 const DRAFT_KEY = "flexa_sell_draft_v2";
+const LOCAL_DELIVERY_COUNTRIES = new Set(["Haiti", "Dominican Republic"]);
 
 // Small required-field status dot: red when empty, green once filled.
 function ReqDot({ filled }: { filled: boolean }) {
@@ -397,7 +398,7 @@ export default function Sell() {
       return;
     }
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
-    const isLocalDelivery = ["Haiti", "Dominican Republic"].includes(values.country ?? "");
+    const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(values.country ?? "");
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery && intlShippingCost ? Number(intlShippingCost) : undefined, shippingCarriers: !isLocalDelivery && intlCarriers.length > 0 ? intlCarriers : undefined, deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : undefined, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const handleSuccess = (_listing: any) => {
@@ -496,6 +497,7 @@ export default function Sell() {
 
   // Country is watched from the form so it reacts to user selection
   const selectedCountry = form.watch("country") ?? "";
+  const isLocalDeliveryCountry = LOCAL_DELIVERY_COUNTRIES.has(selectedCountry);
   const countryFlag = selectedCountry ? COUNTRY_FLAGS[selectedCountry] : null;
   const cityOptions = useMemo(() => citiesFor(selectedCountry), [selectedCountry]);
   const stateOptions = useMemo(() => statesFor(selectedCountry), [selectedCountry]);
@@ -1393,7 +1395,7 @@ export default function Sell() {
               <div>
                 <p className="text-sm font-semibold flex items-center gap-1.5">⚖️ Pwa &amp; Dimansyon Pakè</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {["Haiti", "Dominican Republic"].includes(selectedCountry)
+                  {isLocalDeliveryCountry
                     ? "Pwa ede chofè a prepare pou livrezon. Moto pou &lt;30 lbs, machin pou plis."
                     : "Transportè entènasyonal (FedEx, UPS, DHL) kalkile pri selon pwa. Antre pwa pou achtè ka wè pri otomatik."}
                 </p>
@@ -1420,7 +1422,7 @@ export default function Sell() {
                   )}
                 </div>
               </div>
-              {!["Haiti", "Dominican Republic"].includes(selectedCountry) && (
+              {!isLocalDeliveryCountry && (
                 <div>
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1">Dimansyon pakè (pouces / inches) — opsyonèl</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -1442,7 +1444,7 @@ export default function Sell() {
           )}
 
           {/* ── Local delivery method (Haiti/DR only) — seller chooses ─────────── */}
-          {selectedCountry && ["Haiti", "Dominican Republic"].includes(selectedCountry) && (
+          {selectedCountry && isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
                 <p className="text-sm font-semibold">Metòd livrezon</p>
@@ -1519,7 +1521,7 @@ export default function Sell() {
           )}
 
           {/* ── International shipping (non-Haiti/DR listings only) ───────────── */}
-          {selectedCountry && !["Haiti", "Dominican Republic"].includes(selectedCountry) && (
+          {selectedCountry && !isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
                 <p className="text-sm font-semibold">Shipping options</p>

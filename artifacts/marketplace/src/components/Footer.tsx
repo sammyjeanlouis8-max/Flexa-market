@@ -56,7 +56,7 @@ export default function Footer() {
               data-testid="footer-brand"
               aria-label="FLEXA MARKET home"
             >
-              <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-44 w-auto" />
+              <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-24 w-auto" />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
               {t("footer.tagline", {

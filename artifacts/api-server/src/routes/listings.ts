@@ -1016,8 +1016,19 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
 
-  // Country for this listing: prefer the form value, fall back to seller profile
-  const listingCountry = (parsed.data.country ?? "").trim() || seller?.country || null;
+  const canChangeListingCountry =
+    hasRole(seller, "admin") &&
+    !isAdminAccessSuspended(seller);
+  const sellerCountry = (seller?.country ?? "").trim();
+  if (!canChangeListingCountry && !sellerCountry) {
+    res.status(400).json({ error: "Add a country to your profile before posting a product." });
+    return;
+  }
+  // Regular sellers are bound to their registered profile country. Only active
+  // admins and super admins may choose another listing country.
+  const listingCountry = canChangeListingCountry
+    ? ((parsed.data.country ?? "").trim() || sellerCountry || null)
+    : sellerCountry;
   const isLocalDeliveryCountry = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
   const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
     ? req.body.deliveryMethod
@@ -1040,7 +1051,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
   }
 
   // ── Subscription enforcement ────────────────────────────────────────────────
-  const sellerIsAdmin = !!(seller?.isAdmin || seller?.isSuperAdmin);
+  const sellerIsAdmin = hasRole(seller, "admin");
   const sellerPlan = (seller.subscriptionPlan ?? "basic") as string;
   const sellerPlanExpired = seller.subscriptionExpiresAt && new Date(seller.subscriptionExpiresAt) < new Date();
   const effectivePlan = sellerPlanExpired ? "basic" : sellerPlan;
@@ -1334,7 +1345,12 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     res.status(400).json({ error: "A listing must keep at least one product photo." });
     return;
   }
-  const updatedCountry = (parsed.data.country ?? existing.country ?? "").trim();
+  const canChangeListingCountry =
+    hasRole(req.user, "admin") &&
+    !isAdminAccessSuspended(req.user);
+  const updatedCountry = canChangeListingCountry
+    ? (parsed.data.country ?? existing.country ?? "").trim()
+    : (existing.country ?? "").trim();
   const isLocalDeliveryCountry = updatedCountry === "Haiti" || updatedCountry === "Dominican Republic";
   const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
     ? req.body.deliveryMethod
@@ -1366,6 +1382,7 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     ...parsed.data,
     ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
     ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
+    country: updatedCountry || null,
     deliveryMethod: isLocalDeliveryCountry
       ? (submittedDeliveryMethod ?? existing.deliveryMethod ?? "motorcycle")
       : null,

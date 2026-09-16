@@ -83,7 +83,12 @@ export default function Sell() {
   const purchasesDisabled = isAndroidApp();
   const { user, token, isLoading: authLoading } = useAuth();
   const { isRestricted, showRestrictionToast } = useRestriction();
-  const isAdmin = !!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin;
+  const userRole = (user as any)?.role;
+  const isAdmin =
+    userRole === "admin" ||
+    userRole === "superadmin" ||
+    !!(user as any)?.isAdmin ||
+    !!(user as any)?.isSuperAdmin;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -238,12 +243,14 @@ export default function Sell() {
     }
   }, [stripeAccountActive, toast]);
 
-  // Sync country from profile into the form whenever the user object loads.
+  // Regular sellers must always post from their registered profile country.
+  // Admins and super admins may select another country.
   useEffect(() => {
-    if (user?.country && !form.getValues("country")) {
+    if (!user?.country || isEditMode) return;
+    if (!isAdmin || !form.getValues("country")) {
       form.setValue("country", user.country);
     }
-  }, [user?.country]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.country, isAdmin, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Pre-fill form from existing listing (edit mode) ───────────────────────
   useEffect(() => {

@@ -106,13 +106,13 @@ export default function LoginPhone() {
   const isPending = verifyOtp.isPending || loginPhone.isPending;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8 relative">
+    <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
       <div className="absolute top-3 right-3">
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-72 w-auto mx-auto mb-1" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-36 sm:h-44 w-auto max-w-[80vw] object-contain mx-auto mb-1" />
           <p className="text-muted-foreground text-sm">
             {t("auth.signInWithPhoneSubtitle", "Sign in with your phone number — no password needed.")}
           </p>

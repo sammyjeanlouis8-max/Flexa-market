@@ -256,14 +256,14 @@ export default function ForgotPassword() {
   const stepIndex = { identify: 0, otp: 1, questions: 1, reset: 2, done: 3 }[step];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8 relative">
+    <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
       {/* EN/FR language switcher — top-right corner */}
       <div className="absolute top-3 right-3">
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-56 w-auto mx-auto mb-2" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-36 sm:h-44 w-auto max-w-[80vw] object-contain mx-auto mb-2" />
           <h1 className="text-2xl font-extrabold text-foreground mt-4">
             {step === "done" ? t("auth.passwordUpdated") : t("auth.resetPassword")}
           </h1>

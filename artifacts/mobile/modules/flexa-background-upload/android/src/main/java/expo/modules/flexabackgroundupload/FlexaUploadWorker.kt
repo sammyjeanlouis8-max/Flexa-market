@@ -35,7 +35,7 @@ class FlexaUploadWorker(context: Context, params: WorkerParameters) : CoroutineW
           connectTimeout = 30_000
           readTimeout = 60_000
           doOutput = true
-          fixedLengthStreamingMode(count)
+          setFixedLengthStreamingMode(count)
           setRequestProperty("Authorization", "Bearer ${store.token(jobId)}")
           setRequestProperty("Content-Type", "application/octet-stream")
         }

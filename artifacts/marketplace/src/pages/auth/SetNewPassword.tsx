@@ -45,7 +45,7 @@ export default function SetNewPassword() {
         toast({ title: data.error ?? t("auth.networkError"), variant: "destructive" });
         return;
       }
-      if (data.token) setToken(data.token);
+      if (data.token) setToken(data.token, data.user);
       setDone(true);
     } catch {
       toast({ title: t("auth.networkError"), variant: "destructive" });

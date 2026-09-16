@@ -212,7 +212,7 @@ export default function ForgotPassword() {
         toast({ title: data.error ?? t("errors.somethingWrong"), variant: "destructive" });
         return;
       }
-      setToken(data.token);
+      setToken(data.token, data.user);
       toast({ title: t("recovery.tempLoginSuccess"), variant: "default" });
       setLocation("/auth/set-new-password");
     } catch {

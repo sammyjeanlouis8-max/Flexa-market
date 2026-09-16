@@ -3,6 +3,9 @@ export type PromaxPageParam = {
   hourKey: string | null;
   demotedIds: number[];
   demotionsPinned: boolean;
+  freshIds: number[];
+  freshIdsPinned: boolean;
+  resolvedScope: "nearby" | "city" | "state" | "country" | null;
   promaxDisabled: boolean;
 };
 
@@ -14,6 +17,9 @@ export type PromaxFeedPage<TListing = unknown> = {
     hourKey?: string | null;
     demotedListingIds?: number[];
     demotionsPinned?: boolean;
+    freshListingIds?: number[];
+    freshIdsPinned?: boolean;
+    resolvedScope?: "nearby" | "city" | "state" | "country" | null;
   };
   promaxFallback?: boolean;
   demotedListingIds?: number[];
@@ -43,19 +49,45 @@ export function getPromaxNextPageParam<TListing>(
     firstParam?.promaxDisabled ||
     allPages[0]?.promaxFallback,
   );
-  return { page: lastPage.page + 1, hourKey: firstHourKey, demotedIds: firstDemotedIds, demotionsPinned, promaxDisabled };
+  const firstFreshIds = firstParam?.freshIds && firstParam.freshIds.length > 0
+    ? firstParam.freshIds
+    : allPages[0]?.promaxRotation?.freshListingIds ?? [];
+  const freshIdsPinned = Boolean(
+    firstParam?.freshIdsPinned ||
+    allPages[0]?.promaxRotation?.freshIdsPinned,
+  );
+  const resolvedScope =
+    firstParam?.resolvedScope ??
+    allPages[0]?.promaxRotation?.resolvedScope ??
+    null;
+  return {
+    page: lastPage.page + 1,
+    hourKey: firstHourKey,
+    demotedIds: firstDemotedIds,
+    demotionsPinned,
+    freshIds: firstFreshIds,
+    freshIdsPinned,
+    resolvedScope,
+    promaxDisabled,
+  };
 }
 
 export function serializePromaxPageParam(param: PromaxPageParam): {
   hourKey?: string;
   demotedIds?: string;
   demotionsPinned?: "1";
+  freshIds?: string;
+  freshIdsPinned?: "1";
+  resolvedScope?: "nearby" | "city" | "state" | "country";
   promaxDisabled?: "1";
 } {
   return {
     ...(param.hourKey ? { hourKey: param.hourKey } : {}),
     ...(param.demotedIds.length > 0 ? { demotedIds: param.demotedIds.join(",") } : {}),
     ...(param.demotionsPinned ? { demotionsPinned: "1" as const } : {}),
+    ...(param.freshIds.length > 0 ? { freshIds: param.freshIds.join(",") } : {}),
+    ...(param.freshIdsPinned ? { freshIdsPinned: "1" as const } : {}),
+    ...(param.resolvedScope ? { resolvedScope: param.resolvedScope } : {}),
     ...(param.promaxDisabled ? { promaxDisabled: "1" as const } : {}),
   };
 }

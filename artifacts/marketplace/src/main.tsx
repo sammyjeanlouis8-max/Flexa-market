@@ -3,6 +3,10 @@ import { Component, type ReactNode } from "react";
 import App from "./App";
 import "./index.css";
 import i18n from "./i18n";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { getCurrentSessionToken } from "@/lib/sessionToken";
+
+setAuthTokenGetter(getCurrentSessionToken);
 
 // ── Chunk-error auto-reload (Level 1) ────────────────────────────────────────
 // Vite hashes chunk filenames on every build. After a new deploy the old hash

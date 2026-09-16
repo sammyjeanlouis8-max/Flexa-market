@@ -28,6 +28,7 @@ import {
   isActiveBoost,
   isActiveVip,
   paginateLegacyPage,
+  pinPromaxFreshItems,
   orderPromaxItems,
   type PromaxGroup,
 } from "../lib/promaxRotation";
@@ -309,7 +310,7 @@ async function formatListing(
 
 router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, hourKey, promaxDemotedIds, promaxDemotionsPinned, promaxDisabled, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { q, category, subcategory, minPrice, maxPrice, condition, location, city, country, boosted, scope, hourKey, promaxDemotedIds, promaxDemotionsPinned, promaxFreshIds, promaxFreshIdsPinned, promaxResolvedScope, promaxDisabled, page = "1", limit = "20" } = req.query as Record<string, string>;
   const pageNum = parseInt(page, 10) || 1;
   const limitNum = Math.min(parseInt(limit, 10) || 20, 50);
   const offset = (pageNum - 1) * limitNum;
@@ -435,6 +436,20 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       : [],
   );
   const hasPinnedDemotions = promaxDemotionsPinned === "1" || promaxDemotionsPinned === "true";
+  const hasPinnedFreshIds = promaxFreshIdsPinned === "1" || promaxFreshIdsPinned === "true";
+  const pinnedResolvedScope =
+    hasPinnedFreshIds &&
+    (promaxResolvedScope === "nearby" ||
+      promaxResolvedScope === "city" ||
+      promaxResolvedScope === "state" ||
+      promaxResolvedScope === "country")
+      ? promaxResolvedScope
+      : null;
+  const requestedFreshIds = new Set(
+    typeof promaxFreshIds === "string"
+      ? promaxFreshIds.split(",").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)
+      : [],
+  );
   const sequenceDemotions = new Set(requestedDemotions);
   const isPromaxPlacementEligible = (listing: typeof listingsTable.$inferSelect): boolean => {
     if (!isActiveBoost(listing, promaxNow)) return false;
@@ -497,16 +512,19 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       .orderBy(
         // 1. Paid boosts always surface first — sellers paid for this visibility
         desc(listingsTable.isBoosted),
-        // 2. Nearest first — actual Haversine km; listings without GPS fall to end
-        sql`${distanceSql} ASC NULLS LAST`,
-        // 3. Text-based proximity for no-coords listings (city/state/country match)
-        desc(proximitySql),
-        // 4. Referral points (among same distance bucket, non-boosted listings rank higher)
-        desc(usersTable.referralPoints),
-        // 5. Subscription tier within the same distance bucket
-        desc(subTierSql),
-        // 6. Freshness as final tie-break
+        // 2. New arrivals lead their eligible country/state/city scope. The
+        // geographic WHERE conditions above decide eligibility; freshness
+        // must not be buried behind referral or subscription ranking.
         desc(listingsTable.createdAt),
+        // 3. Nearest first — actual Haversine km; listings without GPS fall to end
+        sql`${distanceSql} ASC NULLS LAST`,
+        // 4. Text-based proximity for no-coords listings (city/state/country match)
+        desc(proximitySql),
+        // 5. Referral points remain a tie-breaker for equally fresh listings
+        desc(usersTable.referralPoints),
+        // 6. Subscription tier remains a final tie-breaker
+        desc(subTierSql),
+        desc(listingsTable.id),
       );
     // The persisted PROMAX snapshot is the server-owned order.  Fetching the
     // candidate set before slicing is necessary so a late-page item cannot
@@ -515,25 +533,26 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     return query;
   }
 
-  if (scope === "nearby" && geoUser) {
+  const requestedScope = pinnedResolvedScope ?? scope;
+  if (requestedScope === "nearby" && geoUser) {
     // Step 1: same city (proximity ≥ 3)
     runConditions = [...baseConditions, sql`(${proximitySql}) >= 3`];
     effectiveScope = "nearby";
-  } else if (scope === "city" && geoUser) {
+  } else if (requestedScope === "city" && geoUser) {
     runConditions = [...baseConditions, sql`(${proximitySql}) >= 3`];
     effectiveScope = "city";
-  } else if (scope === "state" && geoUser) {
+  } else if (requestedScope === "state" && geoUser) {
     // State-level: proximity ≥ 2 (same state or closer)
     runConditions = [...baseConditions, sql`(${proximitySql}) >= 2`];
     effectiveScope = "state";
-  } else if (scope === "country") {
+  } else if (requestedScope === "country") {
     effectiveScope = "country";
   }
 
   let rows = await runQuery(runConditions);
 
   // Automatic fallback chain: city → state → country
-  if ((scope === "nearby" || scope === "city") && rows.length < 5 && geoUser) {
+  if (!pinnedResolvedScope && (scope === "nearby" || scope === "city") && rows.length < 5 && geoUser) {
     expandedFromScope = scope;
     // Step 2: widen to same state (proximity ≥ 2)
     runConditions = [...baseConditions, sql`(${proximitySql}) >= 2`];
@@ -546,7 +565,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       runConditions = [...baseConditions];
       rows = await runQuery(runConditions);
     }
-  } else if (scope === "state" && rows.length < 5) {
+  } else if (!pinnedResolvedScope && scope === "state" && rows.length < 5) {
     expandedFromScope = "state";
     effectiveScope = "country";
     runConditions = [...baseConditions];
@@ -580,6 +599,12 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const pinnedFresh = pinPromaxFreshItems(
+    rows.map((row) => ({ id: row.listings.id, row })),
+    promaxSnapshot,
+    hasPinnedFreshIds ? requestedFreshIds : undefined,
+  );
+  rows = pinnedFresh.items.map((item) => item.row);
   const total = rows.length;
   const paidBoostListings = new Set(paidBoostByListing.keys());
   const demotedListingIds = hasPinnedDemotions
@@ -646,6 +671,9 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
             hourKey: snapshot.hourKey,
             demotedListingIds: [...demotedListingIds],
             demotionsPinned: true,
+            freshListingIds: pinnedFresh.freshIds,
+            freshIdsPinned: true,
+            resolvedScope: effectiveScope,
             groups: snapshot.groups.map((group) => ({
               key: group.key,
               listingIds: group.listingIds,
@@ -750,12 +778,13 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
     .orderBy(
       // 1. Paid boosts always surface first
       desc(listingsTable.isBoosted),
-      // 2. Nearest first
-      sql`${distanceSql} ASC NULLS LAST`,
-      // 3. Proximity score fallback (for no-GPS listings)
-      desc(proximitySql),
-      // 4. Freshness
+      // 2. New arrivals lead inside the viewer's country scope
       desc(listingsTable.createdAt),
+      // 3. Nearest first
+      sql`${distanceSql} ASC NULLS LAST`,
+      // 4. Proximity score fallback (for no-GPS listings)
+      desc(proximitySql),
+      desc(listingsTable.id),
     )
     .limit(24);
 

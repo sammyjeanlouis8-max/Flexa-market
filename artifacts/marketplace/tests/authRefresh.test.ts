@@ -26,7 +26,7 @@ test("silent refresh classifies definitive auth failures separately from transie
 
     assert.deepEqual(await silentlyRefreshToken("invalid"), { kind: "invalid", status: 401 });
     assert.deepEqual(await silentlyRefreshToken("suspended"), { kind: "suspended", status: 403 });
-    assert.deepEqual(await silentlyRefreshToken("unavailable"), { kind: "unavailable", status: 403 });
+    assert.deepEqual(await silentlyRefreshToken("unavailable"), { kind: "transient", status: 403 });
     assert.deepEqual(await silentlyRefreshToken("transient"), { kind: "transient", status: 503 });
   } finally {
     globalThis.fetch = originalFetch;

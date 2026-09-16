@@ -12,6 +12,7 @@ import {
   orderPromaxItems,
   isLegacyFallbackCountryVisible,
   paginatePromaxSnapshot,
+  pinPromaxFreshItems,
   PromaxSnapshotCache,
   PROMAX_RETRY_DELAY_MS,
   shouldRetryPromaxStartup,
@@ -125,6 +126,52 @@ describe("PROMAX hourly fairness", () => {
       { id: 21, activeBoost: false, activeVip: false },
     ], "2030-01-01T13:00:00.000Z", first, now);
     expect(second.groups.find((group) => group.key === "ordinary")?.listingIds[0]).toBe(21);
+  });
+
+  it("places a newly eligible product before an existing multi-item group", () => {
+    const first = buildPromaxSnapshot([
+      { id: 20, activeBoost: false, activeVip: false, createdAt: "2030-01-01T10:00:00.000Z" },
+      { id: 21, activeBoost: false, activeVip: false, createdAt: "2030-01-01T11:00:00.000Z" },
+    ], "2030-01-01T12:00:00.000Z", null, now);
+    const second = buildPromaxSnapshot([
+      { id: 20, activeBoost: false, activeVip: false, createdAt: "2030-01-01T10:00:00.000Z" },
+      { id: 21, activeBoost: false, activeVip: false, createdAt: "2030-01-01T11:00:00.000Z" },
+      { id: 22, activeBoost: false, activeVip: false, createdAt: "2030-01-01T12:30:00.000Z" },
+    ], "2030-01-01T13:00:00.000Z", first, now);
+    expect(second.groups.find((group) => group.key === "ordinary")?.listingIds[0]).toBe(22);
+  });
+
+  it("places a product approved after snapshot creation first within its group", () => {
+    const snapshot = buildPromaxSnapshot([
+      { id: 30, activeBoost: false, activeVip: false },
+      { id: 31, activeBoost: false, activeVip: false },
+    ], "2030-01-01T12:00:00.000Z", null, now);
+    const ordered = orderPromaxItems([
+      { id: 32, group: "ordinary" as const, legacyPosition: 0 },
+      { id: 30, group: "ordinary" as const, legacyPosition: 1 },
+      { id: 31, group: "ordinary" as const, legacyPosition: 2 },
+    ], snapshot);
+    expect(ordered.map((item) => item.id)).toEqual([32, 30, 31]);
+  });
+
+  it("pins post-snapshot products so later pages cannot shift", () => {
+    const snapshot = buildPromaxSnapshot([
+      { id: 30, activeBoost: false, activeVip: false },
+      { id: 31, activeBoost: false, activeVip: false },
+      { id: 32, activeBoost: false, activeVip: false },
+    ], "2030-01-01T12:00:00.000Z", null, now);
+    const pageOneSequence = pinPromaxFreshItems(
+      [{ id: 33 }, { id: 30 }, { id: 31 }, { id: 32 }],
+      snapshot,
+    );
+    expect(pageOneSequence.freshIds).toEqual([33]);
+
+    const pageTwoSequence = pinPromaxFreshItems(
+      [{ id: 34 }, { id: 33 }, { id: 30 }, { id: 31 }, { id: 32 }],
+      snapshot,
+      new Set(pageOneSequence.freshIds),
+    );
+    expect(pageTwoSequence.items.map((item) => item.id)).toEqual([33, 30, 31, 32]);
   });
 
   it("deduplicates listings and leaves empty groups present", () => {

@@ -259,12 +259,30 @@ export default function Home() {
       if (frozenPromaxParams.demotionsPinned) {
         params.set("promaxDemotionsPinned", frozenPromaxParams.demotionsPinned);
       }
+      if (frozenPromaxParams.freshIds) {
+        params.set("promaxFreshIds", frozenPromaxParams.freshIds);
+      }
+      if (frozenPromaxParams.freshIdsPinned) {
+        params.set("promaxFreshIdsPinned", frozenPromaxParams.freshIdsPinned);
+      }
+      if (frozenPromaxParams.resolvedScope) {
+        params.set("promaxResolvedScope", frozenPromaxParams.resolvedScope);
+      }
       if (frozenPromaxParams.promaxDisabled) {
         params.set("promaxDisabled", frozenPromaxParams.promaxDisabled);
       }
       return apiFetch<PromaxFeedPage<NormalListing>>(`/api/listings?${params}`);
     },
-    initialPageParam: { page: 1, hourKey: null, demotedIds: [], demotionsPinned: false, promaxDisabled: false } satisfies PromaxPageParam,
+    initialPageParam: {
+      page: 1,
+      hourKey: null,
+      demotedIds: [],
+      demotionsPinned: false,
+      freshIds: [],
+      freshIdsPinned: false,
+      resolvedScope: null,
+      promaxDisabled: false,
+    } satisfies PromaxPageParam,
     getNextPageParam: (last, allPages, _lastPageParam, allPageParams) =>
       getPromaxNextPageParam(last, allPages, allPageParams),
     staleTime: 2 * 60 * 1000,

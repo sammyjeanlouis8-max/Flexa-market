@@ -120,7 +120,7 @@ export default function Register() {
             toast({ title: t("auth.registrationFailed"), description: "Login initialization failed", variant: "destructive" });
             return;
           }
-          setToken(res.token);
+          setToken(res.token, res.user);
           toast({
             title: t("auth.welcomeToFlexa"),
             description: promoCode.trim()

@@ -109,8 +109,8 @@ function createdAtMs(value: Date | string | null | undefined): number {
 
 function baseOrder(items: PromaxCandidate[]): PromaxCandidate[] {
   return [...items].sort((a, b) =>
-    (b.priority ?? 0) - (a.priority ?? 0) ||
     createdAtMs(b.createdAt) - createdAtMs(a.createdAt) ||
+    (b.priority ?? 0) - (a.priority ?? 0) ||
     a.id - b.id
   );
 }
@@ -155,14 +155,14 @@ export function buildPromaxSnapshot(
     const newIds = sorted.filter((item) => !oldSet.has(item.id)).map((item) => item.id);
 
     let listingIds: number[];
-    if (oldIds.length > 1) {
+    if (newIds.length > 0) {
+      // Products that became eligible since the previous snapshot lead their
+      // own paid/VIP/organic group. Existing group boundaries remain intact.
+      listingIds = [...newIds, ...oldIds];
+    } else if (oldIds.length > 1) {
       // Move the former leader behind alternatives.  The rest of the previous
       // order is retained, so referral/freshness ranking is not discarded.
       listingIds = [...oldIds.slice(1), oldIds[0], ...newIds];
-    } else if (oldIds.length === 1 && newIds.length > 0) {
-      // A newly eligible alternative should get the lead rather than allowing
-      // a formerly isolated item to lead two consecutive snapshots.
-      listingIds = [...newIds, ...oldIds];
     } else {
       listingIds = [...oldIds, ...newIds];
     }
@@ -244,10 +244,26 @@ export function orderPromaxItems<T extends {
   const positions = orderMetadataFor(snapshot);
   return [...items].sort((a, b) =>
     PROMAX_GROUP_RANK[a.group] - PROMAX_GROUP_RANK[b.group] ||
-    (positions.get(a.id)?.position ?? Number.MAX_SAFE_INTEGER) -
-      (positions.get(b.id)?.position ?? Number.MAX_SAFE_INTEGER) ||
+    (positions.get(a.id)?.position ?? -1) -
+      (positions.get(b.id)?.position ?? -1) ||
     a.legacyPosition - b.legacyPosition
   );
+}
+
+export function pinPromaxFreshItems<T extends { id: number }>(
+  items: T[],
+  snapshot: PromaxSnapshot,
+  pinnedFreshIds?: ReadonlySet<number>,
+): { items: T[]; freshIds: number[] } {
+  const snapshotIds = new Set(snapshot.groups.flatMap((group) => group.listingIds));
+  const freshIds = pinnedFreshIds
+    ? [...pinnedFreshIds]
+    : items.filter((item) => !snapshotIds.has(item.id)).map((item) => item.id);
+  const allowedFreshIds = new Set(freshIds);
+  return {
+    items: items.filter((item) => snapshotIds.has(item.id) || allowedFreshIds.has(item.id)),
+    freshIds,
+  };
 }
 
 function toSnapshot(row: typeof promaxRotationSnapshotsTable.$inferSelect): PromaxSnapshot {
@@ -389,9 +405,8 @@ export async function generatePromaxSnapshot(now: Date = new Date()): Promise<Pr
         id: row.id,
         activeBoost: isActiveBoost(row, now) && Boolean(row.paidBoost),
         activeVip: isActiveVip(row, now),
-        // Keep the pre-PROMAX ranking signals as a stable, global baseline.
-        // Proximity remains request-specific and is still returned by the API;
-        // these signals make the shared snapshot deterministic across replicas.
+        // Referral/subscription remain deterministic tie-breakers after
+        // freshness; paid boost and VIP separation still happens by group.
         priority:
           (row.referralPoints ?? 0) * 1_000_000 +
           (row.subscriptionPlan === "vip" ? 30 : row.subscriptionPlan === "premium" ? 20 : row.subscriptionPlan === "standard" ? 10 : 0),

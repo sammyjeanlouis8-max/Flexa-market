@@ -65,7 +65,7 @@ export default function LoginPhone() {
             { data: { phoneToken: vRes.phoneToken } },
             {
               onSuccess: (lRes: any) => {
-                setToken(lRes.token);
+                setToken(lRes.token, lRes.user);
                 toast({ title: t("auth.welcomeBack", "Welcome back!") });
                 const params = new URLSearchParams(window.location.search);
                 const next = params.get("next");

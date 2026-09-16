@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
+import { getCurrentSessionToken } from "@/lib/sessionToken";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,7 +28,7 @@ import {
  * the same gate for fast feedback.
  */
 export default function SettingsSecurity() {
-  const { user, refreshUser, logout } = useAuth();
+  const { user, logout, setToken } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
@@ -39,7 +40,7 @@ export default function SettingsSecurity() {
   const [hasSecurityQ, setHasSecurityQ] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const tk = localStorage.getItem("flexamarket_token");
+    const tk = getCurrentSessionToken();
     if (!tk) return;
     fetch("/api/recovery/has-questions", { headers: { Authorization: `Bearer ${tk}` } })
       .then(r => r.json())
@@ -122,7 +123,8 @@ export default function SettingsSecurity() {
         <ChangeEmailDialog
           currentEmail={user.email}
           onClose={() => setShowEmail(false)}
-          onChanged={() => { refreshUser(); setShowEmail(false); }}
+          onChanged={() => setShowEmail(false)}
+          installSession={setToken}
         />
       )}
       {showDelete && (
@@ -191,7 +193,7 @@ function SecurityQuestionsDialog({ onClose, onSaved }: { onClose: () => void; on
       .then(r => r.json())
       .then(d => setQuestionsList(d.questions ?? []))
       .catch(() => {});
-    const tk = localStorage.getItem("flexamarket_token");
+    const tk = getCurrentSessionToken();
     if (!tk) return;
     fetch("/api/recovery/my-questions", { headers: { Authorization: `Bearer ${tk}` } })
       .then(r => r.json())
@@ -214,7 +216,7 @@ function SecurityQuestionsDialog({ onClose, onSaved }: { onClose: () => void; on
     }
     setBusy(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/recovery/setup-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
@@ -279,7 +281,7 @@ function SecurityQuestionsDialog({ onClose, onSaved }: { onClose: () => void; on
 function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const { dismissPasswordUpgrade } = useAuth();
+  const { dismissPasswordUpgrade, setToken } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -290,7 +292,7 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
     if (next.length < 6) { toast({ title: t("settings.passwordTooShort"), variant: "destructive" }); return; }
     setBusy(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
@@ -298,6 +300,11 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
       });
       const data = await res.json();
       if (!res.ok) { toast({ title: data.error ?? t("settings.requestFailed"), variant: "destructive" }); return; }
+      if (!data.token || !data.user) {
+        toast({ title: t("settings.requestFailed"), variant: "destructive" });
+        return;
+      }
+      setToken(data.token, data.user);
       toast({ title: t("settings.passwordChanged") });
       dismissPasswordUpgrade();
       onClose();
@@ -338,7 +345,17 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ChangeEmailDialog({ currentEmail, onClose, onChanged }: { currentEmail: string; onClose: () => void; onChanged: () => void }) {
+function ChangeEmailDialog({
+  currentEmail,
+  onClose,
+  onChanged,
+  installSession,
+}: {
+  currentEmail: string;
+  onClose: () => void;
+  onChanged: () => void;
+  installSession: ReturnType<typeof useAuth>["setToken"];
+}) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [password, setPassword] = useState("");
@@ -348,7 +365,7 @@ function ChangeEmailDialog({ currentEmail, onClose, onChanged }: { currentEmail:
   const submit = async () => {
     setBusy(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/auth/change-email", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
@@ -356,6 +373,11 @@ function ChangeEmailDialog({ currentEmail, onClose, onChanged }: { currentEmail:
       });
       const data = await res.json();
       if (!res.ok) { toast({ title: data.error ?? t("settings.requestFailed"), variant: "destructive" }); return; }
+      if (!data.token || !data.user) {
+        toast({ title: t("settings.requestFailed"), variant: "destructive" });
+        return;
+      }
+      installSession(data.token, data.user);
       toast({ title: t("settings.emailChanged") });
       onChanged();
     } catch {
@@ -403,7 +425,7 @@ function DeleteAccountDialog({ onClose, onDeleted }: { onClose: () => void; onDe
     if (confirmText !== REQUIRED_TEXT) { toast({ title: t("settings.typeDeleteToConfirm"), variant: "destructive" }); return; }
     setBusy(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/users/me", {
         method: "DELETE",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },

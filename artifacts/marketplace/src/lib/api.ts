@@ -3,11 +3,7 @@
  * from localStorage and parses JSON. Use it for endpoints that don't yet
  * have a generated react-query hook (e.g. the support feature).
  */
-const TOKEN_KEY = "flexamarket_token";
-
-function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
+import { getCurrentSessionToken } from "@/lib/sessionToken";
 
 function buildUrl(path: string): string {
   // BASE_URL ends with a slash (e.g. "/marketplace/" or "/"). The api is
@@ -24,7 +20,7 @@ export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token = getToken();
+  const token = getCurrentSessionToken();
   const headers = new Headers(init.headers);
   headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);

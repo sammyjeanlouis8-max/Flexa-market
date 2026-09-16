@@ -21,6 +21,7 @@ import { useUpload } from "@workspace/object-storage-web";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useTranslation } from "react-i18next";
 import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY } from "@/lib/phoneCountries";
+import { getCurrentSessionToken } from "@/lib/sessionToken";
 
 // Each country listed individually — USA, Canada, Dominican Republic each
 // have their own ISO code so they're never confused despite sharing +1.
@@ -106,6 +107,7 @@ function AutoSaveIndicator() {
 function ChangePasswordCard() {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const { setToken } = useAuth();
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -129,7 +131,7 @@ function ChangePasswordCard() {
     }
     setSubmitting(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
@@ -144,6 +146,11 @@ function ChangePasswordCard() {
         });
         return;
       }
+      if (!(data as any)?.token || !(data as any)?.user) {
+        toast({ title: t("editProfile.couldNotUpdate"), variant: "destructive" });
+        return;
+      }
+      setToken((data as any).token, (data as any).user);
       toast({ title: t("editProfile.passwordUpdated") });
       reset();
       setOpen(false);
@@ -232,7 +239,7 @@ function StoreManagerCard() {
   const [inviting, setInviting] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
-  const token = () => localStorage.getItem("flexamarket_token");
+  const token = getCurrentSessionToken;
 
   const fetchManager = async () => {
     try {
@@ -389,7 +396,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const tk = localStorage.getItem("flexamarket_token");
+      const tk = getCurrentSessionToken();
       const res = await fetch("/api/users/me/pickup-schedule", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },

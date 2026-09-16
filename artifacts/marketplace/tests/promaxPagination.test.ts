@@ -12,7 +12,14 @@ test("cached first page keeps its rotation token for every next page", () => {
     listings: [],
     page: 1,
     totalPages: 3,
-    promaxRotation: { hourKey: "2030-01-01T12:00:00.000Z", demotedListingIds: [70], demotionsPinned: true },
+    promaxRotation: {
+      hourKey: "2030-01-01T12:00:00.000Z",
+      demotedListingIds: [70],
+      demotionsPinned: true,
+      freshListingIds: [91],
+      freshIdsPinned: true,
+      resolvedScope: "state" as const,
+    },
   };
   const restoredPageParam = { page: 1, hourKey: null };
   const next = getPromaxNextPageParam(
@@ -25,6 +32,9 @@ test("cached first page keeps its rotation token for every next page", () => {
     hourKey: "2030-01-01T12:00:00.000Z",
     demotedIds: [70],
     demotionsPinned: true,
+    freshIds: [91],
+    freshIdsPinned: true,
+    resolvedScope: "state",
     promaxDisabled: false,
   });
 });
@@ -56,6 +66,9 @@ test("restored page params take precedence over a later response hour", () => {
     hourKey: "2030-01-01T12:00:00.000Z",
     demotedIds: [],
     demotionsPinned: true,
+    freshIds: [],
+    freshIdsPinned: false,
+    resolvedScope: null,
     promaxDisabled: false,
   });
 });

@@ -831,7 +831,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/messages/,
     /^\/auth\//,
     /^\/checkout/,
-    /^\/settings\/stripe/,
+    /^\/settings(?:\/|$)/,
     /^\/order-label\//,
     /^\/orders\/[^/]+\/?$/,
     /^\/videos$/,

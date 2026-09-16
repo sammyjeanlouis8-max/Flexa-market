@@ -11,6 +11,7 @@ import {
 import { useCart, CartItem } from "@/contexts/cart";
 import { useAuth } from "@/contexts/auth";
 import { formatPrice } from "@/lib/currency";
+import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
 /* ── Helpers ── */
 const fakeDiscount = (price: number) => {
@@ -90,16 +91,17 @@ function CheckoutModal({
   selectedItems: CartItem[];
   total: number;
   deliveryFees: GroupDeliveryFee[];
-  user: { name?: string; phone?: string | null; location?: string | null } | null;
+  user: { id?: number; name?: string; phone?: string | null; location?: string | null } | null;
   token: string | null;
   onSuccess: (orders: CheckoutOrder[], deliveryTotal: number) => void;
   onClose: () => void;
 }) {
-  const [name, setName] = useState(user?.name ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [city, setCity] = useState(user?.location ?? "");
-  const [street, setStreet] = useState("");
-  const [region, setRegion] = useState("");
+  const savedAddress = readSavedCheckoutAddress(user?.id);
+  const [name, setName] = useState(savedAddress.name ?? user?.name ?? "");
+  const [phone, setPhone] = useState(savedAddress.phone ?? user?.phone ?? "");
+  const [city, setCity] = useState(savedAddress.city ?? user?.location ?? "");
+  const [street, setStreet] = useState(savedAddress.street ?? "");
+  const [region, setRegion] = useState(savedAddress.region ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -132,6 +134,13 @@ function CheckoutModal({
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Something went wrong. Try again."); return; }
+      saveCheckoutAddress(user?.id, {
+        name: name.trim(),
+        phone: phone.trim(),
+        street: street.trim(),
+        city: city.trim(),
+        region: region.trim(),
+      });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {
       setError("Erè rezo — verifye koneksyon ou");

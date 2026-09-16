@@ -24,6 +24,7 @@ import { useViewTracker, formatViewCount } from "@/hooks/useViewTracker";
 import { formatPrice, useExchangeRate, htgToUsd, dopToUsd } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -399,13 +400,33 @@ export default function ListingDetail() {
   // draft) — never overwrites their input. Runs once the user object loads.
   useEffect(() => {
     if (!user) return;
-    const u = user as { name?: string; phone?: string | null; email?: string | null; location?: string | null; state?: string | null; neighborhood?: string | null };
+    const u = user as { id?: number; name?: string; phone?: string | null; email?: string | null; location?: string | null; state?: string | null; neighborhood?: string | null };
+    const address = readSavedCheckoutAddress(u.id);
+    if (address.name) setShipName(v => v || address.name!);
+    if (address.phone) setShipPhone(v => v || address.phone!);
+    if (address.email) setShipEmail(v => v || address.email!);
+    if (address.street) setShipStreet(v => v || address.street!);
+    if (address.city) setShipCity(v => v || address.city!);
+    if (address.region) setShipRegion(v => v || address.region!);
+    if (address.zip) setShipZip(v => v || address.zip!);
     if (u.name)  setShipName(v => v || u.name!.trim());
     if (u.phone) setShipPhone(v => v || u.phone!.trim());
     if (u.email) setShipEmail(v => v || u.email!.trim());
     if (u.location || u.neighborhood) setShipCity(v => v || (u.location || u.neighborhood)!.trim());
     if (u.state) setShipRegion(v => v || u.state!.trim());
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rememberCheckoutAddress = () => {
+    saveCheckoutAddress((user as any)?.id, {
+      name: shipName.trim(),
+      phone: shipPhone.trim(),
+      email: shipEmail.trim() || undefined,
+      street: shipStreet.trim(),
+      city: shipCity.trim(),
+      region: shipRegion.trim(),
+      zip: shipZip.trim() || undefined,
+    });
+  };
 
   useEffect(() => {
     if (!isLocalDelivery || !shipCity.trim() || !listingCity || !buyNowOpen || !token) {
@@ -963,6 +984,7 @@ export default function ListingDetail() {
         setLocalDeliveryPurchased(true);
       }
       setPayDone(true);
+      rememberCheckoutAddress();
       // Clear persisted checkout form — purchase succeeded, slate is clean
       try { localStorage.removeItem(formKey); } catch {}
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(id) });
@@ -1007,6 +1029,7 @@ export default function ListingDetail() {
         return;
       }
       if (data.url) {
+        rememberCheckoutAddress();
         window.location.href = data.url;
       } else {
         toast({ title: "Payment error", description: "No checkout URL received", variant: "destructive" });
@@ -1046,6 +1069,7 @@ export default function ListingDetail() {
         return;
       }
       if (data.sessionUrl) {
+        rememberCheckoutAddress();
         window.location.href = data.sessionUrl;
       } else {
         toast({ title: t("checkout.bnplError"), description: t("checkout.bnplNoUrl"), variant: "destructive" });

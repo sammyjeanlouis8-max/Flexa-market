@@ -140,9 +140,25 @@ router.post("/returns/:returnId/seller-respond", requireAuth, async (req, res): 
   const returnId = parseInt(req.params.returnId ?? "", 10);
   if (!returnId) { res.status(400).json({ error: "Invalid return id" }); return; }
 
-  const { decision, note } = req.body ?? {};
+  const { decision, note, returnAddress } = req.body ?? {};
   if (!["accept", "reject"].includes(decision)) {
     res.status(400).json({ error: "decision dwe 'accept' oswa 'reject'" }); return;
+  }
+
+  const clean = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
+  const address = decision === "accept" ? {
+    recipientName: clean(returnAddress?.recipientName, 150),
+    phone: clean(returnAddress?.phone, 40),
+    line1: clean(returnAddress?.line1, 200),
+    line2: clean(returnAddress?.line2, 200),
+    city: clean(returnAddress?.city, 100),
+    state: clean(returnAddress?.state, 100),
+    postalCode: clean(returnAddress?.postalCode, 30),
+    country: clean(returnAddress?.country, 100),
+    instructions: clean(returnAddress?.instructions, 500),
+  } : null;
+  if (decision === "accept" && (!address?.recipientName || !address.phone || !address.line1 || !address.city || !address.state || !address.postalCode || !address.country)) {
+    res.status(400).json({ error: "Ranpli non, telefòn, adrès, vil, rejyon, kòd postal ak peyi pou retou a" }); return;
   }
 
   const rows = await db.execute(
@@ -158,11 +174,25 @@ router.post("/returns/:returnId/seller-respond", requireAuth, async (req, res): 
 
   const newStatus = decision === "accept" ? "seller_accepted" : "seller_rejected";
   const noteVal = String(note ?? "").trim();
-  await db.execute(
-    sql`UPDATE order_returns
-        SET status = ${newStatus}, seller_note = ${noteVal}, seller_responded_at = NOW()
-        WHERE id = ${returnId}`,
-  );
+  const updated = await db.execute(
+    decision === "accept"
+      ? sql`UPDATE order_returns
+            SET status = ${newStatus}, seller_note = ${noteVal}, seller_responded_at = NOW(),
+                return_recipient_name = ${address!.recipientName}, return_phone = ${address!.phone},
+                return_address_line1 = ${address!.line1}, return_address_line2 = ${address!.line2 || null},
+                return_city = ${address!.city}, return_state = ${address!.state},
+                return_postal_code = ${address!.postalCode}, return_country = ${address!.country},
+                return_instructions = ${address!.instructions || null}
+            WHERE id = ${returnId} AND status = 'requested'
+            RETURNING id`
+      : sql`UPDATE order_returns
+            SET status = ${newStatus}, seller_note = ${noteVal}, seller_responded_at = NOW()
+            WHERE id = ${returnId} AND status = 'requested'
+            RETURNING id`,
+  ) as unknown as any[];
+  if (updated.length === 0) {
+    res.status(409).json({ error: "Demann sa a deja reponn" }); return;
+  }
 
   await db.insert(notificationsTable).values({
     userId: Number(ret.buyer_id),

@@ -1674,6 +1674,20 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "order_returns.idx_status", sql: "CREATE INDEX IF NOT EXISTS idx_order_returns_status ON order_returns(status)" });
   migrations.push({ name: "order_returns.add_refund_method",    sql: "ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS refund_method TEXT DEFAULT 'wallet'" });
   migrations.push({ name: "order_returns.add_stripe_refund_id", sql: "ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS stripe_refund_id TEXT" });
+  migrations.push({
+    name: "order_returns.add_return_address",
+    sql: `
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_recipient_name TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_phone TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_address_line1 TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_address_line2 TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_city TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_state TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_postal_code TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_country TEXT;
+      ALTER TABLE order_returns ADD COLUMN IF NOT EXISTS return_instructions TEXT;
+    `,
+  });
 
   // ── Super Admin Stripe refund operations ledger ─────────────────────────────
   // This is deliberately separate from order_returns: one payment can have

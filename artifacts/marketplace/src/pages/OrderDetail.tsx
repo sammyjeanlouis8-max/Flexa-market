@@ -481,6 +481,11 @@ export default function OrderDetail() {
   const [showBuyerShipDialog, setShowBuyerShipDialog] = useState(false);
   const [returnTrackingNum, setReturnTrackingNum] = useState("");
   const [returnCarrierVal, setReturnCarrierVal] = useState("");
+  const [showReturnAddressDialog, setShowReturnAddressDialog] = useState(false);
+  const [returnAddressForm, setReturnAddressForm] = useState({
+    recipientName: "", phone: "", line1: "", line2: "", city: "", state: "",
+    postalCode: "", country: "", instructions: "",
+  });
   const [busCode, setBusCode] = useState("");
   const [busCodeBusy, setBusCodeBusy] = useState(false);
   const [busCodeError, setBusCodeError] = useState("");
@@ -787,18 +792,46 @@ export default function OrderDetail() {
     finally { setBusCodeBusy(false); }
   };
 
+  const openReturnAddressDialog = () => {
+    const seller = user as any;
+    setReturnAddressForm(current => ({
+      ...current,
+      recipientName: current.recipientName || seller?.name || "",
+      phone: current.phone || seller?.phone || "",
+      city: current.city || seller?.location || "",
+      state: current.state || seller?.state || "",
+      country: current.country || seller?.country || order?.listingCountry || "",
+    }));
+    setShowReturnAddressDialog(true);
+  };
+
   const handleSellerRespond = async (decision: "accept" | "reject") => {
     if (!returnInfo) return;
+    if (decision === "accept") {
+      const required = ["recipientName", "phone", "line1", "city", "state", "postalCode", "country"] as const;
+      if (required.some(key => !returnAddressForm[key].trim())) {
+        toast({ title: "Ranpli tout chan obligatwa pou adrès retou a", variant: "destructive" });
+        return;
+      }
+    }
     setReturnBusy(true);
     try {
       const res = await fetch(`/api/returns/${returnInfo.id}/seller-respond`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({
+          decision,
+          ...(decision === "accept" ? {
+            returnAddress: Object.fromEntries(
+              Object.entries(returnAddressForm).map(([key, value]) => [key, value.trim()]),
+            ),
+          } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { toast({ title: (data as any)?.error ?? "Erè", variant: "destructive" }); return; }
       toast({ title: decision === "accept" ? "Retou aksepte — achetè ap voye atik la tounen." : "Retou refize." });
+      if (decision === "accept") setShowReturnAddressDialog(false);
       await loadReturnInfo();
     } finally { setReturnBusy(false); }
   };
@@ -1922,6 +1955,34 @@ export default function OrderDetail() {
                   )}
                 </div>
 
+                {order.isBuyer && ["seller_accepted", "buyer_shipped"].includes(returnInfo.status) && returnInfo.return_address_line1 && (
+                  <div className="rounded-xl border border-teal-300 bg-white dark:bg-slate-950 p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-teal-700 dark:text-teal-400">
+                      <MapPin className="h-4 w-4 shrink-0" />
+                      <h4 className="font-black text-sm">Adrès pou voye retou a</h4>
+                    </div>
+                    <div className="text-sm leading-relaxed text-foreground">
+                      <p className="font-bold">{returnInfo.return_recipient_name}</p>
+                      <p>{returnInfo.return_address_line1}</p>
+                      {returnInfo.return_address_line2 && <p>{returnInfo.return_address_line2}</p>}
+                      <p>{[returnInfo.return_city, returnInfo.return_state, returnInfo.return_postal_code].filter(Boolean).join(", ")}</p>
+                      <p>{returnInfo.return_country}</p>
+                      <a className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-1" href={`tel:${returnInfo.return_phone}`}>
+                        <Phone className="h-3.5 w-3.5" /> {returnInfo.return_phone}
+                      </a>
+                    </div>
+                    {returnInfo.return_instructions && (
+                      <div className="border-t border-border pt-2">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Enstriksyon</p>
+                        <p className="text-xs mt-1">{returnInfo.return_instructions}</p>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-muted-foreground border-t border-border pt-2">
+                      Mete atik la an sekirite nan pake a. Kenbe resi ak nimewo tracking ou.
+                    </p>
+                  </div>
+                )}
+
                 {returnInfo.status === "refunded" && returnInfo.refund_amount && (
                   <div className="space-y-1">
                     <p className="text-base font-black text-green-700 dark:text-green-400">
@@ -1942,7 +2003,7 @@ export default function OrderDetail() {
                 {/* Seller: accept/reject */}
                 {order.isSeller && returnInfo.status === "requested" && (
                   <div className="flex gap-2 pt-1">
-                    <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5" disabled={returnBusy} onClick={() => handleSellerRespond("accept")}>
+                    <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5" disabled={returnBusy} onClick={openReturnAddressDialog}>
                       <CheckCircle2 className="h-3.5 w-3.5" /> Aksepte
                     </Button>
                     <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 gap-1.5" disabled={returnBusy} onClick={() => handleSellerRespond("reject")}>
@@ -2010,6 +2071,62 @@ export default function OrderDetail() {
                     <Button variant="outline" className="flex-1" onClick={() => setShowReturnDialog(false)}>Anile</Button>
                     <Button className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" disabled={returnBusy || !returnReason} onClick={handleSubmitReturn}>
                       {returnBusy ? "Ap voye…" : "Voye Demann"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Seller return address dialog ── */}
+            {showReturnAddressDialog && (
+              <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+                <div className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-base">Adrès retou pou achtè a</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">Achtè a ap wè adrès sa a apre ou aksepte retou a.</p>
+                    </div>
+                    <button onClick={() => setShowReturnAddressDialog(false)} className="text-muted-foreground hover:text-foreground">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      ["recipientName", "Non moun oswa biznis *", "Flexa Returns"],
+                      ["phone", "Telefòn *", "+1 305..."],
+                      ["line1", "Adrès / nimewo kay *", "123 Main Street"],
+                      ["line2", "Apatman, suite (opsyonèl)", "Suite 4B"],
+                      ["city", "Vil *", "Miami"],
+                      ["state", "Eta / rejyon *", "Florida"],
+                      ["postalCode", "Kòd postal *", "33101"],
+                      ["country", "Peyi *", "USA"],
+                    ].map(([key, label, placeholder]) => (
+                      <div key={key} className={`space-y-1 ${key === "line1" || key === "line2" ? "sm:col-span-2" : ""}`}>
+                        <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">{label}</label>
+                        <Input
+                          value={(returnAddressForm as any)[key]}
+                          onChange={e => setReturnAddressForm(v => ({ ...v, [key]: e.target.value }))}
+                          placeholder={placeholder}
+                        />
+                      </div>
+                    ))}
+                    <div className="sm:col-span-2 space-y-1">
+                      <label className="text-[11px] font-black uppercase tracking-wider text-muted-foreground">Enstriksyon pou pake a (opsyonèl)</label>
+                      <Textarea
+                        value={returnAddressForm.instructions}
+                        onChange={e => setReturnAddressForm(v => ({ ...v, instructions: e.target.value }))}
+                        placeholder="Pa egzanp: Mete nimewo kòmand lan deyò pake a."
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300">
+                    Verifye adrès la byen. Se la achtè a pral voye pwodwi a.
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setShowReturnAddressDialog(false)}>Anile</Button>
+                    <Button className="flex-1 bg-teal-600 hover:bg-teal-700 text-white" disabled={returnBusy} onClick={() => handleSellerRespond("accept")}>
+                      {returnBusy ? "Ap trete…" : "Aksepte epi pataje adrès"}
                     </Button>
                   </div>
                 </div>

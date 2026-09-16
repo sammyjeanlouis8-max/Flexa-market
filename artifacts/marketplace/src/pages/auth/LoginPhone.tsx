@@ -112,7 +112,7 @@ export default function LoginPhone() {
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-36 sm:h-44 w-auto max-w-[80vw] object-contain mx-auto mb-1" />
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-24 sm:h-32 w-auto max-w-[60vw] object-contain mx-auto mb-1" />
           <p className="text-muted-foreground text-sm">
             {t("auth.signInWithPhoneSubtitle", "Sign in with your phone number — no password needed.")}
           </p>

@@ -40,6 +40,7 @@ SAFETY AND PRIVACY
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type Lang = "ht" | "fr" | "en" | "es" | "pt";
+type LangMap = Record<Lang, string>;
 
 function detectLang(text: string): Lang {
   const t = text.toLowerCase();
@@ -52,11 +53,11 @@ function detectLang(text: string): Lang {
 
 // ── Fallback responses when AI is unavailable ─────────────────────────────────
 const FALLBACK: LangMap = {
-  ht: "The AI assistant is busy right now. You can:\n• Use the topic buttons above for quick information\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
-  fr: "The AI assistant is busy right now. You can:\n• Use the topic buttons above for quick information\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
-  en: "I can't respond right now 😕 — the AI assistant is busy. You can:\n• Use the topic buttons above for quick info\n• Click **Talk to an agent** for a real agent\n• Or try again in a few minutes.",
-  es: "No puedo responder ahora 😕 — el asistente AI está ocupado. Puedes:\n• Usar los botones de temas de arriba para info rápida\n• Hacer clic en **Talk to an agent** para un agente real\n• O intentarlo de nuevo en unos minutos.",
-  pt: "Não posso responder agora 😕 — o assistente AI está ocupado. Você pode:\n• Usar os botões de tópicos acima para info rápida\n• Clicar em **Talk to an agent** para um agente real\n• Ou tentar novamente em alguns minutos.",
+  ht: "Asistan AI a pa disponib kounye a. Tanpri eseye ankò nan kèk minit oswa kontakte sipò Flexa Market.",
+  fr: "L’assistant IA est indisponible pour le moment. Réessayez dans quelques minutes ou contactez l’assistance Flexa Market.",
+  en: "The AI assistant is unavailable right now. Try again in a few minutes or contact Flexa Market support.",
+  es: "El asistente de IA no está disponible en este momento. Inténtalo de nuevo en unos minutos o contacta con el soporte de Flexa Market.",
+  pt: "O assistente de IA está indisponível no momento. Tente novamente em alguns minutos ou contate o suporte da Flexa Market.",
 };
 
 // ── Body parser ───────────────────────────────────────────────────────────────

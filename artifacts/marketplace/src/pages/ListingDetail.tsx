@@ -370,7 +370,13 @@ export default function ListingDetail() {
   // Auto-calculate delivery fee when buyer enters their city (Haiti/DR only, debounced)
   const listingCity = (listing as any)?.city as string | undefined;
   const listingCountry = (listing as any)?.country as string | undefined;
-  const isLocalDelivery = isLocalDeliveryCountry(listingCountry);
+  const viewerCountry = (user as any)?.country as string | null | undefined;
+  // FM delivery is available only when both ends are in the FM service area.
+  // Fail closed when the buyer has no country configured: foreign buyers must
+  // use an international carrier, even for a listing located in Haiti or DR.
+  const isLocalDelivery =
+    isLocalDeliveryCountry(listingCountry) &&
+    isLocalDeliveryCountry(viewerCountry);
   const effectiveTip = (isLocalDelivery && deliverySpeedTier !== "pickup") ? tipUsd : 0;
 
   // Sync delivery method from listing (seller's choice) whenever listing loads
@@ -639,7 +645,6 @@ export default function ListingDetail() {
   // mobile-money options on every listing they buy, since those are the
   // payment rails their phone supports. Admins bypass for auditing.
   const isAdminViewer = !!(user?.isAdmin || (user as any)?.isSuperAdmin);
-  const viewerCountry = (user as any)?.country as string | null | undefined;
   const showMobileMoney = viewerCountry === "Haiti" || isAdminViewer;
 
   const searchFriendUsers = async () => {

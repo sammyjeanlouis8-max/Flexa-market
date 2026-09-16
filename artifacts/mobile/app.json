@@ -48,7 +48,7 @@
     "android": {
       "package": "com.flexa.market",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 3,
+      "versionCode": 38,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0F172A"
@@ -84,7 +84,7 @@
         {
           "android": {
             "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
+            "targetSdkVersion": 36,
             "minSdkVersion": 24,
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true

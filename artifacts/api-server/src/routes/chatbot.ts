@@ -120,6 +120,13 @@ async function callAnthropic(messages: ChatMessage[]): Promise<string> {
 }
 
 // ── Route ─────────────────────────────────────────────────────────────────────
+router.get("/chatbot/status", (_req, res) => {
+  res.json({
+    configured: Boolean(anthropicClient || GROQ_API_KEY),
+    provider: anthropicClient ? "anthropic" : GROQ_API_KEY ? "groq" : null,
+  });
+});
+
 router.post("/chatbot/message", requireAuth, async (req, res) => {
   const parsed = parseBody(req.body);
   if (!parsed.ok) { res.status(400).json({ error: parsed.error }); return; }

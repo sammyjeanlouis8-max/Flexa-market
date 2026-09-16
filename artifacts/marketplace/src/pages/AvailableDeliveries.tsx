@@ -881,8 +881,8 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
           <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-2xl px-4 py-3">
             <MapPin className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <p className="font-black text-sm text-emerald-700 dark:text-emerald-400">Ou rive kote kliyan an</p>
-              <p className="text-xs text-emerald-700/80 dark:text-emerald-500 mt-0.5">Tanpri kontakte kliyan an.</p>
+              <p className="font-black text-sm text-emerald-700 dark:text-emerald-400">{t("availableDeliveries.dropoffArrivedTitle")}</p>
+              <p className="text-xs text-emerald-700/80 dark:text-emerald-500 mt-0.5">{t("availableDeliveries.dropoffArrivedDesc")}</p>
             </div>
           </div>
         )}
@@ -899,7 +899,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">📦 Pwodwi</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">📦 {t("availableDeliveries.product")}</p>
               <p className="text-sm font-bold text-foreground leading-tight truncate">{delivery.listingTitle}</p>
               {earningsUsd != null && (
                 <p className="text-base font-black text-emerald-600 mt-0.5">${earningsUsd.toFixed(2)} <span className="text-[10px] font-semibold text-muted-foreground">USD</span></p>
@@ -913,8 +913,8 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
           {/* KLIYAN */}
           {delivery.buyerName && (
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">KLIYAN</p>
-              <p className="text-sm font-semibold text-foreground">De {delivery.buyerName}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardBuyer")}</p>
+              <p className="text-sm font-semibold text-foreground">{delivery.buyerName}</p>
             </div>
           )}
 
@@ -922,7 +922,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
           {delivery.buyerPhone && (
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">TELEFÒN</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardPhone")}</p>
                 <p className="text-sm font-semibold text-foreground">{delivery.buyerPhone}</p>
               </div>
               <a href={`tel:${delivery.buyerPhone}`}
@@ -936,7 +936,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
           {(delivery.deliveryAddress || delivery.deliveryCity) && (
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">ADRÈS LIVREZON</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardDeliveryAddress")}</p>
                 <p className="text-sm font-semibold text-foreground leading-snug">
                   {[delivery.deliveryAddress, delivery.deliveryCity].filter(Boolean).join(", ")}
                 </p>
@@ -960,7 +960,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
                 <CheckCircle className="h-10 w-10 text-emerald-500" />
               </div>
               <div>
-                <p className="font-black text-base text-foreground">Antre kòd kliyan an</p>
+                <p className="font-black text-base text-foreground">{t("availableDeliveries.codeEntryTitle")}</p>
                 <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                   Mande kliyan an kòd 6 chif li resevwa a epi antre li anba a.
                 </p>
@@ -993,7 +993,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl px-4 py-3">
               <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-black text-xs text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-0.5">Enpòtan</p>
+                <p className="font-black text-xs text-blue-700 dark:text-blue-400 uppercase tracking-wide mb-0.5">{t("availableDeliveries.important")}</p>
                 <p className="text-xs text-blue-700/80 dark:text-blue-500 leading-relaxed">
                   Pa konfime livrezon san ou pa antre kòd konfimasyon kliyan an.
                 </p>
@@ -1006,7 +1006,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
               onClick={() => setShowCodeEntry(false)}
               className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1 transition-colors"
             >
-              ← Tounen
+                  ← {t("buttons.back")}
             </button>
           </div>
 
@@ -1775,8 +1775,8 @@ export default function AvailableDeliveries() {
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-base font-black">Chwazi Komin Ou</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Ou ap wè sèlman livrezon nan komin sa a</p>
+                  <h3 className="text-base font-black">{t("availableDeliveries.communePickerTitle")}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t("availableDeliveries.communePickerDesc")}</p>
                 </div>
                 <button onClick={() => setShowCommunePicker(false)} className="p-1.5 rounded-full hover:bg-muted transition-colors">
                   <X className="h-4 w-4 text-muted-foreground" />
@@ -1794,7 +1794,7 @@ export default function AvailableDeliveries() {
               {driverCommune && (
                 <button type="button" className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-2"
                   onClick={() => handleChangeCommune("")}>
-                  🔄 Wè tout livrezon nan peyi a (san filtre komin)
+                  🔄 {t("availableDeliveries.communeClearFilter")}
                 </button>
               )}
             </div>
@@ -1812,7 +1812,7 @@ export default function AvailableDeliveries() {
               {isAdminView ? adminSelectedCountry : user.country}
               {isAdminView && (
                 <span className="ml-1 text-[10px] font-bold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-md uppercase tracking-wide">
-                  {isSuperAdmin ? "Super Admin" : "Admin"}
+                  {isSuperAdmin ? t("availableDeliveries.adminSuperAdmin") : t("availableDeliveries.adminAdmin")}
                 </span>
               )}
             </p>
@@ -1845,7 +1845,7 @@ export default function AvailableDeliveries() {
         {isAdminView && (
           <div className="mb-4 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/40 rounded-2xl p-3">
             <p className="text-[10px] font-bold text-violet-700 dark:text-violet-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Shield className="h-3 w-3" /> Livrezon Disponib — Wè Pa Peyi
+              <Shield className="h-3 w-3" /> {t("availableDeliveries.adminCountryTitle")}
             </p>
             <div className="flex gap-2">
               {(isSuperAdmin ? [...DELIVERY_COUNTRIES] : adminScopeCountry ? [adminScopeCountry] : DELIVERY_COUNTRIES).map(c => (
@@ -1855,12 +1855,12 @@ export default function AvailableDeliveries() {
                   onClick={() => setAdminSelectedCountry(c)}
                   className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold border-2 transition-all ${adminSelectedCountry === c ? "border-violet-500 bg-violet-500/10 text-violet-700 dark:text-violet-300" : "border-border bg-background text-muted-foreground hover:bg-muted"}`}
                 >
-                  {c === "Haiti" ? "🇭🇹 Haiti" : "🇩🇴 Dominican Republic"}
+                  {c === "Haiti" ? `🇭🇹 ${t("availableDeliveries.countryHaiti")}` : `🇩🇴 ${t("availableDeliveries.countryDominicanRepublic")}`}
                 </button>
               ))}
             </div>
             <p className="text-[10px] text-violet-600/70 dark:text-violet-400/60 mt-2">
-              {deliveries.length} livrezon an atant • Tout detay vizib pou admin
+              {t("availableDeliveries.adminCountrySummary", { count: deliveries.length })}
             </p>
           </div>
         )}
@@ -1876,13 +1876,13 @@ export default function AvailableDeliveries() {
             <div className="flex-1 text-left">
               {driverCommune ? (
                 <>
-                  <p className="text-xs font-bold text-primary uppercase tracking-wide">Komin Aktif</p>
+                  <p className="text-xs font-bold text-primary uppercase tracking-wide">{t("availableDeliveries.communeActive")}</p>
                   <p className="text-sm font-black text-foreground">{driverCommune}</p>
                 </>
               ) : (
                 <>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Aucun filtre komin</p>
-                  <p className="text-sm font-semibold text-muted-foreground">Chwazi komin ou pou wè livrezon pre ou</p>
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t("availableDeliveries.communeNoFilter")}</p>
+                  <p className="text-sm font-semibold text-muted-foreground">{t("availableDeliveries.communeChooseHint")}</p>
                 </>
               )}
             </div>
@@ -1953,15 +1953,15 @@ export default function AvailableDeliveries() {
                 <Shield className="h-5 w-5 text-red-600" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-bold text-red-800 dark:text-red-300">Kont Chofe Suspann</p>
-                <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Ou pa ka aksepte livrezon pandan suspansyon an.</p>
+                <p className="text-sm font-bold text-red-800 dark:text-red-300">{t("availableDeliveries.suspensionBannerTitle")}</p>
+                <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">{t("availableDeliveries.suspensionBannerDesc")}</p>
               </div>
             </div>
             <button
               onClick={() => navigate("/delivery/suspended")}
               className="w-full text-xs font-bold text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors rounded-xl py-2.5 text-center"
             >
-              Wè detay suspansyon an →
+              {t("availableDeliveries.suspensionDetailsBtn")} →
             </button>
           </div>
         )}
@@ -1996,14 +1996,14 @@ export default function AvailableDeliveries() {
               <p className="font-bold text-lg mb-1">{t("availableDeliveries.emptyTitle")}</p>
               <p className="text-sm text-muted-foreground">
                 {driverCta === "approved" && driverCommune
-                  ? `Pa gen livrezon ki tann nan ${driverCommune} pou kounya`
+                  ? t("availableDeliveries.emptyCommune", { commune: driverCommune })
                   : driverCta === "approved" && user.country === "Haiti" && !driverHasGps
                     ? t("availableDeliveries.emptyGpsHint")
                     : t("availableDeliveries.emptyGeneral")}
               </p>
               {driverCta === "approved" && driverCommune && (
                 <Button className="mt-4 rounded-xl" variant="outline" onClick={() => setShowCommunePicker(true)}>
-                  <MapPin className="h-4 w-4 mr-2" /> Chanje komin
+                  <MapPin className="h-4 w-4 mr-2" /> {t("availableDeliveries.changeCommune")}
                 </Button>
               )}
               {driverCta === "approved" && !driverCommune && user.country === "Haiti" && !driverHasGps && (
@@ -2024,13 +2024,13 @@ export default function AvailableDeliveries() {
                     }
                     <p className="text-xs text-muted-foreground">
                       {driverCommune
-                        ? `Komin: ${driverCommune} • Klase pa distans`
+                        ? t("availableDeliveries.communeSorted", { commune: driverCommune })
                         : t("availableDeliveries.sortedByProximity")}
                     </p>
                   </div>
                   {driverCommune && (
                     <button type="button" className="text-[10px] text-primary font-bold" onClick={() => setShowCommunePicker(true)}>
-                      Chanje
+                      {t("availableDeliveries.change")}
                     </button>
                   )}
                 </div>

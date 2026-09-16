@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Printer, ChevronLeft, Truck, CheckCircle2, Package, Clock, MapPin,
-  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info,
+  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { MobileSelect } from "@/components/ui/mobile-select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import CommissionBreakdown from "@/components/CommissionBreakdown";
@@ -83,7 +84,7 @@ type Order = {
   buyer: { id: number; name: string | null };
   shipTo: {
     name: string | null; phone: string | null; email: string | null;
-    street: string | null; city: string | null; region: string | null; country: string | null;
+    street: string | null; city: string | null; region: string | null; zip: string | null; country: string | null;
   };
 };
 
@@ -465,6 +466,11 @@ export default function OrderDetail() {
   const [fmVehicleType, setFmVehicleType] = useState<"motorcycle" | "car">("motorcycle");
   const [carriers, setCarriers] = useState<string[]>([]);
   const [showSimulate, setShowSimulate] = useState(false);
+  const [showAddressDialog, setShowAddressDialog] = useState(false);
+  const [addressBusy, setAddressBusy] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    name: "", phone: "", email: "", street: "", city: "", region: "", zip: "",
+  });
 
   // ── Return request state ──────────────────────────────────────────────────
   const [returnInfo, setReturnInfo] = useState<any>(null);
@@ -571,6 +577,54 @@ export default function OrderDetail() {
       return false;
     } finally {
       setBusy(false);
+    }
+  };
+
+  const canEditShippingAddress = Boolean(
+    order?.isBuyer &&
+    !order.shippedAt &&
+    !order.trackingNumber &&
+    !["shipped", "in_transit", "out_for_delivery", "delivered", "completed", "cancelled", "return_refunded"].includes(order.orderStatus),
+  );
+
+  const openAddressDialog = () => {
+    if (!order || !canEditShippingAddress) return;
+    setAddressForm({
+      name: order.shipTo.name ?? "",
+      phone: order.shipTo.phone ?? "",
+      email: order.shipTo.email ?? "",
+      street: order.shipTo.street ?? "",
+      city: order.shipTo.city ?? "",
+      region: order.shipTo.region ?? "",
+      zip: order.shipTo.zip ?? "",
+    });
+    setShowAddressDialog(true);
+  };
+
+  const saveShippingAddress = async () => {
+    if (!addressForm.name.trim() || !addressForm.phone.trim() || !addressForm.street.trim() || !addressForm.city.trim() || !addressForm.region.trim()) {
+      toast({ title: t("orderDetail.addressRequired"), variant: "destructive" });
+      return;
+    }
+    setAddressBusy(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}/shipping-address`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(addressForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast({ title: (data as any)?.error ?? t("orderDetail.addressUpdateFailed"), variant: "destructive" });
+        return;
+      }
+      await load();
+      setShowAddressDialog(false);
+      toast({ title: t("orderDetail.addressUpdated") });
+    } catch {
+      toast({ title: t("orderDetail.toastNetworkError"), variant: "destructive" });
+    } finally {
+      setAddressBusy(false);
     }
   };
 
@@ -1171,9 +1225,16 @@ export default function OrderDetail() {
 
       {/* ── Shipping address ── */}
       <div className="rounded-2xl border border-border bg-card p-5">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
-          <MapPin className="h-4 w-4" /> {t("orderDetail.shippingAddress")}
-        </h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <MapPin className="h-4 w-4" /> {t("orderDetail.shippingAddress")}
+          </h2>
+          {canEditShippingAddress && (
+            <Button variant="outline" size="sm" onClick={openAddressDialog} className="h-8 gap-1.5 text-xs">
+              <Pencil className="h-3.5 w-3.5" /> {t("orderDetail.editAddress")}
+            </Button>
+          )}
+        </div>
         <div className="space-y-0.5">
           <div className="font-bold text-base">{order.shipTo.name ?? "—"}</div>
           <div className="text-sm">{order.shipTo.street ?? "—"}</div>
@@ -1184,6 +1245,40 @@ export default function OrderDetail() {
           {order.shipTo.email && <div className="text-xs text-muted-foreground">{order.shipTo.email}</div>}
         </div>
       </div>
+
+      <Dialog open={showAddressDialog} onOpenChange={(open) => !addressBusy && setShowAddressDialog(open)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{t("orderDetail.editAddressTitle")}</DialogTitle></DialogHeader>
+          <div className="grid gap-3">
+            {([
+              ["name", "addressName"],
+              ["phone", "addressPhone"],
+              ["email", "addressEmail"],
+              ["street", "addressStreet"],
+              ["city", "addressCity"],
+              ["region", "addressRegion"],
+              ["zip", "addressZip"],
+            ] as const).map(([field, label]) => (
+              <div key={field} className="space-y-1">
+                <Label htmlFor={`shipping-${field}`}>{t(`orderDetail.${label}`)}</Label>
+                <Input
+                  id={`shipping-${field}`}
+                  type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
+                  value={addressForm[field]}
+                  onChange={(event) => setAddressForm((current) => ({ ...current, [field]: event.target.value }))}
+                />
+              </div>
+            ))}
+            <div className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("orderDetail.addressCountryLocked", { country: order.shipTo.country ?? "—" })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddressDialog(false)} disabled={addressBusy}>{t("buttons.cancel")}</Button>
+            <Button onClick={saveShippingAddress} disabled={addressBusy}>{addressBusy ? t("buttons.sending") : t("buttons.save")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Seller actions ── */}
       {order.isSeller && (

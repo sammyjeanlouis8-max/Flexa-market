@@ -948,6 +948,78 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
   });
 });
 
+router.patch("/orders/:id/shipping-address", requireAuth, async (req, res): Promise<void> => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const orderId = parseInt(rawId, 10);
+  if (!orderId || Number.isNaN(orderId)) {
+    res.status(400).json({ error: "Invalid order id" });
+    return;
+  }
+
+  const shippingName = String(req.body?.name ?? "").trim();
+  const shippingPhone = String(req.body?.phone ?? "").trim();
+  const shippingEmail = String(req.body?.email ?? "").trim();
+  const shippingStreet = String(req.body?.street ?? "").trim();
+  const shippingCity = String(req.body?.city ?? "").trim();
+  const shippingRegion = String(req.body?.region ?? "").trim();
+  const shippingZip = String(req.body?.zip ?? "").trim();
+  if (shippingName.length < 2) { res.status(400).json({ error: "Shipping name is required" }); return; }
+  if (shippingPhone.replace(/\D/g, "").length < 6) { res.status(400).json({ error: "A valid shipping phone is required" }); return; }
+  if (shippingStreet.length < 3) { res.status(400).json({ error: "Shipping street address is required" }); return; }
+  if (shippingCity.length < 2) { res.status(400).json({ error: "Shipping city is required" }); return; }
+  if (shippingRegion.length < 2) { res.status(400).json({ error: "Shipping region/state is required" }); return; }
+  if (shippingEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shippingEmail)) {
+    res.status(400).json({ error: "Invalid shipping email" });
+    return;
+  }
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [order] = await tx.select().from(transactionsTable)
+        .where(eq(transactionsTable.id, orderId)).for("update").limit(1);
+      if (!order || order.type !== "purchase" || order.userId !== req.userId) return "not_found" as const;
+      if (
+        order.shippedAt ||
+        order.trackingNumber ||
+        ["shipped", "in_transit", "out_for_delivery", "delivered", "completed", "cancelled", "return_refunded"].includes(order.orderStatus ?? "")
+      ) return "locked" as const;
+
+      const [delivery] = await tx.select().from(deliveriesTable)
+        .where(eq(deliveriesTable.transactionId, orderId)).for("update").limit(1);
+      if (
+        delivery &&
+        ["picked_up", "in_transit", "out_for_delivery", "delivered", "returned", "cancelled"].includes(delivery.status)
+      ) return "locked" as const;
+
+      await tx.update(transactionsTable).set({
+        shippingName,
+        shippingPhone,
+        shippingEmail: shippingEmail || null,
+        shippingStreet,
+        shippingCity,
+        shippingRegion,
+        shippingZip: shippingZip || null,
+      }).where(eq(transactionsTable.id, orderId));
+
+      if (delivery) {
+        await tx.update(deliveriesTable).set({
+          deliveryCity: shippingCity,
+          deliveryAddress: [shippingStreet, shippingCity, shippingRegion].filter(Boolean).join(", "),
+          updatedAt: new Date(),
+        }).where(eq(deliveriesTable.id, delivery.id));
+      }
+      return "updated" as const;
+    });
+
+    if (result === "not_found") { res.status(404).json({ error: "Order not found" }); return; }
+    if (result === "locked") { res.status(409).json({ error: "Shipping address can no longer be changed after shipment starts" }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    req.log.error({ err: error, orderId }, "UPDATE SHIPPING ADDRESS ERROR");
+    res.status(500).json({ error: "Failed to update shipping address" });
+  }
+});
+
 // ─── Order label ───────────────────────────────────────────────────────────────
 
 router.get("/orders/:id/label", requireAuth, async (req, res): Promise<void> => {

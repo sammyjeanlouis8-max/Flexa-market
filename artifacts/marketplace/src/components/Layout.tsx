@@ -833,6 +833,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/checkout/,
     /^\/settings\/stripe/,
     /^\/order-label\//,
+    /^\/orders\/[^/]+\/?$/,
     /^\/videos$/,
     /^\/wallet/,
     /^\/chatbot/,

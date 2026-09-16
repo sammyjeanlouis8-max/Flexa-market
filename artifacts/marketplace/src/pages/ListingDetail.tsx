@@ -2497,7 +2497,7 @@ export default function ListingDetail() {
                     </div>
                   ) : (
                     <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Shipping carrier</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("listing.shippingCarrier")}</p>
                       <div className="flex flex-wrap gap-2">
                         {((listing as any)?.shippingCarriers?.length ? (listing as any).shippingCarriers : ["UPS", "FedEx", "DHL", "USPS", "Other"]).map((c: string) => (
                           <button key={c} type="button" onClick={() => setSelectedCarrier(c)}
@@ -2620,9 +2620,14 @@ export default function ListingDetail() {
                         </div>
                       )}
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">🚚 Livrezon{deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && ` (${deliverySpeedTier === "rapid" ? "Rapid" : deliverySpeedTier === "express" ? "Express" : "Standard"})`}{deliverySpeedTier === "custom" && " (Pwopoze)"}</span>
+                         <span className="text-muted-foreground">
+                           🚚 {t("listing.checkoutDelivery")}
+                           {isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && ` (${t(`listing.delivery${deliverySpeedTier === "rapid" ? "Rapid" : deliverySpeedTier === "express" ? "Express" : "Standard"}`)})`}
+                           {isLocalDelivery && deliverySpeedTier === "custom" && ` (${t("listing.deliveryProposed")})`}
+                           {!isLocalDelivery && selectedCarrier && ` (${selectedCarrier})`}
+                         </span>
                         {deliverySpeedTier === "pickup" ? (
-                          <span className="font-semibold text-green-600 dark:text-green-400">Gratis</span>
+                          <span className="font-semibold text-green-600 dark:text-green-400">{t("listing.deliveryFree")}</span>
                         ) : deliverySpeedTier === "custom" ? (
                           deliveryFeeUsd > 0
                             ? <span className="font-semibold text-blue-600 dark:text-blue-400">+${deliveryFeeUsd.toFixed(2)}</span>
@@ -2632,7 +2637,7 @@ export default function ListingDetail() {
                         ) : effectiveDeliveryFee > 0 ? (
                           <span className="font-semibold text-blue-600 dark:text-blue-400">+${effectiveDeliveryFee.toFixed(2)}</span>
                         ) : (
-                          <span className="text-amber-500 text-xs">⚠️ vil ?</span>
+                          <span className="text-amber-500 text-xs">⚠️ {t("listing.checkoutCityUnknown")}</span>
                         )}
                       </div>
                       {effectiveTip > 0 && (
@@ -2649,7 +2654,7 @@ export default function ListingDetail() {
                       )}
                     </div>
                     <div className="border-t border-border pt-2 flex items-center justify-between">
-                      <span className="font-black text-sm">💰 Total aktyèl</span>
+                      <span className="font-black text-sm">💰 {t("listing.checkoutCurrentTotal")}</span>
                       <span className="text-xl font-black text-primary">
                         {(deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && isLocalDelivery && effectiveDeliveryFee === 0 && !deliveryFeeLoading)
                           ? `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + (quote?.referralFee ?? 0)).toFixed(2)} + liv.`
@@ -2699,7 +2704,7 @@ export default function ListingDetail() {
                             <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">{t("listing.autoLabel")}</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {walletData ? `Balans: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} promo` : ""} = $${walletTotal.toFixed(2)}` : t("listing.loadingBalance")}
+                             {walletData ? `${t("listing.checkoutBalance")}: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} ${t("listing.checkoutPromo")}` : ""} = $${walletTotal.toFixed(2)}` : t("listing.loadingBalance")}
                           </p>
                           <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">{t("listing.directDeduction")}</p>
                           {walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)) - 0.001 && walletData && (
@@ -2734,20 +2739,20 @@ export default function ListingDetail() {
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 my-1">
                             <div className="flex-1 h-px bg-border" />
-                            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">Peye Vèsman · BNPL</span>
+                             <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">{t("listing.checkoutInstallments")}</span>
                             <div className="flex-1 h-px bg-border" />
                           </div>
                           {/* Eligibility badge */}
                           {bnplEligible === false && (
                             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
                               <span className="text-amber-600 text-sm">⚠️</span>
-                              <p className="text-xs text-amber-800 dark:text-amber-300">Kont ou pa satisfè kritè BNPL yo — li bezwen 90+ jou aktivite. Ou ka toujou eseye peman dirèk.</p>
+                               <p className="text-xs text-amber-800 dark:text-amber-300">{t("listing.checkoutBnplIneligible")}</p>
                             </div>
                           )}
                           {bnplEligible === true && (
                             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
                               <span className="text-green-600 text-sm">✅</span>
-                              <p className="text-xs text-green-800 dark:text-green-300 font-semibold">Flexa Credit Eligible — ou ka peye vèsman san enterè!</p>
+                               <p className="text-xs text-green-800 dark:text-green-300 font-semibold">{t("listing.checkoutBnplEligible")}</p>
                             </div>
                           )}
                           {/* Klarna */}
@@ -2760,10 +2765,10 @@ export default function ListingDetail() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-pink-800 dark:text-pink-300">Klarna</p>
-                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-pink-200 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 uppercase tracking-wide">0% enterè</span>
+                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-pink-200 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 uppercase tracking-wide">{t("listing.checkoutNoInterest")}</span>
                                 </div>
                                 <p className="text-xs text-muted-foreground">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p>
-                                <p className="text-[10px] text-pink-600 dark:text-pink-400 mt-0.5">Total: ${totalAmt.toFixed(2)} · 4 peman egal</p>
+                                 <p className="text-[10px] text-pink-600 dark:text-pink-400 mt-0.5">{t("listing.checkoutEqualPayments", { total: totalAmt.toFixed(2) })}</p>
                               </div>
                               {bnplLoading === "klarna" && <div className="h-5 w-5 border-2 border-pink-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
                             </button>
@@ -2778,10 +2783,10 @@ export default function ListingDetail() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-teal-800 dark:text-teal-300">Afterpay</p>
-                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-teal-200 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 uppercase tracking-wide">4 peman</span>
+                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-teal-200 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 uppercase tracking-wide">{t("listing.checkoutFourPayments")}</span>
                                 </div>
                                 <p className="text-xs text-muted-foreground">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p>
-                                <p className="text-[10px] text-teal-600 dark:text-teal-400 mt-0.5">Clearpay disponib nan UK/AU/CA</p>
+                                 <p className="text-[10px] text-teal-600 dark:text-teal-400 mt-0.5">{t("listing.checkoutClearpayAvailability")}</p>
                               </div>
                               {bnplLoading === "afterpay_clearpay" && <div className="h-5 w-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
                             </button>
@@ -2796,10 +2801,10 @@ export default function ListingDetail() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className="font-semibold text-indigo-800 dark:text-indigo-300">Affirm</p>
-                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-indigo-200 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">Mensyèl</span>
+                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-indigo-200 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">{t("listing.checkoutMonthly")}</span>
                                 </div>
-                                <p className="text-xs text-muted-foreground">Divize ${totalAmt.toFixed(2)} an peman mensyèl fleksib</p>
-                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5">Peman anyèl · disponib US sèlman</p>
+                                 <p className="text-xs text-muted-foreground">{t("listing.checkoutAffirmDescription", { total: totalAmt.toFixed(2) })}</p>
+                                 <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5">{t("listing.checkoutAffirmAvailability")}</p>
                               </div>
                               {bnplLoading === "affirm" && <div className="h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
                             </button>
@@ -2817,7 +2822,7 @@ export default function ListingDetail() {
                       </div>
                       <div>
                         <p className="font-semibold">{t("payment.usdtPayment")}</p>
-                        <p className="text-xs text-muted-foreground">{usdtWalletAddress.trim() ? t("payment.usdtSubtitle") : "Currently unavailable — choose another method"}</p>
+                         <p className="text-xs text-muted-foreground">{usdtWalletAddress.trim() ? t("payment.usdtSubtitle") : t("listing.checkoutUnavailableMethod")}</p>
                       </div>
                     </button>
 

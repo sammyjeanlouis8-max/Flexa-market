@@ -951,8 +951,10 @@ export default function LoanPage() {
     );
   }
 
-  // ── Country guard (skip for admins) ────────────────────────────────────────
-  if (!loading && eligData && !eligData.countryEligible && !eligData.isSuperAdmin && !eligData.isAdminUser) {
+  // ── Country guard ──────────────────────────────────────────────────────────
+  // This reflects the authenticated account country returned by the server;
+  // admin roles do not bypass it.
+  if (!loading && eligData && !eligData.countryEligible) {
     return (
       <div className="max-w-lg mx-auto px-4 py-16 text-center">
         <div className="text-6xl mb-4">🌍</div>

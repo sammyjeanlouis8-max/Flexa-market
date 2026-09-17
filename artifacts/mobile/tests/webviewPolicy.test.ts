@@ -31,8 +31,11 @@ test("Stripe routing preserves legitimate HTTPS checkout only", () => {
 test("MonCash checkout stays in the WebView without trusting lookalike hosts", () => {
   assert.equal(isTrustedMonCashUrl("https://button.digicelgroup.com/MonCashPayment/Payment"), true);
   assert.equal(classifyWebUrl("https://button.digicelgroup.com/MonCashPayment/Payment"), "moncash");
+  assert.equal(isTrustedMonCashUrl("https://moncashbutton.digicelgroup.com/MonCashPayment/Payment"), true);
+  assert.equal(classifyWebUrl("https://moncashbutton.digicelgroup.com/MonCashPayment/Payment"), "moncash");
   assert.equal(isTrustedMonCashUrl("http://button.digicelgroup.com/MonCashPayment/Payment"), false);
   assert.equal(isTrustedMonCashUrl("https://button.digicelgroup.com.evil.test"), false);
+  assert.equal(isTrustedMonCashUrl("https://moncashbutton.digicelgroup.com.evil.test"), false);
   assert.equal(isTrustedMonCashUrl("https://digicelgroup.com"), false);
 });
 

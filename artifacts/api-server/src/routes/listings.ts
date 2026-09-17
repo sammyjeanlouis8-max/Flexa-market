@@ -83,6 +83,9 @@ const STATE_BY_CITY: Record<string, string> = {
 const router = Router();
 
 const subcategoriesTable = alias(categoriesTable, "subcategories");
+function excludeBlockedSellers(conditions: any[], viewerId?: number | null): void {
+  if (viewerId) conditions.push(sql`NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ${viewerId} AND ub.blocked_id = ${listingsTable.sellerId})`);
+}
 
 function toStreamingVideoUrl(url: string): string {
   if (!url.includes("res.cloudinary.com") || !url.includes("/video/upload/")) {
@@ -323,6 +326,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     listingHasUsableImageSql(),
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
   ];
+  excludeBlockedSellers(baseConditions, req.userId);
   if (q) baseConditions.push(or(ilike(listingsTable.title, `%${q}%`), ilike(listingsTable.description, `%${q}%`))!);
   if (category) baseConditions.push(eq(categoriesTable.slug, category));
   if (subcategory) baseConditions.push(eq(subcategoriesTable.slug, subcategory));
@@ -692,6 +696,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
@@ -740,6 +745,7 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
 router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
   const userCountry = req.user?.country ?? null;
 
@@ -805,6 +811,7 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
 router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> => {
   try {
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
@@ -868,6 +875,7 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
     sql`${listingsTable.boostExpiresAt} > NOW()` as any,
     sql`${listingsTable.sellerId} != ${req.userId}` as any,
   ];
+  excludeBlockedSellers(conditions, req.userId);
 
   if (userCountry) {
     // Strict country isolation: use COALESCE so that boosts with NULL audienceCountry
@@ -1265,6 +1273,10 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
     .where(eq(listingsTable.id, id));
    if (!row) { res.status(404).json({ error: "Listing not found" }); return; }
+   if (req.userId && req.userId !== row.listings.sellerId) {
+     const blocked = await db.execute(sql`SELECT 1 FROM user_blocks WHERE blocker_id = ${req.userId} AND blocked_id = ${row.listings.sellerId} LIMIT 1`);
+     if (blocked.rows.length) { res.status(404).json({ error: "Listing not found" }); return; }
+   }
    const isAdminD = hasRole(req.user, "admin");
    const isOwnerD = req.userId === row.listings.sellerId;
    if (isAdminD && !isOwnerD && !listingInAdminScope(req.user!, {
@@ -2286,6 +2298,7 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
       // Exclude the user's own listings
       ne(listingsTable.sellerId, req.userId!),
     ];
+    excludeBlockedSellers(baseConditions, req.userId);
 
     // 3. Scope to the user's country (same rule as the main feed)
     const userCountry = req.user?.country ?? null;

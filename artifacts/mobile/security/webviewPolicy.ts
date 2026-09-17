@@ -3,6 +3,10 @@ export const ANDROID_UA_SUFFIX = "FlexaMarketAndroid/1.0";
 export type WebRoute = "flexa" | "stripe" | "moncash" | "external" | "blocked";
 
 const FLEXA_HOST = "flexamarket.com";
+const MONCASH_HOSTS = new Set([
+  "button.digicelgroup.com",
+  "moncashbutton.digicelgroup.com",
+]);
 
 export function isTrustedFlexaUrl(url: string): boolean {
   try {
@@ -36,8 +40,7 @@ export function isTrustedMonCashUrl(url: string): boolean {
     const parsed = new URL(url);
     return (
       parsed.protocol === "https:" &&
-      (parsed.hostname === "button.digicelgroup.com" ||
-        parsed.hostname.endsWith(".button.digicelgroup.com"))
+      MONCASH_HOSTS.has(parsed.hostname)
     );
   } catch {
     return false;

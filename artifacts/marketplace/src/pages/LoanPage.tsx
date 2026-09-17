@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { isLoanAllowed } from "@/lib/loanPolicy";
 import {
   Loader2, Lock, CheckCircle2, Calendar, TrendingUp, Star, Truck,
   Shield, ShieldCheck, Banknote, Clock, Zap, Gift, Phone, Upload, ChevronRight,
@@ -769,6 +770,10 @@ export default function LoanPage() {
   const { user, token } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const isNativeApp = typeof window !== "undefined" &&
+    (window.__iosWebView || window.__flexaPlatform === "ios" || window.__flexaPlatform === "android");
+  // Preserve the web login prompt, while native apps fail closed before auth.
+  const loanAllowed = user ? isLoanAllowed(user.country) : !isNativeApp;
 
   const [eligData, setEligData] = useState<EligibilityData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -938,6 +943,12 @@ export default function LoanPage() {
       setSubmitting(false);
     }
   };
+
+  // Defense in depth: navigation can be entered directly, without a menu.
+  useEffect(() => {
+    if (!loanAllowed) setLocation("/");
+  }, [loanAllowed, setLocation]);
+  if (!loanAllowed) return null;
 
   // ── Redirect if not logged in ──────────────────────────────────────────────
   if (!user) {

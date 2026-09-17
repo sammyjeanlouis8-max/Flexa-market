@@ -36,6 +36,21 @@ describe("Bazik MonCash adapter", () => {
     });
   });
 
+  it("does not invent a provider order identity when Bazik omits it", () => {
+    expect(normalizeBazikPayment({
+      referenceId: "wallet_topup_42_100",
+      status: "successful",
+      amount: 750,
+      currency: "HTG",
+    })).toMatchObject({
+      orderId: "",
+      referenceId: "wallet_topup_42_100",
+      status: "successful",
+      amountHtg: 750,
+      currency: "HTG",
+    });
+  });
+
   it("accepts only documented successful statuses", () => {
     expect(bazikPaymentSucceeded("succeeded")).toBe(true);
     expect(bazikPaymentSucceeded("successful")).toBe(true);

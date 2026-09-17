@@ -723,15 +723,15 @@ export default function WalletPage() {
     queryFn: () => apiPost("/wallet/haiti/reconcile", {}),
     enabled: !!isHaiti,
     retry: false,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   useEffect(() => {
-    if ((monCashReconciliation?.credited ?? 0) > 0) {
-      qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
-      qc.invalidateQueries({ queryKey: ["/wallet/history"] });
-    }
-  }, [monCashReconciliation?.credited, qc]);
+    if (!monCashReconciliation) return;
+    qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
+    qc.invalidateQueries({ queryKey: ["/wallet/history"] });
+  }, [monCashReconciliation, qc]);
 
   const { mutate: getQuote, data: quoteData, isPending: isQuoteLoading } = useMutation({
     mutationFn: (body: any) => apiPost("/wallet/haiti/quote", body),

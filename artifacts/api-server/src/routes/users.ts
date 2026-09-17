@@ -349,6 +349,12 @@ router.get("/users/:id/listings", optionalAuth, async (req, res): Promise<void> 
   const isAdmin = req.user?.isAdmin || req.user?.isSuperAdmin;
   const conditions = [eq(listingsTable.sellerId, id)];
   conditions.push(listingHasUsableImageSql());
+  if (req.userId && req.userId !== id) {
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM user_blocks ub
+      WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${id}
+    )` as any);
+  }
   if (!isOwner && !isAdmin) {
     conditions.push(eq(listingsTable.moderationStatus, "approved"));
     // Mirror the detail-endpoint's country isolation: a logged-in user with a

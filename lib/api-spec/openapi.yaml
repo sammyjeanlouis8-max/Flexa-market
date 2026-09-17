@@ -1349,13 +1349,17 @@ components:
           type: string
         promoCode:
           type: string
-      required: [name, email, password, phone, country]
+        eulaAccepted:
+          type: boolean
+      required: [name, email, password, country, eulaAccepted]
 
     LoginPhoneBody:
       type: object
       properties:
         phoneToken:
           type: string
+        eulaAccepted:
+          type: boolean
       required: [phoneToken]
 
     SendOtpBody:
@@ -1413,6 +1417,8 @@ components:
           type: string
         password:
           type: string
+        eulaAccepted:
+          type: boolean
       required: [email, password]
 
     AuthResponse:

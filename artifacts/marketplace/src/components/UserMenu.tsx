@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/auth";
+import { isLoanAllowed } from "@/lib/loanPolicy";
 import {
   User as UserIcon,
   Settings as SettingsIcon,
@@ -111,7 +112,7 @@ export default function UserMenu() {
 
         <DropdownMenuSeparator />
 
-        {user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) && (
+        {isLoanAllowed(user.country) && (
           <DropdownMenuItem asChild>
             <Link href="/loans">
               <span

@@ -94,6 +94,21 @@ export async function ensureBoostVideoUploadSchema(): Promise<void> {
  */
 export async function runStartupMigrations(): Promise<void> {
   const migrations: Array<{ name: string; sql: string }> = [
+    { name: "users.eula_acceptance", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS eula_accepted_at TIMESTAMPTZ; ALTER TABLE users ADD COLUMN IF NOT EXISTS eula_version TEXT" },
+    {
+      name: "user_blocks.create",
+      sql: `CREATE TABLE IF NOT EXISTS user_blocks (
+        id SERIAL PRIMARY KEY,
+        blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+    },
+    {
+      name: "user_blocks.blocker_blocked_unique",
+      sql: `CREATE UNIQUE INDEX IF NOT EXISTS user_blocks_blocker_blocked_idx
+        ON user_blocks(blocker_id, blocked_id)`,
+    },
     {
       name: "promax_rotation_snapshots.create",
       sql: `CREATE TABLE IF NOT EXISTS promax_rotation_snapshots (
@@ -1972,6 +1987,29 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({
     name: "vendor_subscriptions.next_wallet_retry_idx",
     sql: `CREATE INDEX IF NOT EXISTS vendor_subscriptions_next_wallet_retry_idx ON vendor_subscriptions(next_wallet_retry_at)`,
+  });
+  migrations.push({
+    name: "vendor_subscriptions.provider_isolation_v1",
+    sql: `
+      ALTER TABLE vendor_subscriptions ADD COLUMN IF NOT EXISTS billing_provider TEXT NOT NULL DEFAULT 'fm_wallet';
+      ALTER TABLE vendor_subscriptions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'fm_wallet';
+      ALTER TABLE vendor_subscriptions ADD COLUMN IF NOT EXISTS provider_subscription_id TEXT;
+      ALTER TABLE vendor_subscriptions ADD COLUMN IF NOT EXISTS original_transaction_id TEXT;
+      ALTER TABLE vendor_subscriptions ADD COLUMN IF NOT EXISTS last_provider_event_at TIMESTAMPTZ;
+      UPDATE vendor_subscriptions SET billing_provider = 'stripe', source = 'stripe' WHERE stripe_subscription_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS vendor_subscriptions_provider_idx ON vendor_subscriptions(billing_provider, provider_subscription_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS vendor_subscriptions_original_transaction_unique ON vendor_subscriptions(original_transaction_id) WHERE original_transaction_id IS NOT NULL;
+    `,
+  });
+  migrations.push({
+    name: "revenuecat_webhook_events.create",
+    sql: `CREATE TABLE IF NOT EXISTS revenuecat_webhook_events (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      original_transaction_id TEXT,
+      event_at TIMESTAMPTZ,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
   });
 
   // ── Deduplicate wallet_transactions.payment_ref before adding unique index ───

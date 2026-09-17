@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { deductWallet } from "./wallet";
 import { logger } from "../lib/logger";
+import { loanAccessPolicy } from "../lib/loanPolicy";
 
 const router = Router();
 
@@ -285,6 +286,10 @@ router.get("/loans/eligibility", requireAuth, async (req, res) => {
 
     const m = await fetchEligibilityMetrics(userId);
     if (!m) { res.status(404).json({ error: "User not found" }); return; }
+    if (!loanAccessPolicy(m.user.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Loans are not available for this account or application." });
+      return;
+    }
 
     const { user, daysOnPlatform, salesCount, delivSuccessRate, reportCount, activeListingCount } = m;
     // Eligibility uses the authenticated account country only. Admin roles
@@ -366,6 +371,10 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
     if (!m) { res.status(404).json({ error: "User not found" }); return; }
 
     const actor = (req as any).user;
+    if (!loanAccessPolicy(m.user.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Loans are not available for this account or application." });
+      return;
+    }
     const isSuperAdmin = !!actor.isSuperAdmin;
     const isAdminUser  = !isSuperAdmin && !!actor.isAdmin;
 
@@ -484,7 +493,12 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
 // ── GET /api/loans/my ─────────────────────────────────────────────────────────
 router.get("/loans/my", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user.id;
+    const actor = (req as any).user;
+    if (!loanAccessPolicy(actor.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Loans are not available for this account or application." });
+      return;
+    }
+    const userId = actor.id;
     const appsRes = await db.execute(sql`
       SELECT id, status, amount_requested, term_months, reviewer_note,
              approved_at, completed_at, total_repayment_usd, amount_paid_usd,
@@ -502,7 +516,12 @@ router.get("/loans/my", requireAuth, async (req, res) => {
 // ── GET /api/loans/my/installments ────────────────────────────────────────────
 router.get("/loans/my/installments", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user.id;
+    const actor = (req as any).user;
+    if (!loanAccessPolicy(actor.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Loans are not available for this account or application." });
+      return;
+    }
+    const userId = actor.id;
     const { loanId } = req.query as Record<string, string>;
 
     let filter = sql`WHERE li.user_id = ${userId}`;
@@ -529,7 +548,12 @@ router.get("/loans/my/installments", requireAuth, async (req, res) => {
 // ── POST /api/loans/:id/retry-payment ─────────────────────────────────────────
 router.post("/loans/:id/retry-payment", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user.id;
+    const actor = (req as any).user;
+    if (!loanAccessPolicy(actor.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Loans are not available for this account or application." });
+      return;
+    }
+    const userId = actor.id;
     const loanId = parseInt(req.params.id as string, 10);
     const { installmentId } = req.body as { installmentId: number };
 

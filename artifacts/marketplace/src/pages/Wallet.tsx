@@ -1650,9 +1650,11 @@ export default function WalletPage() {
             </svg>
           </div>
           <div className="space-y-0.5">
-            <p className="text-[12px] font-bold text-red-700 dark:text-red-400 leading-snug">Atansyon — Kont ou riske bloke pèmanantman</p>
+            <p className="text-[12px] font-bold text-red-700 dark:text-red-400 leading-snug">
+              {t("wallet.chargebackWarningTitle")}
+            </p>
             <p className="text-[11.5px] text-red-600/80 dark:text-red-400/70 leading-[1.5]">
-              Si bank ou mande lajan bak (chargeback), kont ou ap bloke definitiv. Itilize <span className="font-semibold">kat ki pou ou sèlman</span> pou evite sispansyon.
+              {t("wallet.chargebackWarningBody")}
             </p>
           </div>
         </div>

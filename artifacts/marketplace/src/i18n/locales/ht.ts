@@ -1557,6 +1557,8 @@ export default {
     preparing: "Ap prepare…",
     payWithCard: "Peye ${{amount}} ak Kat",
     stripeNotice: "Pwoteje pa Stripe · SSL Chiffré",
+    chargebackWarningTitle: "Atansyon — Kont ou ka bloke definitivman",
+    chargebackWarningBody: "Si bank ou reprann peman an (chargeback), kont ou ap bloke definitivman. Itilize sèlman yon kat ki pou ou pou evite sispansyon.",
     sendTitle: "Voye Lajan",
     sendSubtitle: "Antre nimewo kont FLEXA MARKET destinatè a",
     recipientAccount: "Nimewo kont destinatè",

@@ -1560,6 +1560,8 @@ export default {
     preparing: "Préparation…",
     payWithCard: "Payer ${{amount}} par carte",
     stripeNotice: "Protégé par Stripe · SSL chiffré",
+    chargebackWarningTitle: "Attention — Votre compte peut être bloqué définitivement",
+    chargebackWarningBody: "Si votre banque annule le paiement (chargeback), votre compte sera bloqué définitivement. Utilisez uniquement une carte qui vous appartient pour éviter la suspension.",
     sendTitle: "Envoyer de l'argent",
     sendSubtitle: "Entrez le numéro de compte FLEXA MARKET du destinataire",
     recipientAccount: "Numéro de compte du destinataire",

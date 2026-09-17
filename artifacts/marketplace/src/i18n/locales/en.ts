@@ -1557,6 +1557,8 @@ export default {
     preparing: "Preparing…",
     payWithCard: "Pay ${{amount}} with Card",
     stripeNotice: "Protected by Stripe · SSL Encrypted",
+    chargebackWarningTitle: "Warning — Your account may be permanently blocked",
+    chargebackWarningBody: "If your bank reverses the payment (chargeback), your account will be permanently blocked. Use only a card that belongs to you to avoid suspension.",
     sendTitle: "Send Money",
     sendSubtitle: "Enter the recipient's FLEXA MARKET account number",
     recipientAccount: "Recipient account number",

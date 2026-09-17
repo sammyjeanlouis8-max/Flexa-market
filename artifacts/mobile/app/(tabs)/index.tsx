@@ -140,7 +140,7 @@ export default function HomeTab() {
 
   const onShouldStartLoadWithRequest = useCallback((req: any) => {
     const route = classifyWebUrl(req.url);
-    if (route === "flexa" || route === "stripe") return true;
+    if (route === "flexa" || route === "stripe" || route === "moncash") return true;
     if (route === "external") Linking.openURL(req.url).catch(() => {});
     return false;
   }, []);
@@ -149,7 +149,7 @@ export default function HomeTab() {
     const url = event.nativeEvent?.targetUrl;
     if (!url) return;
     const route = classifyWebUrl(url);
-    if (route === "flexa" || route === "stripe") {
+    if (route === "flexa" || route === "stripe" || route === "moncash") {
       webRef.current?.injectJavaScript(`window.location.href=${JSON.stringify(url)};true;`);
     } else if (route === "external") {
       Linking.openURL(url).catch(() => {});

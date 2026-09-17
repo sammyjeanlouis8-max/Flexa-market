@@ -17,6 +17,9 @@ const appConfig = JSON.parse(appJsonText).expo;
 const easConfig = JSON.parse(easJsonText);
 const workspacePackage = JSON.parse(workspacePackageText);
 const failures = [];
+const blockedAndroidPermissions = new Set(
+  appConfig.android?.blockedPermissions ?? [],
+);
 
 function requireCondition(condition, message) {
   if (!condition) failures.push(message);
@@ -56,6 +59,40 @@ requireCondition(
   "Production build-number auto-increment must remain enabled.",
 );
 requireCondition(
+  appConfig.android?.package === "com.flexa.market",
+  "Android package must remain com.flexa.market.",
+);
+requireCondition(
+  Number.isInteger(appConfig.android?.versionCode) &&
+    appConfig.android.versionCode >= 39,
+  "Android versionCode must be an integer at least 39.",
+);
+for (const permission of [
+  "android.permission.READ_MEDIA_IMAGES",
+  "android.permission.READ_MEDIA_VIDEO",
+  "android.permission.READ_EXTERNAL_STORAGE",
+  "android.permission.WRITE_EXTERNAL_STORAGE",
+]) {
+  requireCondition(
+    blockedAndroidPermissions.has(permission) &&
+      !appConfig.android?.permissions?.includes(permission),
+    `Android broad media permission must remain blocked: ${permission}.`,
+  );
+}
+const buildProperties = appConfig.plugins?.find(
+  (plugin) =>
+    Array.isArray(plugin) && plugin[0] === "expo-build-properties",
+)?.[1]?.android;
+requireCondition(
+  buildProperties?.compileSdkVersion === 36 &&
+    buildProperties?.targetSdkVersion === 36,
+  "Android compileSdkVersion and targetSdkVersion must both be 36.",
+);
+requireCondition(
+  easConfig.build?.production?.android?.buildType === "app-bundle",
+  "Android production builds must create an app bundle.",
+);
+requireCondition(
   appSource.includes("We&apos;re getting the marketplace ready for you"),
   "English startup title is missing.",
 );
@@ -87,6 +124,8 @@ if (failures.length > 0) {
 console.log("Mobile release preflight passed.");
 console.log(`iOS build number: ${appConfig.ios.buildNumber}`);
 console.log(`Bundle identifier: ${appConfig.ios.bundleIdentifier}`);
+console.log(`Android version code: ${appConfig.android.versionCode}`);
+console.log(`Android package: ${appConfig.android.package}`);
 console.log(
   `Production domain: ${easConfig.build.production.env.EXPO_PUBLIC_DOMAIN}`,
 );

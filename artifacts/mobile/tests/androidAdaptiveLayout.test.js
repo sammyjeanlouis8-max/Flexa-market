@@ -58,8 +58,8 @@ test("release optimization uses supported Android-only Expo configuration", () =
   assert.ok(plugin);
   assert.deepEqual(plugin[1], {
     android: {
-      compileSdkVersion: 35,
-      targetSdkVersion: 35,
+      compileSdkVersion: 36,
+      targetSdkVersion: 36,
       minSdkVersion: 24,
       enableMinifyInReleaseBuilds: true,
       enableShrinkResourcesInReleaseBuilds: true,

@@ -12,6 +12,7 @@ import {
   type MonCashMode,
 } from "../lib/moncash";
 import {
+  BazikApiError,
   bazikPaymentSucceeded,
   bazikCreationDefinitelyRejected,
   createBazikMonCashPayment,
@@ -275,15 +276,32 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
       };
       const token = await getBazikAccessToken(bazikConfig);
       for (const row of pending) {
-        if (!row.paymentRef || !row.providerOrderId) continue;
+        if (!row.paymentRef || !row.providerOrderId) {
+          logger.warn({
+            userId,
+            hasPaymentRef: !!row.paymentRef,
+            hasProviderOrderId: !!row.providerOrderId,
+          }, "Bazik wallet topup reconciliation skipped an incomplete pending row");
+          continue;
+        }
         try {
           const payment = await retrieveBazikPayment(bazikConfig, token, row.providerOrderId);
-          if (
-            payment.orderId !== row.providerOrderId ||
-            payment.referenceId !== row.paymentRef ||
-            payment.currency !== "HTG" ||
-            !bazikPaymentSucceeded(payment.status)
-          ) {
+          const validation = {
+            orderMatches: payment.orderId === row.providerOrderId,
+            referenceMatches: payment.referenceId === row.paymentRef,
+            currencyMatches: payment.currency === "HTG",
+            statusSucceeded: bazikPaymentSucceeded(payment.status),
+            amountPresent: Number.isFinite(payment.amountHtg),
+          };
+          if (!Object.values(validation).every(Boolean)) {
+            logger.warn({
+              userId,
+              providerOrderId: row.providerOrderId,
+              paymentStatus: payment.status || "missing",
+              paymentCurrency: payment.currency || "missing",
+              paymentAmountHtg: Number.isFinite(payment.amountHtg) ? payment.amountHtg : "missing",
+              ...validation,
+            }, "Bazik wallet topup reconciliation validation failed");
             continue;
           }
           const outcome = await verifyHaitiMonCashTopup(
@@ -292,8 +310,23 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
             payment.amountHtg,
             payment.orderId,
           );
+          if (!outcome.ok) {
+            logger.warn({
+              userId,
+              providerOrderId: row.providerOrderId,
+              replayed: !!outcome.replayed,
+              amountHtg: payment.amountHtg,
+            }, "Bazik wallet topup credit validation failed");
+          }
           if (outcome.ok && !outcome.alreadyProcessed) credited += 1;
-        } catch {
+        } catch (error) {
+          logger.warn({
+            userId,
+            providerOrderId: row.providerOrderId,
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            operation: error instanceof BazikApiError ? error.operation : undefined,
+            httpStatus: error instanceof BazikApiError ? error.status : undefined,
+          }, "Bazik wallet topup reconciliation provider lookup failed");
           // Keep pending for a later authenticated retry. Credits still require
           // a successful provider lookup with exact order, reference, and amount.
         }

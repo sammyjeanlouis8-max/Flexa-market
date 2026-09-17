@@ -145,8 +145,10 @@ export function normalizeBazikPayment(payload: unknown): BazikPayment {
     transactionId: firstString(root.transactionId, data.transactionId, payment.transactionId, nestedPayment.transactionId),
     status: firstString(root.status, data.status, payment.status, nestedPayment.status).toLowerCase(),
     amountHtg: firstNumber(
-      root.gourdes, root.amount, data.gourdes, data.amount,
-      payment.gourdes, payment.amount, nestedPayment.gourdes, nestedPayment.amount,
+      root.gdes, root.gourdes, root.amount,
+      data.gdes, data.gourdes, data.amount,
+      payment.gdes, payment.gourdes, payment.amount,
+      nestedPayment.gdes, nestedPayment.gourdes, nestedPayment.amount,
     ),
     currency: firstString(root.currency, data.currency, payment.currency, nestedPayment.currency).toUpperCase(),
     redirectUrl: firstString(root.redirectUrl, data.redirectUrl, payment.redirectUrl, nestedPayment.redirectUrl) || undefined,

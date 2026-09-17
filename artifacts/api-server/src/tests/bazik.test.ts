@@ -51,6 +51,24 @@ describe("Bazik MonCash adapter", () => {
     });
   });
 
+  it("normalizes Bazik gdes amounts returned by order verification", () => {
+    expect(normalizeBazikPayment({
+      orderId: "BZK_prodd4",
+      referenceId: "wallet_topup_42_100",
+      transactionId: "txn_750",
+      status: "Successful",
+      gdes: 750,
+      currency: "HTG",
+    })).toMatchObject({
+      orderId: "BZK_prodd4",
+      referenceId: "wallet_topup_42_100",
+      transactionId: "txn_750",
+      status: "successful",
+      amountHtg: 750,
+      currency: "HTG",
+    });
+  });
+
   it("accepts only Bazik terminal success statuses", () => {
     expect(bazikPaymentSucceeded("completed")).toBe(true);
     expect(bazikPaymentSucceeded("succeeded")).toBe(true);

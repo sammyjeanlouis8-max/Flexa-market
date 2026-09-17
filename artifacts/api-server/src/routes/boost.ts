@@ -398,6 +398,11 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     // boosts that were activated before the boostStartAt column was added.
     sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
     ne(listingsTable.sellerId, viewerId),
+    ...(req.userId ? [sql`NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId})`] : []),
+    ...(req.userId ? [sql`NOT EXISTS (
+      SELECT 1 FROM user_blocks ub
+      WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId}
+    )`] : []),
     // Admins and super-admins bypass the country filter for full-market visibility.
     // Regular users must match their country; unauthenticated → sql`false` (no match).
     ...(skipCountryFilter ? [] : [

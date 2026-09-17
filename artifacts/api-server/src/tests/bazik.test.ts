@@ -51,7 +51,8 @@ describe("Bazik MonCash adapter", () => {
     });
   });
 
-  it("accepts only documented successful statuses", () => {
+  it("accepts only Bazik terminal success statuses", () => {
+    expect(bazikPaymentSucceeded("completed")).toBe(true);
     expect(bazikPaymentSucceeded("succeeded")).toBe(true);
     expect(bazikPaymentSucceeded("successful")).toBe(true);
     expect(bazikPaymentSucceeded("pending")).toBe(false);

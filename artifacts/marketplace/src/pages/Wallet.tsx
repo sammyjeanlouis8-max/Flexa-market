@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
-import { isLoanAllowed } from "@/lib/loanPolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
@@ -610,12 +609,17 @@ export default function WalletPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const purchasesDisabled = isAndroidApp();
+  const isHaiti = user?.country === "Haiti";
+  const isDominican = user?.country === "Dominican Republic";
+  const isDeliveryCountry = isHaiti || isDominican;
+  const walletFundingDisabled = purchasesDisabled && !isDeliveryCountry;
 
   const [step, setStep] = useState<Step>("home");
   const [stepStack, setStepStack] = useState<Step[]>([]);
 
   function navigateTo(next: Step) {
-    if (purchasesDisabled && ["choice", "topup", "moncash", "natcash", "moncash_confirm", "moncash_submit", "moncash_done", "card", "crypto"].includes(next)) {
+    const isFundingStep = ["choice", "topup", "moncash", "natcash", "moncash_confirm", "moncash_submit", "moncash_done", "card"].includes(next);
+    if ((walletFundingDisabled && isFundingStep) || (purchasesDisabled && next === "crypto")) {
       toast({ title: t("androidPurchasePolicy.unavailable") });
       return;
     }
@@ -703,9 +707,6 @@ export default function WalletPage() {
   const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
 
   // Topup method selection
-  const isHaiti = user?.country === "Haiti";
-  const isDominican = user?.country === "Dominican Republic";
-  const isDeliveryCountry = isHaiti || user?.country === "Dominican Republic";
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin" || user?.role === "super_admin");
   const isSuperAdmin = !!(user?.isSuperAdmin || user?.role === "super_admin");
   const isApprovedAgent = !!(user?.role === "agent" || isAdmin);
@@ -723,7 +724,7 @@ export default function WalletPage() {
 
   const haitiInitiateMut = useMutation({
     mutationFn: (body: { provider: string, amountHtg: number, phone?: string }) =>
-      purchasesDisabled
+      walletFundingDisabled
         ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable") || "Purchases disabled on Android"))
         : apiPost("/wallet/haiti/initiate", body),
     onSuccess: (data) => {
@@ -926,7 +927,7 @@ export default function WalletPage() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const initiateMut = useMutation({
-    mutationFn: (amountHtg: number) => purchasesDisabled
+    mutationFn: (amountHtg: number) => walletFundingDisabled
       ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
       : apiPost("/wallet/topup/initiate", { amountHtg, phone }),
     onSuccess: (data) => {
@@ -954,7 +955,7 @@ export default function WalletPage() {
   });
 
   const cardSessionMut = useMutation({
-    mutationFn: (amountUsd: number) => purchasesDisabled
+    mutationFn: (amountUsd: number) => walletFundingDisabled
       ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
       : apiPost("/wallet/topup/card/session", { amountUsd }),
     onSuccess: (data) => {
@@ -1135,7 +1136,7 @@ export default function WalletPage() {
   });
 
   const submitProofMut = useMutation({
-    mutationFn: () => purchasesDisabled
+    mutationFn: () => walletFundingDisabled
       ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable")))
       : apiPost("/wallet/topup/submit-proof", {
       paymentRef: pendingRef,
@@ -3407,7 +3408,7 @@ export default function WalletPage() {
       {/* ══ QUICK ACTION BUTTONS ════════════════════════════════════════════════ */}
       <div className="flex justify-between gap-1">
         {([
-          ...(purchasesDisabled ? [] : [{
+          ...(walletFundingDisabled ? [] : [{
             label: t("wallet.actionDeposit"), Icon: ArrowUpCircle,
             iconColor: "#60a5fa",
             bg: "linear-gradient(145deg,#0f1f3d,#0d1a35)",
@@ -3608,7 +3609,7 @@ export default function WalletPage() {
       )}
 
       {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
-      {!purchasesDisabled && <><style>{`
+      {!walletFundingDisabled && <><style>{`
         @keyframes fmEntryPulse {
           0%,100% { box-shadow:0 0 10px 2px rgba(99,102,241,0.3); }
           50%     { box-shadow:0 0 28px 8px rgba(99,102,241,0.7); }
@@ -3640,7 +3641,7 @@ export default function WalletPage() {
         </div>
       </button></>}
 
-      {isLoanAllowed(user?.country) && <button
+      <button
         type="button"
         onClick={() => setLocation("/loans")}
         className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-700 p-[1.5px] shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
@@ -3662,7 +3663,7 @@ export default function WalletPage() {
           </div>
           <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
-      </button>}
+      </button>
 
       {/* ── Panel Ajan Otorize (ajan ki déjà apwouve) ───────────────────────── */}
       {isApprovedAgent && (

@@ -12,9 +12,11 @@ import {
   type MonCashMode,
 } from "../lib/moncash";
 import {
+  bazikPaymentSucceeded,
   bazikCreationDefinitelyRejected,
   createBazikMonCashPayment,
   getBazikAccessToken,
+  retrieveBazikPayment,
   type BazikConfig,
 } from "../lib/bazik";
 import {
@@ -219,7 +221,7 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
   }
 
   const config = await getMonCashRuntimeConfig();
-  if (!monCashReady(config) || config.adapter === "bazik") {
+  if (!monCashReady(config)) {
     res.json({ checked: 0, credited: 0 });
     return;
   }
@@ -258,38 +260,71 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
     const offset = Math.min(previous?.nextOffset ?? 0, Math.max(0, pendingCount - 1));
     const pending = await db.select({
       paymentRef: walletTransactionsTable.paymentRef,
+      providerOrderId: walletTransactionsTable.userTransferRef,
     }).from(walletTransactionsTable).where(wherePending)
       .orderBy(walletTransactionsTable.createdAt, walletTransactionsTable.id)
       .limit(RECONCILE_BATCH_SIZE)
       .offset(offset);
 
-    const monCashCfg: MonCashConfig = {
-      mode: config.mode as MonCashMode,
-      clientId: config.clientId,
-      clientSecret: config.clientSecret,
-      returnUrl: callbackUrl(req, config.callbackUrl),
-    };
-
     let credited = 0;
-    const token = await getAccessToken(monCashCfg);
-    for (const row of pending) {
-      if (!row.paymentRef) continue;
-      try {
-        const txn = await retrieveTransactionByOrderId(monCashCfg, token, row.paymentRef);
-        if (txn.reference !== row.paymentRef) continue;
-        if (monCashPaymentTerminalFailure(txn.message)) {
-          await db.update(walletTransactionsTable).set({ status: "rejected" }).where(and(
-            eq(walletTransactionsTable.paymentRef, row.paymentRef),
-            eq(walletTransactionsTable.status, "pending"),
-          ));
-          continue;
+    if (config.adapter === "bazik") {
+      const bazikConfig: BazikConfig = {
+        userId: config.bazikUserId,
+        secretKey: config.bazikSecretKey,
+        webhookSecret: config.bazikWebhookSecret,
+      };
+      const token = await getBazikAccessToken(bazikConfig);
+      for (const row of pending) {
+        if (!row.paymentRef || !row.providerOrderId) continue;
+        try {
+          const payment = await retrieveBazikPayment(bazikConfig, token, row.providerOrderId);
+          if (
+            payment.orderId !== row.providerOrderId ||
+            payment.referenceId !== row.paymentRef ||
+            payment.currency !== "HTG" ||
+            !bazikPaymentSucceeded(payment.status)
+          ) {
+            continue;
+          }
+          const outcome = await verifyHaitiMonCashTopup(
+            payment.transactionId || payment.orderId,
+            payment.referenceId,
+            payment.amountHtg,
+            payment.orderId,
+          );
+          if (outcome.ok && !outcome.alreadyProcessed) credited += 1;
+        } catch {
+          // Keep pending for a later authenticated retry. Credits still require
+          // a successful provider lookup with exact order, reference, and amount.
         }
-        if (!monCashPaymentSucceeded(txn.message)) continue;
-        const outcome = await verifyHaitiMonCashTopup(txn.transactionId, txn.reference, txn.cost);
-        if (outcome.ok && !outcome.alreadyProcessed) credited += 1;
-      } catch {
-        // An unpaid, cancelled, or not-yet-visible order stays pending. A later
-        // wallet visit safely retries it through the same idempotent credit gate.
+      }
+    } else {
+      const monCashCfg: MonCashConfig = {
+        mode: config.mode as MonCashMode,
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        returnUrl: callbackUrl(req, config.callbackUrl),
+      };
+      const token = await getAccessToken(monCashCfg);
+      for (const row of pending) {
+        if (!row.paymentRef) continue;
+        try {
+          const txn = await retrieveTransactionByOrderId(monCashCfg, token, row.paymentRef);
+          if (txn.reference !== row.paymentRef) continue;
+          if (monCashPaymentTerminalFailure(txn.message)) {
+            await db.update(walletTransactionsTable).set({ status: "rejected" }).where(and(
+              eq(walletTransactionsTable.paymentRef, row.paymentRef),
+              eq(walletTransactionsTable.status, "pending"),
+            ));
+            continue;
+          }
+          if (!monCashPaymentSucceeded(txn.message)) continue;
+          const outcome = await verifyHaitiMonCashTopup(txn.transactionId, txn.reference, txn.cost);
+          if (outcome.ok && !outcome.alreadyProcessed) credited += 1;
+        } catch {
+          // An unpaid, cancelled, or not-yet-visible order stays pending. A later
+          // wallet visit safely retries it through the same idempotent credit gate.
+        }
       }
     }
 

@@ -12,6 +12,7 @@ import { apiPatch } from "@/lib/api";
 import { useTheme } from "@/components/theme-provider";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
 import { useAuth } from "@/contexts/auth";
+import { isLoanAllowed } from "@/lib/loanPolicy";
 import { useTranslation } from "react-i18next";
 import PushNotificationsBanner from "@/components/PushNotificationsBanner";
 import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
@@ -290,7 +291,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
-  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeLoan = !!(user && isLoanAllowed(user.country));
 
   const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
     {
@@ -730,7 +731,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
-  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeLoan = !!(user && isLoanAllowed(user.country));
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };

@@ -21,6 +21,7 @@ import { logger } from "../lib/logger";
 import {
   getAccessToken,
   createPayment,
+  monCashPaymentSucceeded,
   retrieveTransactionByTransactionId,
   type MonCashConfig,
   type MonCashMode,
@@ -471,6 +472,12 @@ router.get("/moncash/return", async (req, res): Promise<void> => {
   } catch (err: any) {
     logger.error("[moncash/return] transaction retrieval failed");
     res.redirect("/?moncash=error");
+    return;
+  }
+
+  if (!monCashPaymentSucceeded(txn.message)) {
+    logger.warn({ transactionId, message: txn.message }, "[moncash/return] payment is not successful");
+    res.redirect("/?moncash=cancelled");
     return;
   }
 

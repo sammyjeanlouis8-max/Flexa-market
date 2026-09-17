@@ -718,6 +718,21 @@ export default function WalletPage() {
     enabled: !!isHaiti,
   });
 
+  const { data: monCashReconciliation } = useQuery({
+    queryKey: ["/wallet/haiti/reconcile"],
+    queryFn: () => apiPost("/wallet/haiti/reconcile", {}),
+    enabled: !!isHaiti,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    if ((monCashReconciliation?.credited ?? 0) > 0) {
+      qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
+      qc.invalidateQueries({ queryKey: ["/wallet/history"] });
+    }
+  }, [monCashReconciliation?.credited, qc]);
+
   const { mutate: getQuote, data: quoteData, isPending: isQuoteLoading } = useMutation({
     mutationFn: (body: any) => apiPost("/wallet/haiti/quote", body),
   });

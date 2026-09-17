@@ -117,6 +117,35 @@ export interface TransactionResult {
   payer: string;         // Customer's MonCash phone number
 }
 
+export function parseMonCashTransactionResult(data: unknown): TransactionResult {
+  const root = data && typeof data === "object" ? data as Record<string, unknown> : null;
+  const p = root?.["payment"] && typeof root["payment"] === "object"
+    ? root["payment"] as Record<string, unknown>
+    : null;
+  const rawTransactionId = p?.["transactionId"] ?? p?.["transaction_id"];
+  const transactionId = rawTransactionId === undefined || rawTransactionId === null
+    ? ""
+    : String(rawTransactionId).trim();
+  const reference = typeof p?.["reference"] === "string" ? p["reference"].trim() : "";
+  const cost = Number(p?.["cost"]);
+  const message = typeof p?.["message"] === "string" ? p["message"].trim() : "";
+  const payer = typeof p?.["payer"] === "string" || typeof p?.["payer"] === "number"
+    ? String(p["payer"]).trim()
+    : "";
+
+  if (!p || !transactionId || !reference || !Number.isFinite(cost) || cost <= 0 || !message) {
+    throw new Error(`MonCash RetrieveTransaction: unexpected response — ${JSON.stringify(data)}`);
+  }
+
+  return {
+    reference,
+    transactionId,
+    cost,
+    message,
+    payer,
+  };
+}
+
 export async function retrieveTransactionByTransactionId(
   cfg: MonCashConfig,
   token: string,
@@ -141,6 +170,7 @@ export async function retrieveTransactionByTransactionId(
     payment?: {
       reference?: string;
       transactionId?: string;
+      transaction_id?: string;
       cost?: number;
       message?: string;
       payer?: string;
@@ -149,16 +179,49 @@ export async function retrieveTransactionByTransactionId(
     message?: string;
   };
 
-  const p = data.payment;
-  if (!p || !p.transactionId) {
-    throw new Error(`MonCash RetrieveTransaction: unexpected response — ${JSON.stringify(data)}`);
+  return parseMonCashTransactionResult(data);
+}
+
+export async function retrieveTransactionByOrderId(
+  cfg: MonCashConfig,
+  token: string,
+  orderId: string,
+): Promise<TransactionResult> {
+  const res = await fetch(`${base(cfg)}/Api/v1/RetrieveOrderPayment`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ orderId }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "(no body)");
+    throw new Error(`MonCash RetrieveOrder error ${res.status}: ${text}`);
   }
 
-  return {
-    reference:     p.reference ?? "",
-    transactionId: p.transactionId,
-    cost:          p.cost ?? 0,
-    message:       p.message ?? "",
-    payer:         p.payer ?? "",
+  const data = (await res.json()) as {
+    payment?: {
+      reference?: string;
+      transactionId?: string;
+      transaction_id?: string;
+      cost?: number;
+      message?: string;
+      payer?: string;
+    };
+    status?: number;
+    message?: string;
   };
+
+  return parseMonCashTransactionResult(data);
+}
+
+export function monCashPaymentSucceeded(message: string): boolean {
+  return message.trim().toLowerCase() === "successful";
+}
+
+export function monCashPaymentTerminalFailure(message: string): boolean {
+  return ["failed", "cancelled", "canceled", "expired", "rejected"].includes(message.trim().toLowerCase());
 }

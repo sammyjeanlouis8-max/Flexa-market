@@ -6794,7 +6794,7 @@ export default function Admin() {
                         const u = walletDetailData.user;
                         const lines = [
                           `📊 Istwa Tranzaksyon — ${u.name}`,
-                          `📧 ${u.email}  |  💰 Balans: $${parseFloat(walletDetailData.balanceUsd).toFixed(2)}`,
+                          `📧 ${u.email}  |  💰 Balans: $${parseFloat(walletDetailData.wallet?.balanceUsd ?? 0).toFixed(2)}`,
                           `──────────────────────────────`,
                           ...walletDetailData.transactions.map((tx: any) => {
                             const isIn = tx.amountUsd > 0;

@@ -154,7 +154,7 @@ export function normalizeBazikPayment(payload: unknown): BazikPayment {
 }
 
 export function bazikPaymentSucceeded(status: string): boolean {
-  return status === "succeeded" || status === "successful";
+  return status === "completed" || status === "succeeded" || status === "successful";
 }
 
 export function verifyBazikWebhookSignature(input: {

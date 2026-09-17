@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, usersTable, vendorSubscriptionsTable, listingsTable, notificationsTable, platformSettingsTable, transactionsTable } from "@workspace/db";
 import { PLAN_CONFIG, type SubscriptionPlan } from "@workspace/db";
-import { eq, desc, and, sql, gte, lte, isNotNull, lt, asc, notInArray, or, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, gte, lte, isNotNull, isNull, lt, asc, notInArray, or, inArray } from "drizzle-orm";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
@@ -11,6 +11,17 @@ import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
 
 const GRACE_PERIOD_DAYS = 5;
+
+// Apple products are mapped server-side only. Never accept a plan or entitlement
+// claim from the mobile client. Configure RevenueCat's webhook Authorization
+// header to exactly REVENUECAT_WEBHOOK_AUTH and use:
+// POST /api/subscription/revenuecat/webhook
+const REVENUECAT_PRODUCTS: Record<string, "standard" | "premium"> = {
+  "com.flexamarket.subscription.standard.monthly": "standard",
+  "com.flexamarket.subscription.premium.monthly": "premium",
+};
+const REVENUECAT_ACTIVE_EVENTS = new Set(["INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"]);
+const REVENUECAT_END_EVENTS = new Set(["EXPIRATION", "CANCELLATION", "REFUND"]);
 
 // ── Dynamic plan price lookup (DB override > PLAN_CONFIG fallback) ────────────
 async function getDynamicPlanPrice(plan: SubscriptionPlan): Promise<number> {
@@ -103,6 +114,168 @@ router.get("/subscription/plans", (_req, res) => {
   res.json(PLANS_PUBLIC);
 });
 
+// ── POST /api/subscription/revenuecat/webhook ──────────────────────────────────
+// RevenueCat is the source of truth for Apple billing. This endpoint intentionally
+// does not use requireAuth: RevenueCat calls it server-to-server with the exact
+// secret configured in REVENUECAT_WEBHOOK_AUTH.
+router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Promise<void> => {
+  const configuredSecret = process.env.REVENUECAT_WEBHOOK_AUTH;
+  if (!configuredSecret || req.get("authorization") !== configuredSecret) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const event = req.body?.event;
+  const type = typeof event?.type === "string" ? event.type : "";
+  const productId = typeof event?.product_id === "string" ? event.product_id : "";
+  const eventId = typeof event?.id === "string" ? event.id : "";
+  const originalTransactionId = typeof event?.original_transaction_id === "string"
+    ? event.original_transaction_id
+    : (typeof event?.transaction_id === "string" ? event.transaction_id : "");
+  const rawUserId = event?.app_user_id;
+  const userId = typeof rawUserId === "string" && /^\d+$/.test(rawUserId) ? Number(rawUserId) : NaN;
+  const plan = REVENUECAT_PRODUCTS[productId];
+
+  if (!eventId || !originalTransactionId || !Number.isSafeInteger(userId) || userId <= 0 || !plan || (!REVENUECAT_ACTIVE_EVENTS.has(type) && !REVENUECAT_END_EVENTS.has(type))) {
+    res.status(400).json({ error: "Unsupported or invalid RevenueCat event" });
+    return;
+  }
+  const expiryMs = Number(event?.expiration_at_ms);
+  const expiresAt = Number.isFinite(expiryMs) && expiryMs > 0 ? new Date(expiryMs) : null;
+  if (REVENUECAT_ACTIVE_EVENTS.has(type) && !expiresAt) {
+    res.status(400).json({ error: "RevenueCat active event missing expiration" });
+    return;
+  }
+
+  try {
+    const result = await db.transaction(async (tx) => {
+    const [user] = await tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (!user) {
+      // Do not retry a valid provider event forever for a deleted/nonexistent user.
+      return { ignored: "user_not_found" };
+    }
+
+    const providerSubscriptionId = typeof event?.transaction_id === "string"
+      ? event.transaction_id
+      : originalTransactionId;
+    const eventAtMs = Number(event?.event_timestamp_ms);
+    const providerEventAt = Number.isFinite(eventAtMs) && eventAtMs > 0 ? new Date(eventAtMs) : new Date();
+    const now = new Date();
+    const insertedEvent = await tx.execute(sql`
+      INSERT INTO revenuecat_webhook_events (event_id, event_type, original_transaction_id, event_at)
+      VALUES (${eventId}, ${type}, ${originalTransactionId}, ${providerEventAt})
+      ON CONFLICT (event_id) DO NOTHING
+      RETURNING event_id
+    `);
+    if (insertedEvent.rows.length === 0) {
+      return { duplicate: true };
+    }
+    const [existing] = await tx.select()
+      .from(vendorSubscriptionsTable)
+      .where(and(
+        eq(vendorSubscriptionsTable.billingProvider, "revenuecat"),
+        eq(vendorSubscriptionsTable.originalTransactionId, originalTransactionId),
+      ))
+      .orderBy(desc(vendorSubscriptionsTable.createdAt))
+      .limit(1);
+
+    if (existing) {
+      if (existing.userId !== userId) {
+        throw new Error("RevenueCat original transaction belongs to a different user");
+      }
+      // RevenueCat retries and out-of-order delivery must never let an older
+      // terminal event revoke a newer purchase state.
+      if (existing.lastProviderEventAt && providerEventAt <= existing.lastProviderEventAt) {
+        return { stale: true };
+      }
+      // Ignore an out-of-order renewal/initial event that would shorten access.
+      const nextExpiry = expiresAt && (!existing.expiresAt || expiresAt > existing.expiresAt)
+        ? expiresAt
+        : existing.expiresAt;
+      const update: any = {
+        updatedAt: now,
+        lastProviderEventAt: providerEventAt,
+        // PRODUCT_CHANGE moves the existing provider subscription in place.
+        plan,
+        providerSubscriptionId,
+        originalTransactionId,
+      };
+
+      if (REVENUECAT_ACTIVE_EVENTS.has(type)) {
+        update.status = "active";
+        update.expiresAt = nextExpiry;
+        update.nextBillingDate = nextExpiry;
+        update.graceUntil = null;
+        update.cancelAtPeriodEnd = false;
+      } else if (type === "CANCELLATION") {
+        // Cancellation means no renewal; access remains until the verified expiry.
+        update.status = existing.expiresAt && existing.expiresAt > now ? "active" : "expired";
+        update.cancelAtPeriodEnd = true;
+        update.cancelledAt = now;
+      } else {
+        update.status = "expired";
+        update.cancelAtPeriodEnd = false;
+        update.cancelledAt = now;
+      }
+      await tx.update(vendorSubscriptionsTable).set(update).where(eq(vendorSubscriptionsTable.id, existing.id));
+    } else if (REVENUECAT_ACTIVE_EVENTS.has(type) || REVENUECAT_END_EVENTS.has(type)) {
+      await tx.insert(vendorSubscriptionsTable).values({
+        userId,
+        plan,
+        status: REVENUECAT_ACTIVE_EVENTS.has(type)
+          || (type === "CANCELLATION" && !!expiresAt && expiresAt > now) ? "active" : "expired",
+        startedAt: now,
+        expiresAt,
+        nextBillingDate: expiresAt,
+        amountUsd: PLAN_CONFIG[plan].priceUsd,
+        interval: "month",
+          billingProvider: "revenuecat",
+          source: "revenuecat",
+          providerSubscriptionId,
+          originalTransactionId,
+          lastProviderEventAt: providerEventAt,
+          cancelledAt: REVENUECAT_END_EVENTS.has(type) ? now : null,
+          cancelAtPeriodEnd: type === "CANCELLATION",
+      });
+    }
+
+    // Re-read the provider record after the idempotent update and derive access
+    // from its verified expiration, never from the webhook's client-visible claim.
+    const activeSubscriptions = await tx.select()
+      .from(vendorSubscriptionsTable)
+      .where(and(
+        eq(vendorSubscriptionsTable.userId, userId),
+        eq(vendorSubscriptionsTable.status, "active"),
+        isNotNull(vendorSubscriptionsTable.expiresAt),
+      ));
+    const active = activeSubscriptions
+      .filter((subscription) => subscription.expiresAt && subscription.expiresAt > now)
+      .sort((a, b) => (PLAN_CONFIG[b.plan as SubscriptionPlan]?.tier ?? 0) - (PLAN_CONFIG[a.plan as SubscriptionPlan]?.tier ?? 0))[0];
+    const hasAccess = !!active;
+    await tx.update(usersTable).set({
+      subscriptionPlan: hasAccess ? active.plan as SubscriptionPlan : "basic",
+      subscriptionExpiresAt: hasAccess ? active.expiresAt : null,
+      updatedAt: now,
+    }).where(eq(usersTable.id, userId));
+
+    if (hasAccess) {
+      await tx.update(listingsTable)
+        .set({ status: "available" })
+        .where(and(eq(listingsTable.sellerId, userId), eq(listingsTable.status, "subscription_hidden")));
+    } else {
+      // Apply the same listing limit enforcement used by Stripe/wallet expiry.
+      await enforceListingLimit(userId, tx);
+    }
+    return { hasAccess, plan: active?.plan };
+    });
+    logger.info({ userId, plan, type, productId }, "RevenueCat subscription webhook synchronized");
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error({ err, type, productId, userId }, "RevenueCat webhook synchronization failed");
+    res.status(500).json({ error: "Webhook processing failed" });
+  }
+});
+
 // ── GET /api/subscription/my ─────────────────────────────────────────────────
 router.get("/subscription/my", requireAuth, async (req: any, res: any) => {
   try {
@@ -190,6 +363,8 @@ router.post("/subscription/checkout", requireAuth, async (req: any, res: any) =>
       status: "pending",
       amountUsd: config.priceUsd,
       stripeCustomerId: customerId,
+      billingProvider: "stripe",
+      source: "stripe",
     }).returning();
 
     const session = await stripe.checkout.sessions.create({
@@ -903,15 +1078,15 @@ export async function handleSubscriptionDeleted(subscription: Stripe.Subscriptio
   logger.info({ userId: existing.userId }, "Subscription expired via Stripe deletion");
 }
 
-export async function expireUserSubscription(userId: number): Promise<void> {
+async function enforceListingLimit(userId: number, client: any = db): Promise<void> {
   // Downgrade user to basic
-  await db.update(usersTable)
+  await client.update(usersTable)
     .set({ subscriptionPlan: "basic", subscriptionExpiresAt: null, updatedAt: new Date() })
     .where(eq(usersTable.id, userId));
 
   // Keep the 4 oldest active listings visible — hide everything above that.
   // This matches the FREE_LISTING_LIMIT (4) for basic accounts.
-  const keep4 = await db.select({ id: listingsTable.id })
+  const keep4 = await client.select({ id: listingsTable.id })
     .from(listingsTable)
     .where(and(eq(listingsTable.sellerId, userId), eq(listingsTable.status, "available")))
     .orderBy(asc(listingsTable.createdAt))
@@ -920,7 +1095,7 @@ export async function expireUserSubscription(userId: number): Promise<void> {
   const keepIds = keep4.map(r => r.id);
 
   if (keepIds.length > 0) {
-    await db.update(listingsTable)
+    await client.update(listingsTable)
       .set({ status: "subscription_hidden" })
       .where(and(
         eq(listingsTable.sellerId, userId),
@@ -932,6 +1107,10 @@ export async function expireUserSubscription(userId: number): Promise<void> {
   }
 
   logger.info({ userId, keptVisible: keepIds.length }, "User subscription expired: listings above 4 hidden");
+}
+
+export async function expireUserSubscription(userId: number): Promise<void> {
+  await enforceListingLimit(userId);
 }
 
 /** Retry interval between wallet payment attempts: 2 days */

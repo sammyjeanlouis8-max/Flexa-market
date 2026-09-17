@@ -26,10 +26,12 @@ export interface RegisterBody {
   avatar?: string;
   deviceId?: string;
   promoCode?: string;
+  eulaAccepted: boolean;
 }
 
 export interface LoginPhoneBody {
   phoneToken: string;
+  eulaAccepted?: boolean;
 }
 
 export interface SendOtpBody {
@@ -61,6 +63,7 @@ export interface ChangeCountryBody {
 export interface LoginBody {
   email: string;
   password: string;
+  eulaAccepted?: boolean;
 }
 
 export interface User {

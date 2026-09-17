@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, real, timestamp, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, text, real, timestamp, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { usersTable } from "./users";
 
 export const SUBSCRIPTION_PLANS = ["basic", "standard", "premium", "vip"] as const;
@@ -27,6 +27,12 @@ export const vendorSubscriptionsTable = pgTable("vendor_subscriptions", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripeCustomerId: text("stripe_customer_id"),
+  /** Billing system owning this row; prevents provider rows being mixed. */
+  billingProvider: text("billing_provider").notNull().default("fm_wallet"),
+  source: text("source").notNull().default("fm_wallet"),
+  providerSubscriptionId: text("provider_subscription_id"),
+  originalTransactionId: text("original_transaction_id"),
+  lastProviderEventAt: timestamp("last_provider_event_at", { withTimezone: true }),
   amountUsd: real("amount_usd"),
   interval: text("interval").default("month"),
   cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
@@ -43,4 +49,6 @@ export const vendorSubscriptionsTable = pgTable("vendor_subscriptions", {
   vsGraceIdx: index("vendor_subscriptions_grace_until_idx").on(t.graceUntil),
   vsNextBillingIdx: index("vendor_subscriptions_next_billing_idx").on(t.nextBillingDate),
   vsNextRetryIdx: index("vendor_subscriptions_next_wallet_retry_idx").on(t.nextWalletRetryAt),
+  vsProviderIdx: index("vendor_subscriptions_provider_idx").on(t.billingProvider, t.providerSubscriptionId),
+  vsOriginalTransactionUnique: uniqueIndex("vendor_subscriptions_original_transaction_unique").on(t.originalTransactionId),
 }));

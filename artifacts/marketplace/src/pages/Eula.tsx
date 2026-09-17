@@ -145,6 +145,10 @@ export default function Eula() {
               Application except as expressly set forth in this EULA.
             </p>
           </Section>
+          <Section id="safety" title="Safety, Reporting & Enforcement">
+            <p>We have zero tolerance for illegal, abusive, hateful, threatening, exploitative, fraudulent, or harmful content and behavior. Users can report listings, profiles, comments, and messages and can block abusive users.</p>
+            <p>Credible safety reports are reviewed and acted on within 24 hours, with faster action when needed. We may remove content, restrict accounts, or permanently terminate accounts that violate these rules.</p>
+          </Section>
 
           <Section id="apple" title="4. Apple App Store Additional Terms">
             <p>

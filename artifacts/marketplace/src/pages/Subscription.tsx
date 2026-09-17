@@ -107,7 +107,8 @@ export default function Subscription() {
   const { toast } = useToast();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const purchasesDisabled = isAndroidApp();
+  const isIosApp = typeof window !== "undefined" && (window as any).__flexaPlatform === "ios";
+  const purchasesDisabled = isAndroidApp() || isIosApp;
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [mySub, setMySub] = useState<MySubscription | null>(null);
@@ -122,6 +123,9 @@ export default function Subscription() {
   const checkoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hiddenCount, setHiddenCount] = useState(0);
   const [walletRetryLoading, setWalletRetryLoading] = useState(false);
+  const [appleProducts, setAppleProducts] = useState<Record<string, { priceString: string; identifier: string }>>({});
+  const [iapIdentified, setIapIdentified] = useState(false);
+  const visiblePlans = isIosApp ? plans.filter((plan) => ["basic", "standard", "premium"].includes(plan.id)) : plans;
 
   // Payment method picker
   const [payMethodOpen, setPayMethodOpen] = useState(false);
@@ -134,6 +138,55 @@ export default function Subscription() {
   const successPlan = params.get("success") ? params.get("plan") : null;
   const returnApp = params.get("return_app") === "1";
   const [showReturnApp, setShowReturnApp] = useState(false);
+
+  const postIap = useCallback((message: Record<string, unknown>) => {
+    if (!isIosApp) return;
+    const payload = JSON.stringify(message);
+    const w = window as any;
+    if (typeof w.webkit?.messageHandlers?.flexaIAP?.postMessage === "function") {
+      w.webkit.messageHandlers.flexaIAP.postMessage(message);
+    } else if (typeof w.ReactNativeWebView?.postMessage === "function") {
+      w.ReactNativeWebView.postMessage(payload);
+    }
+  }, [isIosApp]);
+
+  useEffect(() => {
+    if (!isIosApp) return;
+    const onProducts = (event: Event) => {
+      const products = ((event as CustomEvent).detail?.products ?? []) as { plan: string; priceString: string; identifier: string }[];
+      setAppleProducts(Object.fromEntries(products.map((product) => [product.plan, product])));
+    };
+    const onResult = (event: Event) => {
+      const detail = (event as CustomEvent).detail ?? {};
+      if (detail.ok) {
+        // RevenueCat's verified webhook updates the server asynchronously.
+        window.setTimeout(() => load(), 1500);
+      } else if (detail.message) {
+        toast({ title: String(detail.message), variant: "destructive" });
+      }
+    };
+    window.addEventListener("IAP_PRODUCTS", onProducts);
+    const onIdentified = (event: Event) => {
+      const identifiedUserId = Number((event as CustomEvent).detail?.userId);
+      if (!user?.id || identifiedUserId !== Number(user.id)) return;
+      setIapIdentified(true);
+      postIap({ type: "IAP_GET_PRODUCTS" });
+    };
+    const onLoggedOut = () => setIapIdentified(false);
+    window.addEventListener("IAP_IDENTIFIED", onIdentified);
+    window.addEventListener("IAP_LOGGED_OUT", onLoggedOut);
+    window.addEventListener("IAP_PURCHASE_RESULT", onResult);
+    window.addEventListener("IAP_RESTORE_RESULT", onResult);
+    setIapIdentified(false);
+    if (user?.id != null) postIap({ type: "IAP_IDENTIFY", userId: Number(user.id) });
+    return () => {
+      window.removeEventListener("IAP_PRODUCTS", onProducts);
+      window.removeEventListener("IAP_IDENTIFIED", onIdentified);
+      window.removeEventListener("IAP_LOGGED_OUT", onLoggedOut);
+      window.removeEventListener("IAP_PURCHASE_RESULT", onResult);
+      window.removeEventListener("IAP_RESTORE_RESULT", onResult);
+    };
+  }, [isIosApp, postIap, toast, user?.id]);
 
   useEffect(() => {
     const sessionId = params.get("session_id");
@@ -624,14 +677,14 @@ export default function Subscription() {
                   {!purchasesDisabled && <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openPortal} disabled={portalLoading}>
                     {portalLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : t("subscription.manageBilling")}
                   </Button>}
-                  <Button
+                  {!purchasesDisabled && <Button
                     size="sm" variant="outline"
                     className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:hover:bg-red-950/30 gap-1"
                     onClick={() => setCancelDialogOpen(true)}
                   >
                     <X className="h-3 w-3" />
                     {t("subscription.cancelBtn", { defaultValue: "Anile Plan" })}
-                  </Button>
+                  </Button>}
                 </>
               )}
             </div>
@@ -696,8 +749,8 @@ export default function Subscription() {
       )}
 
       {/* ── Plans grid ────────────────────────────────────────────────────── */}
-      {!purchasesDisabled && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {plans.map((plan) => {
+      {(!purchasesDisabled || isIosApp) && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {visiblePlans.map((plan) => {
           const c = PLAN_COLORS[plan.id] ?? PLAN_COLORS.basic;
           const Icon = PLAN_ICONS[plan.id] ?? Zap;
           const isCurrent = currentPlanId === plan.id && !isExpired;
@@ -745,7 +798,7 @@ export default function Subscription() {
                     <span className="text-lg font-bold">{t("subscription.free")}</span>
                   ) : (
                     <div className="flex items-baseline gap-0.5">
-                      <span className="text-xl font-bold">${plan.priceUsd}</span>
+                      <span className="text-xl font-bold">{isIosApp && appleProducts[plan.id] ? appleProducts[plan.id].priceString : `$${plan.priceUsd}`}</span>
                       <span className="text-xs text-muted-foreground">{t("subscription.monthly")}</span>
                     </div>
                   )}
@@ -802,7 +855,9 @@ export default function Subscription() {
                     )
                   ) : isCurrentPaid ? (
                     <div>
-                      {!purchasesDisabled && <Button
+                      {isIosApp ? <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={() => postIap({ type: "IAP_MANAGE" })}>
+                        {t("subscription.manageMyPlan")}
+                      </Button> : !purchasesDisabled && <Button
                         size="sm"
                         variant="outline"
                         className="w-full h-8 text-xs"
@@ -821,6 +876,12 @@ export default function Subscription() {
                           {t("subscription.accessUntilExpiry", { date: fmtDate(mySub.expiresAt, lang) })}
                         </p>
                       )}
+                    </div>
+                  ) : isIosApp ? (
+                    <div>
+                      <Button size="sm" className={`w-full h-8 text-xs font-semibold ${c.btnBg}`} onClick={() => postIap({ type: "IAP_PURCHASE", plan: plan.id, userId: user?.id })} disabled={!iapIdentified || !appleProducts[plan.id]}>
+                        {appleProducts[plan.id] ? `${t("subscription.start")} · ${appleProducts[plan.id].priceString}` : <Loader2 className="h-3 w-3 animate-spin" />}
+                      </Button>
                     </div>
                   ) : purchasesDisabled ? null : (
                     <div>
@@ -849,6 +910,13 @@ export default function Subscription() {
           );
         })}
       </div>}
+      {isIosApp && (
+        <div className="flex justify-center mt-5">
+            <Button variant="ghost" size="sm" disabled={!iapIdentified} onClick={() => postIap({ type: "IAP_RESTORE", userId: user?.id })}>
+            <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> {t("subscription.restorePurchases", "Restore purchases")}
+          </Button>
+        </div>
+      )}
 
       {/* ── Visibility chart ──────────────────────────────────────────────── */}
       {!purchasesDisabled && <div className="mt-8 bg-card border border-border rounded-xl p-4">
@@ -894,7 +962,7 @@ export default function Subscription() {
       </div>}
 
       {/* ── Cancel dialog ─────────────────────────────────────────────────── */}
-      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+      {!purchasesDisabled && <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base">
@@ -917,7 +985,7 @@ export default function Subscription() {
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       {/* ── Payment method picker dialog ──────────────────────────────────── */}
       {!purchasesDisabled && <Dialog open={payMethodOpen} onOpenChange={v => { if (!walletLoading && !subscribing) setPayMethodOpen(v); }}>

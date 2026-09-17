@@ -287,7 +287,9 @@ router.get("/loans/eligibility", requireAuth, async (req, res) => {
     if (!m) { res.status(404).json({ error: "User not found" }); return; }
 
     const { user, daysOnPlatform, salesCount, delivSuccessRate, reportCount, activeListingCount } = m;
-    const countryEligible  = isSuperAdmin || isAdminUser || ELIGIBLE_COUNTRIES.includes(user.country ?? "");
+    // Eligibility uses the authenticated account country only. Admin roles
+    // never bypass the supported-country requirement.
+    const countryEligible  = ELIGIBLE_COUNTRIES.includes(user.country ?? "");
     const timeEligible     = isSuperAdmin || isAdminUser || daysOnPlatform >= MIN_DAYS;
     const listingEligible  = isSuperAdmin || isAdminUser || activeListingCount >= 10;
 
@@ -304,9 +306,11 @@ router.get("/loans/eligibility", requireAuth, async (req, res) => {
     // another 90 days just because a previous attempt was rejected.
     const hasPriorApplication = !!app;
     const effectiveTimeEligible = timeEligible || hasPriorApplication;
-    const eligible = (isSuperAdmin || isAdminUser)
-      ? true
-      : (countryEligible && effectiveTimeEligible && listingEligible && !user.isBanned);
+    const eligible = countryEligible && (
+      (isSuperAdmin || isAdminUser)
+        ? !user.isBanned
+        : (effectiveTimeEligible && listingEligible && !user.isBanned)
+    );
 
     res.json({
       eligible,
@@ -367,12 +371,18 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
 
     const { user, daysOnPlatform, activeListingCount } = m;
 
-    // Only check country/days/listings for regular users; admins & super admins bypass
+    // Every authenticated account must have a supported account country.
+    // This is deliberately not based on IP geolocation or storefront detection.
+    if (!ELIGIBLE_COUNTRIES.includes(user.country ?? "")) {
+      res.status(403).json({
+        error: "Loan applications are only available to authenticated accounts whose country is Haiti or Dominican Republic.",
+      });
+      return;
+    }
+
+    // Admins may bypass the normal account-age/listing gates for internal
+    // testing, but never the supported-country gate above.
     if (!isSuperAdmin && !isAdminUser) {
-      if (!ELIGIBLE_COUNTRIES.includes(user.country ?? "")) {
-        res.status(403).json({ error: "This feature is only available in Haiti and Dominican Republic." });
-        return;
-      }
       if (activeListingCount < 10) {
         res.status(403).json({
           error: `Ou bezwen oumenm 10 atik disponib pou vann pou aplike. Ou gen ${activeListingCount} kounye a.`,
@@ -423,7 +433,7 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
 
     const {
       amountRequested, termMonths,
-      fullName, dob, whatsapp, businessPhone, emergencyPhone, address, city, country,
+      fullName, dob, whatsapp, businessPhone, emergencyPhone, address, city,
       businessName, businessCategory, businessDescription, businessAgeYears, monthlySalesUsd,
       businessPhotos, productPhotos, businessDocs, identityDoc,
       facebookUrl, tiktokUrl, instagramUrl,
@@ -452,7 +462,7 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
       ) VALUES (
         ${userId}, 'pending_review', ${amountRequested}, ${termMonths ?? 6},
         ${fullName ?? null}, ${dob ?? null}, ${whatsapp ?? null}, ${businessPhone ?? null},
-        ${emergencyPhone ?? null}, ${address ?? null}, ${city ?? null}, ${country ?? user.country},
+        ${emergencyPhone ?? null}, ${address ?? null}, ${city ?? null}, ${user.country},
         ${businessName ?? null}, ${businessCategory ?? null}, ${businessDescription ?? null},
         ${businessAgeYears ?? null}, ${monthlySalesUsd ?? null},
         ${JSON.stringify(businessPhotos ?? [])}::jsonb,

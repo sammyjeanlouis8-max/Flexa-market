@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useSendOtp, useVerifyOtp, useLoginPhone } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
@@ -31,6 +32,7 @@ export default function LoginPhone() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [devCode, setDevCode] = useState<string | null>(null);
+  const [eulaAccepted, setEulaAccepted] = useState(false);
   const countryDef = getPhoneCountry(phoneIso)!;
   // Map ISO → canonical country name used by the backend
   const countryName = ISO_TO_COUNTRY[phoneIso] ?? countryDef.name;
@@ -62,7 +64,7 @@ export default function LoginPhone() {
       {
         onSuccess: (vRes: any) => {
           loginPhone.mutate(
-            { data: { phoneToken: vRes.phoneToken } },
+            { data: { phoneToken: vRes.phoneToken, eulaAccepted } },
             {
               onSuccess: (lRes: any) => {
                 setToken(lRes.token, lRes.user);
@@ -235,6 +237,7 @@ export default function LoginPhone() {
                 data-testid="input-otp"
                 onKeyDown={(e) => e.key === "Enter" && otp.length === 6 && handleVerifyAndLogin()}
               />
+              <label className="flex items-center gap-2 text-sm mb-4"><Checkbox checked={eulaAccepted} onCheckedChange={(v) => setEulaAccepted(v === true)} />I agree to the <Link href="/eula" className="text-primary underline">EULA</Link> and <Link href="/terms" className="text-primary underline">Terms of Service</Link>.</label>
 
               <Button
                 className="w-full font-bold"

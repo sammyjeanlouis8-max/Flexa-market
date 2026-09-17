@@ -1,7 +1,7 @@
 import { Router, Request } from "express";
 import { db, usersTable, loginLogsTable, referralsTable } from "@workspace/db";
 import { eq, and, count, gte, sql } from "drizzle-orm";
-import { RegisterBody, LoginBody, ChangeCountryBody } from "@workspace/api-zod";
+import { RegisterBody, LoginBody, LoginPhoneBody, ChangeCountryBody } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, isLegacySha256Hash, generateToken, verifyPhoneToken } from "../lib/auth";
 import { requireAuth } from "../middlewares/auth";
 import { isOwnerEmail } from "../lib/superAdmins";
@@ -118,6 +118,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     res.status(400).json({ error: message, field });
     return;
   }
+  if (parsed.data.eulaAccepted !== true) { res.status(400).json({ error: "EULA acceptance is required", field: "eulaAccepted" }); return; }
 
   let { name, email, password, phone, country, location, bio, avatar } = parsed.data;
   email = email.trim().toLowerCase();
@@ -242,6 +243,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
       isFlagged, flagReason: flagReasons.length > 0 ? flagReasons.join("; ") : null,
       referralCode,
       referredByUserId,
+      eulaAcceptedAt: new Date(), eulaVersion: "2025-05-01",
       ...(isOwner ? { isAdmin: true, isSuperAdmin: true, role: "superadmin" } : {}),
     })
     .returning();
@@ -337,11 +339,27 @@ router.post("/auth/setup", async (req, res): Promise<void> => {
     isPhoneVerified: true, isVerified: true,
     isAdmin: true, isSuperAdmin: true, role: "superadmin",
     registrationIp: ip,
+    eulaAcceptedAt: new Date(), eulaVersion: "2025-05-01",
   }).returning();
 
   await logAction(user.id, ip, ua, "setup-admin");
   const token = generateToken(user.id);
   res.status(201).json({ user: formatUser(user), token });
+});
+
+router.post("/auth/login-phone", async (req, res): Promise<void> => {
+  const parsed = LoginPhoneBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const phoneData = verifyPhoneToken(parsed.data.phoneToken);
+  if (!phoneData) { res.status(401).json({ error: "Invalid or expired phone verification" }); return; }
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.phone, phoneData.phone));
+  if (!user || user.isBanned) { res.status(403).json({ error: "Account unavailable" }); return; }
+  if (parsed.data.eulaAccepted !== true && !(user.eulaAcceptedAt && user.eulaVersion === "2025-05-01")) {
+    res.status(428).json({ error: "EULA acceptance is required", code: "eula_acceptance_required" }); return;
+  }
+  await db.update(usersTable).set({ eulaAcceptedAt: new Date(), eulaVersion: "2025-05-01" }).where(eq(usersTable.id, user.id));
+  await logAction(user.id, getClientIp(req), req.headers["user-agent"], "login-phone");
+  res.json({ user: formatUser(user), token: generateToken(user.id) });
 });
 
 router.post("/auth/change-country", requireAuth, async (req, res): Promise<void> => {
@@ -410,6 +428,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     res.status(403).json({ error: "Your account has been suspended. Contact support for help." });
     return;
   }
+  if (parsed.data.eulaAccepted !== true && !(user.eulaAcceptedAt && user.eulaVersion === "2025-05-01")) {
+    res.status(428).json({ error: "EULA acceptance is required", code: "eula_acceptance_required" }); return;
+  }
+  await db.update(usersTable).set({ eulaAcceptedAt: new Date(), eulaVersion: "2025-05-01" }).where(eq(usersTable.id, user.id));
 
   await logAction(user.id, ip, ua, "login");
 

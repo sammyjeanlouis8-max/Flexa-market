@@ -28,6 +28,7 @@ export const RegisterBody = zod.object({
   avatar: zod.string().optional(),
   deviceId: zod.string().optional(),
   promoCode: zod.string().optional(),
+  eulaAccepted: zod.boolean().refine((v) => v === true, "EULA acceptance is required"),
 });
 
 /**
@@ -36,6 +37,7 @@ export const RegisterBody = zod.object({
 export const LoginBody = zod.object({
   email: zod.string(),
   password: zod.string(),
+  eulaAccepted: zod.boolean().optional(),
 });
 
 export const LoginResponse = zod.object({
@@ -69,6 +71,7 @@ export const LoginResponse = zod.object({
  */
 export const LoginPhoneBody = zod.object({
   phoneToken: zod.string(),
+  eulaAccepted: zod.boolean().optional(),
 });
 
 export const LoginPhoneResponse = zod.object({

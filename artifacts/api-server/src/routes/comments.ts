@@ -38,7 +38,9 @@ router.get("/listings/:id/comments", optionalAuth, async (req, res): Promise<voi
     })
     .from(commentsTable)
     .leftJoin(usersTable, eq(commentsTable.userId, usersTable.id))
-    .where(eq(commentsTable.listingId, listingId))
+    .where(req.userId
+      ? and(eq(commentsTable.listingId, listingId), sql`NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${commentsTable.userId})`)
+      : eq(commentsTable.listingId, listingId))
     .orderBy(desc(commentsTable.createdAt));
 
   const allIds = rows.map(r => r.id);

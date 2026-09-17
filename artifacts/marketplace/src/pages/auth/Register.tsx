@@ -6,6 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useRegister } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +38,7 @@ function buildSchema(t: (key: string) => string) {
       ),
     country: z.string().min(1, t("auth.countryRequired")),
     location: z.string().optional(),
+    eulaAccepted: z.boolean().refine((v) => v === true, "You must accept the EULA and Terms of Service"),
   }).refine(
     (data) => data.password.trim() === data.confirmPassword.trim(),
     { message: t("auth.passwordMismatch"), path: ["confirmPassword"] }
@@ -91,7 +93,7 @@ export default function Register() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", email: "", password: "", confirmPassword: "", phoneNumber: "", country: "", location: "" },
+    defaultValues: { name: "", email: "", password: "", confirmPassword: "", phoneNumber: "", country: "", location: "", eulaAccepted: false },
   });
 
   const selectedPhone = getPhoneCountry(phoneIso)!;
@@ -112,6 +114,7 @@ export default function Register() {
           location: values.location || undefined,
           deviceId,
           ...(promoCode.trim() ? { promoCode: promoCode.trim().toUpperCase() } : {}),
+           eulaAccepted: values.eulaAccepted,
         } as any,
       },
       {
@@ -334,6 +337,12 @@ export default function Register() {
                 </p>
               </div>
 
+              <FormField control={form.control} name="eulaAccepted" render={({ field }) => (
+                <FormItem className="flex items-start gap-3 space-y-0 rounded-lg border p-3">
+                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                  <div><FormLabel className="text-sm font-normal">I agree to the <Link href="/eula" className="text-primary underline">EULA</Link> and <Link href="/terms" className="text-primary underline">Terms of Service</Link>.</FormLabel><FormMessage /></div>
+                </FormItem>
+              )} />
               <Button
                 type="submit"
                 className="w-full font-bold bg-[#F97316] hover:bg-[#ea6c10] text-white border-0"

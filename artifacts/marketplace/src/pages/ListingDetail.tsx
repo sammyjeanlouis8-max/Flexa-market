@@ -180,6 +180,7 @@ export default function ListingDetail() {
   const [reviewHover, setReviewHover] = useState(0);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [blockLoading, setBlockLoading] = useState(false);
   const [buyQty, setBuyQty] = useState(1);
 
   const { t } = useTranslation();
@@ -1235,6 +1236,25 @@ export default function ListingDetail() {
           >
             <Heart className={`h-4 w-4 text-white ${isFav ? "fill-white" : ""}`} aria-hidden="true" />
           </button>
+          {user && user.id !== listing.sellerId && (
+            <div className="flex gap-3 pl-13 text-xs">
+              <button className="text-muted-foreground underline hover:text-destructive" disabled={blockLoading} onClick={async () => {
+                setBlockLoading(true);
+                try {
+                  const r = await fetch(`/api/users/${listing.sellerId}/block`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                  if (!r.ok) throw new Error();
+                  queryClient.getQueryCache().getAll().forEach((q) => queryClient.setQueryData(q.queryKey, (d: any) => {
+                    if (Array.isArray(d)) return d.filter((x: any) => x?.sellerId !== listing.sellerId);
+                    if (d?.listings && Array.isArray(d.listings)) return { ...d, listings: d.listings.filter((x: any) => x?.sellerId !== listing.sellerId) };
+                    return d;
+                  }));
+                  setLocation("/");
+                  await queryClient.invalidateQueries({ predicate: (q) => q.queryKey.some((x) => typeof x === "string" && x.toLowerCase().includes("listing")) });
+                } finally { setBlockLoading(false); }
+              }}>{blockLoading ? "Blocking…" : "Block user"}</button>
+              <button className="text-muted-foreground underline hover:text-destructive" onClick={() => fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ targetType: "listing", targetId: listing.id, reason: "Inappropriate or abusive content" }) })}>Report listing</button>
+            </div>
+          )}
           <button
             onClick={handleShare}
             aria-label="Share listing"

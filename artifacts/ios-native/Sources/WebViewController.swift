@@ -43,6 +43,8 @@ final class WebViewController: UIViewController {
             .removeScriptMessageHandler(forName: "requestPushPermission")
         webView?.configuration.userContentController
             .removeScriptMessageHandler(forName: "flexaUpload")
+        webView?.configuration.userContentController
+            .removeScriptMessageHandler(forName: "flexaIAP")
     }
 
     @objc private func handleApnsToken(_ n: Notification) {
@@ -67,7 +69,8 @@ final class WebViewController: UIViewController {
         //  1. __iosWebView flag → website disables its own web-push path
         //  2. Unregister any cached service workers to avoid APNs conflicts
         let bootstrap = WKUserScript(source: """
-            window.__iosWebView = true;
+            Object.defineProperty(window, '__flexaPlatform', { value: 'ios', writable: false, configurable: false });
+            Object.defineProperty(window, '__iosWebView', { value: true, writable: false, configurable: false });
             window.__iosPushBridgeSafe = true; // build 83+: bridge no longer crashes
             try {
                 if (location.protocol === 'https' &&
@@ -90,6 +93,7 @@ final class WebViewController: UIViewController {
         // once the user is logged in — this is the ONLY path that requests push permission.
         ucc.add(ScriptMessageProxy(self), name: "requestPushPermission")
         ucc.add(ScriptMessageProxy(self), name: "flexaUpload")
+        ucc.add(ScriptMessageProxy(self), name: "flexaIAP")
 
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -178,6 +182,10 @@ final class WebViewController: UIViewController {
     // MARK: – Token injection
 
     func injectPushToken(_ token: String) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.injectPushToken(token) }
+            return
+        }
         // CRASH FIX (build 84/85 crashed ~5s after open): JSONSerialization
         // raises an Obj-C NSException (not a Swift error) for a top-level
         // string fragment — `try?` cannot catch it, so the app died the
@@ -265,7 +273,88 @@ extension WebViewController: WKScriptMessageHandler {
                 }
                 DispatchQueue.main.async { self?.sendUploadResult(result) }
             }
+        } else if message.name == "flexaIAP" {
+            guard isTrustedFlexaFrame(message),
+                  let payload = message.body as? [String: Any],
+                  let type = payload["type"] as? String else { return }
+            handleIAPMessage(type: type, payload: payload)
         }
+    }
+
+    private func handleIAPMessage(type: String, payload: [String: Any]) {
+        let manager = RevenueCatIAPManager.shared
+        switch type {
+        case "IAP_IDENTIFY":
+            guard let value = payload["userId"] as? NSNumber else { return }
+            manager.identify(userId: value.intValue) { [weak self] result in
+                if case .failure(let error) = result {
+                    self?.sendIAPEvent("IAP_ERROR", ["message": error.localizedDescription])
+                } else {
+                    self?.sendIAPEvent("IAP_IDENTIFIED", ["ok": true, "userId": value.intValue])
+                }
+            }
+        case "IAP_LOGOUT":
+            manager.logout { [weak self] in
+                self?.sendIAPEvent("IAP_LOGGED_OUT", ["ok": true])
+            }
+        case "IAP_GET_PRODUCTS":
+            manager.products { [weak self] result in
+                switch result {
+                case .success(let products): self?.sendIAPEvent("IAP_PRODUCTS", ["products": products])
+                case .failure(let error): self?.sendIAPEvent("IAP_ERROR", ["message": error.localizedDescription])
+                }
+            }
+        case "IAP_PURCHASE":
+            guard let plan = payload["plan"] as? String, plan == "standard" || plan == "premium" else { return }
+            guard let expectedUserId = payload["userId"] as? NSNumber else { return }
+            manager.purchase(plan: plan, expectedUserId: expectedUserId.intValue) { [weak self] result in
+                switch result {
+                case .success(let purchased):
+                    self?.sendIAPEvent("IAP_PURCHASE_RESULT", ["ok": purchased, "cancelled": !purchased, "plan": plan])
+                    if purchased { self?.sendIAPProducts() }
+                case .failure(let error):
+                    self?.sendIAPEvent("IAP_PURCHASE_RESULT", ["ok": false, "plan": plan, "message": error.localizedDescription])
+                }
+            }
+        case "IAP_RESTORE":
+            guard let expectedUserId = payload["userId"] as? NSNumber else { return }
+            manager.restore(expectedUserId: expectedUserId.intValue) { [weak self] result in
+                switch result {
+                case .success:
+                    self?.sendIAPEvent("IAP_RESTORE_RESULT", ["ok": true])
+                    self?.sendIAPProducts()
+                case .failure(let error):
+                    self?.sendIAPEvent("IAP_RESTORE_RESULT", ["ok": false, "message": error.localizedDescription])
+                }
+            }
+        case "IAP_MANAGE":
+            manager.openManageSubscriptions()
+        default:
+            break
+        }
+    }
+
+    private func sendIAPProducts() {
+        RevenueCatIAPManager.shared.products { [weak self] result in
+            if case .success(let products) = result {
+                self?.sendIAPEvent("IAP_PRODUCTS", ["products": products])
+            }
+        }
+    }
+
+    private func sendIAPEvent(_ name: String, _ detail: [String: Any]) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.sendIAPEvent(name, detail) }
+            return
+        }
+        guard let url = webView?.url, isTrustedFlexaURL(url),
+              JSONSerialization.isValidJSONObject(detail),
+              let data = try? JSONSerialization.data(withJSONObject: detail),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript(
+            "window.dispatchEvent(new CustomEvent(\(String(reflecting: name)),{detail:\(json)}));",
+            completionHandler: nil
+        )
     }
 
     private func isTrustedFlexaFrame(_ message: WKScriptMessage) -> Bool {
@@ -276,6 +365,10 @@ extension WebViewController: WKScriptMessageHandler {
     }
 
     private func sendUploadResult(_ result: [String: Any]) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.sendUploadResult(result) }
+            return
+        }
         guard let url = webView?.url, isTrustedFlexaURL(url),
               JSONSerialization.isValidJSONObject(result),
               let data = try? JSONSerialization.data(withJSONObject: result),

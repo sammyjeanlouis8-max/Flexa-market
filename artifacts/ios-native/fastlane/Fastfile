@@ -64,8 +64,6 @@ platform :ios do
     # 6. Build & archive
     #    xcargs explicitly force asset-catalog icon name in case
     #    update_code_signing_settings disturbs build settings
-    revenuecat_key = ENV["REVENUECAT_IOS_API_KEY"].to_s
-    UI.user_error!("REVENUECAT_IOS_API_KEY is required for the iOS subscription build") if revenuecat_key.empty?
     build_ios_app(
       project:          "FlexaMarket.xcodeproj",
       scheme:           "FlexaMarket",
@@ -74,7 +72,7 @@ platform :ios do
       output_directory: "/tmp/ipa_output",
       output_name:      "FlexaMarket.ipa",
       clean:            true,
-       xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO REVENUECAT_IOS_API_KEY='#{revenuecat_key.gsub("'", "\\\\'")}'"
+      xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO"
     )
 
 

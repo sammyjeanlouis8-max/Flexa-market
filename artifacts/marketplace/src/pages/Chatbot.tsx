@@ -11,6 +11,7 @@ import {
   Bell, HelpCircle, Truck, Music, Zap, Building2, Briefcase, Globe,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
+import { isLoanAllowed } from "@/lib/loanPolicy";
 
 // ── Quick-topic definitions ────────────────────────────────────────────────
 type Lang = "ht" | "fr" | "en" | "es" | "pt";
@@ -280,6 +281,9 @@ export default function Chatbot() {
   const [escalating, setEscalating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isNativeApp = typeof window !== "undefined" &&
+    (window.__iosWebView || window.__flexaPlatform === "ios" || window.__flexaPlatform === "android");
+  const showLoanTopic = user ? isLoanAllowed(user.country) : !isNativeApp;
 
   useEffect(() => {
     setMessages(loadHistory(storageKey));
@@ -495,7 +499,7 @@ export default function Chatbot() {
 
               {/* Topic grid */}
               <div className="grid grid-cols-3 gap-2 pt-1">
-                {TOPICS.map(topic => (
+                {TOPICS.filter(topic => topic.id !== "loan" || showLoanTopic).map(topic => (
                   <button
                     key={topic.id}
                     onClick={() => send(topic.query[lang])}

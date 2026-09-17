@@ -10,6 +10,7 @@ import {
   ShoppingBag, BarChart2, Lock, Unlock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isLoanAllowed } from "@/lib/loanPolicy";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface ScoreBreakdown {
@@ -225,9 +226,12 @@ export default function CreditScorePage() {
   const [data, setData] = useState<CreditScore | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const isNativeApp = typeof window !== "undefined" &&
+    (window.__iosWebView || window.__flexaPlatform === "ios" || window.__flexaPlatform === "android");
+  const pageAllowed = user ? isLoanAllowed(user.country) : !isNativeApp;
 
   async function loadScore(showFeedback = false) {
-    if (!token) return;
+    if (!token || !pageAllowed) return;
     if (showFeedback) setRefreshing(true);
     try {
       const res = await fetch("/api/credit-score/my", {
@@ -244,7 +248,12 @@ export default function CreditScorePage() {
     }
   }
 
-  useEffect(() => { loadScore(); }, [token]);
+  useEffect(() => { loadScore(); }, [token, pageAllowed]);
+
+  useEffect(() => {
+    if (!pageAllowed) setLocation("/");
+  }, [pageAllowed, setLocation]);
+  if (!pageAllowed) return null;
 
   if (!user) {
     return (
@@ -416,7 +425,7 @@ export default function CreditScorePage() {
       )}
 
       {/* CTA to loan page */}
-      <button
+      {isLoanAllowed(user?.country) && <button
         onClick={() => setLocation("/loans")}
         className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-2xl shadow-md transition-all active:scale-[0.98]">
         <div className="flex items-center gap-3">
@@ -429,7 +438,7 @@ export default function CreditScorePage() {
           </div>
         </div>
         <ChevronRight className="h-5 w-5 text-blue-200" />
-      </button>
+      </button>}
 
       {/* Score levels legend */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-5">

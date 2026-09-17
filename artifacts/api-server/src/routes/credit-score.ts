@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { loanAccessPolicy } from "../lib/loanPolicy";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -370,6 +371,11 @@ export async function calculateCreditScore(userId: number) {
 // GET /api/credit-score/my — user's own score
 router.get("/credit-score/my", requireAuth, async (req, res) => {
   try {
+    const actor = (req as any).user;
+    if (!loanAccessPolicy(actor?.country, req.headers["user-agent"])) {
+      res.status(403).json({ error: "Credit scores are not available for this account or application." });
+      return;
+    }
     const userId = (req as any).userId;
     const result = await calculateCreditScore(userId);
     if (!result) {

@@ -202,8 +202,6 @@ export default function HomeTab() {
   }, [cancelVideoPick, deliverVideo]);
 
   const pickVideoFromLibrary = useCallback(async () => {
-    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!granted) { cancelVideoPick(); return; }
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "videos", videoMaxDuration: 180 });
     if (r.canceled || !r.assets?.[0]?.uri) { cancelVideoPick(); return; }
     await deliverVideo(r.assets[0].uri);

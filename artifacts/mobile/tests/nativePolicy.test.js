@@ -25,6 +25,15 @@ test("Android blocks broad storage and battery permissions", () => {
   }
 });
 
+test("Android gallery selection uses the system picker without broad media permission", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "..", "app", "(tabs)", "index.tsx"),
+    "utf8",
+  );
+  assert.equal(source.includes("requestMediaLibraryPermissionsAsync"), false);
+  assert.equal(source.includes("launchImageLibraryAsync"), true);
+});
+
 test("dependency check accepts exact lock versions and never repairs files", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flexa-deps-"));
   const projectDir = path.join(root, "artifacts", "mobile");

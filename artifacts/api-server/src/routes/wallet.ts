@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
-import { eq, desc, sql, and, gte, ilike, or } from "drizzle-orm";
+import { eq, desc, sql, and, gte, ilike, or, not } from "drizzle-orm";
 import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
@@ -33,6 +33,14 @@ const MAX_LOOKUPS_PER_HOUR = 40;
 const TRANSFER_FEE_PCT = 0.05;
 /** Default platform fee on ALL recharges — 2% (DB-overridable) */
 const RECHARGE_FEE_PCT = 0.02;
+
+// Hosted checkout attempts are internal settlement records, not completed
+// financial activity. Keep them available for provider webhooks/reconciliation,
+// but do not expose them in wallet transaction history until payment succeeds.
+const visibleWalletTransaction = not(and(
+  eq(walletTransactionsTable.type, "recharge"),
+  eq(walletTransactionsTable.status, "pending"),
+));
 
 // ── Dynamic fee rate cache (platform_settings, 30 s TTL) ──────────────────────
 const _walletFeeCache = new Map<string, { value: number; expiresAt: number }>();
@@ -889,7 +897,10 @@ router.get("/wallet/history", requireAuth, async (req, res): Promise<void> => {
   const HIDDEN_TYPES = ["security_deposit", "security_refund"];
 
   const allRows = (await db.select().from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.userId, req.userId!))
+    .where(and(
+      eq(walletTransactionsTable.userId, req.userId!),
+      visibleWalletTransaction,
+    ))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit))
     .filter(r => !HIDDEN_TYPES.includes(r.type as string));
@@ -1095,6 +1106,7 @@ router.get("/wallet/admin/all", requireFinanceAdmin, async (req, res): Promise<v
     })
     .from(walletTransactionsTable)
     .leftJoin(usersTable, eq(walletTransactionsTable.userId, usersTable.id))
+    .where(visibleWalletTransaction)
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(limit)
     .offset(offset);
@@ -1129,6 +1141,7 @@ router.get("/wallet/admin/transactions", requireFinanceAdmin, async (req, res): 
 
   // Build WHERE conditions
   const conditions = [];
+  conditions.push(visibleWalletTransaction);
 
   // Scope: non-super-admin only sees their country's users
   if (scopeCountry) {
@@ -1713,7 +1726,10 @@ router.get("/wallet/admin/user/:id", requireFinanceAdmin, async (req, res): Prom
       createdAt:  walletTransactionsTable.createdAt,
     })
     .from(walletTransactionsTable)
-    .where(eq(walletTransactionsTable.userId, targetId))
+    .where(and(
+      eq(walletTransactionsTable.userId, targetId),
+      visibleWalletTransaction,
+    ))
     .orderBy(desc(walletTransactionsTable.createdAt))
     .limit(500);
 

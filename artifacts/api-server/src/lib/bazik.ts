@@ -131,9 +131,7 @@ export async function retrieveBazikPayment(
     },
   });
   const data = await readJsonResponse(res, "payment verification");
-  const payment = normalizeBazikPayment(data);
-  if (!payment.orderId) payment.orderId = orderId;
-  return payment;
+  return normalizeBazikPayment(data);
 }
 
 export function normalizeBazikPayment(payload: unknown): BazikPayment {

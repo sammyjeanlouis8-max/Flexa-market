@@ -17,6 +17,7 @@ import {
   bazikCreationDefinitelyRejected,
   createBazikMonCashPayment,
   getBazikAccessToken,
+  retrieveBazikMonCashPaymentByReference,
   retrieveBazikPayment,
   type BazikConfig,
 } from "../lib/bazik";
@@ -268,6 +269,7 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
       transactionId: walletTransactionsTable.id,
       paymentRef: walletTransactionsTable.paymentRef,
       providerOrderId: walletTransactionsTable.userTransferRef,
+      amountHtg: walletTransactionsTable.amountHtg,
     }).from(walletTransactionsTable).where(wherePending)
       .orderBy(walletTransactionsTable.createdAt, walletTransactionsTable.id)
       .limit(walletTransactionId ? 1 : RECONCILE_BATCH_SIZE)
@@ -292,13 +294,49 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
           continue;
         }
         try {
-          const payment = await retrieveBazikPayment(bazikConfig, token, row.providerOrderId);
+          const orderPayment = await retrieveBazikPayment(bazikConfig, token, row.providerOrderId);
+          let payment = orderPayment;
+          let verificationSource: "order" | "reference" = "order";
+          if (!bazikPaymentSucceeded(orderPayment.status)) {
+            try {
+              const referencePayment = await retrieveBazikMonCashPaymentByReference(
+                bazikConfig,
+                token,
+                row.paymentRef,
+              );
+              payment = {
+                ...referencePayment,
+                orderId: referencePayment.orderId || orderPayment.orderId,
+                referenceId: referencePayment.referenceId || orderPayment.referenceId,
+                amountHtg: Number.isFinite(referencePayment.amountHtg)
+                  ? referencePayment.amountHtg
+                  : orderPayment.amountHtg,
+                currency: referencePayment.currency || orderPayment.currency,
+              };
+              verificationSource = "reference";
+            } catch (referenceError) {
+              logger.warn({
+                userId,
+                providerOrderId: row.providerOrderId,
+                errorName: referenceError instanceof Error ? referenceError.name : "UnknownError",
+                operation: referenceError instanceof BazikApiError ? referenceError.operation : undefined,
+                httpStatus: referenceError instanceof BazikApiError ? referenceError.status : undefined,
+              }, "Bazik reference payment lookup failed; retaining order status");
+            }
+          }
+          const expectedAmountHtg = Number(row.amountHtg);
           const validation = {
-            orderMatches: payment.orderId === row.providerOrderId,
-            referenceMatches: payment.referenceId === row.paymentRef,
-            currencyMatches: payment.currency === "HTG",
+            orderMatches: orderPayment.orderId === row.providerOrderId
+              && (!payment.orderId || payment.orderId === row.providerOrderId),
+            referenceMatches: orderPayment.referenceId === row.paymentRef
+              && payment.referenceId === row.paymentRef,
+            currencyMatches: orderPayment.currency === "HTG"
+              && payment.currency === "HTG",
             statusSucceeded: bazikPaymentSucceeded(payment.status),
             amountPresent: Number.isFinite(payment.amountHtg),
+            expectedAmountMatches: Number.isFinite(expectedAmountHtg)
+              && orderPayment.amountHtg === expectedAmountHtg
+              && payment.amountHtg === expectedAmountHtg,
           };
           if (!Object.values(validation).every(Boolean)) {
             providerResults.push({
@@ -314,15 +352,16 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
               paymentCurrency: payment.currency || "missing",
               paymentAmountHtg: Number.isFinite(payment.amountHtg) ? payment.amountHtg : "missing",
               providerPayloadShape: payment.diagnostics,
+              verificationSource,
               ...validation,
             }, "Bazik wallet topup reconciliation validation failed");
             continue;
           }
           const outcome = await verifyHaitiMonCashTopup(
-            payment.transactionId || payment.orderId,
+            row.providerOrderId,
             payment.referenceId,
             payment.amountHtg,
-            payment.orderId,
+            row.providerOrderId,
           );
           providerResults.push({
             transactionId: row.transactionId,

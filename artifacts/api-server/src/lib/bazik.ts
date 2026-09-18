@@ -29,6 +29,7 @@ export interface BazikPayment {
   redirectUrl?: string;
   diagnostics?: {
     objectPaths: string[];
+    leafPaths: string[];
     statusCandidates: Array<{ path: string; value: string }>;
     booleanCandidates: Array<{ path: string; value: boolean }>;
   };
@@ -55,6 +56,7 @@ function firstNumber(...values: unknown[]): number {
 
 function summarizeBazikPayload(payload: unknown): NonNullable<BazikPayment["diagnostics"]> {
   const objectPaths: string[] = [];
+  const leafPaths: string[] = [];
   const statusCandidates: Array<{ path: string; value: string }> = [];
   const booleanCandidates: Array<{ path: string; value: boolean }> = [];
   const statusKey = /(^|_)(status|state|result|message)$/i;
@@ -72,6 +74,8 @@ function summarizeBazikPayload(payload: unknown): NonNullable<BazikPayment["diag
         booleanCandidates.push({ path: childPath, value: child });
       } else if (child && typeof child === "object" && !Array.isArray(child)) {
         visit(child, childPath, depth + 1);
+      } else {
+        leafPaths.push(childPath);
       }
     }
   };
@@ -79,6 +83,7 @@ function summarizeBazikPayload(payload: unknown): NonNullable<BazikPayment["diag
   visit(payload, "", 0);
   return {
     objectPaths: objectPaths.slice(0, 30),
+    leafPaths: leafPaths.slice(0, 50),
     statusCandidates: statusCandidates.slice(0, 20),
     booleanCandidates: booleanCandidates.slice(0, 20),
   };
@@ -167,6 +172,21 @@ export async function retrieveBazikPayment(
     },
   });
   const data = await readJsonResponse(res, "payment verification");
+  return normalizeBazikPayment(data);
+}
+
+export async function retrieveBazikMonCashPaymentByReference(
+  config: BazikConfig,
+  accessToken: string,
+  referenceId: string,
+): Promise<BazikPayment> {
+  const res = await fetch(`${BAZIK_API_BASE_URL}/moncash/payments/${encodeURIComponent(referenceId)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
+  });
+  const data = await readJsonResponse(res, "MonCash payment verification");
   return normalizeBazikPayment(data);
 }
 

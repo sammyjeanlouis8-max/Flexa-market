@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, notificationsTable, promoWalletTable, usersTable, walletTransactionsTable } from "@workspace/db";
-import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
+import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import {
   createPayment,
@@ -30,7 +30,7 @@ import {
   parsePositiveMoney,
 } from "../lib/haiti-money";
 import { getDynamicFeeRate, getOrCreateWallet, getWalletSettings } from "./wallet";
-import { and, eq, like, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, like, ne, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 const RECONCILE_COOLDOWN_MS = 60_000;
@@ -327,7 +327,7 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
         mode: config.mode as MonCashMode,
         clientId: config.clientId,
         clientSecret: config.clientSecret,
-        returnUrl: callbackUrl(req, config.callbackUrl),
+        returnUrl: config.callbackUrl,
       };
       const token = await getAccessToken(monCashCfg);
       for (const row of pending) {
@@ -383,7 +383,64 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
   }
 });
 
-router.post("/wallet/haiti/admin/reconcile/:userId", requireFinanceAdmin, async (req, res): Promise<void> => {
+router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, res): Promise<void> => {
+  const status = String(req.query.status ?? "all").trim().toLowerCase();
+  const search = String(req.query.search ?? "").trim();
+  const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 300));
+  const conditions = [
+    eq(walletTransactionsTable.type, "recharge"),
+    like(walletTransactionsTable.paymentRef, "wallet_topup_%"),
+    eq(usersTable.country, "Haiti"),
+  ];
+  if (status !== "all") conditions.push(eq(walletTransactionsTable.status, status));
+  if (search) {
+    const q = `%${search}%`;
+    conditions.push(or(
+      ilike(usersTable.name, q),
+      ilike(usersTable.email, q),
+      ilike(walletTransactionsTable.paymentRef, q),
+      ilike(walletTransactionsTable.userTransferRef, q),
+    )!);
+  }
+
+  const rows = await db.select({
+    id: walletTransactionsTable.id,
+    userId: walletTransactionsTable.userId,
+    userName: usersTable.name,
+    userEmail: usersTable.email,
+    accountNumber: promoWalletTable.accountNumber,
+    balanceUsd: promoWalletTable.balanceUsd,
+    amountUsd: walletTransactionsTable.amountUsd,
+    amountHtg: walletTransactionsTable.amountHtg,
+    rateUsed: walletTransactionsTable.rateUsed,
+    bonusPct: walletTransactionsTable.bonusPct,
+    paymentRef: walletTransactionsTable.paymentRef,
+    providerOrderId: walletTransactionsTable.userTransferRef,
+    status: walletTransactionsTable.status,
+    note: walletTransactionsTable.note,
+    confirmedAt: walletTransactionsTable.confirmedAt,
+    createdAt: walletTransactionsTable.createdAt,
+  }).from(walletTransactionsTable)
+    .innerJoin(usersTable, eq(walletTransactionsTable.userId, usersTable.id))
+    .leftJoin(promoWalletTable, eq(walletTransactionsTable.userId, promoWalletTable.userId))
+    .where(and(...conditions))
+    .orderBy(desc(walletTransactionsTable.createdAt))
+    .limit(limit);
+
+  const metrics = rows.reduce((acc, row) => {
+    acc.total += 1;
+    acc.amountHtg += Number(row.amountHtg) || 0;
+    acc.amountUsd += Number(row.amountUsd) || 0;
+    if (row.status === "completed") acc.completed += 1;
+    else if (row.status === "pending") acc.pending += 1;
+    else acc.other += 1;
+    return acc;
+  }, { total: 0, completed: 0, pending: 0, other: 0, amountHtg: 0, amountUsd: 0 });
+
+  res.json({ transactions: rows, metrics });
+});
+
+router.post("/wallet/haiti/admin/reconcile/:userId", requireSuperAdmin, async (req, res): Promise<void> => {
   const userId = Number(req.params.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
     res.status(400).json({ error: "ID itilizatè envalid" });
@@ -396,12 +453,6 @@ router.post("/wallet/haiti/admin/reconcile/:userId", requireFinanceAdmin, async 
   }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!target) {
     res.status(404).json({ error: "Itilizatè pa jwenn" });
-    return;
-  }
-  const admin = req.user as any;
-  const scopeCountry = admin?.adminScopeCountry as string | undefined;
-  if (!admin?.isSuperAdmin && scopeCountry && target.country !== scopeCountry) {
-    res.status(403).json({ error: "Deyò peyi ou" });
     return;
   }
   if (target.country !== "Haiti") {

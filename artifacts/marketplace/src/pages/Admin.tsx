@@ -2940,6 +2940,23 @@ export default function Admin() {
           <ArrowRight className="h-4 w-4 text-emerald-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setLocation("/admin/moncash-transactions")}
+            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl border border-red-200 dark:border-red-800 bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/20 hover:from-red-100 hover:to-orange-100 dark:hover:from-red-900/40 dark:hover:to-orange-900/30 transition-all text-left group shadow-sm hover:shadow-md"
+          >
+            <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center shrink-0 shadow shadow-red-200 dark:shadow-red-900/50">
+              <Wallet className="h-5 w-5 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-black text-red-900 dark:text-red-100">{t("adminMonCash.hubTitle")}</p>
+              <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{t("adminMonCash.hubSubtitle")}</p>
+            </div>
+            <ArrowRight className="h-4 w-4 text-red-400 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
+
         {/* Aksyon Admin — Admin Action Feed */}
         <button
           type="button"

@@ -38,6 +38,11 @@ export default function AdminTransactions() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation();
+  const explicitRole = String((user as any)?.role ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const canonicalRole = ["support", "moderator", "admin", "superadmin"].includes(explicitRole)
+    ? explicitRole
+    : (user as any)?.isSuperAdmin ? "superadmin" : (user as any)?.isAdmin ? "admin" : "user";
+  const isSuperAdmin = canonicalRole === "superadmin";
 
   const [balances, setBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -333,7 +338,7 @@ export default function AdminTransactions() {
                     <p className="text-lg font-black text-amber-400 tabular-nums">${parseFloat(detailData.wallet.unlockedBalance ?? 0).toFixed(2)}</p>
                   </div>
                   </div>
-                  {detailData.user.country === "Haiti" && (
+                  {isSuperAdmin && detailData.user.country === "Haiti" && (
                     <Button
                       type="button"
                       variant="outline"

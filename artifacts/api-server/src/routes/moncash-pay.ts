@@ -369,6 +369,16 @@ router.post("/bazik/webhook", async (req, res): Promise<void> => {
   const cfg = await readMonCashConfig();
   const bazikConfig = readBazikConfig(cfg);
   const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0);
+  const bazikHeaderNames = Object.keys(req.headers)
+    .filter((name) => name.toLowerCase().startsWith("x-bazik-"))
+    .sort();
+  logger.info({
+    rawBodyBytes: rawBody.length,
+    bazikHeaderNames,
+    hasTimestamp: !!req.header("X-Bazik-Timestamp"),
+    hasEventId: !!req.header("X-Bazik-Event-Id"),
+    hasSignature: !!req.header("X-Bazik-Signature"),
+  }, "[bazik/webhook] request received");
   const signatureValid = verifyBazikWebhookSignature({
     config: bazikConfig,
     rawBody,
@@ -377,23 +387,39 @@ router.post("/bazik/webhook", async (req, res): Promise<void> => {
     signature: String(req.header("X-Bazik-Signature") ?? ""),
   });
   if (!signatureValid) {
+    logger.warn({
+      rawBodyBytes: rawBody.length,
+      bazikHeaderNames,
+      hasTimestamp: !!req.header("X-Bazik-Timestamp"),
+      hasEventId: !!req.header("X-Bazik-Event-Id"),
+      hasSignature: !!req.header("X-Bazik-Signature"),
+    }, "[bazik/webhook] invalid signature");
     res.status(401).json({ error: "Invalid webhook signature" });
     return;
   }
 
   const event = normalizeBazikPayment(req.body);
   if (!event.orderId) {
+    logger.warn({
+      providerPayloadShape: event.diagnostics,
+    }, "[bazik/webhook] valid signature but missing orderId");
     res.status(400).json({ error: "Missing Bazik orderId" });
     return;
   }
+  logger.info({ orderId: event.orderId }, "[bazik/webhook] signature verified");
   try {
     const outcome = await processVerifiedBazikOrder(cfg, event.orderId);
     if (!outcome.ok) {
+      logger.warn({
+        orderId: event.orderId,
+        pending: outcome.redirect.includes("pending"),
+      }, "[bazik/webhook] provider verification did not complete payment");
       res.status(outcome.redirect.includes("pending") ? 409 : 422).json({
         error: outcome.redirect.includes("pending") ? "Payment verification is pending" : "Payment validation failed",
       });
       return;
     }
+    logger.info({ orderId: event.orderId }, "[bazik/webhook] payment processed");
     res.json({ received: true });
   } catch (err) {
     logger.error({ orderId: event.orderId }, "[bazik/webhook] payment verification failed");

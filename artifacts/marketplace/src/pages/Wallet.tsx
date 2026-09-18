@@ -3023,11 +3023,17 @@ export default function WalletPage() {
           <h1 className="text-lg font-black">{t("wallet.myWallet")}</h1>
         </div>
         <button
-          onClick={() => {
-            qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
-            qc.invalidateQueries({ queryKey: ["/wallet/history"] });
+          onClick={async () => {
+            if (isHaiti) {
+              await qc.invalidateQueries({ queryKey: ["/wallet/haiti/reconcile"] });
+            }
+            await Promise.all([
+              qc.invalidateQueries({ queryKey: ["/wallet/balance"] }),
+              qc.invalidateQueries({ queryKey: ["/wallet/history"] }),
+            ]);
           }}
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          aria-label={t("wallet.refresh")}
         >
           <RefreshCw className="h-4 w-4" />
         </button>

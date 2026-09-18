@@ -667,15 +667,11 @@ export async function verifyHaitiMonCashTopup(
       });
       await tx.insert(notificationsTable).values({
         userId: pending.userId,
+        actorId: pending.userId,
         type: "wallet_fee",
         isRead: false,
-        meta: JSON.stringify({
-          message: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${pending.amountUsd.toFixed(2)} ou a.`,
-          feeUsd,
-          netUsd,
-          grossAmountUsd: pending.amountUsd,
-        }),
-      } as any);
+        message: `Frè rechaj ${(rechargeFeePct * 100).toFixed(1)}% — $${feeUsd.toFixed(2)} dedwi sou rechaj $${pending.amountUsd.toFixed(2)} ou a.`,
+      });
     }
     return "credited";
   });

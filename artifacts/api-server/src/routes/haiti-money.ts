@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, notificationsTable, promoWalletTable, walletTransactionsTable } from "@workspace/db";
-import { requireAuth } from "../middlewares/auth";
+import { db, notificationsTable, promoWalletTable, usersTable, walletTransactionsTable } from "@workspace/db";
+import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import {
   createPayment,
@@ -215,23 +215,15 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
   }
 });
 
-router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<void> => {
-  if (!userIsHaiti(req)) {
-    res.status(403).json({ error: "Haiti local money is only available to Haiti users" });
-    return;
-  }
-
+async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: number; credited: number }> {
   const config = await getMonCashRuntimeConfig();
   if (!monCashReady(config)) {
-    res.json({ checked: 0, credited: 0 });
-    return;
+    return { checked: 0, credited: 0 };
   }
 
-  const userId = req.userId!;
   const previous = reconcileState.get(userId);
   if (previous && (previous.inFlight || Date.now() - previous.checkedAt < RECONCILE_COOLDOWN_MS)) {
-    res.json(previous.result);
-    return;
+    return previous.result;
   }
   reconcileState.set(userId, {
     checkedAt: Date.now(),
@@ -254,8 +246,7 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
     if (pendingCount === 0) {
       const result = { checked: 0, credited: 0 };
       reconcileState.set(userId, { checkedAt: Date.now(), nextOffset: 0, inFlight: false, result });
-      res.json(result);
-      return;
+      return result;
     }
 
     const offset = Math.min(previous?.nextOffset ?? 0, Math.max(0, pendingCount - 1));
@@ -367,7 +358,7 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
     const result = { checked: pending.length, credited };
     const nextOffset = offset + pending.length >= pendingCount ? 0 : offset + pending.length;
     reconcileState.set(userId, { checkedAt: Date.now(), nextOffset, inFlight: false, result });
-    res.json(result);
+    return result;
   } catch {
     const state = reconcileState.get(userId);
     reconcileState.set(userId, {
@@ -376,6 +367,58 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
       inFlight: false,
       result: state?.result ?? { checked: 0, credited: 0 },
     });
+    throw new Error("MonCash reconciliation temporarily unavailable");
+  }
+}
+
+router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<void> => {
+  if (!userIsHaiti(req)) {
+    res.status(403).json({ error: "Haiti local money is only available to Haiti users" });
+    return;
+  }
+  try {
+    res.json(await reconcileHaitiWalletUser(req.userId!));
+  } catch {
+    res.status(502).json({ error: "MonCash reconciliation temporarily unavailable" });
+  }
+});
+
+router.post("/wallet/haiti/admin/reconcile/:userId", requireFinanceAdmin, async (req, res): Promise<void> => {
+  const userId = Number(req.params.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    res.status(400).json({ error: "ID itilizatè envalid" });
+    return;
+  }
+
+  const [target] = await db.select({
+    id: usersTable.id,
+    country: usersTable.country,
+  }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!target) {
+    res.status(404).json({ error: "Itilizatè pa jwenn" });
+    return;
+  }
+  const admin = req.user as any;
+  const scopeCountry = admin?.adminScopeCountry as string | undefined;
+  if (!admin?.isSuperAdmin && scopeCountry && target.country !== scopeCountry) {
+    res.status(403).json({ error: "Deyò peyi ou" });
+    return;
+  }
+  if (target.country !== "Haiti") {
+    res.status(400).json({ error: "Rekonsilyasyon MonCash disponib sèlman pou kont Ayiti" });
+    return;
+  }
+
+  try {
+    const result = await reconcileHaitiWalletUser(userId);
+    logger.info({
+      adminUserId: req.userId,
+      targetUserId: userId,
+      checked: result.checked,
+      credited: result.credited,
+    }, "Admin requested verified MonCash wallet reconciliation");
+    res.json(result);
+  } catch {
     res.status(502).json({ error: "MonCash reconciliation temporarily unavailable" });
   }
 });

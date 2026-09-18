@@ -48,6 +48,7 @@ export default function AdminTransactions() {
   const [detailUserId, setDetailUserId] = useState<number | null>(null);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -90,6 +91,35 @@ export default function AdminTransactions() {
       setDetailData(null);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const reconcileHaitiWallet = async () => {
+    if (!detailUserId || reconciling) return;
+    setReconciling(true);
+    try {
+      const tk = localStorage.getItem("flexamarket_token");
+      const res = await fetch(`/api/wallet/haiti/admin/reconcile/${detailUserId}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...(tk ? { Authorization: `Bearer ${tk}` } : {}) },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `Erè ${res.status}`);
+      await openDetail(detailUserId);
+      await load();
+      toast({
+        title: data.credited > 0 ? "Peman verifye epi kredite" : "Verifikasyon fini",
+        description: `${data.checked ?? 0} peman verifye, ${data.credited ?? 0} nouvo kredi.`,
+      });
+    } catch (e: any) {
+      toast({
+        title: "Rekonsilyasyon echwe",
+        description: e?.message ?? "Tanpri eseye ankò.",
+        variant: "destructive",
+      });
+    } finally {
+      setReconciling(false);
     }
   };
 
@@ -288,7 +318,8 @@ export default function AdminTransactions() {
 
               {/* Balance tiles */}
               {detailData.wallet && (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Disponib</p>
                     <p className="text-lg font-black text-emerald-500 tabular-nums">${parseFloat(detailData.wallet.balanceUsd ?? 0).toFixed(2)}</p>
@@ -301,6 +332,19 @@ export default function AdminTransactions() {
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Debloke</p>
                     <p className="text-lg font-black text-amber-400 tabular-nums">${parseFloat(detailData.wallet.unlockedBalance ?? 0).toFixed(2)}</p>
                   </div>
+                  </div>
+                  {detailData.user.country === "Haiti" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full border-emerald-500/40 text-emerald-600"
+                      onClick={reconcileHaitiWallet}
+                      disabled={reconciling}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${reconciling ? "animate-spin" : ""}`} />
+                      {reconciling ? "Bazik ap verifye..." : "Verifye peman MonCash/Bazik"}
+                    </Button>
+                  )}
                 </div>
               )}
 

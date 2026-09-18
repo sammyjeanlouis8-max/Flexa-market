@@ -35,11 +35,21 @@ import { and, desc, eq, ilike, like, ne, or, sql } from "drizzle-orm";
 const router: IRouter = Router();
 const RECONCILE_COOLDOWN_MS = 60_000;
 const RECONCILE_BATCH_SIZE = 10;
-const reconcileState = new Map<number, {
+type ReconcileResult = {
+  checked: number;
+  credited: number;
+  providerResults?: Array<{
+    transactionId: number;
+    providerOrderId: string;
+    providerStatus: string;
+    verified: boolean;
+  }>;
+};
+const reconcileState = new Map<string, {
   checkedAt: number;
   nextOffset: number;
   inFlight: boolean;
-  result: { checked: number; credited: number };
+  result: ReconcileResult;
 }>();
 
 function userIsHaiti(req: any): boolean {
@@ -215,17 +225,18 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
   }
 });
 
-async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: number; credited: number }> {
+async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: number): Promise<ReconcileResult> {
   const config = await getMonCashRuntimeConfig();
   if (!monCashReady(config)) {
     return { checked: 0, credited: 0 };
   }
 
-  const previous = reconcileState.get(userId);
+  const stateKey = walletTransactionId ? `${userId}:transaction:${walletTransactionId}` : `${userId}:batch`;
+  const previous = reconcileState.get(stateKey);
   if (previous && (previous.inFlight || Date.now() - previous.checkedAt < RECONCILE_COOLDOWN_MS)) {
     return previous.result;
   }
-  reconcileState.set(userId, {
+  reconcileState.set(stateKey, {
     checkedAt: Date.now(),
     nextOffset: previous?.nextOffset ?? 0,
     inFlight: true,
@@ -233,32 +244,37 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
   });
 
   try {
-    const wherePending = and(
+    const basePending = and(
       eq(walletTransactionsTable.userId, userId),
       eq(walletTransactionsTable.type, "recharge"),
       eq(walletTransactionsTable.status, "pending"),
       like(walletTransactionsTable.paymentRef, `wallet_topup_${userId}_%`),
     );
+    const wherePending = walletTransactionId
+      ? and(basePending, eq(walletTransactionsTable.id, walletTransactionId))
+      : basePending;
     const [countRow] = await db.select({
       count: sql<number>`count(*)::int`,
     }).from(walletTransactionsTable).where(wherePending);
     const pendingCount = Number(countRow?.count ?? 0);
     if (pendingCount === 0) {
       const result = { checked: 0, credited: 0 };
-      reconcileState.set(userId, { checkedAt: Date.now(), nextOffset: 0, inFlight: false, result });
+      reconcileState.set(stateKey, { checkedAt: Date.now(), nextOffset: 0, inFlight: false, result });
       return result;
     }
 
     const offset = Math.min(previous?.nextOffset ?? 0, Math.max(0, pendingCount - 1));
     const pending = await db.select({
+      transactionId: walletTransactionsTable.id,
       paymentRef: walletTransactionsTable.paymentRef,
       providerOrderId: walletTransactionsTable.userTransferRef,
     }).from(walletTransactionsTable).where(wherePending)
       .orderBy(walletTransactionsTable.createdAt, walletTransactionsTable.id)
-      .limit(RECONCILE_BATCH_SIZE)
-      .offset(offset);
+      .limit(walletTransactionId ? 1 : RECONCILE_BATCH_SIZE)
+      .offset(walletTransactionId ? 0 : offset);
 
     let credited = 0;
+    const providerResults: NonNullable<ReconcileResult["providerResults"]> = [];
     if (config.adapter === "bazik") {
       const bazikConfig: BazikConfig = {
         userId: config.bazikUserId,
@@ -285,6 +301,12 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
             amountPresent: Number.isFinite(payment.amountHtg),
           };
           if (!Object.values(validation).every(Boolean)) {
+            providerResults.push({
+              transactionId: row.transactionId,
+              providerOrderId: row.providerOrderId,
+              providerStatus: payment.status || "missing",
+              verified: false,
+            });
             logger.warn({
               userId,
               providerOrderId: row.providerOrderId,
@@ -301,6 +323,12 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
             payment.amountHtg,
             payment.orderId,
           );
+          providerResults.push({
+            transactionId: row.transactionId,
+            providerOrderId: row.providerOrderId,
+            providerStatus: payment.status || "missing",
+            verified: outcome.ok,
+          });
           if (!outcome.ok) {
             logger.warn({
               userId,
@@ -311,6 +339,12 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
           }
           if (outcome.ok && !outcome.alreadyProcessed) credited += 1;
         } catch (error) {
+          providerResults.push({
+            transactionId: row.transactionId,
+            providerOrderId: row.providerOrderId,
+            providerStatus: "lookup_failed",
+            verified: false,
+          });
           logger.warn({
             userId,
             providerOrderId: row.providerOrderId,
@@ -355,13 +389,13 @@ async function reconcileHaitiWalletUser(userId: number): Promise<{ checked: numb
     if (credited > 0) {
       logger.info({ userId, credited }, "Recovered pending MonCash wallet topups");
     }
-    const result = { checked: pending.length, credited };
+    const result = { checked: pending.length, credited, providerResults };
     const nextOffset = offset + pending.length >= pendingCount ? 0 : offset + pending.length;
-    reconcileState.set(userId, { checkedAt: Date.now(), nextOffset, inFlight: false, result });
+    reconcileState.set(stateKey, { checkedAt: Date.now(), nextOffset, inFlight: false, result });
     return result;
   } catch {
-    const state = reconcileState.get(userId);
-    reconcileState.set(userId, {
+    const state = reconcileState.get(stateKey);
+    reconcileState.set(stateKey, {
       checkedAt: Date.now(),
       nextOffset: state?.nextOffset ?? 0,
       inFlight: false,
@@ -468,6 +502,46 @@ router.post("/wallet/haiti/admin/reconcile/:userId", requireSuperAdmin, async (r
       checked: result.checked,
       credited: result.credited,
     }, "Admin requested verified MonCash wallet reconciliation");
+    res.json(result);
+  } catch {
+    res.status(502).json({ error: "MonCash reconciliation temporarily unavailable" });
+  }
+});
+
+router.post("/wallet/haiti/admin/reconcile-transaction/:transactionId", requireSuperAdmin, async (req, res): Promise<void> => {
+  const transactionId = Number(req.params.transactionId);
+  if (!Number.isInteger(transactionId) || transactionId <= 0) {
+    res.status(400).json({ error: "ID tranzaksyon envalid" });
+    return;
+  }
+  const [target] = await db.select({
+    userId: walletTransactionsTable.userId,
+    country: usersTable.country,
+  }).from(walletTransactionsTable)
+    .innerJoin(usersTable, eq(walletTransactionsTable.userId, usersTable.id))
+    .where(and(
+      eq(walletTransactionsTable.id, transactionId),
+      eq(walletTransactionsTable.type, "recharge"),
+      like(walletTransactionsTable.paymentRef, "wallet_topup_%"),
+    ))
+    .limit(1);
+  if (!target) {
+    res.status(404).json({ error: "Tranzaksyon MonCash pa jwenn" });
+    return;
+  }
+  if (target.country !== "Haiti") {
+    res.status(400).json({ error: "Tranzaksyon sa a pa pou yon kont Ayiti" });
+    return;
+  }
+  try {
+    const result = await reconcileHaitiWalletUser(target.userId, transactionId);
+    logger.info({
+      adminUserId: req.userId,
+      targetUserId: target.userId,
+      transactionId,
+      checked: result.checked,
+      credited: result.credited,
+    }, "Admin requested verified MonCash transaction reconciliation");
     res.json(result);
   } catch {
     res.status(502).json({ error: "MonCash reconciliation temporarily unavailable" });

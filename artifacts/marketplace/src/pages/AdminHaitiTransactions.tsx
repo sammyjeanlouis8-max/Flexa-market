@@ -73,16 +73,17 @@ export default function AdminHaitiTransactions() {
   });
 
   const reconcile = useMutation({
-    mutationFn: (userId: number) =>
-      apiFetch(`/api/wallet/haiti/admin/reconcile/${userId}`, { method: "POST" }),
+    mutationFn: (transactionId: number) =>
+      apiFetch(`/api/wallet/haiti/admin/reconcile-transaction/${transactionId}`, { method: "POST" }),
     onSuccess: (result: any) => {
       qc.invalidateQueries({ queryKey: ["admin-moncash-transactions"] });
+      const providerStatus = result?.providerResults?.[0]?.providerStatus;
       toast({
         title: result?.credited > 0 ? t("adminMonCash.creditSuccess") : t("adminMonCash.verificationComplete"),
-        description: t("adminMonCash.verificationResult", {
+        description: `${t("adminMonCash.verificationResult", {
           checked: result?.checked ?? 0,
           credited: result?.credited ?? 0,
-        }),
+        })}${providerStatus ? ` ${t("adminMonCash.providerStatus")}: ${statusLabel(providerStatus)}` : ""}`,
       });
     },
     onError: (error: Error) => toast({
@@ -198,11 +199,11 @@ export default function AdminHaitiTransactions() {
                     {tx.status === "pending" && (
                       <Button
                         size="sm"
-                        onClick={() => reconcile.mutate(tx.userId)}
+                        onClick={() => reconcile.mutate(tx.id)}
                         disabled={reconcile.isPending}
                       >
                         <ShieldCheck className="mr-1 h-4 w-4" />
-                        {reconcile.isPending && reconcile.variables === tx.userId
+                        {reconcile.isPending && reconcile.variables === tx.id
                           ? t("adminMonCash.verifying")
                           : t("adminMonCash.verify")}
                       </Button>

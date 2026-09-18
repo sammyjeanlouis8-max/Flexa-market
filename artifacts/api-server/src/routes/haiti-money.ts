@@ -313,6 +313,7 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
               paymentStatus: payment.status || "missing",
               paymentCurrency: payment.currency || "missing",
               paymentAmountHtg: Number.isFinite(payment.amountHtg) ? payment.amountHtg : "missing",
+              providerPayloadShape: payment.diagnostics,
               ...validation,
             }, "Bazik wallet topup reconciliation validation failed");
             continue;

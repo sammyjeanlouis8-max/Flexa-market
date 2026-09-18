@@ -27,6 +27,11 @@ export interface BazikPayment {
   amountHtg: number;
   currency: string;
   redirectUrl?: string;
+  diagnostics?: {
+    objectPaths: string[];
+    statusCandidates: Array<{ path: string; value: string }>;
+    booleanCandidates: Array<{ path: string; value: boolean }>;
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -46,6 +51,37 @@ function firstNumber(...values: unknown[]): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return NaN;
+}
+
+function summarizeBazikPayload(payload: unknown): NonNullable<BazikPayment["diagnostics"]> {
+  const objectPaths: string[] = [];
+  const statusCandidates: Array<{ path: string; value: string }> = [];
+  const booleanCandidates: Array<{ path: string; value: boolean }> = [];
+  const statusKey = /(^|_)(status|state|result|message)$/i;
+  const booleanKey = /(^|_)(paid|success|successful|completed|approved|confirmed)$/i;
+
+  const visit = (value: unknown, path: string, depth: number) => {
+    if (!value || typeof value !== "object" || Array.isArray(value) || depth > 4) return;
+    const record = value as Record<string, unknown>;
+    if (path) objectPaths.push(path);
+    for (const [key, child] of Object.entries(record)) {
+      const childPath = path ? `${path}.${key}` : key;
+      if (typeof child === "string" && statusKey.test(key)) {
+        statusCandidates.push({ path: childPath, value: child.trim().slice(0, 80) });
+      } else if (typeof child === "boolean" && (statusKey.test(key) || booleanKey.test(key))) {
+        booleanCandidates.push({ path: childPath, value: child });
+      } else if (child && typeof child === "object" && !Array.isArray(child)) {
+        visit(child, childPath, depth + 1);
+      }
+    }
+  };
+
+  visit(payload, "", 0);
+  return {
+    objectPaths: objectPaths.slice(0, 30),
+    statusCandidates: statusCandidates.slice(0, 20),
+    booleanCandidates: booleanCandidates.slice(0, 20),
+  };
 }
 
 async function readJsonResponse(res: Response, operation: string): Promise<Record<string, unknown>> {
@@ -152,6 +188,7 @@ export function normalizeBazikPayment(payload: unknown): BazikPayment {
     ),
     currency: firstString(root.currency, data.currency, payment.currency, nestedPayment.currency).toUpperCase(),
     redirectUrl: firstString(root.redirectUrl, data.redirectUrl, payment.redirectUrl, nestedPayment.redirectUrl) || undefined,
+    diagnostics: summarizeBazikPayload(payload),
   };
 }
 

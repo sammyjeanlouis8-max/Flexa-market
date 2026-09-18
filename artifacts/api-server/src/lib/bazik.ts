@@ -107,6 +107,29 @@ async function readJsonResponse(res: Response, operation: string): Promise<Recor
   return data;
 }
 
+async function fetchBazikVerification(
+  url: string,
+  accessToken: string,
+  operation: string,
+): Promise<Record<string, unknown>> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+      });
+      return await readJsonResponse(res, operation);
+    } catch (error) {
+      const retryable = !(error instanceof BazikApiError) || error.status >= 500;
+      if (attempt === 2 || !retryable) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw new Error(`${operation} failed`);
+}
+
 export function bazikCreationDefinitelyRejected(error: unknown): boolean {
   return error instanceof BazikApiError
     && error.operation === "payment creation"
@@ -165,13 +188,11 @@ export async function retrieveBazikPayment(
   accessToken: string,
   orderId: string,
 ): Promise<BazikPayment> {
-  const res = await fetch(`${BAZIK_API_BASE_URL}/order/${encodeURIComponent(orderId)}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    },
-  });
-  const data = await readJsonResponse(res, "payment verification");
+  const data = await fetchBazikVerification(
+    `${BAZIK_API_BASE_URL}/order/${encodeURIComponent(orderId)}`,
+    accessToken,
+    "payment verification",
+  );
   return normalizeBazikPayment(data);
 }
 
@@ -180,13 +201,11 @@ export async function retrieveBazikMonCashPaymentByReference(
   accessToken: string,
   referenceId: string,
 ): Promise<BazikPayment> {
-  const res = await fetch(`${BAZIK_API_BASE_URL}/moncash/payments/${encodeURIComponent(referenceId)}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    },
-  });
-  const data = await readJsonResponse(res, "MonCash payment verification");
+  const data = await fetchBazikVerification(
+    `${BAZIK_API_BASE_URL}/moncash/payments/${encodeURIComponent(referenceId)}`,
+    accessToken,
+    "MonCash payment verification",
+  );
   return normalizeBazikPayment(data);
 }
 

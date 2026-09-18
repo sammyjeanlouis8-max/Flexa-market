@@ -293,12 +293,14 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
           }, "Bazik wallet topup reconciliation skipped an incomplete pending row");
           continue;
         }
+        let reconciliationStage = "order_lookup";
         try {
           const orderPayment = await retrieveBazikPayment(bazikConfig, token, row.providerOrderId);
           let payment = orderPayment;
           let verificationSource: "order" | "reference" = "order";
           if (!bazikPaymentSucceeded(orderPayment.status)) {
             try {
+              reconciliationStage = "reference_lookup";
               const referencePayment = await retrieveBazikMonCashPaymentByReference(
                 bazikConfig,
                 token,
@@ -324,6 +326,7 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
               }, "Bazik reference payment lookup failed; retaining order status");
             }
           }
+          reconciliationStage = "validation";
           const expectedAmountHtg = Number(row.amountHtg);
           const validation = {
             orderMatches: orderPayment.orderId === row.providerOrderId
@@ -357,6 +360,7 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
             }, "Bazik wallet topup reconciliation validation failed");
             continue;
           }
+          reconciliationStage = "credit_gate";
           const outcome = await verifyHaitiMonCashTopup(
             row.providerOrderId,
             payment.referenceId,
@@ -389,6 +393,8 @@ async function reconcileHaitiWalletUser(userId: number, walletTransactionId?: nu
             userId,
             providerOrderId: row.providerOrderId,
             errorName: error instanceof Error ? error.name : "UnknownError",
+            errorMessage: error instanceof Error ? error.message.slice(0, 160) : undefined,
+            reconciliationStage,
             operation: error instanceof BazikApiError ? error.operation : undefined,
             httpStatus: error instanceof BazikApiError ? error.status : undefined,
           }, "Bazik wallet topup reconciliation provider lookup failed");

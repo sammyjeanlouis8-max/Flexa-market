@@ -22,6 +22,7 @@ export interface MonCashRuntimeConfig {
   bazikUserId: string;
   bazikSecretKey: string;
   bazikWebhookSecret: string;
+  bazikWebhookUrl: string;
 }
 
 export interface NatCashRuntimeConfig {
@@ -48,6 +49,7 @@ const BAZIK_ENV = {
   userId: "BAZIK_USER_ID",
   secretKey: "BAZIK_SECRET_KEY",
   webhookSecret: "BAZIK_WEBHOOK_SECRET",
+  webhookUrl: "BAZIK_WEBHOOK_URL",
 } as const;
 
 /**
@@ -99,6 +101,7 @@ export async function getMonCashRuntimeConfig(): Promise<MonCashRuntimeConfig> {
   const bazikUserId = envString(BAZIK_ENV.userId, "");
   const bazikSecretKey = envString(BAZIK_ENV.secretKey, "");
   const bazikWebhookSecret = envString(BAZIK_ENV.webhookSecret, "");
+  const bazikWebhookUrl = envString(BAZIK_ENV.webhookUrl, "");
   const bazikConfigured = !!bazikUserId && !!bazikSecretKey && !!bazikWebhookSecret;
   return {
     enabled: envBoolean(MONCASH_ENV.enabled, stored.enabled === true || bazikConfigured),
@@ -110,6 +113,7 @@ export async function getMonCashRuntimeConfig(): Promise<MonCashRuntimeConfig> {
     bazikUserId,
     bazikSecretKey,
     bazikWebhookSecret,
+    bazikWebhookUrl,
   };
 }
 export async function getNatCashRuntimeConfig(): Promise<NatCashRuntimeConfig> {

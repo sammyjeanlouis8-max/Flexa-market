@@ -5,14 +5,527 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
-import { isHaitiPhone, roundMoney } from "../lib/haiti-money";
+import { getMonCashRuntimeConfig, isHaitiPhone, roundMoney } from "../lib/haiti-money";
+import { getCashoutHtgRate, usdToHtg } from "../lib/exchange-rate";
+import {
+  BazikApiError,
+  bazikWithdrawalDefinitelyRejected,
+  createBazikMonCashWithdrawal,
+  getBazikAccessToken,
+  normalizeBazikTransfer,
+  retrieveBazikCustomerStatus,
+  retrieveBazikTransfer,
+  retrieveBazikWalletBalance,
+  type BazikConfig,
+} from "../lib/bazik";
 
 const router = Router();
 
 /** Platform fee applied to all cash-out requests (2%) */
 const CASHOUT_FEE_PCT = 0.02;
+/** Bazik's documented MonCash transfer fee, charged on top of delivery amount. */
+const BAZIK_TRANSFER_FEE_PCT = 0.05;
 /** Minimum balance always reserved after first recharge */
 const POST_RECHARGE_MIN_USD = 1.50;
+
+function normalizeHaitiPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 8 ? `509${digits}` : digits;
+}
+
+function bazikConfig(input: {
+  bazikUserId: string;
+  bazikSecretKey: string;
+  bazikWebhookSecret: string;
+}): BazikConfig {
+  return {
+    userId: input.bazikUserId,
+    secretKey: input.bazikSecretKey,
+    webhookSecret: input.bazikWebhookSecret,
+  };
+}
+
+function bazikPayoutReady(input: Awaited<ReturnType<typeof getMonCashRuntimeConfig>>): boolean {
+  return input.enabled
+    && input.payoutEnabled
+    && input.adapter === "bazik"
+    && !!input.bazikUserId
+    && !!input.bazikSecretKey
+    && !!input.bazikWebhookSecret
+    && !!configuredBazikWebhookUrl(input.bazikWebhookUrl);
+}
+
+function splitRecipientName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() || "Flexa";
+  return {
+    firstName,
+    lastName: parts.join(" ") || firstName,
+  };
+}
+
+function normalizeBazikWallet(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.startsWith("509") ? digits.slice(3) : digits;
+}
+
+function configuredBazikWebhookUrl(callbackUrl: string): string {
+  try {
+    const url = new URL(callbackUrl);
+    if (url.protocol !== "https:") return "";
+    return `${url.origin}/api/bazik/webhook`;
+  } catch {
+    return "";
+  }
+}
+
+function publicMonCashPayoutStatus(status: string | null | undefined):
+  "paid" | "pending" | "unknown" | "refunded" | undefined {
+  if (status === "paid") return "paid";
+  if (status === "refunded") return "refunded";
+  if (status === "provider_ready" || status === "provider_pending") return "pending";
+  if (status === "provider_submitting" || status === "provider_unknown") return "unknown";
+  return undefined;
+}
+
+async function completeAutomaticMonCashCashout(
+  requestId: number,
+  providerReference: string,
+  providerTransactionId?: string,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [completed] = await tx.update(cashoutRequestsTable).set({
+      status: "paid",
+      providerStatus: "successful",
+      providerTransactionId: providerTransactionId || undefined,
+      providerError: null,
+      paidAt: new Date(),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, requestId),
+      eq(cashoutRequestsTable.providerReference, providerReference),
+      sql`${cashoutRequestsTable.status} IN ('provider_submitting', 'provider_pending', 'provider_unknown')`,
+    )).returning({ id: cashoutRequestsTable.id });
+    if (!completed) return false;
+    await tx.update(walletTransactionsTable).set({
+      status: "completed",
+    }).where(and(
+      eq(walletTransactionsTable.paymentRef, providerReference),
+      eq(walletTransactionsTable.type, "cashout_pending"),
+      eq(walletTransactionsTable.status, "pending"),
+    ));
+    return true;
+  });
+}
+
+async function reconcileAutomaticMonCashCashout(
+  requestId: number,
+  expectedUserId?: number,
+): Promise<{ status: string; completed: boolean }> {
+  const conditions = [
+    eq(cashoutRequestsTable.id, requestId),
+    eq(cashoutRequestsTable.method, "moncash"),
+  ];
+  if (expectedUserId !== undefined) {
+    conditions.push(eq(cashoutRequestsTable.userId, expectedUserId));
+  }
+  const [request] = await db.select().from(cashoutRequestsTable)
+    .where(and(...conditions));
+  if (!request || !request.providerReference) {
+    throw new BazikApiError("Automatic MonCash cashout not found", "reconciliation", 404);
+  }
+  if (request.status === "paid") return { status: "paid", completed: false };
+  if (request.status === "refunded") return { status: "refunded", completed: false };
+
+  const runtime = await getMonCashRuntimeConfig();
+  if (!bazikPayoutReady(runtime)) {
+    throw new BazikApiError("Bazik MonCash payout is not enabled", "reconciliation", 503);
+  }
+  if (!request.providerTransactionId) {
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: "unknown",
+      providerError: "Bazik may have accepted the transfer, but no transaction ID was returned; waiting for signed webhook",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, request.id),
+      sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+    ));
+    return { status: "provider_unknown", completed: false };
+  }
+  const token = await getBazikAccessToken(bazikConfig(runtime));
+  const transfer = await retrieveBazikTransfer(token, request.providerTransactionId);
+  const expectedWallet = normalizeHaitiPhone(request.phone ?? "");
+  const transferMatches = transfer.transactionId === request.providerTransactionId
+    && transfer.referenceId === request.providerReference
+    && transfer.provider === "moncash"
+    && transfer.currency === "HTG"
+    && transfer.amountHtg === Number(request.payoutAmountHtg)
+    && normalizeHaitiPhone(transfer.wallet) === expectedWallet;
+  if (!transferMatches) {
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: transfer.status,
+      providerError: "Bazik transfer status did not match the requested payout",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, request.id),
+      sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+    ));
+    return { status: "provider_unknown", completed: false };
+  }
+  if (transfer.status === "successful") {
+    const completed = await completeAutomaticMonCashCashout(
+      request.id,
+      request.providerReference,
+      transfer.transactionId,
+    );
+    return { status: "paid", completed };
+  }
+  if (transfer.status === "failed" || transfer.status === "cancelled") {
+    const refunded = await refundAutomaticMonCashCashout(
+      request.id,
+      transfer.failureReason || `Bazik reported ${transfer.status}`,
+      ["provider_submitting", "provider_pending", "provider_unknown"],
+    );
+    return { status: refunded ? "refunded" : request.status, completed: false };
+  }
+  const nextStatus = transfer.status === "processing" ? "provider_pending" : "provider_unknown";
+  await db.update(cashoutRequestsTable).set({
+    status: nextStatus,
+    providerStatus: transfer.status,
+    providerError: transfer.status === "unknown"
+      ? "Bazik returned an unknown transfer status"
+      : null,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(cashoutRequestsTable.id, request.id),
+    sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+  ));
+  return { status: nextStatus, completed: false };
+}
+
+async function refundAutomaticMonCashCashout(
+  requestId: number,
+  providerError: string,
+  allowedStatuses: string[] = ["provider_submitting"],
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [claimed] = await tx.update(cashoutRequestsTable).set({
+      status: "refunded",
+      providerStatus: "failed",
+      providerError: providerError.slice(0, 160),
+      refundedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, requestId),
+      eq(cashoutRequestsTable.method, "moncash"),
+      inArray(cashoutRequestsTable.status, allowedStatuses),
+      sql`${cashoutRequestsTable.refundedAt} IS NULL`,
+    )).returning({
+      userId: cashoutRequestsTable.userId,
+      grossAmountUsd: cashoutRequestsTable.grossAmountUsd,
+      providerReference: cashoutRequestsTable.providerReference,
+    });
+    if (!claimed || !claimed.grossAmountUsd) return false;
+    await tx.update(promoWalletTable).set({
+      balanceUsd: sql`${promoWalletTable.balanceUsd} + ${claimed.grossAmountUsd}`,
+      updatedAt: new Date(),
+    }).where(eq(promoWalletTable.userId, claimed.userId));
+    await tx.update(walletTransactionsTable).set({
+      status: "failed",
+    }).where(and(
+      eq(walletTransactionsTable.paymentRef, claimed.providerReference ?? ""),
+      eq(walletTransactionsTable.type, "cashout_pending"),
+      eq(walletTransactionsTable.status, "pending"),
+    ));
+    await tx.insert(walletTransactionsTable).values({
+      userId: claimed.userId,
+      type: "refund",
+      amountUsd: claimed.grossAmountUsd,
+      status: "completed",
+      paymentRef: `${claimed.providerReference}:refund`,
+      note: `MonCash cashout #${requestId} pa t soumèt — rembourseman otomatik`,
+    });
+    return true;
+  });
+}
+
+export async function processAutomaticBazikTransferWebhook(
+  payload: unknown,
+): Promise<{ handled: boolean; status?: "paid" | "pending" | "refunded" | "unknown" }> {
+  const transfer = normalizeBazikTransfer(payload);
+  if (!transfer.referenceId.startsWith("fm_cashout_")) return { handled: false };
+  if (!transfer.transactionId) return { handled: true, status: "unknown" };
+
+  const [request] = await db.select().from(cashoutRequestsTable).where(and(
+    eq(cashoutRequestsTable.providerReference, transfer.referenceId),
+    eq(cashoutRequestsTable.method, "moncash"),
+  ));
+  if (!request) return { handled: true, status: "unknown" };
+  if (request.status === "paid") return { handled: true, status: "paid" };
+  if (request.status === "refunded") return { handled: true, status: "refunded" };
+
+  const expectedWallet = normalizeHaitiPhone(request.phone ?? "");
+  const matches = transfer.provider === "moncash"
+    && transfer.currency === "HTG"
+    && transfer.amountHtg === Number(request.payoutAmountHtg)
+    && normalizeHaitiPhone(transfer.wallet) === expectedWallet
+    && (!request.providerTransactionId || request.providerTransactionId === transfer.transactionId);
+  if (!matches) {
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: transfer.status,
+      providerTransactionId: transfer.transactionId,
+      providerError: "Signed Bazik webhook did not match the requested payout",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, request.id),
+      sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+    ));
+    return { handled: true, status: "unknown" };
+  }
+
+  if (transfer.status === "successful") {
+    await completeAutomaticMonCashCashout(
+      request.id,
+      transfer.referenceId,
+      transfer.transactionId,
+    );
+    return { handled: true, status: "paid" };
+  }
+  if (transfer.status === "failed" || transfer.status === "cancelled") {
+    // A signed callback proves origin, but this account cannot query Bazik's
+    // transfer-status endpoint to prove event ordering. Do not refund from a
+    // callback alone: a delayed success event after a failed event would
+    // otherwise both pay the customer and restore their Flexa balance.
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: transfer.status,
+      providerTransactionId: transfer.transactionId,
+      providerError: (
+        transfer.failureReason
+        || `Bazik reported ${transfer.status}; manual provider verification required before refund`
+      ).slice(0, 160),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, request.id),
+      sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+    ));
+    return { handled: true, status: "unknown" };
+  }
+
+  await db.update(cashoutRequestsTable).set({
+    status: transfer.status === "processing" ? "provider_pending" : "provider_unknown",
+    providerStatus: transfer.status,
+    providerTransactionId: transfer.transactionId,
+    providerError: transfer.status === "unknown" ? "Bazik webhook returned an unknown status" : null,
+    updatedAt: new Date(),
+  }).where(and(
+    eq(cashoutRequestsTable.id, request.id),
+    sql`${cashoutRequestsTable.status} NOT IN ('paid', 'refunded')`,
+  ));
+  return {
+    handled: true,
+    status: transfer.status === "processing" ? "pending" : "unknown",
+  };
+}
+
+async function executeAutomaticMonCashCashout(
+  requestId: number,
+  token: string,
+  webhookUrl: string,
+): Promise<"paid" | "pending" | "unknown" | "refunded"> {
+  if (!webhookUrl.startsWith("https://")) {
+    throw new BazikApiError(
+      "Bazik payout requires a configured HTTPS webhook URL",
+      "withdrawal creation",
+      503,
+    );
+  }
+  const [claimed] = await db.update(cashoutRequestsTable).set({
+    status: "provider_submitting",
+    providerStatus: "submitting",
+    providerError: null,
+    payoutAttemptedAt: new Date(),
+    updatedAt: new Date(),
+  }).where(and(
+    eq(cashoutRequestsTable.id, requestId),
+    eq(cashoutRequestsTable.method, "moncash"),
+    eq(cashoutRequestsTable.status, "provider_ready"),
+  )).returning();
+  if (!claimed) {
+    const [existing] = await db.select({
+      status: cashoutRequestsTable.status,
+    }).from(cashoutRequestsTable).where(eq(cashoutRequestsTable.id, requestId));
+    if (existing?.status === "paid") return "paid";
+    if (existing?.status === "provider_pending") return "pending";
+    if (existing?.status === "refunded") return "refunded";
+    return "unknown";
+  }
+
+  const reference = claimed.providerReference ?? "";
+  const receiver = normalizeHaitiPhone(claimed.phone ?? "");
+  const wallet = normalizeBazikWallet(receiver);
+  const amount = Number(claimed.payoutAmountHtg);
+  try {
+    const [user] = await db.select({
+      name: usersTable.name,
+      email: usersTable.email,
+    }).from(usersTable).where(eq(usersTable.id, claimed.userId));
+    if (!user) {
+      await refundAutomaticMonCashCashout(claimed.id, "Cashout user no longer exists");
+      return "refunded";
+    }
+    const recipient = splitRecipientName(user.name);
+    const transfer = await createBazikMonCashWithdrawal({
+      accessToken: token,
+      amountHtg: amount,
+      wallet,
+      customerFirstName: recipient.firstName,
+      customerLastName: recipient.lastName,
+      customerEmail: user.email,
+      description: `Flexa Market cashout #${claimed.id}`,
+      referenceId: reference,
+      webhookUrl,
+    });
+    if (
+      !transfer.transactionId
+      || transfer.referenceId !== reference
+      || transfer.provider !== "moncash"
+      || transfer.currency !== "HTG"
+      || normalizeHaitiPhone(transfer.wallet) !== receiver
+      || transfer.amountHtg !== amount
+    ) {
+      await db.update(cashoutRequestsTable).set({
+        status: "provider_unknown",
+        providerStatus: transfer.status,
+        providerTransactionId: transfer.transactionId || null,
+        providerError: "Bazik withdrawal response did not match the requested payout",
+        updatedAt: new Date(),
+      }).where(and(
+        eq(cashoutRequestsTable.id, claimed.id),
+        eq(cashoutRequestsTable.status, "provider_submitting"),
+      ));
+      return "unknown";
+    }
+
+    if (transfer.status === "successful") {
+      await completeAutomaticMonCashCashout(
+        claimed.id,
+        reference,
+        transfer.transactionId,
+      );
+      return "paid";
+    }
+    if (transfer.status === "failed" || transfer.status === "cancelled") {
+      // HTTP 2xx plus a transaction ID means Bazik accepted responsibility
+      // for this transfer. This account cannot query transfer status, so a
+      // synchronous failed/cancelled status is not authoritative enough to
+      // restore the customer's Flexa balance. A later signed success callback
+      // must still be able to complete this provider_unknown record.
+      await db.update(cashoutRequestsTable).set({
+        status: "provider_unknown",
+        providerStatus: transfer.status,
+        providerTransactionId: transfer.transactionId,
+        providerError: (
+          transfer.failureReason
+          || `Bazik returned ${transfer.status}; manual provider verification required before refund`
+        ).slice(0, 160),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(cashoutRequestsTable.id, claimed.id),
+        eq(cashoutRequestsTable.status, "provider_submitting"),
+      ));
+      return "unknown";
+    }
+    await db.update(cashoutRequestsTable).set({
+      status: transfer.status === "processing" ? "provider_pending" : "provider_unknown",
+      providerStatus: transfer.status,
+      providerTransactionId: transfer.transactionId,
+      providerError: transfer.status === "unknown"
+        ? "Bazik accepted the transfer but returned an unknown status"
+        : null,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, claimed.id),
+      eq(cashoutRequestsTable.status, "provider_submitting"),
+    ));
+    return transfer.status === "processing" ? "pending" : "unknown";
+  } catch (error) {
+    if (bazikWithdrawalDefinitelyRejected(error)) {
+      await refundAutomaticMonCashCashout(
+        claimed.id,
+        `Bazik rejected payout with HTTP ${error instanceof BazikApiError ? error.status : "unknown"}`,
+      );
+      return "refunded";
+    }
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: "unknown",
+      providerError: error instanceof Error
+        ? error.message.slice(0, 160)
+        : "Provider request did not complete",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.id, claimed.id),
+      eq(cashoutRequestsTable.status, "provider_submitting"),
+    ));
+    return "unknown";
+  }
+}
+
+let monCashRecoveryRunning = false;
+
+async function recoverAutomaticMonCashCashouts(): Promise<void> {
+  if (monCashRecoveryRunning) return;
+  monCashRecoveryRunning = true;
+  try {
+    const runtime = await getMonCashRuntimeConfig();
+    if (!bazikPayoutReady(runtime)) return;
+    // Only retry records that were committed as ready before a process crash.
+    // This Bazik account cannot call GET /transfers/{id}; repeatedly polling
+    // pending/unknown rows would fill this limited batch and starve new ready
+    // payouts. Those records are resolved by signed callbacks or manual review.
+    const recoverable = await db.select({
+      id: cashoutRequestsTable.id,
+    }).from(cashoutRequestsTable).where(and(
+      eq(cashoutRequestsTable.method, "moncash"),
+      eq(cashoutRequestsTable.status, "provider_ready"),
+    )).orderBy(cashoutRequestsTable.updatedAt).limit(20);
+    if (!recoverable.length) return;
+    const token = await getBazikAccessToken(bazikConfig(runtime));
+    for (const request of recoverable) {
+      try {
+        await executeAutomaticMonCashCashout(
+          request.id,
+          token,
+          configuredBazikWebhookUrl(runtime.bazikWebhookUrl),
+        );
+      } catch (error) {
+        logger.warn({
+          requestId: request.id,
+          status: "provider_ready",
+          operation: error instanceof BazikApiError ? error.operation : "recovery",
+          httpStatus: error instanceof BazikApiError ? error.status : undefined,
+        }, "Automatic MonCash cashout recovery deferred");
+      }
+    }
+  } finally {
+    monCashRecoveryRunning = false;
+  }
+}
+
+if (process.env.NODE_ENV !== "test") {
+  const initialRecovery = setTimeout(() => {
+    void recoverAutomaticMonCashCashouts();
+  }, 15_000);
+  initialRecovery.unref?.();
+  const recoveryInterval = setInterval(() => {
+    void recoverAutomaticMonCashCashouts();
+  }, 60_000);
+  recoveryInterval.unref?.();
+}
 
 function generateOTP(): string {
   return crypto.randomBytes(3).toString("hex").toUpperCase();
@@ -112,6 +625,68 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
   const feeUsd = roundMoney(parsed * CASHOUT_FEE_PCT);
   const netAmountUsd = roundMoney(parsed - feeUsd);
   const methodLabel = method === "moncash" ? "MonCash" : method === "natcash" ? "NatCash" : method === "agent_transfer" ? "Ajan Otorize" : "Ajant";
+  let automaticMonCash: {
+    cfg: BazikConfig;
+    token: string;
+    phone: string;
+    rate: number;
+    amountHtg: number;
+    webhookUrl: string;
+  } | null = null;
+
+  if (method === "moncash") {
+    const runtime = await getMonCashRuntimeConfig();
+    const automaticPayoutReady = bazikPayoutReady(runtime);
+    if (automaticPayoutReady) {
+      const cfg = bazikConfig(runtime);
+      const normalizedPhone = normalizeHaitiPhone(phone ?? "");
+      const wallet = normalizeBazikWallet(normalizedPhone);
+      const rate = await getCashoutHtgRate();
+      const amountHtg = usdToHtg(netAmountUsd, rate);
+      try {
+        const token = await getBazikAccessToken(cfg);
+        const [customer, walletBalance] = await Promise.all([
+          retrieveBazikCustomerStatus(token, wallet),
+          retrieveBazikWalletBalance(token),
+        ]);
+        if (!customer.active) {
+          res.status(400).json({
+            error: "Nimewo sa a pa yon kont MonCash aktif ki ka resevwa payout",
+          });
+          return;
+        }
+        const estimatedProviderTotalHtg = roundMoney(
+          amountHtg * (1 + BAZIK_TRANSFER_FEE_PCT),
+        );
+        if (walletBalance.availableHtg < estimatedProviderTotalHtg) {
+          res.status(503).json({
+            error: "Balans Bazik payout la pa sifi pou retrè sa a ak frè provider la",
+          });
+          return;
+        }
+        automaticMonCash = {
+          cfg,
+          token,
+          phone: normalizedPhone,
+          rate,
+          amountHtg,
+          webhookUrl: configuredBazikWebhookUrl(runtime.bazikWebhookUrl),
+        };
+      } catch (error) {
+        logger.warn({
+          userId: req.userId,
+          operation: error instanceof BazikApiError ? error.operation : "payout preflight",
+          httpStatus: error instanceof BazikApiError ? error.status : undefined,
+        }, "MonCash cashout preflight failed");
+        res.status(502).json({
+          error: "MonCash pa disponib pou verifye cash out la kounye a; balans ou pa debite",
+        });
+        return;
+      }
+    } else {
+      logger.info({ userId: req.userId }, "Automatic MonCash payout unavailable; creating manual pending cashout");
+    }
+  }
 
   // The debit, request, and audit ledger are one unit. In particular, never
   // insert a request after a zero-row conditional debit.

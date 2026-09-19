@@ -1,10 +1,14 @@
 import { createHmac } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BazikApiError,
   bazikCreationDefinitelyRejected,
   bazikPaymentSucceeded,
+  bazikWithdrawalDefinitelyRejected,
+  getBazikAccessToken,
   normalizeBazikPayment,
+  normalizeBazikTransfer,
+  retrieveBazikWalletBalance,
   verifyBazikWebhookSignature,
 } from "../lib/bazik";
 import { monCashReady } from "../lib/haiti-money-core";
@@ -16,6 +20,58 @@ const config = {
 };
 
 describe("Bazik MonCash adapter", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("authenticates with the explicit server user-agent Bazik accepts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "test-access-token",
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getBazikAccessToken(config)).resolves.toBe("test-access-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.bazik.io/token",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "User-Agent": "FlexaMarket/1.0 (+https://flexamarket.com)",
+        }),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("reads payout funds from the documented balance endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      available: 728.25,
+      reserved: 0,
+      currency: "HTG",
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(retrieveBazikWalletBalance("test-access-token")).resolves.toEqual({
+      availableHtg: 728.25,
+      reservedHtg: 0,
+      currency: "HTG",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.bazik.io/balance",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer test-access-token",
+          "User-Agent": "FlexaMarket/1.0 (+https://flexamarket.com)",
+        }),
+      }),
+    );
+  });
+
   it("normalizes nested verified payment responses", () => {
     expect(normalizeBazikPayment({
       data: {
@@ -129,5 +185,71 @@ describe("Bazik MonCash adapter", () => {
       new BazikApiError("rate limited", "payment creation", 429),
     )).toBe(false);
     expect(bazikCreationDefinitelyRejected(new Error("network timeout"))).toBe(false);
+  });
+
+  it("normalizes Bazik transfer identities and statuses", () => {
+    expect(normalizeBazikTransfer({
+      transaction_id: "TRF_123",
+      status: "pending",
+      provider: "moncash",
+      amount: 500,
+      fees: 25,
+      total: 525,
+      currency: "HTG",
+      wallet: "50937123456",
+      referenceId: "fm_cashout_7",
+    })).toEqual({
+      transactionId: "TRF_123",
+      status: "processing",
+      provider: "moncash",
+      amountHtg: 500,
+      feesHtg: 25,
+      totalHtg: 525,
+      currency: "HTG",
+      wallet: "50937123456",
+      referenceId: "fm_cashout_7",
+      failureReason: undefined,
+    });
+  });
+
+  it("normalizes nested snake-case transfer webhook responses", () => {
+    expect(normalizeBazikTransfer({
+      data: {
+        transfer: {
+          transaction_id: "TRF_nested_1",
+          status: "completed",
+          provider: "moncash",
+          gdes: 300,
+          fee: 15,
+          total_cost: 315,
+          currency: "htg",
+          reference_id: "fm_cashout_9",
+          recipient: { wallet: "+509 37 12 34 56" },
+        },
+      },
+    })).toEqual({
+      transactionId: "TRF_nested_1",
+      status: "successful",
+      provider: "moncash",
+      amountHtg: 300,
+      feesHtg: 15,
+      totalHtg: 315,
+      currency: "HTG",
+      wallet: "50937123456",
+      referenceId: "fm_cashout_9",
+      failureReason: undefined,
+    });
+  });
+
+  it("only refunds definite withdrawal creation rejections", () => {
+    expect(bazikWithdrawalDefinitelyRejected(
+      new BazikApiError("insufficient provider funds", "withdrawal creation", 402),
+    )).toBe(true);
+    expect(bazikWithdrawalDefinitelyRejected(
+      new BazikApiError("provider unavailable", "withdrawal creation", 503),
+    )).toBe(false);
+    expect(bazikWithdrawalDefinitelyRejected(
+      new BazikApiError("unknown conflict", "withdrawal creation", 409),
+    )).toBe(false);
   });
 });

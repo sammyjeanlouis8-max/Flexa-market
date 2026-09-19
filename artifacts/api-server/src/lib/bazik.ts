@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const BAZIK_API_BASE_URL = "https://api.bazik.io";
+const BAZIK_USER_AGENT = "FlexaMarket/1.0 (+https://flexamarket.com)";
 
 export class BazikApiError extends Error {
   constructor(
@@ -33,6 +34,41 @@ export interface BazikPayment {
     statusCandidates: Array<{ path: string; value: string }>;
     booleanCandidates: Array<{ path: string; value: boolean }>;
   };
+}
+
+export type BazikTransferStatus = "successful" | "processing" | "failed" | "cancelled" | "unknown";
+
+export interface BazikTransfer {
+  transactionId: string;
+  status: BazikTransferStatus;
+  provider: string;
+  amountHtg: number;
+  feesHtg: number;
+  totalHtg: number;
+  currency: string;
+  wallet: string;
+  referenceId: string;
+  failureReason?: string;
+}
+
+export interface BazikTransferQuote {
+  deliveryAmountHtg: number;
+  feeHtg: number;
+  totalCostHtg: number;
+  currency: string;
+  provider: string;
+}
+
+export interface BazikWalletBalance {
+  availableHtg: number;
+  reservedHtg: number;
+  currency: string;
+}
+
+export interface BazikCustomerStatus {
+  active: boolean;
+  type: string;
+  statuses: string[];
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -107,6 +143,35 @@ async function readJsonResponse(res: Response, operation: string): Promise<Recor
   return data;
 }
 
+async function fetchBazikJson(
+  path: string,
+  accessToken: string,
+  operation: string,
+  init: { method: "GET" | "POST"; body?: Record<string, unknown> },
+): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(`${BAZIK_API_BASE_URL}${path}`, {
+      method: init.method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "User-Agent": BAZIK_USER_AGENT,
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: init.body ? JSON.stringify(init.body) : undefined,
+      signal: controller.signal,
+    });
+    return await readJsonResponse(res, operation);
+  } catch (error) {
+    if (error instanceof BazikApiError) throw error;
+    throw new BazikApiError(`Bazik ${operation} request did not complete`, operation, 0);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchBazikVerification(
   url: string,
   accessToken: string,
@@ -118,6 +183,7 @@ async function fetchBazikVerification(
         headers: {
           Authorization: `Bearer ${accessToken}`,
           Accept: "application/json",
+          "User-Agent": BAZIK_USER_AGENT,
         },
       });
       return await readJsonResponse(res, operation);
@@ -136,16 +202,36 @@ export function bazikCreationDefinitelyRejected(error: unknown): boolean {
     && [400, 401, 403, 404, 422].includes(error.status);
 }
 
+export function bazikWithdrawalDefinitelyRejected(error: unknown): boolean {
+  return error instanceof BazikApiError
+    && error.operation === "withdrawal creation"
+    && [400, 401, 402, 403, 404, 422].includes(error.status);
+}
+
 export async function getBazikAccessToken(config: BazikConfig): Promise<string> {
-  const res = await fetch(`${BAZIK_API_BASE_URL}/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ userID: config.userId, secretKey: config.secretKey }),
-  });
-  const data = await readJsonResponse(res, "authentication");
-  const token = firstString(data.access_token, data.token);
-  if (!token) throw new Error("Bazik authentication response did not include a token");
-  return token;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const res = await fetch(`${BAZIK_API_BASE_URL}/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": BAZIK_USER_AGENT,
+      },
+      body: JSON.stringify({ userID: config.userId, secretKey: config.secretKey }),
+      signal: controller.signal,
+    });
+    const data = await readJsonResponse(res, "authentication");
+    const token = firstString(data.access_token, data.token);
+    if (!token) throw new Error("Bazik authentication response did not include a token");
+    return token;
+  } catch (error) {
+    if (error instanceof BazikApiError) throw error;
+    throw new BazikApiError("Bazik authentication request did not complete", "authentication", 0);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function createBazikMonCashPayment(input: {
@@ -164,6 +250,7 @@ export async function createBazikMonCashPayment(input: {
       Authorization: `Bearer ${input.accessToken}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      "User-Agent": BAZIK_USER_AGENT,
     },
     body: JSON.stringify({
       gdes: input.amountHtg,
@@ -207,6 +294,230 @@ export async function retrieveBazikMonCashPaymentByReference(
     "MonCash payment verification",
   );
   return normalizeBazikPayment(data);
+}
+
+function normalizeBazikTransferStatus(value: unknown): BazikTransferStatus {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (["successful", "succeeded", "completed"].includes(status)) return "successful";
+  if (["pending", "processing", "created", "queued"].includes(status)) return "processing";
+  if (["failed", "rejected", "expired"].includes(status)) return "failed";
+  if (["cancelled", "canceled"].includes(status)) return "cancelled";
+  return "unknown";
+}
+
+export function normalizeBazikTransfer(payload: unknown): BazikTransfer {
+  const root = asRecord(payload);
+  const data = asRecord(root.data);
+  const transfer = asRecord(root.transfer);
+  const nestedTransfer = asRecord(data.transfer);
+  const recipient = asRecord(root.recipient);
+  const nestedRecipient = asRecord(data.recipient);
+  const transferRecipient = asRecord(transfer.recipient);
+  const nestedTransferRecipient = asRecord(nestedTransfer.recipient);
+  return {
+    transactionId: firstString(
+      root.transactionId,
+      root.transaction_id,
+      data.transactionId,
+      data.transaction_id,
+      transfer.transactionId,
+      transfer.transaction_id,
+      nestedTransfer.transactionId,
+      nestedTransfer.transaction_id,
+    ),
+    status: normalizeBazikTransferStatus(
+      root.status ?? data.status ?? transfer.status ?? nestedTransfer.status,
+    ),
+    provider: firstString(
+      root.provider,
+      data.provider,
+      transfer.provider,
+      nestedTransfer.provider,
+    ).toLowerCase(),
+    amountHtg: firstNumber(
+      root.amount,
+      root.gdes,
+      data.amount,
+      data.gdes,
+      transfer.amount,
+      transfer.gdes,
+      nestedTransfer.amount,
+      nestedTransfer.gdes,
+    ),
+    feesHtg: firstNumber(
+      root.fees,
+      root.fee,
+      data.fees,
+      data.fee,
+      transfer.fees,
+      transfer.fee,
+      nestedTransfer.fees,
+      nestedTransfer.fee,
+    ),
+    totalHtg: firstNumber(
+      root.total,
+      root.total_cost,
+      data.total,
+      data.total_cost,
+      transfer.total,
+      transfer.total_cost,
+      nestedTransfer.total,
+      nestedTransfer.total_cost,
+    ),
+    currency: firstString(
+      root.currency,
+      data.currency,
+      transfer.currency,
+      nestedTransfer.currency,
+    ).toUpperCase(),
+    wallet: firstString(
+      root.wallet,
+      data.wallet,
+      transfer.wallet,
+      nestedTransfer.wallet,
+      recipient.wallet,
+      nestedRecipient.wallet,
+      transferRecipient.wallet,
+      nestedTransferRecipient.wallet,
+    ).replace(/\D/g, ""),
+    referenceId: firstString(
+      root.referenceId,
+      root.reference_id,
+      data.referenceId,
+      data.reference_id,
+      transfer.referenceId,
+      transfer.reference_id,
+      nestedTransfer.referenceId,
+      nestedTransfer.reference_id,
+    ),
+    failureReason: firstString(
+      root.failureReason,
+      root.failure_reason,
+      data.failureReason,
+      data.failure_reason,
+      transfer.failureReason,
+      transfer.failure_reason,
+      nestedTransfer.failureReason,
+      nestedTransfer.failure_reason,
+    ) || undefined,
+  };
+}
+
+export async function retrieveBazikCustomerStatus(
+  accessToken: string,
+  wallet: string,
+): Promise<BazikCustomerStatus> {
+  const data = await fetchBazikJson(
+    "/moncash/customers/status",
+    accessToken,
+    "customer status",
+    { method: "POST", body: { wallet } },
+  );
+  const customer = asRecord(data.customerStatus);
+  const statuses = Array.isArray(customer.status)
+    ? customer.status.map((value) => String(value).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const type = firstString(customer.type).toLowerCase();
+  return {
+    active: statuses.includes("registered") && statuses.includes("active"),
+    type,
+    statuses,
+  };
+}
+
+export async function retrieveBazikWalletBalance(
+  accessToken: string,
+): Promise<BazikWalletBalance> {
+  const data = await fetchBazikJson("/balance", accessToken, "wallet balance", { method: "GET" });
+  const availableHtg = firstNumber(data.available);
+  const reservedHtg = firstNumber(data.reserved);
+  const currency = firstString(data.currency).toUpperCase();
+  if (
+    !Number.isFinite(availableHtg)
+    || availableHtg < 0
+    || !Number.isFinite(reservedHtg)
+    || reservedHtg < 0
+    || currency !== "HTG"
+  ) {
+    throw new BazikApiError("Bazik wallet balance returned an unexpected response", "wallet balance", 0);
+  }
+  return { availableHtg, reservedHtg, currency };
+}
+
+export async function createBazikTransferQuote(
+  accessToken: string,
+  amountHtg: number,
+): Promise<BazikTransferQuote> {
+  const data = await fetchBazikJson(
+    "/transfers/quote",
+    accessToken,
+    "transfer quote",
+    { method: "POST", body: { amount: amountHtg, provider: "moncash" } },
+  );
+  const quote = {
+    deliveryAmountHtg: firstNumber(data.delivery_amount),
+    feeHtg: firstNumber(data.fee),
+    totalCostHtg: firstNumber(data.total_cost),
+    currency: firstString(data.currency).toUpperCase(),
+    provider: firstString(data.provider).toLowerCase(),
+  };
+  if (
+    quote.deliveryAmountHtg !== amountHtg
+    || !Number.isFinite(quote.feeHtg)
+    || quote.feeHtg < 0
+    || !Number.isFinite(quote.totalCostHtg)
+    || quote.totalCostHtg < amountHtg
+    || quote.currency !== "HTG"
+    || quote.provider !== "moncash"
+  ) {
+    throw new BazikApiError("Bazik transfer quote returned an unexpected response", "transfer quote", 0);
+  }
+  return quote;
+}
+
+export async function createBazikMonCashWithdrawal(input: {
+  accessToken: string;
+  amountHtg: number;
+  wallet: string;
+  customerFirstName: string;
+  customerLastName: string;
+  customerEmail?: string;
+  description: string;
+  referenceId: string;
+  webhookUrl: string;
+}): Promise<BazikTransfer> {
+  const data = await fetchBazikJson(
+    "/moncash/withdraw",
+    input.accessToken,
+    "withdrawal creation",
+    {
+      method: "POST",
+      body: {
+        gdes: input.amountHtg,
+        wallet: input.wallet,
+        customerFirstName: input.customerFirstName,
+        customerLastName: input.customerLastName,
+        description: input.description,
+        referenceId: input.referenceId,
+        ...(input.customerEmail ? { customerEmail: input.customerEmail } : {}),
+        webhookUrl: input.webhookUrl,
+      },
+    },
+  );
+  return normalizeBazikTransfer(data);
+}
+
+export async function retrieveBazikTransfer(
+  accessToken: string,
+  transactionId: string,
+): Promise<BazikTransfer> {
+  const data = await fetchBazikJson(
+    `/transfers/${encodeURIComponent(transactionId)}`,
+    accessToken,
+    "transfer status",
+    { method: "GET" },
+  );
+  return normalizeBazikTransfer(data);
 }
 
 export function normalizeBazikPayment(payload: unknown): BazikPayment {

@@ -996,12 +996,14 @@ export default function Layout({ children }: { children: ReactNode }) {
             const showBadge = typeof t2.badge === "number" && t2.badge > 0;
 
             return (
-              <Link key={t2.key} href={t2.href} className="min-w-0 w-full">
-                <button
-                  type="button"
-                  data-testid={`nav-${t2.key}`}
-                  className="w-full min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
-                >
+              <button
+                key={t2.key}
+                type="button"
+                data-testid={`nav-${t2.key}`}
+                aria-label={t2.label}
+                onClick={() => navigate(t2.href)}
+                className="w-full min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
+              >
                   {t2.highlight ? (
                     <div className="bg-[#F97316] rounded-full p-3 -mt-6 shadow-lg border-[3px] border-background">
                       <t2.icon className="h-5 w-5 text-white" />
@@ -1032,8 +1034,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                       {t2.label}
                     </span>
                   )}
-                </button>
-              </Link>
+              </button>
             );
           })}
         </div>

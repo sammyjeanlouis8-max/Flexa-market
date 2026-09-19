@@ -309,6 +309,10 @@ export default function App() {
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(request) => {
             const route = classifyWebUrl(request.url);
+            if (route === "moncash" && Platform.OS === "android") {
+              Linking.openURL(request.url).catch(() => {});
+              return false;
+            }
             if (route === "flexa" || route === "stripe" || route === "moncash") return true;
             if (route === "external") Linking.openURL(request.url).catch(() => {});
             return false;
@@ -316,7 +320,9 @@ export default function App() {
           onOpenWindow={(event) => {
             const targetUrl = event.nativeEvent.targetUrl;
             const route = classifyWebUrl(targetUrl);
-            if (route === "flexa" || route === "stripe" || route === "moncash") {
+            if (route === "moncash" && Platform.OS === "android") {
+              Linking.openURL(targetUrl).catch(() => {});
+            } else if (route === "flexa" || route === "stripe" || route === "moncash") {
               webRef.current?.injectJavaScript(
                 `window.location.href=${JSON.stringify(targetUrl)};true;`,
               );

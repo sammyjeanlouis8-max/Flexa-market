@@ -70,6 +70,15 @@ function requestOrigin(req: any): string {
   return `${proto}://${host}`;
 }
 
+function secureHostedCheckoutUrl(rawUrl: string): string {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol === "http:") parsed.protocol = "https:";
+  if (parsed.protocol !== "https:") {
+    throw new Error("Payment provider returned an unsupported checkout URL");
+  }
+  return parsed.toString();
+}
+
 router.get("/wallet/haiti/providers", requireAuth, async (_req, res): Promise<void> => {
   const [moncash, natcash] = await Promise.all([getMonCashRuntimeConfig(), getNatCashRuntimeConfig()]);
   res.json({
@@ -212,7 +221,11 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
       checkout = await createPayment(monCashCfg, token, paymentRef, quote.amountHtg);
     }
     logger.info({ userId: req.userId, paymentRef, provider }, "Haiti wallet topup initiated");
-    res.json({ redirectUrl: checkout.redirectUrl, paymentRef, quote });
+    res.json({
+      redirectUrl: secureHostedCheckoutUrl(checkout.redirectUrl),
+      paymentRef,
+      quote,
+    });
   } catch (err) {
     const shouldReject = config.adapter !== "bazik"
       || !bazikCreationStarted

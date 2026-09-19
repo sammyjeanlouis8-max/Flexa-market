@@ -1114,7 +1114,7 @@ export default function WalletPage() {
   }
 
   const sendOtpMut = useMutation({
-    mutationFn: (phone: string) => apiPost("/otp/send", { phone }),
+    mutationFn: () => apiPost("/otp/send", {}),
     onSuccess: (data) => {
       setOtpSent(true);
       setOtpError("");
@@ -1128,12 +1128,19 @@ export default function WalletPage() {
   });
 
   const verifyOtpMut = useMutation({
-    mutationFn: ({ phone, code }: { phone: string; code: string }) =>
-      apiPost("/otp/verify", { phone, code }),
+    mutationFn: ({ code }: { code: string }) =>
+      apiPost("/otp/verify", { code }),
     onSuccess: (data) => {
       cashoutMut.mutate(data.withdrawalToken);
     },
-    onError: (e: Error) => setOtpError(e.message),
+    onError: (e: Error) => {
+      setOtpError(e.message);
+      if (e.message.includes("Twòp eseye") || e.message.includes("Kòd la bloke")) {
+        setOtpSent(false);
+        setOtpCode("");
+        setOtpCountdown(0);
+      }
+    },
   });
 
   // Countdown timer for OTP expiry
@@ -2700,7 +2707,7 @@ export default function WalletPage() {
               disabled={!!user?.flexCardBlocked || otpPhone.trim().length < 8 || (otpSent && !canResend) || sendOtpMut.isPending}
               onClick={() => {
                 setOtpError("");
-                sendOtpMut.mutate(otpPhone.trim());
+                sendOtpMut.mutate();
               }}
             >
               {sendOtpMut.isPending
@@ -2759,13 +2766,10 @@ export default function WalletPage() {
               )}
             </div>
 
-            {/* Delivery channels */}
+            {/* Delivery channel */}
             <div className="flex gap-2 justify-center text-xs text-muted-foreground">
               <span className="flex items-center gap-1 rounded-full bg-muted/50 px-2 py-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{t("wallet.smsDelivery")}
-              </span>
-              <span className="flex items-center gap-1 rounded-full bg-muted/50 px-2 py-1">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{t("wallet.whatsappDelivery")}
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />{t("wallet.emailDelivery")}
               </span>
             </div>
           </div>
@@ -2785,7 +2789,7 @@ export default function WalletPage() {
           disabled={!canVerify || isSubmitting || otpCountdown === 0}
           onClick={() => {
             setOtpError("");
-            verifyOtpMut.mutate({ phone: otpPhone.trim(), code: otpCode.trim() });
+            verifyOtpMut.mutate({ code: otpCode.trim() });
           }}
         >
           {isSubmitting
@@ -2793,9 +2797,23 @@ export default function WalletPage() {
             : <><CheckCircle2 className="h-5 w-5 mr-2" />{t("wallet.verifyAndSubmitCashout")}</>}
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
-          {t("wallet.didNotReceiveCode")}
-        </p>
+        <div className="text-center">
+          <p className="text-xs text-muted-foreground">{t("wallet.didNotReceiveCode")}</p>
+          {(!otpSent || otpCountdown === 0) && (
+            <Button
+              type="button"
+              variant="link"
+              className="text-violet-600 font-bold"
+              disabled={sendOtpMut.isPending}
+              onClick={() => {
+                setOtpError("");
+                sendOtpMut.mutate();
+              }}
+            >
+              {sendOtpMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : t("wallet.sendCodeBtn")}
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useRef, useCallback, type FormEvent } from "react";
+import { ReactNode, Suspense, lazy, useState, useEffect, useRef, useCallback, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { useBroadcast } from "@/contexts/broadcast";
 import {
@@ -23,6 +23,9 @@ import NotificationsDropdown from "@/components/NotificationsDropdown";
 import UserMenu from "@/components/UserMenu";
 import GuestMenu from "@/components/GuestMenu";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+
+const InlineSell = lazy(() => import("@/pages/Sell"));
 
 // ─── Unread message badge ────────────────────────────────────────────────────
 function useUnreadMessageCount(): number {
@@ -696,6 +699,23 @@ export default function Layout({ children }: { children: ReactNode }) {
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [showInlineSell, setShowInlineSell] = useState(false);
+  const inlineSellOriginRef = useRef(location);
+
+  const handleMobileTab = useCallback((href: string) => {
+    if (href === "/sell" && user && isAndroidApp()) {
+      inlineSellOriginRef.current = location;
+      setShowInlineSell(true);
+      return;
+    }
+    navigate(href);
+  }, [location, navigate, user]);
+
+  useEffect(() => {
+    if (showInlineSell && location !== inlineSellOriginRef.current) {
+      setShowInlineSell(false);
+    }
+  }, [location, showInlineSell]);
 
   // Back button: show on mobile for every page except home, messages, and auth
   const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
@@ -1001,7 +1021,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 type="button"
                 data-testid={`nav-${t2.key}`}
                 aria-label={t2.label}
-                onClick={() => navigate(t2.href)}
+                onClick={() => handleMobileTab(t2.href)}
                 className="w-full min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
               >
                   {t2.highlight ? (
@@ -1039,6 +1059,28 @@ export default function Layout({ children }: { children: ReactNode }) {
           })}
         </div>
       </nav>
+
+      {/* Older Android WebViews emit a native load-start event even for some
+          client-side route changes. Keep the add-product flow in the current
+          document so installed builds do not reopen their startup overlay. */}
+      {showInlineSell && (
+        <div className="fixed inset-0 z-[70] overflow-y-auto bg-background md:hidden">
+          <div className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
+            <button
+              type="button"
+              aria-label={t("common.back")}
+              onClick={() => setShowInlineSell(false)}
+              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-accent"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <span className="font-semibold">{t("page.sell")}</span>
+          </div>
+          <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
+            <InlineSell />
+          </Suspense>
+        </div>
+      )}
 
       {/* ── Mobile More Drawer ── */}
       <MobileMoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} />

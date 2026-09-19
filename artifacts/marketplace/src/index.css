@@ -85,6 +85,7 @@
 
 :root {
   --flexa-vv-bottom: 0px;
+  --flexa-android-bottom: 0px;
   --flexa-vv-width: 100vw;
 }
 
@@ -765,7 +766,7 @@ main {
      Nav is 64 px tall; safe-area-inset-bottom covers the home bar (≈34 px
      on iPhone X/11/12/13/14/15 series, 0 on older models). */
   .pb-safe-nav {
-    padding-bottom: calc(64px + max(env(safe-area-inset-bottom, 0px), var(--flexa-vv-bottom, 0px)));
+    padding-bottom: calc(64px + max(env(safe-area-inset-bottom, 0px), var(--flexa-vv-bottom, 0px), var(--flexa-android-bottom, 0px)));
   }
   @media (min-width: 768px) {
     .pb-safe-nav { padding-bottom: 0; }

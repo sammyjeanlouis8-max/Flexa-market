@@ -298,6 +298,15 @@
           sat = window.screen.height >= 812 ? 59 : 20;
         }
         document.documentElement.style.setProperty('--sat', sat + 'px');
+
+        // Android WebView/standalone shells can draw behind the system
+        // navigation bar while still reporting safe-area-inset-bottom as 0.
+        // Keep the app's bottom navigation controls above the OS buttons.
+        var isAndroid = /Android/i.test(navigator.userAgent);
+        document.documentElement.style.setProperty(
+          '--flexa-android-bottom',
+          isAndroid ? '32px' : '0px'
+        );
       })();
     </script>
     <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can

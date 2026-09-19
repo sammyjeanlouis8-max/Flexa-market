@@ -12,7 +12,6 @@ import { apiPatch } from "@/lib/api";
 import { useTheme } from "@/components/theme-provider";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
 import { useAuth } from "@/contexts/auth";
-import { isLoanAllowed } from "@/lib/loanPolicy";
 import { useTranslation } from "react-i18next";
 import PushNotificationsBanner from "@/components/PushNotificationsBanner";
 import PasswordUpgradeBanner from "@/components/PasswordUpgradeBanner";
@@ -291,7 +290,7 @@ function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => voi
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
-  const canSeeLoan = !!(user && isLoanAllowed(user.country));
+  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
     {
@@ -731,7 +730,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
-  const canSeeLoan = !!(user && isLoanAllowed(user.country));
+  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };
@@ -941,7 +940,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               hover:from-orange-600 hover:to-amber-500
               active:scale-95 transition-all duration-150
               right-4 md:right-6
-              bottom-[calc(64px+env(safe-area-inset-bottom,0px)+14px)]
+              bottom-[calc(64px+max(env(safe-area-inset-bottom,0px),var(--flexa-android-bottom,0px))+14px)]
               md:bottom-6
             `}
           >
@@ -957,7 +956,15 @@ export default function Layout({ children }: { children: ReactNode }) {
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
             in the upper 64 px, extra space is padding below them. */}
-        <div className="mobile-bottom-nav-row w-full grid grid-cols-5" style={{ height: "calc(64px + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)", alignItems: "flex-start", paddingTop: "0" }}>
+        <div
+          className="mobile-bottom-nav-row w-full grid grid-cols-5"
+          style={{
+            height: "calc(64px + max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px)))",
+            paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))",
+            alignItems: "flex-start",
+            paddingTop: "0",
+          }}
+        >
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (

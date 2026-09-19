@@ -1137,7 +1137,19 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
     </div>
   );
   return (
-    <div style={{ overflowY: "auto", flex: 1, background: c.listBg }}>
+    <div
+      className="conversation-list-scroll"
+      style={{
+        overflowY: "auto",
+        overflowX: "hidden",
+        flex: "1 1 0%",
+        minHeight: 0,
+        background: c.listBg,
+        WebkitOverflowScrolling: "touch",
+        touchAction: "pan-y",
+        overscrollBehaviorY: "contain",
+      }}
+    >
       {sortedConvs.map(conv => (
         <Link key={conv.id} href={`/messages/${conv.id}`}>
           <div

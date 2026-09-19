@@ -224,6 +224,18 @@ main {
     touch-action: manipulation;
   }
 
+  /* Android WebView needs an explicit shrinkable scroll surface here.
+     Without min-height:0, the flex item grows to its content height and the
+     clipped messages layout intercepts vertical swipes instead of scrolling. */
+  .conversation-list-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
   .mobile-app-header {
     flex: 0 0 auto;
     width: 100%;

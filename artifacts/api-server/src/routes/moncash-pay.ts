@@ -28,6 +28,7 @@ import {
 } from "../lib/moncash";
 import { getMonCashRuntimeConfig } from "../lib/haiti-money";
 import { verifyHaitiMonCashTopup } from "./haiti-money";
+import { processAutomaticBazikTransferWebhook } from "./cashout";
 import {
   bazikCreationDefinitelyRejected,
   bazikPaymentSucceeded,
@@ -398,7 +399,42 @@ router.post("/bazik/webhook", async (req, res): Promise<void> => {
     return;
   }
 
-  const event = normalizeBazikPayment(req.body);
+  let payload: unknown = req.body;
+  if (Buffer.isBuffer(payload)) {
+    try {
+      payload = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      res.status(400).json({ error: "Invalid Bazik webhook JSON" });
+      return;
+    }
+  }
+
+  const payloadRecord = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : {};
+  const webhookType = String(payloadRecord.type ?? "").trim().toLowerCase();
+  if (webhookType.startsWith("transfer.")) {
+    try {
+      const outcome = await processAutomaticBazikTransferWebhook(payload);
+      if (!outcome.handled) {
+        res.status(400).json({ error: "Unknown Bazik transfer reference" });
+        return;
+      }
+      logger.info({
+        transactionId: String(payloadRecord.transactionId ?? payloadRecord.transaction_id ?? ""),
+        transferStatus: outcome.status,
+      }, "[bazik/webhook] transfer processed");
+      res.json({ received: true });
+    } catch {
+      logger.error({
+        transactionId: String(payloadRecord.transactionId ?? payloadRecord.transaction_id ?? ""),
+      }, "[bazik/webhook] transfer processing failed");
+      res.status(502).json({ error: "Transfer verification failed" });
+    }
+    return;
+  }
+
+  const event = normalizeBazikPayment(payload);
   if (!event.orderId) {
     logger.warn({
       providerPayloadShape: event.diagnostics,

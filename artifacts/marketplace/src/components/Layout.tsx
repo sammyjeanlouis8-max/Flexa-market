@@ -844,7 +844,9 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
   const isListingDetail = /^\/listings\/[^/]+/.test(location);
-  const isStripeOperations = location === "/admin/stripe-transactions";
+  const isPaymentOperations =
+    location === "/admin/stripe-transactions"
+    || location === "/admin/moncash-transactions";
 
   // Pages where the footer should NOT render (full-screen / chat-like UIs)
   const noFooter = [
@@ -866,6 +868,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     /^\/admin\/tv(\/|$)/,
     /^\/admin\/music(\/|$)/,
     /^\/admin\/stripe-transactions\/?$/,
+    /^\/admin\/moncash-transactions\/?$/,
     /^\/music(\/|$)/,
     /^\/music\/upload$/,
   ].some(rx => rx.test(location));
@@ -942,7 +945,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <main className={
         isMessages || isVideoFeed
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
-          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isStripeOperations ? "" : "pb-safe-nav"} md:pl-56`
+          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations ? "" : "pb-safe-nav"} md:pl-56`
       }>
         {children}
         {!noFooter && <Footer />}
@@ -971,7 +974,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isStripeOperations ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations ? "hidden" : ""}`}
         aria-label="Main navigation"
       >
         {/* Nav expands to include the home-indicator safe area — icons stay

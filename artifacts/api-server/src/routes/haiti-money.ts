@@ -32,7 +32,7 @@ import {
   parsePositiveMoney,
 } from "../lib/haiti-money";
 import { getDynamicFeeRate, getOrCreateWallet, getWalletSettings } from "./wallet";
-import { and, desc, eq, ilike, like, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, like, ne, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 const RECONCILE_COOLDOWN_MS = 60_000;
@@ -478,15 +478,16 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
 });
 
 router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, res): Promise<void> => {
-  const status = String(req.query.status ?? "all").trim().toLowerCase();
   const search = String(req.query.search ?? "").trim();
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 300));
   const conditions = [
     eq(walletTransactionsTable.type, "recharge"),
     like(walletTransactionsTable.paymentRef, "wallet_topup_%"),
     eq(usersTable.country, "Haiti"),
+    eq(walletTransactionsTable.status, "completed"),
+    isNotNull(walletTransactionsTable.userTransferRef),
+    isNotNull(walletTransactionsTable.confirmedAt),
   ];
-  if (status !== "all") conditions.push(eq(walletTransactionsTable.status, status));
   if (search) {
     const q = `%${search}%`;
     conditions.push(or(

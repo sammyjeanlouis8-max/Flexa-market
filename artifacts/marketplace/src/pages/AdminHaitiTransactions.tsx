@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { apiFetch } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type HaitiTransaction = {
   id: number;
@@ -35,11 +33,8 @@ export default function AdminHaitiTransactions() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const { toast } = useToast();
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [status, setStatus] = useState("all");
 
   const explicitRole = String((user as any)?.role ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
   const canonicalRole = ["support", "moderator", "admin", "superadmin"].includes(explicitRole)
@@ -61,9 +56,9 @@ export default function AdminHaitiTransactions() {
   }, [t]);
 
   const query = useQuery<any>({
-    queryKey: ["admin-moncash-transactions", status, debouncedSearch],
+    queryKey: ["admin-moncash-transactions", debouncedSearch],
     queryFn: () => {
-      const params = new URLSearchParams({ status, limit: "500" });
+      const params = new URLSearchParams({ limit: "500" });
       if (debouncedSearch) params.set("search", debouncedSearch);
       return apiFetch(`/api/wallet/haiti/admin/transactions?${params}`, { method: "GET" });
     },
@@ -72,33 +67,8 @@ export default function AdminHaitiTransactions() {
     refetchOnWindowFocus: true,
   });
 
-  const reconcile = useMutation({
-    mutationFn: (transactionId: number) =>
-      apiFetch(`/api/wallet/haiti/admin/reconcile-transaction/${transactionId}`, { method: "POST" }),
-    onSuccess: (result: any) => {
-      qc.invalidateQueries({ queryKey: ["admin-moncash-transactions"] });
-      const providerStatus = result?.providerResults?.[0]?.providerStatus;
-      toast({
-        title: result?.credited > 0 ? t("adminMonCash.creditSuccess") : t("adminMonCash.verificationComplete"),
-        description: `${t("adminMonCash.verificationResult", {
-          checked: result?.checked ?? 0,
-          credited: result?.credited ?? 0,
-        })}${providerStatus ? ` ${t("adminMonCash.providerStatus")}: ${statusLabel(providerStatus)}` : ""}`,
-      });
-    },
-    onError: (error: Error) => toast({
-      title: t("adminMonCash.verificationFailed"),
-      description: error.message,
-      variant: "destructive",
-    }),
-  });
-
   const transactions = (query.data?.transactions ?? []) as HaitiTransaction[];
   const metrics = query.data?.metrics ?? {};
-  const pendingUsers = useMemo(
-    () => new Set(transactions.filter(tx => tx.status === "pending").map(tx => tx.userId)).size,
-    [transactions],
-  );
 
   if (!isSuperAdmin) return null;
 
@@ -129,12 +99,10 @@ export default function AdminHaitiTransactions() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           {[
             [t("adminMonCash.total"), metrics.total ?? 0, WalletCards, "text-blue-600"],
             [t("adminMonCash.completed"), metrics.completed ?? 0, CheckCircle2, "text-emerald-600"],
-            [t("adminMonCash.pending"), metrics.pending ?? 0, Clock3, "text-amber-600"],
-            [t("adminMonCash.pendingUsers"), pendingUsers, ShieldCheck, "text-violet-600"],
             [
               t("adminMonCash.availableBalance"),
               query.data?.bazikBalance
@@ -155,7 +123,7 @@ export default function AdminHaitiTransactions() {
         </div>
 
         <Card>
-          <CardContent className="flex flex-col gap-3 p-3 md:flex-row">
+          <CardContent className="p-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -165,15 +133,6 @@ export default function AdminHaitiTransactions() {
                 className="pl-9"
               />
             </div>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-full md:w-52"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("adminMonCash.status.all")}</SelectItem>
-                <SelectItem value="pending">{t("adminMonCash.status.pending")}</SelectItem>
-                <SelectItem value="completed">{t("adminMonCash.status.completed")}</SelectItem>
-                <SelectItem value="rejected">{t("adminMonCash.status.rejected")}</SelectItem>
-              </SelectContent>
-            </Select>
           </CardContent>
         </Card>
 
@@ -208,24 +167,12 @@ export default function AdminHaitiTransactions() {
                   <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
                     <CalendarClock className="h-4 w-4 shrink-0 text-blue-600" />
                     <span className="text-muted-foreground">{t("adminMonCash.dateTime")}:</span>
-                    <time className="font-semibold tabular-nums" dateTime={tx.createdAt}>
-                      {dateTime(tx.createdAt)}
+                    <time className="font-semibold tabular-nums" dateTime={tx.confirmedAt || tx.createdAt}>
+                      {dateTime(tx.confirmedAt || tx.createdAt)}
                     </time>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <Badge variant={tx.status === "completed" ? "default" : "outline"}>{statusLabel(tx.status)}</Badge>
-                    {tx.status === "pending" && (
-                      <Button
-                        size="sm"
-                        onClick={() => reconcile.mutate(tx.id)}
-                        disabled={reconcile.isPending}
-                      >
-                        <ShieldCheck className="mr-1 h-4 w-4" />
-                        {reconcile.isPending && reconcile.variables === tx.id
-                          ? t("adminMonCash.verifying")
-                          : t("adminMonCash.verify")}
-                      </Button>
-                    )}
+                    <Badge>{statusLabel(tx.status)}</Badge>
                   </div>
                 </CardContent>
               </Card>

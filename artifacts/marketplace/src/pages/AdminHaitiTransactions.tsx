@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, WalletCards } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck, WalletCards } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +32,7 @@ type HaitiTransaction = {
 };
 
 export default function AdminHaitiTransactions() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -106,6 +106,11 @@ export default function AdminHaitiTransactions() {
     new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(value) || 0);
   const statusLabel = (value: string) =>
     t(`adminMonCash.status.${value}`, { defaultValue: value });
+  const dateTime = (value: string) =>
+    new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
 
   return (
     <div className="min-h-screen bg-background">
@@ -198,8 +203,14 @@ export default function AdminHaitiTransactions() {
                   <div className="grid gap-2 rounded-xl bg-muted/50 p-3 text-xs md:grid-cols-2">
                     <p><span className="text-muted-foreground">{t("adminMonCash.orderId")}:</span> <span className="font-mono break-all">{tx.providerOrderId || "—"}</span></p>
                     <p><span className="text-muted-foreground">{t("adminMonCash.reference")}:</span> <span className="font-mono break-all">{tx.paymentRef || "—"}</span></p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.created")}:</span> {new Date(tx.createdAt).toLocaleString()}</p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.walletBalance")}:</span> {money(tx.balanceUsd, "USD")}</p>
+                    <p><span className="text-muted-foreground">{t("adminMonCash.provider")}:</span> {t("adminMonCash.providerMonCash")}</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
+                    <CalendarClock className="h-4 w-4 shrink-0 text-blue-600" />
+                    <span className="text-muted-foreground">{t("adminMonCash.dateTime")}:</span>
+                    <time className="font-semibold tabular-nums" dateTime={tx.createdAt}>
+                      {dateTime(tx.createdAt)}
+                    </time>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <Badge variant={tx.status === "completed" ? "default" : "outline"}>{statusLabel(tx.status)}</Badge>

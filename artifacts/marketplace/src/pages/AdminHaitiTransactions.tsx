@@ -11,20 +11,24 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 type HaitiTransaction = {
-  id: number;
+  id: string;
+  sourceId: number;
+  sourceTable: string;
   userId: number;
   userName: string | null;
   userEmail: string | null;
+  userPhone: string | null;
   accountNumber: string | null;
-  balanceUsd: number | string | null;
+  kind: "recharge" | "boost" | "cashout";
+  direction: "inbound" | "outbound";
   amountUsd: number | string | null;
   amountHtg: number | string | null;
-  rateUsed: number | string | null;
-  bonusPct: number | string | null;
+  currency: string;
   paymentRef: string | null;
   providerOrderId: string | null;
+  providerTransactionId: string | null;
+  purpose: string;
   status: string;
-  note: string | null;
   confirmedAt: string | null;
   createdAt: string;
 };
@@ -76,6 +80,10 @@ export default function AdminHaitiTransactions() {
     new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(value) || 0);
   const statusLabel = (value: string) =>
     t(`adminMonCash.status.${value}`, { defaultValue: value });
+  const kindLabel = (value: HaitiTransaction["kind"]) =>
+    t(`adminMonCash.kind.${value}`, { defaultValue: value });
+  const directionLabel = (value: HaitiTransaction["direction"]) =>
+    t(`adminMonCash.direction.${value}`, { defaultValue: value });
   const dateTime = (value: string) =>
     new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
       dateStyle: "medium",
@@ -99,10 +107,11 @@ export default function AdminHaitiTransactions() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             [t("adminMonCash.total"), metrics.total ?? 0, WalletCards, "text-blue-600"],
-            [t("adminMonCash.completed"), metrics.completed ?? 0, CheckCircle2, "text-emerald-600"],
+            [t("adminMonCash.inbound"), metrics.inbound ?? 0, CheckCircle2, "text-emerald-600"],
+            [t("adminMonCash.outbound"), metrics.outbound ?? 0, CheckCircle2, "text-orange-600"],
             [
               t("adminMonCash.availableBalance"),
               query.data?.bazikBalance
@@ -152,27 +161,47 @@ export default function AdminHaitiTransactions() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-bold">{tx.userName || `#${tx.userId}`}</p>
-                      <p className="text-xs text-muted-foreground">{tx.userEmail} · {tx.accountNumber || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{tx.userEmail || "—"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {tx.userPhone || "—"} · {tx.accountNumber || "—"}
+                      </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-black text-emerald-600">{money(tx.amountHtg, "HTG")}</p>
-                      <p className="text-xs text-muted-foreground">{money(tx.amountUsd, "USD")}</p>
+                      <p className={`font-black ${tx.direction === "outbound" ? "text-orange-600" : "text-emerald-600"}`}>
+                        {tx.currency === "USD" ? money(tx.amountUsd, "USD") : money(tx.amountHtg, tx.currency || "HTG")}
+                      </p>
                     </div>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{kindLabel(tx.kind)}</Badge>
+                    <Badge variant={tx.direction === "outbound" ? "secondary" : "default"}>
+                      {directionLabel(tx.direction)}
+                    </Badge>
+                    <Badge>{statusLabel(tx.status)}</Badge>
+                  </div>
                   <div className="grid gap-2 rounded-xl bg-muted/50 p-3 text-xs md:grid-cols-2">
+                    <p><span className="text-muted-foreground">{t("adminMonCash.purpose")}:</span> {tx.purpose}</p>
+                    <p><span className="text-muted-foreground">{t("adminMonCash.provider")}:</span> {t("adminMonCash.providerMonCash")}</p>
                     <p><span className="text-muted-foreground">{t("adminMonCash.orderId")}:</span> <span className="font-mono break-all">{tx.providerOrderId || "—"}</span></p>
                     <p><span className="text-muted-foreground">{t("adminMonCash.reference")}:</span> <span className="font-mono break-all">{tx.paymentRef || "—"}</span></p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.provider")}:</span> {t("adminMonCash.providerMonCash")}</p>
+                    <p><span className="text-muted-foreground">{t("adminMonCash.transactionId")}:</span> <span className="font-mono break-all">{tx.providerTransactionId || "—"}</span></p>
+                    <p><span className="text-muted-foreground">{t("adminMonCash.source")}:</span> <span className="font-mono">{tx.sourceTable} #{tx.sourceId}</span></p>
                   </div>
-                  <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
-                    <CalendarClock className="h-4 w-4 shrink-0 text-blue-600" />
-                    <span className="text-muted-foreground">{t("adminMonCash.dateTime")}:</span>
-                    <time className="font-semibold tabular-nums" dateTime={tx.confirmedAt || tx.createdAt}>
-                      {dateTime(tx.confirmedAt || tx.createdAt)}
-                    </time>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <Badge>{statusLabel(tx.status)}</Badge>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
+                      <CalendarClock className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <span className="text-muted-foreground">{t("adminMonCash.confirmedAt")}:</span>
+                      <time className="font-semibold tabular-nums" dateTime={tx.confirmedAt || tx.createdAt}>
+                        {dateTime(tx.confirmedAt || tx.createdAt)}
+                      </time>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
+                      <CalendarClock className="h-4 w-4 shrink-0 text-blue-600" />
+                      <span className="text-muted-foreground">{t("adminMonCash.created")}:</span>
+                      <time className="font-semibold tabular-nums" dateTime={tx.createdAt}>
+                        {dateTime(tx.createdAt)}
+                      </time>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

@@ -94,6 +94,7 @@ async function completeVerifiedBoost(input: {
   const [boost] = await db.select().from(boostsTable)
     .where(and(eq(boostsTable.id, input.boostId), eq(boostsTable.listingId, input.listingId)));
   if (!boost) return "invalid";
+  if (boost.audienceCountry !== "Haiti") return "invalid";
   if (boost.paymentStatus === "paid") return "already_processed";
   if (!Number.isFinite(input.amountHtg) || Math.abs(input.amountHtg - boost.price) > 1) return "invalid";
 
@@ -125,7 +126,7 @@ async function completeVerifiedBoost(input: {
       listingId: input.listingId,
       type: "boost",
       amount: boost.price,
-      currency: boost.audienceCountry === "Haiti" ? "HTG" : "USD",
+      currency: "HTG",
       paymentMethod: boost.paymentMethod,
       paymentStatus: "completed",
       paymentRef: input.transactionId,
@@ -273,8 +274,8 @@ router.post("/moncash/pay", requireAuth, async (req, res): Promise<void> => {
   if (boost.paymentStatus !== "pending") {
     res.status(400).json({ error: "Boost is not in pending state" }); return;
   }
-  if (useBazik && boost.audienceCountry !== "Haiti") {
-    res.status(400).json({ error: "Bazik MonCash boosts require an HTG-priced Haiti audience" });
+  if (boost.audienceCountry !== "Haiti") {
+    res.status(400).json({ error: "MonCash boosts require an HTG-priced Haiti audience" });
     return;
   }
 

@@ -32,7 +32,7 @@ import {
   parsePositiveMoney,
 } from "../lib/haiti-money";
 import { getDynamicFeeRate, getOrCreateWallet, getWalletSettings } from "./wallet";
-import { and, desc, eq, ilike, isNotNull, like, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, like, ne, or, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 const RECONCILE_COOLDOWN_MS = 60_000;
@@ -480,57 +480,108 @@ router.post("/wallet/haiti/reconcile", requireAuth, async (req, res): Promise<vo
 router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, res): Promise<void> => {
   const search = String(req.query.search ?? "").trim();
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 300));
-  const conditions = [
-    eq(walletTransactionsTable.type, "recharge"),
-    like(walletTransactionsTable.paymentRef, "wallet_topup_%"),
-    eq(usersTable.country, "Haiti"),
-    eq(walletTransactionsTable.status, "completed"),
-    isNotNull(walletTransactionsTable.userTransferRef),
-    isNotNull(walletTransactionsTable.confirmedAt),
-  ];
-  if (search) {
-    const q = `%${search}%`;
-    conditions.push(or(
-      ilike(usersTable.name, q),
-      ilike(usersTable.email, q),
-      ilike(walletTransactionsTable.paymentRef, q),
-      ilike(walletTransactionsTable.userTransferRef, q),
-    )!);
-  }
+  const q = `%${search}%`;
+  const queryResult = await db.execute(sql`
+    WITH moncash_ledger AS (
+      SELECT
+        'recharge:' || wt.id::text AS "id",
+        wt.id AS "sourceId",
+        'wallet_transactions'::text AS "sourceTable",
+        wt.user_id AS "userId",
+        u.name AS "userName",
+        u.email AS "userEmail",
+        u.phone AS "userPhone",
+        pw.account_number AS "accountNumber",
+        'recharge'::text AS "kind",
+        'inbound'::text AS "direction",
+        wt.amount_htg::double precision AS "amountHtg",
+        wt.amount_usd::double precision AS "amountUsd",
+        'HTG'::text AS "currency",
+        wt.payment_ref AS "paymentRef",
+        CASE
+          WHEN wt.user_transfer_ref LIKE 'BZK_%' THEN wt.user_transfer_ref
+          ELSE NULL
+        END AS "providerOrderId",
+        CASE
+          WHEN wt.user_transfer_ref NOT LIKE 'BZK_%' THEN wt.user_transfer_ref
+          ELSE NULL
+        END AS "providerTransactionId",
+        COALESCE(wt.note, 'MonCash wallet recharge') AS "purpose",
+        'completed'::text AS "status",
+        wt.confirmed_at AS "confirmedAt",
+        wt.created_at AS "createdAt"
+      FROM wallet_transactions wt
+      JOIN users u ON u.id = wt.user_id
+      LEFT JOIN promo_wallets pw ON pw.user_id = wt.user_id
+      WHERE wt.type = 'recharge'
+        AND wt.payment_ref LIKE 'wallet_topup_%'
+        AND wt.status = 'completed'
+        AND u.country = 'Haiti'
+        AND wt.user_transfer_ref IS NOT NULL
+        AND wt.confirmed_at IS NOT NULL
 
-  const rows = await db.select({
-    id: walletTransactionsTable.id,
-    userId: walletTransactionsTable.userId,
-    userName: usersTable.name,
-    userEmail: usersTable.email,
-    accountNumber: promoWalletTable.accountNumber,
-    balanceUsd: promoWalletTable.balanceUsd,
-    amountUsd: walletTransactionsTable.amountUsd,
-    amountHtg: walletTransactionsTable.amountHtg,
-    rateUsed: walletTransactionsTable.rateUsed,
-    bonusPct: walletTransactionsTable.bonusPct,
-    paymentRef: walletTransactionsTable.paymentRef,
-    providerOrderId: walletTransactionsTable.userTransferRef,
-    status: walletTransactionsTable.status,
-    note: walletTransactionsTable.note,
-    confirmedAt: walletTransactionsTable.confirmedAt,
-    createdAt: walletTransactionsTable.createdAt,
-  }).from(walletTransactionsTable)
-    .innerJoin(usersTable, eq(walletTransactionsTable.userId, usersTable.id))
-    .leftJoin(promoWalletTable, eq(walletTransactionsTable.userId, promoWalletTable.userId))
-    .where(and(...conditions))
-    .orderBy(desc(walletTransactionsTable.createdAt))
-    .limit(limit);
+      UNION ALL
+
+      SELECT
+        'boost:' || t.id::text AS "id",
+        t.id AS "sourceId",
+        'transactions'::text AS "sourceTable",
+        t.user_id AS "userId",
+        u.name AS "userName",
+        u.email AS "userEmail",
+        u.phone AS "userPhone",
+        pw.account_number AS "accountNumber",
+        'boost'::text AS "kind",
+        'inbound'::text AS "direction",
+        CASE WHEN UPPER(t.currency) = 'HTG' THEN t.amount::double precision ELSE NULL END AS "amountHtg",
+        CASE WHEN UPPER(t.currency) = 'USD' THEN t.amount::double precision ELSE NULL END AS "amountUsd",
+        UPPER(t.currency) AS "currency",
+        t.payment_ref AS "paymentRef",
+        NULL::text AS "providerOrderId",
+        t.payment_ref AS "providerTransactionId",
+        COALESCE(t.description, 'MonCash boost') AS "purpose",
+        'completed'::text AS "status",
+        t.created_at AS "confirmedAt",
+        t.created_at AS "createdAt"
+      FROM transactions t
+      JOIN users u ON u.id = t.user_id
+      LEFT JOIN promo_wallets pw ON pw.user_id = t.user_id
+      WHERE t.type = 'boost'
+        AND LOWER(t.payment_method) IN ('moncash', 'bazik')
+        AND t.payment_status = 'completed'
+        AND UPPER(t.currency) = 'HTG'
+        AND t.payment_ref IS NOT NULL
+        AND t.description LIKE 'MonCash boost%'
+
+    )
+    SELECT *
+    FROM moncash_ledger
+    WHERE ${search} = ''
+       OR "userName" ILIKE ${q}
+       OR "userEmail" ILIKE ${q}
+       OR COALESCE("userPhone", '') ILIKE ${q}
+       OR COALESCE("accountNumber", '') ILIKE ${q}
+       OR COALESCE("paymentRef", '') ILIKE ${q}
+       OR COALESCE("providerOrderId", '') ILIKE ${q}
+       OR COALESCE("providerTransactionId", '') ILIKE ${q}
+       OR COALESCE("purpose", '') ILIKE ${q}
+    ORDER BY "confirmedAt" DESC, "createdAt" DESC
+    LIMIT ${limit}
+  `);
+  const rows = (Array.isArray(queryResult) ? queryResult : queryResult.rows) as any[];
 
   const metrics = rows.reduce((acc, row) => {
     acc.total += 1;
-    acc.amountHtg += Number(row.amountHtg) || 0;
-    acc.amountUsd += Number(row.amountUsd) || 0;
-    if (row.status === "completed") acc.completed += 1;
-    else if (row.status === "pending") acc.pending += 1;
-    else acc.other += 1;
+    if (row.direction === "outbound") {
+      acc.outbound += 1;
+      acc.outboundHtg += Number(row.amountHtg) || 0;
+    } else {
+      acc.inbound += 1;
+      acc.inboundHtg += Number(row.amountHtg) || 0;
+    }
     return acc;
-  }, { total: 0, completed: 0, pending: 0, other: 0, amountHtg: 0, amountUsd: 0 });
+  }, { total: 0, completed: 0, inbound: 0, outbound: 0, inboundHtg: 0, outboundHtg: 0 });
+  metrics.completed = metrics.total;
 
   let bazikBalance: {
     availableHtg: number;
@@ -653,9 +704,16 @@ export async function verifyHaitiMonCashTopup(
   if (!pending || pending.type !== "recharge") return { ok: false };
   const providerReference = providerOrderId ?? transactionId;
   if (pending.status === "completed") {
-    return pending.userTransferRef === providerReference
-      ? { ok: true, alreadyProcessed: true }
-      : { ok: false };
+    if (pending.userTransferRef !== providerReference) return { ok: false };
+    if (!pending.confirmedAt) {
+      await db.update(walletTransactionsTable)
+        .set({ confirmedAt: new Date() })
+        .where(and(
+          eq(walletTransactionsTable.id, pending.id),
+          eq(walletTransactionsTable.status, "completed"),
+        ));
+    }
+    return { ok: true, alreadyProcessed: true };
   }
   if (pending.status !== "pending") return { ok: false };
   if (!Number.isFinite(cost) || Math.abs(cost - (pending.amountHtg ?? 0)) > 0.01) return { ok: false };
@@ -683,6 +741,7 @@ export async function verifyHaitiMonCashTopup(
     const [verified] = await tx.update(walletTransactionsTable).set({
       status: "completed",
       userTransferRef: providerReference,
+      confirmedAt: new Date(),
     }).where(and(
       eq(walletTransactionsTable.id, pending.id),
       eq(walletTransactionsTable.status, "pending"),

@@ -130,7 +130,14 @@ export default function AdminHaitiTransactions() {
             [t("adminMonCash.completed"), metrics.completed ?? 0, CheckCircle2, "text-emerald-600"],
             [t("adminMonCash.pending"), metrics.pending ?? 0, Clock3, "text-amber-600"],
             [t("adminMonCash.pendingUsers"), pendingUsers, ShieldCheck, "text-violet-600"],
-            [t("adminMonCash.volume"), money(metrics.amountHtg, "HTG"), WalletCards, "text-cyan-600"],
+            [
+              t("adminMonCash.availableBalance"),
+              query.data?.bazikBalance
+                ? money(query.data.bazikBalance.availableHtg, query.data.bazikBalance.currency || "HTG")
+                : "—",
+              WalletCards,
+              "text-cyan-600",
+            ],
           ].map(([label, value, Icon, color]: any) => (
             <Card key={String(label)}>
               <CardContent className="p-4">

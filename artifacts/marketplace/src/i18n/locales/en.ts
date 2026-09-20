@@ -3258,6 +3258,7 @@ export default {
     pending: "Pending",
     pendingUsers: "Users pending",
     volume: "HTG volume",
+    availableBalance: "Bazik available balance",
     search: "Search name, email, wallet, reference or order ID…",
     empty: "No MonCash transactions found.",
     orderId: "Bazik order",

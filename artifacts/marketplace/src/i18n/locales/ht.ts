@@ -3266,6 +3266,7 @@ export default {
     pending: "Ap tann",
     pendingUsers: "Itilizatè ap tann",
     volume: "Volim HTG",
+    availableBalance: "Balans Bazik disponib",
     search: "Chèche non, imèl, pòtfèy, referans oswa order ID…",
     empty: "Pa gen tranzaksyon MonCash.",
     orderId: "Order Bazik",

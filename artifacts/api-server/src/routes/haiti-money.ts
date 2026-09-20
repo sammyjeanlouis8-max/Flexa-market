@@ -19,6 +19,7 @@ import {
   getBazikAccessToken,
   retrieveBazikMonCashPaymentByReference,
   retrieveBazikPayment,
+  retrieveBazikWalletBalance,
   type BazikConfig,
 } from "../lib/bazik";
 import {
@@ -530,7 +531,36 @@ router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, re
     return acc;
   }, { total: 0, completed: 0, pending: 0, other: 0, amountHtg: 0, amountUsd: 0 });
 
-  res.json({ transactions: rows, metrics });
+  let bazikBalance: {
+    availableHtg: number;
+    reservedHtg: number;
+    currency: string;
+  } | null = null;
+  try {
+    const runtime = await getMonCashRuntimeConfig();
+    if (
+      runtime.adapter === "bazik"
+      && runtime.bazikUserId
+      && runtime.bazikSecretKey
+      && runtime.bazikWebhookSecret
+    ) {
+      const config: BazikConfig = {
+        userId: runtime.bazikUserId,
+        secretKey: runtime.bazikSecretKey,
+        webhookSecret: runtime.bazikWebhookSecret,
+      };
+      const token = await getBazikAccessToken(config);
+      bazikBalance = await retrieveBazikWalletBalance(token);
+    }
+  } catch (error) {
+    logger.warn({
+      adminUserId: req.userId,
+      operation: error instanceof BazikApiError ? error.operation : "wallet balance",
+      httpStatus: error instanceof BazikApiError ? error.status : undefined,
+    }, "Could not load live Bazik available balance for admin dashboard");
+  }
+
+  res.json({ transactions: rows, metrics, bazikBalance });
 });
 
 router.post("/wallet/haiti/admin/reconcile/:userId", requireSuperAdmin, async (req, res): Promise<void> => {

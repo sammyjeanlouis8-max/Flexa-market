@@ -14,6 +14,7 @@ export type { HaitiMoneyProvider, HaitiQuote, QuoteDirection };
 
 export interface MonCashRuntimeConfig {
   enabled: boolean;
+  payoutEnabled: boolean;
   mode: "sandbox" | "live";
   clientId: string;
   clientSecret: string;
@@ -46,6 +47,7 @@ const MONCASH_ENV = {
 } as const;
 
 const BAZIK_ENV = {
+  payoutEnabled: "MONCASH_PAYOUT_ENABLED",
   userId: "BAZIK_USER_ID",
   secretKey: "BAZIK_SECRET_KEY",
   webhookSecret: "BAZIK_WEBHOOK_SECRET",
@@ -103,8 +105,12 @@ export async function getMonCashRuntimeConfig(): Promise<MonCashRuntimeConfig> {
   const bazikWebhookSecret = envString(BAZIK_ENV.webhookSecret, "");
   const bazikWebhookUrl = envString(BAZIK_ENV.webhookUrl, "");
   const bazikConfigured = !!bazikUserId && !!bazikSecretKey && !!bazikWebhookSecret;
+  const storedPayoutEnabled = typeof stored.payoutEnabled === "boolean"
+    ? stored.payoutEnabled
+    : bazikConfigured;
   return {
     enabled: envBoolean(MONCASH_ENV.enabled, stored.enabled === true || bazikConfigured),
+    payoutEnabled: envBoolean(BAZIK_ENV.payoutEnabled, storedPayoutEnabled),
     mode: envString(MONCASH_ENV.mode, String(stored.mode ?? "sandbox")) === "live" ? "live" : "sandbox",
     clientId: envString(MONCASH_ENV.clientId, String(stored.clientId ?? "")),
     clientSecret: envString(MONCASH_ENV.clientSecret, String(stored.clientSecret ?? "")),

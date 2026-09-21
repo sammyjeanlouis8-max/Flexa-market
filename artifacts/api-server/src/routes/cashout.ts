@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import { db, cashoutRequestsTable, promoWalletTable, walletTransactionsTable, usersTable, agentApplicationsTable } from "@workspace/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
@@ -483,6 +483,20 @@ async function recoverAutomaticMonCashCashouts(): Promise<void> {
   try {
     const runtime = await getMonCashRuntimeConfig();
     if (!bazikPayoutReady(runtime)) return;
+    // A process can stop after claiming provider_ready but before receiving a
+    // Bazik response. Never resubmit that reference blindly: the first request
+    // may already have reached the provider. Mark it unknown so a signed
+    // webhook or provider reconciliation can complete it without double pay.
+    await db.update(cashoutRequestsTable).set({
+      status: "provider_unknown",
+      providerStatus: "unknown",
+      providerError: "Submission was interrupted; awaiting signed provider confirmation",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(cashoutRequestsTable.method, "moncash"),
+      eq(cashoutRequestsTable.status, "provider_submitting"),
+      sql`${cashoutRequestsTable.payoutAttemptedAt} < NOW() - INTERVAL '2 minutes'`,
+    ));
     // Only retry records that were committed as ready before a process crash.
     // This Bazik account cannot call GET /transfers/{id}; repeatedly polling
     // pending/unknown rows would fill this limited batch and starve new ready
@@ -573,6 +587,10 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
     res.status(400).json({ error: "Metòd la invalide" });
     return;
   }
+  if (method === "moncash" && !idempotencyKey) {
+    res.status(400).json({ error: "Idempotency-Key obligatwa pou retrè MonCash" });
+    return;
+  }
   if ((method === "moncash" || method === "natcash") && (!isHaitiPhone(phone) || req.user?.country !== "Haiti")) {
     res.status(400).json({ error: "Yon nimewo telefòn Ayiti obligatwa pou metòd lokal sa a" });
     return;
@@ -603,11 +621,19 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
   // Fast idempotent replay path must run before the balance check: the first
   // request has already reduced the balance by the time a client retries.
   if (idempotencyKey) {
-    const [existing] = await db.select({ id: cashoutRequestsTable.id })
+    const [existing] = await db.select({
+      id: cashoutRequestsTable.id,
+      status: cashoutRequestsTable.status,
+    })
       .from(cashoutRequestsTable)
       .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
     if (existing) {
-      res.json({ ok: true, idempotent: true, requestId: existing.id });
+      res.json({
+        ok: true,
+        idempotent: true,
+        requestId: existing.id,
+        payoutStatus: publicMonCashPayoutStatus(existing.status),
+      });
       return;
     }
   }
@@ -688,6 +714,13 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
     }
   }
 
+  // This reference is committed with the wallet debit before any request is
+  // sent to Bazik. If the process stops after commit, the recovery worker can
+  // safely resume the provider_ready record without creating a second payout.
+  const providerReference = automaticMonCash
+    ? `fm_cashout_${req.userId}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`
+    : null;
+
   // The debit, request, and audit ledger are one unit. In particular, never
   // insert a request after a zero-row conditional debit.
   let result: any;
@@ -711,14 +744,19 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
       const [request] = await tx.insert(cashoutRequestsTable).values({
         userId: req.userId!,
         amountUsd: netAmountUsd,
+        grossAmountUsd: parsed,
+        payoutAmountHtg: automaticMonCash?.amountHtg ?? null,
+        payoutRate: automaticMonCash?.rate ?? null,
         method,
         phone: phone?.trim() ?? null,
         agentLocation: agentLocation?.trim() ?? null,
-        status: "pending",
+        status: automaticMonCash ? "provider_ready" : "pending",
         assignedAgentAppId: assignedAgentAppId ?? null,
         screenshotUrl: screenshotUrl?.trim() ?? null,
         userNote: userNote?.trim() ?? null,
         idempotencyKey,
+        providerReference,
+        providerStatus: automaticMonCash ? "ready" : null,
       } as any).returning();
 
       await tx.insert(walletTransactionsTable).values({
@@ -726,7 +764,7 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         type: "cashout_pending",
         amountUsd: -parsed,
         status: "pending",
-        paymentRef: idempotencyKey ?? undefined,
+        paymentRef: providerReference ?? idempotencyKey ?? undefined,
         note: `Retrait ${methodLabel} #${request.id} — frè 2%: $${feeUsd.toFixed(2)} — nèt: $${netAmountUsd.toFixed(2)}`,
       });
       return { kind: "created", request };
@@ -738,11 +776,16 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
       const [existing] = await db.select().from(cashoutRequestsTable)
         .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
       if (existing) {
-        res.json({ ok: true, idempotent: true, requestId: existing.id });
+        res.json({
+          ok: true,
+          idempotent: true,
+          requestId: existing.id,
+          payoutStatus: publicMonCashPayoutStatus(existing.status),
+        });
         return;
       }
     }
-    logger.error({ userId: req.userId }, "Cashout transaction failed");
+    logger.error({ err, userId: req.userId }, "Cashout transaction failed");
     res.status(500).json({ error: "Cashout request could not be created" });
     return;
   }
@@ -752,13 +795,38 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
     return;
   }
   if (result.kind === "existing") {
-    res.json({ ok: true, idempotent: true, requestId: result.request.id });
+    res.json({
+      ok: true,
+      idempotent: true,
+      requestId: result.request.id,
+      payoutStatus: publicMonCashPayoutStatus(result.request.status),
+    });
     return;
   }
   const request = result.request;
 
   logger.info({ userId: req.userId, requestId: request.id, grossAmountUsd: parsed, feeUsd, netAmountUsd, method, assignedAgentAppId }, "Cashout request created");
-  res.json({ ok: true, requestId: request.id, feeUsd, netAmountUsd, grossAmountUsd: parsed });
+  let payoutStatus: "paid" | "pending" | "unknown" | "refunded" | undefined;
+  if (automaticMonCash) {
+    payoutStatus = await executeAutomaticMonCashCashout(
+      request.id,
+      automaticMonCash.token,
+      automaticMonCash.webhookUrl,
+    );
+    logger.info({
+      userId: req.userId,
+      requestId: request.id,
+      payoutStatus,
+    }, "Automatic MonCash cashout submitted");
+  }
+  res.json({
+    ok: true,
+    requestId: request.id,
+    feeUsd,
+    netAmountUsd,
+    grossAmountUsd: parsed,
+    payoutStatus,
+  });
 });
 
 // ── POST /api/cashout/stripe ──────────────────────────────────────────────────
@@ -1062,43 +1130,75 @@ router.post("/cashout/admin/review", requireFinanceAdmin, async (req, res): Prom
 
   const [request] = await db.select().from(cashoutRequestsTable).where(eq(cashoutRequestsTable.id, Number(requestId)));
   if (!request) { res.status(404).json({ error: "Demand lan pa jwenn" }); return; }
+  if (
+    request.method === "moncash"
+    && (
+      !!request.providerReference
+      || ["provider_ready", "provider_submitting", "provider_pending", "provider_unknown"].includes(request.status)
+    )
+  ) {
+    res.status(409).json({
+      error: "Bazik ap jere retrè sa a otomatikman; admin pa ka chanje li manyèlman",
+    });
+    return;
+  }
 
   if (action === "approve") {
     const otp = generateOTP();
     const expiry = otpExpiry();
-    await db.update(cashoutRequestsTable)
+    const [approved] = await db.update(cashoutRequestsTable)
       .set({ status: "approved", otpCode: otp, otpExpiresAt: expiry, adminNote: adminNote ?? null, updatedAt: new Date() })
-      .where(eq(cashoutRequestsTable.id, request.id));
-    res.json({ ok: true, otpCode: otp });
-  } else if (action === "paid") {
-    await db.update(cashoutRequestsTable)
-      .set({ status: "paid", otpUsed: true, adminNote: adminNote ?? null, updatedAt: new Date() })
-      .where(eq(cashoutRequestsTable.id, request.id));
-    res.json({ ok: true });
-  } else if (action === "reject") {
-    // Atomic: only proceed if not already rejected/paid — prevents double-refund
-    // if two admins click reject simultaneously.
-    const [atomicReject] = await db.update(cashoutRequestsTable)
-      .set({ status: "rejected", adminNote: adminNote ?? null, updatedAt: new Date() })
       .where(and(
         eq(cashoutRequestsTable.id, request.id),
-        sql`${cashoutRequestsTable.status} NOT IN ('rejected', 'paid')`,
+        eq(cashoutRequestsTable.status, "pending"),
       ))
-      .returning({ userId: cashoutRequestsTable.userId, amountUsd: cashoutRequestsTable.amountUsd });
-
-    if (atomicReject) {
-      // Only refund now that we've atomically claimed the status transition
-      await db.update(promoWalletTable)
-        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${atomicReject.amountUsd}`, updatedAt: new Date() })
+      .returning({ id: cashoutRequestsTable.id });
+    if (!approved) {
+      res.status(409).json({ error: "Demand lan deja chanje; rechaje lis la anvan ou kontinye" });
+      return;
+    }
+    res.json({ ok: true, otpCode: otp });
+  } else if (action === "paid") {
+    const [paid] = await db.update(cashoutRequestsTable)
+      .set({ status: "paid", otpUsed: true, adminNote: adminNote ?? null, updatedAt: new Date() })
+      .where(and(
+        eq(cashoutRequestsTable.id, request.id),
+        inArray(cashoutRequestsTable.status, ["pending", "approved"]),
+      ))
+      .returning({ id: cashoutRequestsTable.id });
+    if (!paid) {
+      res.status(409).json({ error: "Demand lan deja chanje; rechaje lis la anvan ou kontinye" });
+      return;
+    }
+    res.json({ ok: true });
+  } else if (action === "reject") {
+    await db.transaction(async (tx) => {
+      // Claim and refund in one transaction. Returning the gross amount restores
+      // exactly what the original request removed, including the platform fee.
+      const [atomicReject] = await tx.update(cashoutRequestsTable)
+        .set({ status: "rejected", adminNote: adminNote ?? null, updatedAt: new Date() })
+        .where(and(
+          eq(cashoutRequestsTable.id, request.id),
+          sql`${cashoutRequestsTable.status} NOT IN ('rejected', 'paid')`,
+        ))
+        .returning({
+          userId: cashoutRequestsTable.userId,
+          amountUsd: cashoutRequestsTable.amountUsd,
+          grossAmountUsd: cashoutRequestsTable.grossAmountUsd,
+        });
+      if (!atomicReject) return;
+      const refundAmount = Number(atomicReject.grossAmountUsd ?? atomicReject.amountUsd);
+      await tx.update(promoWalletTable)
+        .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundAmount}`, updatedAt: new Date() })
         .where(eq(promoWalletTable.userId, atomicReject.userId));
-      await db.insert(walletTransactionsTable).values({
+      await tx.insert(walletTransactionsTable).values({
         userId: atomicReject.userId,
         type: "refund",
-        amountUsd: atomicReject.amountUsd,
+        amountUsd: refundAmount,
         status: "completed",
         note: `Retrait #${requestId} rejte — rembourseman`,
       });
-    }
+    });
     res.json({ ok: true });
   } else {
     res.status(400).json({ error: "Action invalide" });

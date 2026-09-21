@@ -508,6 +508,12 @@ router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, re
         END AS "providerTransactionId",
         COALESCE(wt.note, 'MonCash wallet recharge') AS "purpose",
         'completed'::text AS "status",
+        'successful'::text AS "providerStatus",
+        NULL::text AS "providerError",
+        NULL::double precision AS "payoutRate",
+        NULL::timestamptz AS "payoutAttemptedAt",
+        NULL::timestamptz AS "paidAt",
+        NULL::timestamptz AS "refundedAt",
         wt.confirmed_at AS "confirmedAt",
         wt.created_at AS "createdAt"
       FROM wallet_transactions wt
@@ -519,6 +525,40 @@ router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, re
         AND u.country = 'Haiti'
         AND wt.user_transfer_ref IS NOT NULL
         AND wt.confirmed_at IS NOT NULL
+
+      UNION ALL
+
+      SELECT
+        'cashout:' || cr.id::text AS "id",
+        cr.id AS "sourceId",
+        'cashout_requests'::text AS "sourceTable",
+        cr.user_id AS "userId",
+        u.name AS "userName",
+        u.email AS "userEmail",
+        u.phone AS "userPhone",
+        cr.phone AS "accountNumber",
+        'cashout'::text AS "kind",
+        'outbound'::text AS "direction",
+        cr.payout_amount_htg::double precision AS "amountHtg",
+        COALESCE(cr.gross_amount_usd, cr.amount_usd)::double precision AS "amountUsd",
+        'HTG'::text AS "currency",
+        cr.provider_reference AS "paymentRef",
+        NULL::text AS "providerOrderId",
+        cr.provider_transaction_id AS "providerTransactionId",
+        'MonCash automatic cash-out'::text AS "purpose",
+        cr.status AS "status",
+        cr.provider_status AS "providerStatus",
+        cr.provider_error AS "providerError",
+        cr.payout_rate::double precision AS "payoutRate",
+        cr.payout_attempted_at AS "payoutAttemptedAt",
+        cr.paid_at AS "paidAt",
+        cr.refunded_at AS "refundedAt",
+        cr.paid_at AS "confirmedAt",
+        cr.created_at AS "createdAt"
+      FROM cashout_requests cr
+      JOIN users u ON u.id = cr.user_id
+      WHERE cr.method = 'moncash'
+        AND cr.provider_reference IS NOT NULL
 
     )
     SELECT *

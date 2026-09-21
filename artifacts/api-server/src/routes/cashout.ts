@@ -1117,6 +1117,68 @@ router.get("/cashout/admin/all", requireFinanceAdmin, async (_req, res): Promise
   res.json(all);
 });
 
+router.post("/cashout/admin/moncash/:requestId/reconcile", requireSuperAdmin, async (req, res): Promise<void> => {
+  const requestId = Number(req.params.requestId);
+  if (!Number.isInteger(requestId) || requestId <= 0) {
+    res.status(400).json({ error: "ID cash-out la pa valid" });
+    return;
+  }
+  const [request] = await db.select({
+    id: cashoutRequestsTable.id,
+    method: cashoutRequestsTable.method,
+    status: cashoutRequestsTable.status,
+    providerReference: cashoutRequestsTable.providerReference,
+  }).from(cashoutRequestsTable).where(eq(cashoutRequestsTable.id, requestId));
+  if (!request || request.method !== "moncash" || !request.providerReference) {
+    res.status(404).json({ error: "Automatic MonCash cash-out la pa jwenn" });
+    return;
+  }
+  if (!["provider_ready", "provider_submitting", "provider_pending", "provider_unknown"].includes(request.status)) {
+    res.status(409).json({ error: "Cash-out sa a pa bezwen verifikasyon provider" });
+    return;
+  }
+  try {
+    if (request.status === "provider_ready") {
+      const runtime = await getMonCashRuntimeConfig();
+      if (!bazikPayoutReady(runtime)) {
+        res.status(503).json({ error: "Bazik payout pa aktive oswa webhook la pa configuré" });
+        return;
+      }
+      const token = await getBazikAccessToken(bazikConfig(runtime));
+      const payoutStatus = await executeAutomaticMonCashCashout(
+        requestId,
+        token,
+        configuredBazikWebhookUrl(runtime.bazikWebhookUrl),
+      );
+      logger.info({
+        adminUserId: req.userId,
+        requestId,
+        payoutStatus,
+      }, "Admin resumed ready automatic MonCash cashout");
+      res.json({ ok: true, status: payoutStatus });
+      return;
+    }
+    const result = await reconcileAutomaticMonCashCashout(requestId);
+    logger.info({
+      adminUserId: req.userId,
+      requestId,
+      resultStatus: result.status,
+      completed: result.completed,
+    }, "Admin rechecked automatic MonCash cashout with Bazik");
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    logger.warn({
+      adminUserId: req.userId,
+      requestId,
+      operation: error instanceof BazikApiError ? error.operation : "admin reconciliation",
+      httpStatus: error instanceof BazikApiError ? error.status : undefined,
+    }, "Admin MonCash cashout reconciliation failed");
+    res.status(error instanceof BazikApiError && error.status === 404 ? 404 : 502).json({
+      error: "Bazik pa t ka konfime payout sa a kounye a; pa gen okenn nouvo payout ki te voye",
+    });
+  }
+});
+
 // ── POST /api/cashout/admin/review ────────────────────────────────────────────
 router.post("/cashout/admin/review", requireFinanceAdmin, async (req, res): Promise<void> => {
   const { requestId, action, adminNote } = req.body as {

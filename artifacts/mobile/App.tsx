@@ -37,6 +37,7 @@ import {
 } from "./native/backgroundUploads";
 
 const WEBSITE = "https://flexamarket.com";
+const INITIAL_LOAD_TIMEOUT_MS = 20_000;
 
 /** Register an Expo push token directly from native (bypasses WebView timing). */
 async function registerPushTokenDirect(token: string, jwt: string): Promise<void> {
@@ -65,13 +66,22 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const initialPageReadyRef = useRef(false);
   const currentLoadFailedRef = useRef(false);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearErrorTimer = useCallback(() => {
     if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     errorTimerRef.current = null;
   }, []);
-  useEffect(() => clearErrorTimer, [clearErrorTimer]);
+  const clearStartupTimer = useCallback(() => {
+    if (startupTimerRef.current) clearTimeout(startupTimerRef.current);
+    startupTimerRef.current = null;
+  }, []);
+  useEffect(() => () => {
+    clearErrorTimer();
+    clearStartupTimer();
+  }, [clearErrorTimer, clearStartupTimer]);
   const currentUrlRef = useRef(WEBSITE);
 
   // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
@@ -181,6 +191,8 @@ export default function App() {
   const onLoadEnd = useCallback(() => {
     if (!currentLoadFailedRef.current) {
       clearErrorTimer();
+      clearStartupTimer();
+      initialPageReadyRef.current = true;
       setLoadError(false);
       setIsLoading(false);
       setIsRetrying(false);
@@ -222,36 +234,79 @@ export default function App() {
         `})();true;`
       );
     }
-  }, []);
+  }, [clearErrorTimer, clearStartupTimer]);
 
   const handleLoadStart = useCallback(() => {
     clearErrorTimer();
     currentLoadFailedRef.current = false;
     setLoadError(false);
+    if (initialPageReadyRef.current) {
+      // Normal in-app navigation must not cover the current page with the
+      // full-screen startup view. Slower Android WebViews can emit load-start
+      // long before load-end for every tap and redirect.
+      setIsLoading(false);
+      setIsRetrying(false);
+      return;
+    }
     setIsLoading(true);
-  }, [clearErrorTimer]);
+    clearStartupTimer();
+    startupTimerRef.current = setTimeout(() => {
+      startupTimerRef.current = null;
+      if (initialPageReadyRef.current) return;
+      currentLoadFailedRef.current = true;
+      webRef.current?.stopLoading();
+      setIsLoading(false);
+      setIsRetrying(false);
+      setLoadError(true);
+    }, INITIAL_LOAD_TIMEOUT_MS);
+  }, [clearErrorTimer, clearStartupTimer]);
+
+  const handleLoadProgress = useCallback((event: { nativeEvent: { progress: number } }) => {
+    if (
+      initialPageReadyRef.current
+      || currentLoadFailedRef.current
+      || event.nativeEvent.progress < 0.55
+    ) {
+      return;
+    }
+    // The first usable document is already visible. Do not keep the native
+    // startup screen over it while images and other assets finish loading.
+    initialPageReadyRef.current = true;
+    clearStartupTimer();
+    setIsLoading(false);
+    setIsRetrying(false);
+  }, [clearStartupTimer]);
 
   const handleLoadError = useCallback(() => {
     if (currentLoadFailedRef.current) return;
     currentLoadFailedRef.current = true;
-    setIsLoading(true);
+    clearStartupTimer();
     clearErrorTimer();
+    if (initialPageReadyRef.current) {
+      // Keep the last usable marketplace page visible if a later navigation
+      // fails instead of replacing the whole app with the startup screen.
+      setIsLoading(false);
+      setIsRetrying(false);
+      return;
+    }
+    setIsLoading(true);
     errorTimerRef.current = setTimeout(() => {
       errorTimerRef.current = null;
       setIsLoading(false);
       setIsRetrying(false);
       setLoadError(true);
     }, 1_200);
-  }, [clearErrorTimer]);
+  }, [clearErrorTimer, clearStartupTimer]);
 
   const retryLoad = useCallback(() => {
     clearErrorTimer();
+    clearStartupTimer();
     setLoadError(false);
     setIsLoading(true);
     setIsRetrying(true);
     currentLoadFailedRef.current = false;
     webRef.current?.reload();
-  }, [clearErrorTimer]);
+  }, [clearErrorTimer, clearStartupTimer]);
 
   return (
     <SafeAreaProvider>
@@ -287,6 +342,9 @@ export default function App() {
           originWhitelist={["https://*"]}
           mixedContentMode="never"
           cacheEnabled
+          cacheMode="LOAD_DEFAULT"
+          androidLayerType="hardware"
+          renderToHardwareTextureAndroid
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => {
             currentUrlRef.current = s.url;
@@ -296,6 +354,7 @@ export default function App() {
             currentUrlRef.current = event.nativeEvent.url;
             handleLoadStart();
           }}
+          onLoadProgress={handleLoadProgress}
           onLoadEnd={onLoadEnd}
           renderError={() => <View style={{ flex: 1, backgroundColor: "#fff" }} />}
           onError={(event) => {

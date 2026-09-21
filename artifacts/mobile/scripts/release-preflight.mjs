@@ -43,8 +43,11 @@ requireCondition(
   "Apple encryption compliance declaration must remain false.",
 );
 requireCondition(
-  appConfig.updates?.enabled === false,
-  "OTA updates must remain disabled for this WebView release strategy.",
+  appConfig.updates?.enabled === true &&
+    appConfig.updates?.url ===
+      "https://u.expo.dev/45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e" &&
+    appConfig.runtimeVersion?.policy === "appVersion",
+  "Production OTA updates must remain enabled with the Flexa Market EAS project and app-version runtime policy.",
 );
 requireCondition(
   easConfig.build?.production?.env?.EXPO_PUBLIC_DOMAIN === "flexamarket.com",

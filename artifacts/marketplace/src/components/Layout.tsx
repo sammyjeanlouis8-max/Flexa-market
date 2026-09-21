@@ -26,6 +26,7 @@ import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
+const InlineMessages = lazy(() => import("@/pages/Messages"));
 
 // ─── Unread message badge ────────────────────────────────────────────────────
 function useUnreadMessageCount(): number {
@@ -700,9 +701,16 @@ export default function Layout({ children }: { children: ReactNode }) {
   const bs = useBroadcast();
   const [moreOpen, setMoreOpen] = useState(false);
   const [showInlineSell, setShowInlineSell] = useState(false);
+  const [showInlineMessages, setShowInlineMessages] = useState(false);
   const inlineSellOriginRef = useRef(location);
+  const inlineMessagesOriginRef = useRef(location);
 
   const handleMobileTab = useCallback((href: string) => {
+    if (href === "/messages" && user && isAndroidApp()) {
+      inlineMessagesOriginRef.current = location;
+      setShowInlineMessages(true);
+      return;
+    }
     if (href === "/sell" && user && isAndroidApp()) {
       inlineSellOriginRef.current = location;
       setShowInlineSell(true);
@@ -715,7 +723,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     if (showInlineSell && location !== inlineSellOriginRef.current) {
       setShowInlineSell(false);
     }
-  }, [location, showInlineSell]);
+    if (showInlineMessages && location !== inlineMessagesOriginRef.current) {
+      setShowInlineMessages(false);
+    }
+  }, [location, showInlineMessages, showInlineSell]);
 
   // Back button: show on mobile for every page except home, messages, and auth
   const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
@@ -1081,6 +1092,17 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
             <InlineSell />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Keep Messages inside the already-loaded document on installed Android
+          builds. Older WebViews can otherwise reopen the native startup overlay
+          when the URL changes, even for a client-side route transition. */}
+      {showInlineMessages && (
+        <div className="fixed inset-0 z-[70] overflow-hidden bg-background md:hidden">
+          <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
+            <InlineMessages embedded onClose={() => setShowInlineMessages(false)} />
           </Suspense>
         </div>
       )}

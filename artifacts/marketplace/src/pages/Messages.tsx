@@ -1114,9 +1114,15 @@ function MsgBubble({
 }
 
 // ─── Conversation List ────────────────────────────────────────────────────────
-function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?: number; theme: (typeof T)[ChatTheme] }) {
+function ConvList({ convs, activeId, theme, onSelect }: {
+  convs: Conversation[];
+  activeId?: number;
+  theme: (typeof T)[ChatTheme];
+  onSelect?: (conversationId: number) => void;
+}) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const c = theme;
   const prefetchMessages = (conversationId: number) => {
     void queryClient.prefetchQuery(getGetMessagesQueryOptions(conversationId, {
@@ -1151,8 +1157,17 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
       }}
     >
       {sortedConvs.map(conv => (
-        <Link key={conv.id} href={`/messages/${conv.id}`}>
           <div
+            key={conv.id}
+            role="link"
+            tabIndex={0}
+            onClick={() => onSelect ? onSelect(conv.id) : setLocation(`/messages/${conv.id}`)}
+            onKeyDown={event => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect ? onSelect(conv.id) : setLocation(`/messages/${conv.id}`);
+              }
+            }}
             onPointerDown={() => prefetchMessages(conv.id)}
             onMouseEnter={() => prefetchMessages(conv.id)}
             style={{
@@ -1209,15 +1224,17 @@ function ConvList({ convs, activeId, theme }: { convs: Conversation[]; activeId?
               </div>
             </div>
           </div>
-        </Link>
       ))}
     </div>
   );
 }
 
 // ─── Message Thread ───────────────────────────────────────────────────────────
-function MessageThread({ convId, theme, onToggleTheme }: {
-  convId: number; theme: (typeof T)[ChatTheme]; onToggleTheme: () => void;
+function MessageThread({ convId, theme, onToggleTheme, onBack }: {
+  convId: number;
+  theme: (typeof T)[ChatTheme];
+  onToggleTheme: () => void;
+  onBack?: () => void;
 }) {
   const { user, token, isLoading: authLoading } = useAuth();
   const { isRestricted } = useRestriction();
@@ -1236,6 +1253,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
   // The in-thread ArrowLeft button also calls window.history.back() so both
   // paths converge through the same handler.
   useEffect(() => {
+    if (onBack) return;
     const sentinel = { _flexaConvBack: convId };
     window.history.pushState(sentinel, "");
 
@@ -1257,7 +1275,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [convId]);
+  }, [convId, onBack]);
 
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
@@ -1954,7 +1972,7 @@ function MessageThread({ convId, theme, onToggleTheme }: {
             entries that accumulated while the conversation was open. */}
         <button
           type="button"
-          onClick={() => window.history.back()}
+          onClick={onBack ?? (() => window.history.back())}
           style={{
             width: 40, height: 40, borderRadius: "50%", background: "transparent",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -2563,12 +2581,17 @@ function MessageThread({ convId, theme, onToggleTheme }: {
 }
 
 // ─── Messages Page ────────────────────────────────────────────────────────────
-export default function Messages() {
+export default function Messages({ embedded = false, onClose }: {
+  embedded?: boolean;
+  onClose?: () => void;
+} = {}) {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const [, params] = useRoute("/messages/:id");
-  const convId = params?.id ? parseInt(params.id, 10) : null;
+  const routeConvId = params?.id ? parseInt(params.id, 10) : null;
+  const [embeddedConvId, setEmbeddedConvId] = useState<number | null>(null);
+  const convId = embedded ? embeddedConvId : routeConvId;
   const queryClient = useQueryClient();
   const socket = useSocket();
 
@@ -2641,7 +2664,7 @@ export default function Messages() {
           {/* Back button → home */}
           <button
             type="button"
-            onClick={() => window.location.href = "/"}
+            onClick={() => embedded ? onClose?.() : setLocation("/")}
             style={{
               width: 44, height: 44, borderRadius: "50%", background: "none",
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -2671,7 +2694,12 @@ export default function Messages() {
               : <Moon style={{ width: 16, height: 16, color: "#818CF8" }} />}
           </button>
         </div>
-        <ConvList convs={(convs as Conversation[]) ?? []} activeId={convId ?? undefined} theme={theme} />
+        <ConvList
+          convs={(convs as Conversation[]) ?? []}
+          activeId={convId ?? undefined}
+          theme={theme}
+          onSelect={embedded ? setEmbeddedConvId : undefined}
+        />
       </div>
 
       {/* Thread pane */}
@@ -2681,7 +2709,12 @@ export default function Messages() {
       >
         {convId ? (
           <ThreadBoundary convId={convId} pageBg={theme.pageBg}>
-            <MessageThread convId={convId} theme={theme} onToggleTheme={toggleTheme} />
+            <MessageThread
+              convId={convId}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              onBack={embedded ? () => setEmbeddedConvId(null) : undefined}
+            />
           </ThreadBoundary>
         ) : (
           <div style={{

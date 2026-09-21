@@ -3316,7 +3316,7 @@ export default {
     sendNow: "Envoyer maintenant",
     confirmSend: "Envoyer ce paiement MonCash maintenant ? Cette action transfère de l’argent réel.",
     filters: { all: "Toutes", inbound: "Reçues", outbound: "Envoyées", attention: "À vérifier" },
-    status: { all: "Tous les statuts", pending: "En attente", completed: "Terminée", successful: "Réussie", rejected: "Rejetée", paid: "Payée", refunded: "Remboursée", provider_ready: "Prête à envoyer", provider_submitting: "Envoi en cours", provider_pending: "Chez le fournisseur", provider_unknown: "À vérifier", lookup_failed: "Échec de consultation du fournisseur", missing: "Manquant" },
+    status: { all: "Tous les statuts", pending: "En attente", completed: "Terminée", successful: "Réussie", rejected: "Rejetée", paid: "Payée", refunded: "Remboursée", request_failed: "Échec de création", provider_ready: "Prête à envoyer", provider_submitting: "Envoi en cours", provider_pending: "Chez le fournisseur", provider_unknown: "À vérifier", lookup_failed: "Échec de consultation du fournisseur", missing: "Manquant" },
   },
   admin: {
     confirmBan: "Bannir cet utilisateur ? Il ne pourra plus se connecter.",

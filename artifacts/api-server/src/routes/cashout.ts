@@ -786,6 +786,26 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
       }
     }
     logger.error({ err, userId: req.userId }, "Cashout transaction failed");
+    if (method === "moncash") {
+      try {
+        await db.insert(cashoutRequestsTable).values({
+          userId: req.userId!,
+          amountUsd: netAmountUsd,
+          grossAmountUsd: parsed,
+          payoutAmountHtg: automaticMonCash?.amountHtg ?? null,
+          payoutRate: automaticMonCash?.rate ?? null,
+          method,
+          phone: phone?.trim() ?? null,
+          status: "request_failed",
+          providerStatus: "not_submitted",
+          providerError: err instanceof Error
+            ? err.message.slice(0, 160)
+            : "Cashout request transaction failed",
+        } as any);
+      } catch (auditError) {
+        logger.warn({ auditError, userId: req.userId }, "Could not record failed MonCash cashout attempt");
+      }
+    }
     res.status(500).json({ error: "Cashout request could not be created" });
     return;
   }

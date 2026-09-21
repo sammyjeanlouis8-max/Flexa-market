@@ -3317,7 +3317,7 @@ export default {
     sendNow: "Voye kounye a",
     confirmSend: "Voye payout MonCash sa a kounye a? Aksyon sa a transfere lajan reyèl.",
     filters: { all: "Tout", inbound: "Resevwa", outbound: "Voye", attention: "Pou verifye" },
-    status: { all: "Tout estati", pending: "Ap tann", completed: "Fini", successful: "Reyisi", rejected: "Rejte", paid: "Peye", refunded: "Ranbouse", provider_ready: "Pare pou voye", provider_submitting: "Ap voye", provider_pending: "Kay founisè", provider_unknown: "Pou verifye", lookup_failed: "Rechèch founisè echwe", missing: "Manke" },
+    status: { all: "Tout estati", pending: "Ap tann", completed: "Fini", successful: "Reyisi", rejected: "Rejte", paid: "Peye", refunded: "Ranbouse", request_failed: "Kreyasyon echwe", provider_ready: "Pare pou voye", provider_submitting: "Ap voye", provider_pending: "Kay founisè", provider_unknown: "Pou verifye", lookup_failed: "Rechèch founisè echwe", missing: "Manke" },
   },
   admin: {
     confirmBan: "Bani itilizatè sa a? Yo p ap ka konekte ankò.",

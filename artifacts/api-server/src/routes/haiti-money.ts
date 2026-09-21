@@ -558,7 +558,6 @@ router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, re
       FROM cashout_requests cr
       JOIN users u ON u.id = cr.user_id
       WHERE cr.method = 'moncash'
-        AND cr.provider_reference IS NOT NULL
 
     )
     SELECT *

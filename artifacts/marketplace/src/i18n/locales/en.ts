@@ -3309,7 +3309,7 @@ export default {
     sendNow: "Send now",
     confirmSend: "Send this MonCash payout now? This action transfers real money.",
     filters: { all: "All", inbound: "Received", outbound: "Sent", attention: "Needs review" },
-    status: { all: "All statuses", pending: "Pending", completed: "Completed", successful: "Successful", rejected: "Rejected", paid: "Paid", refunded: "Refunded", provider_ready: "Ready to send", provider_submitting: "Submitting", provider_pending: "At provider", provider_unknown: "Needs review", lookup_failed: "Provider lookup failed", missing: "Missing" },
+    status: { all: "All statuses", pending: "Pending", completed: "Completed", successful: "Successful", rejected: "Rejected", paid: "Paid", refunded: "Refunded", request_failed: "Creation failed", provider_ready: "Ready to send", provider_submitting: "Submitting", provider_pending: "At provider", provider_unknown: "Needs review", lookup_failed: "Provider lookup failed", missing: "Missing" },
   },
   admin: {
     confirmBan: "Ban this user? They will not be able to log in.",

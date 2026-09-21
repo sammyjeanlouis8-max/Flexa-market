@@ -1306,6 +1306,18 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "cashout_requests.idempotency_key",        sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS idempotency_key text" });
   migrations.push({ name: "cashout_requests.idempotency_idx",        sql: "CREATE UNIQUE INDEX IF NOT EXISTS cashout_requests_idempotency_key_unique_idx ON cashout_requests(idempotency_key) WHERE idempotency_key IS NOT NULL" });
   migrations.push({ name: "cashout_requests.idx_agent_app",         sql: "CREATE INDEX IF NOT EXISTS idx_cashout_assigned_agent ON cashout_requests(assigned_agent_app_id) WHERE assigned_agent_app_id IS NOT NULL" });
+  migrations.push({ name: "cashout_requests.gross_amount_usd",       sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS gross_amount_usd numeric(12,2)" });
+  migrations.push({ name: "cashout_requests.payout_amount_htg",      sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_amount_htg numeric(14,2)" });
+  migrations.push({ name: "cashout_requests.payout_rate",            sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_rate numeric(12,4)" });
+  migrations.push({ name: "cashout_requests.provider_reference",     sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_reference text" });
+  migrations.push({ name: "cashout_requests.provider_transaction_id", sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_transaction_id text" });
+  migrations.push({ name: "cashout_requests.provider_status",        sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_status text" });
+  migrations.push({ name: "cashout_requests.provider_error",         sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_error text" });
+  migrations.push({ name: "cashout_requests.payout_attempted_at",    sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_attempted_at timestamptz" });
+  migrations.push({ name: "cashout_requests.paid_at",                sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS paid_at timestamptz" });
+  migrations.push({ name: "cashout_requests.refunded_at",            sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS refunded_at timestamptz" });
+  migrations.push({ name: "cashout_requests.provider_reference_idx", sql: "CREATE UNIQUE INDEX IF NOT EXISTS cashout_requests_provider_reference_unique_idx ON cashout_requests(provider_reference) WHERE provider_reference IS NOT NULL" });
+  migrations.push({ name: "cashout_requests.provider_transaction_idx", sql: "CREATE UNIQUE INDEX IF NOT EXISTS cashout_requests_provider_transaction_unique_idx ON cashout_requests(provider_transaction_id) WHERE provider_transaction_id IS NOT NULL" });
   migrations.push({ name: "agent_applications.fm_wallet_number",    sql: "ALTER TABLE agent_applications ADD COLUMN IF NOT EXISTS fm_wallet_number text" });
   migrations.push({ name: "agent_applications.supported_methods",   sql: "ALTER TABLE agent_applications ADD COLUMN IF NOT EXISTS supported_methods text" });
 

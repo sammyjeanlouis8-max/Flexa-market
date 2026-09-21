@@ -520,39 +520,6 @@ router.get("/wallet/haiti/admin/transactions", requireSuperAdmin, async (req, re
         AND wt.user_transfer_ref IS NOT NULL
         AND wt.confirmed_at IS NOT NULL
 
-      UNION ALL
-
-      SELECT
-        'boost:' || t.id::text AS "id",
-        t.id AS "sourceId",
-        'transactions'::text AS "sourceTable",
-        t.user_id AS "userId",
-        u.name AS "userName",
-        u.email AS "userEmail",
-        u.phone AS "userPhone",
-        pw.account_number AS "accountNumber",
-        'boost'::text AS "kind",
-        'inbound'::text AS "direction",
-        CASE WHEN UPPER(t.currency) = 'HTG' THEN t.amount::double precision ELSE NULL END AS "amountHtg",
-        CASE WHEN UPPER(t.currency) = 'USD' THEN t.amount::double precision ELSE NULL END AS "amountUsd",
-        UPPER(t.currency) AS "currency",
-        t.payment_ref AS "paymentRef",
-        NULL::text AS "providerOrderId",
-        t.payment_ref AS "providerTransactionId",
-        COALESCE(t.description, 'MonCash boost') AS "purpose",
-        'completed'::text AS "status",
-        t.created_at AS "confirmedAt",
-        t.created_at AS "createdAt"
-      FROM transactions t
-      JOIN users u ON u.id = t.user_id
-      LEFT JOIN promo_wallets pw ON pw.user_id = t.user_id
-      WHERE t.type = 'boost'
-        AND LOWER(t.payment_method) IN ('moncash', 'bazik')
-        AND t.payment_status = 'completed'
-        AND UPPER(t.currency) = 'HTG'
-        AND t.payment_ref IS NOT NULL
-        AND t.description LIKE 'MonCash boost%'
-
     )
     SELECT *
     FROM moncash_ledger

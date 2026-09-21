@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, CalendarClock, CheckCircle2, RefreshCw, Search, WalletCards } from "lucide-react";
+import { ArrowLeft, CheckCircle2, RefreshCw, Search, WalletCards } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ type HaitiTransaction = {
   userEmail: string | null;
   userPhone: string | null;
   accountNumber: string | null;
-  kind: "recharge" | "boost" | "cashout";
+  kind: "recharge" | "cashout";
   direction: "inbound" | "outbound";
   amountUsd: number | string | null;
   amountHtg: number | string | null;
@@ -34,7 +34,7 @@ type HaitiTransaction = {
 };
 
 export default function AdminHaitiTransactions() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
@@ -78,17 +78,8 @@ export default function AdminHaitiTransactions() {
 
   const money = (value: unknown, currency: string) =>
     new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(value) || 0);
-  const statusLabel = (value: string) =>
-    t(`adminMonCash.status.${value}`, { defaultValue: value });
   const kindLabel = (value: HaitiTransaction["kind"]) =>
     t(`adminMonCash.kind.${value}`, { defaultValue: value });
-  const directionLabel = (value: HaitiTransaction["direction"]) =>
-    t(`adminMonCash.direction.${value}`, { defaultValue: value });
-  const dateTime = (value: string) =>
-    new Intl.DateTimeFormat(i18n.resolvedLanguage || i18n.language, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
 
   return (
     <div className="min-h-screen bg-background">
@@ -158,50 +149,18 @@ export default function AdminHaitiTransactions() {
             {transactions.map(tx => (
               <Card key={tx.id}>
                 <CardContent className="space-y-3 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-bold">{tx.userName || `#${tx.userId}`}</p>
-                      <p className="text-xs text-muted-foreground">{tx.userEmail || "—"}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {tx.userPhone || "—"} · {tx.accountNumber || "—"}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {t("adminMonCash.transactionId")}:
+                        {" "}
+                        <span className="font-mono break-all text-foreground">
+                          {tx.providerTransactionId || tx.providerOrderId}
+                        </span>
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-black ${tx.direction === "outbound" ? "text-orange-600" : "text-emerald-600"}`}>
-                        {tx.currency === "USD" ? money(tx.amountUsd, "USD") : money(tx.amountHtg, tx.currency || "HTG")}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
                     <Badge variant="outline">{kindLabel(tx.kind)}</Badge>
-                    <Badge variant={tx.direction === "outbound" ? "secondary" : "default"}>
-                      {directionLabel(tx.direction)}
-                    </Badge>
-                    <Badge>{statusLabel(tx.status)}</Badge>
-                  </div>
-                  <div className="grid gap-2 rounded-xl bg-muted/50 p-3 text-xs md:grid-cols-2">
-                    <p><span className="text-muted-foreground">{t("adminMonCash.purpose")}:</span> {tx.purpose}</p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.provider")}:</span> {t("adminMonCash.providerMonCash")}</p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.orderId")}:</span> <span className="font-mono break-all">{tx.providerOrderId || "—"}</span></p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.reference")}:</span> <span className="font-mono break-all">{tx.paymentRef || "—"}</span></p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.transactionId")}:</span> <span className="font-mono break-all">{tx.providerTransactionId || "—"}</span></p>
-                    <p><span className="text-muted-foreground">{t("adminMonCash.source")}:</span> <span className="font-mono">{tx.sourceTable} #{tx.sourceId}</span></p>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
-                      <CalendarClock className="h-4 w-4 shrink-0 text-emerald-600" />
-                      <span className="text-muted-foreground">{t("adminMonCash.confirmedAt")}:</span>
-                      <time className="font-semibold tabular-nums" dateTime={tx.confirmedAt || tx.createdAt}>
-                        {dateTime(tx.confirmedAt || tx.createdAt)}
-                      </time>
-                    </div>
-                    <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm">
-                      <CalendarClock className="h-4 w-4 shrink-0 text-blue-600" />
-                      <span className="text-muted-foreground">{t("adminMonCash.created")}:</span>
-                      <time className="font-semibold tabular-nums" dateTime={tx.createdAt}>
-                        {dateTime(tx.createdAt)}
-                      </time>
-                    </div>
                   </div>
                 </CardContent>
               </Card>

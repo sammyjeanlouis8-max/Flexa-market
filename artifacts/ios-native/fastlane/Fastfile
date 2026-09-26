@@ -43,6 +43,15 @@ platform :ios do
       in_house:    false
     )
 
+    # Distinguish an invalid/mismatched API key from a key that lacks
+    # Certificates, Identifiers & Profiles permission.
+    stage = "verify_apple_app_access"
+    app = Spaceship::ConnectAPI::App.find("app.replit.flexamarket")
+    unless app && app.id.to_s == "6774676236"
+      UI.user_error!("The Apple API key cannot see the intended FlexaMarket app")
+    end
+    puts "::notice title=Apple app access::Signing key can see the intended app"
+
     # 3. Download/create the iOS Distribution certificate and install it
     stage = "get_distribution_certificate"
     get_certificates(

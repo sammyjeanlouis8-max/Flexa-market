@@ -2063,6 +2063,7 @@ export default {
     changePlan: "Changer de plan",
     cancelAnytime: "Annulez à tout moment",
     paymentUnavailable: "Paiement indisponible, veuillez réessayer",
+    loadingApplePrice: "En attente du prix de l’App Store…",
     backToHome: "Retour à l'accueil",
     backToPlans: "Retour aux plans",
     loadingPlans: "Chargement des plans…",

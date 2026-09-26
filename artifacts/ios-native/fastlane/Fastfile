@@ -38,7 +38,7 @@ platform :ios do
     # 4. Download/create the App Store provisioning profile
     get_provisioning_profile(
       api_key:        api_key,
-      app_identifier: "com.flexamarket.mobile",
+      app_identifier: "app.replit.flexamarket",
       output_path:    "/tmp/profiles"
     )
 
@@ -56,7 +56,7 @@ platform :ios do
       use_automatic_signing: false,
       path:                  "FlexaMarket.xcodeproj",
       team_id:               "D782MM56VY",
-      bundle_identifier:     "com.flexamarket.mobile",
+      bundle_identifier:     "app.replit.flexamarket",
       profile_name:          profile_name,
       code_sign_identity:    "Apple Distribution"
     )
@@ -79,6 +79,7 @@ platform :ios do
     # 7. Upload to TestFlight
     upload_to_testflight(
       api_key:                           api_key,
+      app_identifier:                    "app.replit.flexamarket",
       ipa:                               "/tmp/ipa_output/FlexaMarket.ipa",
       skip_waiting_for_build_processing: true
     )

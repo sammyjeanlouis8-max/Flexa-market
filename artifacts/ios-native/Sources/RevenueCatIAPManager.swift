@@ -10,7 +10,8 @@ final class RevenueCatIAPManager {
 
     private let productIds: [String: String] = [
         "standard": "com.flexamarket.subscription.standard.monthly",
-        "premium": "com.flexamarket.subscription.premium.monthly"
+        "premium": "com.flexamarket.subscription.premium.monthly",
+        "vip": "com.flexamarket.subscription.vip.monthly"
     ]
 
     private init() {}

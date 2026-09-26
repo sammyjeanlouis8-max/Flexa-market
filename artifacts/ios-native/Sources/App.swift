@@ -50,7 +50,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
-        guard identifier == "com.flexamarket.mobile.background-uploads-v1" else {
+        guard identifier == "app.replit.flexamarket.background-uploads-v1" else {
             completionHandler()
             return
         }

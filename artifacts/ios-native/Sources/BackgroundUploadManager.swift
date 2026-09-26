@@ -15,7 +15,7 @@ final class BackgroundUploadManager: NSObject {
     private var backgroundEventsCompletion: (() -> Void)?
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.background(
-            withIdentifier: "com.flexamarket.mobile.background-uploads-v1"
+            withIdentifier: "app.replit.flexamarket.background-uploads-v1"
         )
         configuration.isDiscretionary = false
         configuration.sessionSendsLaunchEvents = true

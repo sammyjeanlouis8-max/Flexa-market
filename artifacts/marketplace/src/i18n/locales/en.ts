@@ -2056,6 +2056,7 @@ export default {
     changePlan: "Change Plan",
     cancelAnytime: "Cancel anytime",
     paymentUnavailable: "Payment unavailable, please try again",
+    loadingApplePrice: "Waiting for App Store price…",
     backToHome: "Back to Home",
     backToPlans: "Back to Plans",
     loadingPlans: "Loading plans…",

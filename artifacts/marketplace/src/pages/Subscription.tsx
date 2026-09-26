@@ -125,7 +125,7 @@ export default function Subscription() {
   const [walletRetryLoading, setWalletRetryLoading] = useState(false);
   const [appleProducts, setAppleProducts] = useState<Record<string, { priceString: string; identifier: string }>>({});
   const [iapIdentified, setIapIdentified] = useState(false);
-  const visiblePlans = isIosApp ? plans.filter((plan) => ["basic", "standard", "premium"].includes(plan.id)) : plans;
+  const visiblePlans = isIosApp ? plans.filter((plan) => ["basic", "standard", "premium", "vip"].includes(plan.id)) : plans;
 
   // Payment method picker
   const [payMethodOpen, setPayMethodOpen] = useState(false);
@@ -154,7 +154,11 @@ export default function Subscription() {
     if (!isIosApp) return;
     const onProducts = (event: Event) => {
       const products = ((event as CustomEvent).detail?.products ?? []) as { plan: string; priceString: string; identifier: string }[];
-      setAppleProducts(Object.fromEntries(products.map((product) => [product.plan, product])));
+      setAppleProducts(Object.fromEntries(
+        products
+          .filter((product) => product.plan && product.priceString?.trim() && product.identifier?.trim())
+          .map((product) => [product.plan, product]),
+      ));
     };
     const onResult = (event: Event) => {
       const detail = (event as CustomEvent).detail ?? {};
@@ -169,10 +173,14 @@ export default function Subscription() {
     const onIdentified = (event: Event) => {
       const identifiedUserId = Number((event as CustomEvent).detail?.userId);
       if (!user?.id || identifiedUserId !== Number(user.id)) return;
+      setAppleProducts({});
       setIapIdentified(true);
       postIap({ type: "IAP_GET_PRODUCTS" });
     };
-    const onLoggedOut = () => setIapIdentified(false);
+    const onLoggedOut = () => {
+      setIapIdentified(false);
+      setAppleProducts({});
+    };
     window.addEventListener("IAP_IDENTIFIED", onIdentified);
     window.addEventListener("IAP_LOGGED_OUT", onLoggedOut);
     window.addEventListener("IAP_PURCHASE_RESULT", onResult);
@@ -753,6 +761,8 @@ export default function Subscription() {
         {visiblePlans.map((plan) => {
           const c = PLAN_COLORS[plan.id] ?? PLAN_COLORS.basic;
           const Icon = PLAN_ICONS[plan.id] ?? Zap;
+          const appleProduct = appleProducts[plan.id];
+          const hasAppleProduct = Boolean(appleProduct?.priceString?.trim() && appleProduct?.identifier?.trim());
           const isCurrent = currentPlanId === plan.id && !isExpired;
           const isPopular = plan.id === "premium";
           const isCurrentPaid = isCurrent && plan.priceUsd > 0;
@@ -787,7 +797,7 @@ export default function Subscription() {
                     <Icon className={`h-4 w-4 ${c.iconColor}`} />
                     <span className="text-sm font-semibold">{plan.name}</span>
                   </div>
-                  {plan.featuredBadge && (
+                  {(plan.featuredBadge || plan.id === "vip") && (
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${c.badgeBg}`}>VIP</span>
                   )}
                 </div>
@@ -798,7 +808,13 @@ export default function Subscription() {
                     <span className="text-lg font-bold">{t("subscription.free")}</span>
                   ) : (
                     <div className="flex items-baseline gap-0.5">
-                      <span className="text-xl font-bold">{isIosApp && appleProducts[plan.id] ? appleProducts[plan.id].priceString : `$${plan.priceUsd}`}</span>
+                      <span className="text-xl font-bold">
+                        {isIosApp
+                          ? hasAppleProduct
+                            ? appleProduct.priceString
+                            : t("subscription.loadingApplePrice")
+                          : `$${plan.priceUsd}`}
+                      </span>
                       <span className="text-xs text-muted-foreground">{t("subscription.monthly")}</span>
                     </div>
                   )}
@@ -879,8 +895,8 @@ export default function Subscription() {
                     </div>
                   ) : isIosApp ? (
                     <div>
-                      <Button size="sm" className={`w-full h-8 text-xs font-semibold ${c.btnBg}`} onClick={() => postIap({ type: "IAP_PURCHASE", plan: plan.id, userId: user?.id })} disabled={!iapIdentified || !appleProducts[plan.id]}>
-                        {appleProducts[plan.id] ? `${t("subscription.start")} · ${appleProducts[plan.id].priceString}` : <Loader2 className="h-3 w-3 animate-spin" />}
+                      <Button size="sm" className={`w-full h-8 text-xs font-semibold ${c.btnBg}`} onClick={() => postIap({ type: "IAP_PURCHASE", plan: plan.id, userId: user?.id })} disabled={!iapIdentified || !hasAppleProduct}>
+                        {hasAppleProduct ? `${t("subscription.start")} · ${appleProduct.priceString}` : t("subscription.loadingApplePrice")}
                       </Button>
                     </div>
                   ) : purchasesDisabled ? null : (

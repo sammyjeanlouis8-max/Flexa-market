@@ -2064,6 +2064,7 @@ export default {
     changePlan: "Chanje Plan",
     cancelAnytime: "Anile nenpòt ki lè",
     paymentUnavailable: "Peman pa disponib, tanpri eseye ankò",
+    loadingApplePrice: "N ap tann pri App Store la…",
     backToHome: "Retounen lakay",
     backToPlans: "Retounen nan Plan yo",
     loadingPlans: "Chajman plan yo…",

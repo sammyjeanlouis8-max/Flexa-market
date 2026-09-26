@@ -104,7 +104,7 @@ final class WebViewController: UIViewController {
         webView.customUserAgent =
             "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
             "AppleWebKit/605.1.15 (KHTML, like Gecko) " +
-             "FlexaMarket/1.0 FlexaMarketiOS/1.0 Mobile/15E148 Safari/604.1"
+            "FlexaMarket/1.0 FlexaMarketiOS/1.0 Mobile/15E148 Safari/604.1"
 
         view.addSubview(webView)
         view.backgroundColor = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
@@ -305,7 +305,8 @@ extension WebViewController: WKScriptMessageHandler {
                 }
             }
         case "IAP_PURCHASE":
-            guard let plan = payload["plan"] as? String, plan == "standard" || plan == "premium" else { return }
+            guard let plan = payload["plan"] as? String,
+                  ["standard", "premium", "vip"].contains(plan) else { return }
             guard let expectedUserId = payload["userId"] as? NSNumber else { return }
             manager.purchase(plan: plan, expectedUserId: expectedUserId.intValue) { [weak self] result in
                 switch result {

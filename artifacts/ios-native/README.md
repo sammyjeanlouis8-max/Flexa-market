@@ -57,9 +57,9 @@ artifacts/ios-native/
 ```
 
 ## App credentials
-- Bundle ID: `com.flexamarket.mobile`
+- Bundle ID: `app.replit.flexamarket`
 - Team ID: `D782MM56VY`
-- ASC App ID: `6754947270`
+- ASC App ID: `6774676236`
 - Provisioning profile: managed automatically by Xcode (automatic signing)
 
 ## Background upload bridge

@@ -16,9 +16,10 @@ const GRACE_PERIOD_DAYS = 5;
 // claim from the mobile client. Configure RevenueCat's webhook Authorization
 // header to exactly REVENUECAT_WEBHOOK_AUTH and use:
 // POST /api/subscription/revenuecat/webhook
-const REVENUECAT_PRODUCTS: Record<string, "standard" | "premium"> = {
+const REVENUECAT_PRODUCTS: Record<string, "standard" | "premium" | "vip"> = {
   "com.flexamarket.subscription.standard.monthly": "standard",
   "com.flexamarket.subscription.premium.monthly": "premium",
+  "com.flexamarket.subscription.vip.monthly": "vip",
 };
 const REVENUECAT_ACTIVE_EVENTS = new Set(["INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"]);
 const REVENUECAT_END_EVENTS = new Set(["EXPIRATION", "CANCELLATION", "REFUND"]);

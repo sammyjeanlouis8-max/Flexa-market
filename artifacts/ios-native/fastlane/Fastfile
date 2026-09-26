@@ -2,6 +2,7 @@ default_platform(:ios)
 
 platform :ios do
   lane :build_and_upload do
+    stage = "create_keychain"
     begin
     keychain_name     = "ci_keychain"
     keychain_password = "Flexa_CI_2026!"
@@ -19,15 +20,31 @@ platform :ios do
     )
 
     # 2. ASC API key (cert + profile management + TestFlight upload)
+    stage = "validate_apple_key"
+    key_id = ENV["ASC_KEY_ID"].to_s.strip
+    issuer_id = ENV["ASC_ISSUER_ID"].to_s.strip
+    key_content = ENV["ASC_KEY_P8"].to_s.gsub("\\n", "\n").strip
+    if key_id.empty? || issuer_id.empty? || key_content.empty?
+      UI.user_error!("ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8 must all be set")
+    end
+    require "openssl"
+    begin
+      OpenSSL::PKey.read(key_content)
+    rescue OpenSSL::PKey::PKeyError
+      UI.user_error!("ASC_KEY_P8 is not a valid Apple private key")
+    end
+
+    stage = "authenticate_with_apple"
     api_key = app_store_connect_api_key(
-      key_id:      ENV["ASC_KEY_ID"],
-      issuer_id:   ENV["ASC_ISSUER_ID"],
-      key_content: ENV["ASC_KEY_P8"],
+      key_id:      key_id,
+      issuer_id:   issuer_id,
+      key_content: key_content,
       duration:    1200,
       in_house:    false
     )
 
     # 3. Download/create the iOS Distribution certificate and install it
+    stage = "get_distribution_certificate"
     get_certificates(
       api_key:           api_key,
       output_path:       "/tmp/certs",
@@ -36,6 +53,7 @@ platform :ios do
     )
 
     # 4. Download/create the App Store provisioning profile
+    stage = "get_app_store_profile"
     get_provisioning_profile(
       api_key:        api_key,
       app_identifier: "app.replit.flexamarket",
@@ -43,6 +61,7 @@ platform :ios do
     )
 
     # 5. Switch project from Automatic → Manual signing
+    stage = "configure_code_signing"
     profile_path = lane_context[SharedValues::SIGH_PROFILE_PATHS]&.first
     profile_name = sh(
       "security cms -D -i '#{profile_path}' | " \
@@ -64,6 +83,7 @@ platform :ios do
     # 6. Build & archive
     #    xcargs explicitly force asset-catalog icon name in case
     #    update_code_signing_settings disturbs build settings
+    stage = "build_ios_app"
     build_ios_app(
       project:          "FlexaMarket.xcodeproj",
       scheme:           "FlexaMarket",
@@ -77,6 +97,7 @@ platform :ios do
 
 
     # 7. Upload to TestFlight
+    stage = "upload_to_testflight"
     upload_to_testflight(
       api_key:                           api_key,
       app_identifier:                    "app.replit.flexamarket",
@@ -85,22 +106,12 @@ platform :ios do
     )
 
     # 8. Clean up
+    stage = "delete_keychain"
     delete_keychain(name: keychain_name)
     rescue => e
-      # Report the failure reason to our own API so it can be inspected
-      # (Actions log download is not accessible to the deploy token).
-      require 'net/http'
-      require 'json'
-      begin
-        msg = e.message.to_s[0, 4000]
-        uri = URI('https://flexamarket.com/api/push/apns-debug')
-        http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = true
-        req = Net::HTTP::Post.new(uri.path, { 'Content-Type' => 'application/json' })
-        req.body = { stage: 'ci-fastlane-error', detail: msg }.to_json
-        http.request(req)
-      rescue StandardError
-      end
+      # Job annotations are visible without downloading private Actions logs.
+      # Never send signing errors (which may contain sensitive data) to a public endpoint.
+      puts "::error title=iOS release failed::Stage: #{stage}; error class: #{e.class}"
       raise e
     end
   end

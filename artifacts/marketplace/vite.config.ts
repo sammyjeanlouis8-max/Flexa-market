@@ -18,13 +18,8 @@ if (!isBuild && (Number.isNaN(port) || port <= 0)) {
 
 const basePath = process.env.BASE_PATH ?? "/";
 
-const buildId = new Date().toISOString().slice(5, 16).replace("T", " ");
-
 export default defineConfig({
   base: basePath,
-  define: {
-    __BUILD_ID__: JSON.stringify(buildId),
-  },
   plugins: [
     react(),
     tailwindcss(),

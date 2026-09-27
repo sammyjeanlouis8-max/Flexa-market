@@ -5,30 +5,13 @@ import "./index.css";
 import i18n from "./i18n";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { getCurrentSessionToken } from "@/lib/sessionToken";
+import { isChunkError } from "@/lib/chunkError";
 
 setAuthTokenGetter(getCurrentSessionToken);
 
 // ── Chunk-error auto-reload (Level 1) ────────────────────────────────────────
-// Vite hashes chunk filenames on every build. After a new deploy the old hash
-// URLs 404, causing dynamic imports to throw. Catch these *before* React mounts
-// so the error boundary never even sees them.
-function isChunkError(err: unknown): boolean {
-  if (!err) return false;
-  const name = (err as any)?.name ?? "";
-  const msg  = (err instanceof Error ? err.message : String(err)) ?? "";
-  return (
-    name === "ChunkLoadError" ||
-    // Chrome / Vite / Webpack error messages
-    /dynamically imported module|Loading chunk|Failed to fetch dynamically/i.test(msg) ||
-    // Safari-specific dynamic-import error messages
-    /Importing a module script failed|error loading dynamically imported module/i.test(msg) ||
-    // Generic network errors that result from a 404 on the chunk URL
-    /Load failed|Failed to load/i.test(msg) ||
-    // MIME type errors — server returned HTML (404 page) instead of JS chunk
-    /not a valid JavaScript MIME type|MIME type/i.test(msg)
-  );
-}
-
+// A removed Vite chunk needs a fresh document. Unrelated API/media load errors
+// must never restart an installed Android WebView.
 const CHUNK_RELOAD_KEY = "fm_chunk_reload";
 let chunkReloadPending = false;
 function autoReloadOnceForChunk(): boolean {
@@ -38,22 +21,10 @@ function autoReloadOnceForChunk(): boolean {
     if (Date.now() - previous < 60_000) return false;
     sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
     chunkReloadPending = true;
-    let reloaded = false;
-    const reload = () => {
-      if (reloaded) return;
-      reloaded = true;
-      location.reload();
-    };
-    // A stalled cache deletion must not prevent recovery.
-    setTimeout(reload, 1_500);
-    if ("caches" in window) {
-      caches.keys()
-        .then((keys: string[]) => Promise.all(keys.map((k) => caches.delete(k))))
-        .catch(() => {})
-        .finally(reload);
-    } else {
-      reload();
-    }
+    // index.html is served no-store and hashed assets are immutable. Cache
+    // Storage has no fetch handler here, so deleting every cache adds delay
+    // without helping this navigation recover.
+    setTimeout(() => location.reload(), 0);
     return true;
   } catch {
     // Without a persistent guard, auto-reloading could loop indefinitely.
@@ -68,7 +39,12 @@ window.addEventListener("unhandledrejection", (ev) => {
 
 // Level-1b: synchronous script errors (e.g. <script> tag 404)
 window.addEventListener("error", (ev) => {
-  if (ev.target instanceof HTMLScriptElement || isChunkError(ev.error)) {
+  const script = ev.target instanceof HTMLScriptElement ? ev.target : null;
+  const scriptUrl = script?.src ? new URL(script.src, location.href) : null;
+  const failedAppScript = !!scriptUrl &&
+    scriptUrl.origin === location.origin &&
+    /\/assets\/[^/]+\.js$/.test(scriptUrl.pathname);
+  if (failedAppScript || isChunkError(ev.error)) {
     autoReloadOnceForChunk();
   }
 }, true);
@@ -185,7 +161,6 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
     // then do a full hard reload to get fresh chunks from the server.
     try {
       sessionStorage.removeItem(CHUNK_RELOAD_KEY);
-      sessionStorage.removeItem("fm_just_reloaded");
     } catch {}
     // Full page reload — re-fetches index.html and all chunks fresh from the
     // server, which resolves stale-cache and circular-chunk issues.
@@ -225,7 +200,6 @@ class GlobalErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   }
 }
 
-declare const __BUILD_ID__: string;
 
 // ── Global scroll suppression ─────────────────────────────────────────────────
 // Ensures 100% user-controlled scrolling. No library, Radix primitive, or
@@ -302,26 +276,6 @@ declare const __BUILD_ID__: string;
   window.scrollTo = patched;
 })();
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Cache-buster: if a different build was previously loaded, force a hard
-// reload so the user picks up the latest CSS/JS instead of stale files.
-try {
-  const KEY = "fm_build_id";
-  const prev = localStorage.getItem(KEY);
-  if (prev && prev !== __BUILD_ID__ && !sessionStorage.getItem("fm_just_reloaded")) {
-    sessionStorage.setItem("fm_just_reloaded", "1");
-    localStorage.setItem(KEY, __BUILD_ID__);
-    const reload = () => { window.location.reload(); };
-    if ("caches" in window) {
-      caches.keys().then((keys: string[]) => Promise.all(keys.map((k) => caches.delete(k))))
-        .finally(reload);
-    } else {
-      reload();
-    }
-  } else {
-    localStorage.setItem(KEY, __BUILD_ID__);
-  }
-} catch {}
 
 console.log("[FLEXA] App started");
 

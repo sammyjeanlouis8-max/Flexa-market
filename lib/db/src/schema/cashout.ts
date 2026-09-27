@@ -11,6 +11,8 @@ export const cashoutRequestsTable = pgTable("cashout_requests", {
   payoutRate: numeric("payout_rate", { precision: 12, scale: 4, mode: "number" }),
   method: text("method").notNull(),
   phone: text("phone"),
+  recipientFirstName: text("recipient_first_name"),
+  recipientLastName: text("recipient_last_name"),
   agentLocation: text("agent_location"),
   status: text("status").notNull().default("pending"),
   otpCode: text("otp_code"),

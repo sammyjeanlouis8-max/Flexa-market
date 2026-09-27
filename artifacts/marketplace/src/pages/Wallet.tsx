@@ -695,6 +695,8 @@ export default function WalletPage() {
   const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "natcash" | "agent" | "agent_transfer">("moncash");
   const [cashoutRetraitOnly, setCashoutRetraitOnly] = useState(false);
   const [cashoutPhone, setCashoutPhone] = useState(user?.phone ?? "");
+  const [cashoutRecipientFirstName, setCashoutRecipientFirstName] = useState("");
+  const [cashoutRecipientLastName, setCashoutRecipientLastName] = useState("");
   const [cashoutAgentLoc, setCashoutAgentLoc] = useState("");
   const [cashoutResult, setCashoutResult] = useState<{ requestId: number; payoutStatus?: "paid" | "pending" | "unknown" | "refunded"; payoutAmountHtg?: number } | null>(null);
 
@@ -1051,6 +1053,8 @@ export default function WalletPage() {
         amountUsd: parseFloat(cashoutAmount),
         method: cashoutMethod,
         phone: (cashoutMethod === "moncash" || cashoutMethod === "natcash") ? cashoutPhone.trim() : undefined,
+        recipientFirstName: cashoutMethod === "moncash" ? cashoutRecipientFirstName.trim() : undefined,
+        recipientLastName: cashoutMethod === "moncash" ? cashoutRecipientLastName.trim() : undefined,
         agentLocation: cashoutMethod === "agent" ? cashoutAgentLoc.trim() : undefined,
         withdrawalToken,
         idempotencyKey,
@@ -2197,6 +2201,10 @@ export default function WalletPage() {
   if (step === "cashout") {
     const canSubmit = cashoutAmt >= 1 &&
       cashoutAmt <= availableUsd &&
+      (cashoutMethod !== "moncash" || (
+        cashoutRecipientFirstName.trim().length > 0 &&
+        cashoutRecipientLastName.trim().length > 0
+      )) &&
       (isMoncashOrNatcash ? cashoutPhone.trim().length >= 8
         : cashoutMethod === "agent_transfer" ? true
         : cashoutAgentLoc.trim().length >= 3);
@@ -2311,16 +2319,49 @@ export default function WalletPage() {
           <div className="space-y-2">
             <label className="text-sm font-semibold flex items-center gap-1.5">
               <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-              {cashoutMethod === "moncash" ? t("wallet.yourMoncashNumber") : t("wallet.yourNatcashNumber")}
+              {cashoutMethod === "moncash" ? t("wallet.moncashRecipientPhone") : t("wallet.yourNatcashNumber")}
             </label>
             <Input
               type="tel"
               value={cashoutPhone}
               onChange={e => setCashoutPhone(e.target.value)}
               placeholder="+509 3612 3456"
+              autoComplete="tel"
               style={{ fontSize: 16 }}
             />
-            <p className="text-xs text-muted-foreground">{t("wallet.cashoutPhoneHint")}</p>
+            <p className="text-xs text-muted-foreground">{cashoutMethod === "moncash" ? t("wallet.moncashRecipientPhoneHint") : t("wallet.cashoutPhoneHint")}</p>
+          </div>
+        )}
+        {cashoutMethod === "moncash" && (
+          <div className="space-y-3 rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
+            <p className="text-sm font-semibold">{t("wallet.moncashRecipientNameTitle")}</p>
+            <p className="text-xs text-muted-foreground">{t("wallet.moncashRecipientNameHint")}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label htmlFor="moncash-first-name" className="text-xs font-semibold">{t("wallet.moncashRecipientFirstName")}</label>
+                <Input
+                  id="moncash-first-name"
+                  value={cashoutRecipientFirstName}
+                  onChange={e => setCashoutRecipientFirstName(e.target.value)}
+                  maxLength={80}
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  style={{ fontSize: 16 }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="moncash-last-name" className="text-xs font-semibold">{t("wallet.moncashRecipientLastName")}</label>
+                <Input
+                  id="moncash-last-name"
+                  value={cashoutRecipientLastName}
+                  onChange={e => setCashoutRecipientLastName(e.target.value)}
+                  maxLength={80}
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  style={{ fontSize: 16 }}
+                />
+              </div>
+            </div>
           </div>
         )}
         {cashoutMethod === "agent" && (
@@ -2360,6 +2401,8 @@ export default function WalletPage() {
           <p className="text-xs text-amber-800 dark:text-amber-300">
             {cashoutMethod === "agent_transfer"
               ? t("wallet.authorizedAgentWarning")
+              : cashoutMethod === "moncash"
+                ? t("wallet.moncashCashoutWarning")
               : t("wallet.cashoutDigitalWarning")}
           </p>
         </div>
@@ -2690,6 +2733,14 @@ export default function WalletPage() {
             <p className="text-sm font-bold">{cashoutMethod === "moncash" ? "MonCash" : cashoutMethod === "natcash" ? "NatCash" : "Agent"}</p>
           </div>
         </div>
+
+        {cashoutMethod === "moncash" && (
+          <div className="rounded-xl border bg-card p-4 space-y-2 text-sm">
+            <Row label={t("wallet.moncashRecipientNameTitle")} value={`${cashoutRecipientFirstName.trim()} ${cashoutRecipientLastName.trim()}`} />
+            <Row label={t("wallet.moncashRecipientPhone")} value={cashoutPhone.trim()} />
+            <p className="text-xs text-muted-foreground">{t("wallet.moncashRecipientReviewHint")}</p>
+          </div>
+        )}
 
         {/* Phone input */}
         <div className="space-y-2">

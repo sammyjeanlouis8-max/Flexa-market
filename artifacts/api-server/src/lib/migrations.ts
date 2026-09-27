@@ -1309,6 +1309,8 @@ export async function runStartupMigrations(): Promise<void> {
   migrations.push({ name: "cashout_requests.gross_amount_usd",       sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS gross_amount_usd numeric(12,2)" });
   migrations.push({ name: "cashout_requests.payout_amount_htg",      sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_amount_htg numeric(14,2)" });
   migrations.push({ name: "cashout_requests.payout_rate",            sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS payout_rate numeric(12,4)" });
+  migrations.push({ name: "cashout_requests.recipient_first_name",  sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS recipient_first_name text" });
+  migrations.push({ name: "cashout_requests.recipient_last_name",   sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS recipient_last_name text" });
   migrations.push({ name: "cashout_requests.provider_reference",     sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_reference text" });
   migrations.push({ name: "cashout_requests.provider_transaction_id", sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_transaction_id text" });
   migrations.push({ name: "cashout_requests.provider_status",        sql: "ALTER TABLE cashout_requests ADD COLUMN IF NOT EXISTS provider_status text" });

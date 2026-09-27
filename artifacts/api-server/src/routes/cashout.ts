@@ -62,6 +62,16 @@ function splitRecipientName(name: string): { firstName: string; lastName: string
   };
 }
 
+function normalizeRecipientName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.trim().replace(/\s+/g, " ");
+  return name.length > 0
+    && name.length <= 80
+    && /^[\p{L}\p{M}][\p{L}\p{M} .'’-]*$/u.test(name)
+    ? name
+    : null;
+}
+
 function normalizeBazikWallet(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   return digits.startsWith("509") ? digits.slice(3) : digits;
@@ -375,14 +385,20 @@ async function executeAutomaticMonCashCashout(
       await refundAutomaticMonCashCashout(claimed.id, "Cashout user no longer exists");
       return "refunded";
     }
-    const recipient = splitRecipientName(user.name);
+    // Existing provider_ready requests predate recipient-name capture. Keep
+    // their original behavior; all newly created MonCash requests store names.
+    const recipient = claimed.recipientFirstName && claimed.recipientLastName
+      ? { firstName: claimed.recipientFirstName, lastName: claimed.recipientLastName }
+      : splitRecipientName(user.name);
+    const accountHolder = splitRecipientName(user.name);
     const transfer = await createBazikMonCashWithdrawal({
       accessToken: token,
       amountHtg: amount,
       wallet,
       customerFirstName: recipient.firstName,
       customerLastName: recipient.lastName,
-      customerEmail: user.email,
+      customerEmail: recipient.firstName === accountHolder.firstName
+        && recipient.lastName === accountHolder.lastName ? user.email : undefined,
       description: `Flexa Market cashout #${claimed.id}`,
       referenceId: reference,
       webhookUrl,
@@ -559,10 +575,12 @@ function requireAgent(req: any, res: any, next: any) {
 
 // ── POST /api/cashout/request ─────────────────────────────────────────────────
 router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, res): Promise<void> => {
-  const { amountUsd, method, phone, agentLocation, assignedAgentAppId, screenshotUrl, userNote } = req.body as {
+  const { amountUsd, method, phone, recipientFirstName, recipientLastName, agentLocation, assignedAgentAppId, screenshotUrl, userNote } = req.body as {
     amountUsd: number;
     method: "moncash" | "natcash" | "agent" | "agent_transfer";
     phone?: string;
+    recipientFirstName?: unknown;
+    recipientLastName?: unknown;
     agentLocation?: string;
     assignedAgentAppId?: number;
     screenshotUrl?: string;
@@ -634,6 +652,13 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
       });
       return;
     }
+  }
+
+  const firstName = normalizeRecipientName(recipientFirstName);
+  const lastName = normalizeRecipientName(recipientLastName);
+  if (method === "moncash" && (!firstName || !lastName)) {
+    res.status(400).json({ error: "Prenon ak non moun ki posede kont MonCash la obligatwa" });
+    return;
   }
 
   const [wallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
@@ -745,6 +770,8 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         payoutRate: automaticMonCash?.rate ?? null,
         method,
         phone: phone?.trim() ?? null,
+        recipientFirstName: method === "moncash" ? firstName : null,
+        recipientLastName: method === "moncash" ? lastName : null,
         agentLocation: agentLocation?.trim() ?? null,
         status: automaticMonCash ? "provider_ready" : "pending",
         assignedAgentAppId: assignedAgentAppId ?? null,
@@ -796,6 +823,8 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
           payoutRate: automaticMonCash?.rate ?? null,
           method,
           phone: phone?.trim() ?? null,
+          recipientFirstName: firstName,
+          recipientLastName: lastName,
           status: "request_failed",
           providerStatus: "not_submitted",
           providerError: err instanceof Error

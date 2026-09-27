@@ -3741,7 +3741,7 @@ export default function WalletPage() {
       )}
 
       {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
-      {!walletFundingDisabled && <><style>{`
+      <><style>{`
         @keyframes fmEntryPulse {
           0%,100% { box-shadow:0 0 10px 2px rgba(99,102,241,0.3); }
           50%     { box-shadow:0 0 28px 8px rgba(99,102,241,0.7); }
@@ -3750,7 +3750,15 @@ export default function WalletPage() {
       `}</style>
       <button
         type="button"
-        onClick={() => navigateTo("choice")}
+        onClick={() => {
+          if (walletFundingDisabled) {
+            setCashoutRetraitOnly(false);
+            setCashoutMethod("agent");
+            navigateTo("cashout");
+          } else {
+            navigateTo("choice");
+          }
+        }}
         className="fm-entry-btn w-full group relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-left shadow-lg"
       >
         <div className="px-4 py-4 flex items-center justify-between relative">
@@ -3765,13 +3773,17 @@ export default function WalletPage() {
               </div>
             </div>
             <div>
-              <p className="text-sm font-black text-white">{t("wallet.panelRechargeTitle")} · {t("wallet.panelWithdrawTitle")}</p>
-              <p className="text-[11px] text-white/75">{t("wallet.panelRechargeSub")}</p>
+              <p className="text-sm font-black text-white">
+                {walletFundingDisabled ? t("wallet.panelWithdrawTitle") : `${t("wallet.panelRechargeTitle")} · ${t("wallet.panelWithdrawTitle")}`}
+              </p>
+              <p className="text-[11px] text-white/75">
+                {walletFundingDisabled ? `${t("wallet.agentPickup")} · ${t("wallet.authorizedAgent")}` : t("wallet.panelRechargeSub")}
+              </p>
             </div>
           </div>
           <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
-      </button></>}
+      </button></>
 
       <button
         type="button"

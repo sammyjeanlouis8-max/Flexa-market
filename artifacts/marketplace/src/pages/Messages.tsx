@@ -2609,9 +2609,14 @@ export default function Messages({ embedded = false, onClose }: {
     });
   }, []);
 
-  const { data: convs } = useGetConversations({
+  const {
+    data: convs,
+    isPending: conversationsPending,
+    isError: conversationsError,
+    refetch: refetchConversations,
+  } = useGetConversations({
     query: {
-      enabled: !!user,
+      enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
       refetchInterval: 5000,
       refetchIntervalInBackground: true,
@@ -2694,12 +2699,29 @@ export default function Messages({ embedded = false, onClose }: {
               : <Moon style={{ width: 16, height: 16, color: "#818CF8" }} />}
           </button>
         </div>
-        <ConvList
-          convs={(convs as Conversation[]) ?? []}
-          activeId={convId ?? undefined}
-          theme={theme}
-          onSelect={embedded ? setEmbeddedConvId : undefined}
-        />
+        {(!user || authLoading || (conversationsPending && !convs)) ? (
+          <div role="status" style={{ padding: "64px 16px", textAlign: "center", color: c.emptyText }}>
+            {t("messages.loading")}
+          </div>
+        ) : conversationsError && !convs ? (
+          <div role="alert" style={{ padding: "64px 16px", textAlign: "center", color: c.emptyText }}>
+            <p>{t("messages.connectionProblem")}</p>
+            <button
+              type="button"
+              onClick={() => void refetchConversations()}
+              style={{ minHeight: 44, padding: "8px 20px", borderRadius: 8, color: c.nameColor, border: `1px solid ${c.listBorder}`, background: c.listBg }}
+            >
+              {t("messages.retry")}
+            </button>
+          </div>
+        ) : (
+          <ConvList
+            convs={(convs as Conversation[]) ?? []}
+            activeId={convId ?? undefined}
+            theme={theme}
+            onSelect={embedded ? setEmbeddedConvId : undefined}
+          />
+        )}
       </div>
 
       {/* Thread pane */}

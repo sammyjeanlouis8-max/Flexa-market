@@ -730,7 +730,9 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
         .where(and(
           eq(promoWalletTable.userId, req.userId!),
-          sql`${promoWalletTable.balanceUsd} >= ${parsed - 0.001} + CASE WHEN ${promoWalletTable.firstRechargeDone} THEN ${POST_RECHARGE_MIN_USD} ELSE 0 END`,
+          // PostgreSQL otherwise infers integer for the untyped sum and rejects
+          // a fractional USD amount (e.g. 1.999) before the debit can run.
+          sql`${promoWalletTable.balanceUsd} >= ${parsed - 0.001}::real + CASE WHEN ${promoWalletTable.firstRechargeDone} THEN ${POST_RECHARGE_MIN_USD}::real ELSE 0::real END`,
         ))
         .returning({ id: promoWalletTable.id });
       if (!debited) return { kind: "insufficient" };
@@ -766,6 +768,7 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
   } catch (err) {
     // A concurrent request with the same idempotency key may win the unique
     // index. Return that winner rather than risking a second debit.
+    let noRequestConfirmed = false;
     if (idempotencyKey) {
       const [existing] = await db.select().from(cashoutRequestsTable)
         .where(eq((cashoutRequestsTable as any).idempotencyKey, idempotencyKey));
@@ -778,6 +781,9 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         });
         return;
       }
+      // The wallet debit and request insert share a transaction. If a fresh
+      // primary read finds no matching request, the debit was rolled back.
+      noRequestConfirmed = true;
     }
     logger.error({ err, userId: req.userId }, "Cashout transaction failed");
     if (method === "moncash") {
@@ -800,7 +806,9 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         logger.warn({ auditError, userId: req.userId }, "Could not record failed MonCash cashout attempt");
       }
     }
-    res.status(500).json({ error: "Cashout request could not be created" });
+    res.status(500).json(noRequestConfirmed
+      ? { error: "Demann retrè a pa t kreye; balans ou pa debite", beforeDebit: true }
+      : { error: "Cashout request could not be created" });
     return;
   }
 

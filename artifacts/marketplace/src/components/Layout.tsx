@@ -947,7 +947,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           {/* Desktop language switcher; mobile language remains in the profile/guest menu */}
           <LanguageSwitcher className="header-language-switcher shrink-0" />
           {/* Profile menu */}
-          {user ? <UserMenu /> : <GuestMenu />}
+          {user ? <UserMenu onOpenAdmin={() => handleMobileTab("/admin")} /> : <GuestMenu />}
 
         </div>
       </header>}

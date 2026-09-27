@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -40,7 +41,7 @@ import { apiPatch } from "@/lib/api";
  * Renders nothing for guests — the existing "Sign in" button in the
  * Layout header is shown instead.
  */
-export default function UserMenu() {
+export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [, setLocation] = useLocation();
@@ -206,7 +207,15 @@ export default function UserMenu() {
 
         {(user.isAdmin || user.isSuperAdmin || (user.role && user.role !== "user")) && (
           <DropdownMenuItem asChild>
-            <Link href="/admin">
+            <Link
+              href="/admin"
+              onClick={(event) => {
+                if (onOpenAdmin && isAndroidApp()) {
+                  event.preventDefault();
+                  onOpenAdmin();
+                }
+              }}
+            >
               <span className="flex items-center gap-2 cursor-pointer w-full text-primary" data-testid="menu-admin">
                 <Shield className="h-4 w-4" />
                 <span className="font-semibold">{t("userMenu.admin")}</span>

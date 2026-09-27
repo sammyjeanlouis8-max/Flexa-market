@@ -2,6 +2,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Router, useLocation } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 
 type InlineLocation = ReturnType<typeof memoryLocation<unknown>>;
 
@@ -79,14 +80,16 @@ export default function AndroidInlineRoute({
   const location = useMemo(() => memoryLocation({ path, record: true }), [path]);
 
   return (
-    <Router hook={location.hook} searchHook={location.searchHook}>
-      <InlinePage
-        initialPath={path}
-        location={location}
-        routes={routes}
-        onClose={onClose}
-        getTitle={getTitle}
-      />
-    </Router>
+    <AndroidInlineRouteContext.Provider value={true}>
+      <Router hook={location.hook} searchHook={location.searchHook}>
+        <InlinePage
+          initialPath={path}
+          location={location}
+          routes={routes}
+          onClose={onClose}
+          getTitle={getTitle}
+        />
+      </Router>
+    </AndroidInlineRouteContext.Provider>
   );
 }

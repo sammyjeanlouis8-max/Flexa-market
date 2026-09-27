@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import AdminOperationsQueue from "@/components/admin/AdminOperationsQueue";
 import AdminAppealsPanel from "@/components/admin/AdminAppealsPanel";
 import SupportAdminPanel from "@/components/SupportAdminPanel";
@@ -13,6 +13,7 @@ import AdminFlexCardPanel from "@/pages/AdminFlexCardPanel";
 import AdminWalletMonitor from "@/components/AdminWalletMonitor";
 import { useTranslation } from "react-i18next";
 import { useLocation, useSearch, Link } from "wouter";
+import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -348,6 +349,7 @@ export default function Admin() {
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const search = useSearch();
+  const isAndroidInlineRoute = useContext(AndroidInlineRouteContext);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const explicitRole = String((user as any)?.role ?? "")
@@ -530,7 +532,7 @@ export default function Admin() {
   const setAdminTab = (next: string) => {
     setAdminTabState(next);
     setTabExplicitlySet(true);
-    if (typeof window !== "undefined") {
+    if (!isAndroidInlineRoute && typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", next);
       if (next !== "support") url.searchParams.delete("thread");
@@ -544,14 +546,16 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    // Updating the real URL inside Android's in-document menu makes older
+    // WebViews show the native startup screen again.
+    if (isAndroidInlineRoute || typeof window === "undefined") return;
     const url = new URL(window.location.href);
     if (logsFilter !== "all") url.searchParams.set("filter", logsFilter); else url.searchParams.delete("filter");
     if (logsDateRange !== "all") url.searchParams.set("dateRange", logsDateRange); else url.searchParams.delete("dateRange");
     if (logsDateFrom) url.searchParams.set("dateFrom", logsDateFrom); else url.searchParams.delete("dateFrom");
     if (logsDateTo) url.searchParams.set("dateTo", logsDateTo); else url.searchParams.delete("dateTo");
     window.history.replaceState({}, "", url.toString());
-  }, [logsFilter, logsDateRange, logsDateFrom, logsDateTo]);
+  }, [logsFilter, logsDateRange, logsDateFrom, logsDateTo, isAndroidInlineRoute]);
 
   // Jobs admin state
   const [adminJobs, setAdminJobs] = useState<any[]>([]);
@@ -620,14 +624,14 @@ export default function Admin() {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (isAndroidInlineRoute || typeof window === "undefined") return;
     const url = new URL(window.location.href);
     if (paymentsFilter !== "all") url.searchParams.set("paymentsFilter", paymentsFilter); else url.searchParams.delete("paymentsFilter");
     if (supportFilter !== "open") url.searchParams.set("supportFilter", supportFilter); else url.searchParams.delete("supportFilter");
     if (userCountryFilter !== "all") url.searchParams.set("userCountry", userCountryFilter); else url.searchParams.delete("userCountry");
     if (riskFilter !== "all") url.searchParams.set("riskFilter", riskFilter); else url.searchParams.delete("riskFilter");
     window.history.replaceState({}, "", url.toString());
-  }, [paymentsFilter, supportFilter, userCountryFilter, riskFilter]);
+  }, [paymentsFilter, supportFilter, userCountryFilter, riskFilter, isAndroidInlineRoute]);
 
   const [boostRecords, setBoostRecords] = useState<any[]>([]);
   const [moderationQueue, setModerationQueue] = useState<any[]>([]);

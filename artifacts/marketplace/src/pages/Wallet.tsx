@@ -696,7 +696,7 @@ export default function WalletPage() {
   const [cashoutRetraitOnly, setCashoutRetraitOnly] = useState(false);
   const [cashoutPhone, setCashoutPhone] = useState(user?.phone ?? "");
   const [cashoutAgentLoc, setCashoutAgentLoc] = useState("");
-  const [cashoutResult, setCashoutResult] = useState<{ requestId: number } | null>(null);
+  const [cashoutResult, setCashoutResult] = useState<{ requestId: number; payoutStatus?: "paid" | "pending" | "unknown" | "refunded"; payoutAmountHtg?: number } | null>(null);
 
   // Agent-transfer cashout state
   const [selectedAgent, setSelectedAgent] = useState<null | {
@@ -1063,7 +1063,7 @@ export default function WalletPage() {
     onSuccess: (data) => {
       setCashoutOutcomeUnknown(false);
       setIdempotencyKey(makeIdempotencyKey());
-      setCashoutResult({ requestId: data.requestId });
+      setCashoutResult({ requestId: data.requestId, payoutStatus: data.payoutStatus, payoutAmountHtg: data.payoutAmountHtg });
       navigateTo("cashout_done");
       qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
@@ -2851,7 +2851,31 @@ export default function WalletPage() {
 
         <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5 text-left space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-violet-400">{t("wallet.howItWorks")}:</p>
-          {cashoutMethod === "agent" ? (
+          {cashoutMethod === "moncash" && cashoutResult.payoutStatus ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">{t("wallet.moncashPayoutStatus")}</span>
+                <span className="font-bold">
+                  {t(`wallet.moncashPayoutStatus_${cashoutResult.payoutStatus}`)}
+                </span>
+              </div>
+              {cashoutResult.payoutAmountHtg !== undefined && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{t("wallet.amountToReceive")}</span>
+                  <span className="font-black text-violet-500">
+                    {cashoutResult.payoutAmountHtg.toLocaleString()} HTG
+                  </span>
+                </div>
+              )}
+              <p className="text-muted-foreground">
+                {cashoutResult.payoutStatus === "paid"
+                  ? t("wallet.moncashPayoutPaidHelp")
+                  : cashoutResult.payoutStatus === "refunded"
+                    ? t("wallet.moncashPayoutRefundedHelp")
+                    : t("wallet.moncashPayoutPendingHelp")}
+              </p>
+            </div>
+          ) : cashoutMethod === "agent" ? (
             <ol className="space-y-2 text-sm text-foreground">
               <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>{t("wallet.cashoutAgentStep1", "Admin approves your request (24h)")}</li>
               <li className="flex items-start gap-2"><span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>{t("wallet.cashoutAgentStep2", "You receive a 6-character secret code")}</li>

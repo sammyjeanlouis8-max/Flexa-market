@@ -98,6 +98,13 @@ function getToken(): string | null {
   return localStorage.getItem("flexamarket_token") ?? localStorage.getItem("token");
 }
 
+class ApiPostError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiPostError";
+  }
+}
+
 async function apiGet(path: string) {
   const token = getToken();
   const r = await fetch(`/api${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
@@ -112,8 +119,15 @@ async function apiPost(path: string, body: unknown) {
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify(body),
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error ?? "Erè");
+  let data: any;
+  try {
+    data = await r.json();
+  } catch {
+    // An upstream error page is not proof that a cash-out failed.
+    console.warn("Unexpected API response", { path, status: r.status, contentType: r.headers.get("content-type") });
+    throw new Error(`Unexpected API response (HTTP ${r.status})`);
+  }
+  if (!r.ok) throw new ApiPostError(typeof data?.error === "string" ? data.error : `HTTP ${r.status}`, r.status);
   return data;
 }
 
@@ -701,10 +715,16 @@ export default function WalletPage() {
   const [otpCountdown, setOtpCountdown] = useState(0);
   const [otpError, setOtpError] = useState("");
 
-  const makeIdempotencyKey = () =>
-    globalThis.crypto?.randomUUID?.() ??
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const makeIdempotencyKey = () => {
+    try {
+      if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    } catch {
+      // A browser crypto failure must not mask an already accepted cash-out.
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  };
   const [idempotencyKey, setIdempotencyKey] = useState(makeIdempotencyKey);
+  const [cashoutOutcomeUnknown, setCashoutOutcomeUnknown] = useState(false);
 
   // Topup method selection
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin" || user?.role === "super_admin");
@@ -1022,15 +1042,22 @@ export default function WalletPage() {
   });
 
   const cashoutMut = useMutation({
-    mutationFn: (withdrawalToken?: string) => apiPost("/cashout/request", {
-      amountUsd: parseFloat(cashoutAmount),
-      method: cashoutMethod,
-      phone: (cashoutMethod === "moncash" || cashoutMethod === "natcash") ? cashoutPhone.trim() : undefined,
-      agentLocation: cashoutMethod === "agent" ? cashoutAgentLoc.trim() : undefined,
-      withdrawalToken,
-      idempotencyKey,
-    }),
+    mutationFn: async (withdrawalToken?: string) => {
+      const data = await apiPost("/cashout/request", {
+        amountUsd: parseFloat(cashoutAmount),
+        method: cashoutMethod,
+        phone: (cashoutMethod === "moncash" || cashoutMethod === "natcash") ? cashoutPhone.trim() : undefined,
+        agentLocation: cashoutMethod === "agent" ? cashoutAgentLoc.trim() : undefined,
+        withdrawalToken,
+        idempotencyKey,
+      });
+      if (data?.ok !== true || !Number.isInteger(data.requestId)) {
+        throw new Error("Unexpected cash-out response");
+      }
+      return data;
+    },
     onSuccess: (data) => {
+      setCashoutOutcomeUnknown(false);
       setIdempotencyKey(makeIdempotencyKey());
       setCashoutResult({ requestId: data.requestId });
       navigateTo("cashout_done");
@@ -1038,7 +1065,18 @@ export default function WalletPage() {
       qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       qc.invalidateQueries({ queryKey: ["/cashout/my"] });
     },
-    onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => {
+      void qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
+      void qc.invalidateQueries({ queryKey: ["/wallet/history"] });
+      void qc.invalidateQueries({ queryKey: ["/cashout/my"] });
+      const rejectedBeforeDebit = e instanceof ApiPostError && e.status >= 400 && e.status < 500;
+      setCashoutOutcomeUnknown(!rejectedBeforeDebit);
+      toast({
+        title: t("wallet.error"),
+        description: rejectedBeforeDebit ? e.message : t("wallet.cashoutUnconfirmed"),
+        variant: "destructive",
+      });
+    },
   });
 
   // Stripe cashout mutation — instant, no admin review
@@ -2786,7 +2824,7 @@ export default function WalletPage() {
         {/* Verify button */}
         <Button
           className="w-full h-14 font-bold text-base bg-violet-600 hover:bg-violet-700"
-          disabled={!canVerify || isSubmitting || otpCountdown === 0}
+          disabled={!canVerify || isSubmitting || otpCountdown === 0 || cashoutOutcomeUnknown}
           onClick={() => {
             setOtpError("");
             verifyOtpMut.mutate({ code: otpCode.trim() });
@@ -2796,6 +2834,14 @@ export default function WalletPage() {
             ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("wallet.verifying")}</>
             : <><CheckCircle2 className="h-5 w-5 mr-2" />{t("wallet.verifyAndSubmitCashout")}</>}
         </Button>
+        {cashoutOutcomeUnknown && (
+          <div role="alert" className="rounded-xl border border-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+            <p>{t("wallet.cashoutUnconfirmed")}</p>
+            <Button type="button" variant="link" onClick={resetToHome}>
+              {t("wallet.myWithdrawals")}
+            </Button>
+          </div>
+        )}
 
         <div className="text-center">
           <p className="text-xs text-muted-foreground">{t("wallet.didNotReceiveCode")}</p>

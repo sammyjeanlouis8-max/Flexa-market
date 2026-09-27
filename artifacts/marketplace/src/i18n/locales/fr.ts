@@ -1769,6 +1769,7 @@ export default {
     cashoutDigitalStep2: "Les fonds sont envoyés sur votre compte numérique",
     cashoutDigitalStep3: "Vous recevez une notification de paiement",
     cashoutCheckStatus: "Vérifiez le statut de votre demande dans la section 'Mes Retraits'.",
+    cashoutUnconfirmed: "Impossible de confirmer si le retrait a abouti. Vérifiez votre solde et « Mes retraits » avant toute nouvelle demande. Ne soumettez pas ce retrait à nouveau pour le moment.",
     moncashPayoutStatus: "Statut MonCash",
     moncashPayoutStatus_paid: "Payé",
     moncashPayoutStatus_pending: "En attente chez MonCash",

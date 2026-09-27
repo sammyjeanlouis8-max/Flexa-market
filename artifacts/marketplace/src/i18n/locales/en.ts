@@ -1770,6 +1770,7 @@ export default {
     cashoutDigitalStep2: "Funds are sent to your digital account",
     cashoutDigitalStep3: "You receive a payment notification",
     cashoutCheckStatus: "Check the status of your request in the 'My Withdrawals' section.",
+    cashoutUnconfirmed: "We can't confirm whether the withdrawal went through. Check your balance and My Withdrawals before making another request. Do not resubmit this withdrawal yet.",
     moncashPayoutStatus: "MonCash status",
     moncashPayoutStatus_paid: "Paid",
     moncashPayoutStatus_pending: "Pending at MonCash",

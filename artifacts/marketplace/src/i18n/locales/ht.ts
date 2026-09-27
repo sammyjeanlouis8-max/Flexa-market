@@ -1764,6 +1764,7 @@ export default {
     cashoutDigitalStep2: "Admin voye lajan nan nimewo MonCash/NatCash ou",
     cashoutDigitalStep3: "Ou resevwa notifikasyon peman an",
     cashoutCheckStatus: "Tcheke estati demann ou nan seksyon 'Retrait Mwen' anba a.",
+    cashoutUnconfirmed: "Nou pa ka konfime si retrè a pase. Tcheke balans ou ak 'Retrè mwen' anvan ou fè yon lòt demann. Pa soumèt retrè a ankò kounye a.",
     moncashPayoutStatus: "Estati MonCash",
     moncashPayoutStatus_paid: "Peye",
     moncashPayoutStatus_pending: "Annatant nan MonCash",

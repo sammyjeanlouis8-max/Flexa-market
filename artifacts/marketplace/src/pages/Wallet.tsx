@@ -1188,12 +1188,18 @@ export default function WalletPage() {
     return () => clearInterval(id);
   }, [otpCountdown]);
 
-  const { data: cashoutRequests = [] } = useQuery<any[]>({
+  const {
+    data: cashoutRequestData,
+    isLoading: cashoutRequestsLoading,
+    isError: cashoutRequestsError,
+    refetch: refetchCashoutRequests,
+  } = useQuery<any[]>({
     queryKey: ["/cashout/my"],
     queryFn: () => apiGet("/cashout/my"),
     enabled: !!user,
     refetchInterval: 30000,
   });
+  const cashoutRequests = cashoutRequestData ?? [];
 
   const submitProofMut = useMutation({
     mutationFn: () => walletFundingDisabled
@@ -2837,7 +2843,10 @@ export default function WalletPage() {
         {cashoutOutcomeUnknown && (
           <div role="alert" className="rounded-xl border border-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
             <p>{t("wallet.cashoutUnconfirmed")}</p>
-            <Button type="button" variant="link" onClick={resetToHome}>
+            <Button type="button" variant="link" onClick={() => {
+              resetToHome();
+              setTimeout(() => document.getElementById("wallet-withdrawals")?.scrollIntoView({ behavior: "smooth" }), 80);
+            }}>
               {t("wallet.myWithdrawals")}
             </Button>
           </div>
@@ -3999,16 +4008,33 @@ export default function WalletPage() {
       </div>
 
       {/* ── Cashout Requests ──────────────────────────────────────────────── */}
-      {cashoutRequests.length > 0 && (
-        <div>
+      <div id="wallet-withdrawals">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
             <ArrowDownCircle className="h-3.5 w-3.5 text-violet-500" /> {t("wallet.myWithdrawals")}
           </p>
-          <div className="space-y-1.5">
-            {cashoutRequests.slice(0, 3).map((r: any) => (
+          {cashoutRequestsLoading ? (
+            <p role="status" className="text-sm text-muted-foreground">{t("wallet.withdrawalsLoading")}</p>
+          ) : cashoutRequestsError ? (
+            <div role="alert" className="rounded-xl border border-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+              <p>{t("wallet.withdrawalsLoadError")}</p>
+              <Button type="button" variant="outline" className="mt-2" onClick={() => void refetchCashoutRequests()}>
+                {t("wallet.withdrawalsRetry")}
+              </Button>
+            </div>
+          ) : cashoutRequests.length === 0 ? (
+            <p className="rounded-xl border border-border bg-card p-3 text-sm text-muted-foreground">{t("wallet.noWithdrawals")}</p>
+          ) : (
+            <div className="space-y-1.5">
+            {cashoutRequests.slice(0, 3).map((r: any) => {
+              const isPending = ["pending", "provider_ready", "provider_submitting", "provider_pending", "provider_unknown"].includes(r.status);
+              const statusKey = r.status === "provider_unknown" ? "unknown"
+                : isPending ? "pending"
+                : ["paid", "approved", "refunded", "rejected"].includes(r.status) ? r.status
+                : r.status === "request_failed" ? "failed" : "unknown";
+              return (
               <div key={r.id} className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                  r.status === "pending" ? "bg-amber-100 dark:bg-amber-900/30" :
+                  isPending ? "bg-amber-100 dark:bg-amber-900/30" :
                   r.status === "approved" ? "bg-blue-100 dark:bg-blue-900/30" :
                   r.status === "paid" ? "bg-green-100 dark:bg-green-900/30" :
                   "bg-red-100 dark:bg-red-900/30"
@@ -4021,12 +4047,12 @@ export default function WalletPage() {
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-semibold">{r.method === "moncash" ? "MonCash" : "Ajant"}</span>
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
-                      r.status === "pending" ? "bg-amber-900/30 text-amber-300" :
+                      isPending ? "bg-amber-900/30 text-amber-300" :
                       r.status === "approved" ? "bg-blue-900/30 text-blue-300" :
                       r.status === "paid" ? "bg-green-900/30 text-green-300" :
                       "bg-red-900/30 text-red-300"
                     }`}>
-                      {r.status === "pending" ? "⏳" : r.status === "approved" ? "✓ Apwouve" : r.status === "paid" ? "✅ Peye" : "✗ Rejte"}
+                      {t(`wallet.withdrawalStatus_${statusKey}`)}
                     </span>
                     {r.status === "approved" && r.otpCode && (
                       <span className="font-mono font-black text-violet-400 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 px-1.5 py-0.5 rounded text-xs tracking-widest">
@@ -4040,10 +4066,11 @@ export default function WalletPage() {
                 </div>
                 <p className="text-sm font-black text-red-500 shrink-0">-${parseFloat(r.amountUsd).toFixed(2)}</p>
               </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
+          )}
+      </div>
 
       {/* QR Modal */}
       {showQR && balance?.accountNumber && (

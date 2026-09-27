@@ -195,7 +195,8 @@ export default function App() {
 
   const recoverBack = useCallback(() => {
     if (canGoBack && !renderProcessGoneRef.current) {
-      setNavigationError(false);
+      // Keep the recovery actions visible until navigation actually changes.
+      // goBack can be a no-op after a failed WebView navigation.
       webRef.current?.goBack();
     } else {
       recoverHome();
@@ -398,6 +399,9 @@ export default function App() {
           renderToHardwareTextureAndroid
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => {
+            if (navigationError && s.url !== currentUrlRef.current) {
+              setNavigationError(false);
+            }
             currentUrlRef.current = s.url;
             setCanGoBack(s.canGoBack);
           }}

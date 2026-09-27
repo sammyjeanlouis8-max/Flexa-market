@@ -65,9 +65,12 @@ export default function App() {
   const [canGoBack, setCanGoBack] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [navigationError, setNavigationError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [webViewInstance, setWebViewInstance] = useState(0);
   const initialPageReadyRef = useRef(false);
   const currentLoadFailedRef = useRef(false);
+  const renderProcessGoneRef = useRef(false);
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearErrorTimer = useCallback(() => {
@@ -174,18 +177,56 @@ export default function App() {
     }
   }, [emitUploadResult]);
 
+  // Remount at home after a later page fails. Keep initialPageReadyRef intact
+  // so the startup screen cannot return during recovery.
+  const recoverHome = useCallback(() => {
+    clearErrorTimer();
+    clearStartupTimer();
+    currentUrlRef.current = WEBSITE;
+    currentLoadFailedRef.current = false;
+    renderProcessGoneRef.current = false;
+    setCanGoBack(false);
+    setNavigationError(false);
+    setLoadError(false);
+    setIsLoading(false);
+    setIsRetrying(false);
+    setWebViewInstance(value => value + 1);
+  }, [clearErrorTimer, clearStartupTimer]);
+
+  const recoverBack = useCallback(() => {
+    if (canGoBack && !renderProcessGoneRef.current) {
+      setNavigationError(false);
+      webRef.current?.goBack();
+    } else {
+      recoverHome();
+    }
+  }, [canGoBack, recoverHome]);
+
   // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (navigationError) {
+        recoverBack();
+        return true;
+      }
       if (canGoBack) {
         webRef.current?.goBack();
+        return true;
+      }
+      if (
+        initialPageReadyRef.current &&
+        isTrustedFlexaUrl(currentUrlRef.current) &&
+        currentUrlRef.current !== WEBSITE &&
+        currentUrlRef.current !== `${WEBSITE}/`
+      ) {
+        recoverHome();
         return true;
       }
       return false;
     });
     return () => sub.remove();
-  }, [canGoBack]);
+  }, [canGoBack, navigationError, recoverBack, recoverHome]);
 
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
@@ -194,6 +235,7 @@ export default function App() {
       clearStartupTimer();
       initialPageReadyRef.current = true;
       setLoadError(false);
+      setNavigationError(false);
       setIsLoading(false);
       setIsRetrying(false);
     }
@@ -244,6 +286,7 @@ export default function App() {
       // Normal in-app navigation must not cover the current page with the
       // full-screen startup view. Slower Android WebViews can emit load-start
       // long before load-end for every tap and redirect.
+      setNavigationError(false);
       setIsLoading(false);
       setIsRetrying(false);
       return;
@@ -285,6 +328,8 @@ export default function App() {
     if (initialPageReadyRef.current) {
       // Keep the last usable marketplace page visible if a later navigation
       // fails instead of replacing the whole app with the startup screen.
+      // Offer a native way back even if the WebView rendered a blank error.
+      setNavigationError(true);
       setIsLoading(false);
       setIsRetrying(false);
       return;
@@ -305,7 +350,12 @@ export default function App() {
     setIsLoading(true);
     setIsRetrying(true);
     currentLoadFailedRef.current = false;
-    webRef.current?.reload();
+    if (renderProcessGoneRef.current) {
+      renderProcessGoneRef.current = false;
+      setWebViewInstance(value => value + 1);
+    } else {
+      webRef.current?.reload();
+    }
   }, [clearErrorTimer, clearStartupTimer]);
 
   return (
@@ -322,6 +372,7 @@ export default function App() {
         edges={Platform.OS === "ios" ? ["top"] : ["top", "bottom", "left", "right"]}
       >
         <WebView
+          key={webViewInstance}
           ref={webRef}
           source={{ uri: WEBSITE }}
           style={styles.webview}
@@ -359,11 +410,24 @@ export default function App() {
           renderError={() => <View style={{ flex: 1, backgroundColor: "#fff" }} />}
           onError={(event) => {
             if (Platform.OS === "ios" && event.nativeEvent.code === -999) return;
+            if (event.nativeEvent.url && event.nativeEvent.url !== currentUrlRef.current) return;
             handleLoadError();
           }}
           onHttpError={(event) => {
             // Subresource failures must not replace a healthy main document.
             if (event.nativeEvent.url === currentUrlRef.current && event.nativeEvent.statusCode >= 400) handleLoadError();
+          }}
+          onRenderProcessGone={() => {
+            // Android can kill the WebView renderer without onError/onLoadEnd.
+            // A dead WebView cannot goBack or reload; only a remount can recover.
+            renderProcessGoneRef.current = true;
+            clearErrorTimer();
+            clearStartupTimer();
+            currentLoadFailedRef.current = true;
+            setIsLoading(false);
+            setIsRetrying(false);
+            if (initialPageReadyRef.current) setNavigationError(true);
+            else setLoadError(true);
           }}
           onMessage={onMessage}
           onShouldStartLoadWithRequest={(request) => {
@@ -439,6 +503,30 @@ export default function App() {
             <Text style={styles.connectionHint}>
               Wi-Fi oswa done mobil dwe aktive
             </Text>
+          </View>
+        )}
+
+        {navigationError && !loadError && (
+          <View style={styles.navigationRecovery} accessibilityLiveRegion="assertive">
+            <Text style={styles.navigationRecoveryText}>
+              Paj sa pa chaje. Ou ka retounen oswa ale akèy san fèmen aplikasyon an.
+            </Text>
+            <View style={styles.navigationRecoveryActions}>
+              <Pressable
+                onPress={recoverBack}
+                accessibilityRole="button"
+                style={styles.navigationRecoveryButton}
+              >
+                <Text style={styles.navigationRecoveryButtonText}>Retounen</Text>
+              </Pressable>
+              <Pressable
+                onPress={recoverHome}
+                accessibilityRole="button"
+                style={styles.navigationRecoveryButton}
+              >
+                <Text style={styles.navigationRecoveryButtonText}>Akèy</Text>
+              </Pressable>
+            </View>
           </View>
         )}
       </SafeAreaView>
@@ -551,5 +639,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     textAlign: "center",
+  },
+  navigationRecovery: {
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    right: 16,
+    borderRadius: 16,
+    backgroundColor: "#0F172A",
+    padding: 16,
+    elevation: 8,
+  },
+  navigationRecoveryText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  navigationRecoveryActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  navigationRecoveryButton: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 10,
+    backgroundColor: "#F97316",
+    paddingVertical: 10,
+  },
+  navigationRecoveryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
   },
 });

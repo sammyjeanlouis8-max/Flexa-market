@@ -12,7 +12,6 @@ import {
   createBazikMonCashWithdrawal,
   getBazikAccessToken,
   normalizeBazikTransfer,
-  retrieveBazikCustomerStatus,
   retrieveBazikTransfer,
   retrieveBazikWalletBalance,
   type BazikConfig,
@@ -665,27 +664,22 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
     if (automaticPayoutReady) {
       const cfg = bazikConfig(runtime);
       const normalizedPhone = normalizeHaitiPhone(phone ?? "");
-      const wallet = normalizeBazikWallet(normalizedPhone);
       const rate = await getCashoutHtgRate();
       const amountHtg = usdToHtg(netAmountUsd, rate);
       try {
         const token = await getBazikAccessToken(cfg);
-        const [customer, walletBalance] = await Promise.all([
-          retrieveBazikCustomerStatus(token, wallet),
-          retrieveBazikWalletBalance(token),
-        ]);
-        if (!customer.active) {
-          res.status(400).json({
-            error: "Nimewo sa a pa yon kont MonCash aktif ki ka resevwa payout",
-          });
-          return;
-        }
+        // This Bazik online account cannot access /moncash/customers/status
+        // (HTTP 403). The phone format is checked above; let the authorized
+        // withdrawal endpoint validate the recipient instead of blocking all
+        // payouts before they can be submitted.
+        const walletBalance = await retrieveBazikWalletBalance(token);
         const estimatedProviderTotalHtg = roundMoney(
           amountHtg * (1 + BAZIK_TRANSFER_FEE_PCT),
         );
         if (walletBalance.availableHtg < estimatedProviderTotalHtg) {
           res.status(503).json({
             error: "Balans Bazik payout la pa sifi pou retrè sa a ak frè provider la",
+            beforeDebit: true,
           });
           return;
         }
@@ -705,6 +699,7 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
         }, "MonCash cashout preflight failed");
         res.status(502).json({
           error: "MonCash pa disponib pou verifye cash out la kounye a; balans ou pa debite",
+          beforeDebit: true,
         });
         return;
       }

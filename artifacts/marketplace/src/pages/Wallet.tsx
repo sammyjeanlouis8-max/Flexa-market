@@ -99,7 +99,7 @@ function getToken(): string | null {
 }
 
 class ApiPostError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly beforeDebit = false) {
     super(message);
     this.name = "ApiPostError";
   }
@@ -127,7 +127,11 @@ async function apiPost(path: string, body: unknown) {
     console.warn("Unexpected API response", { path, status: r.status, contentType: r.headers.get("content-type") });
     throw new Error(`Unexpected API response (HTTP ${r.status})`);
   }
-  if (!r.ok) throw new ApiPostError(typeof data?.error === "string" ? data.error : `HTTP ${r.status}`, r.status);
+  if (!r.ok) throw new ApiPostError(
+    typeof data?.error === "string" ? data.error : `HTTP ${r.status}`,
+    r.status,
+    data?.beforeDebit === true,
+  );
   return data;
 }
 
@@ -1069,7 +1073,9 @@ export default function WalletPage() {
       void qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
       void qc.invalidateQueries({ queryKey: ["/wallet/history"] });
       void qc.invalidateQueries({ queryKey: ["/cashout/my"] });
-      const rejectedBeforeDebit = e instanceof ApiPostError && e.status >= 400 && e.status < 500;
+      const rejectedBeforeDebit = e instanceof ApiPostError && (
+        e.beforeDebit || (e.status >= 400 && e.status < 500)
+      );
       setCashoutOutcomeUnknown(!rejectedBeforeDebit);
       toast({
         title: t("wallet.error"),

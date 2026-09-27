@@ -4,7 +4,6 @@ import { db, cashoutRequestsTable, promoWalletTable, walletTransactionsTable, us
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin, requireSuperAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { getStripeClient } from "../lib/stripeClient";
 import { getMonCashRuntimeConfig, isHaitiPhone, roundMoney } from "../lib/haiti-money";
 import { getCashoutHtgRate, usdToHtg } from "../lib/exchange-rate";
 import {
@@ -849,101 +848,9 @@ router.post("/cashout/request", requireAuth, requireCardNotBlocked, async (req, 
   });
 });
 
-// ── POST /api/cashout/stripe ──────────────────────────────────────────────────
-// Instant cashout: FM wallet → user's Stripe Connect account (no admin review)
-router.post("/cashout/stripe", requireAuth, requireCardNotBlocked, async (req, res): Promise<void> => {
-  const { amountUsd } = req.body as { amountUsd: number };
-
-  const parsed = parseFloat(String(amountUsd));
-  if (!parsed || parsed <= 0 || !isFinite(parsed)) {
-    res.status(400).json({ error: "Montan an invalide" });
-    return;
-  }
-  if (parsed < 1) {
-    res.status(400).json({ error: "Minimòm retrait: $1.00 USD" });
-    return;
-  }
-
-  // Check user has active Stripe Connect account
-  const [user] = await db
-    .select({ stripeAccountId: usersTable.stripeAccountId, stripeAccountStatus: usersTable.stripeAccountStatus })
-    .from(usersTable)
-    .where(eq(usersTable.id, req.userId!));
-
-  if (!user?.stripeAccountId) {
-    res.status(400).json({ error: "Ou pa gen yon kont Stripe konekte. Ale nan Settings pou konfigire l." });
-    return;
-  }
-  if (user.stripeAccountStatus !== "active") {
-    res.status(400).json({ error: "Kont Stripe ou a pa aktif toujou. Finalize onboarding Stripe ou a anvan." });
-    return;
-  }
-
-  // Check wallet balance
-  const [wallet] = await db.select().from(promoWalletTable).where(eq(promoWalletTable.userId, req.userId!));
-  const stripeMinFloor = wallet?.firstRechargeDone ? POST_RECHARGE_MIN_USD : 0;
-  const availableForCashout = Math.max(0, (wallet?.balanceUsd ?? 0) - stripeMinFloor);
-  if (!wallet || availableForCashout < parsed - 0.001) {
-    const reserveNote = stripeMinFloor > 0 ? ` ($${stripeMinFloor.toFixed(2)} toujou rezève nan kont ou)` : "";
-    res.status(400).json({ error: `Balans pa sifiza. Ou gen $${availableForCashout.toFixed(2)} disponib${reserveNote}.` });
-    return;
-  }
-
-  const feeUsd = Math.round(parsed * CASHOUT_FEE_PCT * 100) / 100;
-  const netAmountUsd = Math.round((parsed - feeUsd) * 100) / 100;
-  const netCents = Math.round(netAmountUsd * 100);
-
-  if (netCents < 100) {
-    res.status(400).json({ error: "Montan nèt la twò piti apre frè a (minimòm $1.00 nèt)" });
-    return;
-  }
-
-  // Deduct from wallet atomically (floor enforced in WHERE clause)
-  const result = await db.update(promoWalletTable)
-    .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${parsed}`, updatedAt: new Date() })
-    .where(and(
-      eq(promoWalletTable.userId, req.userId!),
-      sql`${promoWalletTable.balanceUsd} >= ${parsed + stripeMinFloor - 0.001}`,
-    ))
-    .returning();
-
-  if (!result.length) {
-    res.status(400).json({ error: "The balance changed. Try again." });
-    return;
-  }
-
-  // Create Stripe Transfer to connected account
-  let transferId: string;
-  try {
-    const stripe = await getStripeClient();
-    const transfer = await stripe.transfers.create({
-      amount: netCents,
-      currency: "usd",
-      destination: user.stripeAccountId,
-      description: `FlexaMarket cashout — $${parsed.toFixed(2)} gross, $${feeUsd.toFixed(2)} fee`,
-    });
-    transferId = transfer.id;
-  } catch (stripeErr: any) {
-    // Refund wallet on stripe failure
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${parsed}`, updatedAt: new Date() })
-      .where(eq(promoWalletTable.userId, req.userId!));
-    logger.error({ err: stripeErr, userId: req.userId, parsed }, "Stripe transfer failed — wallet refunded");
-    res.status(502).json({ error: "The Stripe transfer failed. Your funds were not deducted. Try again." });
-    return;
-  }
-
-  // Record wallet transaction
-  await db.insert(walletTransactionsTable).values({
-    userId: req.userId!,
-    type: "cashout_pending",
-    amountUsd: -parsed,
-    status: "completed",
-    note: `Stripe cashout ${transferId} — frè 2%: $${feeUsd.toFixed(2)} — nèt: $${netAmountUsd.toFixed(2)}`,
-  });
-
-  logger.info({ userId: req.userId, transferId, grossAmountUsd: parsed, feeUsd, netAmountUsd }, "Stripe cashout completed");
-  res.json({ ok: true, transferId, feeUsd, netAmountUsd, grossAmountUsd: parsed });
+// Kept for older clients. Seller escrow settlement through Stripe Connect is separate.
+router.post("/cashout/stripe", requireAuth, (_req, res): void => {
+  res.status(410).json({ error: "Retrè Stripe manyèl pa disponib. Peman lavant vandè yo pa afekte." });
 });
 
 // ── GET /api/cashout/agent-transfer/pending ───────────────────────────────────

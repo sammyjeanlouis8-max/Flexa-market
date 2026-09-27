@@ -688,7 +688,7 @@ export default function WalletPage() {
 
   // Cashout state
   const [cashoutAmount, setCashoutAmount] = useState("");
-  const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "natcash" | "agent" | "agent_transfer" | "stripe_card">("moncash");
+  const [cashoutMethod, setCashoutMethod] = useState<"moncash" | "natcash" | "agent" | "agent_transfer">("moncash");
   const [cashoutRetraitOnly, setCashoutRetraitOnly] = useState(false);
   const [cashoutPhone, setCashoutPhone] = useState(user?.phone ?? "");
   const [cashoutAgentLoc, setCashoutAgentLoc] = useState("");
@@ -1077,19 +1077,6 @@ export default function WalletPage() {
         variant: "destructive",
       });
     },
-  });
-
-  // Stripe cashout mutation — instant, no admin review
-  const cashoutStripeMut = useMutation({
-    mutationFn: () => apiPost("/cashout/stripe", { amountUsd: parseFloat(cashoutAmount) }),
-    onSuccess: (data) => {
-      navigateTo("cashout_done");
-      setCashoutResult({ requestId: data.transferId });
-      qc.invalidateQueries({ queryKey: ["/wallet/balance"] });
-      qc.invalidateQueries({ queryKey: ["/wallet/history"] });
-      qc.invalidateQueries({ queryKey: ["/cashout/my"] });
-    },
-    onError: (e: Error) => toast({ title: "Erè Stripe", description: e.message, variant: "destructive" }),
   });
 
   // Agent-transfer cashout mutation (no OTP needed — screenshot is the proof)
@@ -2202,12 +2189,9 @@ export default function WalletPage() {
   // ── CASHOUT step ─────────────────────────────────────────────────────────
   // =========================================================================
   if (step === "cashout") {
-    const hasStripe = !!(user?.stripeAccountId && user?.stripeAccountStatus === "active");
-
     const canSubmit = cashoutAmt >= 1 &&
       cashoutAmt <= availableUsd &&
       (isMoncashOrNatcash ? cashoutPhone.trim().length >= 8
-        : cashoutMethod === "stripe_card" ? hasStripe
         : cashoutMethod === "agent_transfer" ? true
         : cashoutAgentLoc.trim().length >= 3);
 
@@ -2312,19 +2296,7 @@ export default function WalletPage() {
                 </button>
               );
             })}
-            {hasStripe && !cashoutRetraitOnly && (
-              <button
-                onClick={() => setCashoutMethod("stripe_card")}
-                className={cn(
-                  "flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all",
-                  cashoutMethod === "stripe_card" ? "border-blue-500 bg-blue-500/10" : "border-border bg-card hover:border-blue-400/30"
-                )}
-              >
-                <CreditCard className="h-5 w-5 text-blue-500" />
-                <span className="text-[11px] font-bold leading-tight">Stripe Card</span>
-                <span className="text-[9px] text-muted-foreground">⚡ Imedya</span>
-              </button>
-            )}
+
           </div>
         </div>
 
@@ -2369,16 +2341,6 @@ export default function WalletPage() {
           </div>
         )}
 
-        {cashoutMethod === "stripe_card" && (
-          <div className="rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/20 p-3 flex items-start gap-2">
-            <CreditCard className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-blue-800 dark:text-blue-400">
-              <p className="font-bold mb-0.5">{t("wallet.stripeInfoTitle")}</p>
-              <p>{t("wallet.stripeInfo")}</p>
-            </div>
-          </div>
-        )}
-
         {cashoutAmt >= availableUsd - 0.005 && availableUsd > 0 && (
           <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 flex gap-2">
             <AlertCircle className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
@@ -2392,22 +2354,16 @@ export default function WalletPage() {
           <p className="text-xs text-amber-800 dark:text-amber-300">
             {cashoutMethod === "agent_transfer"
               ? t("wallet.authorizedAgentWarning")
-              : cashoutMethod === "stripe_card"
-              ? t("wallet.stripeWarning")
-               : t("wallet.cashoutDigitalWarning")}
+              : t("wallet.cashoutDigitalWarning")}
           </p>
         </div>
 
         <Button
-          className={cn("w-full h-14 font-bold text-base", cashoutMethod === "stripe_card" ? "bg-blue-600 hover:bg-blue-700" : "bg-violet-600 hover:bg-violet-700")}
-          disabled={!!user?.flexCardBlocked || !canSubmit || cashoutStripeMut.isPending}
+          className="w-full h-14 font-bold text-base bg-violet-600 hover:bg-violet-700"
+          disabled={!!user?.flexCardBlocked || !canSubmit}
           onClick={() => {
             if (cashoutMethod === "agent_transfer") {
               navigateTo("cashout_agent_select");
-              return;
-            }
-            if (cashoutMethod === "stripe_card") {
-              cashoutStripeMut.mutate();
               return;
             }
             setOtpPhone(isMoncashOrNatcash ? cashoutPhone.trim() : (user?.phone ?? ""));
@@ -2419,9 +2375,8 @@ export default function WalletPage() {
             navigateTo("cashout_phone_verify");
           }}
         >
-          {cashoutStripeMut.isPending ? <Loader2 className="h-5 w-5 mr-2 animate-spin" /> : <ArrowDownCircle className="h-5 w-5 mr-2" />}
+          <ArrowDownCircle className="h-5 w-5 mr-2" />
           {cashoutMethod === "agent_transfer" ? t("wallet.chooseAuthorizedAgent", "Chwazi Ajan Otorize ⚡")
-            : cashoutMethod === "stripe_card" ? t("wallet.sendToStripe", "Voye nan Stripe ⚡")
             : t("wallet.continueVerifyPhone", "Continue — Verify Phone")}
         </Button>
         <p className="text-center text-xs text-muted-foreground">{t("wallet.cashoutLimitsDesc", "Minimum $1.00 · Maximum based on balance · 2% fee")}</p>

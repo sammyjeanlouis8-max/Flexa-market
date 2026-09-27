@@ -1293,7 +1293,7 @@ const FEATURES = [
 
 export default function Jobs() {
   useSEO({ title: "Djòb — Travay ann Ayiti", description: "Jwenn travay oswa poste yon ofò djòb ann Ayiti sou FLEXA MARKET — platfòm #1 pou djòb lokal.", path: "/jobs" });
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t, i18n } = useTranslation();
   const { toast } = useToast();

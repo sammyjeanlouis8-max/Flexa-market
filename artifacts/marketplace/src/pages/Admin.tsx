@@ -12,7 +12,7 @@ import AdminLoanPanel from "@/pages/AdminLoanPanel";
 import AdminFlexCardPanel from "@/pages/AdminFlexCardPanel";
 import AdminWalletMonitor from "@/components/AdminWalletMonitor";
 import { useTranslation } from "react-i18next";
-import { useLocation, Link } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -347,6 +347,7 @@ export default function Admin() {
   const { user, isLoading } = useAuth();
   const { t } = useTranslation();
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const explicitRole = String((user as any)?.role ?? "")
@@ -440,7 +441,7 @@ export default function Admin() {
   const [returnsDecision, setReturnsDecision] = useState<"approve" | "reject">("approve");
   const [returnsNote, setReturnsNote] = useState("");
 
-  const _initParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const _initParams = new URLSearchParams(search);
   const _rawPaymentsFilter = _initParams.get("paymentsFilter");
 
   const [payments, setPayments] = useState<any[]>([]);
@@ -521,7 +522,7 @@ export default function Admin() {
   // let an effect promote to "flagged" later once the user list has loaded —
   // referencing `flaggedUsers` directly here would be a TDZ access since it
   // is derived from `users` further down in this component.
-  const initialQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const initialQuery = new URLSearchParams(search);
   const initialTab = initialQuery.get("tab") || "operations";
   const initialDeepThread = initialQuery.get("thread");
   const [adminTab, setAdminTabState] = useState<string>(initialTab);

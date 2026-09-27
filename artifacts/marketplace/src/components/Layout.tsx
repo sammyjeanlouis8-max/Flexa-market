@@ -24,6 +24,7 @@ import UserMenu from "@/components/UserMenu";
 import GuestMenu from "@/components/GuestMenu";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import AndroidInlineRoute from "@/components/AndroidInlineRoute";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -280,17 +281,16 @@ function useWalletBalances(userId: number | string | undefined): { promo: number
   return bal;
 }
 
-function MobileMoreDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MobileMoreDrawer({ open, onClose, onNavigate }: { open: boolean; onClose: () => void; onNavigate: (href: string) => void }) {
   const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
-  const [, navigate] = useLocation();
   const [showLangPicker, setShowLangPicker] = useState(false);
   const driverStatus = useDriverStatus(user);
   const walletBal = useWalletBalances(user?.id);
 
   const currentLang = SUPPORTED_LANGUAGES.find(l => l.code === i18n.language);
 
-  const go = (href: string) => { onClose(); navigate(href); };
+  const go = (href: string) => { onClose(); onNavigate(href); };
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
@@ -692,7 +692,7 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
-export default function Layout({ children }: { children: ReactNode }) {
+export default function Layout({ children, inlineRoutes }: { children: ReactNode; inlineRoutes?: ReactNode }) {
   const [location, navigate] = useLocation();
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
@@ -702,8 +702,10 @@ export default function Layout({ children }: { children: ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [showInlineSell, setShowInlineSell] = useState(false);
   const [showInlineMessages, setShowInlineMessages] = useState(false);
+  const [inlineRoute, setInlineRoute] = useState<string | null>(null);
   const inlineSellOriginRef = useRef(location);
   const inlineMessagesOriginRef = useRef(location);
+  const inlineRouteOriginRef = useRef(location);
 
   const handleMobileTab = useCallback((href: string) => {
     if (href === "/messages" && user && isAndroidApp()) {
@@ -716,8 +718,17 @@ export default function Layout({ children }: { children: ReactNode }) {
       setShowInlineSell(true);
       return;
     }
+    if (isAndroidApp() && inlineRoutes) {
+      if (href === "/" && location === "/") {
+        setInlineRoute(null);
+        return;
+      }
+      inlineRouteOriginRef.current = location;
+      setInlineRoute(href);
+      return;
+    }
     navigate(href);
-  }, [location, navigate, user]);
+  }, [location, navigate, user, inlineRoutes]);
 
   useEffect(() => {
     if (showInlineSell && location !== inlineSellOriginRef.current) {
@@ -726,7 +737,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     if (showInlineMessages && location !== inlineMessagesOriginRef.current) {
       setShowInlineMessages(false);
     }
-  }, [location, showInlineMessages, showInlineSell]);
+    if (inlineRoute && location !== inlineRouteOriginRef.current) {
+      setInlineRoute(null);
+    }
+  }, [location, showInlineMessages, showInlineSell, inlineRoute]);
 
   // Back button: show on mobile for every page except home, messages, and auth
   const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
@@ -1107,8 +1121,23 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
 
+      {/* The other Android menu destinations use the same in-document routing
+          as Messages, rather than waking the startup screen in old builds. */}
+      {inlineRoute && inlineRoutes && (
+        <AndroidInlineRoute
+          path={inlineRoute}
+          routes={inlineRoutes}
+          onClose={() => setInlineRoute(null)}
+          getTitle={(path) => getPageTitle(path, t)}
+        />
+      )}
+
       {/* ── Mobile More Drawer ── */}
-      <MobileMoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MobileMoreDrawer
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        onNavigate={handleMobileTab}
+      />
 
       {/* ── Desktop sidebar ── */}
       <nav

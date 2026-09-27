@@ -195,11 +195,17 @@ function PageSkeleton() {
 // ── Routed layout (authenticated + public pages) ───────────────────────────────
 function LayoutRoutes() {
   const [, setLocation] = useLocation();
-  return (
-    <Layout>
-      <DeliveryCodeAlert />
-      <Suspense fallback={<PageSkeleton />}>
+  const routes = (
+    <Suspense fallback={<PageSkeleton />}>
         <Switch>
+          {/* These also render inside Android's in-document menu when a guest
+              page redirects to sign-in. The root router still owns browser URLs. */}
+          <Route path="/auth/login" component={Login} />
+          <Route path="/auth/login-phone" component={LoginPhone} />
+          <Route path="/auth/register" component={Register} />
+          <Route path="/auth/forgot-password" component={ForgotPassword} />
+          <Route path="/auth/suspended" component={SuspendedScreen} />
+          <Route path="/auth/set-new-password" component={SetNewPassword} />
           <Route path="/" component={Home} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
@@ -309,7 +315,12 @@ function LayoutRoutes() {
           <Route path="/admin/actions" component={AdminActionsPage} />
           <Route component={NotFound} />
         </Switch>
-      </Suspense>
+    </Suspense>
+  );
+  return (
+    <Layout inlineRoutes={routes}>
+      <DeliveryCodeAlert />
+      {routes}
     </Layout>
   );
 }

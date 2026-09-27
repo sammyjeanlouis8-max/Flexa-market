@@ -138,13 +138,19 @@ describe("Bazik MonCash adapter", () => {
     const timestamp = String(Math.floor(now / 1000));
     const eventId = "evt_1";
     const rawBody = Buffer.from('{"type":"payment.succeeded","orderId":"BZK_order_1"}');
-    const signature = createHmac("sha256", config.webhookSecret)
+    const signature = "v1=" + createHmac("sha256", config.webhookSecret)
       .update(`${timestamp}.${eventId}.${rawBody.toString("utf8")}`)
       .digest("hex");
 
     expect(verifyBazikWebhookSignature({
       config, rawBody, timestamp, eventId, signature, now,
     })).toBe(true);
+    expect(verifyBazikWebhookSignature({
+      config, rawBody, timestamp, eventId, signature: signature.slice(3), now,
+    })).toBe(false);
+    expect(verifyBazikWebhookSignature({
+      config, rawBody: Buffer.from('{"type":"payment.failed"}'), timestamp, eventId, signature, now,
+    })).toBe(false);
     expect(verifyBazikWebhookSignature({
       config,
       rawBody,

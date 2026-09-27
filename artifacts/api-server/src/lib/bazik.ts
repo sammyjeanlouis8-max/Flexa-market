@@ -559,10 +559,14 @@ export function verifyBazikWebhookSignature(input: {
   const now = input.now ?? Date.now();
   if (!Number.isFinite(timestampMs) || Math.abs(now - timestampMs) > 5 * 60 * 1000) return false;
 
+  // Bazik prefixes the hex digest with "v1=" in X-Bazik-Signature.
+  // Require the documented format rather than weakening verification.
+  if (!/^v1=[a-f0-9]{64}$/.test(input.signature)) return false;
   const expected = createHmac("sha256", input.config.webhookSecret)
     .update(`${input.timestamp}.${input.eventId}.${input.rawBody.toString("utf8")}`)
     .digest("hex");
-  const actualBuffer = Buffer.from(input.signature, "utf8");
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+  return timingSafeEqual(
+    Buffer.from(input.signature.slice(3), "hex"),
+    Buffer.from(expected, "hex"),
+  );
 }

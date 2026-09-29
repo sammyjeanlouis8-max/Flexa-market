@@ -1,6 +1,5 @@
 import { Link } from "wouter";
 import { Search, Package, CreditCard, User, Zap, MessageCircle, ShieldCheck, HelpCircle, ArrowRight } from "lucide-react";
-import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 const categories = [
   {
@@ -72,7 +71,6 @@ const categories = [
 ];
 
 export default function HelpCenter() {
-  const hideAndroidSubscriptions = isAndroidApp();
   return (
     <div className="min-h-screen bg-background">
       {/* Hero */}
@@ -105,7 +103,7 @@ export default function HelpCenter() {
                 <h3 className="font-bold text-foreground text-sm">{cat.title}</h3>
               </div>
               <ul className="space-y-2">
-                {cat.articles.filter(art => !hideAndroidSubscriptions || art.href !== "/subscription").map(art => (
+                {cat.articles.map(art => (
                   <li key={art.title}>
                     <Link
                       href={art.href}

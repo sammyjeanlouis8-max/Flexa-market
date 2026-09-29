@@ -585,7 +585,7 @@ export default function Subscription() {
       )}
 
       {/* ── Page header ───────────────────────────────────────────────────── */}
-      {!purchasesDisabled && <div className="text-center mb-8">
+      {!isIosApp && <div className="text-center mb-8">
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-primary bg-primary/8 px-2.5 py-1 rounded-full mb-3">
           <Crown className="h-3 w-3" />
           {t("subscription.badge")}
@@ -749,7 +749,7 @@ export default function Subscription() {
       )}
 
       {/* ── Plans grid ────────────────────────────────────────────────────── */}
-      {(!purchasesDisabled || isIosApp) && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {visiblePlans.map((plan) => {
           const c = PLAN_COLORS[plan.id] ?? PLAN_COLORS.basic;
           const Icon = PLAN_ICONS[plan.id] ?? Zap;
@@ -909,7 +909,7 @@ export default function Subscription() {
             </div>
           );
         })}
-      </div>}
+      </div>
       {isIosApp && (
         <div className="flex justify-center mt-5">
             <Button variant="ghost" size="sm" disabled={!iapIdentified} onClick={() => postIap({ type: "IAP_RESTORE", userId: user?.id })}>
@@ -919,7 +919,7 @@ export default function Subscription() {
       )}
 
       {/* ── Visibility chart ──────────────────────────────────────────────── */}
-      {!purchasesDisabled && <div className="mt-8 bg-card border border-border rounded-xl p-4">
+      {!isIosApp && <div className="mt-8 bg-card border border-border rounded-xl p-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-1.5">
           <Eye className="h-3.5 w-3.5" />
           {t("subscription.visTitle")}

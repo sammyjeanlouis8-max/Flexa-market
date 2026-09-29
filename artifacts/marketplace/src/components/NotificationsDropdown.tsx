@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 interface Notification {
   id: number;
@@ -179,7 +180,7 @@ export default function NotificationsDropdown() {
       case "subscription_billing_reminder":
       case "subscription_grace_expired":
       case "subscription_welcome":
-        return "/subscription";
+        return isAndroidApp() ? "/" : "/subscription";
 
       // Account/security
       case "identity_verified":

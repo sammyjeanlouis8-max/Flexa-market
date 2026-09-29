@@ -16,6 +16,7 @@ import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
 import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
 import GlobalMusicPlayer from "@/components/GlobalMusicPlayer";
 import VideoUploadCenter from "@/components/VideoUploadCenter";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -245,7 +246,9 @@ function LayoutRoutes() {
           <Route path="/wallet" component={WalletPage} />
           <Route path="/commission-promo" component={CommissionPromo} />
           <Route path="/wallet/history" component={WalletHistory} />
-          <Route path="/subscription" component={SubscriptionPage} />
+          <Route path="/subscription">
+            {isAndroidApp() ? <RedirectHome /> : <SubscriptionPage />}
+          </Route>
           <Route path="/agent" component={AgentDashboard} />
           <Route path="/chatbot" component={Chatbot} />
           <Route path="/calculator" component={CalculatorPage} />

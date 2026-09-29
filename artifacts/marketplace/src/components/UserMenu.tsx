@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { Link, useLocation } from "wouter";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
@@ -42,7 +42,7 @@ import { apiPatch } from "@/lib/api";
  * Renders nothing for guests — the existing "Sign in" button in the
  * Layout header is shown instead.
  */
-export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
+export default function UserMenu({ onNavigate }: { onNavigate?: (href: string) => void }) {
   const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [, setLocation] = useLocation();
@@ -67,6 +67,12 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
   const handleLogout = () => {
     logout();
     setLocation("/");
+  };
+
+  const handleMenuLink = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (!onNavigate || !isAndroidApp()) return;
+    event.preventDefault();
+    onNavigate(href);
   };
 
   const menuItems: Array<{
@@ -103,7 +109,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
 
         {menuItems.map(({ icon: Icon, label, to, testid }) => (
           <DropdownMenuItem key={testid} asChild>
-            <Link href={to}>
+            <Link href={to} onClick={(event) => handleMenuLink(event, to)}>
               <span className="flex items-center gap-2 cursor-pointer w-full" data-testid={testid}>
                 <Icon className="h-4 w-4 text-muted-foreground" />
                 <span>{label}</span>
@@ -143,7 +149,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
         )}
 
         <DropdownMenuItem asChild>
-          <Link href="/settings">
+          <Link href="/settings" onClick={(event) => handleMenuLink(event, "/settings")}>
             <span className="flex items-center gap-2 cursor-pointer w-full" data-testid="menu-settings">
               <SettingsIcon className="h-4 w-4 text-muted-foreground" />
               <span className="font-medium">{t("userMenu.settings")}</span>
@@ -152,7 +158,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
         </DropdownMenuItem>
 
         <DropdownMenuItem asChild>
-          <Link href="/settings/help">
+          <Link href="/settings/help" onClick={(event) => handleMenuLink(event, "/settings/help")}>
             <span className="flex items-center gap-2 cursor-pointer w-full" data-testid="menu-help">
               <HelpCircle className="h-4 w-4 text-muted-foreground" />
               <span>{t("userMenu.help")}</span>
@@ -198,7 +204,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
         <DropdownMenuSeparator />
 
         <DropdownMenuItem asChild>
-          <Link href="/chatbot">
+          <Link href="/chatbot" onClick={(event) => handleMenuLink(event, "/chatbot")}>
             <span className="flex items-center gap-2 cursor-pointer w-full" data-testid="menu-chatbot">
               <Sparkles className="h-4 w-4 text-primary" />
               <span className="font-medium">{t("userMenu.chatbot", { defaultValue: "FlexaBot" })}</span>
@@ -210,12 +216,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
           <DropdownMenuItem asChild>
             <Link
               href="/admin"
-              onClick={(event) => {
-                if (onOpenAdmin && isAndroidApp()) {
-                  event.preventDefault();
-                  onOpenAdmin();
-                }
-              }}
+              onClick={(event) => handleMenuLink(event, "/admin")}
             >
               <span className="flex items-center gap-2 cursor-pointer w-full text-primary" data-testid="menu-admin">
                 <Shield className="h-4 w-4" />

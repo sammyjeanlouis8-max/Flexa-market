@@ -1,6 +1,5 @@
-import SafeWebView from "@/components/SafeWebView";
-import React from "react";
+import { Redirect } from "expo-router";
 
 export default function LoansScreen() {
-  return <SafeWebView uri="https://flexamarket.com/loans" />;
+  return <Redirect href="/" />;
 }

@@ -25,6 +25,7 @@ import GuestMenu from "@/components/GuestMenu";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import AndroidInlineRoute from "@/components/AndroidInlineRoute";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -294,7 +295,7 @@ function MobileMoreDrawer({ open, onClose, onNavigate }: { open: boolean; onClos
 
   const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
-  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
     {
@@ -775,7 +776,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const driverStatusDesktop = useDriverStatus(user);
   const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
-  const canSeeLoan = !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
   type SidebarSection = { heading?: string; highlight?: boolean; items: SidebarItem[] };

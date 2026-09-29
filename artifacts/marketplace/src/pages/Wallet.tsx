@@ -18,6 +18,7 @@ import {
 import QRCode from "qrcode";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
 function formatCardNumber(acct: string | null | undefined): string {
@@ -3785,7 +3786,7 @@ export default function WalletPage() {
         </div>
       </button></>
 
-      <button
+      {!isNativeMobileApp() && <button
         type="button"
         onClick={() => setLocation("/loans")}
         className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-700 p-[1.5px] shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
@@ -3807,7 +3808,7 @@ export default function WalletPage() {
           </div>
           <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
         </div>
-      </button>
+      </button>}
 
       {/* ── Panel Ajan Otorize (ajan ki déjà apwouve) ───────────────────────── */}
       {isApprovedAgent && (

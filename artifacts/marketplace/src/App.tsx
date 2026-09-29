@@ -16,6 +16,7 @@ import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
 import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
 import GlobalMusicPlayer from "@/components/GlobalMusicPlayer";
 import VideoUploadCenter from "@/components/VideoUploadCenter";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -279,10 +280,14 @@ function LayoutRoutes() {
           <Route path="/delivery/apply" component={ApplyForDriver} />
           <Route path="/delivery/deliveries" component={AvailableDeliveries} />
           <Route path="/cart" component={Cart} />
-          <Route path="/loans" component={LoanPage} />
+          <Route path="/loans">
+            {isNativeMobileApp() ? <RedirectHome /> : <LoanPage />}
+          </Route>
           <Route path="/admin/loans" component={AdminLoanPanel} />
           <Route path="/admin/fraud" component={AdminFraudPanel} />
-          <Route path="/credit-score" component={CreditScorePage} />
+          <Route path="/credit-score">
+            {isNativeMobileApp() ? <RedirectHome /> : <CreditScorePage />}
+          </Route>
           <Route path="/delivery/tracking/:id" component={DeliveryTracking} />
           <Route path="/track/:trackingNumber" component={PublicTracking} />
           <Route path="/track" component={PublicTracking} />

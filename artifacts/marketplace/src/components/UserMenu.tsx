@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -113,7 +114,7 @@ export default function UserMenu({ onOpenAdmin }: { onOpenAdmin?: () => void }) 
 
         <DropdownMenuSeparator />
 
-        {isLoanAllowed(user.country) && (
+        {!isNativeMobileApp() && isLoanAllowed(user.country) && (
           <DropdownMenuItem asChild>
             <Link href="/loans">
               <span

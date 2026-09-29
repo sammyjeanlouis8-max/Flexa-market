@@ -870,6 +870,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
   const isListingDetail = /^\/listings\/[^/]+/.test(location);
+  const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   const isPaymentOperations =
     location === "/admin/stripe-transactions"
     || location === "/admin/moncash-transactions";
@@ -884,6 +885,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/orders\/[^/]+\/?$/,
     /^\/videos$/,
     /^\/wallet/,
+    /^\/subscription\/?$/,
     /^\/chatbot/,
     /^\/calculator/,
     /^\/delivery\/apply/,
@@ -971,7 +973,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       <main className={
         isMessages || isVideoFeed
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
-          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations ? "" : "pb-safe-nav"} md:pl-56`
+          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage ? "" : "pb-safe-nav"} md:pl-56`
       }>
         {children}
         {!noFooter && <Footer />}
@@ -1000,7 +1002,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage ? "hidden" : ""}`}
         aria-label="Main navigation"
       >
         {/* Nav expands to include the home-indicator safe area — icons stay

@@ -20,21 +20,34 @@ Zero React Native, zero npm, zero Expo — just ~300 lines of Swift.
 
 Go to your GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**
 
-Add these 3 secrets:
+Keep the three existing App Store Connect API secrets, and add the two signing
+secrets below. Never commit the `.p12` file or its password, and do not send
+either in chat.
 
 | Secret name     | Value |
 |-----------------|-------|
-| `ASC_KEY_ID`    | `JR8LBAM37G` |
-| `ASC_ISSUER_ID` | Find it at [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → Users and Access → Integrations → App Store Connect API → copy the **Issuer ID** shown at the top |
-| `ASC_KEY_P8`    | The full contents of `AuthKey_JR8LBAM37G.p8` (the file that starts with `-----BEGIN PRIVATE KEY-----`) |
+| `ASC_KEY_ID` | Existing App Store Connect API key ID |
+| `ASC_ISSUER_ID` | Existing App Store Connect issuer ID |
+| `ASC_KEY_P8` | Existing App Store Connect API private key |
+| `IOS_SIGNING_P12_BASE64` | Base64 encoding of an **active** Apple Distribution `.p12` with its private key |
+| `IOS_SIGNING_P12_PASSWORD` | Password that opens that `.p12` |
+
+On a Mac, copy the base64 value from a local `.p12` without printing it in the
+terminal: `base64 -i /path/to/certificate.p12 | tr -d '\n' | pbcopy`. Paste
+directly into the GitHub secret field. Use the actual path to your file; do not
+upload it to the repository. If the certificate has been revoked, this release
+lane fails rather than creating or revoking another certificate.
 
 ### Trigger a build
 
 1. Go to GitHub repo → **Actions** tab
-2. Click **"iOS Native — Build & TestFlight"**
-3. Click **"Run workflow"** → **"Run workflow"**
+2. Click the existing **iOS Native — Build & TestFlight** workflow
+3. Click **"Run workflow"**, choose the `agent/ios-legacy-1-0-1-20260930`
+   branch, then run it. Never run this legacy release from `main`.
 4. Wait ~15–20 minutes
-5. Build appears in TestFlight automatically
+5. Confirm **Flexa Market 1.0.1 (97)** appears in TestFlight under
+   `com.flexamarket.mobile` after Apple finishes processing. App Store
+   submission is a separate step.
 
 ---
 
@@ -57,10 +70,10 @@ artifacts/ios-native/
 ```
 
 ## App credentials
-- Bundle ID: `app.replit.flexamarket`
+- Bundle ID: `com.flexamarket.mobile` (legacy Apple listing)
+- Release version/build: `1.0.1 (97)`
 - Team ID: `D782MM56VY`
-- ASC App ID: `6774676236`
-- Provisioning profile: managed automatically by Xcode (automatic signing)
+- Provisioning profile: selected for the reusable `.p12` identity by Fastlane
 
 ## Background upload bridge
 

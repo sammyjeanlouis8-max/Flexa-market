@@ -4,9 +4,10 @@ platform :ios do
   lane :build_and_upload do
     stage = "create_keychain"
     begin
+    require "securerandom"
     keychain_name     = "ci_keychain"
-    keychain_password = "Flexa_CI_2026!"
-    keychain_path     = File.expand_path("~/Library/Keychains/#{keychain_name}-db")
+    keychain_password = SecureRandom.hex(24)
+    keychain_path     = nil
 
     # 1. Temporary keychain for the CI runner
     create_keychain(
@@ -18,6 +19,8 @@ platform :ios do
       add_to_search_list: true,
       lock_when_sleeps:   false
     )
+    keychain_path = lane_context[SharedValues::KEYCHAIN_PATH]
+    UI.user_error!("The temporary signing keychain was not created") unless keychain_path && File.file?(keychain_path)
 
     # 2. ASC API key (cert + profile management + TestFlight upload)
     stage = "validate_apple_key"
@@ -46,26 +49,80 @@ platform :ios do
     # Distinguish an invalid/mismatched API key from a key that lacks
     # Certificates, Identifiers & Profiles permission.
     stage = "verify_apple_app_access"
-    app = Spaceship::ConnectAPI::App.find("app.replit.flexamarket")
-    unless app && app.id.to_s == "6774676236"
-      UI.user_error!("The Apple API key cannot see the intended FlexaMarket app")
+    app = Spaceship::ConnectAPI::App.find("com.flexamarket.mobile")
+    unless app
+      UI.user_error!("The Apple API key cannot see the legacy Flexa Market app")
     end
-    puts "::notice title=Apple app access::Signing key can see the intended app"
+    puts "::notice title=Apple app access::Signing key can see the legacy app"
 
-    # 3. Download/create the iOS Distribution certificate and install it
-    stage = "get_distribution_certificate"
-    get_certificates(
-      api_key:           api_key,
-      output_path:       "/tmp/certs",
-      keychain_path:     keychain_path,
-      keychain_password: keychain_password
+    # 3. Reuse an existing Apple Distribution identity. Never create or revoke
+    #    certificates in this release lane.
+    stage = "validate_existing_distribution_certificate"
+    require "base64"
+    require "tmpdir"
+    require "net/http"
+    require "json"
+    require "open3"
+    encoded_p12 = ENV["IOS_SIGNING_P12_BASE64"].to_s.gsub(/\s/, "")
+    p12_password = ENV["IOS_SIGNING_P12_PASSWORD"].to_s
+    if encoded_p12.empty? || p12_password.empty?
+      UI.user_error!("IOS_SIGNING_P12_BASE64 and IOS_SIGNING_P12_PASSWORD must be set in GitHub Actions secrets")
+    end
+    begin
+      p12_bytes = Base64.strict_decode64(encoded_p12)
+      identity = OpenSSL::PKCS12.new(p12_bytes, p12_password)
+    rescue ArgumentError, OpenSSL::PKCS12::PKCS12Error
+      UI.user_error!("The existing signing certificate or its password is invalid")
+    end
+    certificate = identity.certificate
+    unless certificate && identity.key && certificate.not_after > Time.now
+      UI.user_error!("The existing signing identity has no private key, or its certificate has expired")
+    end
+
+    uri = URI("https://api.appstoreconnect.apple.com/v1/certificates?limit=200")
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+      http.get(uri.request_uri, "Authorization" => "Bearer #{Spaceship::ConnectAPI.token.text}")
+    end
+    unless response.is_a?(Net::HTTPSuccess)
+      UI.user_error!("Could not verify the existing signing certificate with Apple")
+    end
+    registered_certificate = JSON.parse(response.body).fetch("data", []).find do |record|
+      next false unless %w[DISTRIBUTION IOS_DISTRIBUTION].include?(record.dig("attributes", "certificateType"))
+      Base64.decode64(record.dig("attributes", "certificateContent").to_s) == certificate.to_der
+    end
+    unless registered_certificate
+      UI.user_error!("The supplied .p12 is not an active Apple Distribution certificate for this team; no certificate was created or revoked")
+    end
+
+    p12_path = File.join(Dir.tmpdir, "flexa-distribution-#{SecureRandom.hex(12)}.p12")
+    File.open(p12_path, File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(p12_bytes) }
+    stage = "import_existing_distribution_certificate"
+    import_certificate(
+      certificate_path:     p12_path,
+      certificate_password: p12_password,
+      keychain_path:        keychain_path,
+      keychain_password:    keychain_password,
+      log_output:           false
     )
+    _, _, partition_status = Open3.capture3(
+      "security", "set-key-partition-list", "-S", "apple-tool:,apple:",
+      "-s", "-k", keychain_password, keychain_path
+    )
+    UI.user_error!("Could not authorize the signing key for codesign") unless partition_status.success?
+    identities, _, identities_status = Open3.capture3(
+      "security", "find-identity", "-v", "-p", "codesigning", keychain_path
+    )
+    fingerprint = OpenSSL::Digest::SHA1.hexdigest(certificate.to_der).upcase
+    unless identities_status.success? && identities.match?(/\b#{Regexp.escape(fingerprint)}\b/)
+      UI.user_error!("The supplied certificate and private key were not imported as a valid signing identity")
+    end
 
-    # 4. Download/create the App Store provisioning profile
+    # 4. Download/create only the legacy app's profile for this exact certificate.
     stage = "get_app_store_profile"
     get_provisioning_profile(
       api_key:        api_key,
-      app_identifier: "app.replit.flexamarket",
+      app_identifier: "com.flexamarket.mobile",
+      cert_id:        registered_certificate.fetch("id"),
       output_path:    "/tmp/profiles"
     )
 
@@ -84,7 +141,7 @@ platform :ios do
       use_automatic_signing: false,
       path:                  "FlexaMarket.xcodeproj",
       team_id:               "D782MM56VY",
-      bundle_identifier:     "app.replit.flexamarket",
+      bundle_identifier:     "com.flexamarket.mobile",
       profile_name:          profile_name,
       code_sign_identity:    "Apple Distribution"
     )
@@ -104,24 +161,47 @@ platform :ios do
       xcargs:           "ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon GENERATE_INFOPLIST_FILE=NO"
     )
 
+    # 7. Verify the built app's identity before uploading anything to Apple.
+    stage = "verify_ipa_identity"
+    ipa_path = "/tmp/ipa_output/FlexaMarket.ipa"
+    entries, _, list_status = Open3.capture3("unzip", "-Z1", ipa_path)
+    info_entries = entries.lines.map(&:strip).grep(/\APayload\/[^\/]+\.app\/Info\.plist\z/)
+    UI.user_error!("The built IPA has no unique app Info.plist") unless list_status.success? && info_entries.length == 1
+    info_bytes, _, unzip_status = Open3.capture3("unzip", "-p", ipa_path, info_entries.first)
+    UI.user_error!("Could not inspect the built IPA") unless unzip_status.success?
+    ipa_info_path = File.join(Dir.tmpdir, "flexa-info-#{SecureRandom.hex(12)}.plist")
+    File.open(ipa_info_path, File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(info_bytes) }
+    {
+      "CFBundleIdentifier" => "com.flexamarket.mobile",
+      "CFBundleShortVersionString" => "1.0.1",
+      "CFBundleVersion" => "97",
+      "RevenueCatApiKey" => "appl_uwCdAGjnZnpJgnwhOKCFHRYMewP"
+    }.each do |key, expected|
+      actual, _, inspect_status = Open3.capture3("/usr/libexec/PlistBuddy", "-c", "Print :#{key}", ipa_info_path)
+      UI.user_error!("Built IPA has the wrong #{key}") unless inspect_status.success? && actual.strip == expected
+    end
 
-    # 7. Upload to TestFlight
+    # 8. Upload to TestFlight
     stage = "upload_to_testflight"
     upload_to_testflight(
       api_key:                           api_key,
-      app_identifier:                    "app.replit.flexamarket",
-      ipa:                               "/tmp/ipa_output/FlexaMarket.ipa",
+      app_identifier:                    "com.flexamarket.mobile",
+      ipa:                               ipa_path,
       skip_waiting_for_build_processing: false
     )
 
-    # 8. Clean up
-    stage = "delete_keychain"
-    delete_keychain(name: keychain_name)
     rescue => e
       # Job annotations are visible without downloading private Actions logs.
       # Never send signing errors (which may contain sensitive data) to a public endpoint.
       puts "::error title=iOS release failed::Stage: #{stage}; error class: #{e.class}"
       raise e
+    ensure
+      begin
+        File.delete(ipa_info_path) if defined?(ipa_info_path) && ipa_info_path && File.file?(ipa_info_path)
+        File.delete(p12_path) if defined?(p12_path) && p12_path && File.file?(p12_path)
+      ensure
+        delete_keychain(name: keychain_name) if defined?(keychain_path) && keychain_path && File.exist?(keychain_path)
+      end
     end
   end
 end

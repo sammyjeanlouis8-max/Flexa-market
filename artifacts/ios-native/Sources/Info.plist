@@ -9,7 +9,7 @@
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>RevenueCatApiKey</key>
-	<string>appl_uwCdAGjnZnpJgnwhOKCFHRYMewP</string>
+<string>$(REVENUECAT_IOS_API_KEY)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

@@ -19,8 +19,10 @@ platform :ios do
       add_to_search_list: true,
       lock_when_sleeps:   false
     )
-    keychain_path = lane_context[SharedValues::KEYCHAIN_PATH]
-    UI.user_error!("The temporary signing keychain was not created") unless keychain_path && File.file?(keychain_path)
+    # Fastlane returns "~/Library/Keychains/ci_keychain" in lane_context,
+    # while macOS stores the actual keychain as "ci_keychain-db".
+    keychain_path = File.expand_path("~/Library/Keychains/#{keychain_name}-db")
+    UI.user_error!("The temporary signing keychain was not created") unless File.file?(keychain_path)
 
     # 2. ASC API key (cert + profile management + TestFlight upload)
     stage = "validate_apple_key"

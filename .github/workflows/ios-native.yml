@@ -2,10 +2,52 @@ name: iOS Legacy — Build & TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      signing_mode:
+        description: "Diagnostic only, or release after the diagnostic passes"
+        required: true
+        default: diagnostic
+        type: choice
+        options:
+          - diagnostic
+          - build
 
 jobs:
+  signing_diagnostic:
+    name: Signing preflight — no build or Apple requests
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Match the release job's gem/runtime setup without invoking fastlane.
+      - name: Install release runtime dependencies
+        run: gem install fastlane --no-document
+
+      - name: Validate diagnostic syntax and synthetic cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c tools/check-ios-signing.rb
+          ruby -c tools/check-ios-signing.test.rb
+          ruby tools/check-ios-signing.test.rb
+
+      - name: Check current signing secret pair
+        env:
+          IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+        shell: bash
+        run: ruby tools/check-ios-signing.rb
+
   build:
     name: Build & Upload to TestFlight
+    needs: signing_diagnostic
+    if: ${{ inputs.signing_mode == 'build' }}
     runs-on: macos-latest
 
     steps:

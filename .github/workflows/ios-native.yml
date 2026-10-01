@@ -1,24 +1,49 @@
-name: Apple subscriptions — read-only inspection
+name: Apple subscriptions — scoped catalog setup
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - configure_approved_legacy_catalog
+      confirmation:
+        type: string
+        default: ""
 permissions:
   contents: read
 jobs:
   inspect:
-    name: Inspect Apple subscriptions — no build or store writes
+    name: Inspect or configure approved legacy subscriptions — no build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          sparse-checkout: tools/inspect-apple-subscriptions.rb
+          sparse-checkout: |
+            tools/inspect-apple-subscriptions.rb
+            tools/configure-legacy-subscriptions.rb
+            tools/configure-legacy-subscriptions.test.rb
           sparse-checkout-cone-mode: false
       - name: Validate read-only diagnostic syntax
-        run: ruby -c tools/inspect-apple-subscriptions.rb
+        run: |
+          ruby -c tools/inspect-apple-subscriptions.rb
+          ruby -c tools/configure-legacy-subscriptions.rb
+          ruby tools/configure-legacy-subscriptions.test.rb
       - name: Read only app-specific subscription metadata
+        if: ${{ inputs.mode != 'configure_approved_legacy_catalog' }}
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: ruby tools/inspect-apple-subscriptions.rb
+      - name: Configure owner-approved legacy catalog only
+        if: ${{ inputs.mode == 'configure_approved_legacy_catalog' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          LEGACY_CATALOG_APPROVAL: ${{ inputs.confirmation }}
+        run: ruby tools/configure-legacy-subscriptions.rb

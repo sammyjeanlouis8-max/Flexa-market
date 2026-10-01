@@ -3,6 +3,7 @@ require "base64"
 require "json"
 require "net/http"
 require "uri"
+require "set"
 
 # Diagnostic only: GET requests, selected metadata, no credentials in output.
 module AppleSubscriptionInspection
@@ -11,6 +12,7 @@ module AppleSubscriptionInspection
     "build97" => ["6754947270", "com.flexamarket.mobile"],
     "build96" => ["6774676236", "app.replit.flexamarket"]
   }.freeze
+  PRODUCT_SCOPE = Set.new(%w[6816311194 6816313742 6816314812])
 
   def self.b64(value)
     Base64.urlsafe_encode64(value, padding: false)
@@ -34,8 +36,9 @@ module AppleSubscriptionInspection
   def self.get(path, auth)
     uri = URI.parse(path.start_with?("https://") ? path : "#{ORIGIN}#{path}")
     allowed = %r{\A/v1/(?:apps/(?:6754947270|6774676236)(?:/subscriptionGroups)?|subscriptionGroups/\d+/subscriptions|subscriptions/(?:6816311194|6816313742|6816314812)(?:/prices)?)\z}
+    scoped_price = uri.path.match(%r{\A/v1/subscriptions/(\d+)/prices\z})
     raise "REQUEST_OUT_OF_SCOPE" unless uri.scheme == "https" && uri.host == "api.appstoreconnect.apple.com" &&
-      uri.port == 443 && !uri.userinfo && allowed.match?(uri.path)
+      uri.port == 443 && !uri.userinfo && (allowed.match?(uri.path) || (scoped_price && PRODUCT_SCOPE.include?(scoped_price[1])))
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
     http.open_timeout = 15
@@ -101,6 +104,7 @@ module AppleSubscriptionInspection
       end
       resources = subs["included"].to_h { |item| [[item["type"], item["id"]], item] }
       group_report[:subscriptions] = subs["data"].map do |sub|
+        PRODUCT_SCOPE.add(sub.fetch("id"))
         attrs = sub.fetch("attributes")
         locales = relationship_ids(sub, "subscriptionLocalizations").filter_map do |localization_id|
           attributes = resources[["subscriptionLocalizations", localization_id]]&.fetch("attributes", {})

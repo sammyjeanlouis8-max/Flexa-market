@@ -34,7 +34,11 @@ def read_apple(path, token)
   req["Authorization"] = "Bearer #{token}"
   req["Accept"] = "application/json"
   response = http.request(req)
-  raise "APPLE_HTTP_#{response.code}" unless response.code == "200"
+  unless response.code == "200"
+    body = JSON.parse(response.body)
+    puts "APPLE_READ_ERROR: #{JSON.generate(http: response.code, errors: Array(body["errors"]).map { |e| e.slice("code", "title", "detail") })}"
+    raise "APPLE_HTTP_#{response.code}"
+  end
   JSON.parse(response.body)
 end
 
@@ -53,15 +57,15 @@ begin
       build_processing_state: builds.dig(build_id, "processingState") }
   end
   puts "LEGACY_REVIEW_VERSIONS: #{JSON.generate(rows)}"
-  query = URI.encode_www_form("filter[version]" => "98", "include" => "preReleaseVersion", "limit" => "200")
+  query = URI.encode_www_form("include" => "preReleaseVersion", "limit" => "200")
   available = read_apple("/v1/apps/#{APP_ID}/builds?#{query}", token)
   releases = Array(available["included"]).select { |r| r["type"] == "preReleaseVersions" }.to_h { |r| [r["id"], r["attributes"]] }
-  candidates = available.fetch("data").map do |b|
+  candidates = available.fetch("data").select { |b| %w[93 98].include?(b.dig("attributes", "version")) }.map do |b|
     { build_id: b["id"], build: b.dig("attributes", "version"),
       marketing_version: releases.dig(b.dig("relationships", "preReleaseVersion", "data", "id"), "version"),
       processing_state: b.dig("attributes", "processingState"), expired: b.dig("attributes", "expired") }
   end
-  puts "LEGACY_BUILD_98: #{JSON.generate(candidates)}"
+  puts "LEGACY_BUILDS_93_AND_98: #{JSON.generate(candidates)}"
   puts "READ_ONLY_COMPLETE_NO_BUILD_NO_SUBMISSION"
 rescue StandardError => error
   category = error.message.match?(/\A[A-Z_0-9]+\z/) ? error.message : "SAFE_INSPECTION_FAILURE"

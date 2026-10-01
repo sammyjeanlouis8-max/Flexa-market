@@ -125,6 +125,9 @@ export default function Subscription() {
   const [walletRetryLoading, setWalletRetryLoading] = useState(false);
   const [appleProducts, setAppleProducts] = useState<Record<string, { priceString: string; identifier: string }>>({});
   const [iapIdentified, setIapIdentified] = useState(false);
+  const legacyAppleProductsReady = isIosApp
+    && appleProducts.standard?.identifier === "com.flexamarket.mobile.subscription.standard.monthly"
+    && appleProducts.premium?.identifier === "com.flexamarket.mobile.subscription.premium.monthly";
   const visiblePlans = isIosApp ? plans.filter((plan) => ["basic", "standard", "premium"].includes(plan.id)) : plans;
 
   // Payment method picker
@@ -525,7 +528,7 @@ export default function Subscription() {
 
       {/* ── Page content ────────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
-      {purchasesDisabled && (
+      {(isAndroidApp() || (isIosApp && !legacyAppleProductsReady)) && (
         <div className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-4 text-center text-sm font-medium">
           {t("androidPurchasePolicy.unavailable")}
         </div>

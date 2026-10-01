@@ -4,6 +4,7 @@ require "base64"
 require "digest"
 require "stringio"
 require "tmpdir"
+require "uri"
 require_relative "create-ios-certificate-once"
 
 def assert(condition, label)
@@ -73,6 +74,22 @@ def perform_with(key:, local_certificate:, poster:, reader:, output_path:)
   )
 end
 
+def fixture_route(value)
+  uri = URI.parse(value)
+  uri.query ? "#{uri.path}?#{uri.query}" : uri.path
+end
+
+def app_inventory_fixture(value, app_response, inventory_response)
+  case fixture_route(value)
+  when %r{\A/v1/apps\?}
+    app_response
+  when "/v1/certificates?limit=200"
+    inventory_response
+  else
+    raise "Unexpected synthetic read path"
+  end
+end
+
 assert(CreateIOSCertificateOnce::PUBLIC_ID_PATTERN.match?("47RTX579BA") &&
        CreateIOSCertificateOnce::PUBLIC_ID_PATTERN.match?("11111111-1111-4111-8111-111111111111"),
        "safe opaque Apple IDs and UUIDs are accepted")
@@ -128,11 +145,12 @@ Dir.mktmpdir("create-ios-certificate-synthetic") do |directory|
   output_path = File.join(directory, "issued.encrypted.json")
   requests = []
   reader = lambda do |path|
-    if path.start_with?("/v1/apps?")
+    route = fixture_route(path)
+    if route.start_with?("/v1/apps?")
       app_response
-    elsif path == "/v1/certificates?limit=200"
+    elsif route == "/v1/certificates?limit=200"
       empty_inventory
-    elsif path == "/v1/certificates/#{issued_id}"
+    elsif route == "/v1/certificates/#{issued_id}"
       confirmed_response
     else
       raise "Unexpected synthetic read path"
@@ -195,7 +213,7 @@ end
 Dir.mktmpdir("create-ios-certificate-synthetic") do |directory|
   output_path = File.join(directory, "issued.encrypted.json")
   count = 0
-  reader = ->(path) { path.start_with?("/v1/apps?") ? app_response : empty_inventory }
+  reader = ->(path) { app_inventory_fixture(path, app_response, empty_inventory) }
   quota_response = Struct.new(:code, :body).new(
     "422",
     JSON.generate("errors" => [{ "code" => "CERTIFICATE_LIMIT_EXCEEDED",
@@ -214,7 +232,7 @@ end
 
 Dir.mktmpdir("create-ios-certificate-synthetic") do |directory|
   count = 0
-  reader = ->(path) { path.start_with?("/v1/apps?") ? app_response : empty_inventory }
+  reader = ->(path) { app_inventory_fixture(path, app_response, empty_inventory) }
   poster = lambda do |_path, _payload|
     count += 1
     raise CreateIOSCertificateOnce::Failure.new("APPLE_CREATE_TIMEOUT_AMBIGUOUS")
@@ -236,7 +254,7 @@ end
 ].each do |category, invalid_response|
   Dir.mktmpdir("create-ios-certificate-synthetic") do |directory|
     post_count = 0
-    reader = ->(path) { path.start_with?("/v1/apps?") ? app_response : empty_inventory }
+    reader = ->(path) { app_inventory_fixture(path, app_response, empty_inventory) }
     poster = lambda do |_path, _payload|
       post_count += 1
       invalid_response
@@ -254,8 +272,14 @@ Dir.mktmpdir("create-ios-certificate-synthetic") do |directory|
   post_count = 0
   already_active = certificate_row("44444444-4444-4444-8444-444444444444", local)
   reader = lambda do |path|
-    path.start_with?("/v1/apps?") ? app_response :
+    route = fixture_route(path)
+    if route.start_with?("/v1/apps?")
+      app_response
+    elsif route == "/v1/certificates?limit=200"
       { "data" => [already_active], "links" => { "next" => nil } }
+    else
+      raise "Unexpected synthetic read path"
+    end
   end
   poster = ->(_path, _payload) { post_count += 1 }
   expect_category("APPLE_ACTIVE_DISTRIBUTION_PUBLIC_KEY_MATCH") do

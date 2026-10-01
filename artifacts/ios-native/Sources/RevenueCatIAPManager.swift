@@ -9,9 +9,8 @@ final class RevenueCatIAPManager {
     private let identificationQueue = DispatchQueue(label: "com.flexamarket.revenuecat.identification")
 
     private let productIds: [String: String] = [
-        "standard": "com.flexamarket.subscription.standard.monthly",
-        "premium": "com.flexamarket.subscription.premium.monthly",
-        "vip": "com.flexamarket.subscription.vip.monthly"
+        "standard": "com.flexamarket.mobile.subscription.standard.monthly",
+        "premium": "com.flexamarket.mobile.subscription.premium.monthly"
     ]
 
     private init() {}

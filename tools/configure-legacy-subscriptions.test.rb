@@ -14,6 +14,13 @@ class LegacySubscriptionScopeTest < Minitest::Test
     @client.assert_post_scope("/v1/subscriptionGroups", body)
   end
 
+  def test_fresh_identifiers_are_distinct_from_other_app
+    LegacySubscriptions::PLANS.each do |plan|
+      assert_equal "com.flexamarket.mobile.subscription.#{plan[:plan]}.monthly", LegacySubscriptions.product_id(plan[:plan])
+      refute_equal LegacySubscriptions.source_product_id(plan[:plan]), LegacySubscriptions.product_id(plan[:plan])
+    end
+  end
+
   def test_source_product_and_unregistered_group_are_not_writable
     body = { "data" => { "attributes" => { "productId" => LegacySubscriptions.product_id("standard"),
       "subscriptionPeriod" => "ONE_MONTH", "groupLevel" => 2 },

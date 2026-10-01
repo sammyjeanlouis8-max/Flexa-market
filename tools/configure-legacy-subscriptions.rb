@@ -19,6 +19,10 @@ module LegacySubscriptions
   end
 
   def self.product_id(plan)
+    "com.flexamarket.mobile.subscription.#{plan}.monthly"
+  end
+
+  def self.source_product_id(plan)
     "com.flexamarket.subscription.#{plan}.monthly"
   end
 
@@ -159,8 +163,15 @@ module LegacySubscriptions
     wanted = source_rows.select { |row| row[:start_date].nil? && row[:plan_type] == "UPFRONT" }
     raise "NO_SOURCE_PRICES" if wanted.empty?
     wanted.each do |row|
-      point = points.fetch(row[:territory])
-      raise "SOURCE_EQUALIZED_PRICE_DIFFERS" unless BigDecimal(point.dig("attributes", "customerPrice").to_s) == row[:price]
+      point = points[row[:territory]]
+      next if point && BigDecimal(point.dig("attributes", "customerPrice").to_s) == row[:price]
+      # Preserve the other app's exact local prices if Apple's current
+      # equalizations have changed since that app's catalog was configured.
+      territory_query = URI.encode_www_form("filter[territory]" => row[:territory], "include" => "territory", "limit" => 200)
+      replacement = client.list("/v1/subscriptions/#{subscription}/pricePoints?#{territory_query}")["data"].find { |p|
+        BigDecimal(p.dig("attributes", "customerPrice").to_s) == row[:price] }
+      raise "SOURCE_LOCAL_PRICE_POINT_UNAVAILABLE" unless replacement
+      points[row[:territory]] = replacement
     end
     client.price_points[subscription] = wanted.map { |row| points.fetch(row[:territory]).fetch("id") }.to_set
     existing = price_rows(client, subscription).select { |row| row[:start_date].nil? }.to_h { |row| [row[:territory], row] }
@@ -193,13 +204,13 @@ module LegacySubscriptions
   end
 
   def self.main
-    raise "OWNER_APPROVAL_REQUIRED" unless ENV["LEGACY_CATALOG_APPROVAL"] == "STANDARD_14_99_PREMIUM_29_99_NO_BUILD_NO_SUBMIT"
+    raise "OWNER_APPROVAL_REQUIRED" unless ENV["LEGACY_CATALOG_APPROVAL"] == "STANDARD_14_99_PREMIUM_29_99_NEW_LEGACY_IDS_NO_SUBMIT"
     client = Client.new(AppleSubscriptionInspection.token)
     app = client.request("/v1/apps/#{APP}?fields%5Bapps%5D=bundleId").fetch("data")
     raise "TARGET_BUNDLE_MISMATCH" unless app.dig("attributes", "bundleId") == BUNDLE
     source = PLANS.to_h do |plan|
       row = client.request("/v1/subscriptions/#{plan[:source]}?include=group").fetch("data")
-      raise "SOURCE_IDENTIFIER_MISMATCH" unless row.dig("attributes", "productId") == product_id(plan[:plan]) &&
+      raise "SOURCE_IDENTIFIER_MISMATCH" unless row.dig("attributes", "productId") == source_product_id(plan[:plan]) &&
         row.dig("relationships", "group", "data", "id") == "22414765"
       rows = price_rows(client, plan[:source])
       usd = rows.find { |price| price[:territory] == "USA" && price[:start_date].nil? }
@@ -225,8 +236,10 @@ module LegacySubscriptions
       client.subscriptions[sub] = plan[:plan]
       puts "APPLE_TARGET_PRODUCT_CONFIRMED: #{JSON.generate({ id: sub, product_id: product_id(plan[:plan]) })}"
       localize_subscription(client, sub, plan[:plan].capitalize)
-      territories = configure_prices(client, sub, plan, source.fetch(plan[:plan]))
+      territories = source.fetch(plan[:plan]).select { |p| p[:start_date].nil? && p[:plan_type] == "UPFRONT" }.map { |p| p[:territory] }.uniq.sort
+      raise "NO_SOURCE_AVAILABILITY" if territories.empty?
       configure_availability(client, sub, territories)
+      configure_prices(client, sub, plan, source.fetch(plan[:plan]))
       unchanged = price_rows(client, plan[:source])
       raise "SOURCE_PRICES_CHANGED" unless unchanged == source.fetch(plan[:plan])
     end

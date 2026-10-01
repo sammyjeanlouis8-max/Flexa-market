@@ -8,6 +8,7 @@ on:
         options:
           - inspect
           - configure_approved_legacy_catalog
+          - inspect_legacy_release
       confirmation:
         type: string
         default: ""
@@ -26,6 +27,7 @@ jobs:
             tools/inspect-apple-subscriptions.rb
             tools/configure-legacy-subscriptions.rb
             tools/configure-legacy-subscriptions.test.rb
+            tools/inspect-legacy-release.rb
           sparse-checkout-cone-mode: false
       - name: Validate read-only diagnostic syntax
         run: |
@@ -33,12 +35,19 @@ jobs:
           ruby -c tools/configure-legacy-subscriptions.rb
           ruby tools/configure-legacy-subscriptions.test.rb
       - name: Read only app-specific subscription metadata
-        if: ${{ inputs.mode != 'configure_approved_legacy_catalog' }}
+        if: ${{ inputs.mode == 'inspect' }}
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: ruby tools/inspect-apple-subscriptions.rb
+      - name: Read legacy product metadata and available build number
+        if: ${{ inputs.mode == 'inspect_legacy_release' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: ruby tools/inspect-legacy-release.rb
       - name: Configure owner-approved legacy catalog only
         if: ${{ inputs.mode == 'configure_approved_legacy_catalog' }}
         env:

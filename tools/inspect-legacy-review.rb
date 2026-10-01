@@ -45,6 +45,7 @@ def read_apple(path, token)
   JSON.parse(response.body)
 end
 
+if $PROGRAM_NAME == __FILE__
 begin
   token = apple_token
   app = read_apple("/v1/apps/#{APP_ID}?fields%5Bapps%5D=bundleId", token).fetch("data")
@@ -80,4 +81,5 @@ rescue StandardError => error
   category = error.message.match?(/\A[A-Z_0-9]+\z/) ? error.message : "SAFE_INSPECTION_FAILURE"
   puts "READ_ONLY_INSPECTION_STOPPED: #{category}"
   exit 1
+end
 end

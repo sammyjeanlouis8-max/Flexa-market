@@ -1,6 +1,16 @@
-name: Legacy Apple review selection — read only
+name: Legacy Apple review build selection — no submission
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - select_98
+      confirmation:
+        type: string
+        default: ""
 jobs:
   inspect:
     runs-on: ubuntu-latest
@@ -11,13 +21,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          sparse-checkout: tools/inspect-legacy-review.rb
+          sparse-checkout: |
+            tools/inspect-legacy-review.rb
+            tools/select-legacy-build98.rb
           sparse-checkout-cone-mode: false
       - name: Verify syntax
-        run: ruby -c tools/inspect-legacy-review.rb
+        run: |
+          ruby -c tools/inspect-legacy-review.rb
+          ruby -c tools/select-legacy-build98.rb
       - name: Read legacy App Store version and build 98
+        if: ${{ inputs.mode == 'inspect' }}
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: ruby tools/inspect-legacy-review.rb
+      - name: Select build 98 only — never submit for review
+        if: ${{ inputs.mode == 'select_98' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          SELECTION_CONFIRMATION: ${{ inputs.confirmation }}
+        run: ruby tools/select-legacy-build98.rb

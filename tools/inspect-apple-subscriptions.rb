@@ -33,7 +33,7 @@ module AppleSubscriptionInspection
 
   def self.get(path, auth)
     uri = URI.parse(path.start_with?("https://") ? path : "#{ORIGIN}#{path}")
-    allowed = %r{\A/v1/(?:apps/(?:6754947270|6774676236)(?:/subscriptionGroups)?|subscriptionGroups/\d+/subscriptions|subscriptions/(?:6816311194|6816314812))\z}
+    allowed = %r{\A/v1/(?:apps/(?:6754947270|6774676236)(?:/subscriptionGroups)?|subscriptionGroups/\d+/subscriptions|subscriptions/(?:6816311194|6816313742|6816314812)(?:/prices)?)\z}
     raise "REQUEST_OUT_OF_SCOPE" unless uri.scheme == "https" && uri.host == "api.appstoreconnect.apple.com" &&
       uri.port == 443 && !uri.userinfo && allowed.match?(uri.path)
     http = Net::HTTP.new(uri.host, uri.port)
@@ -108,7 +108,24 @@ module AppleSubscriptionInspection
             description_present: !attributes["description"].to_s.empty?, state: attributes["state"] }
         end
         screenshots = relationship_ids(sub, "appStoreReviewScreenshot")
-        { apple_product_id: sub["id"], product_id: attrs["productId"], state: attrs["state"],
+        price_query = URI.encode_www_form({
+          "filter[territory]" => "USA", "include" => "subscriptionPricePoint,territory", "limit" => 200,
+          "fields[subscriptionPricePoints]" => "customerPrice", "fields[territories]" => "currency"
+        })
+        price_body = list("/v1/subscriptions/#{sub['id']}/prices?#{price_query}", auth)
+        usa_prices = if price_body["diagnostic_error"]
+          { error: price_body["diagnostic_error"] }
+        else
+          price_resources = price_body["included"].to_h { |item| [[item["type"], item["id"]], item] }
+          price_body["data"].map do |price|
+            point_id = relationship_ids(price, "subscriptionPricePoint").first
+            territory_id = relationship_ids(price, "territory").first
+            { customer_price: price_resources[["subscriptionPricePoints", point_id]]&.dig("attributes", "customerPrice"),
+              currency: price_resources[["territories", territory_id]]&.dig("attributes", "currency"),
+              start_date: price.dig("attributes", "startDate"), preserved: price.dig("attributes", "preserved") }
+          end
+        end
+        { apple_product_id: sub["id"], product_id: attrs["productId"], state: attrs["state"], usa_prices: usa_prices,
           period: attrs["subscriptionPeriod"], group_level: attrs["groupLevel"], localizations: locales,
           review_screenshot_present: !screenshots.empty?, price_record_count: relationship_ids(sub, "prices").length }
       end

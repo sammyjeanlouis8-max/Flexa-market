@@ -19,6 +19,8 @@ const GRACE_PERIOD_DAYS = 5;
 const REVENUECAT_PRODUCTS: Record<string, "standard" | "premium"> = {
   "com.flexamarket.subscription.standard.monthly": "standard",
   "com.flexamarket.subscription.premium.monthly": "premium",
+  "com.flexamarket.mobile.subscription.standard.monthly": "standard",
+  "com.flexamarket.mobile.subscription.premium.monthly": "premium",
 };
 const REVENUECAT_ACTIVE_EVENTS = new Set(["INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION"]);
 const REVENUECAT_END_EVENTS = new Set(["EXPIRATION", "CANCELLATION", "REFUND"]);

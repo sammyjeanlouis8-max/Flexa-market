@@ -25,7 +25,10 @@ end
 def read_apple(path, token)
   uri = URI.parse("https://api.appstoreconnect.apple.com#{path}")
   allowed = ["/v1/apps/#{APP_ID}", "/v1/apps/#{APP_ID}/appStoreVersions", "/v1/apps/#{APP_ID}/builds"]
-  raise "READ_OUT_OF_SCOPE" unless allowed.include?(uri.path)
+  query = URI.decode_www_form(uri.query || "").to_h
+  scoped_builds = uri.path == "/v1/builds" && query["filter[app]"] == APP_ID &&
+    query["filter[version]"] == "93,98"
+  raise "READ_OUT_OF_SCOPE" unless allowed.include?(uri.path) || scoped_builds
   http = Net::HTTP.new(uri.host, 443)
   http.use_ssl = true
   http.open_timeout = 15
@@ -57,13 +60,19 @@ begin
       build_processing_state: builds.dig(build_id, "processingState") }
   end
   puts "LEGACY_REVIEW_VERSIONS: #{JSON.generate(rows)}"
-  query = URI.encode_www_form("include" => "preReleaseVersion", "limit" => "200")
-  available = read_apple("/v1/apps/#{APP_ID}/builds?#{query}", token)
+  query = URI.encode_www_form("filter[app]" => APP_ID, "filter[version]" => "93,98",
+    "include" => "app,preReleaseVersion", "fields[apps]" => "bundleId",
+    "fields[preReleaseVersions]" => "version,platform",
+    "fields[builds]" => "version,processingState,expired,buildAudienceType,preReleaseVersion,app",
+    "limit" => "200")
+  available = read_apple("/v1/builds?#{query}", token)
   releases = Array(available["included"]).select { |r| r["type"] == "preReleaseVersions" }.to_h { |r| [r["id"], r["attributes"]] }
   candidates = available.fetch("data").select { |b| %w[93 98].include?(b.dig("attributes", "version")) }.map do |b|
+    raise "BUILD_APP_MISMATCH" unless b.dig("relationships", "app", "data", "id") == APP_ID
     { build_id: b["id"], build: b.dig("attributes", "version"),
       marketing_version: releases.dig(b.dig("relationships", "preReleaseVersion", "data", "id"), "version"),
-      processing_state: b.dig("attributes", "processingState"), expired: b.dig("attributes", "expired") }
+      processing_state: b.dig("attributes", "processingState"), expired: b.dig("attributes", "expired"),
+      audience: b.dig("attributes", "buildAudienceType") }
   end
   puts "LEGACY_BUILDS_93_AND_98: #{JSON.generate(candidates)}"
   puts "READ_ONLY_COMPLETE_NO_BUILD_NO_SUBMISSION"

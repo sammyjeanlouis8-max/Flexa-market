@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - diagnostic
+          - apple_diagnostic
           - build
 
 jobs:
@@ -43,6 +44,34 @@ jobs:
           IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
         shell: bash
         run: ruby tools/check-ios-signing.rb
+
+  apple_signing_diagnostic:
+    name: Apple certificate read-only check — no build
+    needs: signing_diagnostic
+    if: ${{ inputs.signing_mode == 'apple_diagnostic' }}
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install diagnostic runtime
+        run: gem install fastlane --no-document
+      - name: Validate Apple diagnostic syntax and synthetic cases
+        run: |
+          ruby -c tools/check-apple-signing.rb
+          ruby -c tools/check-apple-signing.test.rb
+          ruby tools/check-apple-signing.test.rb
+      - name: Read Apple certificate status without changing anything
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+        run: ruby tools/check-apple-signing.rb
 
   build:
     name: Build & Upload to TestFlight

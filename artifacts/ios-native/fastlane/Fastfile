@@ -77,8 +77,16 @@ platform :ios do
       UI.user_error!("The existing signing certificate or its password is invalid")
     end
     certificate = identity.certificate
-    unless certificate && identity.key && certificate.not_after > Time.now
+    unless certificate && identity.key && certificate.not_after > Time.now &&
+           certificate.not_before <= Time.now && certificate.check_private_key(identity.key) &&
+           certificate.subject.to_a.any? { |name, value, _type| name == "OU" && value == "D782MM56VY" }
       UI.user_error!("The existing signing identity has no private key, or its certificate has expired")
+    end
+    require_relative "../../../tools/ios-signing-identity"
+    begin
+      signing_identity_label = IosSigningIdentity.label(certificate)
+    rescue ArgumentError
+      UI.user_error!("The existing signing certificate is not a supported distribution signing identity")
     end
 
     uri = URI("https://api.appstoreconnect.apple.com/v1/certificates?limit=200")
@@ -145,7 +153,7 @@ platform :ios do
       team_id:               "D782MM56VY",
       bundle_identifier:     "com.flexamarket.mobile",
       profile_name:          profile_name,
-      code_sign_identity:    "Apple Distribution"
+      code_sign_identity:    signing_identity_label
     )
 
     # 6. Build & archive

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       signing_mode:
-        description: "Diagnostic only, or release after the diagnostic passes"
+        description: "Signing diagnostic, Apple inventory, one-time certificate issuance, or release build"
         required: true
         default: diagnostic
         type: choice
@@ -12,7 +12,13 @@ on:
           - diagnostic
           - apple_diagnostic
           - apple_inventory
+          - create_ios_certificate_once
           - build
+      certificate_confirmation:
+        description: "Exact one-time issuance approval: CREATE_ONE_IOS_DISTRIBUTION_NO_REVOCATION"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   signing_diagnostic:
@@ -39,6 +45,13 @@ jobs:
           ruby -c tools/check-ios-signing.rb
           ruby -c tools/check-ios-signing.test.rb
           ruby tools/check-ios-signing.test.rb
+          ruby -c tools/create-ios-certificate-once.rb
+          ruby -c tools/create-ios-certificate-once.test.rb
+          ruby tools/create-ios-certificate-once.test.rb
+          ruby -c tools/ios-signing-identity.rb
+          ruby -c tools/ios-signing-identity.test.rb
+          ruby tools/ios-signing-identity.test.rb
+          ruby -c artifacts/ios-native/fastlane/Fastfile
 
       - name: Check current signing secret pair
         env:
@@ -101,6 +114,61 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: ruby tools/check-apple-signing.rb --inventory
+
+  create_ios_certificate_once:
+    name: Create one approved iOS Distribution certificate — no build or profile writes
+    needs: signing_diagnostic
+    if: ${{ inputs.signing_mode == 'create_ios_certificate_once' && inputs.certificate_confirmation == 'CREATE_ONE_IOS_DISTRIBUTION_NO_REVOCATION' }}
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install certificate creation runtime
+        run: gem install fastlane --no-document
+
+      # These checks are deliberately complete before any Apple or P12 secrets
+      # enter the process environment.
+      - name: Validate certificate creation and native identity synthetics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c tools/create-ios-certificate-once.rb
+          ruby -c tools/create-ios-certificate-once.test.rb
+          ruby tools/create-ios-certificate-once.test.rb
+          ruby -c tools/check-apple-signing.rb
+          ruby -c tools/check-apple-signing.test.rb
+          ruby tools/check-apple-signing.test.rb
+          ruby -c tools/ios-signing-identity.rb
+          ruby -c tools/ios-signing-identity.test.rb
+          ruby tools/ios-signing-identity.test.rb
+          ruby -c artifacts/ios-native/fastlane/Fastfile
+
+      - name: Create exactly one approved certificate
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+          CERTIFICATE_CONFIRMATION: ${{ inputs.certificate_confirmation }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        shell: bash
+        run: ruby tools/create-ios-certificate-once.rb
+
+      - name: Upload encrypted verified public certificate only
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-ios-distribution-certificate-encrypted
+          path: .local/issued-ios-certificate.encrypted.json
+          if-no-files-found: error
+          retention-days: 1
 
   build:
     name: Build & Upload to TestFlight

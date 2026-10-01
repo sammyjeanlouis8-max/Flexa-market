@@ -202,3 +202,4 @@ puts "PASS: synthetic native PKCS12 tests complete"
 rescue StandardError
   puts "FAIL: synthetic native PKCS12 tests"
   exit 1
+end

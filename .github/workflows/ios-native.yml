@@ -54,6 +54,7 @@ jobs:
           ruby tools/ios-signing-identity.test.rb
           ruby -c tools/ios-native-p12.rb
           ruby -c tools/ios-native-p12.test.rb
+          ruby -c tools/check-ios-native-import.rb
           ruby tools/ios-native-p12.test.rb --native-import
           ruby -c artifacts/ios-native/fastlane/Fastfile
 
@@ -63,6 +64,13 @@ jobs:
           IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
         shell: bash
         run: ruby tools/check-ios-signing.rb
+
+      - name: Verify actual identity imports natively without Apple requests
+        if: ${{ inputs.signing_mode == 'native_import_diagnostic' }}
+        env:
+          IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+        run: ruby tools/check-ios-native-import.rb
 
   apple_signing_diagnostic:
     name: Apple certificate read-only check — no build

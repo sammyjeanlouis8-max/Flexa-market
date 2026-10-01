@@ -21,7 +21,7 @@ end
 
 begin
   raise NativeImportCheckFailure, "NATIVE_IMPORT_REQUIRES_MACOS" unless RUBY_PLATFORM.include?("darwin")
-  owner_password = ENV.fetch("IOS_SIGNING_P12_PASSWORD")
+  owner_password = ENV.fetch("IOS_SIGNING_P12_PASSWORD").dup
   owner_bytes = Base64.strict_decode64(ENV.fetch("IOS_SIGNING_P12_BASE64").gsub(/\s/, ""))
   identity = OpenSSL::PKCS12.new(owner_bytes, owner_password)
   certificate = identity.certificate
@@ -64,7 +64,6 @@ begin
       end
     end
   end
-  puts "NATIVE_OWNER_SIGNING_IMPORT_VALID"
 rescue IosNativeP12::Failure => error
   puts error.category
   exit 1
@@ -75,6 +74,12 @@ rescue StandardError
   puts "NATIVE_IMPORT_CHECK_FAILED"
   exit 1
 ensure
-  owner_bytes&.clear
-  owner_password&.clear
+  begin
+    owner_bytes&.clear
+    owner_password&.clear
+  rescue StandardError
+    puts "NATIVE_IMPORT_MEMORY_CLEANUP_FAILED"
+    exit 1
+  end
 end
+puts "NATIVE_OWNER_SIGNING_IMPORT_VALID"

@@ -143,8 +143,8 @@ platform :ios do
       app_identifier: "com.flexamarket.mobile",
       cert_id:        registered_certificate.fetch("id"),
       platform:       "ios",
-      adhoc:          false,
-      development:    false,
+      # Omitted exclusive flags use Sigh's App Store defaults. Explicitly
+      # supplying both false still triggers Fastlane's conflict validation.
       output_path:    "/tmp/profiles"
     )
 

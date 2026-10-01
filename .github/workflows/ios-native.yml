@@ -60,6 +60,8 @@ jobs:
           ruby -c tools/check-ios-native-import.rb
           ruby tools/ios-native-p12.test.rb --native-import
           ruby -c artifacts/ios-native/fastlane/Fastfile
+          ruby -c tools/ios-profile-options.test.rb
+          ruby tools/ios-profile-options.test.rb
 
       - name: Check current signing secret pair
         env:

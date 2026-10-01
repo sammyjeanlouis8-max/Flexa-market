@@ -34,6 +34,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          sparse-checkout: |
+            tools
+            artifacts/ios-native
 
       # Match the release job's gem/runtime setup without invoking fastlane.
       - name: Install release runtime dependencies
@@ -192,6 +195,12 @@ jobs:
       # ── 1. Checkout ───────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tools
+            artifacts/ios-native
+            artifacts/mobile/assets/images
 
       # ── 2. Generate app icons on macOS CI ─────────────────────────────────
       - name: Generate app icons with sips

@@ -11,11 +11,13 @@ on:
         options:
           - diagnostic
           - apple_diagnostic
+          - apple_inventory
           - build
 
 jobs:
   signing_diagnostic:
     name: Signing preflight — no build or Apple requests
+    if: ${{ inputs.signing_mode != 'apple_inventory' }}
     runs-on: macos-latest
     timeout-minutes: 10
     permissions:
@@ -72,6 +74,33 @@ jobs:
           IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
           IOS_SIGNING_P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
         run: ruby tools/check-apple-signing.rb
+
+  apple_signing_inventory:
+    name: Apple public signing metadata — read only
+    if: ${{ inputs.signing_mode == 'apple_inventory' }}
+    runs-on: macos-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install diagnostic runtime
+        run: gem install fastlane --no-document
+      - name: Validate syntax and synthetic metadata tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ruby -c tools/check-apple-signing.rb
+          ruby -c tools/check-apple-signing.test.rb
+          ruby tools/check-apple-signing.test.rb
+      - name: Read public certificate and app profile metadata
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: ruby tools/check-apple-signing.rb --inventory
 
   build:
     name: Build & Upload to TestFlight

@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - diagnostic
+          - native_import_diagnostic
           - apple_diagnostic
           - apple_inventory
           - create_ios_certificate_once
@@ -51,6 +52,9 @@ jobs:
           ruby -c tools/ios-signing-identity.rb
           ruby -c tools/ios-signing-identity.test.rb
           ruby tools/ios-signing-identity.test.rb
+          ruby -c tools/ios-native-p12.rb
+          ruby -c tools/ios-native-p12.test.rb
+          ruby tools/ios-native-p12.test.rb --native-import
           ruby -c artifacts/ios-native/fastlane/Fastfile
 
       - name: Check current signing secret pair

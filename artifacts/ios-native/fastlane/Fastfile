@@ -104,18 +104,27 @@ platform :ios do
       UI.user_error!("The supplied .p12 is not an active Apple Distribution certificate for this team; no certificate was created or revoked")
     end
 
-    p12_path = File.join(Dir.tmpdir, "flexa-distribution-#{SecureRandom.hex(12)}.p12")
-    File.open(p12_path, File::WRONLY | File::CREAT | File::EXCL, 0600) { |file| file.write(p12_bytes) }
-    stage = "import_existing_distribution_certificate"
-    import_certificate(
-      certificate_path:     p12_path,
-      certificate_password: p12_password,
-      keychain_path:        keychain_path,
-      keychain_password:    keychain_password,
-      log_output:           false
-    )
+    # macOS Security does not accept every PKCS#12 encoding that OpenSSL
+    # validates. Keep the owner's encrypted backup unchanged; re-encode only
+    # this verified identity into a protected, short-lived import container.
+    require_relative "../../../tools/ios-native-p12"
+    stage = "prepare_native_distribution_certificate"
+    begin
+      IosNativeP12.with_import_bundle(identity) do |native_path, native_password|
+        stage = "import_existing_distribution_certificate"
+        _, _, import_status = Open3.capture3(
+          "/usr/bin/security", "import", native_path,
+          "-k", keychain_path, "-P", native_password,
+          "-T", "/usr/bin/codesign", "-T", "/usr/bin/security"
+        )
+        UI.user_error!("Native signing identity import failed") unless import_status.success?
+      end
+    rescue IosNativeP12::Failure => error
+      UI.user_error!("Temporary signing container preparation failed: #{error.category}")
+    end
+    stage = "authorize_existing_distribution_key"
     _, _, partition_status = Open3.capture3(
-      "security", "set-key-partition-list", "-S", "apple-tool:,apple:",
+      "security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:",
       "-s", "-k", keychain_password, keychain_path
     )
     UI.user_error!("Could not authorize the signing key for codesign") unless partition_status.success?
@@ -133,18 +142,19 @@ platform :ios do
       api_key:        api_key,
       app_identifier: "com.flexamarket.mobile",
       cert_id:        registered_certificate.fetch("id"),
+      platform:       "ios",
+      adhoc:          false,
+      development:    false,
       output_path:    "/tmp/profiles"
     )
 
     # 5. Switch project from Automatic → Manual signing
     stage = "configure_code_signing"
-    profile_path = lane_context[SharedValues::SIGH_PROFILE_PATHS]&.first
-    profile_name = sh(
-      "security cms -D -i '#{profile_path}' | " \
-      "grep -A1 '<key>Name</key>' | grep '<string>' | " \
-      "sed 's/.*<string>//;s/<\\/string>//'",
-      log: false
-    ).strip
+    profile_path = lane_context[SharedValues::SIGH_PROFILE_PATH]
+    profile_name = lane_context[SharedValues::SIGH_NAME].to_s
+    unless profile_path && File.file?(profile_path) && !profile_name.empty?
+      UI.user_error!("Apple did not return a usable App Store provisioning profile")
+    end
     UI.message "Using provisioning profile: #{profile_name}"
 
     update_code_signing_settings(
@@ -165,6 +175,11 @@ platform :ios do
       scheme:           "FlexaMarket",
       configuration:    "Release",
       export_method:    "app-store",
+      export_options:   {
+        signingStyle: "manual",
+        teamID: "D782MM56VY",
+        provisioningProfiles: { "com.flexamarket.mobile" => profile_name }
+      },
       output_directory: "/tmp/ipa_output",
       output_name:      "FlexaMarket.ipa",
       clean:            true,
@@ -208,7 +223,6 @@ platform :ios do
     ensure
       begin
         File.delete(ipa_info_path) if defined?(ipa_info_path) && ipa_info_path && File.file?(ipa_info_path)
-        File.delete(p12_path) if defined?(p12_path) && p12_path && File.file?(p12_path)
       ensure
         delete_keychain(name: keychain_name) if defined?(keychain_path) && keychain_path && File.exist?(keychain_path)
       end

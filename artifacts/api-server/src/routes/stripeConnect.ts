@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripePublishableKey } from "../lib/stripeClient";
 import { deriveStripeConnectStatus } from "../lib/stripeConnectStatus";
+import { getStripeOnlySellerCountryCode, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -113,8 +114,11 @@ router.post("/stripe/connect/onboard", requireAuth, async (req: any, res) => {
     let accountId = user.stripeAccountId;
 
     if (!accountId) {
+      await requireSupportedStripeSellerCountry(user.country);
+      const countryCode = getStripeOnlySellerCountryCode(user.country);
       const account = await stripe.accounts.create({
         type: "express",
+        ...(countryCode ? { country: countryCode } : {}),
         email: user.email,
         capabilities: {
           card_payments: { requested: true },
@@ -140,6 +144,12 @@ router.post("/stripe/connect/onboard", requireAuth, async (req: any, res) => {
     return res.json({ url: accountLink.url });
   } catch (err) {
     logger.error({ err }, "stripe/connect/onboard error");
+    if (err instanceof Error && err.message === "STRIPE_COUNTRY_UNSUPPORTED") {
+      return res.status(409).json({
+        code: "STRIPE_COUNTRY_UNSUPPORTED",
+        error: "Vèsman Stripe pou Meksik poko sipòte nan konfigirasyon platfòm sa a. Ou ka sove brouyon; bous FM ou rete disponib.",
+      });
+    }
     if (requiresConnectPlatformProfileReview(err)) {
       return res.status(503).json({
         code: "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED",

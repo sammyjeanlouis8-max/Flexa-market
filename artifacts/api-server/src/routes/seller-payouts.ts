@@ -10,7 +10,7 @@ import {
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
-import { isUsSellerCountry } from "../lib/usSellerPayoutPolicy";
+import { isStripeOnlySellerCountry } from "../lib/usSellerPayoutPolicy";
 
 const router = Router();
 
@@ -82,10 +82,10 @@ router.patch("/seller/payout-account/card-method", requireAuth, async (req, res)
 
   const [seller] = await db.select({ country: usersTable.country })
     .from(usersTable).where(eq(usersTable.id, userId));
-  if (method === "fm_wallet" && isUsSellerCountry(seller?.country)) {
+  if (method === "fm_wallet" && isStripeOnlySellerCountry(seller?.country)) {
     res.status(409).json({
-      code: "US_STRIPE_ONLY",
-      error: "Nouvo lavant vandè Ozetazini yo resevwa kòb sou Stripe sèlman. Ansyen balans Kat FM ak lòd yo pa chanje.",
+      code: "STRIPE_ONLY_PAYOUT",
+      error: "Nouvo lavant vandè USA, Kanada ak Meksik yo resevwa kòb sou Stripe sèlman. Bous FM ou, ansyen balans ak lòd yo pa chanje.",
     });
     return;
   }

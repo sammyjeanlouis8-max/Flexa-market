@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isUsSellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
+import { getStripeOnlySellerCountryCode, isStripeOnlySellerCountry, requireActiveStripeDestination, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
+import { isStripeOnlySellerCountry as isStripeOnlyFrontendCountry } from "../../../marketplace/src/lib/paymentCountries";
 import { resolveSettlementRoute } from "../lib/escrowSettlement";
 
 const { retrieveAccount, getClient } = vi.hoisted(() => ({
@@ -13,14 +14,16 @@ beforeEach(() => {
   getClient.mockResolvedValue({ accounts: { retrieve: retrieveAccount } });
 });
 
-describe("US seller publishing and payout policy", () => {
-  it.each(["USA", "United States", "US", " USA "])("recognizes US profile country %s", country => {
-    expect(isUsSellerCountry(country)).toBe(true);
+describe("USA, Canada and Mexico seller publishing and payout policy", () => {
+  it.each(["USA", "United States", "US", " USA ", "us", "Canada", "CA", " canada ", "Mexico", "México", "Mexique", "Meksik", "MX", " mx "])("recognizes Stripe-only profile country %s", country => {
+    expect(isStripeOnlySellerCountry(country)).toBe(true);
+    expect(isStripeOnlyFrontendCountry(country)).toBe(true);
   });
 
-  it.each(["Haiti", "Dominican Republic", "Canada", "", null, undefined])(
+  it.each(["Haiti", "Dominican Republic", "France", "United Kingdom", "", null, undefined])(
     "does not change other country policies (%s)", country => {
-      expect(isUsSellerCountry(country)).toBe(false);
+      expect(isStripeOnlySellerCountry(country)).toBe(false);
+      expect(isStripeOnlyFrontendCountry(country)).toBe(false);
     },
   );
 
@@ -52,6 +55,41 @@ describe("US seller publishing and payout policy", () => {
     await expect(requireActiveStripeDestination("acct_test")).rejects.toThrow("provider unavailable");
   });
 
+  it.each([["USA", "US"], ["Canada", "CA"], ["México", "MX"], ["Mexique", "MX"]])(
+    "uses Stripe country code %s → %s for new account setup", (country, code) => {
+      expect(getStripeOnlySellerCountryCode(country)).toBe(code);
+    },
+  );
+
+  it.each([["USA", "US"], ["Canada", "CA"], ["Mexico", "MX"]])(
+    "validates the connected account country for %s", async (country, code) => {
+      retrieveAccount.mockImplementation(async (id?: string) => id
+        ? { country: code, details_submitted: true, payouts_enabled: true, capabilities: { transfers: "active" } }
+        : { country: "MX" });
+      await expect(requireActiveStripeDestination("acct_test", country)).resolves.toBeUndefined();
+    },
+  );
+
+  it.each(["Canada", "Mexico"])("rejects a US account incorrectly assigned to a %s seller", async country => {
+    retrieveAccount.mockResolvedValue({
+      country: "US", details_submitted: true, payouts_enabled: true, capabilities: { transfers: "active" },
+    });
+    await expect(requireActiveStripeDestination("acct_test", country)).rejects.toThrow("STRIPE_ACCOUNT_COUNTRY_MISMATCH");
+  });
+
+  it("blocks Mexico cross-border payouts on a US platform even with active seller capabilities", async () => {
+    retrieveAccount.mockImplementation(async (id?: string) => id
+      ? { country: "MX", details_submitted: true, payouts_enabled: true, capabilities: { transfers: "active" } }
+      : { country: "US" });
+    await expect(requireActiveStripeDestination("acct_test", "Mexico")).rejects.toThrow("STRIPE_COUNTRY_UNSUPPORTED");
+    expect(retrieveAccount).toHaveBeenCalledWith();
+  });
+
+  it("rejects unsupported Mexico onboarding before creating a connected account", async () => {
+    retrieveAccount.mockResolvedValue({ country: "US" });
+    await expect(requireSupportedStripeSellerCountry("Mexico")).rejects.toThrow("STRIPE_COUNTRY_UNSUPPORTED");
+  });
+
   it.each(["stripe", "wallet", "moncash", "card", "bnpl"])(
     "new mandatory orders never fall back to FM for buyer method %s", paymentMethod => {
       expect(resolveSettlementRoute({
@@ -64,7 +102,7 @@ describe("US seller publishing and payout policy", () => {
     },
   );
 
-  it("preserves legacy wallet orders, regardless of current US-only listing rules", () => {
+  it("preserves legacy wallet orders, regardless of current Stripe-only listing rules", () => {
     expect(resolveSettlementRoute({
       requiresStripePayout: false,
       paymentMethod: "stripe",

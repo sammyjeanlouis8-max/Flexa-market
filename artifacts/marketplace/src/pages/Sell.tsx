@@ -19,7 +19,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
 import { MULTI_CURRENCY_COUNTRIES, getCurrencySymbolByCode } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
+import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySellerCountry } from "@/lib/paymentCountries";
 import ListingCard from "@/components/ListingCard";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
@@ -91,7 +91,7 @@ function getStorageUrl(objectPath: string): string {
 export default function Sell() {
   const purchasesDisabled = isAndroidApp();
   const { user, token, isLoading: authLoading } = useAuth();
-  const isUsSeller = ["USA", "United States", "US"].includes(user?.country?.trim() ?? "");
+  const isStripeOnlySeller = isStripeOnlySellerCountry(user?.country);
   const { isRestricted, showRestrictionToast } = useRestriction();
   const userRole = (user as any)?.role;
   const isAdmin =
@@ -194,7 +194,7 @@ export default function Sell() {
   useEffect(() => {
     if (!user) return;
     const tk = localStorage.getItem("flexamarket_token") ?? "";
-    const stripeSupported = isUsSeller || STRIPE_SUPPORTED_COUNTRIES.has(user.country ?? "");
+    const stripeSupported = isStripeOnlySeller || STRIPE_SUPPORTED_COUNTRIES.has(user.country ?? "");
     const isMoncashCountry = MONCASH_COUNTRIES.has(user.country ?? "");
     setIsStripeCountry(stripeSupported);
 
@@ -214,12 +214,12 @@ export default function Sell() {
       const currentMethod = payoutData?.cardPayoutMethod ?? null;
       setStripeAccountActive(stripeActive);
       setStripeAccountConnected(stripeConnected);
-      // New US listings have their own mandatory payout policy. Do not mutate
+      // New Stripe-only listings have their own mandatory payout policy. Do not mutate
       // the saved legacy preference or redirect existing orders.
-      setCardPayoutMethod(isUsSeller ? "stripe" : currentMethod);
+      setCardPayoutMethod(isStripeOnlySeller ? "stripe" : currentMethod);
       // Kat FM: seller chose fm_wallet → always ready (earnings auto-credited to FM wallet)
       const hasKatFM = currentMethod === "fm_wallet";
-      if (isUsSeller) {
+      if (isStripeOnlySeller) {
         setPaymentReady(stripeActive);
       } else if (hasKatFM) {
         setPaymentReady(true);
@@ -232,10 +232,10 @@ export default function Sell() {
         setPaymentReady(stripeActive);
       }
     });
-  }, [user?.id, user?.country, isUsSeller]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.country, isStripeOnlySeller]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectPayoutMethod = useCallback(async (method: "fm_wallet" | "stripe") => {
-    if (isUsSeller) return;
+    if (isStripeOnlySeller) return;
     const tk = localStorage.getItem("flexamarket_token") ?? "";
     setSavingPayoutMethod(true);
     try {
@@ -256,7 +256,7 @@ export default function Sell() {
     } finally {
       setSavingPayoutMethod(false);
     }
-  }, [stripeAccountActive, toast, isUsSeller]);
+  }, [stripeAccountActive, toast, isStripeOnlySeller]);
 
   // Regular sellers must always post from their registered profile country.
   // Admins and super admins may select another country.
@@ -409,7 +409,7 @@ export default function Sell() {
     if (!isEditMode && paymentReady !== true) {
       const msg = paymentReady === null
         ? t("sell.paymentCheckingDescription")
-        : isUsSeller ? t("sell.usStripeRequired") : t("sell.paymentRequiredDescription");
+        : isStripeOnlySeller ? t("sell.usStripeRequired") : t("sell.paymentRequiredDescription");
       setSubmitError(msg);
       toast({
         title: paymentReady === null ? t("sell.paymentCheckingTitle") : t("sell.paymentRequiredTitle"),
@@ -1700,10 +1700,10 @@ export default function Sell() {
                 </div>
                 {!paymentReady && (
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    {isUsSeller ? t("sell.usStripeRequired") : t("sell.payoutSelectPrompt")}
+                    {isStripeOnlySeller ? t("sell.usStripeRequired") : t("sell.payoutSelectPrompt")}
                   </p>
                 )}
-                {isUsSeller && (
+                {isStripeOnlySeller && (
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                     {t("sell.usStripeOnly")}
                   </p>
@@ -1711,10 +1711,10 @@ export default function Sell() {
               </div>
 
               {/* Cards */}
-              <PayoutMethodCards stripeFirst={isUsSeller}>
+              <PayoutMethodCards stripeFirst={isStripeOnlySeller}>
 
                 {/* Kat FM */}
-                {!isUsSeller && <button
+                {!isStripeOnlySeller && <button
                   type="button"
                   onClick={() => { if (cardPayoutMethod !== "fm_wallet") selectPayoutMethod("fm_wallet"); }}
                   disabled={savingPayoutMethod}
@@ -1782,13 +1782,13 @@ export default function Sell() {
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {t("sell.stripePayoutDescription")}
                   </p>
-                  {cardPayoutMethod === "stripe" && (!stripeAccountConnected || (isUsSeller && !stripeAccountActive)) && (
+                  {cardPayoutMethod === "stripe" && (!stripeAccountConnected || (isStripeOnlySeller && !stripeAccountActive)) && (
                     <a
                       href="/settings"
                       onClick={e => e.stopPropagation()}
                       className="text-[11px] font-bold text-[#635BFF] underline underline-offset-2 hover:no-underline"
                     >
-                      {isUsSeller && stripeAccountConnected
+                      {isStripeOnlySeller && stripeAccountConnected
                         ? t("sell.usStripeComplete")
                         : t("sell.connectStripeSettings")} →
                     </a>

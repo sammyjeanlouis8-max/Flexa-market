@@ -35,7 +35,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES } from "@/lib/paymentCountries";
+import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySellerCountry } from "@/lib/paymentCountries";
 
 async function handOffStripeUrlToBrowser(url: string, promptText: string): Promise<boolean> {
   const nativeBridge = (window as typeof window & {
@@ -355,7 +355,7 @@ function TrustFooter() {
 // ─── Card payout method selector (Kat FM vs Stripe) ──────────────────────────
 function CardPayoutMethodPanel() {
   const { user } = useAuth();
-  const isUsSeller = ["USA", "United States", "US"].includes(user?.country?.trim() ?? "");
+  const isStripeOnlySeller = isStripeOnlySellerCountry(user?.country);
   const [method, setMethod] = useState<"fm_wallet" | "stripe">("fm_wallet");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -386,7 +386,7 @@ function CardPayoutMethodPanel() {
 
   if (!loaded) return null;
 
-  if (isUsSeller) {
+  if (isStripeOnlySeller) {
     return (
       <Card className="overflow-hidden mt-3">
         <div className="p-4">

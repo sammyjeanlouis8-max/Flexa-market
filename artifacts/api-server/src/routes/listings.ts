@@ -8,7 +8,7 @@ import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccess
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
-import { isUsSellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
+import { isStripeOnlySellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
 import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
@@ -1025,14 +1025,20 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
 
-  const requiresStripePayout = isUsSellerCountry(seller?.country);
+  const requiresStripePayout = isStripeOnlySellerCountry(seller?.country);
   if (requiresStripePayout) {
     try {
-      await requireActiveStripeDestination(seller?.stripeAccountId);
-    } catch {
+      await requireActiveStripeDestination(seller?.stripeAccountId, seller?.country);
+    } catch (error) {
+      const unsupportedCountry = error instanceof Error && error.message === "STRIPE_COUNTRY_UNSUPPORTED";
+      const countryMismatch = error instanceof Error && error.message === "STRIPE_ACCOUNT_COUNTRY_MISMATCH";
       res.status(409).json({
-        code: "STRIPE_SETUP_REQUIRED",
-        error: "Vandè Ozetazini dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Brouyon ou ka rete sovgade.",
+        code: unsupportedCountry ? "STRIPE_COUNTRY_UNSUPPORTED" : countryMismatch ? "STRIPE_ACCOUNT_COUNTRY_MISMATCH" : "STRIPE_SETUP_REQUIRED",
+        error: unsupportedCountry
+          ? "Vèsman Stripe pou Meksik poko sipòte nan konfigirasyon platfòm sa a. Kenbe anons la kòm brouyon. Bous FM ou rete disponib."
+          : countryMismatch
+            ? "Peyi kont Stripe ou a pa koresponn ak peyi kont vandè ou a. Kontakte sipò pou verifye kont lan; bous FM ou rete disponib."
+            : "Vandè USA, Kanada ak Meksik dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Brouyon ou ka rete sovgade; bous FM ou rete disponib.",
       });
       return;
     }

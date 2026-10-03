@@ -2039,6 +2039,18 @@ export default {
     chatbot: "Asistan AI",
   },
   subscription: {
+    android: {
+      retry: "Eseye ankò",
+      buy: "Peye avèk Google Play",
+      manage: "Jere nan Google Play",
+      restore: "Retabli acha Google Play",
+      update: "Pou peye, mete app la ajou nan Google Play epi tann pri plan yo chaje.",
+      unavailable: "Plan sa a poko disponib nan Google Play",
+      verifying: "Peman an reyisi. N ap tann verifikasyon pou aktive plan ou.",
+      confirmed: "Google Play konfime acha a. Plan ou aktive.",
+      pending: "Nou poko resevwa konfimasyon peman an. Pa peye ankò; itilize Retabli acha pou verifye l.",
+      failed: "Google Play pa fini acha a. Eseye ankò.",
+    },
     badge: "Plan Abònman",
     title: "Jere Abònman Ou",
     subtitle: "Amelyore vizibilite lis ou yo epi deblouke fonksyon pou vann plis",

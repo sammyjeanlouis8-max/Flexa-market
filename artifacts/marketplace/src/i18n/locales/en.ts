@@ -2031,6 +2031,18 @@ export default {
     chatbot: "AI Assistant",
   },
   subscription: {
+    android: {
+      retry: "Try again",
+      buy: "Pay with Google Play",
+      manage: "Manage in Google Play",
+      restore: "Restore Google Play purchases",
+      update: "To pay, update the app in Google Play and wait for plan prices to load.",
+      unavailable: "This plan is not available in Google Play yet",
+      verifying: "Purchase completed. Waiting for verification to activate your plan.",
+      confirmed: "Google Play purchase verified. Your plan is active.",
+      pending: "Payment confirmation is pending. Do not pay again; use Restore purchases to check.",
+      failed: "Google Play did not complete the purchase. Please try again.",
+    },
     badge: "Subscription Plan",
     title: "Manage Your Subscription",
     subtitle: "Boost your listing visibility and unlock features to sell more",

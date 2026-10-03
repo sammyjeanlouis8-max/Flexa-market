@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { useAndroidSubscription } from "@/hooks/useAndroidSubscription";
 
 type Plan = {
   id: string;
@@ -103,7 +104,7 @@ function daysUntil(iso: string | null): number | null {
 
 export default function Subscription() {
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
@@ -273,6 +274,7 @@ export default function Subscription() {
   }, []);
 
   useEffect(() => { load(); }, [user]);
+  const androidBilling = useAndroidSubscription(user?.id == null ? null : Number(user.id), token ?? null, load);
 
   // Start a 6-second countdown when a checkout is in progress.
   // If Stripe hasn't redirected by then, show the escape options.
@@ -528,11 +530,13 @@ export default function Subscription() {
 
       {/* ── Page content ────────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
-      {(isAndroidApp() || (isIosApp && !legacyAppleProductsReady)) && (
+      {((isAndroidApp() && (!androidBilling.enabled || androidBilling.state.status !== "ready")) || (isIosApp && !legacyAppleProductsReady)) && (
         <div className="mb-6 rounded-xl border border-border bg-muted/40 px-4 py-4 text-center text-sm font-medium">
-          {t("androidPurchasePolicy.unavailable")}
+          {isAndroidApp() ? t("subscription.android.update") : t("androidPurchasePolicy.unavailable")}
+          {isAndroidApp() && <Button variant="ghost" size="sm" onClick={androidBilling.retry}>{t("subscription.android.retry")}</Button>}
         </div>
       )}
+      {isAndroidApp() && androidBilling.message && <div className="mb-4 rounded-xl border p-4 text-sm" role="status">{t(androidBilling.message)}</div>}
 
       {/* ── Return-to-app banner (shown after mobile payment) ─────────────── */}
       {showReturnApp && (
@@ -801,7 +805,7 @@ export default function Subscription() {
                     <span className="text-lg font-bold">{t("subscription.free")}</span>
                   ) : (
                     <div className="flex items-baseline gap-0.5">
-                      <span className="text-xl font-bold">{isIosApp && appleProducts[plan.id] ? appleProducts[plan.id].priceString : `$${plan.priceUsd}`}</span>
+                      <span className="text-xl font-bold">{isAndroidApp() ? androidBilling.products[plan.id as "standard" | "premium"]?.priceString ?? t("subscription.android.unavailable") : isIosApp && appleProducts[plan.id] ? appleProducts[plan.id].priceString : `$${plan.priceUsd}`}</span>
                       <span className="text-xs text-muted-foreground">{t("subscription.monthly")}</span>
                     </div>
                   )}
@@ -858,7 +862,7 @@ export default function Subscription() {
                     )
                   ) : isCurrentPaid ? (
                     <div>
-                      {isIosApp ? <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={() => postIap({ type: "IAP_MANAGE" })}>
+                      {isAndroidApp() ? <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={androidBilling.manage}>{t("subscription.android.manage")}</Button> : isIosApp ? <Button size="sm" variant="outline" className="w-full h-8 text-xs" onClick={() => postIap({ type: "IAP_MANAGE" })}>
                         {t("subscription.manageMyPlan")}
                       </Button> : !purchasesDisabled && <Button
                         size="sm"
@@ -879,6 +883,13 @@ export default function Subscription() {
                           {t("subscription.accessUntilExpiry", { date: fmtDate(mySub.expiresAt, lang) })}
                         </p>
                       )}
+                    </div>
+                  ) : isAndroidApp() ? (
+                    <div className="space-y-1.5">
+                      <Button size="sm" className={`w-full h-8 text-xs font-semibold ${c.btnBg}`} disabled={!androidBilling.canBuy(plan.id)} onClick={() => androidBilling.buy(plan.id)}>
+                        {androidBilling.busy ? <Loader2 className="h-3 w-3 animate-spin" /> : t("subscription.android.buy")}
+                      </Button>
+                      {!androidBilling.products[plan.id as "standard" | "premium"] && <p className="text-[10px] text-center text-muted-foreground">{t("subscription.android.unavailable")}</p>}
                     </div>
                   ) : isIosApp ? (
                     <div>
@@ -913,6 +924,11 @@ export default function Subscription() {
           );
         })}
       </div>
+      {isAndroidApp() && <div className="mt-6 flex justify-center">
+        <Button variant="ghost" size="sm" disabled={androidBilling.busy || !androidBilling.enabled || !androidBilling.state.identified} onClick={androidBilling.restore}>
+          <RotateCcw className="h-3.5 w-3.5 mr-1.5" />{t("subscription.android.restore")}
+        </Button>
+      </div>}
       {isIosApp && (
         <div className="flex justify-center mt-5">
             <Button variant="ghost" size="sm" disabled={!iapIdentified} onClick={() => postIap({ type: "IAP_RESTORE", userId: user?.id })}>
@@ -922,7 +938,7 @@ export default function Subscription() {
       )}
 
       {/* ── Visibility chart ──────────────────────────────────────────────── */}
-      {!isIosApp && <div className="mt-8 bg-card border border-border rounded-xl p-4">
+      {!isIosApp && !isAndroidApp() && <div className="mt-8 bg-card border border-border rounded-xl p-4">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4 flex items-center gap-1.5">
           <Eye className="h-3.5 w-3.5" />
           {t("subscription.visTitle")}

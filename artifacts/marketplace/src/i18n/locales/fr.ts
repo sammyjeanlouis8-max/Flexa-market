@@ -2038,6 +2038,18 @@ export default {
     chatbot: "Assistant IA",
   },
   subscription: {
+    android: {
+      retry: "Réessayer",
+      buy: "Payer avec Google Play",
+      manage: "Gérer dans Google Play",
+      restore: "Restaurer les achats Google Play",
+      update: "Pour payer, mettez l’app à jour dans Google Play et attendez le chargement des prix.",
+      unavailable: "Ce forfait n’est pas encore disponible sur Google Play",
+      verifying: "Achat terminé. Vérification en cours pour activer votre forfait.",
+      confirmed: "Achat Google Play vérifié. Votre forfait est actif.",
+      pending: "Confirmation en attente. Ne payez pas à nouveau ; restaurez les achats pour vérifier.",
+      failed: "Google Play n’a pas terminé l’achat. Réessayez.",
+    },
     badge: "Plan d'abonnement",
     title: "Gérer votre abonnement",
     subtitle: "Améliorez la visibilité de vos annonces et débloquez des fonctionnalités pour vendre plus",

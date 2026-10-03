@@ -9,6 +9,7 @@ import type { Request } from "express";
 import Stripe from "stripe";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
+import { getAndroidRevenueCatPlan } from "./androidSubscriptionMapping";
 
 const GRACE_PERIOD_DAYS = 5;
 
@@ -120,8 +121,28 @@ router.get("/subscription/plans", (_req, res) => {
 // RevenueCat is the source of truth for Apple billing. This endpoint intentionally
 // does not use requireAuth: RevenueCat calls it server-to-server with the exact
 // secret configured in REVENUECAT_WEBHOOK_AUTH.
-router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Promise<void> => {
-  const configuredSecret = process.env.REVENUECAT_WEBHOOK_AUTH;
+router.get("/subscription/android/status", (_req, res) => {
+  res.json({ enabled: !!process.env.REVENUECAT_ANDROID_WEBHOOK_AUTH });
+});
+
+router.get("/subscription/android/purchase-status", requireAuth, async (req: any, res: any) => {
+  try {
+    const rows = await db.select().from(vendorSubscriptionsTable).where(and(
+      eq(vendorSubscriptionsTable.userId, req.userId),
+      eq(vendorSubscriptionsTable.source, "revenuecat_android"),
+      eq(vendorSubscriptionsTable.status, "active"),
+      gte(vendorSubscriptionsTable.expiresAt, new Date()),
+    ));
+    const latest = rows.sort((a, b) => (PLAN_CONFIG[b.plan as SubscriptionPlan]?.tier ?? 0) - (PLAN_CONFIG[a.plan as SubscriptionPlan]?.tier ?? 0))[0];
+    res.json({ active: !!latest, plan: latest?.plan ?? null });
+  } catch {
+    res.status(503).json({ error: "Could not verify the Google Play subscription" });
+  }
+});
+
+router.post(["/subscription/revenuecat/webhook", "/subscription/revenuecat/android/webhook"], async (req: any, res: any): Promise<void> => {
+  const androidEvent = req.path.endsWith("/android/webhook");
+  const configuredSecret = androidEvent ? process.env.REVENUECAT_ANDROID_WEBHOOK_AUTH : process.env.REVENUECAT_WEBHOOK_AUTH;
   if (!configuredSecret || req.get("authorization") !== configuredSecret) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -136,7 +157,7 @@ router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Prom
     : (typeof event?.transaction_id === "string" ? event.transaction_id : "");
   const rawUserId = event?.app_user_id;
   const userId = typeof rawUserId === "string" && /^\d+$/.test(rawUserId) ? Number(rawUserId) : NaN;
-  const plan = REVENUECAT_PRODUCTS[productId];
+  const plan = androidEvent ? getAndroidRevenueCatPlan(event ?? {}) : REVENUECAT_PRODUCTS[productId];
 
   if (!eventId || !originalTransactionId || !Number.isSafeInteger(userId) || userId <= 0 || !plan || (!REVENUECAT_ACTIVE_EVENTS.has(type) && !REVENUECAT_END_EVENTS.has(type))) {
     res.status(400).json({ error: "Unsupported or invalid RevenueCat event" });
@@ -151,7 +172,9 @@ router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Prom
 
   try {
     const result = await db.transaction(async (tx) => {
-    const [user] = await tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (androidEvent) await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${originalTransactionId}, 0))`);
+    const userQuery = tx.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    const [user] = await (androidEvent ? userQuery.for("update") : userQuery);
     if (!user) {
       // Do not retry a valid provider event forever for a deleted/nonexistent user.
       return { ignored: "user_not_found" };
@@ -182,6 +205,7 @@ router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Prom
       .limit(1);
 
     if (existing) {
+      if (androidEvent && existing.source !== "revenuecat_android") throw new Error("Android transaction collides with a different billing source");
       if (existing.userId !== userId) {
         throw new Error("RevenueCat original transaction belongs to a different user");
       }
@@ -232,7 +256,7 @@ router.post("/subscription/revenuecat/webhook", async (req: any, res: any): Prom
         amountUsd: PLAN_CONFIG[plan].priceUsd,
         interval: "month",
           billingProvider: "revenuecat",
-          source: "revenuecat",
+          source: androidEvent ? "revenuecat_android" : "revenuecat",
           providerSubscriptionId,
           originalTransactionId,
           lastProviderEventAt: providerEventAt,

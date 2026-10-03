@@ -20,6 +20,7 @@ import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
 import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -1348,6 +1349,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     onFocusHandled?: () => void;
     searchLoading?: boolean; }) {
   const { t } = useTranslation();
+  const artistToolsAvailable = !isNativeMobileApp();
   const [search, setSearch] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
@@ -1420,10 +1422,12 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         </div>
         <div className="music-topbar-title text-base font-black">Accueil</div>
         <div className="flex items-center gap-1.5">
-          <button onClick={onUpload} aria-label={t("music.uploadFirstSong")}
-            className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center">
-            <UploadCloud size={17} />
-          </button>
+          {artistToolsAvailable && (
+            <button onClick={onUpload} aria-label={t("music.uploadFirstSong")}
+              className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center">
+              <UploadCloud size={17} />
+            </button>
+          )}
           <button onClick={() => setShowNotifications(true)} aria-label={t("notifications.notifications", "Notifications")}
             className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center relative">
             <Bell size={17} />
@@ -1517,7 +1521,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <Music2 size={48} className="text-white/10" />
           <p className="text-white/40 text-sm">Pa gen chante disponib ankò</p>
-          {user && (
+          {user && artistToolsAvailable && (
             <button onClick={onUpload}
               className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-full"
               style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
@@ -1774,9 +1778,11 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           <Search size={19} />
           <span>Rechercher</span>
         </button>
-        <button className="music-upload-fab" onClick={onUpload} aria-label={t("music.uploadFirstSong")}>
-          <Plus size={25} />
-        </button>
+        {artistToolsAvailable && (
+          <button className="music-upload-fab" onClick={onUpload} aria-label={t("music.uploadFirstSong")}>
+            <Plus size={25} />
+          </button>
+        )}
         <button className="music-bottom-nav-item" onClick={() => setShowNotifications(true)}>
           <MessageCircle size={19} />
           <span>Messages</span>
@@ -2754,6 +2760,7 @@ function NowPlayingModal({
 // MAIN COMPONENT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function FlexaMusic() {
+  const artistToolsAvailable = !isNativeMobileApp();
   const { user } = useAuth();
   const { t } = useTranslation();
   const isAdmin = (user as any)?.isAdmin === true || (user as any)?.role === "admin";
@@ -2900,7 +2907,7 @@ export default function FlexaMusic() {
     const planSessionId = params.get("session_id");
     window.history.replaceState({}, "", window.location.pathname);
 
-    if (planResult === "activated") {
+    if (planResult === "activated" && artistToolsAvailable) {
       const showPlanToast = () => {
         setPlanToast(true);
         setTimeout(() => setPlanToast(false), 6000);
@@ -2932,7 +2939,7 @@ export default function FlexaMusic() {
         setPurchasedIds(prev => new Set([...prev, tid]));
       }
     }
-  }, [t]);
+  }, [t, artistToolsAvailable]);
 
   // ── Fetch purchased track IDs once on mount (sync localStorage) ──────────
   useEffect(() => {
@@ -2957,6 +2964,8 @@ export default function FlexaMusic() {
 
   // ── Upload gate: check song count before showing upload view ──────────────
   const handleUploadClick = async () => {
+    // The Artist Plan and its upload tools are web-only, including for staff.
+    if (!artistToolsAvailable) return;
     if (isAdmin) { setView("upload"); return; }
     try {
       const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
@@ -3374,7 +3383,7 @@ export default function FlexaMusic() {
       {/* audio lives in the global musicStore singleton — no <audio> element here */}
 
       {/* ── Plan-activated toast ── */}
-      {planToast && (
+      {planToast && artistToolsAvailable && (
         <div style={{
           position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
           background: "linear-gradient(135deg,#7c3aed,#c026d3)",
@@ -3417,19 +3426,19 @@ export default function FlexaMusic() {
           }}
           onBack={() => setView("home")}
         />
-      ) : view === "artist-plan" ? (
+      ) : view === "artist-plan" && artistToolsAvailable ? (
         <ArtistPlanView
           songCount={artistPlanSongCount}
           onBack={() => setView("home")}
         />
-      ) : view === "upload" ? (
+      ) : view === "upload" && artistToolsAvailable ? (
         <UploadView
           onBack={() => setView("home")}
           onSuccess={handleUploadSuccess}
           onPlanRequired={(cnt) => { setArtistPlanSongCount(cnt); setView("artist-plan"); }}
           songCount={artistPlanSongCount}
         />
-      ) : view === "home" ? (
+      ) : view === "home" || (!artistToolsAvailable && (view === "upload" || view === "artist-plan")) ? (
         <HomeView
           tracks={tracks}
           liked={liked}

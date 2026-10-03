@@ -10,9 +10,10 @@ import {
   ArrowLeft, Music2, Upload, Image as ImageIcon, CheckCircle2,
   Loader2, X, AlertCircle, FileMusic, Camera,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
+import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 const GENRES = [
   "Kompa","Rap","Zouk","R&B","Gospel","Reggaeton","Pop",
@@ -39,6 +40,12 @@ function fmtDuration(seconds: number): string {
 }
 
 export default function FlexaMusicUpload() {
+  // Protect direct links too; do not mount the plan check or upload form in apps.
+  if (isNativeMobileApp()) return <Redirect to="/music" replace />;
+  return <BrowserMusicUpload />;
+}
+
+function BrowserMusicUpload() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [, setLocation] = useLocation();

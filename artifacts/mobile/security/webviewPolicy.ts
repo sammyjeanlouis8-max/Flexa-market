@@ -60,10 +60,13 @@ export function classifyWebUrl(url: string): WebRoute {
   return "blocked";
 }
 
-export function platformBridgeScript(platform: string, backgroundUploadsSupported = false): string {
+export function platformBridgeScript(platform: string, backgroundUploadsSupported = false, subscriptionsSupported = false): string {
   const value = platform === "android" ? "android" : "ios";
   const uploadCapability = backgroundUploadsSupported
     ? "window.__flexaBackgroundUploadsV1=true;"
     : "";
-  return `(function(){try{if(location.protocol==="https:"&&(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com"))){window.__flexaPlatform=${JSON.stringify(value)};${uploadCapability}}}catch(e){}})();true;`;
+  const billingCapability = value === "android" && subscriptionsSupported
+    ? "window.__flexaAndroidIapV1=true;window.dispatchEvent(new CustomEvent('IAP_BRIDGE_READY',{detail:{platform:'android'}}));"
+    : "";
+  return `(function(){try{if(location.protocol==="https:"&&(location.hostname==="flexamarket.com"||location.hostname.endsWith(".flexamarket.com"))){window.__flexaPlatform=${JSON.stringify(value)};${uploadCapability}${billingCapability}}}catch(e){}})();true;`;
 }

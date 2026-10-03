@@ -35,6 +35,9 @@ import {
   hasNativeBackgroundUploads,
   parseFlexaUploadMessage,
 } from "./native/backgroundUploads";
+import Purchases from "react-native-purchases";
+import { AndroidSubscriptions } from "./native/androidSubscriptions";
+import { ANDROID_REVENUECAT_API_KEY } from "./constants/androidRevenueCatConfig";
 
 const WEBSITE = "https://flexamarket.com";
 const INITIAL_LOAD_TIMEOUT_MS = 20_000;
@@ -126,6 +129,17 @@ export default function App() {
     },
   );
 
+  const androidSubscriptionsRef = useRef<AndroidSubscriptions | null>(null);
+  if (Platform.OS === "android" && !androidSubscriptionsRef.current) {
+    androidSubscriptionsRef.current = new AndroidSubscriptions({
+      sdk: Purchases,
+      apiKey: ANDROID_REVENUECAT_API_KEY,
+      apiBaseUrl: WEBSITE,
+      emit: (name, detail) => injectJs(`window.dispatchEvent(new CustomEvent(${JSON.stringify(name)},{detail:${JSON.stringify(detail)}}));true;`),
+      openUrl: url => Linking.openURL(url),
+    });
+  }
+
   const emitUploadResult = useCallback((
     requestId: string,
     ok: boolean,
@@ -146,10 +160,12 @@ export default function App() {
   // The marketplace sends { type: "AUTH_TOKEN", token: jwt } after the user
   // loads.  We store it and, if we already have an Expo push token, call the
   // registration API immediately — no WebView injection timing issues.
-  const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+  const onMessage = useCallback((event: { nativeEvent: { data: string; url?: string } }) => {
     if (!isTrustedFlexaUrl(currentUrlRef.current)) return;
+    if (event.nativeEvent.url && !isTrustedFlexaUrl(event.nativeEvent.url)) return;
     try {
       const msg = JSON.parse(event.nativeEvent.data);
+      const subscriptionMessage = androidSubscriptionsRef.current?.handle(msg);
 
       if (msg?.type === "AUTH_TOKEN" && typeof msg.token === "string") {
         jwtRef.current = msg.token;
@@ -161,6 +177,7 @@ export default function App() {
         return;
       }
 
+      if (subscriptionMessage) return;
       const uploadMessage = parseFlexaUploadMessage(event.nativeEvent.data);
       if (!uploadMessage) return;
       void dispatchFlexaUpload(uploadMessage)
@@ -189,6 +206,9 @@ export default function App() {
 
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
+    if (Platform.OS === "android" && isTrustedFlexaUrl(currentUrlRef.current)) {
+      webRef.current?.injectJavaScript(platformBridgeScript("android", hasNativeBackgroundUploads, true));
+    }
     if (!currentLoadFailedRef.current) {
       clearErrorTimer();
       clearStartupTimer();
@@ -338,6 +358,7 @@ export default function App() {
           injectedJavaScriptBeforeContentLoaded={platformBridgeScript(
             Platform.OS,
             hasNativeBackgroundUploads,
+            Platform.OS === "android",
           )}
           originWhitelist={["https://*"]}
           mixedContentMode="never"

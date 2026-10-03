@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getStripeOnlySellerCountryCode, isStripeOnlySellerCountry, requireActiveStripeDestination, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
-import { isStripeOnlySellerCountry as isStripeOnlyFrontendCountry, STRIPE_SUPPORTED_COUNTRIES } from "../../../marketplace/src/lib/paymentCountries";
+import { getStripeOnlySellerCountryCode, isStripeOnlySellerCountry, isStripeOnlySale, getNewSaleStripeCountry, requireActiveStripeDestination, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
+import { isStripeOnlySellerCountry as isStripeOnlyFrontendCountry, isStripeOnlySale as isStripeOnlyFrontendSale, STRIPE_SUPPORTED_COUNTRIES } from "../../../marketplace/src/lib/paymentCountries";
 import { resolveSettlementRoute } from "../lib/escrowSettlement";
 
 const { retrieveAccount, getClient } = vi.hoisted(() => ({
@@ -15,6 +15,26 @@ beforeEach(() => {
 });
 
 describe("Haiti-only FM seller payout policy", () => {
+  it.each([
+    ["Haiti", "Haiti", false],
+    ["Haïti", "Ayiti", false],
+    ["Haiti", "USA", true],
+    ["Haiti", "Canada", true],
+    ["Haiti", "Mexico", true],
+    ["Haiti", "Dominican Republic", true],
+    ["USA", "Haiti", true],
+    ["France", "USA", true],
+    ["Haiti", "", true],
+  ] as const)("requires Stripe for profile %s / listing %s: %s", (profile, listing, required) => {
+    expect(isStripeOnlySale(profile, listing)).toBe(required);
+    expect(isStripeOnlyFrontendSale(profile, listing)).toBe(required);
+  });
+
+  it("uses the overseas listing country for a Haiti admin, without overwriting another seller's bank country", () => {
+    expect(getNewSaleStripeCountry("Haiti", "USA")).toBe("USA");
+    expect(getNewSaleStripeCountry("France", "USA")).toBe("France");
+  });
+
   it.each(["USA", "United States", "US", " USA ", "us", "Canada", "CA", " canada ", "Mexico", "México", "Mexique", "Meksik", "MX", " mx ", "Dominican Republic", "France", "United Kingdom", "Unknown", "", null, undefined])("blocks Kat FM for non-Haiti or missing profile country %s", country => {
     expect(isStripeOnlySellerCountry(country)).toBe(true);
     expect(isStripeOnlyFrontendCountry(country)).toBe(true);

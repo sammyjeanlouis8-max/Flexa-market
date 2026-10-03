@@ -7,6 +7,11 @@ export function isStripeOnlySellerCountry(country?: string | null): boolean {
   return !["haiti", "ayiti", "ht"].includes(normalized);
 }
 
+/** An admin's listing-country override must not expose FM outside Haiti. */
+export function isStripeOnlySale(sellerCountry?: string | null, listingCountry?: string | null): boolean {
+  return isStripeOnlySellerCountry(sellerCountry) || isStripeOnlySellerCountry(listingCountry);
+}
+
 export const STRIPE_SUPPORTED_COUNTRIES = new Set([
   "United States", "Canada", "United Kingdom", "Australia", "France", "Germany",
   "Spain", "Italy", "Japan", "Singapore", "Netherlands", "Belgium", "Austria",

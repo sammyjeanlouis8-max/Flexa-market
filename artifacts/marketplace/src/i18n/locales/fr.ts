@@ -697,7 +697,7 @@ export default {
     loadingEdit: "Chargement des données de l'annonce…",
     publishListing: "Publier l'annonce",
     payoutSectionTitle: "Méthode de versement",
-    usStripeOnly: "Seuls les vendeurs en Haïti peuvent recevoir le produit des nouvelles ventes sur Kat FM. Hors d’Haïti, Stripe est obligatoire après livraison admissible. Votre portefeuille FM reste disponible ; vos anciens soldes et commandes déjà passées restent inchangés.",
+    usStripeOnly: "Kat FM est disponible pour les nouvelles ventes uniquement si le pays du profil et celui de l’annonce sont Haïti. Sinon, Stripe est obligatoire après livraison admissible. Votre portefeuille FM reste disponible ; vos anciens soldes et commandes déjà passées restent inchangés.",
     usStripeRequired: "Finalisez Stripe pour recevoir les transferts et versements bancaires avant de publier. Vous pouvez conserver votre annonce comme brouillon.",
     usStripeComplete: "Finaliser Stripe",
     payoutActive: "Actif",

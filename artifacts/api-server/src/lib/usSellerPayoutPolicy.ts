@@ -30,6 +30,15 @@ export function isStripeOnlySellerCountry(country?: string | null): boolean {
   return !["haiti", "ayiti", "ht"].includes(normalizeCountry(country));
 }
 
+export function isStripeOnlySale(sellerCountry?: string | null, listingCountry?: string | null): boolean {
+  return isStripeOnlySellerCountry(sellerCountry) || isStripeOnlySellerCountry(listingCountry);
+}
+
+/** Keep the seller's bank geography; for a Haiti admin's overseas listing use the listing destination. */
+export function getNewSaleStripeCountry(sellerCountry?: string | null, listingCountry?: string | null): string | null | undefined {
+  return isStripeOnlySellerCountry(sellerCountry) ? sellerCountry : listingCountry;
+}
+
 /** Mexico is outside Stripe's self-serve cross-border payout regions.
  * Do not assume an approved custom arrangement or reroute via an FM wallet.
  */

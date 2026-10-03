@@ -8,7 +8,7 @@ import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccess
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
-import { isStripeOnlySellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
+import { isStripeOnlySale, getNewSaleStripeCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
@@ -1026,25 +1026,6 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
 
-  const requiresStripePayout = isStripeOnlySellerCountry(seller?.country);
-  if (requiresStripePayout) {
-    try {
-      await requireActiveStripeDestination(seller?.stripeAccountId, seller?.country);
-    } catch (error) {
-      const unsupportedCountry = error instanceof Error && error.message === "STRIPE_COUNTRY_UNSUPPORTED";
-      const countryMismatch = error instanceof Error && error.message === "STRIPE_ACCOUNT_COUNTRY_MISMATCH";
-      res.status(409).json({
-        code: unsupportedCountry ? "STRIPE_COUNTRY_UNSUPPORTED" : countryMismatch ? "STRIPE_ACCOUNT_COUNTRY_MISMATCH" : "STRIPE_SETUP_REQUIRED",
-        error: unsupportedCountry
-          ? "Vèsman Stripe pou peyi pwofil ou a poko sipòte nan konfigirasyon platfòm sa a. Kenbe anons la kòm brouyon. Bous FM ou rete disponib."
-          : countryMismatch
-            ? "Peyi kont Stripe ou a pa koresponn ak peyi kont vandè ou a. Kontakte sipò pou verifye kont lan; bous FM ou rete disponib."
-            : "Deyò Ayiti, vandè yo dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Kat FM pou lajan lavant se pou Ayiti sèlman. Brouyon ou ka rete sovgade; bous FM ou rete disponib.",
-      });
-      return;
-    }
-  }
-
   const canChangeListingCountry =
     hasRole(seller, "admin") &&
     !isAdminAccessSuspended(seller);
@@ -1053,11 +1034,29 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     res.status(400).json({ error: "Add a country to your profile before posting a product." });
     return;
   }
-  // Regular sellers are bound to their registered profile country. Only active
-  // admins and super admins may choose another listing country.
+  // Regular sellers stay bound to their profile; admins may choose another country.
   const listingCountry = canChangeListingCountry
     ? ((parsed.data.country ?? "").trim() || sellerCountry || null)
     : sellerCountry;
+  const requiresStripePayout = isStripeOnlySale(seller?.country, listingCountry);
+  if (requiresStripePayout) {
+    try {
+      await requireActiveStripeDestination(seller?.stripeAccountId, getNewSaleStripeCountry(seller?.country, listingCountry));
+    } catch (error) {
+      const unsupportedCountry = error instanceof Error && error.message === "STRIPE_COUNTRY_UNSUPPORTED";
+      const countryMismatch = error instanceof Error && error.message === "STRIPE_ACCOUNT_COUNTRY_MISMATCH";
+      res.status(409).json({
+        code: unsupportedCountry ? "STRIPE_COUNTRY_UNSUPPORTED" : countryMismatch ? "STRIPE_ACCOUNT_COUNTRY_MISMATCH" : "STRIPE_SETUP_REQUIRED",
+        error: unsupportedCountry
+          ? "Vèsman Stripe pou peyi ki konsène lavant sa a poko sipòte nan konfigirasyon platfòm sa a. Kenbe anons la kòm brouyon. Bous FM ou rete disponib."
+          : countryMismatch
+            ? "Peyi kont Stripe ou a pa koresponn ak peyi vèsman lavant sa a. Kontakte sipò pou verifye kont lan; bous FM ou rete disponib."
+            : "Deyò Ayiti, vandè yo dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Kat FM pou lajan lavant se pou Ayiti sèlman. Brouyon ou ka rete sovgade; bous FM ou rete disponib.",
+      });
+      return;
+    }
+  }
+
   const isLocalDeliveryCountry = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
   const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
     ? req.body.deliveryMethod

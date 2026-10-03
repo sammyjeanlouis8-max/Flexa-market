@@ -30,14 +30,21 @@ describe("new sales, including previously posted listings", () => {
   );
   it("keeps Haiti FM sales available without requiring Stripe", async () => {
     rows.mockResolvedValue([{ country: "Haiti", stripeAccountId: null }]);
-    expect(await requireNewSalePayout({ sellerId: 1 })).toBe(false);
+    expect(await requireNewSalePayout({ sellerId: 1, country: "Haiti" })).toBe(false);
     expect(activeDestination).not.toHaveBeenCalled();
   });
   it("never downgrades a previously mandatory Stripe listing after a country change to Haiti", async () => {
     rows.mockResolvedValue([{ country: "Haiti", stripeAccountId: "acct_seller" }]);
-    expect(await requireNewSalePayout({ sellerId: 1, requiresStripePayout: true })).toBe(true);
+    expect(await requireNewSalePayout({ sellerId: 1, country: "Haiti", requiresStripePayout: true })).toBe(true);
     expect(activeDestination).toHaveBeenCalled();
   });
+  it.each(["USA", "Canada", "Mexico", "Dominican Republic", "France"])(
+    "prevents a Haiti admin's legacy %s listing from creating a new FM-settled order", async country => {
+      rows.mockResolvedValue([{ country: "Haiti", stripeAccountId: "acct_seller" }]);
+      expect(await requireNewSalePayout({ sellerId: 1, country, requiresStripePayout: false })).toBe(true);
+      expect(activeDestination).toHaveBeenCalledWith("acct_seller", country);
+    },
+  );
   it("rejects missing sellers", async () => {
     rows.mockResolvedValue([]);
     await expect(requireNewSalePayout({ sellerId: 1 })).rejects.toThrow("SELLER_NOT_FOUND");

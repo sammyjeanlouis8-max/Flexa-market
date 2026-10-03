@@ -19,7 +19,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
 import { MULTI_CURRENCY_COUNTRIES, getCurrencySymbolByCode } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySellerCountry } from "@/lib/paymentCountries";
+import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySale } from "@/lib/paymentCountries";
 import ListingCard from "@/components/ListingCard";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
@@ -91,7 +91,6 @@ function getStorageUrl(objectPath: string): string {
 export default function Sell() {
   const purchasesDisabled = isAndroidApp();
   const { user, token, isLoading: authLoading } = useAuth();
-  const isStripeOnlySeller = isStripeOnlySellerCountry(user?.country);
   const { isRestricted, showRestrictionToast } = useRestriction();
   const userRole = (user as any)?.role;
   const isAdmin =
@@ -177,6 +176,9 @@ export default function Sell() {
     },
   });
 
+  const selectedCountry = form.watch("country") ?? "";
+  const isStripeOnlySeller = isStripeOnlySale(user?.country, selectedCountry);
+
   useEffect(() => {
     if (!authLoading && !user) setLocation("/auth/login");
   }, [user, authLoading]);
@@ -193,6 +195,8 @@ export default function Sell() {
   // Payment method validation
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
+    setPaymentReady(null);
     const tk = localStorage.getItem("flexamarket_token") ?? "";
     const stripeSupported = isStripeOnlySeller || STRIPE_SUPPORTED_COUNTRIES.has(user.country ?? "");
     const isMoncashCountry = MONCASH_COUNTRIES.has(user.country ?? "");
@@ -208,6 +212,7 @@ export default function Sell() {
     }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     Promise.all([stripeCheck, payoutCheck]).then(([stripeData, payoutData]) => {
+      if (cancelled) return;
       const stripeStatus = stripeData?.stripeAccountStatus;
       const stripeActive = stripeStatus === "active";
       const stripeConnected = stripeActive || stripeStatus === "connected";
@@ -232,7 +237,8 @@ export default function Sell() {
         setPaymentReady(stripeActive);
       }
     });
-  }, [user?.id, user?.country, isStripeOnlySeller]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; };
+  }, [user?.id, user?.country, selectedCountry, isStripeOnlySeller]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectPayoutMethod = useCallback(async (method: "fm_wallet" | "stripe") => {
     if (isStripeOnlySeller) return;
@@ -306,11 +312,13 @@ export default function Sell() {
 
   // ── Draft system — refs & callbacks (declared early so onSubmit can call clearDraft) ──
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRestoreAttemptedRef = useRef(false);
   const draftDataRef = useRef<{ currency: "USD" | "HTG" | "DOP"; uploadedImages: UploadedImage[]; listingVideoUrl: string | null }>({
     currency: "USD", uploadedImages: [], listingVideoUrl: null,
   });
 
   const saveDraft = useCallback(() => {
+    if (isEditMode || !draftRestoreAttemptedRef.current) return;
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = setTimeout(() => {
       try {
@@ -322,7 +330,7 @@ export default function Sell() {
         setDraftSavedAt(new Date());
       } catch { /* storage quota */ }
     }, 1200);
-  }, [form]);
+  }, [form, isEditMode]);
 
   const clearDraft = useCallback(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
@@ -518,7 +526,6 @@ export default function Sell() {
   };
 
   // Country is watched from the form so it reacts to user selection
-  const selectedCountry = form.watch("country") ?? "";
   const isLocalDeliveryCountry = LOCAL_DELIVERY_COUNTRIES.has(selectedCountry);
   const countryFlag = selectedCountry ? COUNTRY_FLAGS[selectedCountry] : null;
   const cityOptions = useMemo(() => citiesFor(selectedCountry), [selectedCountry]);
@@ -613,6 +620,8 @@ export default function Sell() {
   // ── Restore draft on first mount (skip in edit mode) ─────────────────────
   useEffect(() => {
     if (isEditMode) return; // don't restore draft when editing an existing listing
+    if (authLoading || !user || draftRestoreAttemptedRef.current) return;
+    draftRestoreAttemptedRef.current = true;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -623,22 +632,26 @@ export default function Sell() {
         localStorage.removeItem(DRAFT_KEY); return;
       }
       const f = draft.form ?? {};
+      // Only admins can override profile country. Wait for auth before making
+      // that decision, and do not autosave defaults over the pending draft.
+      if (f.country && isAdmin) form.setValue("country", f.country);
+      const canRestoreDraftLocation = !f.country || f.country === user.country || isAdmin;
       if (f.title)           form.setValue("title", f.title);
       if (f.description)     form.setValue("description", f.description);
       if (f.price)           form.setValue("price", f.price);
       if (f.categoryId)      { form.setValue("categoryId", f.categoryId); setSelectedCategoryId(f.categoryId); }
       if (f.subcategoryId != null) form.setValue("subcategoryId", f.subcategoryId);
       if (f.condition)       form.setValue("condition", f.condition);
-      if (f.city)            { form.setValue("city", f.city); setCityDisplayValue(f.city); }
-      if (f.state)           form.setValue("state", f.state);
-      if (f.location)        form.setValue("location", f.location);
+      if (canRestoreDraftLocation && f.city) { form.setValue("city", f.city); setCityDisplayValue(f.city); }
+      if (canRestoreDraftLocation && f.state) form.setValue("state", f.state);
+      if (canRestoreDraftLocation && f.location) form.setValue("location", f.location);
       if (f.stockQuantity != null) form.setValue("stockQuantity", f.stockQuantity);
       if (draft.currency)    setCurrency(draft.currency);
       if (Array.isArray(draft.images) && draft.images.length > 0) setUploadedImages(draft.images);
       if (draft.listingVideoUrl) setListingVideoUrl(draft.listingVideoUrl);
       setDraftRestored(true);
     } catch { /* corrupt data — ignore */ }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id, isAdmin, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-save on form field changes ──────────────────────────────────────
   useEffect(() => {

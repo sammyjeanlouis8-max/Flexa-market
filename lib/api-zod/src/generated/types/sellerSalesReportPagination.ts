@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface LoginPhoneBody {
-  phoneToken: string;
-  eulaAccepted?: boolean;
-}
+export type SellerSalesReportPagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};

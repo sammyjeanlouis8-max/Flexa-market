@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface LoginPhoneBody {
-  phoneToken: string;
-  eulaAccepted?: boolean;
+export interface SellerSalesRefund {
+  id: string;
+  source: string;
+  amountMinor: string;
+  /** @nullable */
+  date: Date | null;
 }

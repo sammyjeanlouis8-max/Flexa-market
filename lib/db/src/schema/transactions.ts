@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, real, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, real, integer, boolean, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -105,6 +105,10 @@ export const transactionsTable = pgTable("transactions", {
   uniqCompletedPaymentRef: uniqueIndex("transactions_payment_ref_unique_idx")
     .on(t.paymentRef)
     .where(sql`${t.paymentRef} is not null`),
+  sellerReportMonth: index("transactions_seller_report_month_idx")
+    .on(t.sellerUserId, t.createdAt, t.id).where(sql`${t.type} = 'purchase'`),
+  legacySellerReportMonth: index("transactions_listing_report_month_idx")
+    .on(t.listingId, t.createdAt, t.id).where(sql`${t.type} = 'purchase' AND ${t.sellerUserId} IS NULL`),
 }));
 
 export const insertTransactionSchema = createInsertSchema(transactionsTable).omit({ id: true, createdAt: true });

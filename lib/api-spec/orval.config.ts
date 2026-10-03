@@ -57,6 +57,9 @@ export default defineConfig({
       prettier: true,
       override: {
         zod: {
+          // This workspace consumes Zod 3. New Orval releases otherwise infer
+          // Zod 4 from the generator package rather than the target library.
+          version: 3,
           coerce: {
             query: ['boolean', 'number', 'string'],
             param: ['boolean', 'number', 'string'],

@@ -2795,6 +2795,16 @@ export async function runStartupMigrations(): Promise<void> {
       ON settlement_recovery_reservations(status, created_at);`,
   });
 
+  migrations.push({
+    name: "transactions.seller_reporting_indexes",
+    // Index-only migration: no financial data rewrites or new ledger.
+    sql: `CREATE INDEX IF NOT EXISTS transactions_seller_report_month_idx
+      ON transactions (seller_user_id, created_at, id) WHERE type = 'purchase';
+      CREATE INDEX IF NOT EXISTS transactions_listing_report_month_idx
+      ON transactions (listing_id, created_at, id) WHERE type = 'purchase' AND seller_user_id IS NULL;
+      CREATE INDEX IF NOT EXISTS listings_seller_report_idx ON listings (seller_id, id);`,
+  });
+
   let applied = 0;
   let failed = 0;
 

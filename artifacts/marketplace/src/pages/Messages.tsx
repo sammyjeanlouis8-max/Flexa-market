@@ -2581,16 +2581,20 @@ function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 }
 
 // ─── Messages Page ────────────────────────────────────────────────────────────
-export default function Messages({ embedded = false, onClose }: {
+export default function Messages({ embedded = false, onClose, initialConversationId = null }: {
   embedded?: boolean;
   onClose?: () => void;
+  initialConversationId?: number | null;
 } = {}) {
   const { user, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const [, params] = useRoute("/messages/:id");
   const routeConvId = params?.id ? parseInt(params.id, 10) : null;
-  const [embeddedConvId, setEmbeddedConvId] = useState<number | null>(null);
+  const [embeddedConvId, setEmbeddedConvId] = useState<number | null>(initialConversationId);
+  useEffect(() => {
+    if (embedded) setEmbeddedConvId(initialConversationId);
+  }, [embedded, initialConversationId]);
   const convId = embedded ? embeddedConvId : routeConvId;
   const queryClient = useQueryClient();
   const socket = useSocket();

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { useExpoPushToken } from "@/hooks/useExpoPushToken";
+import { usePushNavigation } from "@/hooks/usePushNavigation";
 import { initNotificationSound } from "@/lib/push";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -217,8 +218,8 @@ function LayoutRoutes() {
           <Route path="/listings/:id/video" component={VideoPost} />
           <Route path="/listings/:id" component={ListingDetail} />
           <Route path="/sell" component={Sell} />
-          <Route path="/messages" component={Messages} />
-          <Route path="/messages/:id" component={Messages} />
+          <Route path="/messages"><Messages /></Route>
+          <Route path="/messages/:id"><Messages /></Route>
           <Route path="/offers" component={Offers} />
           <Route path="/saved" component={Saved} />
           <Route path="/jobs" component={Jobs} />
@@ -338,6 +339,7 @@ function Router() {
   const { user, isLoading, token: authToken } = useAuth();
   const [location, setLocation] = useLocation();
   useExpoPushToken();
+  usePushNavigation(user, isLoading);
 
   // ── Send JWT to the native WebView shell ───────────────────────────────────
   // The native app (App.tsx) listens for AUTH_TOKEN messages so it can call
@@ -364,17 +366,6 @@ function Router() {
 
   // Register SW message listener so push notifications play a sound in-tab.
   useEffect(() => { initNotificationSound(); }, []);
-
-  // Handle push notification tap from the native iOS/Android WebView wrapper.
-  // The native layer calls window.__handlePushUrl(url) when the user taps a
-  // push notification that contains a "url" field in its data payload.
-  useEffect(() => {
-    const w = window as any;
-    w.__handlePushUrl = (url: string) => {
-      if (typeof url === "string" && url.startsWith("/")) setLocation(url);
-    };
-    return () => { w.__handlePushUrl = undefined; };
-  }, [setLocation]);
 
   // Scroll to top instantly on genuine navigation (not on initial mount)
   const isFirstRender = useRef(true);

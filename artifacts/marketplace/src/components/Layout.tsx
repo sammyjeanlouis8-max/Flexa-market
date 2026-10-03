@@ -25,6 +25,7 @@ import GuestMenu from "@/components/GuestMenu";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import AndroidInlineRoute from "@/components/AndroidInlineRoute";
+import { OPEN_PUSH_CONVERSATION } from "@/lib/pushNavigation";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
@@ -703,14 +704,32 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const [moreOpen, setMoreOpen] = useState(false);
   const [showInlineSell, setShowInlineSell] = useState(false);
   const [showInlineMessages, setShowInlineMessages] = useState(false);
+  const [inlineMessageConversationId, setInlineMessageConversationId] = useState<number | null>(null);
   const [inlineRoute, setInlineRoute] = useState<string | null>(null);
   const inlineSellOriginRef = useRef(location);
   const inlineMessagesOriginRef = useRef(location);
   const inlineRouteOriginRef = useRef(location);
 
+  useEffect(() => {
+    const openConversation = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!user || !isAndroidApp() || !Number.isSafeInteger(detail?.conversationId) || detail.conversationId <= 0) return;
+      detail.handled = true;
+      inlineMessagesOriginRef.current = location;
+      setInlineMessageConversationId(detail.conversationId);
+      setShowInlineSell(false);
+      setInlineRoute(null);
+      setMoreOpen(false);
+      setShowInlineMessages(true);
+    };
+    window.addEventListener(OPEN_PUSH_CONVERSATION, openConversation);
+    return () => window.removeEventListener(OPEN_PUSH_CONVERSATION, openConversation);
+  }, [user, location]);
+
   const handleMobileTab = useCallback((href: string) => {
     if (href === "/messages" && user && isAndroidApp()) {
       inlineMessagesOriginRef.current = location;
+      setInlineMessageConversationId(null);
       setShowInlineMessages(true);
       return;
     }
@@ -1119,7 +1138,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {showInlineMessages && (
         <div className="fixed inset-0 z-[70] overflow-hidden bg-background md:hidden">
           <Suspense fallback={<div className="p-6 text-center text-muted-foreground">{t("common.loading")}</div>}>
-            <InlineMessages embedded onClose={() => setShowInlineMessages(false)} />
+            <InlineMessages embedded initialConversationId={inlineMessageConversationId} onClose={() => setShowInlineMessages(false)} />
           </Suspense>
         </div>
       )}

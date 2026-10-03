@@ -184,6 +184,7 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
     await db.insert(transactionsTable).values({
       userId: req.userId,
       listingId: listing.id,
+      requiresStripePayout: listing.requiresStripePayout,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: listing.price,

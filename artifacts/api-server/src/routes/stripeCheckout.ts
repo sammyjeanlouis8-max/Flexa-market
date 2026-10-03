@@ -208,6 +208,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     await db.insert(transactionsTable).values({
       userId: req.userId,
       listingId: listing.id,
+      requiresStripePayout: listing.requiresStripePayout,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: listingPriceUsd,

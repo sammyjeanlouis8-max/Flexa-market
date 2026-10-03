@@ -354,6 +354,8 @@ function TrustFooter() {
 
 // ─── Card payout method selector (Kat FM vs Stripe) ──────────────────────────
 function CardPayoutMethodPanel() {
+  const { user } = useAuth();
+  const isUsSeller = ["USA", "United States", "US"].includes(user?.country?.trim() ?? "");
   const [method, setMethod] = useState<"fm_wallet" | "stripe">("fm_wallet");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -383,6 +385,17 @@ function CardPayoutMethodPanel() {
   };
 
   if (!loaded) return null;
+
+  if (isUsSeller) {
+    return (
+      <Card className="overflow-hidden mt-3">
+        <div className="p-4">
+          <p className="font-semibold text-sm">Stripe</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("sell.usStripeOnly")}</p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden mt-3">

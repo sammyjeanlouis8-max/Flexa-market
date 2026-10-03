@@ -55,6 +55,8 @@ export const transactionsTable = pgTable("transactions", {
 
   // Country of listing at purchase time — drives Haiti vs. non-Haiti flow.
   listingCountry: text("listing_country"),
+  // Snapshot survives listing deletion and seller country/preference changes.
+  requiresStripePayout: boolean("requires_stripe_payout").notNull().default(false),
 
   // Commission split (purchase orders only)
   commissionRate: real("commission_rate"),

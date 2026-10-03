@@ -9,6 +9,7 @@ import {
   walletTransactionsTable,
 } from "@workspace/db";
 import { getStripeClient } from "./stripeClient";
+import { requireActiveStripeDestination } from "./usSellerPayoutPolicy";
 import { escrowTransferGroup, escrowTransferIdempotencyKey } from "./escrowSettlement";
 import { isPayoutBlocked } from "./settlementEligibility";
 import { logger } from "./logger";
@@ -191,6 +192,11 @@ async function reconcileOne(transactionId: number, staleBefore: Date): Promise<v
   if (!candidate) return;
 
   let existingTransferId = candidate.stripeTransferId;
+  // A mandatory Stripe order must never be recovered as a wallet credit.
+  if (candidate.requiresStripePayout && candidate.settlementMethod !== "stripe_connect") {
+    logger.error({ transactionId }, "Required Stripe settlement has inconsistent recovery method; held for review");
+    return;
+  }
   if (candidate.settlementMethod === "stripe_connect" && !existingTransferId) {
     const [seller] = candidate.sellerUserId
       ? await db.select({ stripeAccountId: usersTable.stripeAccountId })
@@ -254,6 +260,9 @@ async function reconcileOne(transactionId: number, staleBefore: Date): Promise<v
       return;
     }
     try {
+      if (candidate.requiresStripePayout) {
+        await requireActiveStripeDestination(seller.stripeAccountId);
+      }
       const stripe = await getStripeClient();
       const resolution = await resolveRecoveryProviderTransfer({
         providerTransferId: existingTransferId,

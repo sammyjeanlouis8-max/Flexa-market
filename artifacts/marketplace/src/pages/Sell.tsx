@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -32,6 +32,15 @@ const MIN_IMAGES = 2;
 const OTHER_CITY = "__other__";
 const DRAFT_KEY = "flexa_sell_draft_v2";
 const LOCAL_DELIVERY_COUNTRIES = new Set(["Haiti", "Dominican Republic"]);
+
+function PayoutMethodCards({ stripeFirst, children }: { stripeFirst: boolean; children: ReactNode }) {
+  const cards = Children.toArray(children);
+  return (
+    <div className={`p-3 grid ${stripeFirst ? "grid-cols-1" : "grid-cols-2"} gap-2.5`}>
+      {stripeFirst ? cards.reverse() : cards}
+    </div>
+  );
+}
 
 // Small required-field status dot: red when empty, green once filled.
 function ReqDot({ filled }: { filled: boolean }) {
@@ -82,6 +91,7 @@ function getStorageUrl(objectPath: string): string {
 export default function Sell() {
   const purchasesDisabled = isAndroidApp();
   const { user, token, isLoading: authLoading } = useAuth();
+  const isUsSeller = ["USA", "United States", "US"].includes(user?.country?.trim() ?? "");
   const { isRestricted, showRestrictionToast } = useRestriction();
   const userRole = (user as any)?.role;
   const isAdmin =
@@ -184,7 +194,7 @@ export default function Sell() {
   useEffect(() => {
     if (!user) return;
     const tk = localStorage.getItem("flexamarket_token") ?? "";
-    const stripeSupported = STRIPE_SUPPORTED_COUNTRIES.has(user.country ?? "");
+    const stripeSupported = isUsSeller || STRIPE_SUPPORTED_COUNTRIES.has(user.country ?? "");
     const isMoncashCountry = MONCASH_COUNTRIES.has(user.country ?? "");
     setIsStripeCountry(stripeSupported);
 
@@ -204,10 +214,14 @@ export default function Sell() {
       const currentMethod = payoutData?.cardPayoutMethod ?? null;
       setStripeAccountActive(stripeActive);
       setStripeAccountConnected(stripeConnected);
-      setCardPayoutMethod(currentMethod);
+      // New US listings have their own mandatory payout policy. Do not mutate
+      // the saved legacy preference or redirect existing orders.
+      setCardPayoutMethod(isUsSeller ? "stripe" : currentMethod);
       // Kat FM: seller chose fm_wallet → always ready (earnings auto-credited to FM wallet)
       const hasKatFM = currentMethod === "fm_wallet";
-      if (hasKatFM) {
+      if (isUsSeller) {
+        setPaymentReady(stripeActive);
+      } else if (hasKatFM) {
         setPaymentReady(true);
       } else if (stripeSupported) {
         setPaymentReady(stripeActive);
@@ -218,9 +232,10 @@ export default function Sell() {
         setPaymentReady(stripeActive);
       }
     });
-  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.country, isUsSeller]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectPayoutMethod = useCallback(async (method: "fm_wallet" | "stripe") => {
+    if (isUsSeller) return;
     const tk = localStorage.getItem("flexamarket_token") ?? "";
     setSavingPayoutMethod(true);
     try {
@@ -241,7 +256,7 @@ export default function Sell() {
     } finally {
       setSavingPayoutMethod(false);
     }
-  }, [stripeAccountActive, toast]);
+  }, [stripeAccountActive, toast, isUsSeller]);
 
   // Regular sellers must always post from their registered profile country.
   // Admins and super admins may select another country.
@@ -394,7 +409,7 @@ export default function Sell() {
     if (!isEditMode && paymentReady !== true) {
       const msg = paymentReady === null
         ? t("sell.paymentCheckingDescription")
-        : t("sell.paymentRequiredDescription");
+        : isUsSeller ? t("sell.usStripeRequired") : t("sell.paymentRequiredDescription");
       setSubmitError(msg);
       toast({
         title: paymentReady === null ? t("sell.paymentCheckingTitle") : t("sell.paymentRequiredTitle"),
@@ -1685,16 +1700,21 @@ export default function Sell() {
                 </div>
                 {!paymentReady && (
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    {t("sell.payoutSelectPrompt")}
+                    {isUsSeller ? t("sell.usStripeRequired") : t("sell.payoutSelectPrompt")}
+                  </p>
+                )}
+                {isUsSeller && (
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    {t("sell.usStripeOnly")}
                   </p>
                 )}
               </div>
 
               {/* Cards */}
-              <div className="p-3 grid grid-cols-2 gap-2.5">
+              <PayoutMethodCards stripeFirst={isUsSeller}>
 
                 {/* Kat FM */}
-                <button
+                {!isUsSeller && <button
                   type="button"
                   onClick={() => { if (cardPayoutMethod !== "fm_wallet") selectPayoutMethod("fm_wallet"); }}
                   disabled={savingPayoutMethod}
@@ -1726,7 +1746,7 @@ export default function Sell() {
                   {savingPayoutMethod && cardPayoutMethod !== "fm_wallet" && (
                     <Loader2 className="h-3 w-3 animate-spin text-primary absolute bottom-2 right-2" />
                   )}
-                </button>
+                </button>}
 
                 {/* Stripe — always visible */}
                 <button
@@ -1762,20 +1782,22 @@ export default function Sell() {
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
                     {t("sell.stripePayoutDescription")}
                   </p>
-                  {cardPayoutMethod === "stripe" && !stripeAccountConnected && (
+                  {cardPayoutMethod === "stripe" && (!stripeAccountConnected || (isUsSeller && !stripeAccountActive)) && (
                     <a
                       href="/settings"
                       onClick={e => e.stopPropagation()}
                       className="text-[11px] font-bold text-[#635BFF] underline underline-offset-2 hover:no-underline"
                     >
-                      {t("sell.connectStripeSettings")} →
+                      {isUsSeller && stripeAccountConnected
+                        ? t("sell.usStripeComplete")
+                        : t("sell.connectStripeSettings")} →
                     </a>
                   )}
                   {savingPayoutMethod && cardPayoutMethod !== "stripe" && (
                     <Loader2 className="h-3 w-3 animate-spin text-[#635BFF] absolute bottom-2 right-2" />
                   )}
                 </button>
-              </div>
+              </PayoutMethodCards>
             </div>
           )}
 

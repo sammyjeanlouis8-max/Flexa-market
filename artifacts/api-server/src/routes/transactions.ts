@@ -8,6 +8,7 @@ import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
 import { getStripeClient } from "../lib/stripeClient";
+import { requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { escrowTransferGroup, escrowTransferIdempotencyKey, resolveSettlementRoute } from "../lib/escrowSettlement";
 import {
   getDefaultCommissionRate, setDefaultCommissionRate,
@@ -123,6 +124,24 @@ export async function releaseEscrow(
     .from(sellerPayoutAccountsTable)
     .where(eq(sellerPayoutAccountsTable.userId, tx.sellerUserId));
 
+  if (tx.requiresStripePayout) {
+    try {
+      await requireActiveStripeDestination(sellerRecord?.stripeAccountId);
+    } catch (err) {
+      logger.warn({ err, txId }, "Required Stripe seller destination is not ready; holding escrow");
+      await db.update(transactionsTable).set({
+        settlementMethod: "stripe_connect",
+        settlementStatus: "failed",
+        settlementError: "Stripe seller destination is not ready; funds held, no FM wallet fallback",
+      }).where(and(
+        eq(transactionsTable.id, txId),
+        eq(transactionsTable.escrowReleased, false),
+        inArray(transactionsTable.settlementStatus, ["pending", "failed"]),
+      ));
+      return;
+    }
+  }
+
   let isLegacyPrepaid = false;
   if (tx.settlementStatus === "legacy_review") {
     try {
@@ -192,6 +211,7 @@ export async function releaseEscrow(
   }
   const route = resolveSettlementRoute({
     paymentMethod: tx.paymentMethod,
+    requiresStripePayout: tx.requiresStripePayout,
     payoutPreference: payoutAccount?.cardPayoutMethod,
     stripeAccountId: sellerRecord?.stripeAccountId,
     stripeAccountStatus: sellerRecord?.stripeAccountStatus,
@@ -2647,6 +2667,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     const [txRow] = await db.insert(transactionsTable).values({
       userId,
       listingId: listing.id,
+      requiresStripePayout: listing.requiresStripePayout,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: itemTotal,

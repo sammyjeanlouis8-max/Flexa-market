@@ -10,6 +10,7 @@ import {
 import { eq, desc, sql } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { isUsSellerCountry } from "../lib/usSellerPayoutPolicy";
 
 const router = Router();
 
@@ -76,6 +77,16 @@ router.patch("/seller/payout-account/card-method", requireAuth, async (req, res)
 
   if (method !== "fm_wallet" && method !== "stripe") {
     res.status(400).json({ error: "Metòd pa valab. Chwazi 'fm_wallet' oswa 'stripe'." });
+    return;
+  }
+
+  const [seller] = await db.select({ country: usersTable.country })
+    .from(usersTable).where(eq(usersTable.id, userId));
+  if (method === "fm_wallet" && isUsSellerCountry(seller?.country)) {
+    res.status(409).json({
+      code: "US_STRIPE_ONLY",
+      error: "Nouvo lavant vandè Ozetazini yo resevwa kòb sou Stripe sèlman. Ansyen balans Kat FM ak lòd yo pa chanje.",
+    });
     return;
   }
 

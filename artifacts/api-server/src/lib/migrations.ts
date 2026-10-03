@@ -94,6 +94,14 @@ export async function ensureBoostVideoUploadSchema(): Promise<void> {
  */
 export async function runStartupMigrations(): Promise<void> {
   const migrations: Array<{ name: string; sql: string }> = [
+    {
+      name: "listings.requires_stripe_payout",
+      sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS requires_stripe_payout boolean NOT NULL DEFAULT false",
+    },
+    {
+      name: "transactions.requires_stripe_payout",
+      sql: "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS requires_stripe_payout boolean NOT NULL DEFAULT false",
+    },
     { name: "users.eula_acceptance", sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS eula_accepted_at TIMESTAMPTZ; ALTER TABLE users ADD COLUMN IF NOT EXISTS eula_version TEXT" },
     {
       name: "user_blocks.create",

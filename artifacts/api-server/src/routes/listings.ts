@@ -8,6 +8,7 @@ import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccess
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
+import { isUsSellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
 import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
@@ -1024,6 +1025,19 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
 
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
 
+  const requiresStripePayout = isUsSellerCountry(seller?.country);
+  if (requiresStripePayout) {
+    try {
+      await requireActiveStripeDestination(seller?.stripeAccountId);
+    } catch {
+      res.status(409).json({
+        code: "STRIPE_SETUP_REQUIRED",
+        error: "Vandè Ozetazini dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Brouyon ou ka rete sovgade.",
+      });
+      return;
+    }
+  }
+
   const canChangeListingCountry =
     hasRole(seller, "admin") &&
     !isAdminAccessSuspended(seller);
@@ -1142,6 +1156,7 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
     city: rawCity || null,
     state: listingState,
     country: listingCountry,
+    requiresStripePayout,
     deliveryMethod: isLocalDeliveryCountry ? (submittedDeliveryMethod ?? "motorcycle") : null,
     sellerId: req.userId!,
     status: insertStatus,
@@ -1854,6 +1869,7 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
       const [txRow] = await tx.insert(transactionsTable).values({
         userId: req.userId!,
         listingId: id,
+        requiresStripePayout: listing.requiresStripePayout,
         sellerUserId: listing.sellerId,
         type: "purchase",
         amount: productPrice,

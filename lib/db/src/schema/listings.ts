@@ -19,6 +19,8 @@ export const listingsTable = pgTable("listings", {
   state: text("state"),
   neighborhood: text("neighborhood"),
   country: text("country"),
+  // Frozen at creation. Legacy listings retain their existing payout behavior.
+  requiresStripePayout: boolean("requires_stripe_payout").notNull().default(false),
   latitude: real("latitude"),
   longitude: real("longitude"),
   images: text("images").array().notNull().default([]),

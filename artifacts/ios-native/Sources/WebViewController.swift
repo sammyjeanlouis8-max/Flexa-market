@@ -21,19 +21,19 @@ final class WebViewController: UIViewController {
     private var offlineView: OfflineView?
     /// Prevents repeat permission requests within one app session.
     private var pushHandled = false
+    private var pushDocumentReady = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
         setupWebView()
         setupSpinner()
-        loadSite()
-
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleApnsToken(_:)),
             name: .apnsTokenReceived, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleOpenURL(_:)),
             name: .openURL, object: nil)
+        loadSite()
     }
 
     deinit {
@@ -52,8 +52,31 @@ final class WebViewController: UIViewController {
     }
 
     @objc private func handleOpenURL(_ n: Notification) {
-        if let url = n.userInfo?["url"] as? URL {
-            webView?.load(URLRequest(url: url))
+        if let current = webView?.url, !isTrustedFlexaURL(current) {
+            pushDocumentReady = false
+            loadSite()
+        } else {
+            deliverPendingNotification()
+        }
+    }
+
+    private func deliverPendingNotification() {
+        guard pushDocumentReady,
+              let current = webView?.url, isTrustedFlexaURL(current),
+              let url = NotificationDelegate.shared.pendingNotificationURL,
+              let data = try? JSONSerialization.data(withJSONObject: [url.absoluteString]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        let script = """
+            (function(){
+                window.__pendingPushUrl = \(json)[0];
+                if(typeof window.__handlePushUrl === 'function')
+                    window.__handlePushUrl(window.__pendingPushUrl);
+            })();true;
+            """
+        webView.evaluateJavaScript(script) { _, error in
+            if error == nil && NotificationDelegate.shared.pendingNotificationURL == url {
+                NotificationDelegate.shared.pendingNotificationURL = nil
+            }
         }
     }
 
@@ -392,6 +415,7 @@ extension WebViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView,
                  didStartProvisionalNavigation _: WKNavigation!) {
+        pushDocumentReady = false
         retryWorkItem?.cancel()
         retryWorkItem = nil
         offlineView?.removeFromSuperview()
@@ -400,6 +424,8 @@ extension WebViewController: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish _: WKNavigation!) {
+        pushDocumentReady = true
+        deliverPendingNotification()
         retryWorkItem?.cancel()
         retryWorkItem = nil
         retryCount = 0

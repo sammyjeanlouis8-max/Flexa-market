@@ -12,6 +12,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
+        if let response = connectionOptions.notificationResponse {
+            NotificationDelegate.shared.handleNotificationResponse(response)
+        }
         let window = UIWindow(windowScene: windowScene)
         window.rootViewController = WebViewController()
         self.window = window

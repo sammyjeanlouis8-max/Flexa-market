@@ -7,6 +7,26 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     private override init() { super.init() }
 
     var apnsToken: String?
+    // A tap may arrive before SceneDelegate has created the WebView.
+    var pendingNotificationURL: URL?
+    private var lastNotificationKey: String?
+
+    func handleNotificationResponse(_ response: UNNotificationResponse) {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let value = response.notification.request.content.userInfo["url"] as? String,
+              let base = URL(string: "https://flexamarket.com"),
+              let url = URL(string: value, relativeTo: base)?.absoluteURL,
+              url.scheme == "https", url.user == nil, url.password == nil,
+              url.host == base.host else { return }
+        let key = response.notification.request.identifier
+            + ":" + String(response.notification.date.timeIntervalSince1970)
+        DispatchQueue.main.async {
+            guard self.lastNotificationKey != key else { return }
+            self.lastNotificationKey = key
+            self.pendingNotificationURL = url
+            NotificationCenter.default.post(name: .openURL, object: nil)
+        }
+    }
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -21,13 +41,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let userInfo = response.notification.request.content.userInfo
-        if let urlString = userInfo["url"] as? String,
-           let url = URL(string: urlString) {
-            NotificationCenter.default.post(
-                name: .openURL, object: nil, userInfo: ["url": url]
-            )
-        }
+        handleNotificationResponse(response)
         completionHandler()
     }
 }

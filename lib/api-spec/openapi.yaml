@@ -1308,8 +1308,117 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/FintechVendorProfile" }
 
+  /sales/summary:
+    get:
+      operationId: getSellerSalesReport
+      tags: [transactions]
+      summary: Read-only monthly report for the authenticated seller
+      parameters:
+        - { name: report, in: query, required: true, schema: { type: string, enum: [monthly] } }
+        - { name: month, in: query, schema: { type: string, pattern: '^\d{4}-(0[1-9]|1[0-2])$' } }
+        - { name: timezone, in: query, schema: { type: string, default: UTC } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: currency, in: query, schema: { type: string } }
+        - { name: orderStatus, in: query, schema: { type: string } }
+        - { name: paymentStatus, in: query, schema: { type: string } }
+        - { name: payoutStatus, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Reporting amounts are integer minor-unit strings, grouped by currency, never wallet balances
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SellerSalesReport" }
+        "400": { description: Invalid reporting filters }
+        "401": { description: Authentication required }
+        "503": { description: Report unavailable; no fabricated totals }
 components:
   schemas:
+    SellerSalesMoneySummary:
+      type: object
+      required: [currency, exponent, orderCount, grossSalesMinor, customerRefundsMinor, refundsMinor, feesMinor, commissionsMinor, netSellerAmountMinor, pendingAmountMinor, processingAmountMinor, transferredAmountMinor, returnedAmountMinor, complete]
+      properties:
+        currency: { type: string }
+        exponent: { type: integer }
+        orderCount: { type: integer }
+        grossSalesMinor: { type: string }
+        customerRefundsMinor: { type: [string, "null"] }
+        refundsMinor: { type: [string, "null"] }
+        feesMinor: { type: [string, "null"] }
+        commissionsMinor: { type: [string, "null"] }
+        netSellerAmountMinor: { type: [string, "null"] }
+        pendingAmountMinor: { type: [string, "null"] }
+        processingAmountMinor: { type: [string, "null"] }
+        transferredAmountMinor: { type: [string, "null"] }
+        returnedAmountMinor: { type: [string, "null"] }
+        complete: { type: boolean }
+    SellerSalesRefund:
+      type: object
+      required: [id, source, amountMinor, date]
+      properties:
+        id: { type: string }
+        source: { type: string }
+        amountMinor: { type: string }
+        date: { type: [string, "null"], format: date-time }
+    SellerSalesReportRow:
+      type: object
+      required: [id, listingId, title, images, createdAt, listingCountry, currency, exponent, originalSaleMinor, customerPaymentMinor, customerRefundMinor, refundsMinor, netSaleMinor, feesMinor, commissionsMinor, netSellerAmountMinor, orderStatus, paymentStatus, paymentMethod, payoutStatus, payoutDestination, payoutDate, transferredMinor, returnedMinor, refunds, warnings]
+      properties:
+        id: { type: integer }
+        listingId: { type: [integer, "null"] }
+        canViewOrder: { type: boolean }
+        originalCommissionMinor: { type: string }
+        originalSellerEarningsMinor: { type: string }
+        title: { type: [string, "null"] }
+        images: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+        listingCountry: { type: [string, "null"] }
+        currency: { type: string }
+        exponent: { type: integer }
+        originalSaleMinor: { type: string }
+        customerPaymentMinor: { type: string }
+        customerRefundMinor: { type: [string, "null"] }
+        refundsMinor: { type: [string, "null"] }
+        netSaleMinor: { type: [string, "null"] }
+        feesMinor: { type: [string, "null"] }
+        commissionsMinor: { type: [string, "null"] }
+        netSellerAmountMinor: { type: [string, "null"] }
+        orderStatus: { type: string }
+        paymentStatus: { type: string }
+        paymentMethod: { type: string }
+        payoutStatus: { type: string }
+        payoutDestination: { type: [string, "null"] }
+        payoutDate: { type: [string, "null"], format: date-time }
+        transferredMinor: { type: [string, "null"] }
+        returnedMinor: { type: [string, "null"] }
+        refunds: { type: array, items: { $ref: "#/components/schemas/SellerSalesRefund" } }
+        warnings: { type: array, items: { type: string } }
+    SellerSalesReport:
+      type: object
+      required: [summary, sales, pagination, filters]
+      properties:
+        summary: { type: array, items: { $ref: "#/components/schemas/SellerSalesMoneySummary" } }
+        sales: { type: array, items: { $ref: "#/components/schemas/SellerSalesReportRow" } }
+        pagination:
+          type: object
+          required: [page, limit, total, totalPages]
+          properties:
+            page: { type: integer }
+            limit: { type: integer }
+            total: { type: integer }
+            totalPages: { type: integer }
+        filters:
+          type: object
+          required: [month, timezone, periodStart, periodEnd, availableMonths, availableCurrencies, asOf, basis]
+          properties:
+            month: { type: string }
+            timezone: { type: string }
+            periodStart: { type: string, format: date-time }
+            periodEnd: { type: string, format: date-time }
+            availableMonths: { type: array, items: { type: string } }
+            availableCurrencies: { type: array, items: { type: string } }
+            asOf: { type: string, format: date-time }
+            basis: { type: string, enum: [sale_created_at] }
     HealthStatus:
       type: object
       properties:

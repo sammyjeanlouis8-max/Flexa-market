@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, transactionsTable, usersTable, listingsTable, offersTable, notificationsTable, promoWalletTable, walletTransactionsTable, walletTransfersTable, sellerPayoutAccountsTable, marketplaceSellerPayoutsTable, deliveriesTable, driversTable, stripeRefundLedgerTable, shipmentsTable } from "@workspace/db";
 import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
+import { handleSellerSalesReport } from "./sellerSalesReport";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
@@ -658,6 +659,12 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
 // ─── Sales summary ────────────────────────────────────────────────────────────
 
 router.get("/sales/summary", requireAuth, async (req, res): Promise<void> => {
+  // Retain the legacy no-query summary for existing callers. The new center
+  // explicitly requests the monthly, paginated reporting contract.
+  if (Object.keys(req.query).length > 0) {
+    await handleSellerSalesReport(req, res);
+    return;
+  }
   const [agg] = await db.select({
     orderCount: sql<number>`count(*)::int`,
     totalSales:  sql<number>`coalesce(sum(${transactionsTable.amount}),0)::float`,

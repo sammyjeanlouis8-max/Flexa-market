@@ -38,6 +38,7 @@ import {
 import Purchases from "react-native-purchases";
 import { AndroidSubscriptions } from "./native/androidSubscriptions";
 import { ANDROID_REVENUECAT_API_KEY } from "./constants/androidRevenueCatConfig";
+import { getNotificationUrl, pushNavigationScript } from "./native/pushNavigation";
 
 const WEBSITE = "https://flexamarket.com";
 const INITIAL_LOAD_TIMEOUT_MS = 20_000;
@@ -96,19 +97,33 @@ export default function App() {
   // URL from a notification that launched the app from a killed state.
   // Stored here, then consumed in onLoadEnd once the WebView is ready.
   const pendingNotifUrl = useRef<string | null>(null);
+  const webDocumentReadyRef = useRef(false);
+  const lastNotificationId = useRef<string | null>(null);
+  const notificationTapVersion = useRef(0);
+  const openNotification = useCallback((data: unknown, notificationId: string) => {
+    const url = getNotificationUrl(data, WEBSITE);
+    if (!url || lastNotificationId.current === notificationId) return;
+    lastNotificationId.current = notificationId;
+    notificationTapVersion.current++;
+    pendingNotifUrl.current = url;
+    if (webDocumentReadyRef.current && webRef.current && isTrustedFlexaUrl(currentUrlRef.current)) {
+      pendingNotifUrl.current = null;
+      webRef.current.injectJavaScript(pushNavigationScript(url));
+    }
+    void Notifications.clearLastNotificationResponseAsync().catch(() => {});
+  }, []);
 
   // ── Cold-start: notification that launched the app ─────────────────────
   useEffect(() => {
+    const version = notificationTapVersion.current;
     Notifications.getLastNotificationResponseAsync()
       .then((response) => {
-        if (!response) return;
-        const url = response.notification.request.content.data?.url as
-          | string
-          | undefined;
-        if (url) pendingNotifUrl.current = url;
+        // An older cold-start lookup must not overwrite a newer live tap.
+        if (!response || version !== notificationTapVersion.current) return;
+        openNotification(response.notification.request.content.data, response.notification.request.identifier);
       })
       .catch(() => {});
-  }, []);
+  }, [openNotification]);
 
   // ── Push token registration ────────────────────────────────────────────
   const injectJs = useCallback((script: string) => {
@@ -127,6 +142,7 @@ export default function App() {
       const jwt = jwtRef.current;
       if (jwt) registerPushTokenDirect(pushToken, jwt).catch(() => {});
     },
+    openNotification,
   );
 
   const androidSubscriptionsRef = useRef<AndroidSubscriptions | null>(null);
@@ -206,6 +222,7 @@ export default function App() {
 
   // ── onLoadEnd: inject token + handle pending notification URL ──────────
   const onLoadEnd = useCallback(() => {
+    webDocumentReadyRef.current = !currentLoadFailedRef.current;
     if (Platform.OS === "android" && isTrustedFlexaUrl(currentUrlRef.current)) {
       webRef.current?.injectJavaScript(platformBridgeScript("android", hasNativeBackgroundUploads, true));
     }
@@ -242,21 +259,14 @@ export default function App() {
     // Navigate to URL from the notification that cold-started the app.
     // Consumed once — subsequent loads must not re-fire.
     const notifUrl = pendingNotifUrl.current;
-    if (notifUrl && isTrustedFlexaUrl(notifUrl)) {
+    if (notifUrl && webDocumentReadyRef.current && isTrustedFlexaUrl(currentUrlRef.current) && isTrustedFlexaUrl(notifUrl)) {
       pendingNotifUrl.current = null;
-      webRef.current?.injectJavaScript(
-        `(function(){` +
-          `if(typeof window.__handlePushUrl==='function'){` +
-            `window.__handlePushUrl(${JSON.stringify(notifUrl)});` +
-          `}else{` +
-            `window.location.href=${JSON.stringify(notifUrl)};` +
-          `}` +
-        `})();true;`
-      );
+      webRef.current?.injectJavaScript(pushNavigationScript(notifUrl));
     }
   }, [clearErrorTimer, clearStartupTimer]);
 
   const handleLoadStart = useCallback(() => {
+    webDocumentReadyRef.current = false;
     clearErrorTimer();
     currentLoadFailedRef.current = false;
     setLoadError(false);

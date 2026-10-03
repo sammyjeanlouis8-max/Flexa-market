@@ -109,6 +109,7 @@ export function usePushNotifications(
   getJwt?: () => string | null,
   /** Optional: called directly when the API saves the token (fallback path) */
   onTokenSaved?: (token: string) => void,
+  onNotificationTap?: (data: unknown, notificationId: string) => void,
 ) {
   const tokenRef = useRef<string | null>(null);
 
@@ -158,12 +159,10 @@ export function usePushNotifications(
 
     const sub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const url = response.notification.request.content.data?.url as string | undefined;
-        if (url && injectJs) {
-          injectJs(
-            `(function(){if(window.__handlePushUrl)window.__handlePushUrl(${JSON.stringify(url)});})();true;`
-          );
-        }
+        onNotificationTap?.(
+          response.notification.request.content.data,
+          response.notification.request.identifier,
+        );
       }
     );
 

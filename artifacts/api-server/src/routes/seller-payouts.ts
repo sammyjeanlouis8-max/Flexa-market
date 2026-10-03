@@ -85,7 +85,7 @@ router.patch("/seller/payout-account/card-method", requireAuth, async (req, res)
   if (method === "fm_wallet" && isStripeOnlySellerCountry(seller?.country)) {
     res.status(409).json({
       code: "STRIPE_ONLY_PAYOUT",
-      error: "Nouvo lavant vandè USA, Kanada ak Meksik yo resevwa kòb sou Stripe sèlman. Bous FM ou, ansyen balans ak lòd yo pa chanje.",
+      error: "Se sèlman vandè ki gen Ayiti nan pwofil yo ki ka resevwa nouvo lajan lavant sou Kat FM. Pou lòt peyi yo, Stripe obligatwa. Bous FM ou, ansyen balans ak lòd ki deja fèt yo pa chanje.",
     });
     return;
   }

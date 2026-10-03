@@ -9,6 +9,7 @@ import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspa
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
 import { isStripeOnlySellerCountry, requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
+import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { quoteForListing } from "../lib/commission";
 import { getDisplayRate } from "../lib/exchange-rate";
 import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
@@ -1035,10 +1036,10 @@ router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Pr
       res.status(409).json({
         code: unsupportedCountry ? "STRIPE_COUNTRY_UNSUPPORTED" : countryMismatch ? "STRIPE_ACCOUNT_COUNTRY_MISMATCH" : "STRIPE_SETUP_REQUIRED",
         error: unsupportedCountry
-          ? "Vèsman Stripe pou Meksik poko sipòte nan konfigirasyon platfòm sa a. Kenbe anons la kòm brouyon. Bous FM ou rete disponib."
+          ? "Vèsman Stripe pou peyi pwofil ou a poko sipòte nan konfigirasyon platfòm sa a. Kenbe anons la kòm brouyon. Bous FM ou rete disponib."
           : countryMismatch
             ? "Peyi kont Stripe ou a pa koresponn ak peyi kont vandè ou a. Kontakte sipò pou verifye kont lan; bous FM ou rete disponib."
-            : "Vandè USA, Kanada ak Meksik dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Brouyon ou ka rete sovgade; bous FM ou rete disponib.",
+            : "Deyò Ayiti, vandè yo dwe fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan yo pibliye. Kat FM pou lajan lavant se pou Ayiti sèlman. Brouyon ou ka rete sovgade; bous FM ou rete disponib.",
       });
       return;
     }
@@ -1703,6 +1704,16 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   if (!ALLOWED_METHODS.includes(paymentMethod)) { res.status(400).json({ error: "Invalid payment method" }); return; }
   if (paymentRef.length < 6) { res.status(400).json({ error: "Invalid payment reference" }); return; }
 
+  // Enforce the current seller geography for every new purchase, including older
+  // listings. Existing orders retain their frozen settlement obligation.
+  let requiresStripePayout: boolean;
+  try {
+    requiresStripePayout = await requireNewSalePayout(listing);
+  } catch {
+    res.status(409).json({ code: "STRIPE_SETUP_REQUIRED", error: NEW_SALE_PAYOUT_ERROR });
+    return;
+  }
+
   // Offer price override — buyer negotiated a custom price via the offers system.
   // If offerId is supplied, we validate it server-side and use the agreed price
   // instead of listing.price for all calculations (commission, wallet, transaction).
@@ -1875,7 +1886,7 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
       const [txRow] = await tx.insert(transactionsTable).values({
         userId: req.userId!,
         listingId: id,
-        requiresStripePayout: listing.requiresStripePayout,
+        requiresStripePayout,
         sellerUserId: listing.sellerId,
         type: "purchase",
         amount: productPrice,

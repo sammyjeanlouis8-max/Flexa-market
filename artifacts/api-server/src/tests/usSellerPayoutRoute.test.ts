@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 describe("Stripe onboarding country without wallet mutation", () => {
-  it.each([["USA", "US"], ["Canada", "CA"], ["Mexico", "MX"]])(
+  it.each([["USA", "US"], ["Canada", "CA"], ["Mexico", "MX"], ["France", "FR"], ["United Kingdom", "GB"]])(
     "creates a new %s seller account with country %s", async (country, code) => {
       rows.mockResolvedValue([{ id: 999001, country, email: "seller@example.test", stripeAccountId: null }]);
       retrieveAccount.mockResolvedValue({ country: "MX" });
@@ -72,7 +72,7 @@ describe("Stripe onboarding country without wallet mutation", () => {
 });
 
 describe("server enforcement for old clients", () => {
-  it.each(["USA", "United States", "US", "Canada", "CA", "Mexico", "México", "Mexique", "Meksik", "MX"])("rejects Kat FM as a new sales payout for %s without changing wallets or saved preferences", async country => {
+  it.each(["USA", "United States", "US", "Canada", "CA", "Mexico", "México", "Mexique", "Meksik", "MX", "Dominican Republic", "France", "United Kingdom", "", null])("rejects Kat FM as a new sales payout for %s without changing wallets or saved preferences", async country => {
     rows.mockResolvedValue([{ country }]);
     const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
     await handler({ userId: 999001, body: { method: "fm_wallet" } } as any, res as any, vi.fn());

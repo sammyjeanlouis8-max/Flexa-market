@@ -147,7 +147,7 @@ router.post("/stripe/connect/onboard", requireAuth, async (req: any, res) => {
     if (err instanceof Error && err.message === "STRIPE_COUNTRY_UNSUPPORTED") {
       return res.status(409).json({
         code: "STRIPE_COUNTRY_UNSUPPORTED",
-        error: "Vèsman Stripe pou Meksik poko sipòte nan konfigirasyon platfòm sa a. Ou ka sove brouyon; bous FM ou rete disponib.",
+        error: "Vèsman Stripe pou peyi pwofil ou a poko sipòte nan konfigirasyon platfòm sa a. Ou ka sove brouyon; bous FM ou rete disponib. Kat FM kòm metòd pou resevwa nouvo lajan lavant se pou Ayiti sèlman.",
       });
     }
     if (requiresConnectPlatformProfileReview(err)) {

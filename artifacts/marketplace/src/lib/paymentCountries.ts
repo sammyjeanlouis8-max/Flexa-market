@@ -1,10 +1,10 @@
 /** Countries where MonCash is available as a payout option */
 export const MONCASH_COUNTRIES = new Set(["Haiti", "Dominican Republic"]);
 
-/** Seller proceeds only; this does not disable access to the FM wallet. */
+/** Only Haiti may receive new seller proceeds in FM; wallets remain accessible everywhere. */
 export function isStripeOnlySellerCountry(country?: string | null): boolean {
   const normalized = (country ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
-  return ["usa", "united states", "us", "canada", "ca", "mexico", "mexique", "meksik", "mx"].includes(normalized);
+  return !["haiti", "ayiti", "ht"].includes(normalized);
 }
 
 export const STRIPE_SUPPORTED_COUNTRIES = new Set([

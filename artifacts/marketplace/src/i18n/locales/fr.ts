@@ -697,7 +697,7 @@ export default {
     loadingEdit: "Chargement des données de l'annonce…",
     publishListing: "Publier l'annonce",
     payoutSectionTitle: "Méthode de versement",
-    usStripeOnly: "Les nouvelles ventes des vendeurs aux États-Unis, au Canada et au Mexique sont versées uniquement via Stripe, après livraison admissible. Votre portefeuille FM reste disponible ; vos anciens soldes et commandes restent inchangés.",
+    usStripeOnly: "Seuls les vendeurs en Haïti peuvent recevoir le produit des nouvelles ventes sur Kat FM. Hors d’Haïti, Stripe est obligatoire après livraison admissible. Votre portefeuille FM reste disponible ; vos anciens soldes et commandes déjà passées restent inchangés.",
     usStripeRequired: "Finalisez Stripe pour recevoir les transferts et versements bancaires avant de publier. Vous pouvez conserver votre annonce comme brouillon.",
     usStripeComplete: "Finaliser Stripe",
     payoutActive: "Actif",

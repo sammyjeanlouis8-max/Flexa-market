@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getStripeOnlySellerCountryCode, isStripeOnlySellerCountry, requireActiveStripeDestination, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
-import { isStripeOnlySellerCountry as isStripeOnlyFrontendCountry } from "../../../marketplace/src/lib/paymentCountries";
+import { isStripeOnlySellerCountry as isStripeOnlyFrontendCountry, STRIPE_SUPPORTED_COUNTRIES } from "../../../marketplace/src/lib/paymentCountries";
 import { resolveSettlementRoute } from "../lib/escrowSettlement";
 
 const { retrieveAccount, getClient } = vi.hoisted(() => ({
@@ -14,18 +14,29 @@ beforeEach(() => {
   getClient.mockResolvedValue({ accounts: { retrieve: retrieveAccount } });
 });
 
-describe("USA, Canada and Mexico seller publishing and payout policy", () => {
-  it.each(["USA", "United States", "US", " USA ", "us", "Canada", "CA", " canada ", "Mexico", "México", "Mexique", "Meksik", "MX", " mx "])("recognizes Stripe-only profile country %s", country => {
+describe("Haiti-only FM seller payout policy", () => {
+  it.each(["USA", "United States", "US", " USA ", "us", "Canada", "CA", " canada ", "Mexico", "México", "Mexique", "Meksik", "MX", " mx ", "Dominican Republic", "France", "United Kingdom", "Unknown", "", null, undefined])("blocks Kat FM for non-Haiti or missing profile country %s", country => {
     expect(isStripeOnlySellerCountry(country)).toBe(true);
     expect(isStripeOnlyFrontendCountry(country)).toBe(true);
   });
 
-  it.each(["Haiti", "Dominican Republic", "France", "United Kingdom", "", null, undefined])(
-    "does not change other country policies (%s)", country => {
+  it.each(["Haiti", "Haïti", "Ayiti", "HT", " haiti "])(
+    "keeps Kat FM for Haiti (%s)", country => {
       expect(isStripeOnlySellerCountry(country)).toBe(false);
       expect(isStripeOnlyFrontendCountry(country)).toBe(false);
     },
   );
+
+  it.each([...STRIPE_SUPPORTED_COUNTRIES])("keeps UI and server rules in parity for %s", country => {
+    expect(isStripeOnlyFrontendCountry(country)).toBe(true);
+    expect(isStripeOnlySellerCountry(country)).toBe(true);
+    expect(getStripeOnlySellerCountryCode(country)).toMatch(/^[A-Z]{2}$/);
+  });
+
+  it.each(["Dominican Republic", "Unknown", "", null])("blocks unsupported or missing country %s without defaulting to a US account", async country => {
+    await expect(requireSupportedStripeSellerCountry(country)).rejects.toThrow("STRIPE_COUNTRY_UNSUPPORTED");
+    expect(getClient).not.toHaveBeenCalled();
+  });
 
   it("requires an actual connected account before publishing", async () => {
     await expect(requireActiveStripeDestination(null)).rejects.toThrow("STRIPE_SETUP_REQUIRED");
@@ -55,7 +66,7 @@ describe("USA, Canada and Mexico seller publishing and payout policy", () => {
     await expect(requireActiveStripeDestination("acct_test")).rejects.toThrow("provider unavailable");
   });
 
-  it.each([["USA", "US"], ["Canada", "CA"], ["México", "MX"], ["Mexique", "MX"]])(
+  it.each([["USA", "US"], ["Canada", "CA"], ["México", "MX"], ["Mexique", "MX"], ["France", "FR"], ["United Kingdom", "GB"]])(
     "uses Stripe country code %s → %s for new account setup", (country, code) => {
       expect(getStripeOnlySellerCountryCode(country)).toBe(code);
     },

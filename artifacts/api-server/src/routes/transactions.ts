@@ -9,6 +9,7 @@ import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
 import { getStripeClient } from "../lib/stripeClient";
 import { requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
+import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { escrowTransferGroup, escrowTransferIdempotencyKey, resolveSettlementRoute } from "../lib/escrowSettlement";
 import {
   getDefaultCommissionRate, setDefaultCommissionRate,
@@ -2549,6 +2550,15 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
 
   // Load all listings at once
   const listings = await db.select().from(listingsTable).where(inArray(listingsTable.id, listingIds));
+  const payoutRequirements = new Map<number, boolean>();
+  try {
+    for (const listing of listings) {
+      payoutRequirements.set(listing.id, await requireNewSalePayout(listing));
+    }
+  } catch {
+    res.status(409).json({ code: "STRIPE_SETUP_REQUIRED", error: NEW_SALE_PAYOUT_ERROR });
+    return;
+  }
   for (const lid of listingIds) {
     const l = listings.find(x => x.id === lid);
     if (!l) { res.status(404).json({ error: `Pwodwi #${lid} pa jwenn` }); return; }
@@ -2667,7 +2677,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     const [txRow] = await db.insert(transactionsTable).values({
       userId,
       listingId: listing.id,
-      requiresStripePayout: listing.requiresStripePayout,
+      requiresStripePayout: payoutRequirements.get(listing.id)!,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: itemTotal,

@@ -697,7 +697,7 @@ export default {
     loadingEdit: "Ap chaje done anonn nan…",
     publishListing: "Pibliye Lis",
     payoutSectionTitle: "Metòd pou resevwa kòb ou",
-    usStripeOnly: "Nouvo lavant vandè USA, Kanada ak Meksik yo resevwa kòb sou Stripe sèlman, apre livrezon kalifye. Bous FM ou rete disponib; ansyen balans ak lòd ou yo pa chanje.",
+    usStripeOnly: "Kat FM pou resevwa nouvo lajan lavant se pou vandè Ayiti sèlman. Deyò Ayiti, Stripe obligatwa apre livrezon kalifye. Bous FM ou rete disponib; ansyen balans ak lòd ki deja fèt yo pa chanje.",
     usStripeRequired: "Fini konfigirasyon Stripe pou resevwa transfè ak vèsman anvan ou pibliye. Ou ka kenbe anons la kòm brouyon.",
     usStripeComplete: "Fini konfigirasyon Stripe",
     payoutActive: "Aktif",

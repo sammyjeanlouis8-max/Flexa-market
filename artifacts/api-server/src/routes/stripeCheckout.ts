@@ -21,6 +21,7 @@ import {
   upsertSettlementRecoveryReservationInTransaction,
 } from "../lib/settlementRecovery";
 import { convertToUsd, getAllRates } from "../lib/exchange-rate";
+import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 
 const router = Router();
 
@@ -176,6 +177,13 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       });
     }
 
+    let requiresStripePayout: boolean;
+    try {
+      requiresStripePayout = await requireNewSalePayout(listing);
+    } catch {
+      res.status(409).json({ code: "STRIPE_SETUP_REQUIRED", error: NEW_SALE_PAYOUT_ERROR });
+      return;
+    }
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ["card"],
       mode: "payment",
@@ -208,7 +216,7 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     await db.insert(transactionsTable).values({
       userId: req.userId,
       listingId: listing.id,
-      requiresStripePayout: listing.requiresStripePayout,
+      requiresStripePayout,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: listingPriceUsd,

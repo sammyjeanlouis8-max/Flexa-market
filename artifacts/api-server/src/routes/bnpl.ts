@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { db, usersTable, transactionsTable, listingsTable, promoWalletTable, walletTransactionsTable, notificationsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { getStripeClient } from "../lib/stripeClient";
@@ -117,6 +118,14 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
     if (listing.status !== "available") { res.status(400).json({ error: "Lis pa disponib" }); return; }
     if (listing.sellerId === req.userId) { res.status(400).json({ error: "Ou pa ka achte pwòp bagay ou" }); return; }
 
+    let requiresStripePayout: boolean;
+    try {
+      requiresStripePayout = await requireNewSalePayout(listing);
+    } catch {
+      res.status(409).json({ code: "STRIPE_SETUP_REQUIRED", error: NEW_SALE_PAYOUT_ERROR });
+      return;
+    }
+
     const safeDeliveryFee = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
     const safeDeliveryMethod = typeof deliveryMethod === "string" ? deliveryMethod : null;
     const safePickupCity = typeof deliveryPickupCity === "string" ? deliveryPickupCity : null;
@@ -184,7 +193,7 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
     await db.insert(transactionsTable).values({
       userId: req.userId,
       listingId: listing.id,
-      requiresStripePayout: listing.requiresStripePayout,
+      requiresStripePayout,
       sellerUserId: listing.sellerId,
       type: "purchase",
       amount: listing.price,

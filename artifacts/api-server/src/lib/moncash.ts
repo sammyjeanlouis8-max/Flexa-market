@@ -1,3 +1,4 @@
+import { withCheckoutDeadline } from "./checkoutDeadline";
 /**
  * MonCash Payment Gateway — Digicel Haiti
  *
@@ -38,7 +39,20 @@ function basicAuth(cfg: MonCashConfig): string {
 
 // ── Token ─────────────────────────────────────────────────────────────────────
 
+export class MonCashCheckoutError extends Error {
+  constructor(readonly operation: string, readonly status: number) {
+    super(`MonCash ${operation} failed with HTTP ${status}`);
+    this.name = "MonCashCheckoutError";
+  }
+}
+
+export function monCashCreationDefinitelyRejected(error: unknown): boolean {
+  return error instanceof MonCashCheckoutError && error.operation === "payment creation"
+    && error.status >= 400 && error.status < 500 && ![408, 429].includes(error.status);
+}
+
 export async function getAccessToken(cfg: MonCashConfig): Promise<string> {
+  return withCheckoutDeadline("MonCash authentication", async (signal) => {
   const res = await fetch(`${base(cfg)}/Api/oauth/token`, {
     method: "POST",
     headers: {
@@ -47,16 +61,17 @@ export async function getAccessToken(cfg: MonCashConfig): Promise<string> {
       Accept: "application/json",
     },
     body: "grant_type=client_credentials&scope=read,write",
+    signal,
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "(no body)");
-    throw new Error(`MonCash token error ${res.status}: ${text}`);
+    throw new MonCashCheckoutError("authentication", res.status);
   }
 
   const data = (await res.json()) as { access_token?: string };
   if (!data.access_token) throw new Error("MonCash: no access_token in response");
   return data.access_token;
+  }, 15_000);
 }
 
 // ── Create payment ─────────────────────────────────────────────────────────────
@@ -75,6 +90,7 @@ export async function createPayment(
   /** Amount in HTG (Haitian Gourde) for local, or USD for Haitian diaspora. */
   amount: number,
 ): Promise<CreatePaymentResult> {
+  return withCheckoutDeadline("MonCash payment creation", async (signal) => {
   const res = await fetch(`${base(cfg)}/Api/v1/CreatePayment`, {
     method: "POST",
     headers: {
@@ -83,11 +99,11 @@ export async function createPayment(
       Accept: "application/json",
     },
     body: JSON.stringify({ amount, orderId }),
+    signal,
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "(no body)");
-    throw new Error(`MonCash CreatePayment error ${res.status}: ${text}`);
+    throw new MonCashCheckoutError("payment creation", res.status);
   }
 
   const data = (await res.json()) as {
@@ -98,13 +114,14 @@ export async function createPayment(
 
   const paymentToken = data.payment_token?.token;
   if (!paymentToken) {
-    throw new Error(`MonCash CreatePayment: no payment_token — ${data.message ?? JSON.stringify(data)}`);
+    throw new Error("MonCash CreatePayment did not return a payment token");
   }
 
   const redirectUrl =
     `${base(cfg)}/Moncash-business/resources/index.php?token=${paymentToken}`;
 
   return { paymentToken, redirectUrl };
+  }, 20_000);
 }
 
 // ── Retrieve transaction (verify payment) ─────────────────────────────────────

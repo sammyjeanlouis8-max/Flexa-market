@@ -1,4 +1,11 @@
 export default {
+  haitiCheckout: {
+    offline: "You are offline. Reconnect before requesting a MonCash payment link.",
+    timeout: "Creating the MonCash link took too long. Payment is not confirmed. If you already paid, do not pay again; check your recharge history.",
+    network: "The payment connection was interrupted. Check your recharge history before trying again.",
+    invalid: "MonCash did not return a valid payment link. Payment is not confirmed.",
+    unavailable: "MonCash is not responding right now. If you already paid, do not pay again; check your recharge history.",
+  },
   androidPurchasePolicy: {
     unavailable: "Purchases are unavailable in this app.",
   },

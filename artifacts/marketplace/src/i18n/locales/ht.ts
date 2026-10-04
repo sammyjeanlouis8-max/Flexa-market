@@ -1,4 +1,11 @@
 export default {
+  haitiCheckout: {
+    offline: "Pa gen koneksyon entènèt. Rekonekte anvan ou mande yon lyen peman MonCash.",
+    timeout: "Kreyasyon lyen MonCash la pran twòp tan. Peman an pa konfime. Si ou deja peye, pa peye ankò; verifye istorik rechaj ou.",
+    network: "Koneksyon ak sèvis peman an koupe. Verifye istorik rechaj ou anvan ou eseye ankò.",
+    invalid: "MonCash pa retounen yon lyen peman ki valab. Peman an pa konfime.",
+    unavailable: "MonCash pa reponn kounye a. Si ou deja peye, pa peye ankò; verifye istorik rechaj ou.",
+  },
   androidPurchasePolicy: {
     unavailable: "Acha pa disponib nan aplikasyon sa a.",
   },

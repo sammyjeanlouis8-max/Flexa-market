@@ -199,7 +199,7 @@ platform :ios do
     {
       "CFBundleIdentifier" => "com.flexamarket.mobile",
       "CFBundleShortVersionString" => "1.0.1",
-      "CFBundleVersion" => "99",
+      "CFBundleVersion" => "100",
       "RevenueCatApiKey" => "appl_uwCdAGjnZnpJgnwhOKCFHRYMewP"
     }.each do |key, expected|
       actual, _, inspect_status = Open3.capture3("/usr/libexec/PlistBuddy", "-c", "Print :#{key}", ipa_info_path)

@@ -68,6 +68,10 @@ jobs:
         run: |
           set -euo pipefail
           swiftc -frontend -parse artifacts/ios-native/Sources/*.swift
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          xcrun swiftc -swift-version 5 -typecheck -sdk "$SDK" -target "$(uname -m)-apple-ios16.0-simulator" \
+            artifacts/ios-native/Sources/HostedPaymentPolicy.swift \
+            artifacts/ios-native/Sources/HostedPaymentViewController.swift
           TEST_DIR="$(mktemp -d)"
           cp tools/test-ios-hosted-payment.swift "$TEST_DIR/main.swift"
           swiftc artifacts/ios-native/Sources/HostedPaymentPolicy.swift "$TEST_DIR/main.swift" -o "$TEST_DIR/payment-policy"

@@ -1,7 +1,6 @@
 import UIKit
 import WebKit
 import UserNotifications
-import SafariServices
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
@@ -18,7 +17,7 @@ final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
 final class WebViewController: UIViewController {
 
     private var webView: WKWebView!
-    private var hostedPaymentBrowser: SFSafariViewController?
+    private var hostedPaymentScreen: UINavigationController?
     private let spinner = UIActivityIndicatorView(style: .large)
     private var offlineView: OfflineView?
     /// Prevents repeat permission requests within one app session.
@@ -481,25 +480,24 @@ extension WebViewController: WKUIDelegate {
 
 // MARK: – Isolated, in-app MonCash checkout
 
-extension WebViewController: SFSafariViewControllerDelegate {
+extension WebViewController {
     private func presentHostedPayment(_ url: URL) {
         guard HostedPaymentPolicy.accepts(url),
-              hostedPaymentBrowser == nil, presentedViewController == nil else { return }
-        let browser = SFSafariViewController(url: url)
-        browser.delegate = self
-        browser.dismissButtonStyle = .done
-        browser.modalPresentationStyle = .fullScreen
-        hostedPaymentBrowser = browser
-        // Safari owns payment cookies and PIN fields. No WKWebView bridge,
-        // JavaScript injection, auth token or APNs token enters this page.
-        present(browser, animated: true)
+              hostedPaymentScreen == nil, presentedViewController == nil else { return }
+        let payment = HostedPaymentViewController(url: url) { [weak self] in
+            self?.finishHostedPayment()
+        }
+        let screen = UINavigationController(rootViewController: payment)
+        screen.modalPresentationStyle = .fullScreen
+        hostedPaymentScreen = screen
+        present(screen, animated: true)
     }
 
-    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
-        guard controller === hostedPaymentBrowser else { return }
-        controller.dismiss(animated: true) { [weak self] in
+    private func finishHostedPayment() {
+        guard let screen = hostedPaymentScreen else { return }
+        screen.dismiss(animated: true) { [weak self] in
             guard let self = self else { return }
-            self.hostedPaymentBrowser = nil
+            self.hostedPaymentScreen = nil
             // Closing is NOT proof of payment. Reload the original authenticated
             // wallet; its server reconciliation refreshes balance/history and
             // accepts only provider-confirmed payments. Never recreate checkout.

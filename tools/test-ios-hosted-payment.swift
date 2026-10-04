@@ -26,4 +26,43 @@ for raw in accepted {
 for raw in rejected {
     precondition(!HostedPaymentPolicy.accepts(URL(string: raw)!), "Unsafe origin accepted")
 }
-print("PASS: \(accepted.count + rejected.count) hosted payment origin cases")
+let callbacks = [
+    "https://flexamarket.com/api/bazik/return?reference=test",
+    "https://flexamarket.com/api/moncash/return?transactionId=test"
+]
+for raw in callbacks {
+    let url = URL(string: raw)!
+    precondition(HostedPaymentPolicy.allowsNavigation(url), "Verification callback blocked")
+    precondition(!HostedPaymentPolicy.isMerchantReturn(url), "Callback closed before verification")
+}
+let returns = [
+    "https://flexamarket.com/?wallet_topup=paid",
+    "https://flexamarket.com/?wallet_topup=already_processed",
+    "https://flexamarket.com/?moncash=cancelled",
+    "https://flexamarket.com/?moncash=pending",
+    "https://flexamarket.com/?moncash=error",
+    "https://flexamarket.com/?moncash=amount_mismatch",
+    "https://flexamarket.com/wallet?moncash=success"
+]
+for raw in returns {
+    let url = URL(string: raw)!
+    precondition(HostedPaymentPolicy.isMerchantReturn(url), "Wallet return not recognized")
+    precondition(HostedPaymentPolicy.allowsNavigation(url), "Wallet return not accepted")
+}
+let forbidden = [
+    "http://flexamarket.com/?wallet_topup=paid",
+    "https://flexamarket.com.attacker.invalid/?wallet_topup=paid",
+    "https://user@flexamarket.com/?wallet_topup=paid",
+    "https://flexamarket.com:8443/?wallet_topup=paid",
+    "https://flexamarket.com/?wallet_topup=unknown",
+    "https://flexamarket.com/admin",
+    "https://attacker.invalid/?moncash=success",
+    "flexamarket://wallet",
+    "https://checkout.stripe.com/pay"
+]
+for raw in forbidden {
+    let url = URL(string: raw)!
+    precondition(!HostedPaymentPolicy.allowsNavigation(url), "Untrusted navigation accepted")
+    precondition(!HostedPaymentPolicy.isMerchantReturn(url), "Untrusted return accepted")
+}
+print("PASS: \(accepted.count + rejected.count + callbacks.count + returns.count + forbidden.count) payment origin/return cases")

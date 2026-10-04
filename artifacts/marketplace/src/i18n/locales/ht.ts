@@ -2548,7 +2548,8 @@ export default {
   },
   restriction: {
     title: "Fonksyon sa a limite sou kont ou kounye a.",
-    desc: "Tanpri respekte règ platfòm nan.",
+    desc: "Kont ou gen yon restriksyon. Kontakte sipò pou jwenn èd oswa mande yon revizyon.",
+    contactSupport: "Kontakte sipò",
     cannotAction: "Ou pa ka {{action}} pou kounye a. ",
     expiresOn: "Restriksyon an fini {{date}}.",
     actions: {

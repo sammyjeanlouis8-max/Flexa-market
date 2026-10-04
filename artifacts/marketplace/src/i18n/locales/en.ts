@@ -2540,7 +2540,8 @@ export default {
   },
   restriction: {
     title: "Your account has limited access.",
-    desc: "Please follow platform rules.",
+    desc: "Your account has a restriction. Contact support for help or to request a review.",
+    contactSupport: "Contact support",
     cannotAction: "You cannot {{action}} right now. ",
     expiresOn: "Restriction ends {{date}}.",
     actions: {

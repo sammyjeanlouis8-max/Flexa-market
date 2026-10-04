@@ -144,6 +144,7 @@ export default function Sell() {
   const [draftRestored, setDraftRestored] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [paymentReady, setPaymentReady] = useState<boolean | null>(null);
+  const [submitRestricted, setSubmitRestricted] = useState(false);
   const [cardPayoutMethod, setCardPayoutMethod] = useState<"fm_wallet" | "stripe" | null>(null);
   const [stripeAccountActive, setStripeAccountActive] = useState(false);
   const [stripeAccountConnected, setStripeAccountConnected] = useState(false);
@@ -392,7 +393,13 @@ export default function Sell() {
   };
 
   const onSubmit = (values: z.infer<typeof schema>) => {
-    if (isRestricted) { showRestrictionToast(); return; }
+    if (isRestricted) {
+      setSubmitRestricted(true);
+      setSubmitError(t("sell.accountRestricted"));
+      showRestrictionToast();
+      return;
+    }
+    setSubmitRestricted(false);
     setSubmitError(null);
     if (uploadingSlot !== null || videoUploading || savingPayoutMethod) {
       const msg = uploadingSlot !== null
@@ -455,6 +462,7 @@ export default function Sell() {
     const handleError = (e: any) => {
       const raw: unknown = e?.data?.error;
       if (e?.data?.code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
+        setSubmitRestricted(true);
         setSubmitError(t("sell.accountRestricted"));
         showRestrictionToast();
         return;
@@ -1662,14 +1670,14 @@ export default function Sell() {
           {submitError && !createListing.isPending && (
             <div style={{ padding: "12px 14px", borderRadius: 12, background: "#FEF2F2", border: "1px solid #FECACA" }}>
               <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#DC2626" }}>
-                Erè piblikasyon
+                {submitRestricted ? t("restriction.title") : "Erè piblikasyon"}
               </p>
               <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B91C1C", lineHeight: 1.4 }}>
                 {submitError}
               </p>
               <button
                 type="button"
-                onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
+                onClick={() => submitRestricted ? setLocation("/support") : form.handleSubmit(onSubmit, onInvalidSubmit)()}
                 disabled={isPublishBusy}
                 style={{
                   fontSize: 13, fontWeight: 600, color: "#ffffff",
@@ -1679,7 +1687,7 @@ export default function Sell() {
                   display: "inline-flex", alignItems: "center", gap: 6,
                 }}
               >
-                🔄 Try again
+                {submitRestricted ? t("restriction.contactSupport") : "🔄 Try again"}
               </button>
             </div>
           )}

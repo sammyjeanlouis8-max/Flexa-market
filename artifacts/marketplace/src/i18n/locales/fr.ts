@@ -2547,7 +2547,8 @@ export default {
   },
   restriction: {
     title: "Votre compte a un accès limité.",
-    desc: "Veuillez respecter les règles de la plateforme.",
+    desc: "Votre compte fait l’objet d’une restriction. Contactez le support pour obtenir de l’aide ou demander un réexamen.",
+    contactSupport: "Contacter le support",
     cannotAction: "Vous ne pouvez pas {{action}} pour le moment. ",
     expiresOn: "La restriction se termine le {{date}}.",
     actions: {

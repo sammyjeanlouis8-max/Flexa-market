@@ -20,7 +20,7 @@ describe("support access for restricted accounts", () => {
     const sell = readFileSync(new URL("../../../marketplace/src/pages/Sell.tsx", import.meta.url), "utf8");
     expect(sell).toContain('submitRestricted ? setLocation("/support")');
     expect(sell).toContain('submitRestricted ? t("restriction.contactSupport")');
-    const cachedRestriction = sell.slice(sell.indexOf("if (isRestricted)"), sell.indexOf("setSubmitRestricted(false)"));
+    const cachedRestriction = sell.slice(sell.indexOf("if (isRestricted &&"), sell.indexOf("setSubmitRestricted(false)"));
     expect(cachedRestriction).toContain("setSubmitRestricted(true)");
     const serverRestriction = sell.slice(sell.indexOf('e?.data?.code === "USER_RESTRICTED"'));
     expect(serverRestriction).toContain("setSubmitRestricted(true)");

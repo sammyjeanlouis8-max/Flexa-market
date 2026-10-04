@@ -64,13 +64,13 @@ describe("new sales, including previously posted listings", () => {
     },
   );
 
-  it("allows publishing without payout onboarding but preserves settlement and account restrictions", () => {
+  it("allows publishing without payout onboarding and uses the publication-only restriction policy", () => {
     const source = readFileSync(new URL("../routes/listings.ts", import.meta.url), "utf8");
     const start = source.indexOf('router.post("/listings",');
     const end = source.indexOf("\nrouter.", start + 1);
     const route = source.slice(start, end === -1 ? undefined : end);
     expect(start).toBeGreaterThanOrEqual(0);
-    expect(route).toContain("requireAuth, requireNotRestricted");
+    expect(route).toContain("requireAuth, requireListingPublicationAccess");
     expect(route).toContain("isStripeOnlySale(seller?.country, listingCountry)");
     expect(route).toContain("requiresStripePayout,");
     expect(route).not.toContain("requireActiveStripeDestination(");
@@ -82,7 +82,7 @@ describe("new sales, including previously posted listings", () => {
     const source = readFileSync(new URL("../../../marketplace/src/pages/Sell.tsx", import.meta.url), "utf8");
     const submit = source.slice(source.indexOf("const onSubmit ="), source.indexOf("const onInvalidSubmit ="));
     expect(submit).not.toContain("paymentReady");
-    expect(submit).toContain("if (isRestricted)");
+    expect(submit).toContain("if (isRestricted && (isEditMode || isStripeOnlySeller))");
     expect(submit).toContain('e?.data?.code === "USER_RESTRICTED"');
     expect(submit).toContain("createListing.mutate(");
   });

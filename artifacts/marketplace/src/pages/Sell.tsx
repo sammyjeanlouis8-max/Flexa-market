@@ -217,7 +217,7 @@ export default function Sell() {
       const stripeStatus = stripeData?.stripeAccountStatus;
       const stripeActive = stripeStatus === "active";
       const stripeConnected = stripeActive || stripeStatus === "connected";
-      const currentMethod = payoutData?.cardPayoutMethod ?? null;
+      const currentMethod = payoutData?.cardPayoutMethod ?? (isStripeOnlySeller ? null : "fm_wallet");
       setStripeAccountActive(stripeActive);
       setStripeAccountConnected(stripeConnected);
       // New Stripe-only listings have their own mandatory payout policy. Do not mutate
@@ -393,7 +393,8 @@ export default function Sell() {
   };
 
   const onSubmit = (values: z.infer<typeof schema>) => {
-    if (isRestricted) {
+    // Kat FM eligibility grants a publication-only exception, not an account unlock.
+    if (isRestricted && (isEditMode || isStripeOnlySeller)) {
       setSubmitRestricted(true);
       setSubmitError(t("sell.accountRestricted"));
       showRestrictionToast();

@@ -1848,7 +1848,7 @@ export default function AvailableDeliveries() {
               <Shield className="h-3 w-3" /> {t("availableDeliveries.adminCountryTitle")}
             </p>
             <div className="flex gap-2">
-              {(isSuperAdmin ? [...DELIVERY_COUNTRIES] : adminScopeCountry ? [adminScopeCountry] : DELIVERY_COUNTRIES).map(c => (
+              {(isSuperAdmin ? [...DELIVERY_COUNTRIES] : adminScopeCountry ? [adminScopeCountry] : DELIVERY_COUNTRIES).filter(c => c !== "Dominican Republic").map(c => (
                 <button
                   key={c}
                   type="button"

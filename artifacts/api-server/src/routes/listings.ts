@@ -5,6 +5,7 @@ import { eq, and, desc, gt, gte, lte, ilike, sql, or, isNull, inArray, ne } from
 
 import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccessSuspended } from "../middlewares/auth";
+import { requireListingPublicationAccess } from "../middlewares/listingPublicationAccess";
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
@@ -1003,7 +1004,7 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
   }
 });
 
-router.post("/listings", requireAuth, requireNotRestricted, async (req, res): Promise<void> => {
+router.post("/listings", requireAuth, requireListingPublicationAccess, async (req, res): Promise<void> => {
   try {
   const parsed = CreateListingBody.safeParse(req.body);
   if (!parsed.success) {

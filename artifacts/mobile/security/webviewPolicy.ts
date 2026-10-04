@@ -6,6 +6,7 @@ const FLEXA_HOST = "flexamarket.com";
 const MONCASH_HOSTS = new Set([
   "button.digicelgroup.com",
   "moncashbutton.digicelgroup.com",
+  "sandbox.moncashbutton.digicelgroup.com",
 ]);
 
 export function isTrustedFlexaUrl(url: string): boolean {
@@ -40,6 +41,8 @@ export function isTrustedMonCashUrl(url: string): boolean {
     const parsed = new URL(url);
     return (
       parsed.protocol === "https:" &&
+      !parsed.username && !parsed.password &&
+      (!parsed.port || parsed.port === "443") &&
       MONCASH_HOSTS.has(parsed.hostname)
     );
   } catch {

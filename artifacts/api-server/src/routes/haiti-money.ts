@@ -2,9 +2,12 @@ import { Router, type IRouter } from "express";
 import { db, notificationsTable, promoWalletTable, usersTable, walletTransactionsTable } from "@workspace/db";
 import { requireAuth, requireSuperAdmin } from "../middlewares/auth";
 import { logger } from "../lib/logger";
+import { CheckoutTimeoutError } from "../lib/checkoutDeadline";
 import {
   createPayment,
   getAccessToken,
+  MonCashCheckoutError,
+  monCashCreationDefinitelyRejected,
   monCashPaymentSucceeded,
   monCashPaymentTerminalFailure,
   retrieveTransactionByOrderId,
@@ -186,7 +189,7 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
     clientSecret: config.clientSecret,
     returnUrl: callbackUrl(req, config.callbackUrl),
   };
-  let bazikCreationStarted = false;
+  let creationStarted = false;
   try {
     let checkout: { redirectUrl: string };
     if (config.adapter === "bazik") {
@@ -197,7 +200,7 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
       };
       const origin = requestOrigin(req);
       const token = await getBazikAccessToken(bazikConfig);
-      bazikCreationStarted = true;
+      creationStarted = true;
       const bazikCheckout = await createBazikMonCashPayment({
         config: bazikConfig,
         accessToken: token,
@@ -219,6 +222,7 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
       checkout = { redirectUrl: bazikCheckout.redirectUrl! };
     } else {
       const token = await getAccessToken(monCashCfg);
+      creationStarted = true;
       checkout = await createPayment(monCashCfg, token, paymentRef, quote.amountHtg);
     }
     logger.info({ userId: req.userId, paymentRef, provider }, "Haiti wallet topup initiated");
@@ -228,15 +232,25 @@ router.post("/wallet/haiti/initiate", requireAuth, async (req, res): Promise<voi
       quote,
     });
   } catch (err) {
-    const shouldReject = config.adapter !== "bazik"
-      || !bazikCreationStarted
-      || bazikCreationDefinitelyRejected(err);
+    const shouldReject = !creationStarted || (config.adapter === "bazik"
+      ? bazikCreationDefinitelyRejected(err)
+      : monCashCreationDefinitelyRejected(err));
     if (shouldReject) {
       await db.update(walletTransactionsTable).set({ status: "rejected" })
         .where(eq(walletTransactionsTable.paymentRef, paymentRef));
     }
-    logger.error({ userId: req.userId, paymentRef }, "Haiti wallet topup checkout failed");
-    res.status(502).json({ error: "MonCash payment creation failed" });
+    logger.error({
+      userId: req.userId, paymentRef, provider,
+      stage: creationStarted ? "payment_creation" : "authentication",
+      timedOut: err instanceof CheckoutTimeoutError,
+      providerStatus: err instanceof BazikApiError || err instanceof MonCashCheckoutError ? err.status : undefined,
+      creationUnconfirmed: !shouldReject,
+    }, "Haiti wallet topup checkout failed");
+    res.status(err instanceof CheckoutTimeoutError ? 504 : 502).json({
+      error: "MonCash payment creation failed",
+      errorCode: shouldReject ? "CHECKOUT_CREATION_FAILED" : "CHECKOUT_CREATION_UNCONFIRMED",
+      paymentRef,
+    });
   }
 });
 

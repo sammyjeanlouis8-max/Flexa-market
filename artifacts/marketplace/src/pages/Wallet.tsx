@@ -19,6 +19,7 @@ import QRCode from "qrcode";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
+import { HaitiCheckoutError, initiateHaitiCheckout } from "@/lib/haitiCheckout";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
 function formatCardNumber(acct: string | null | undefined): string {
@@ -765,16 +766,23 @@ export default function WalletPage() {
   });
 
   const haitiInitiateMut = useMutation({
+    // Offline mutations must settle visibly instead of staying paused forever.
+    networkMode: "always",
+    retry: false,
     mutationFn: (body: { provider: string, amountHtg: number, phone?: string }) =>
       walletFundingDisabled
         ? Promise.reject(new Error(t("androidPurchasePolicy.unavailable") || "Purchases disabled on Android"))
-        : apiPost("/wallet/haiti/initiate", body),
+        : initiateHaitiCheckout(body, getToken()),
     onSuccess: (data) => {
       if (data.redirectUrl) {
         window.location.href = data.redirectUrl;
       }
     },
-    onError: (e: Error) => toast({ title: t("wallet.error"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({
+      title: t("wallet.error"),
+      description: e instanceof HaitiCheckoutError ? t(e.translationKey) : e.message,
+      variant: "destructive",
+    }),
   });
 
   const debouncedQuote = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -1,3 +1,4 @@
+import { withCheckoutDeadline } from "./checkoutDeadline";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const BAZIK_API_BASE_URL = "https://api.bazik.io";
@@ -244,6 +245,7 @@ export async function createBazikMonCashPayment(input: {
   errorUrl: string;
   webhookUrl: string;
 }): Promise<BazikPayment> {
+  return withCheckoutDeadline("Bazik payment creation", async (signal) => {
   const res = await fetch(`${BAZIK_API_BASE_URL}/moncash/token`, {
     method: "POST",
     headers: {
@@ -261,6 +263,7 @@ export async function createBazikMonCashPayment(input: {
       webhookUrl: input.webhookUrl,
       metadata: { source: "flexa_market" },
     }),
+    signal,
   });
   const data = await readJsonResponse(res, "payment creation");
   const payment = normalizeBazikPayment(data);
@@ -268,6 +271,7 @@ export async function createBazikMonCashPayment(input: {
     throw new Error("Bazik payment response did not include orderId and redirectUrl");
   }
   return payment;
+  }, 20_000);
 }
 
 export async function retrieveBazikPayment(

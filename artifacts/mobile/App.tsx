@@ -73,6 +73,9 @@ export default function App() {
   const [navigationError, setNavigationError] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [webViewInstance, setWebViewInstance] = useState(0);
+  const [mainSourceUri, setMainSourceUri] = useState(WEBSITE);
+  const lastTrustedPageRef = useRef(WEBSITE);
+  const providerRecoveryActiveRef = useRef(false);
   const [hostedPaymentUrl, setHostedPaymentUrl] = useState<string | null>(null);
   const hostedPaymentUrlRef = useRef<string | null>(null);
   const openHostedPayment = useCallback((url: string) => {
@@ -83,6 +86,7 @@ export default function App() {
   const closeHostedPayment = useCallback(() => {
     if (!hostedPaymentUrlRef.current) return;
     hostedPaymentUrlRef.current = null;
+    providerRecoveryActiveRef.current = false;
     setHostedPaymentUrl(null);
     // The original authenticated document stays mounted during payment.
     // Reload triggers the existing authoritative reconciliation; never create
@@ -127,6 +131,7 @@ export default function App() {
     // behind payment UI. Do not reload and overwrite the new destination.
     if (hostedPaymentUrlRef.current) {
       hostedPaymentUrlRef.current = null;
+      providerRecoveryActiveRef.current = false;
       setHostedPaymentUrl(null);
     }
     lastNotificationId.current = notificationId;
@@ -239,6 +244,8 @@ export default function App() {
     clearErrorTimer();
     clearStartupTimer();
     currentUrlRef.current = WEBSITE;
+    lastTrustedPageRef.current = WEBSITE;
+    setMainSourceUri(WEBSITE);
     currentLoadFailedRef.current = false;
     renderProcessGoneRef.current = false;
     setCanGoBack(false);
@@ -248,6 +255,32 @@ export default function App() {
     setIsRetrying(false);
     setWebViewInstance(value => value + 1);
   }, [clearErrorTimer, clearStartupTimer]);
+
+  // Android can bypass/delay shouldOverrideUrlLoading. Catch the actual
+  // navigation too, before any app bridge can treat the provider as Flexa.
+  const recoverProviderNavigation = useCallback((url: string) => {
+    if (Platform.OS !== "android" || classifyWebUrl(url) !== "moncash") return false;
+    webRef.current?.stopLoading();
+    openHostedPayment(url);
+    if (!providerRecoveryActiveRef.current) {
+      providerRecoveryActiveRef.current = true;
+      clearErrorTimer();
+      clearStartupTimer();
+      webDocumentReadyRef.current = false;
+      currentUrlRef.current = "about:blank"; // no injections during replacement
+      currentLoadFailedRef.current = false;
+      renderProcessGoneRef.current = false;
+      setMainSourceUri(lastTrustedPageRef.current);
+      setCanGoBack(false);
+      setNavigationError(false);
+      setLoadError(false);
+      setIsLoading(false);
+      setIsRetrying(false);
+      // Only recover the merchant view. Never reload a provider form or POST.
+      setWebViewInstance(value => value + 1);
+    }
+    return true;
+  }, [clearErrorTimer, clearStartupTimer, openHostedPayment]);
 
   const recoverBack = useCallback(() => {
     if (canGoBack && !renderProcessGoneRef.current) {
@@ -428,7 +461,7 @@ export default function App() {
         <WebView
           key={webViewInstance}
           ref={webRef}
-          source={{ uri: WEBSITE }}
+          source={{ uri: mainSourceUri }}
           style={styles.webview}
           javaScriptEnabled
           domStorageEnabled
@@ -453,6 +486,8 @@ export default function App() {
           renderToHardwareTextureAndroid
           allowsBackForwardNavigationGestures={Platform.OS === "ios"}
           onNavigationStateChange={(s) => {
+            if (recoverProviderNavigation(s.url)) return;
+            if (isTrustedFlexaUrl(s.url)) lastTrustedPageRef.current = s.url;
             if (navigationError && s.url !== currentUrlRef.current) {
               setNavigationError(false);
             }
@@ -460,6 +495,8 @@ export default function App() {
             setCanGoBack(s.canGoBack);
           }}
           onLoadStart={(event) => {
+            if (recoverProviderNavigation(event.nativeEvent.url)) return;
+            if (isTrustedFlexaUrl(event.nativeEvent.url)) lastTrustedPageRef.current = event.nativeEvent.url;
             currentUrlRef.current = event.nativeEvent.url;
             handleLoadStart();
           }}

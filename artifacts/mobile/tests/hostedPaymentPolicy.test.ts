@@ -56,3 +56,14 @@ test("payment view has no app bridge, PIN-reading scripts, external launcher or 
   assert.match(app, /openHostedPayment\(targetUrl\)/);
   assert.doesNotMatch(app, /if \(route === "moncash"[^{}]*\{\s*Linking\.openURL/);
 });
+
+test("actual Android navigation recovers the merchant page without provider scripts or form retries", () => {
+  const app = readFileSync(new FileURL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(recoverProviderNavigation\(s\.url\)\) return;/);
+  assert.match(app, /if \(recoverProviderNavigation\(event\.nativeEvent\.url\)\) return;/);
+  const recovery = app.slice(app.indexOf("const recoverProviderNavigation"), app.indexOf("// ── Android hardware back button"));
+  assert.match(recovery, /currentUrlRef\.current = "about:blank"/);
+  assert.match(recovery, /setMainSourceUri\(lastTrustedPageRef\.current\)/);
+  assert.doesNotMatch(recovery, /injectJavaScript|\.reload\(/);
+  assert.match(app, /source=\{\{ uri: mainSourceUri \}\}/);
+});

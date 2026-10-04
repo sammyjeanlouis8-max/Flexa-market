@@ -452,9 +452,6 @@ extension WebViewController: WKNavigationDelegate {
 
         if isInApp { decisionHandler(.allow); return }
 
-        let frame = action.targetFrame
-        let isMainOrNewWindow = frame == nil || frame!.isMainFrame
-
         if isMainOrNewWindow {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
             decisionHandler(.cancel)

@@ -25,6 +25,7 @@ import {
 } from "@/lib/boostVideoUpload";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
+import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 
 const PLANS = [
@@ -253,15 +254,6 @@ export default function BoostPage() {
   const MAX_VIDEO_SECONDS = 300;
   const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
 
-  const probeVideoDuration = (file: File): Promise<number> => new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-    v.onerror = () => { URL.revokeObjectURL(url); resolve(NaN); };
-    v.src = url;
-  });
-
   const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -270,15 +262,15 @@ export default function BoostPage() {
       toast({ title: t("boost.videoTooBig"), variant: "destructive" });
       return;
     }
-    const seconds = await probeVideoDuration(file);
-    if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
-      toast({ title: t("boost.videoTooLong"), variant: "destructive" });
-      return;
-    }
     setVideoUploading(true);
     try {
       if (!user) {
         toast({ title: t("boost.videoUploadFailed"), variant: "destructive" });
+        return;
+      }
+      const seconds = await probeVideoDuration(file);
+      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+        toast({ title: t("boost.videoTooLong"), variant: "destructive" });
         return;
       }
       setVideoUrl(await startVideoUpload(file, token, {
@@ -706,14 +698,14 @@ export default function BoostPage() {
         toast({ title: t("boost.videoTooBig"), variant: "destructive" });
         return;
       }
-      const seconds = await probeVideoDuration(file);
-      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
-        toast({ title: t("boost.videoTooLong"), variant: "destructive" });
-        return;
-      }
       setAbvUploading(true);
       setAbvUploadPercent(0);
       try {
+        const seconds = await probeVideoDuration(file);
+        if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+          toast({ title: t("boost.videoTooLong"), variant: "destructive" });
+          return;
+        }
         const uploadedUrl = await startVideoUpload(file, token, {
           ownerId: user.id,
           purpose: "boost",

@@ -25,6 +25,7 @@ import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { apiFetch } from "@/lib/api";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
+import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
 
 const MAX_IMAGES = 5;
@@ -571,16 +572,6 @@ export default function Sell() {
   const hasVideoPlan = !!userPlan && userPlan !== "basic" && !planExpired;
   const hasActivePlan = !!userPlan && !planExpired;
 
-  const probeVideoDuration = (file: File): Promise<number> =>
-    new Promise((resolve, reject) => {
-      const url = URL.createObjectURL(file);
-      const v = document.createElement("video");
-      v.preload = "metadata";
-      v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
-      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode-failed")); };
-      v.src = url;
-    });
-
   const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -589,19 +580,15 @@ export default function Sell() {
       toast({ title: t("sell.videoTooBig"), variant: "destructive" });
       return;
     }
-    try {
-      const seconds = await probeVideoDuration(file);
-      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
-        toast({ title: t("sell.videoTooLong"), variant: "destructive" });
-        return;
-      }
-    } catch {
-      // Can't read duration (e.g. HEVC/MOV on iOS) — allow upload; server enforces size limit
-    }
     setVideoUploading(true);
     try {
       if (!user) {
         toast({ title: t("sell.videoUploadFailed"), variant: "destructive" });
+        return;
+      }
+      const seconds = await probeVideoDuration(file);
+      if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
+        toast({ title: t("sell.videoTooLong"), variant: "destructive" });
         return;
       }
       const uploadedUrl = await startVideoUpload(file, token, {

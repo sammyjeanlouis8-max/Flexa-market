@@ -704,7 +704,7 @@ export default {
     loadingEdit: "Chargement des données de l'annonce…",
     publishListing: "Publier l'annonce",
     payoutSectionTitle: "Méthode de versement",
-    usStripeOnly: "Kat FM est disponible pour les nouvelles ventes uniquement si le pays du profil et celui de l’annonce sont Haïti. Sinon, Stripe est obligatoire après livraison admissible. Votre portefeuille FM reste disponible ; vos anciens soldes et commandes déjà passées restent inchangés.",
+    usStripeOnly: "Utilisez Stripe pour recevoir le produit de vos ventes sur votre compte bancaire après une livraison admissible.",
     usStripeRequired: "Vous pouvez publier votre annonce maintenant. Pour recevoir le produit de vos ventes, finalisez Stripe et assurez-vous que votre compte est éligible aux transferts et versements bancaires.",
     accountRestricted: "Votre compte fait l’objet d’une restriction de publication. Cela ne concerne pas la configuration des paiements.",
     usStripeComplete: "Finaliser Stripe",

@@ -704,7 +704,7 @@ export default {
     loadingEdit: "Loading listing data…",
     publishListing: "Publish Listing",
     payoutSectionTitle: "How you receive your money",
-    usStripeOnly: "Kat FM is available for new sale proceeds only when both the profile and listing countries are Haiti. Otherwise, Stripe is required after eligible delivery. Your FM wallet remains available; existing balances and orders already placed are unchanged.",
+    usStripeOnly: "Use Stripe to receive your sales earnings in your bank account after eligible delivery.",
     usStripeRequired: "You can publish your listing now. To receive your sales earnings, complete Stripe setup and ensure your account is eligible for transfers and bank payouts.",
     accountRestricted: "Your account has a posting restriction. This is separate from payment setup.",
     usStripeComplete: "Complete Stripe setup",

@@ -704,7 +704,7 @@ export default {
     loadingEdit: "Ap chaje done anonn nan…",
     publishListing: "Pibliye Lis",
     payoutSectionTitle: "Metòd pou resevwa kòb ou",
-    usStripeOnly: "Kat FM disponib pou nouvo lajan lavant sèlman lè peyi pwofil la ak peyi anons la se Ayiti. Sinon, Stripe obligatwa apre livrezon kalifye. Bous FM ou rete disponib; ansyen balans ak lòd ki deja fèt yo pa chanje.",
+    usStripeOnly: "Sèvi ak Stripe pou resevwa lajan lavant ou nan kont labank ou apre livrezon kalifye.",
     usStripeRequired: "Ou ka pibliye anons ou kounye a. Pou resevwa lajan lavant ou, ou dwe fini konfigirasyon Stripe epi kont ou dwe kalifye pou transfè ak vèsman.",
     accountRestricted: "Kont ou gen yon restriksyon sou piblikasyon. Sa pa gen rapò ak konfigirasyon peman ou.",
     usStripeComplete: "Fini konfigirasyon Stripe",

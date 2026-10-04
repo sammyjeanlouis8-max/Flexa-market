@@ -1,6 +1,7 @@
 import UIKit
 import WebKit
 import UserNotifications
+import SafariServices
 
 private let kWebsite = URL(string: "https://flexamarket.com")!
 
@@ -17,6 +18,7 @@ final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
 final class WebViewController: UIViewController {
 
     private var webView: WKWebView!
+    private var hostedPaymentBrowser: SFSafariViewController?
     private let spinner = UIActivityIndicatorView(style: .large)
     private var offlineView: OfflineView?
     /// Prevents repeat permission requests within one app session.
@@ -436,6 +438,12 @@ extension WebViewController: WKNavigationDelegate {
                  decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.allow); return }
+        let isMainOrNewWindow = action.targetFrame == nil || action.targetFrame?.isMainFrame == true
+        if isMainOrNewWindow && HostedPaymentPolicy.accepts(url) {
+            decisionHandler(.cancel)
+            presentHostedPayment(url)
+            return
+        }
         let host = url.host ?? ""
         let isInApp = host == "flexamarket.com"
             || host.hasSuffix(".flexamarket.com")
@@ -463,8 +471,45 @@ extension WebViewController: WKUIDelegate {
                  createWebViewWith _: WKWebViewConfiguration,
                  for action: WKNavigationAction,
                  windowFeatures _: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { webView.load(URLRequest(url: url)) }
+        if let url = action.request.url {
+            if HostedPaymentPolicy.accepts(url) {
+                presentHostedPayment(url)
+            } else {
+                webView.load(URLRequest(url: url))
+            }
+        }
         return nil
+    }
+}
+
+// MARK: – Isolated, in-app MonCash checkout
+
+extension WebViewController: SFSafariViewControllerDelegate {
+    private func presentHostedPayment(_ url: URL) {
+        guard HostedPaymentPolicy.accepts(url),
+              hostedPaymentBrowser == nil, presentedViewController == nil else { return }
+        let browser = SFSafariViewController(url: url)
+        browser.delegate = self
+        browser.dismissButtonStyle = .done
+        browser.modalPresentationStyle = .fullScreen
+        hostedPaymentBrowser = browser
+        // Safari owns payment cookies and PIN fields. No WKWebView bridge,
+        // JavaScript injection, auth token or APNs token enters this page.
+        present(browser, animated: true)
+    }
+
+    func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
+        guard controller === hostedPaymentBrowser else { return }
+        controller.dismiss(animated: true) { [weak self] in
+            guard let self = self else { return }
+            self.hostedPaymentBrowser = nil
+            // Closing is NOT proof of payment. Reload the original authenticated
+            // wallet; its server reconciliation refreshes balance/history and
+            // accepts only provider-confirmed payments. Never recreate checkout.
+            if self.webView.url?.host?.lowercased() == "flexamarket.com" {
+                self.webView.reload()
+            }
+        }
     }
 }
 

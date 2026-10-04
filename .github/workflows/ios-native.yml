@@ -63,6 +63,17 @@ jobs:
           ruby -c tools/ios-profile-options.test.rb
           ruby tools/ios-profile-options.test.rb
 
+      - name: Verify native payment origin policy and Swift syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          swiftc -frontend -parse artifacts/ios-native/Sources/*.swift
+          TEST_DIR="$(mktemp -d)"
+          cp tools/test-ios-hosted-payment.swift "$TEST_DIR/main.swift"
+          swiftc artifacts/ios-native/Sources/HostedPaymentPolicy.swift "$TEST_DIR/main.swift" -o "$TEST_DIR/payment-policy"
+          "$TEST_DIR/payment-policy"
+          rm -rf "$TEST_DIR"
+
       - name: Check current signing secret pair
         env:
           IOS_SIGNING_P12_BASE64: ${{ secrets.IOS_SIGNING_P12_BASE64 }}

@@ -414,19 +414,7 @@ export default function Sell() {
       photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    if (!isEditMode && paymentReady !== true) {
-      const msg = paymentReady === null
-        ? t("sell.paymentCheckingDescription")
-        : isStripeOnlySeller ? t("sell.usStripeRequired") : t("sell.paymentRequiredDescription");
-      setSubmitError(msg);
-      toast({
-        title: paymentReady === null ? t("sell.paymentCheckingTitle") : t("sell.paymentRequiredTitle"),
-        description: msg,
-        variant: "destructive",
-      });
-      paymentSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
+    // Payment setup is informational here, not a prerequisite for publishing.
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(values.country ?? "");
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery && intlShippingCost ? Number(intlShippingCost) : undefined, shippingCarriers: !isLocalDelivery && intlCarriers.length > 0 ? intlCarriers : undefined, deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : undefined, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
@@ -466,6 +454,11 @@ export default function Sell() {
 
     const handleError = (e: any) => {
       const raw: unknown = e?.data?.error;
+      if (e?.data?.code === "USER_RESTRICTED" || raw === "USER_RESTRICTED") {
+        setSubmitError(t("sell.accountRestricted"));
+        showRestrictionToast();
+        return;
+      }
       const isRawJson =
         typeof raw === "string" &&
         (raw.trimStart().startsWith("[") || raw.trimStart().startsWith("{\"code\""));

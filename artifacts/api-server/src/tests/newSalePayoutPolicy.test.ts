@@ -55,6 +55,38 @@ describe("new sales, including previously posted listings", () => {
     await expect(requireNewSalePayout({ sellerId: 1 })).rejects.toThrow("provider unavailable");
   });
 
+  it.each(["STRIPE_SETUP_REQUIRED", "STRIPE_COUNTRY_UNSUPPORTED", "STRIPE_ACCOUNT_COUNTRY_MISMATCH"])(
+    "still blocks money movement when the payout destination rejects with %s", async reason => {
+      rows.mockResolvedValue([{ country: "Dominican Republic", stripeAccountId: null }]);
+      activeDestination.mockRejectedValue(new Error(reason));
+      await expect(requireNewSalePayout({ sellerId: 1, country: "Dominican Republic", requiresStripePayout: true }))
+        .rejects.toThrow(reason);
+    },
+  );
+
+  it("allows publishing without payout onboarding but preserves settlement and account restrictions", () => {
+    const source = readFileSync(new URL("../routes/listings.ts", import.meta.url), "utf8");
+    const start = source.indexOf('router.post("/listings",');
+    const end = source.indexOf("\nrouter.", start + 1);
+    const route = source.slice(start, end === -1 ? undefined : end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(route).toContain("requireAuth, requireNotRestricted");
+    expect(route).toContain("isStripeOnlySale(seller?.country, listingCountry)");
+    expect(route).toContain("requiresStripePayout,");
+    expect(route).not.toContain("requireActiveStripeDestination(");
+    expect(route).not.toContain("requireNewSalePayout(");
+    expect(route).not.toContain("STRIPE_SETUP_REQUIRED");
+  });
+
+  it("does not gate the posting form on payment readiness and handles account restrictions separately", () => {
+    const source = readFileSync(new URL("../../../marketplace/src/pages/Sell.tsx", import.meta.url), "utf8");
+    const submit = source.slice(source.indexOf("const onSubmit ="), source.indexOf("const onInvalidSubmit ="));
+    expect(submit).not.toContain("paymentReady");
+    expect(submit).toContain("if (isRestricted)");
+    expect(submit).toContain('e?.data?.code === "USER_RESTRICTED"');
+    expect(submit).toContain("createListing.mutate(");
+  });
+
   it.each([
     ["listings", 'router.post("/listings/:id/purchase"', "db.transaction("],
     ["stripeCheckout", 'router.post("/stripe/checkout"', "stripe.checkout.sessions.create("],

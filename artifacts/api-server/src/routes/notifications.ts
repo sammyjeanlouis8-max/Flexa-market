@@ -33,6 +33,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
     type: r.type,
     isRead: r.isRead,
     listingId: r.listingId,
+    referenceId: r.referenceId,
     commentId: r.commentId,
     message: r.message ?? null,
     createdAt: r.createdAt.toISOString(),

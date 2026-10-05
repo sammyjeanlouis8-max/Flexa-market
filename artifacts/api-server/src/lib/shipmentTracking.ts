@@ -7,7 +7,7 @@ import {
   shipmentsTable,
   transactionsTable,
 } from "@workspace/db";
-import { sendPushToUser } from "./push";
+import { sendOrderPush } from "./orderNotificationPush";
 import {
   AfterShipError,
   createTracking,
@@ -64,7 +64,7 @@ async function notifyStatus(orderId: number, buyerId: number, sellerId: number, 
     return [];
   });
   if (inserted.length > 0) {
-    void sendPushToUser(buyerId, {
+    void sendOrderPush(buyerId, {
       title: "Mise à jour de livraison",
       body: template.message(orderId),
       url: `/orders/${orderId}`,

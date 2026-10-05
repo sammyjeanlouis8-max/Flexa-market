@@ -4,6 +4,7 @@ import { eq, desc, and, or, sql, notInArray, inArray, aliasedTable } from "drizz
 import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requireCardNotBlocked, hasFinanceAdminAccess } from "../middlewares/auth";
 import { handleSellerSalesReport } from "./sellerSalesReport";
 import { sendPushToUser } from "../lib/push";
+import { sendOrderPush } from "../lib/orderNotificationPush";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
@@ -1180,8 +1181,9 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
     if (!changed.length) { res.status(409).json({ error: "Order is already shipped." }); return; }
     await db.insert(notificationsTable).values({
       userId: tx.userId, actorId: listing.sellerId, type: "order_shipped", listingId: listing.id,
+      referenceId: orderId,
     }).catch(() => {});
-    void sendPushToUser(tx.userId, {
+    void sendOrderPush(tx.userId, {
       title: "Kòmand ou voye!", body: `${tx.deliveryMethod}: ${trackingNumber}`,
       url: `/orders/${orderId}`, tag: `order-${orderId}`,
     });
@@ -1218,8 +1220,9 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
     });
     await db.insert(notificationsTable).values({
       userId: tx.userId, actorId: listing.sellerId, type: "order_shipped", listingId: listing.id,
+      referenceId: orderId,
     }).catch(() => {});
-    void sendPushToUser(tx.userId, {
+    void sendOrderPush(tx.userId, {
       title: "Kòmand ou sou wout!", body: "Vandè a ap livre kòmand ou. Bay li kòd la sèlman lè ou resevwa pwodwi a.",
       url: `/orders/${orderId}`, tag: `order-${orderId}`,
     });
@@ -1426,9 +1429,10 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
     actorId: listing.sellerId,
     type: "order_shipped",
     listingId: listing.id,
+    referenceId: orderId,
   }).catch(() => {});
 
-  void sendPushToUser(tx.userId, {
+  void sendOrderPush(tx.userId, {
     title: "Kòmand ou voye!",
     body: isHaiti
       ? `"${listing.title}" ap vini jwenn ou. Chèk detay livrezon an.`
@@ -2859,6 +2863,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       type: "new_order",
       actorId: userId,
       listingId: listing.id,
+      referenceId: txRow.id,
       message: `You received a new cart order for "${listing.title}" — $${itemTotal.toFixed(2)} + delivery $${itemDeliveryFeeUsd.toFixed(2)}. Payment held in escrow.`,
     } as any).catch(() => {});
     void sendPushToUser(listing.sellerId, {

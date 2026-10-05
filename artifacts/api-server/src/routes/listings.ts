@@ -1982,8 +1982,8 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   // Best-effort notifications (non-critical).
   // Seller is told the item sold; buyer gets an order-confirmation receipt.
   await db.insert(notificationsTable).values([
-    { userId: listing.sellerId, actorId: req.userId!, type: "purchase", listingId: id },
-    { userId: req.userId!, actorId: listing.sellerId, type: "order_confirmed", listingId: id },
+    { userId: listing.sellerId, actorId: req.userId!, type: "purchase", listingId: id, referenceId: insertedTxId },
+    { userId: req.userId!, actorId: listing.sellerId, type: "order_confirmed", listingId: id, referenceId: insertedTxId },
   ]).catch((e) => { req.log.error({ err: e }, "[purchase] notification insert failed"); });
 
   // Urgent push alert to seller + their store manager (direct wallet purchase)

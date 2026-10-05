@@ -1246,6 +1246,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       actorId: sellerUserId ?? buyerUserId,
       type: "order_confirmed",
       listingId: listingId ?? undefined,
+      referenceId: updatedTx.id,
     }).catch(() => {});
 
     void sendPushToUser(buyerUserId, {
@@ -1268,6 +1269,7 @@ export async function handleCheckoutCompleted(session: Stripe.Checkout.Session):
       actorId: buyerUserId ?? sellerUserId,
       type: "new_order",
       listingId: listingId ?? undefined,
+      referenceId: updatedTx.id,
     }).catch(() => {});
 
     void sendPushToUser(sellerUserId, {

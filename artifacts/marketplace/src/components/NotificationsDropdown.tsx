@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
+import { orderNotificationDestination } from "@/lib/order-notification-destination";
 
 interface Notification {
   id: number;
@@ -38,27 +39,40 @@ export default function NotificationsDropdown() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
-  const fetchCount = useCallback(async () => {
-    if (!user) return;
+  const fetchCount = useCallback(async (signal?: AbortSignal) => {
+    if (!user || !token) return;
     try {
-      const res = await fetch("/api/notifications/unread-count", { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { const d = await res.json(); setUnreadCount(d.count); }
+      const res = await fetch("/api/notifications/unread-count", { signal, headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { const d = await res.json(); if (!signal?.aborted) setUnreadCount(d.count); }
     } catch {}
-  }, [user, token]);
+  }, [user?.id, token]);
 
   useEffect(() => {
-    fetchCount();
-    const interval = setInterval(fetchCount, 30_000);
-    return () => clearInterval(interval);
+    const controller = new AbortController();
+    void fetchCount(controller.signal);
+    const interval = setInterval(() => { void fetchCount(controller.signal); }, 30_000);
+    return () => { controller.abort(); clearInterval(interval); };
   }, [fetchCount]);
 
-  const fetchNotifications = async () => {
-    if (loaded) return;
+  const fetchNotifications = useCallback(async (signal?: AbortSignal) => {
+    if (!user || !token) return;
     try {
-      const res = await fetch("/api/notifications", { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { const d = await res.json(); setNotifications(d); setLoaded(true); }
+      const res = await fetch("/api/notifications", { signal, headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) { const d = await res.json(); if (!signal?.aborted) { setNotifications(d); setLoaded(true); } }
     } catch {}
-  };
+  }, [user?.id, token]);
+
+  useEffect(() => {
+    setNotifications([]); setLoaded(false); setUnreadCount(0); setOpen(false);
+  }, [user?.id, token]);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    void fetchNotifications(controller.signal);
+    const interval = setInterval(() => { void fetchNotifications(controller.signal); }, 15000);
+    return () => { controller.abort(); clearInterval(interval); };
+  }, [open, fetchNotifications]);
 
   const markAllRead = async () => {
     await fetch("/api/notifications/read-all", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
@@ -69,7 +83,6 @@ export default function NotificationsDropdown() {
   const handleOpen = (v: boolean) => {
     setOpen(v);
     if (v) {
-      fetchNotifications();
       if (unreadCount > 0) markAllRead();
     }
   };
@@ -84,9 +97,17 @@ export default function NotificationsDropdown() {
       case "offer_received": return t("notifications.offerReceived");
       case "offer_accepted": return t("notifications.offerAccepted");
       case "offer_rejected": return t("notifications.offerRejected");
-      case "purchase": return t("notifications.purchased");
+      case "purchase":
+      case "new_order": return t("notifications.purchased");
       case "order_confirmed": return t("notifications.orderConfirmed");
       case "order_shipped": return t("notifications.orderShipped");
+      case "shipment_created":
+      case "shipment_shipped":
+      case "shipment_in_transit":
+      case "shipment_out_for_delivery":
+      case "shipment_delivered":
+      case "shipment_exception":
+      case "shipment_returned": return n.message || t("notifications.orderShipped");
       case "order_delivered": return t("notifications.orderDelivered");
       case "card_refund": return n.message || t("notifications.defaultNotif");
       case "delivery_picked_up": return t("notifications.deliveryPickedUp");
@@ -123,6 +144,8 @@ export default function NotificationsDropdown() {
   };
 
   const getNotifHref = (n: Notification): string => {
+    const orderDestination = orderNotificationDestination(n);
+    if (orderDestination) return orderDestination;
     switch (n.type) {
       // Listing-specific
       case "like":
@@ -131,7 +154,6 @@ export default function NotificationsDropdown() {
       case "offer_received":
       case "offer_accepted":
       case "offer_rejected":
-      case "purchase":
       case "listing_approved":
       case "listing_rejected":
       case "moderation_approved":
@@ -145,12 +167,6 @@ export default function NotificationsDropdown() {
       case "boost_approved":
       case "boost_activated":
         return n.listingId ? `/listings/${n.listingId}/video` : "/sell";
-
-      // Orders/purchases
-      case "order_confirmed":
-      case "order_shipped":
-      case "order_delivered":
-        return n.listingId ? `/listings/${n.listingId}` : "/orders";
 
       // Delivery tracking
       case "card_refund":
@@ -207,7 +223,8 @@ export default function NotificationsDropdown() {
       case "offer_received":
       case "offer_accepted":
       case "offer_rejected": return "🏷️";
-      case "purchase": return "🛒";
+      case "purchase":
+      case "new_order": return "🛒";
       case "order_confirmed": return "🧾";
       case "order_shipped": return "🚚";
       case "order_delivered": return "📦";

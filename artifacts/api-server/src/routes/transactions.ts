@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, requireSuperAdmin, requireFinanceAdmin, requ
 import { handleSellerSalesReport } from "./sellerSalesReport";
 import { sendPushToUser } from "../lib/push";
 import { sendOrderPush } from "../lib/orderNotificationPush";
+import { orderLabelDelivery } from "../lib/orderLabelDelivery";
 import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-push";
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
@@ -1112,6 +1113,7 @@ router.get("/orders/:id/label", requireAuth, async (req, res): Promise<void> => 
     .select({ id: usersTable.id, name: usersTable.name })
     .from(usersTable).where(eq(usersTable.id, tx.userId));
 
+  const country = tx.listingCountry ?? listing.country ?? null;
   res.json({
     orderId: tx.id,
     orderRef: `BZH-${String(tx.id).padStart(6, "0")}`,
@@ -1126,11 +1128,16 @@ router.get("/orders/:id/label", requireAuth, async (req, res): Promise<void> => 
       phone: merchant?.phone ?? null,
     },
     buyer: { id: buyer?.id ?? tx.userId, name: buyer?.name ?? null },
+    shipFrom: {
+      name: merchant?.name ?? null, phone: merchant?.phone ?? null,
+      street: null, city: listing.city ?? null, region: null, zip: null, country,
+    },
+    delivery: orderLabelDelivery(tx, country),
     shipTo: {
       name: tx.shippingName, phone: tx.shippingPhone, email: tx.shippingEmail,
       street: tx.shippingStreet, city: tx.shippingCity, region: tx.shippingRegion,
       zip: tx.shippingZip,
-      country: listing.country,
+      country,
     },
   });
 });

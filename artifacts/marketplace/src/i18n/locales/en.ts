@@ -670,6 +670,7 @@ export default {
     shippingCostLabel: "Shipping cost (USD)",
     shippingCostPlaceholder: "0.00 (leave blank for free shipping)",
     acceptedCarriersLabel: "Accepted carriers",
+    selectDeliveryCompany: "Choose a delivery company to ship the item.",
     otherCarrier: "Other",
     acceptedCarriersHint: "Select all carriers you can ship with. Buyers choose at checkout.",
     photoTipsTitle: "📸 Tips for professional photos",

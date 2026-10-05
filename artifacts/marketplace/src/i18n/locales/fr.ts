@@ -670,6 +670,7 @@ export default {
     shippingCostLabel: "Coût d'expédition (USD)",
     shippingCostPlaceholder: "0,00 (laisser vide pour une expédition gratuite)",
     acceptedCarriersLabel: "Transporteurs acceptés",
+    selectDeliveryCompany: "Choisissez une entreprise de livraison pour expédier l’article.",
     otherCarrier: "Autre",
     acceptedCarriersHint: "Sélectionnez tous les transporteurs disponibles. Les acheteurs choisiront au moment du paiement.",
     photoTipsTitle: "📸 Conseils pour des photos professionnelles",

@@ -27,6 +27,7 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
+import { listingCarriersForCountry } from "@/lib/listingCarriers";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -431,7 +432,15 @@ export default function Sell() {
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(values.country ?? "");
     const isDominicanSelfDelivery = values.country === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery";
-    const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? intlCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
+    const shippingCarriers = values.country === "Dominican Republic"
+      ? intlCarriers.filter(carrier => listingCarriersForCountry(values.country).includes(carrier))
+      : intlCarriers;
+    if (values.country === "Dominican Republic" && !isDominicanSelfDelivery &&
+        shippingCarriers.length === 0) {
+      setSubmitError(t("sell.selectDeliveryCompany"));
+      return;
+    }
+    const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const handleSuccess = (_listing: any) => {
       const l = _listing as any;
@@ -1613,7 +1622,7 @@ export default function Sell() {
               {!(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery") && <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">{t("sell.acceptedCarriersLabel")}</label>
                 <div className="flex flex-wrap gap-2">
-                  {(["UPS", "FedEx", "DHL", "USPS", "Other"] as const).map(carrier => {
+                  {listingCarriersForCountry(selectedCountry).map(carrier => {
                     const active = intlCarriers.includes(carrier);
                     return (
                       <button
@@ -1624,7 +1633,7 @@ export default function Sell() {
                           "px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-all",
                           active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
                         )}
-                        data-testid={`carrier-${carrier.toLowerCase()}`}
+                        data-testid={`carrier-${carrier.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
                       >
                         {carrier === "Other" ? t("sell.otherCarrier") : carrier}
                       </button>

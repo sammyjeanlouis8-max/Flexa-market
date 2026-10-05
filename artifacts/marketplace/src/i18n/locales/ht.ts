@@ -670,6 +670,7 @@ export default {
     shippingCostLabel: "Pri ekspedisyon (USD)",
     shippingCostPlaceholder: "0.00 (kite vid pou ekspedisyon gratis)",
     acceptedCarriersLabel: "Transportè aksepte",
+    selectDeliveryCompany: "Chwazi yon konpayi livrezon pou voye pwodwi a.",
     otherCarrier: "Lòt",
     acceptedCarriersHint: "Chwazi tout transportè ou ka itilize. Achtè yo ap chwazi nan moman peman an.",
     photoTipsTitle: "📸 Konsèy pou foto pwofesyonèl",

@@ -87,7 +87,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
+    <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 pb-6 pt-[calc(1.5rem+max(env(safe-area-inset-top,0px),var(--sat,0px)))] sm:py-8 relative">
       <div className="absolute top-3 right-3">
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>

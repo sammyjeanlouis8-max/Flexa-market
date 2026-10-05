@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   Trash2, ShoppingBag, ChevronDown, ChevronUp,
@@ -104,6 +104,7 @@ function CheckoutModal({
   const [region, setRegion] = useState(savedAddress.region ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [requiresItemCheckout, setRequiresItemCheckout] = useState(false);
 
   const groups = groupBySeller(selectedItems);
   const deliveryTotal = deliveryFees.reduce((s, d) => s + d.feeUsd, 0);
@@ -133,7 +134,10 @@ function CheckoutModal({
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Something went wrong. Try again."); return; }
+      if (!res.ok) {
+        if (data.code === "DOMINICAN_ITEM_CHECKOUT_REQUIRED") setRequiresItemCheckout(true);
+        setError(data.error ?? "Something went wrong. Try again."); return;
+      }
       saveCheckoutAddress(user?.id, {
         name: name.trim(),
         phone: phone.trim(),
@@ -265,12 +269,22 @@ function CheckoutModal({
           {error && (
             <p className="text-sm font-bold text-red-600 text-center px-2 py-2 rounded-xl" style={{ background: "#fee2e2" }}>{error}</p>
           )}
+          {requiresItemCheckout && (
+            <div className="space-y-2" data-testid="cart-individual-shipping-links">
+              {selectedItems.map(item => (
+                <Link key={item.listingId} href={`/listings/${item.listingId}`}
+                  className="block rounded-xl border p-3 text-sm font-semibold text-primary underline">
+                  {item.title} →
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* Total + confirm */}
           <div className="space-y-3 pb-2">
             <button
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={loading || requiresItemCheckout}
               className="w-full py-4 rounded-2xl font-black text-white text-sm transition-all active:scale-[0.98]"
               style={loading ? { background: "#e2e8f0", color: "#94a3b8", cursor: "not-allowed" } : {
                 background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",

@@ -29,7 +29,16 @@ import {
   payoutEligibilityPredicate,
 } from "../lib/settlementEligibility";
 
+import { dominicanOrderMode } from "../lib/dominicanFulfillment";
+import { randomInt } from "node:crypto";
+import rateLimit from "express-rate-limit";
+
 const router = Router();
+const sellerDeliveryCodeLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 5, skipSuccessfulRequests: true,
+  keyGenerator: req => `${req.userId}:${req.params.id}`,
+  message: { error: "Twòp tantativ pou kòd sa a. Eseye ankò apre 15 minit." },
+});
 
 const CARRIERS = [
   "UPS", "FedEx", "DHL", "USPS", "Canada Post",
@@ -613,9 +622,12 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
   if (!listingId) { res.status(400).json({ error: "listingId required" }); return; }
   const method = req.query.method ? String(req.query.method) : undefined;
   const deliveryFeeRaw = req.query.deliveryFeeUsd ? parseFloat(String(req.query.deliveryFeeUsd)) : null;
-  const deliveryFeeUsd = deliveryFeeRaw !== null && deliveryFeeRaw > 0 ? deliveryFeeRaw : null;
+  let deliveryFeeUsd = deliveryFeeRaw !== null && deliveryFeeRaw > 0 ? deliveryFeeRaw : null;
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  if (listing.country === "Dominican Republic") {
+    deliveryFeeUsd = Math.round((listing.shippingCost ?? 0) * 100) / 100;
+  }
   const offerId = req.query.offerId ? parseInt(String(req.query.offerId), 10) : null;
   let quotePriceNative = listing.price;
   if (offerId) {
@@ -930,7 +942,8 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
 
   const listingCountry = tx.listingCountry ?? listing.country ?? null;
   // Manual delivery flow: Haiti and Dominican Republic both use driver-based delivery (no carrier tracking)
-  const isHaiti = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
+  const dominicanMode = dominicanOrderMode(listingCountry, tx.deliveryMethod);
+  const isHaiti = listingCountry === "Haiti" || (listingCountry === "Dominican Republic" && dominicanMode !== "company");
 
   // FM delivery: fetch linked delivery + driver info if it's an FM driver order
   const fmDelivery = await loadFmDelivery(orderId);
@@ -974,6 +987,7 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     buyerProposedDeliveryFee: tx.buyerProposedDeliveryFee ?? null,
     // Meta
     listingCountry,
+    deliveryMethod: tx.deliveryMethod,
     isHaiti,
     isSeller,
     isBuyer,
@@ -1139,10 +1153,68 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
 
   const listingCountry = tx.listingCountry ?? listing.country ?? null;
   // Manual delivery flow: Haiti and Dominican Republic both use driver-based delivery (no carrier tracking)
-  const isHaiti = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
+  const dominicanMode = dominicanOrderMode(listingCountry, tx.deliveryMethod);
+  const isHaiti = listingCountry === "Haiti" || (listingCountry === "Dominican Republic" && dominicanMode !== "company");
 
   const body = req.body as Record<string, string | undefined>;
   const now = new Date();
+  if (dominicanMode === "company") {
+    const trackingNumber = body.trackingNumber?.trim();
+    if (!trackingNumber || trackingNumber.length > 200 || body.carrier !== tx.deliveryMethod) {
+      res.status(400).json({ error: "Provide a tracking number and the company chosen at checkout." }); return;
+    }
+    const changed = await db.update(transactionsTable).set({
+      trackingNumber, carrier: tx.deliveryMethod, orderStatus: "shipped",
+      shippedAt: now, autoReleaseAt: null,
+    }).where(and(eq(transactionsTable.id, orderId), eq(transactionsTable.orderStatus, "ready_to_ship"))).returning({ id: transactionsTable.id });
+    if (!changed.length) { res.status(409).json({ error: "Order is already shipped." }); return; }
+    await db.insert(notificationsTable).values({
+      userId: tx.userId, actorId: listing.sellerId, type: "order_shipped", listingId: listing.id,
+    }).catch(() => {});
+    void sendPushToUser(tx.userId, {
+      title: "Kòmand ou voye!", body: `${tx.deliveryMethod}: ${trackingNumber}`,
+      url: `/orders/${orderId}`, tag: `order-${orderId}`,
+    });
+    res.json({ ok: true, orderStatus: "shipped" }); return;
+  }
+  if (dominicanMode === "seller" && (req.body.useFmDriver || req.body.useBus)) {
+    res.status(400).json({ error: "This order is delivered by the seller, not an FM driver or bus." }); return;
+  }
+  if (dominicanMode === "seller") {
+    if (!body.deliveryDescription?.trim() || !body.driverPhone?.trim()) {
+      res.status(400).json({ error: "Provide a delivery description and the seller's phone." }); return;
+    }
+    const code = String(randomInt(100000, 1000000));
+    await db.transaction(async lockedDb => {
+      const [lockedOrder] = await lockedDb.select().from(transactionsTable)
+        .where(eq(transactionsTable.id, orderId)).for("update");
+      if (!lockedOrder || lockedOrder.orderStatus !== "ready_to_ship") {
+        throw Object.assign(new Error("Order is already shipped."), { status: 409 });
+      }
+      await lockedDb.insert(deliveriesTable).values({
+        transactionId: orderId, listingId: listing.id, sellerId: listing.sellerId, buyerId: tx.userId,
+        status: "on_the_way", verificationCode: code, deliveryMethod: "self_delivery",
+        pickupCity: listing.city ?? null, deliveryCity: tx.shippingCity ?? null,
+        deliveryAddress: [tx.shippingStreet, tx.shippingCity, tx.shippingRegion].filter(Boolean).join(", "),
+        country: "Dominican Republic", currency: "USD",
+        sellerNote: body.deliveryDescription!.trim(), driverPhone: body.driverPhone!.trim(),
+        feeUsd: tx.deliveryFeeUsd ?? null,
+      });
+      await lockedDb.update(transactionsTable).set({
+        orderStatus: "shipped", shippedAt: now, autoReleaseAt: null,
+        deliveryDescription: body.deliveryDescription!.trim(), driverPhone: body.driverPhone!.trim(),
+        driverName: body.driverName?.trim() ?? null,
+      }).where(eq(transactionsTable.id, orderId));
+    });
+    await db.insert(notificationsTable).values({
+      userId: tx.userId, actorId: listing.sellerId, type: "order_shipped", listingId: listing.id,
+    }).catch(() => {});
+    void sendPushToUser(tx.userId, {
+      title: "Kòmand ou sou wout!", body: "Vandè a ap livre kòmand ou. Bay li kòd la sèlman lè ou resevwa pwodwi a.",
+      url: `/orders/${orderId}`, tag: `order-${orderId}`,
+    });
+    res.json({ ok: true, orderStatus: "shipped" }); return;
+  }
 
   let updateData: Record<string, unknown> = {
     orderStatus: "shipped",
@@ -1351,7 +1423,7 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
 // Seller enters the 6-digit code the buyer sent via message → immediate escrow release.
 // Mirrors the FM-driver verify-code flow but actor is the seller, not a driver.
 
-router.post("/orders/:id/seller-confirm-bus-code", requireAuth, async (req, res): Promise<void> => {
+router.post("/orders/:id/seller-confirm-bus-code", requireAuth, sellerDeliveryCodeLimit, async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const orderId = parseInt(rawId, 10);
   if (!orderId || Number.isNaN(orderId)) { res.status(400).json({ error: "Invalid order id" }); return; }
@@ -1373,7 +1445,10 @@ router.post("/orders/:id/seller-confirm-bus-code", requireAuth, async (req, res)
     .limit(1);
 
   if (!delivery) { res.status(404).json({ error: "Delivery record not found" }); return; }
-  if (delivery.deliveryMethod !== "bus") { res.status(400).json({ error: "Not a bus delivery" }); return; }
+  if (delivery.deliveryMethod !== "bus" &&
+      !(delivery.deliveryMethod === "self_delivery" && dominicanOrderMode(ctx.tx.listingCountry ?? ctx.listing.country, ctx.tx.deliveryMethod) === "seller")) {
+    res.status(400).json({ error: "Not a seller-code delivery" }); return;
+  }
 
   if (delivery.status === "delivered" || delivery.codeVerifiedAt !== null || tx.escrowReleased) {
     res.status(409).json({ error: "Delivery already confirmed", alreadyProcessed: true }); return;
@@ -1456,7 +1531,11 @@ router.post("/orders/:id/confirm-delivery", requireAuth, async (req, res): Promi
   }
 
   const listingCountry = tx.listingCountry ?? listing.country ?? null;
-  const isManualDelivery = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
+  const dominicanMode = dominicanOrderMode(listingCountry, tx.deliveryMethod);
+  if (dominicanMode === "seller" && fmDelivery?.status !== "delivered") {
+    res.status(409).json({ error: "Give the seller your delivery code only after receiving the order." }); return;
+  }
+  const isManualDelivery = listingCountry === "Haiti" || (listingCountry === "Dominican Republic" && dominicanMode !== "company");
 
   // For manual-delivery countries (Haiti/DR): buyer can confirm from any active status.
   // For carrier-tracking countries: order must be shipped first.
@@ -2557,6 +2636,13 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
 
   // Load all listings at once
   const listings = await db.select().from(listingsTable).where(inArray(listingsTable.id, listingIds));
+  if (listings.some(listing => listing.country === "Dominican Republic")) {
+    res.status(400).json({
+      code: "DOMINICAN_ITEM_CHECKOUT_REQUIRED",
+      error: "Pou anons Repiblik Dominikèn yo, achte chak atik nan paj pwodwi li pou chwazi livrezon vandè a.",
+    });
+    return;
+  }
   const payoutRequirements = new Map<number, boolean>();
   try {
     for (const listing of listings) {

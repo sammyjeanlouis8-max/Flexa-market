@@ -84,6 +84,8 @@ const STATE_BY_CITY: Record<string, string> = {
   "Santiago, Chile": "Metropolitana de Santiago",
 };
 
+import { resolveDominicanCheckout } from "../lib/dominicanFulfillment";
+
 const router = Router();
 
 const subcategoriesTable = alias(categoriesTable, "subcategories");
@@ -1785,11 +1787,17 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   // using the /api/delivery/calculate-price endpoint; server trusts the value with a
   // reasonable sanity cap).
   const rawDeliveryFee = typeof req.body?.deliveryFeeUsd === "number" ? req.body.deliveryFeeUsd : null;
-  const safeDeliveryFee = rawDeliveryFee !== null && rawDeliveryFee > 0 && rawDeliveryFee < 500 ? rawDeliveryFee : 0;
-  const deliveryMethodForTx = typeof req.body?.deliveryMethod === "string" ? req.body.deliveryMethod : null;
+  let safeDeliveryFee = rawDeliveryFee !== null && rawDeliveryFee > 0 && rawDeliveryFee < 500 ? rawDeliveryFee : 0;
+  let deliveryMethodForTx = typeof req.body?.deliveryMethod === "string" ? req.body.deliveryMethod : null;
+  try {
+    const shipping = resolveDominicanCheckout(listing, deliveryMethodForTx);
+    if (shipping) { safeDeliveryFee = shipping.fee; deliveryMethodForTx = shipping.method; }
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message }); return;
+  }
   const deliveryPickupCityForTx = typeof req.body?.deliveryPickupCity === "string" ? req.body.deliveryPickupCity : null;
-  const deliveryTypeForTx = typeof req.body?.deliveryType === "string" ? req.body.deliveryType : "delivery";
-  const buyerProposedFeeForTx = typeof req.body?.buyerProposedDeliveryFee === "number" && req.body.buyerProposedDeliveryFee > 0 ? req.body.buyerProposedDeliveryFee : null;
+  const deliveryTypeForTx = listing.country === "Dominican Republic" ? "delivery" : typeof req.body?.deliveryType === "string" ? req.body.deliveryType : "delivery";
+  const buyerProposedFeeForTx = listing.country !== "Dominican Republic" && typeof req.body?.buyerProposedDeliveryFee === "number" && req.body.buyerProposedDeliveryFee > 0 ? req.body.buyerProposedDeliveryFee : null;
 
   // ── Referral surcharge — $0.50 charged to referred buyers on purchases > $14.99 ─
   const REFERRAL_SURCHARGE = 0.50;

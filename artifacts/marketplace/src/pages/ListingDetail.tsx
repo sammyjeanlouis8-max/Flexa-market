@@ -26,6 +26,8 @@ import { cn } from "@/lib/utils";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
+import { listingCarriersForCountry } from "@/lib/listingCarriers";
+
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
 }
@@ -380,9 +382,24 @@ export default function ListingDetail() {
   // Fail closed when the buyer has no country configured: foreign buyers must
   // use an international carrier, even for a listing located in Haiti or DR.
   const isLocalDelivery =
+    listingCountry !== "Dominican Republic" &&
     isLocalDeliveryCountry(listingCountry) &&
     isLocalDeliveryCountry(viewerCountry);
+  const isDominicanDelivery = listingCountry === "Dominican Republic";
+  const isDominicanSellerDelivery = isDominicanDelivery && (listing as any)?.deliveryMethod === "self_delivery";
+  const dominicanCarriers: string[] = ((listing as any)?.shippingCarriers ?? [])
+    .filter((carrier: string) => listingCarriersForCountry("Dominican Republic").includes(carrier));
   const effectiveTip = (isLocalDelivery && deliverySpeedTier !== "pickup") ? tipUsd : 0;
+  useEffect(() => {
+    if (!isDominicanDelivery) {
+      setSelectedCarrier(previous => previous === "self_delivery" ||
+        listingCarriersForCountry("Dominican Republic").includes(previous ?? "") ? null : previous);
+      return;
+    }
+    setDeliverySpeedTier("regular");
+    setSelectedCarrier(previous => isDominicanSellerDelivery ? "self_delivery"
+      : dominicanCarriers.includes(previous ?? "") ? previous : dominicanCarriers[0] ?? null);
+  }, [listing, isDominicanDelivery, isDominicanSellerDelivery]);
 
   // Sync delivery method from listing (seller's choice) whenever listing loads
   useEffect(() => {
@@ -477,6 +494,11 @@ export default function ListingDetail() {
   // International: weight-based carrier rate (falls back to seller flat-rate if no weight set)
   useEffect(() => {
     if (isLocalDelivery) return;
+    if (isDominicanDelivery) {
+      const cost = (listing as any)?.shippingCost;
+      setDeliveryFeeUsd(typeof cost === "number" && cost >= 0 ? Math.round(cost * 100) / 100 : 0);
+      return;
+    }
     if (!selectedCarrier) { setDeliveryFeeUsd(0); return; }
     const wLbs: number | null = (listing as any)?.weightLbs ?? null;
     const L: number | null = (listing as any)?.packageLengthIn ?? null;
@@ -493,7 +515,7 @@ export default function ListingDetail() {
       const cost = (listing as any)?.shippingCost;
       setDeliveryFeeUsd(typeof cost === "number" && cost > 0 ? parseFloat(cost.toFixed(2)) : 0);
     }
-  }, [isLocalDelivery, selectedCarrier, listing]);
+  }, [isLocalDelivery, isDominicanDelivery, selectedCarrier, listing]);
 
   // Smart tip prompt: 5 min after local purchase, poll if delivery still has no driver
   useEffect(() => {
@@ -958,7 +980,7 @@ export default function ListingDetail() {
           deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
           buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
           deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
-          deliveryMethod: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
+          deliveryMethod: isDominicanDelivery ? selectedCarrier ?? undefined : deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
           deliveryPickupCity: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 && isLocalDelivery ? listingCity : undefined,
           // Driver tip (100% to driver, optional)
           deliveryTipUsd: isLocalDelivery && deliverySpeedTier !== "pickup" && tipUsd > 0 ? tipUsd : undefined,
@@ -1021,7 +1043,7 @@ export default function ListingDetail() {
           deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
           buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
           deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
-          deliveryMethod: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
+          deliveryMethod: isDominicanDelivery ? selectedCarrier ?? undefined : deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 ? (isLocalDelivery ? deliveryMethod : (selectedCarrier ?? undefined)) : undefined,
           deliveryPickupCity: deliverySpeedTier !== "pickup" && deliveryFeeUsd > 0 && isLocalDelivery ? listingCity : undefined,
           // Driver tip
           deliveryTipUsd: isLocalDelivery && deliverySpeedTier !== "pickup" && tipUsd > 0 ? tipUsd : undefined,
@@ -1065,6 +1087,7 @@ export default function ListingDetail() {
           deliveryType: deliverySpeedTier === "pickup" ? "pickup" : "delivery",
           buyerProposedDeliveryFee: deliverySpeedTier === "custom" && deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined,
           deliveryFeeUsd: deliverySpeedTier === "pickup" ? undefined : (deliveryFeeUsd > 0 ? deliveryFeeUsd : undefined),
+          deliveryMethod: isDominicanDelivery ? selectedCarrier ?? undefined : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -2549,13 +2572,13 @@ export default function ListingDetail() {
                     </div>
                   ) : (
                     <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t("listing.shippingCarrier")}</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t(isDominicanSellerDelivery ? "sell.deliverySelf" : "listing.shippingCarrier")}</p>
                       <div className="flex flex-wrap gap-2">
-                        {((listing as any)?.shippingCarriers?.length ? (listing as any).shippingCarriers : ["UPS", "FedEx", "DHL", "USPS", "Other"]).map((c: string) => (
+                        {(isDominicanSellerDelivery ? ["self_delivery"] : isDominicanDelivery ? dominicanCarriers : (listing as any)?.shippingCarriers?.length ? (listing as any).shippingCarriers : ["UPS", "FedEx", "DHL", "USPS", "Other"]).map((c: string) => (
                           <button key={c} type="button" onClick={() => setSelectedCarrier(c)}
                             className={cn("px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-all",
                               selectedCarrier === c ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
-                            )} data-testid={`button-carrier-${c.toLowerCase()}`}>{c}</button>
+                            )} data-testid={`button-carrier-${c.toLowerCase()}`}>{c === "self_delivery" ? t("sell.deliverySelf") : c}</button>
                         ))}
                       </div>
                     </div>
@@ -2676,7 +2699,7 @@ export default function ListingDetail() {
                            🚚 {t("listing.checkoutDelivery")}
                            {isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && ` (${t(`listing.delivery${deliverySpeedTier === "rapid" ? "Rapid" : deliverySpeedTier === "express" ? "Express" : "Standard"}`)})`}
                            {isLocalDelivery && deliverySpeedTier === "custom" && ` (${t("listing.deliveryProposed")})`}
-                           {!isLocalDelivery && selectedCarrier && ` (${selectedCarrier})`}
+                           {!isLocalDelivery && selectedCarrier && ` (${isDominicanSellerDelivery ? t("sell.deliverySelf") : selectedCarrier})`}
                          </span>
                         {deliverySpeedTier === "pickup" ? (
                           <span className="font-semibold text-green-600 dark:text-green-400">{t("listing.deliveryFree")}</span>

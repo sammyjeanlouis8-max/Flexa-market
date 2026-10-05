@@ -61,6 +61,7 @@ type Order = {
   sellerEarnings: number | null;
   trackingNumber: string | null;
   carrier: string | null;
+  deliveryMethod?: string | null;
   trackingStatus: string | null;
   trackingLastUpdated: string | null;
   deliveryDescription: string | null;
@@ -199,7 +200,8 @@ function getCrossRegionInfo(
   return { isCross: false, fromLabel: "", toLabel: "" };
 }
 
-function VerificationCodeCard({ code, isBus = false }: { code: string; isBus?: boolean }) {
+function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }: { code: string; isBus?: boolean; isSellerDelivery?: boolean }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [copied, setCopied] = useState(false);
@@ -332,10 +334,10 @@ function VerificationCodeCard({ code, isBus = false }: { code: string; isBus?: b
                 {/* Title */}
                 <div>
                   <h2 className="text-lg font-black text-[#6C63FF] tracking-wide uppercase">
-                    {isBus ? "KÒD POU BAY MACHANN NAN" : "KÒD POU BAY CHOFÉ A"}
+                    {isBus || isSellerDelivery ? "KÒD POU BAY MACHANN NAN" : "KÒD POU BAY CHOFÉ A"}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                    {isBus
+                    {isSellerDelivery ? t("sell.selfDeliveryCodePrompt") : isBus
                       ? "Bay machann nan kòd sa a pa mesaj lè ou resevwa atik la. Li ap antre l nan app li pou libere lajan li imedyatman."
                       : "Bay chofè livrezon an kòd sa a pou konfime resepsyon an."}
                   </p>
@@ -458,6 +460,15 @@ export default function OrderDetail() {
 
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
+  const isDominicanSellerDelivery = order?.listingCountry === "Dominican Republic" && order.deliveryMethod === "self_delivery";
+  const isDominicanCompanyDelivery = order?.listingCountry === "Dominican Republic" && !order.isHaiti;
+  useEffect(() => {
+    if (isDominicanCompanyDelivery && order?.deliveryMethod) setCarrier(order.deliveryMethod);
+    if (isDominicanSellerDelivery) {
+      setDriverPhone(value => value || order?.merchant.phone || "");
+      setDeliveryDescription(value => value || t("sell.deliverySelf"));
+    }
+  }, [order, isDominicanCompanyDelivery, isDominicanSellerDelivery, t]);
   const [deliveryDescription, setDeliveryDescription] = useState("");
   const [driverName, setDriverName] = useState("");
   const [driverPhone, setDriverPhone] = useState("");
@@ -514,10 +525,14 @@ export default function OrderDetail() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setError((data as any)?.error || t("orderDetail.loading")); return; }
       setOrder(data as Order);
-      const trackingRes = await fetch(`/api/orders/${orderId}/tracking`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (trackingRes.ok) setTrackingData(await trackingRes.json() as TrackingData);
+      if (data.listingCountry === "Dominican Republic" && !data.isHaiti) {
+        setTrackingData(null);
+      } else {
+        const trackingRes = await fetch(`/api/orders/${orderId}/tracking`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (trackingRes.ok) setTrackingData(await trackingRes.json() as TrackingData);
+      }
       setError(null);
     } catch { setError(t("orderDetail.toastNetworkError")); }
   }, [orderId, token, t]);
@@ -640,7 +655,7 @@ export default function OrderDetail() {
     if (!carrier) {
       toast({ title: t("orderDetail.toastCarrierRequired"), variant: "destructive" }); return;
     }
-    const ok = await apiCall(`/api/orders/${orderId}/tracking`, { trackingNumber, carrier });
+    const ok = await apiCall(`/api/orders/${orderId}/${isDominicanCompanyDelivery ? "ship" : "tracking"}`, { trackingNumber, carrier });
     if (ok) {
       toast({ title: t("orderDetail.toastMarkedShipped"), description: `Tracking: ${carrier} ${trackingNumber}` });
       await load();
@@ -651,14 +666,17 @@ export default function OrderDetail() {
     if (!deliveryDescription.trim()) {
       toast({ title: t("orderDetail.toastDeliveryDescRequired"), variant: "destructive" }); return;
     }
-    if ((shipMode === "personal" || shipMode === "bus") && !driverPhone.trim()) {
+    if ((isDominicanSellerDelivery || shipMode === "personal" || shipMode === "bus") && !driverPhone.trim()) {
       toast({ title: t("orderDetail.toastDriverPhoneRequired"), variant: "destructive" }); return;
     }
     const payload: Record<string, unknown> = {
       deliveryDescription,
       deliveryNote: deliveryNote || undefined,
     };
-    if (shipMode === "fm") {
+    if (isDominicanSellerDelivery) {
+      payload.driverPhone = driverPhone;
+      payload.driverName = order?.merchant.name;
+    } else if (shipMode === "fm") {
       payload.useFmDriver = true;
       payload.fmVehicleType = fmVehicleType;
     } else if (shipMode === "bus") {
@@ -895,7 +913,7 @@ export default function OrderDetail() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-xs text-muted-foreground">{order.orderRef}</span>
             <Badge variant="secondary" className="capitalize text-xs">{order.paymentMethod}</Badge>
-            {order.isHaiti && <Badge variant="outline" className="text-xs">Local: HT</Badge>}{order.listingCountry === "Dominican Republic" && !order.isHaiti && <Badge variant="outline" className="text-xs">Local: DR</Badge>}
+            {order.isHaiti && order.listingCountry !== "Dominican Republic" && <Badge variant="outline" className="text-xs">Local: HT</Badge>}{order.listingCountry === "Dominican Republic" && <Badge variant="outline" className="text-xs">Local: DR</Badge>}
           </div>
           <h1 className="text-lg font-extrabold mt-1 leading-tight">{order.listing.title}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -1012,6 +1030,17 @@ export default function OrderDetail() {
       </div>
 
       {/* ── Carrier tracking (non-Haiti) ── */}
+      {isDominicanCompanyDelivery && order.trackingNumber && (
+        <div className="rounded-2xl border border-border bg-card p-5 space-y-2" data-testid="dominican-carrier-tracking">
+          <p className="font-semibold">{order.carrier ?? order.deliveryMethod}</p>
+          <p className="text-sm">{t("orderDetail.trackingNumber")}: <span className="font-mono">{order.trackingNumber}</span></p>
+          <p className="text-xs text-muted-foreground">{t("sell.manualCarrierTracking")}</p>
+          <a className="text-sm text-primary underline" target="_blank" rel="noopener noreferrer"
+            href={order.deliveryMethod === "Vimenpaq" ? "https://vimenpaq.do/" : order.deliveryMethod === "Caribe Pack" ? "https://caribetours.com.do/caribe-pack/" : "https://www.domex.do/enviamex"}>
+            {t("orderDetail.trackOn", { carrier: order.carrier ?? order.deliveryMethod })}
+          </a>
+        </div>
+      )}
       {!order.isHaiti && order.trackingNumber && trackingData?.shipment && (
         <div className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
@@ -1166,13 +1195,13 @@ export default function OrderDetail() {
                     return (
                       <div className="flex items-center justify-between gap-2">
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span>
-                        <button
+                        {!isDominicanSellerDelivery && <button
                           type="button"
                           onClick={() => setLocation(`/delivery/tracking/${order.fmDelivery!.id}`)}
                           className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
                         >
                           <MapPin className="h-3.5 w-3.5" /> Suiv Livrezon →
-                        </button>
+                        </button>}
                       </div>
                     );
                   })()}
@@ -1226,6 +1255,7 @@ export default function OrderDetail() {
           <VerificationCodeCard
             code={order.fmDelivery.verificationCode}
             isBus={order.fmDelivery.deliveryMethod === "bus"}
+            isSellerDelivery={isDominicanSellerDelivery}
           />
         ) : (
           <div className="rounded-2xl border border-orange-200/50 dark:border-orange-800/30 bg-orange-50/60 dark:bg-orange-950/20 p-5">
@@ -1344,7 +1374,7 @@ export default function OrderDetail() {
           )}
 
           {/* ── Bus delivery: seller enters code sent by buyer ── */}
-          {order.fmDelivery?.deliveryMethod === "bus" &&
+          {(order.fmDelivery?.deliveryMethod === "bus" || isDominicanSellerDelivery) &&
            order.orderStatus === "shipped" &&
            !order.escrowReleased &&
            !["delivered", "returned", "cancelled"].includes(order.fmDelivery?.status ?? "") && (
@@ -1356,7 +1386,7 @@ export default function OrderDetail() {
                   </div>
                   <div>
                     <p className="font-black text-emerald-700 dark:text-emerald-400">Livrezon konfime!</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Lajan ou libere nan pòch ou.</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{isDominicanSellerDelivery ? t("sell.selfDeliveryConfirmed") : "Lajan ou libere nan pòch ou."}</p>
                   </div>
                 </div>
               ) : (
@@ -1367,7 +1397,7 @@ export default function OrderDetail() {
                     </div>
                     <div>
                       <p className="font-bold text-sm text-violet-800 dark:text-violet-300">Antre kòd achtè a ba ou</p>
-                      <p className="text-[11px] text-violet-600 dark:text-violet-400">Achtè a te voye ou yon kòd 6 chif pa mesaj. Antre l pou libere lajan ou imedyatman.</p>
+                      <p className="text-[11px] text-violet-600 dark:text-violet-400">{isDominicanSellerDelivery ? t("sell.selfDeliveryCodePrompt") : "Achtè a te voye ou yon kòd 6 chif pa mesaj. Antre l pou libere lajan ou imedyatman."}</p>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -1437,7 +1467,7 @@ export default function OrderDetail() {
                     value={carrier}
                     onValueChange={setCarrier}
                     placeholder={t("orderDetail.selectCarrier")}
-                    options={carriers.map(c => ({ value: c, label: c }))}
+                    options={(isDominicanCompanyDelivery ? [order.deliveryMethod!] : carriers).map(c => ({ value: c, label: c }))}
                     className="text-sm"
                     data-testid="select-carrier"
                   />
@@ -1464,7 +1494,19 @@ export default function OrderDetail() {
             </div>
           )}
 
-          {order.orderStatus === "ready_to_ship" && order.isHaiti && order.deliveryType !== "pickup" && (
+          {order.orderStatus === "ready_to_ship" && isDominicanSellerDelivery && order.deliveryType !== "pickup" && (
+            <div className="space-y-3" data-testid="seller-self-delivery-panel">
+              <p className="text-sm font-semibold">{t("sell.deliverySelf")}</p>
+              <Label>{t("sell.deliverySelf")}</Label>
+              <Input value={deliveryDescription} onChange={event => setDeliveryDescription(event.target.value)} />
+              <Label>{t("listing.phoneLabel")}</Label>
+              <Input value={driverPhone} onChange={event => setDriverPhone(event.target.value)} data-testid="input-self-delivery-phone" />
+              <Button onClick={handleShipHaiti} disabled={busy || !deliveryDescription.trim() || !driverPhone.trim()} data-testid="button-submit-self-delivery">
+                {t("orderDetail.submitDelivery")}
+              </Button>
+            </div>
+          )}
+          {order.orderStatus === "ready_to_ship" && order.isHaiti && !isDominicanSellerDelivery && order.deliveryType !== "pickup" && (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">{t("orderDetail.shipHaitiDesc")}</p>
 
@@ -1796,7 +1838,7 @@ export default function OrderDetail() {
       )}
 
       {/* ── Buyer actions: regular delivery confirm ── */}
-      {order.isBuyer && !order.escrowReleased && order.deliveryType !== "pickup" && (
+      {order.isBuyer && !isDominicanSellerDelivery && !order.escrowReleased && order.deliveryType !== "pickup" && (
         order.isHaiti
           // Haiti / DR: buyer can confirm from any active status — no need to wait for seller to "ship"
           ? ["pending", "ready_to_ship", "shipped", "delivered"].includes(order.orderStatus)

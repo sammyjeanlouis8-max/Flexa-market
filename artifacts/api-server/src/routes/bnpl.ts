@@ -8,6 +8,8 @@ import { eq, and, gte, count, avg, sql } from "drizzle-orm";
 import { quoteForListing } from "../lib/commission";
 import type { Request, Response } from "express";
 
+import { resolveDominicanCheckout } from "../lib/dominicanFulfillment";
+
 const router = Router();
 
 const BASE_URL = (() => {
@@ -126,8 +128,14 @@ router.post("/bnpl/checkout", requireAuth, async (req: any, res: Response): Prom
       return;
     }
 
-    const safeDeliveryFee = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
-    const safeDeliveryMethod = typeof deliveryMethod === "string" ? deliveryMethod : null;
+    let safeDeliveryFee = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
+    let safeDeliveryMethod = typeof deliveryMethod === "string" ? deliveryMethod : null;
+    try {
+      const shipping = resolveDominicanCheckout(listing, safeDeliveryMethod);
+      if (shipping) { safeDeliveryFee = shipping.fee; safeDeliveryMethod = shipping.method; }
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message }); return;
+    }
     const safePickupCity = typeof deliveryPickupCity === "string" ? deliveryPickupCity : null;
 
     const quote = await quoteForListing(listing, "stripe", safeDeliveryFee);

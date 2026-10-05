@@ -7,6 +7,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { requireAuth, optionalAuth, requireNotRestricted, hasRole, isAdminAccessSuspended } from "../middlewares/auth";
 import { requireListingPublicationAccess } from "../middlewares/listingPublicationAccess";
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
+import { resolveListingDeliveryMethod } from "../lib/listingDeliveryPolicy";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
 import { moderateListing } from "../lib/moderation";
 import { isStripeOnlySale } from "../lib/usSellerPayoutPolicy";
@@ -1043,12 +1044,16 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
   // Publishing does not move money and must not require payout onboarding.
   // Preserve the settlement obligation; checkout and escrow still verify it.
 
-  const isLocalDeliveryCountry = listingCountry === "Haiti" || listingCountry === "Dominican Republic";
-  const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
-    ? req.body.deliveryMethod
-    : null;
+  const submittedDeliveryMethod = parsed.data.deliveryMethod;
   if (submittedDeliveryMethod && !LOCAL_DELIVERY_METHODS.has(submittedDeliveryMethod)) {
     res.status(400).json({ error: "Invalid local delivery method." });
+    return;
+  }
+  let listingDeliveryMethod: string | null;
+  try {
+    listingDeliveryMethod = resolveListingDeliveryMethod(listingCountry, submittedDeliveryMethod);
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
     return;
   }
 
@@ -1149,7 +1154,7 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     state: listingState,
     country: listingCountry,
     requiresStripePayout,
-    deliveryMethod: isLocalDeliveryCountry ? (submittedDeliveryMethod ?? "motorcycle") : null,
+    deliveryMethod: listingDeliveryMethod,
     sellerId: req.userId!,
     status: insertStatus,
     moderationStatus,
@@ -1370,12 +1375,16 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
   const updatedCountry = canChangeListingCountry
     ? (parsed.data.country ?? existing.country ?? "").trim()
     : (existing.country ?? "").trim();
-  const isLocalDeliveryCountry = updatedCountry === "Haiti" || updatedCountry === "Dominican Republic";
-  const submittedDeliveryMethod = typeof req.body?.deliveryMethod === "string"
-    ? req.body.deliveryMethod
-    : null;
+  const submittedDeliveryMethod = parsed.data.deliveryMethod;
   if (submittedDeliveryMethod && !LOCAL_DELIVERY_METHODS.has(submittedDeliveryMethod)) {
     res.status(400).json({ error: "Invalid local delivery method." });
+    return;
+  }
+  let listingDeliveryMethod: string | null;
+  try {
+    listingDeliveryMethod = resolveListingDeliveryMethod(updatedCountry, submittedDeliveryMethod, existing.deliveryMethod);
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
     return;
   }
 
@@ -1402,9 +1411,7 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
     ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
     country: updatedCountry || null,
-    deliveryMethod: isLocalDeliveryCountry
-      ? (submittedDeliveryMethod ?? existing.deliveryMethod ?? "motorcycle")
-      : null,
+    deliveryMethod: listingDeliveryMethod,
   }).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));

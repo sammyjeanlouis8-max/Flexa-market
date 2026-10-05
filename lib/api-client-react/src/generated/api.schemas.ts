@@ -413,6 +413,18 @@ export interface CreateListingBody {
   /** State, department, or province of the listing. */
   state?: string;
   country?: string;
+  /** @minimum 0 */
+  shippingCost?: number | null;
+  shippingCarriers?: string[];
+  deliveryMethod?: CreateListingBodyDeliveryMethod;
+  /** @minimum 0 */
+  weightLbs?: number;
+  /** @minimum 0 */
+  packageLengthIn?: number;
+  /** @minimum 0 */
+  packageWidthIn?: number;
+  /** @minimum 0 */
+  packageHeightIn?: number;
   /** Number of items in stock. Null means unlimited (single-item listing). */
   stockQuantity?: number | null;
   /** Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories. */
@@ -443,6 +455,18 @@ export interface UpdateListingBody {
   /** State, department, or province of the listing. */
   state?: string;
   country?: string;
+  /** @minimum 0 */
+  shippingCost?: number | null;
+  shippingCarriers?: string[];
+  deliveryMethod?: UpdateListingBodyDeliveryMethod;
+  /** @minimum 0 */
+  weightLbs?: number;
+  /** @minimum 0 */
+  packageLengthIn?: number;
+  /** @minimum 0 */
+  packageWidthIn?: number;
+  /** @minimum 0 */
+  packageHeightIn?: number;
   /** @minItems 1 */
   images?: string[];
   status?: string;
@@ -847,4 +871,24 @@ export type GetSellerSalesReportReport =
 
 export const GetSellerSalesReportReport = {
   monthly: "monthly",
+} as const;
+
+export type CreateListingBodyDeliveryMethod = typeof CreateListingBodyDeliveryMethod[keyof typeof CreateListingBodyDeliveryMethod] | null;
+
+
+export const CreateListingBodyDeliveryMethod = {
+  motorcycle: 'motorcycle',
+  car: 'car',
+  bus: 'bus',
+  self_delivery: 'self_delivery',
+} as const;
+
+export type UpdateListingBodyDeliveryMethod = typeof UpdateListingBodyDeliveryMethod[keyof typeof UpdateListingBodyDeliveryMethod] | null;
+
+
+export const UpdateListingBodyDeliveryMethod = {
+  motorcycle: 'motorcycle',
+  car: 'car',
+  bus: 'bus',
+  self_delivery: 'self_delivery',
 } as const;

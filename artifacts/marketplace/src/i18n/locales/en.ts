@@ -655,6 +655,7 @@ export default {
     dimensionalWeight: "Dimensional weight",
     carrierWillUse: "Carrier will use",
     deliveryMethodTitle: "Delivery method",
+    deliveryCompany: "Shipping company",
     deliveryMethodDescription: "Choose the type of driver you want to deliver your item.",
     deliveryMotorcycle: "Motorcycle",
     deliveryCar: "Car",

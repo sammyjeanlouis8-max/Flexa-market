@@ -89,3 +89,7 @@ export * from "./user";
 export * from "./userProfile";
 export * from "./verifyOtpBody";
 export * from "./verifyOtpResponse";
+
+export * from './createListingBodyDeliveryMethod';
+
+export * from './updateListingBodyDeliveryMethod';

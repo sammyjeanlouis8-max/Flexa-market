@@ -32,7 +32,7 @@ const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
 const OTHER_CITY = "__other__";
 const DRAFT_KEY = "flexa_sell_draft_v2";
-const LOCAL_DELIVERY_COUNTRIES = new Set(["Haiti", "Dominican Republic"]);
+const LOCAL_DELIVERY_COUNTRIES = new Set(["Haiti"]);
 
 function PayoutMethodCards({ stripeFirst, children }: { stripeFirst: boolean; children: ReactNode }) {
   const cards = Children.toArray(children);
@@ -154,6 +154,7 @@ export default function Sell() {
   const [intlShippingCost, setIntlShippingCost] = useState<string>("");
   const [intlCarriers, setIntlCarriers] = useState<string[]>([]);
   const [sellerDeliveryMethod, setSellerDeliveryMethod] = useState<"motorcycle" | "car" | "bus" | "self_delivery">("motorcycle");
+  const [dominicanDeliveryChoice, setDominicanDeliveryChoice] = useState<"carrier" | "self_delivery">("carrier");
   const [itemSize, setItemSize] = useState<string>("");
   const [weightLbs, setWeightLbs] = useState<string>("");
   const [pkgLength, setPkgLength] = useState<string>("");
@@ -305,6 +306,7 @@ export default function Sell() {
       setUploadedImages(restored);
     }
     if (l.deliveryMethod) setSellerDeliveryMethod(l.deliveryMethod as "motorcycle" | "car" | "bus" | "self_delivery");
+    setDominicanDeliveryChoice(l.deliveryMethod === "self_delivery" ? "self_delivery" : "carrier");
     if (l.shippingCost)    setIntlShippingCost(String(l.shippingCost));
     if (Array.isArray(l.shippingCarriers) && l.shippingCarriers.length > 0) setIntlCarriers(l.shippingCarriers);
     if (l.listingVideoUrl) setListingVideoUrl(l.listingVideoUrl);
@@ -315,8 +317,10 @@ export default function Sell() {
   // ── Draft system — refs & callbacks (declared early so onSubmit can call clearDraft) ──
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRestoreAttemptedRef = useRef(false);
-  const draftDataRef = useRef<{ currency: "USD" | "HTG" | "DOP"; uploadedImages: UploadedImage[]; listingVideoUrl: string | null }>({
-    currency: "USD", uploadedImages: [], listingVideoUrl: null,
+  const draftDataRef = useRef({
+    currency: "USD" as "USD" | "HTG" | "DOP", uploadedImages: [] as UploadedImage[], listingVideoUrl: null as string | null,
+    dominicanDeliveryChoice, sellerDeliveryMethod, intlShippingCost, intlCarriers,
+    weightLbs, pkgLength, pkgWidth, pkgHeight,
   });
 
   const saveDraft = useCallback(() => {
@@ -426,7 +430,8 @@ export default function Sell() {
     // Payment setup is informational here, not a prerequisite for publishing.
     const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(values.country ?? "");
-    const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery && intlShippingCost ? Number(intlShippingCost) : undefined, shippingCarriers: !isLocalDelivery && intlCarriers.length > 0 ? intlCarriers : undefined, deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : undefined, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
+    const isDominicanSelfDelivery = values.country === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery";
+    const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? intlCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const handleSuccess = (_listing: any) => {
       const l = _listing as any;
@@ -604,7 +609,11 @@ export default function Sell() {
   };
 
   // Keep draftDataRef current every render so saveDraft always reads latest non-form state
-  draftDataRef.current = { currency, uploadedImages, listingVideoUrl };
+  draftDataRef.current = { currency, uploadedImages, listingVideoUrl, dominicanDeliveryChoice, sellerDeliveryMethod, intlShippingCost, intlCarriers, weightLbs, pkgLength, pkgWidth, pkgHeight };
+
+  useEffect(() => {
+    saveDraft();
+  }, [dominicanDeliveryChoice, sellerDeliveryMethod, intlShippingCost, intlCarriers, weightLbs, pkgLength, pkgWidth, pkgHeight, saveDraft]);
 
   // ── Restore draft on first mount (skip in edit mode) ─────────────────────
   useEffect(() => {
@@ -638,6 +647,14 @@ export default function Sell() {
       if (draft.currency)    setCurrency(draft.currency);
       if (Array.isArray(draft.images) && draft.images.length > 0) setUploadedImages(draft.images);
       if (draft.listingVideoUrl) setListingVideoUrl(draft.listingVideoUrl);
+      if (draft.dominicanDeliveryChoice === "self_delivery" || draft.dominicanDeliveryChoice === "carrier") setDominicanDeliveryChoice(draft.dominicanDeliveryChoice);
+      if (["motorcycle", "car", "bus", "self_delivery"].includes(draft.sellerDeliveryMethod)) setSellerDeliveryMethod(draft.sellerDeliveryMethod);
+      if (typeof draft.intlShippingCost === "string") setIntlShippingCost(draft.intlShippingCost);
+      if (Array.isArray(draft.intlCarriers)) setIntlCarriers(draft.intlCarriers.filter((value: unknown) => typeof value === "string"));
+      if (typeof draft.weightLbs === "string") setWeightLbs(draft.weightLbs);
+      if (typeof draft.pkgLength === "string") setPkgLength(draft.pkgLength);
+      if (typeof draft.pkgWidth === "string") setPkgWidth(draft.pkgWidth);
+      if (typeof draft.pkgHeight === "string") setPkgHeight(draft.pkgHeight);
       setDraftRestored(true);
     } catch { /* corrupt data — ignore */ }
   }, [authLoading, user?.id, isAdmin, isEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1471,7 +1488,7 @@ export default function Sell() {
             </div>
           )}
 
-          {/* ── Local delivery method (Haiti/DR only) — seller chooses ─────────── */}
+          {/* ── FM delivery methods are Haiti-only ─────────────────────────── */}
           {selectedCountry && isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
@@ -1548,12 +1565,34 @@ export default function Sell() {
             </div>
           )}
 
-          {/* ── International shipping (non-Haiti/DR listings only) ───────────── */}
+          {selectedCountry === "Dominican Republic" && (
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+              <p className="text-sm font-semibold">{t("sell.deliveryMethodTitle")}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["carrier", "self_delivery"] as const).map(choice => (
+                  <button
+                    key={choice}
+                    type="button"
+                    onClick={() => setDominicanDeliveryChoice(choice)}
+                    className={cn(
+                      "px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
+                      dominicanDeliveryChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
+                    )}
+                    aria-pressed={dominicanDeliveryChoice === choice}
+                    data-testid={`dominican-delivery-${choice}`}
+                  >
+                    {t(choice === "carrier" ? "sell.deliveryCompany" : "sell.deliverySelf")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* ── Shipping options for non-Haiti listings ────────────────────── */}
           {selectedCountry && !isLocalDeliveryCountry && (
             <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold">{t("sell.shippingOptionsTitle")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{t("sell.shippingOptionsDescription")}</p>
+                <p className="text-sm font-semibold">{t(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery" ? "sell.deliverySelf" : "sell.shippingOptionsTitle")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery" ? "sell.deliverySelfDescription" : "sell.shippingOptionsDescription")}</p>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">{t("sell.shippingCostLabel")}</label>
@@ -1571,7 +1610,7 @@ export default function Sell() {
                   />
                 </div>
               </div>
-              <div>
+              {!(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery") && <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide block mb-1.5">{t("sell.acceptedCarriersLabel")}</label>
                 <div className="flex flex-wrap gap-2">
                   {(["UPS", "FedEx", "DHL", "USPS", "Other"] as const).map(carrier => {
@@ -1593,7 +1632,7 @@ export default function Sell() {
                   })}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">{t("sell.acceptedCarriersHint")}</p>
-              </div>
+              </div>}
             </div>
           )}
 

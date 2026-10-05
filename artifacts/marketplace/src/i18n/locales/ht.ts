@@ -655,6 +655,7 @@ export default {
     dimensionalWeight: "Pwa dimansyonèl",
     carrierWillUse: "Transportè a pral itilize",
     deliveryMethodTitle: "Metòd livrezon",
+    deliveryCompany: "Konpayi transpò",
     deliveryMethodDescription: "Chwazi ki kalite chofè ou vle pou livrezon atik ou a.",
     deliveryMotorcycle: "Moto",
     deliveryCar: "Machin",

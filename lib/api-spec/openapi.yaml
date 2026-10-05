@@ -1826,6 +1826,30 @@ components:
           description: State, department, or province of the listing.
         country:
           type: string
+        shippingCost:
+          type: number
+          minimum: 0
+          nullable: true
+        shippingCarriers:
+          type: array
+          items:
+            type: string
+        deliveryMethod:
+          type: string
+          nullable: true
+          enum: [motorcycle, car, bus, self_delivery]
+        weightLbs:
+          type: number
+          minimum: 0
+        packageLengthIn:
+          type: number
+          minimum: 0
+        packageWidthIn:
+          type: number
+          minimum: 0
+        packageHeightIn:
+          type: number
+          minimum: 0
         stockQuantity:
           type: integer
           nullable: true
@@ -1868,6 +1892,30 @@ components:
           description: State, department, or province of the listing.
         country:
           type: string
+        shippingCost:
+          type: number
+          minimum: 0
+          nullable: true
+        shippingCarriers:
+          type: array
+          items:
+            type: string
+        deliveryMethod:
+          type: string
+          nullable: true
+          enum: [motorcycle, car, bus, self_delivery]
+        weightLbs:
+          type: number
+          minimum: 0
+        packageLengthIn:
+          type: number
+          minimum: 0
+        packageWidthIn:
+          type: number
+          minimum: 0
+        packageHeightIn:
+          type: number
+          minimum: 0
         images:
           type: array
           minItems: 1

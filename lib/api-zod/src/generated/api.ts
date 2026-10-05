@@ -501,41 +501,29 @@ export const GetListingsResponse = zod.object({
  */
 
 export const CreateListingBody = zod.object({
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  categoryId: zod.number().int(),
-  subcategoryId: zod.number().int().nullish(),
-  condition: zod.enum(["new", "like_new", "good", "fair", "poor"]),
-  location: zod.string(),
-  city: zod.string().optional(),
-  state: zod
-    .string()
-    .optional()
-    .describe("State, department, or province of the listing."),
-  country: zod.string().optional(),
-  stockQuantity: zod
-    .number()
-    .int()
-    .nullish()
-    .describe(
-      "Number of items in stock. Null means unlimited (single-item listing).",
-    ),
-  itemSize: zod
-    .string()
-    .nullish()
-    .describe(
-      "Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.",
-    ),
-  listingVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Optional listing video (standard/premium/vip plans only). Object-storage path.",
-    ),
-  images: zod.array(zod.string()).min(1),
-});
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "categoryId": zod.number().int(),
+  "subcategoryId": zod.number().int().nullish(),
+  "condition": zod.enum(['new', 'like_new', 'good', 'fair', 'poor']),
+  "location": zod.string(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional().describe('State, department, or province of the listing.'),
+  "country": zod.string().optional(),
+  "shippingCost": zod.number().min(createListingBodyShippingCostMin).nullish(),
+  "shippingCarriers": zod.array(zod.string()).optional(),
+  "deliveryMethod": zod.enum(['motorcycle', 'car', 'bus', 'self_delivery']).nullish(),
+  "weightLbs": zod.number().min(createListingBodyWeightLbsMin).optional(),
+  "packageLengthIn": zod.number().min(createListingBodyPackageLengthInMin).optional(),
+  "packageWidthIn": zod.number().min(createListingBodyPackageWidthInMin).optional(),
+  "packageHeightIn": zod.number().min(createListingBodyPackageHeightInMin).optional(),
+  "stockQuantity": zod.number().int().nullish().describe('Number of items in stock. Null means unlimited (single-item listing).'),
+  "itemSize": zod.string().nullish().describe('Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.'),
+  "listingVideoUrl": zod.string().nullish().describe('Optional listing video (standard/premium/vip plans only). Object-storage path.'),
+  "images": zod.array(zod.string()).min(1)
+})
 
 export const CreateListingResponse = zod.object({
   id: zod.number().int(),
@@ -797,29 +785,28 @@ export const UpdateListingParams = zod.object({
 });
 
 export const UpdateListingBody = zod.object({
-  title: zod.string().optional(),
-  description: zod.string().optional(),
-  price: zod.number().optional(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  condition: zod.string().optional(),
-  location: zod.string().optional(),
-  city: zod.string().optional(),
-  state: zod
-    .string()
-    .optional()
-    .describe("State, department, or province of the listing."),
-  country: zod.string().optional(),
-  images: zod.array(zod.string()).min(1).optional(),
-  status: zod.string().optional(),
-  stockQuantity: zod.number().int().nullish(),
-  itemSize: zod
-    .string()
-    .nullish()
-    .describe(
-      "Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.",
-    ),
-  listingVideoUrl: zod.string().nullish(),
-});
+  "title": zod.string().optional(),
+  "description": zod.string().optional(),
+  "price": zod.number().optional(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "condition": zod.string().optional(),
+  "location": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional().describe('State, department, or province of the listing.'),
+  "country": zod.string().optional(),
+  "shippingCost": zod.number().min(updateListingBodyShippingCostMin).nullish(),
+  "shippingCarriers": zod.array(zod.string()).optional(),
+  "deliveryMethod": zod.enum(['motorcycle', 'car', 'bus', 'self_delivery']).nullish(),
+  "weightLbs": zod.number().min(updateListingBodyWeightLbsMin).optional(),
+  "packageLengthIn": zod.number().min(updateListingBodyPackageLengthInMin).optional(),
+  "packageWidthIn": zod.number().min(updateListingBodyPackageWidthInMin).optional(),
+  "packageHeightIn": zod.number().min(updateListingBodyPackageHeightInMin).optional(),
+  "images": zod.array(zod.string()).min(1).optional(),
+  "status": zod.string().optional(),
+  "stockQuantity": zod.number().int().nullish(),
+  "itemSize": zod.string().nullish().describe('Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.'),
+  "listingVideoUrl": zod.string().nullish()
+})
 
 export const UpdateListingResponse = zod.object({
   id: zod.number().int(),

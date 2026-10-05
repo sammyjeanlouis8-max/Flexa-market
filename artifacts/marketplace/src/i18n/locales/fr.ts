@@ -655,6 +655,7 @@ export default {
     dimensionalWeight: "Poids volumétrique",
     carrierWillUse: "Le transporteur utilisera",
     deliveryMethodTitle: "Mode de livraison",
+    deliveryCompany: "Entreprise de transport",
     deliveryMethodDescription: "Choisissez le type de chauffeur souhaité pour livrer votre article.",
     deliveryMotorcycle: "Moto",
     deliveryCar: "Voiture",

@@ -27,6 +27,7 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import AndroidInlineRoute from "@/components/AndroidInlineRoute";
 import { OPEN_PUSH_CONVERSATION } from "@/lib/pushNavigation";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
+import { DeliveryMenuCountryContext, canShowFMDeliveryLinks } from "@/contexts/delivery-navigation";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -283,7 +284,7 @@ function useWalletBalances(userId: number | string | undefined): { promo: number
   return bal;
 }
 
-function MobileMoreDrawer({ open, onClose, onNavigate }: { open: boolean; onClose: () => void; onNavigate: (href: string) => void }) {
+function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: boolean; onClose: () => void; onNavigate: (href: string) => void; showDelivery: boolean }) {
   const { user, logout } = useAuth();
   const { t, i18n } = useTranslation();
   const [showLangPicker, setShowLangPicker] = useState(false);
@@ -320,7 +321,7 @@ function MobileMoreDrawer({ open, onClose, onNavigate }: { open: boolean; onClos
         { kind: "commerce", variant: "sales", icon: TrendingUp, label: t("nav.sales"), href: "/sales" },
       ] as DrawerItem[],
     }] : []),
-    ...(user && (isDrawerAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")) ? [
+    ...(user && showDelivery ? [
       {
         heading: t("nav.livrezonSection"),
         items: (() => {
@@ -696,6 +697,7 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
 // ─── Layout ───────────────────────────────────────────────────────────────────
 export default function Layout({ children, inlineRoutes }: { children: ReactNode; inlineRoutes?: ReactNode }) {
   const [location, navigate] = useLocation();
+  const [deliveryMenuCountry, setDeliveryMenuCountry] = useState<string | null | undefined>(undefined);
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
   const unread = useUnreadMessageCount();
@@ -794,7 +796,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
   const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
   const driverStatusDesktop = useDriverStatus(user);
-  const showDelivery = !!(user && (isAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
+  const showDelivery = !!user && canShowFMDeliveryLinks(deliveryMenuCountry === undefined ? user.country : deliveryMenuCountry);
   const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
 
   type SidebarItem = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; key: string; highlight?: boolean; adminHighlight?: boolean; badge?: number };
@@ -923,6 +925,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   ].some(rx => rx.test(location));
 
   return (
+    <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
@@ -1161,6 +1164,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {/* ── Mobile More Drawer ── */}
       <MobileMoreDrawer
         open={moreOpen}
+        showDelivery={showDelivery}
         onClose={() => setMoreOpen(false)}
         onNavigate={handleMobileTab}
       />
@@ -1256,5 +1260,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         onDone={dismissLanguageModal}
       />
     </div>
+    </DeliveryMenuCountryContext.Provider>
   );
 }

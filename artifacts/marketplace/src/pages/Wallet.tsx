@@ -20,6 +20,7 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { HaitiCheckoutError, initiateHaitiCheckout } from "@/lib/haitiCheckout";
+import { canShowFMDeliveryLinks } from "@/contexts/delivery-navigation";
 
 // ─── Virtual card helpers ─────────────────────────────────────────────────────
 function formatCardNumber(acct: string | null | undefined): string {
@@ -3872,8 +3873,8 @@ export default function WalletPage() {
         </div>
       </button>
 
-      {/* ── Demand Chofè / Driver Application (admin + Haiti/DR users) ───── */}
-      {(isAdmin || isDeliveryCountry) && (
+      {/* ── Driver Application — Haiti only, without an admin bypass ───── */}
+      {canShowFMDeliveryLinks(user?.country) && (
         <button
           type="button"
           onClick={() => setLocation("/delivery/apply")}

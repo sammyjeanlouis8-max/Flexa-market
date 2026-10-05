@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback, useContext } from "react";
+import { DeliveryMenuCountryContext } from "@/contexts/delivery-navigation";
 import { useSEO } from "@/hooks/useSEO";
 import { Link, useLocation } from "wouter";
 
@@ -212,6 +213,11 @@ export default function Home() {
     : (adminScopeCountriesList[0] ?? (user as any)?.adminScopeCountry ?? user?.country ?? null);
   // The country actually used in all queries
   const effectiveAdminCountry: string | null = isSuperAdmin ? adminCountry : (isMultiCountryAdmin ? adminCountry : scopeLock);
+  const setDeliveryMenuCountry = useContext(DeliveryMenuCountryContext);
+  useEffect(() => {
+    setDeliveryMenuCountry(isAdmin ? effectiveAdminCountry : undefined);
+    return () => setDeliveryMenuCountry(undefined);
+  }, [isAdmin, effectiveAdminCountry, setDeliveryMenuCountry]);
   // Country comes from profile only — GPS handles it server-side for logged-in users
   const activeCountry = user?.country ?? undefined;
 

@@ -34,7 +34,7 @@ beforeEach(() => {
 describe("Stripe onboarding country without wallet mutation", () => {
   it.each([["USA", "US"], ["Canada", "CA"], ["Mexico", "MX"], ["France", "FR"], ["United Kingdom", "GB"]])(
     "creates a new %s seller account with country %s", async (country, code) => {
-      rows.mockResolvedValue([{ id: 999001, country, email: "seller@example.test", stripeAccountId: null }]);
+      rows.mockResolvedValue([{ id: 999001, name: "Marie Boutique", country, email: "seller@example.test", stripeAccountId: null }]);
       retrieveAccount.mockResolvedValue({ country: "MX" });
       createAccount.mockResolvedValue({ id: "acct_created" });
       createLink.mockResolvedValue({ url: "https://connect.stripe.com/test-onboarding" });
@@ -42,6 +42,13 @@ describe("Stripe onboarding country without wallet mutation", () => {
       const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
       await onboardingHandler({ userId: 999001 } as any, res as any, vi.fn());
       expect(createAccount).toHaveBeenCalledWith(expect.objectContaining({ country: code, type: "express" }));
+      expect(createAccount).toHaveBeenCalledWith(expect.objectContaining({
+        business_profile: { name: "Marie Boutique", url: "https://flexamarket.com/profile/999001" },
+        settings: { payments: { statement_descriptor: "MARIE BOUTIQUE" } },
+        email: "seller@example.test",
+        metadata: { flexaUserId: "999001" },
+        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+      }));
       expect(res.json).toHaveBeenCalledWith({ url: "https://connect.stripe.com/test-onboarding" });
       expect(insert).not.toHaveBeenCalled();
     },

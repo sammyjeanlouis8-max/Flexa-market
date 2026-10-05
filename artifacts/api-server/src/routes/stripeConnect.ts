@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { requireAuth, requireFinanceAdmin } from "../middlewares/auth";
 import { getStripeClient, getStripePublishableKey } from "../lib/stripeClient";
 import { deriveStripeConnectStatus } from "../lib/stripeConnectStatus";
+import { buildStripeSellerPrefill } from "../lib/stripeSellerPrefill";
 import { getStripeOnlySellerCountryCode, requireSupportedStripeSellerCountry } from "../lib/usSellerPayoutPolicy";
 import { logger } from "../lib/logger";
 
@@ -120,6 +121,7 @@ router.post("/stripe/connect/onboard", requireAuth, async (req: any, res) => {
         type: "express",
         ...(countryCode ? { country: countryCode } : {}),
         email: user.email,
+        ...buildStripeSellerPrefill(user),
         capabilities: {
           card_payments: { requested: true },
           transfers: { requested: true },

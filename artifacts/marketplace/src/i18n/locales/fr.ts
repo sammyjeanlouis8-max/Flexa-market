@@ -1,4 +1,14 @@
 export default {
+  cardCancellation: {
+    title: "Annulation et remboursement carte", policy: "Avant l'expédition, vous pouvez annuler et demander un remboursement sur la carte utilisée. Aucun crédit dans le portefeuille Flexa.",
+    cancel: "Annuler et demander le remboursement", confirm: "Annuler cette commande ? Un administrateur vérifiera le remboursement sur la carte d'origine. Aucun crédit dans le portefeuille Flexa.",
+    keep: "Garder la commande", saving: "Enregistrement…", error: "La demande de remboursement est indisponible. Réessayez.", retry: "Réessayer",
+    requested: "Commande annulée — demande de remboursement carte enregistrée, en attente de vérification.",
+    processing: "Remboursement carte en cours — pas encore confirmé par Stripe.", approval_required: "Le remboursement nécessite une deuxième approbation.",
+    needs_review: "Le remboursement nécessite une réconciliation administrative.", refunded: "Stripe a confirmé le remboursement sur la carte d'origine.",
+    held: "Le paiement du vendeur est bloqué. Ne pas expédier. Une demande enregistrée ne signifie pas que la banque a déjà remboursé.",
+    bankDelay: "Votre banque peut prendre quelques jours pour afficher le remboursement confirmé.",
+  },
   haitiCheckout: {
     offline: "Vous êtes hors connexion. Reconnectez-vous avant de demander un lien MonCash.",
     timeout: "La création du lien MonCash a pris trop de temps. Le paiement n’est pas confirmé. Si vous avez déjà payé, ne payez pas à nouveau ; vérifiez l’historique des recharges.",

@@ -30,6 +30,7 @@ import {
 } from "../lib/settlementEligibility";
 
 import { dominicanOrderMode } from "../lib/dominicanFulfillment";
+import { cardPayment, requestCardCancellation } from "../lib/cardCancellation";
 import { randomInt } from "node:crypto";
 import rateLimit from "express-rate-limit";
 
@@ -759,6 +760,7 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
       sellerId: listingsTable.sellerId,
       sellerName: usersTable.name,
       deliveryStatus: deliveriesTable.status,
+      cardRefundStatus: sql<string | null>`(SELECT status FROM card_cancellation_requests WHERE order_id = ${transactionsTable.id})`,
     })
     .from(transactionsTable)
     .innerJoin(listingsTable, eq(transactionsTable.listingId, listingsTable.id))
@@ -768,8 +770,10 @@ router.get("/orders/purchases", requireAuth, async (req, res): Promise<void> => 
     .where(and(
       eq(transactionsTable.userId, req.userId!),
       eq(transactionsTable.type, "purchase"),
-      eq(transactionsTable.paymentStatus, "completed"),
-      notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
+      or(
+        and(eq(transactionsTable.paymentStatus, "completed"), notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"])),
+        sql`EXISTS(SELECT 1 FROM card_cancellation_requests WHERE order_id = ${transactionsTable.id})`,
+      ),
     ))
     .orderBy(desc(transactionsTable.createdAt))
     .limit(200);
@@ -837,13 +841,19 @@ router.get("/orders/sales", requireAuth, async (req, res): Promise<void> => {
 
 // ─── Order detail ──────────────────────────────────────────────────────────────
 
-async function loadOrderForUser(orderId: number, userId: number) {
+async function loadOrderForUser(orderId: number, userId: number, includeCardCancellation = false) {
   const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, orderId));
+  let cardHistory = false;
+  if (includeCardCancellation && tx?.paymentMethod === "stripe" && tx.orderStatus === "cancelled" &&
+      ["completed", "partially_refunded", "refunded"].includes(tx.paymentStatus)) {
+    const requests = await db.execute(sql`SELECT id FROM card_cancellation_requests WHERE order_id = ${orderId} AND buyer_id = ${tx.userId}`);
+    cardHistory = requests.rows.length > 0;
+  }
   if (
     !tx ||
     tx.type !== "purchase" ||
-    tx.paymentStatus !== "completed" ||
-    ["cancelled", "return_refunded"].includes(tx.orderStatus ?? "") ||
+    (!cardHistory && (tx.paymentStatus !== "completed" ||
+      ["cancelled", "return_refunded"].includes(tx.orderStatus ?? ""))) ||
     !tx.listingId
   ) return null;
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, tx.listingId));
@@ -928,7 +938,7 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     isSeller = listing.sellerId === req.userId;
     isBuyer = tx.userId === req.userId;
   } else {
-    const ctx = await loadOrderForUser(orderId, req.userId!);
+    const ctx = await loadOrderForUser(orderId, req.userId!, true);
     if (!ctx) { res.status(404).json({ error: "Order not found" }); return; }
     tx = ctx.tx; listing = ctx.listing; isSeller = ctx.isSeller; isBuyer = ctx.isBuyer;
   }
@@ -1227,6 +1237,18 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
     const { deliveryDescription, driverPhone, driverName, deliveryNote, useFmDriver, fmVehicleType, useBus, busDestCity, busTrackingLink } = body as any;
     if (!deliveryDescription?.trim()) {
       res.status(400).json({ error: "Delivery description is required" }); return;
+    }
+    if (cardPayment(tx.paymentMethod)) {
+      if ((!useFmDriver || useBus) && !driverPhone?.trim()) {
+        res.status(400).json({ error: "Driver phone number is required" }); return;
+      }
+      // The seller's first shipment write and buyer cancellation compete on
+      // the same order row. No delivery side effect may precede this claim.
+      const [shippingClaim] = await db.update(transactionsTable).set({ orderStatus: "shipped", shippedAt: now })
+        .where(and(eq(transactionsTable.id, orderId), eq(transactionsTable.orderStatus, "ready_to_ship"),
+          notInArray(transactionsTable.settlementStatus, ["refund_requested", "refund_processing", "refunded"])))
+        .returning({ id: transactionsTable.id });
+      if (!shippingClaim) { res.status(409).json({ error: "Kòmand anile oswa peman an bloke; pa voye li." }); return; }
     }
 
     if (useBus) {
@@ -2301,6 +2323,14 @@ router.post("/transactions/:id/cancel", requireAuth, async (req, res): Promise<v
 
   if (!tx) { res.status(404).json({ error: "Order not found" }); return; }
   if (tx.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (cardPayment(tx.paymentMethod)) {
+    try { res.json(await requestCardCancellation(txId, userId)); }
+    catch (err: any) {
+      req.log.error({ err, txId }, "Card cancellation request failed");
+      res.status(err.status ?? 500).json({ error: err.status ? err.message : "Demann anilasyon an pa anrejistre. Eseye ankò." });
+    }
+    return;
+  }
   if (tx.orderStatus === "cancelled") { res.status(409).json({ error: "Deja kansele" }); return; }
 
   const now = new Date();

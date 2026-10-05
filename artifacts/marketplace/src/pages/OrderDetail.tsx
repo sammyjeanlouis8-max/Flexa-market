@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import CommissionBreakdown from "@/components/CommissionBreakdown";
+import CardCancellationPanel from "@/components/CardCancellationPanel";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -1915,6 +1916,7 @@ export default function OrderDetail() {
         </div>
       )}
 
+      {order.isBuyer && order.paymentMethod === "stripe" && <CardCancellationPanel orderId={orderId} onChanged={load} />}
       {/* ══ Return Request System (non-Haiti / entènasyonal) ══ */}
       {!order.isHaiti && ["completed", "return_refunded"].includes(order.orderStatus) && (() => {
         const releaseDate = (order as any).escrowReleasedAt ?? order.deliveredAt ?? order.buyerConfirmedAt;

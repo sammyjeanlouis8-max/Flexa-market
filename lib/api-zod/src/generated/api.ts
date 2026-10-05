@@ -5,500 +5,552 @@
  * Marketplace API specification
  * OpenAPI spec version: 0.1.0
  */
-import * as zod from "zod";
+import * as zod from 'zod';
+
+
+/**
+ * @summary Read a pre-shipment card cancellation request and eligibility
+ */
+export const GetCardCancellationParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const GetCardCancellationResponse = zod.object({
+  "eligible": zod.boolean(),
+  "canRequest": zod.boolean(),
+  "request": zod.object({
+  "id": zod.number().int(),
+  "orderId": zod.number().int(),
+  "status": zod.enum(['requested', 'processing', 'approval_required', 'needs_review', 'refunded']),
+  "amount": zod.number(),
+  "currency": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "refundedAt": zod.coerce.date().nullable()
+}).nullable()
+})
+
+
+/**
+ * @summary Finance-admin scoped original-card cancellation requests
+ */
+export const ListCardCancellationsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "orderId": zod.number().int(),
+  "status": zod.enum(['requested', 'processing', 'approval_required', 'needs_review', 'refunded']),
+  "amount": zod.number(),
+  "currency": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "refundedAt": zod.coerce.date().nullable()
+}).and(zod.object({
+  "title": zod.string()
+}))
+export const ListCardCancellationsResponse = zod.array(ListCardCancellationsResponseItem)
+
+
+/**
+ * @summary Cancel an eligible order; card payments request the original-card refund without wallet credit
+ */
+export const CancelPurchaseOrderParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const CancelPurchaseOrderResponse = zod.object({
+  "ok": zod.boolean(),
+  "walletRefunded": zod.boolean(),
+  "refundAmount": zod.number(),
+  "refundRequested": zod.boolean().optional(),
+  "refundStatus": zod.string().optional(),
+  "refundMethod": zod.string().optional()
+})
+
 
 /**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  status: zod.string(),
-});
+  "status": zod.string()
+})
+
 
 /**
  * @summary Register a new user
  */
 export const RegisterBody = zod.object({
-  name: zod.string(),
-  email: zod.string(),
-  password: zod.string(),
-  phone: zod
-    .string()
-    .optional()
-    .describe("Full E.164 phone number (e.g. +50934455823)"),
-  country: zod.string().describe("Country name (e.g. Haiti, USA)"),
-  location: zod.string().optional(),
-  bio: zod.string().optional(),
-  avatar: zod.string().optional(),
-  deviceId: zod.string().optional(),
-  promoCode: zod.string().optional(),
-  eulaAccepted: zod.boolean(),
-});
+  "name": zod.string(),
+  "email": zod.string(),
+  "password": zod.string(),
+  "phone": zod.string().optional().describe('Full E.164 phone number (e.g. +50934455823)'),
+  "country": zod.string().describe('Country name (e.g. Haiti, USA)'),
+  "location": zod.string().optional(),
+  "bio": zod.string().optional(),
+  "avatar": zod.string().optional(),
+  "deviceId": zod.string().optional(),
+  "promoCode": zod.string().optional(),
+  "eulaAccepted": zod.boolean()
+})
 
 export const RegisterResponse = zod.object({
-  user: zod.object({
-    id: zod.number().int(),
-    name: zod.string(),
-    email: zod.string(),
-    phone: zod.string().nullish(),
-    country: zod.string().nullish(),
-    isPhoneVerified: zod.boolean(),
-    avatar: zod.string().nullish(),
-    location: zod.string().nullish(),
-    bio: zod.string().nullish(),
-    rating: zod.number(),
-    reviewCount: zod.number().int(),
-    isVerified: zod.boolean(),
-    isAdmin: zod.boolean(),
-    isSuperAdmin: zod.boolean(),
-    role: zod.string(),
-    isBanned: zod.boolean(),
-    followerCount: zod.number().int(),
-    followingCount: zod.number().int(),
-    listingCount: zod.number().int(),
-    createdAt: zod.string(),
-  }),
-  token: zod.string(),
-});
+  "user": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+}),
+  "token": zod.string()
+})
+
 
 /**
  * @summary Login
  */
 export const LoginBody = zod.object({
-  email: zod.string(),
-  password: zod.string(),
-  eulaAccepted: zod.boolean().optional(),
-});
+  "email": zod.string(),
+  "password": zod.string(),
+  "eulaAccepted": zod.boolean().optional()
+})
 
 export const LoginResponse = zod.object({
-  user: zod.object({
-    id: zod.number().int(),
-    name: zod.string(),
-    email: zod.string(),
-    phone: zod.string().nullish(),
-    country: zod.string().nullish(),
-    isPhoneVerified: zod.boolean(),
-    avatar: zod.string().nullish(),
-    location: zod.string().nullish(),
-    bio: zod.string().nullish(),
-    rating: zod.number(),
-    reviewCount: zod.number().int(),
-    isVerified: zod.boolean(),
-    isAdmin: zod.boolean(),
-    isSuperAdmin: zod.boolean(),
-    role: zod.string(),
-    isBanned: zod.boolean(),
-    followerCount: zod.number().int(),
-    followingCount: zod.number().int(),
-    listingCount: zod.number().int(),
-    createdAt: zod.string(),
-  }),
-  token: zod.string(),
-});
+  "user": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+}),
+  "token": zod.string()
+})
+
 
 /**
  * @summary Login using a verified phone token (no password)
  */
 export const LoginPhoneBody = zod.object({
-  phoneToken: zod.string(),
-  eulaAccepted: zod.boolean().optional(),
-});
+  "phoneToken": zod.string(),
+  "eulaAccepted": zod.boolean().optional()
+})
 
 export const LoginPhoneResponse = zod.object({
-  user: zod.object({
-    id: zod.number().int(),
-    name: zod.string(),
-    email: zod.string(),
-    phone: zod.string().nullish(),
-    country: zod.string().nullish(),
-    isPhoneVerified: zod.boolean(),
-    avatar: zod.string().nullish(),
-    location: zod.string().nullish(),
-    bio: zod.string().nullish(),
-    rating: zod.number(),
-    reviewCount: zod.number().int(),
-    isVerified: zod.boolean(),
-    isAdmin: zod.boolean(),
-    isSuperAdmin: zod.boolean(),
-    role: zod.string(),
-    isBanned: zod.boolean(),
-    followerCount: zod.number().int(),
-    followingCount: zod.number().int(),
-    listingCount: zod.number().int(),
-    createdAt: zod.string(),
-  }),
-  token: zod.string(),
-});
+  "user": zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+}),
+  "token": zod.string()
+})
+
 
 /**
  * @summary Send OTP to phone number
  */
 export const SendOtpBody = zod.object({
-  phone: zod.string(),
-  country: zod.string(),
-});
+  "phone": zod.string(),
+  "country": zod.string()
+})
 
 export const SendOtpResponse = zod.object({
-  message: zod.string(),
-  devCode: zod.string().nullish(),
-});
+  "message": zod.string(),
+  "devCode": zod.string().nullish()
+})
+
 
 /**
  * @summary Verify OTP code and get phone token
  */
 export const VerifyOtpBody = zod.object({
-  phone: zod.string(),
-  country: zod.string(),
-  code: zod.string(),
-});
+  "phone": zod.string(),
+  "country": zod.string(),
+  "code": zod.string()
+})
 
 export const VerifyOtpResponse = zod.object({
-  phoneToken: zod.string(),
-  phone: zod.string(),
-  country: zod.string(),
-});
+  "phoneToken": zod.string(),
+  "phone": zod.string(),
+  "country": zod.string()
+})
+
 
 /**
  * @summary Change user country (requires phone verification)
  */
 export const ChangeCountryBody = zod.object({
-  phoneToken: zod.string(),
-});
+  "phoneToken": zod.string()
+})
 
 export const ChangeCountryResponse = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  email: zod.string(),
-  phone: zod.string().nullish(),
-  country: zod.string().nullish(),
-  isPhoneVerified: zod.boolean(),
-  avatar: zod.string().nullish(),
-  location: zod.string().nullish(),
-  bio: zod.string().nullish(),
-  rating: zod.number(),
-  reviewCount: zod.number().int(),
-  isVerified: zod.boolean(),
-  isAdmin: zod.boolean(),
-  isSuperAdmin: zod.boolean(),
-  role: zod.string(),
-  isBanned: zod.boolean(),
-  followerCount: zod.number().int(),
-  followingCount: zod.number().int(),
-  listingCount: zod.number().int(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Logout
  */
 export const LogoutResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Get current user
  */
 export const GetMeResponse = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  email: zod.string(),
-  phone: zod.string().nullish(),
-  country: zod.string().nullish(),
-  isPhoneVerified: zod.boolean(),
-  avatar: zod.string().nullish(),
-  location: zod.string().nullish(),
-  bio: zod.string().nullish(),
-  rating: zod.number(),
-  reviewCount: zod.number().int(),
-  isVerified: zod.boolean(),
-  isAdmin: zod.boolean(),
-  isSuperAdmin: zod.boolean(),
-  role: zod.string(),
-  isBanned: zod.boolean(),
-  followerCount: zod.number().int(),
-  followingCount: zod.number().int(),
-  listingCount: zod.number().int(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Get user profile
  */
 export const GetUserParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
-export const GetUserResponse = zod
-  .object({
-    id: zod.number().int(),
-    name: zod.string(),
-    email: zod.string(),
-    phone: zod.string().nullish(),
-    country: zod.string().nullish(),
-    isPhoneVerified: zod.boolean(),
-    avatar: zod.string().nullish(),
-    location: zod.string().nullish(),
-    bio: zod.string().nullish(),
-    rating: zod.number(),
-    reviewCount: zod.number().int(),
-    isVerified: zod.boolean(),
-    isAdmin: zod.boolean(),
-    isSuperAdmin: zod.boolean(),
-    role: zod.string(),
-    isBanned: zod.boolean(),
-    followerCount: zod.number().int(),
-    followingCount: zod.number().int(),
-    listingCount: zod.number().int(),
-    createdAt: zod.string(),
-  })
-  .and(
-    zod.object({
-      isFollowing: zod.boolean(),
-    }),
-  );
+export const GetUserResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "isFollowing": zod.boolean()
+}))
+
 
 /**
  * @summary Update user profile
  */
 export const UpdateUserParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
-export const updateUserBodyDateOfBirthRegExp = new RegExp(
-  "^\\d{4}-\\d{2}-\\d{2}$",
-);
+export const updateUserBodyDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
 
 export const UpdateUserBody = zod.object({
-  name: zod.string().optional(),
-  phone: zod.string().optional(),
-  location: zod.string().optional(),
-  bio: zod.string().optional(),
-  avatar: zod.string().optional(),
-  dateOfBirth: zod.string().regex(updateUserBodyDateOfBirthRegExp).nullish(),
-  gender: zod
-    .union([
-      zod.literal("male"),
-      zod.literal("female"),
-      zod.literal("other"),
-      zod.literal(null),
-    ])
-    .nullish(),
-});
+  "name": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "location": zod.string().optional(),
+  "bio": zod.string().optional(),
+  "avatar": zod.string().optional(),
+  "dateOfBirth": zod.string().regex(updateUserBodyDateOfBirthRegExp).nullish(),
+  "gender": zod.union([zod.literal('male'),zod.literal('female'),zod.literal('other'),zod.literal(null)]).nullish()
+})
 
 export const UpdateUserResponse = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  email: zod.string(),
-  phone: zod.string().nullish(),
-  country: zod.string().nullish(),
-  isPhoneVerified: zod.boolean(),
-  avatar: zod.string().nullish(),
-  location: zod.string().nullish(),
-  bio: zod.string().nullish(),
-  rating: zod.number(),
-  reviewCount: zod.number().int(),
-  isVerified: zod.boolean(),
-  isAdmin: zod.boolean(),
-  isSuperAdmin: zod.boolean(),
-  role: zod.string(),
-  isBanned: zod.boolean(),
-  followerCount: zod.number().int(),
-  followingCount: zod.number().int(),
-  listingCount: zod.number().int(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Get listings by user
  */
 export const GetUserListingsParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const GetUserListingsResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
-export const GetUserListingsResponse = zod.array(GetUserListingsResponseItem);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+export const GetUserListingsResponse = zod.array(GetUserListingsResponseItem)
+
 
 /**
  * @summary Get reviews for a user
  */
 export const GetUserReviewsParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const GetUserReviewsResponseItem = zod.object({
-  id: zod.number().int(),
-  reviewerId: zod.number().int(),
-  reviewerName: zod.string(),
-  reviewerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  listingId: zod.number().int().nullish(),
-  rating: zod.number().int(),
-  comment: zod.string(),
-  createdAt: zod.string(),
-});
-export const GetUserReviewsResponse = zod.array(GetUserReviewsResponseItem);
+  "id": zod.number().int(),
+  "reviewerId": zod.number().int(),
+  "reviewerName": zod.string(),
+  "reviewerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "listingId": zod.number().int().nullish(),
+  "rating": zod.number().int(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})
+export const GetUserReviewsResponse = zod.array(GetUserReviewsResponseItem)
+
 
 /**
  * @summary Follow a seller
  */
 export const FollowUserParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const FollowUserResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Unfollow a seller
  */
 export const UnfollowUserParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const UnfollowUserResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Get all categories
  */
 export const GetCategoriesResponseItem = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  slug: zod.string(),
-  icon: zod.string(),
-  listingCount: zod.number().int(),
-  parentId: zod.number().int().nullish(),
-  children: zod.array(zod.unknown()).optional(),
-});
-export const GetCategoriesResponse = zod.array(GetCategoriesResponseItem);
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "icon": zod.string(),
+  "listingCount": zod.number().int(),
+  "parentId": zod.number().int().nullish(),
+  "children": zod.array(zod.unknown()).optional()
+})
+export const GetCategoriesResponse = zod.array(GetCategoriesResponseItem)
+
 
 /**
  * @summary Get listings with filters
  */
 export const GetListingsQueryParams = zod.object({
-  q: zod.coerce.string().optional(),
-  category: zod.coerce.string().optional(),
-  subcategory: zod.coerce.string().optional(),
-  minPrice: zod.coerce.number().optional(),
-  maxPrice: zod.coerce.number().optional(),
-  condition: zod.coerce.string().optional(),
-  location: zod.coerce.string().optional(),
-  city: zod.coerce.string().optional(),
-  country: zod.coerce.string().optional(),
-  boosted: zod.coerce.boolean().optional(),
-  scope: zod
-    .enum(["nearby", "city", "country"])
-    .optional()
-    .describe("Geographic ranking scope - nearby, city, or country"),
-  page: zod.coerce.number().int().optional(),
-  limit: zod.coerce.number().int().optional(),
-});
+  "q": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional(),
+  "subcategory": zod.coerce.string().optional(),
+  "minPrice": zod.coerce.number().optional(),
+  "maxPrice": zod.coerce.number().optional(),
+  "condition": zod.coerce.string().optional(),
+  "location": zod.coerce.string().optional(),
+  "city": zod.coerce.string().optional(),
+  "country": zod.coerce.string().optional(),
+  "boosted": zod.coerce.boolean().optional(),
+  "scope": zod.enum(['nearby', 'city', 'country']).optional().describe('Geographic ranking scope - nearby, city, or country'),
+  "page": zod.coerce.number().int().optional(),
+  "limit": zod.coerce.number().int().optional()
+})
 
 export const GetListingsResponse = zod.object({
-  listings: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      title: zod.string(),
-      description: zod.string(),
-      price: zod.number(),
-      currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-      category: zod.string(),
-      categorySlug: zod.string(),
-      categoryIcon: zod.string().nullish(),
-      subcategory: zod.string().nullish(),
-      subcategorySlug: zod.string().nullish(),
-      condition: zod.string(),
-      location: zod.string(),
-      city: zod.string().nullish(),
-      state: zod.string().nullish(),
-      neighborhood: zod.string().nullish(),
-      country: zod.string().nullish(),
-      latitude: zod.number().nullish(),
-      longitude: zod.number().nullish(),
-      distanceKm: zod.number().nullish(),
-      proximityLevel: zod
-        .enum(["neighborhood", "city", "state", "country", "unknown"])
-        .nullish(),
-      nearYou: zod.boolean().optional(),
-      images: zod.array(zod.string()),
-      status: zod.enum(["available", "sold", "removed"]),
-      isBoosted: zod.boolean(),
-      boostExpiresAt: zod.string().nullish(),
-      boostVideoUrl: zod
-        .string()
-        .nullish()
-        .describe(
-          "Promo video URL attached to this boost. Visible on the listing detail page.",
-        ),
-      viewCount: zod.number().int(),
-      favoriteCount: zod.number().int(),
-      sellerId: zod.number().int(),
-      sellerName: zod.string(),
-      sellerAvatar: zod.string().nullish(),
-      sellerRating: zod.number(),
-      sellerIsVerified: zod.boolean(),
-      createdAt: zod.string(),
-      moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-      moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-      moderationReason: zod.string().nullish(),
-      moderationFlags: zod.array(zod.string()),
-    }),
-  ),
-  total: zod.number().int(),
-  page: zod.number().int(),
-  totalPages: zod.number().int(),
-});
+  "listings": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})),
+  "total": zod.number().int(),
+  "page": zod.number().int(),
+  "totalPages": zod.number().int()
+})
+
 
 /**
  * @summary Create a listing
  */
+export const createListingBodyShippingCostMin = 0;
+
+export const createListingBodyWeightLbsMin = 0;
+
+export const createListingBodyPackageLengthInMin = 0;
+
+export const createListingBodyPackageWidthInMin = 0;
+
+export const createListingBodyPackageHeightInMin = 0;
+
+
+
 
 export const CreateListingBody = zod.object({
   "title": zod.string(),
@@ -512,13 +564,13 @@ export const CreateListingBody = zod.object({
   "city": zod.string().optional(),
   "state": zod.string().optional().describe('State, department, or province of the listing.'),
   "country": zod.string().optional(),
-  "shippingCost": zod.number().min(0).nullish(),
+  "shippingCost": zod.number().min(createListingBodyShippingCostMin).nullish(),
   "shippingCarriers": zod.array(zod.string()).optional(),
   "deliveryMethod": zod.enum(['motorcycle', 'car', 'bus', 'self_delivery']).nullish(),
-  "weightLbs": zod.number().min(0).optional(),
-  "packageLengthIn": zod.number().min(0).optional(),
-  "packageWidthIn": zod.number().min(0).optional(),
-  "packageHeightIn": zod.number().min(0).optional(),
+  "weightLbs": zod.number().min(createListingBodyWeightLbsMin).optional(),
+  "packageLengthIn": zod.number().min(createListingBodyPackageLengthInMin).optional(),
+  "packageWidthIn": zod.number().min(createListingBodyPackageWidthInMin).optional(),
+  "packageHeightIn": zod.number().min(createListingBodyPackageHeightInMin).optional(),
   "stockQuantity": zod.number().int().nullish().describe('Number of items in stock. Null means unlimited (single-item listing).'),
   "itemSize": zod.string().nullish().describe('Clothing or shoe size (e.g. M, L, XL, 42). Only relevant for Fashion/Shoes categories.'),
   "listingVideoUrl": zod.string().nullish().describe('Optional listing video (standard/premium/vip plans only). Object-storage path.'),
@@ -526,263 +578,245 @@ export const CreateListingBody = zod.object({
 })
 
 export const CreateListingResponse = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+
 
 /**
  * @summary Update current user's location (lat/lng/state/neighborhood)
  */
 export const UpdateMyLocationBody = zod.object({
-  latitude: zod.number().optional(),
-  longitude: zod.number().optional(),
-  state: zod.string().optional(),
-  neighborhood: zod.string().optional(),
-  location: zod.string().optional(),
-});
+  "latitude": zod.number().optional(),
+  "longitude": zod.number().optional(),
+  "state": zod.string().optional(),
+  "neighborhood": zod.string().optional(),
+  "location": zod.string().optional()
+})
 
 export const UpdateMyLocationResponse = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  email: zod.string(),
-  phone: zod.string().nullish(),
-  country: zod.string().nullish(),
-  isPhoneVerified: zod.boolean(),
-  avatar: zod.string().nullish(),
-  location: zod.string().nullish(),
-  bio: zod.string().nullish(),
-  rating: zod.number(),
-  reviewCount: zod.number().int(),
-  isVerified: zod.boolean(),
-  isAdmin: zod.boolean(),
-  isSuperAdmin: zod.boolean(),
-  role: zod.string(),
-  isBanned: zod.boolean(),
-  followerCount: zod.number().int(),
-  followingCount: zod.number().int(),
-  listingCount: zod.number().int(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Get trending listings
  */
 export const GetTrendingListingsResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
-export const GetTrendingListingsResponse = zod.array(
-  GetTrendingListingsResponseItem,
-);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+export const GetTrendingListingsResponse = zod.array(GetTrendingListingsResponseItem)
+
 
 /**
  * @summary Get featured/boosted listings
  */
 export const GetFeaturedListingsResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
-export const GetFeaturedListingsResponse = zod.array(
-  GetFeaturedListingsResponseItem,
-);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+export const GetFeaturedListingsResponse = zod.array(GetFeaturedListingsResponseItem)
+
 
 /**
  * @summary Get a listing
  */
 export const GetListingParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
-export const GetListingResponse = zod
-  .object({
-    id: zod.number().int(),
-    title: zod.string(),
-    description: zod.string(),
-    price: zod.number(),
-    currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-    category: zod.string(),
-    categorySlug: zod.string(),
-    categoryIcon: zod.string().nullish(),
-    subcategory: zod.string().nullish(),
-    subcategorySlug: zod.string().nullish(),
-    condition: zod.string(),
-    location: zod.string(),
-    city: zod.string().nullish(),
-    state: zod.string().nullish(),
-    neighborhood: zod.string().nullish(),
-    country: zod.string().nullish(),
-    latitude: zod.number().nullish(),
-    longitude: zod.number().nullish(),
-    distanceKm: zod.number().nullish(),
-    proximityLevel: zod
-      .enum(["neighborhood", "city", "state", "country", "unknown"])
-      .nullish(),
-    nearYou: zod.boolean().optional(),
-    images: zod.array(zod.string()),
-    status: zod.enum(["available", "sold", "removed"]),
-    isBoosted: zod.boolean(),
-    boostExpiresAt: zod.string().nullish(),
-    boostVideoUrl: zod
-      .string()
-      .nullish()
-      .describe(
-        "Promo video URL attached to this boost. Visible on the listing detail page.",
-      ),
-    viewCount: zod.number().int(),
-    favoriteCount: zod.number().int(),
-    sellerId: zod.number().int(),
-    sellerName: zod.string(),
-    sellerAvatar: zod.string().nullish(),
-    sellerRating: zod.number(),
-    sellerIsVerified: zod.boolean(),
-    createdAt: zod.string(),
-    moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-    moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-    moderationReason: zod.string().nullish(),
-    moderationFlags: zod.array(zod.string()),
-  })
-  .and(
-    zod.object({
-      isFavorited: zod.boolean(),
-      isOwner: zod.boolean(),
-    }),
-  );
+export const GetListingResponse = zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+}).and(zod.object({
+  "isFavorited": zod.boolean(),
+  "isOwner": zod.boolean()
+}))
+
 
 /**
  * @summary Update a listing
  */
 export const UpdateListingParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
+
+export const updateListingBodyShippingCostMin = 0;
+
+export const updateListingBodyWeightLbsMin = 0;
+
+export const updateListingBodyPackageLengthInMin = 0;
+
+export const updateListingBodyPackageWidthInMin = 0;
+
+export const updateListingBodyPackageHeightInMin = 0;
+
+
+
 
 export const UpdateListingBody = zod.object({
   "title": zod.string().optional(),
@@ -794,13 +828,13 @@ export const UpdateListingBody = zod.object({
   "city": zod.string().optional(),
   "state": zod.string().optional().describe('State, department, or province of the listing.'),
   "country": zod.string().optional(),
-  "shippingCost": zod.number().min(0).nullish(),
+  "shippingCost": zod.number().min(updateListingBodyShippingCostMin).nullish(),
   "shippingCarriers": zod.array(zod.string()).optional(),
   "deliveryMethod": zod.enum(['motorcycle', 'car', 'bus', 'self_delivery']).nullish(),
-  "weightLbs": zod.number().min(0).optional(),
-  "packageLengthIn": zod.number().min(0).optional(),
-  "packageWidthIn": zod.number().min(0).optional(),
-  "packageHeightIn": zod.number().min(0).optional(),
+  "weightLbs": zod.number().min(updateListingBodyWeightLbsMin).optional(),
+  "packageLengthIn": zod.number().min(updateListingBodyPackageLengthInMin).optional(),
+  "packageWidthIn": zod.number().min(updateListingBodyPackageWidthInMin).optional(),
+  "packageHeightIn": zod.number().min(updateListingBodyPackageHeightInMin).optional(),
   "images": zod.array(zod.string()).min(1).optional(),
   "status": zod.string().optional(),
   "stockQuantity": zod.number().int().nullish(),
@@ -809,1231 +843,1183 @@ export const UpdateListingBody = zod.object({
 })
 
 export const UpdateListingResponse = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+
 
 /**
  * @summary Delete a listing
  */
 export const DeleteListingParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const DeleteListingResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Boost a listing
  */
 export const BoostListingParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const BoostListingBody = zod.object({
-  plan: zod.enum(["1day", "3day", "7day"]),
-  paymentMethod: zod.enum(["card", "usdt"]),
-});
+  "plan": zod.enum(['1day', '3day', '7day']),
+  "paymentMethod": zod.enum(['card', 'usdt'])
+})
 
 export const BoostListingResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  plan: zod.enum(["1day", "3day", "7day"]),
-  price: zod.number(),
-  expiresAt: zod.string(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "plan": zod.enum(['1day', '3day', '7day']),
+  "price": zod.number(),
+  "expiresAt": zod.string(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Mark listing as sold
  */
 export const MarkListingSoldParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const MarkListingSoldResponse = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+
 
 /**
  * @summary Get my favorites
  */
 export const GetFavoritesResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
-export const GetFavoritesResponse = zod.array(GetFavoritesResponseItem);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+export const GetFavoritesResponse = zod.array(GetFavoritesResponseItem)
+
 
 /**
  * @summary Save a listing
  */
 export const AddFavoriteParams = zod.object({
-  listingId: zod.coerce.number().int(),
-});
+  "listingId": zod.coerce.number().int()
+})
 
 export const AddFavoriteResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Remove a saved listing
  */
 export const RemoveFavoriteParams = zod.object({
-  listingId: zod.coerce.number().int(),
-});
+  "listingId": zod.coerce.number().int()
+})
 
 export const RemoveFavoriteResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Get my conversations
  */
 export const GetConversationsResponseItem = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number(),
-  otherUserId: zod.number().int(),
-  otherUserName: zod.string(),
-  otherUserAvatar: zod.string().nullish(),
-  lastMessage: zod.string().nullish(),
-  lastMessageAt: zod.string().nullish(),
-  unreadCount: zod.number().int(),
-});
-export const GetConversationsResponse = zod.array(GetConversationsResponseItem);
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number(),
+  "otherUserId": zod.number().int(),
+  "otherUserName": zod.string(),
+  "otherUserAvatar": zod.string().nullish(),
+  "lastMessage": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "unreadCount": zod.number().int()
+})
+export const GetConversationsResponse = zod.array(GetConversationsResponseItem)
+
 
 /**
  * @summary Start or get conversation about a listing
  */
 export const CreateConversationBody = zod.object({
-  listingId: zod.number().int(),
-  sellerId: zod.number().int(),
-});
+  "listingId": zod.number().int(),
+  "sellerId": zod.number().int()
+})
 
 export const CreateConversationResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number(),
-  otherUserId: zod.number().int(),
-  otherUserName: zod.string(),
-  otherUserAvatar: zod.string().nullish(),
-  lastMessage: zod.string().nullish(),
-  lastMessageAt: zod.string().nullish(),
-  unreadCount: zod.number().int(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number(),
+  "otherUserId": zod.number().int(),
+  "otherUserName": zod.string(),
+  "otherUserAvatar": zod.string().nullish(),
+  "lastMessage": zod.string().nullish(),
+  "lastMessageAt": zod.string().nullish(),
+  "unreadCount": zod.number().int()
+})
+
 
 /**
  * @summary Get messages in a conversation
  */
 export const GetMessagesParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const GetMessagesResponseItem = zod.object({
-  id: zod.number().int(),
-  conversationId: zod.number().int(),
-  senderId: zod.number().int(),
-  senderName: zod.string(),
-  senderAvatar: zod.string().nullish(),
-  content: zod.string(),
-  imageUrl: zod.string().nullish(),
-  isRead: zod.boolean(),
-  createdAt: zod.string(),
-});
-export const GetMessagesResponse = zod.array(GetMessagesResponseItem);
+  "id": zod.number().int(),
+  "conversationId": zod.number().int(),
+  "senderId": zod.number().int(),
+  "senderName": zod.string(),
+  "senderAvatar": zod.string().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "isRead": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const GetMessagesResponse = zod.array(GetMessagesResponseItem)
+
 
 /**
  * @summary Send a message
  */
 export const SendMessageParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const SendMessageBody = zod.object({
-  content: zod.string(),
-  imageUrl: zod.string().optional(),
-});
+  "content": zod.string(),
+  "imageUrl": zod.string().optional()
+})
 
 export const SendMessageResponse = zod.object({
-  id: zod.number().int(),
-  conversationId: zod.number().int(),
-  senderId: zod.number().int(),
-  senderName: zod.string(),
-  senderAvatar: zod.string().nullish(),
-  content: zod.string(),
-  imageUrl: zod.string().nullish(),
-  isRead: zod.boolean(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "conversationId": zod.number().int(),
+  "senderId": zod.number().int(),
+  "senderName": zod.string(),
+  "senderAvatar": zod.string().nullish(),
+  "content": zod.string(),
+  "imageUrl": zod.string().nullish(),
+  "isRead": zod.boolean(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Get my offers (sent and received)
  */
 export const GetMyOffersResponse = zod.object({
-  sent: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      listingId: zod.number().int(),
-      listingTitle: zod.string(),
-      listingImage: zod.string().nullish(),
-      listingPrice: zod.number().nullish(),
-      buyerId: zod.number().int(),
-      buyerName: zod.string(),
-      buyerAvatar: zod.string().nullish(),
-      sellerId: zod.number().int(),
-      sellerName: zod.string().nullish(),
-      sellerAvatar: zod.string().nullish(),
-      amount: zod.number(),
-      counterAmount: zod.number().nullish(),
-      counterMessage: zod.string().nullish(),
-      status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-      message: zod.string().nullish(),
-      createdAt: zod.string(),
-      updatedAt: zod.string().nullish(),
-    }),
-  ),
-  received: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      listingId: zod.number().int(),
-      listingTitle: zod.string(),
-      listingImage: zod.string().nullish(),
-      listingPrice: zod.number().nullish(),
-      buyerId: zod.number().int(),
-      buyerName: zod.string(),
-      buyerAvatar: zod.string().nullish(),
-      sellerId: zod.number().int(),
-      sellerName: zod.string().nullish(),
-      sellerAvatar: zod.string().nullish(),
-      amount: zod.number(),
-      counterAmount: zod.number().nullish(),
-      counterMessage: zod.string().nullish(),
-      status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-      message: zod.string().nullish(),
-      createdAt: zod.string(),
-      updatedAt: zod.string().nullish(),
-    }),
-  ),
-});
+  "sent": zod.array(zod.object({
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})),
+  "received": zod.array(zod.object({
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+}))
+})
+
 
 /**
  * @summary Make an offer on a listing
  */
 export const CreateOfferBody = zod.object({
-  listingId: zod.number().int(),
-  amount: zod.number(),
-  message: zod.string().optional(),
-});
+  "listingId": zod.number().int(),
+  "amount": zod.number(),
+  "message": zod.string().optional()
+})
 
 export const CreateOfferResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number().nullish(),
-  buyerId: zod.number().int(),
-  buyerName: zod.string(),
-  buyerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string().nullish(),
-  sellerAvatar: zod.string().nullish(),
-  amount: zod.number(),
-  counterAmount: zod.number().nullish(),
-  counterMessage: zod.string().nullish(),
-  status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-  message: zod.string().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string().nullish(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})
+
 
 /**
  * @summary Accept an offer
  */
 export const AcceptOfferParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AcceptOfferResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number().nullish(),
-  buyerId: zod.number().int(),
-  buyerName: zod.string(),
-  buyerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string().nullish(),
-  sellerAvatar: zod.string().nullish(),
-  amount: zod.number(),
-  counterAmount: zod.number().nullish(),
-  counterMessage: zod.string().nullish(),
-  status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-  message: zod.string().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string().nullish(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})
+
 
 /**
  * @summary Reject an offer
  */
 export const RejectOfferParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const RejectOfferResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number().nullish(),
-  buyerId: zod.number().int(),
-  buyerName: zod.string(),
-  buyerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string().nullish(),
-  sellerAvatar: zod.string().nullish(),
-  amount: zod.number(),
-  counterAmount: zod.number().nullish(),
-  counterMessage: zod.string().nullish(),
-  status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-  message: zod.string().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string().nullish(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})
+
 
 /**
  * @summary Seller sends a counter offer
  */
 export const CounterOfferParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const CounterOfferBody = zod.object({
-  counterAmount: zod.number(),
-  counterMessage: zod.string().optional(),
-});
+  "counterAmount": zod.number(),
+  "counterMessage": zod.string().optional()
+})
 
 export const CounterOfferResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number().nullish(),
-  buyerId: zod.number().int(),
-  buyerName: zod.string(),
-  buyerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string().nullish(),
-  sellerAvatar: zod.string().nullish(),
-  amount: zod.number(),
-  counterAmount: zod.number().nullish(),
-  counterMessage: zod.string().nullish(),
-  status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-  message: zod.string().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string().nullish(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})
+
 
 /**
  * @summary Buyer accepts a counter offer
  */
 export const AcceptCounterParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AcceptCounterResponse = zod.object({
-  id: zod.number().int(),
-  listingId: zod.number().int(),
-  listingTitle: zod.string(),
-  listingImage: zod.string().nullish(),
-  listingPrice: zod.number().nullish(),
-  buyerId: zod.number().int(),
-  buyerName: zod.string(),
-  buyerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string().nullish(),
-  sellerAvatar: zod.string().nullish(),
-  amount: zod.number(),
-  counterAmount: zod.number().nullish(),
-  counterMessage: zod.string().nullish(),
-  status: zod.enum(["pending", "accepted", "rejected", "counter"]),
-  message: zod.string().nullish(),
-  createdAt: zod.string(),
-  updatedAt: zod.string().nullish(),
-});
+  "id": zod.number().int(),
+  "listingId": zod.number().int(),
+  "listingTitle": zod.string(),
+  "listingImage": zod.string().nullish(),
+  "listingPrice": zod.number().nullish(),
+  "buyerId": zod.number().int(),
+  "buyerName": zod.string(),
+  "buyerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string().nullish(),
+  "sellerAvatar": zod.string().nullish(),
+  "amount": zod.number(),
+  "counterAmount": zod.number().nullish(),
+  "counterMessage": zod.string().nullish(),
+  "status": zod.enum(['pending', 'accepted', 'rejected', 'counter']),
+  "message": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().nullish()
+})
+
 
 /**
  * @summary Leave a review
  */
 export const CreateReviewBody = zod.object({
-  sellerId: zod.number().int(),
-  listingId: zod.number().int().optional(),
-  rating: zod.number().int(),
-  comment: zod.string(),
-});
+  "sellerId": zod.number().int(),
+  "listingId": zod.number().int().optional(),
+  "rating": zod.number().int(),
+  "comment": zod.string()
+})
 
 export const CreateReviewResponse = zod.object({
-  id: zod.number().int(),
-  reviewerId: zod.number().int(),
-  reviewerName: zod.string(),
-  reviewerAvatar: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  listingId: zod.number().int().nullish(),
-  rating: zod.number().int(),
-  comment: zod.string(),
-  createdAt: zod.string(),
-});
+  "id": zod.number().int(),
+  "reviewerId": zod.number().int(),
+  "reviewerName": zod.string(),
+  "reviewerAvatar": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "listingId": zod.number().int().nullish(),
+  "rating": zod.number().int(),
+  "comment": zod.string(),
+  "createdAt": zod.string()
+})
+
 
 /**
  * @summary Report a listing or user
  */
 export const CreateReportBody = zod.object({
-  targetType: zod.enum(["listing", "user"]),
-  targetId: zod.number().int(),
-  reason: zod.string(),
-});
+  "targetType": zod.enum(['listing', 'user']),
+  "targetId": zod.number().int(),
+  "reason": zod.string()
+})
 
 export const CreateReportResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Get homepage stats
  */
 export const GetHomeStatsResponse = zod.object({
-  totalListings: zod.number().int(),
-  totalUsers: zod.number().int(),
-  categoryCounts: zod.array(
-    zod.object({
-      category: zod.string(),
-      count: zod.number().int(),
-    }),
-  ),
-  recentListings: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      title: zod.string(),
-      description: zod.string(),
-      price: zod.number(),
-      currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-      category: zod.string(),
-      categorySlug: zod.string(),
-      categoryIcon: zod.string().nullish(),
-      subcategory: zod.string().nullish(),
-      subcategorySlug: zod.string().nullish(),
-      condition: zod.string(),
-      location: zod.string(),
-      city: zod.string().nullish(),
-      state: zod.string().nullish(),
-      neighborhood: zod.string().nullish(),
-      country: zod.string().nullish(),
-      latitude: zod.number().nullish(),
-      longitude: zod.number().nullish(),
-      distanceKm: zod.number().nullish(),
-      proximityLevel: zod
-        .enum(["neighborhood", "city", "state", "country", "unknown"])
-        .nullish(),
-      nearYou: zod.boolean().optional(),
-      images: zod.array(zod.string()),
-      status: zod.enum(["available", "sold", "removed"]),
-      isBoosted: zod.boolean(),
-      boostExpiresAt: zod.string().nullish(),
-      boostVideoUrl: zod
-        .string()
-        .nullish()
-        .describe(
-          "Promo video URL attached to this boost. Visible on the listing detail page.",
-        ),
-      viewCount: zod.number().int(),
-      favoriteCount: zod.number().int(),
-      sellerId: zod.number().int(),
-      sellerName: zod.string(),
-      sellerAvatar: zod.string().nullish(),
-      sellerRating: zod.number(),
-      sellerIsVerified: zod.boolean(),
-      createdAt: zod.string(),
-      moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-      moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-      moderationReason: zod.string().nullish(),
-      moderationFlags: zod.array(zod.string()),
-    }),
-  ),
-  featuredListings: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      title: zod.string(),
-      description: zod.string(),
-      price: zod.number(),
-      currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-      category: zod.string(),
-      categorySlug: zod.string(),
-      categoryIcon: zod.string().nullish(),
-      subcategory: zod.string().nullish(),
-      subcategorySlug: zod.string().nullish(),
-      condition: zod.string(),
-      location: zod.string(),
-      city: zod.string().nullish(),
-      state: zod.string().nullish(),
-      neighborhood: zod.string().nullish(),
-      country: zod.string().nullish(),
-      latitude: zod.number().nullish(),
-      longitude: zod.number().nullish(),
-      distanceKm: zod.number().nullish(),
-      proximityLevel: zod
-        .enum(["neighborhood", "city", "state", "country", "unknown"])
-        .nullish(),
-      nearYou: zod.boolean().optional(),
-      images: zod.array(zod.string()),
-      status: zod.enum(["available", "sold", "removed"]),
-      isBoosted: zod.boolean(),
-      boostExpiresAt: zod.string().nullish(),
-      boostVideoUrl: zod
-        .string()
-        .nullish()
-        .describe(
-          "Promo video URL attached to this boost. Visible on the listing detail page.",
-        ),
-      viewCount: zod.number().int(),
-      favoriteCount: zod.number().int(),
-      sellerId: zod.number().int(),
-      sellerName: zod.string(),
-      sellerAvatar: zod.string().nullish(),
-      sellerRating: zod.number(),
-      sellerIsVerified: zod.boolean(),
-      createdAt: zod.string(),
-      moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-      moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-      moderationReason: zod.string().nullish(),
-      moderationFlags: zod.array(zod.string()),
-    }),
-  ),
-});
+  "totalListings": zod.number().int(),
+  "totalUsers": zod.number().int(),
+  "categoryCounts": zod.array(zod.object({
+  "category": zod.string(),
+  "count": zod.number().int()
+})),
+  "recentListings": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})),
+  "featuredListings": zod.array(zod.object({
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+}))
+})
+
 
 /**
  * @summary Admin - list users
  */
 export const AdminGetUsersResponseItem = zod.object({
-  id: zod.number().int(),
-  name: zod.string(),
-  email: zod.string(),
-  phone: zod.string().nullish(),
-  country: zod.string().nullish(),
-  isPhoneVerified: zod.boolean(),
-  avatar: zod.string().nullish(),
-  location: zod.string().nullish(),
-  bio: zod.string().nullish(),
-  rating: zod.number(),
-  reviewCount: zod.number().int(),
-  isVerified: zod.boolean(),
-  isAdmin: zod.boolean(),
-  isSuperAdmin: zod.boolean(),
-  role: zod.string(),
-  isBanned: zod.boolean(),
-  followerCount: zod.number().int(),
-  followingCount: zod.number().int(),
-  listingCount: zod.number().int(),
-  createdAt: zod.string(),
-});
-export const AdminGetUsersResponse = zod.array(AdminGetUsersResponseItem);
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "isPhoneVerified": zod.boolean(),
+  "avatar": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "bio": zod.string().nullish(),
+  "rating": zod.number(),
+  "reviewCount": zod.number().int(),
+  "isVerified": zod.boolean(),
+  "isAdmin": zod.boolean(),
+  "isSuperAdmin": zod.boolean(),
+  "role": zod.string(),
+  "isBanned": zod.boolean(),
+  "followerCount": zod.number().int(),
+  "followingCount": zod.number().int(),
+  "listingCount": zod.number().int(),
+  "createdAt": zod.string()
+})
+export const AdminGetUsersResponse = zod.array(AdminGetUsersResponseItem)
+
 
 /**
  * @summary Admin - ban user
  */
 export const AdminBanUserParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AdminBanUserResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Admin - list all listings
  */
 export const AdminGetListingsResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  currency: zod.enum(["USD", "HTG", "DOP"]).optional(),
-  category: zod.string(),
-  categorySlug: zod.string(),
-  categoryIcon: zod.string().nullish(),
-  subcategory: zod.string().nullish(),
-  subcategorySlug: zod.string().nullish(),
-  condition: zod.string(),
-  location: zod.string(),
-  city: zod.string().nullish(),
-  state: zod.string().nullish(),
-  neighborhood: zod.string().nullish(),
-  country: zod.string().nullish(),
-  latitude: zod.number().nullish(),
-  longitude: zod.number().nullish(),
-  distanceKm: zod.number().nullish(),
-  proximityLevel: zod
-    .enum(["neighborhood", "city", "state", "country", "unknown"])
-    .nullish(),
-  nearYou: zod.boolean().optional(),
-  images: zod.array(zod.string()),
-  status: zod.enum(["available", "sold", "removed"]),
-  isBoosted: zod.boolean(),
-  boostExpiresAt: zod.string().nullish(),
-  boostVideoUrl: zod
-    .string()
-    .nullish()
-    .describe(
-      "Promo video URL attached to this boost. Visible on the listing detail page.",
-    ),
-  viewCount: zod.number().int(),
-  favoriteCount: zod.number().int(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  sellerRating: zod.number(),
-  sellerIsVerified: zod.boolean(),
-  createdAt: zod.string(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.enum(["low", "medium", "high"]).nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationFlags: zod.array(zod.string()),
-});
-export const AdminGetListingsResponse = zod.array(AdminGetListingsResponseItem);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "currency": zod.enum(['USD', 'HTG', 'DOP']).optional(),
+  "category": zod.string(),
+  "categorySlug": zod.string(),
+  "categoryIcon": zod.string().nullish(),
+  "subcategory": zod.string().nullish(),
+  "subcategorySlug": zod.string().nullish(),
+  "condition": zod.string(),
+  "location": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "neighborhood": zod.string().nullish(),
+  "country": zod.string().nullish(),
+  "latitude": zod.number().nullish(),
+  "longitude": zod.number().nullish(),
+  "distanceKm": zod.number().nullish(),
+  "proximityLevel": zod.enum(['neighborhood', 'city', 'state', 'country', 'unknown']).nullish(),
+  "nearYou": zod.boolean().optional(),
+  "images": zod.array(zod.string()),
+  "status": zod.enum(['available', 'sold', 'removed']),
+  "isBoosted": zod.boolean(),
+  "boostExpiresAt": zod.string().nullish(),
+  "boostVideoUrl": zod.string().nullish().describe('Promo video URL attached to this boost. Visible on the listing detail page.'),
+  "viewCount": zod.number().int(),
+  "favoriteCount": zod.number().int(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "sellerRating": zod.number(),
+  "sellerIsVerified": zod.boolean(),
+  "createdAt": zod.string(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.enum(['low', 'medium', 'high']).nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationFlags": zod.array(zod.string())
+})
+export const AdminGetListingsResponse = zod.array(AdminGetListingsResponseItem)
+
 
 /**
  * @summary Admin - remove a listing
  */
 export const AdminRemoveListingParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AdminRemoveListingResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Admin - moderation queue
  */
 export const AdminGetModerationQueryParams = zod.object({
-  status: zod.enum(["pending", "rejected", "approved"]).optional(),
-});
+  "status": zod.enum(['pending', 'rejected', 'approved']).optional()
+})
 
 export const AdminGetModerationResponseItem = zod.object({
-  id: zod.number().int(),
-  title: zod.string(),
-  description: zod.string(),
-  price: zod.number(),
-  category: zod.string(),
-  images: zod.array(zod.string()),
-  location: zod.string(),
-  country: zod.string().nullish(),
-  moderationStatus: zod.enum(["approved", "pending", "rejected"]),
-  moderationRiskLevel: zod.string().nullish(),
-  moderationReason: zod.string().nullish(),
-  moderationConfidence: zod.number().nullish(),
-  moderationFlags: zod.array(zod.string()),
-  moderationSource: zod.string().nullish(),
-  moderatedAt: zod.string().nullish(),
-  sellerId: zod.number().int(),
-  sellerName: zod.string(),
-  sellerAvatar: zod.string().nullish(),
-  createdAt: zod.string(),
-});
-export const AdminGetModerationResponse = zod.array(
-  AdminGetModerationResponseItem,
-);
+  "id": zod.number().int(),
+  "title": zod.string(),
+  "description": zod.string(),
+  "price": zod.number(),
+  "category": zod.string(),
+  "images": zod.array(zod.string()),
+  "location": zod.string(),
+  "country": zod.string().nullish(),
+  "moderationStatus": zod.enum(['approved', 'pending', 'rejected']),
+  "moderationRiskLevel": zod.string().nullish(),
+  "moderationReason": zod.string().nullish(),
+  "moderationConfidence": zod.number().nullish(),
+  "moderationFlags": zod.array(zod.string()),
+  "moderationSource": zod.string().nullish(),
+  "moderatedAt": zod.string().nullish(),
+  "sellerId": zod.number().int(),
+  "sellerName": zod.string(),
+  "sellerAvatar": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const AdminGetModerationResponse = zod.array(AdminGetModerationResponseItem)
+
 
 /**
  * @summary Admin - approve flagged listing
  */
 export const AdminApproveModerationParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AdminApproveModerationResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Admin - reject flagged listing
  */
 export const AdminRejectModerationParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const AdminRejectModerationBody = zod.object({
-  reason: zod.string().optional(),
-});
+  "reason": zod.string().optional()
+})
 
 export const AdminRejectModerationResponse = zod.object({
-  message: zod.string(),
-});
+  "message": zod.string()
+})
+
 
 /**
  * @summary Admin - list reports
  */
 export const AdminGetReportsResponseItem = zod.object({
-  id: zod.number().int(),
-  reporterId: zod.number().int(),
-  reporterName: zod.string(),
-  targetType: zod.enum(["listing", "user"]),
-  targetId: zod.number().int(),
-  reason: zod.string(),
-  status: zod.enum(["pending", "reviewed", "dismissed"]),
-  createdAt: zod.string(),
-});
-export const AdminGetReportsResponse = zod.array(AdminGetReportsResponseItem);
+  "id": zod.number().int(),
+  "reporterId": zod.number().int(),
+  "reporterName": zod.string(),
+  "targetType": zod.enum(['listing', 'user']),
+  "targetId": zod.number().int(),
+  "reason": zod.string(),
+  "status": zod.enum(['pending', 'reviewed', 'dismissed']),
+  "createdAt": zod.string()
+})
+export const AdminGetReportsResponse = zod.array(AdminGetReportsResponseItem)
+
 
 /**
  * @summary Admin - dashboard stats
  */
 export const AdminGetStatsResponse = zod.object({
-  totalUsers: zod.number().int(),
-  totalListings: zod.number().int(),
-  activeListings: zod.number().int(),
-  totalBoosts: zod.number().int(),
-  pendingReports: zod.number().int(),
-  totalRevenue: zod.number(),
-});
+  "totalUsers": zod.number().int(),
+  "totalListings": zod.number().int(),
+  "activeListings": zod.number().int(),
+  "totalBoosts": zod.number().int(),
+  "pendingReports": zod.number().int(),
+  "totalRevenue": zod.number()
+})
+
 
 /**
  * @summary Request a presigned URL for file upload
  */
 
+
+
+
+
 export const RequestUploadUrlBody = zod.object({
-  name: zod.string().min(1).describe("Original file name."),
-  size: zod.number().int().min(1).describe("File size in bytes."),
-  contentType: zod
-    .string()
-    .min(1)
-    .describe("MIME type of the file (e.g. image/jpeg)."),
-});
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().int().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. image/jpeg).')
+})
+
+
+
+
+
 
 export const RequestUploadUrlResponse = zod.object({
-  uploadURL: zod
-    .string()
-    .describe(
-      "PUT URL for upload — either a full URL (Cloudinary CDN) or a same-origin proxy path (/api/storage/uploads/put-proxy/:token).",
-    ),
-  objectPath: zod
-    .string()
-    .describe(
-      "Normalized object path (e.g. /objects/uploads/uuid). Store this in your database.",
-    ),
-  metadata: zod
-    .object({
-      name: zod.string().min(1).describe("Original file name."),
-      size: zod.number().int().min(1).describe("File size in bytes."),
-      contentType: zod
-        .string()
-        .min(1)
-        .describe("MIME type of the file (e.g. image/jpeg)."),
-    })
-    .optional(),
-});
+  "uploadURL": zod.string().describe('PUT URL for upload — either a full URL (Cloudinary CDN) or a same-origin proxy path (/api/storage/uploads/put-proxy/:token).'),
+  "objectPath": zod.string().describe('Normalized object path (e.g. /objects/uploads/uuid). Store this in your database.'),
+  "metadata": zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().int().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. image/jpeg).')
+}).optional()
+})
+
 
 /**
  * @summary Serve an object entity
  */
 export const GetStorageObjectParams = zod.object({
-  objectPath: zod.coerce.string(),
-});
+  "objectPath": zod.coerce.string()
+})
 
-export const GetStorageObjectResponse = zod.unknown();
+export const GetStorageObjectResponse = zod.unknown()
+
 
 /**
  * @summary Get my vendor profile
  */
 export const GetFintechVendorMeResponse = zod.object({
-  id: zod.number().int(),
-  userId: zod.number().int(),
-  moncashNumber: zod.string().nullish(),
-  moncashConfirmed: zod.boolean().optional(),
-  balance: zod.number(),
-  name: zod.string().optional(),
-  email: zod.string().optional(),
-});
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "moncashNumber": zod.string().nullish(),
+  "moncashConfirmed": zod.boolean().optional(),
+  "balance": zod.number(),
+  "name": zod.string().optional(),
+  "email": zod.string().optional()
+})
+
 
 /**
  * @summary Update MonCash number
  */
 export const UpdateFintechVendorMeBody = zod.object({
-  moncashNumber: zod.string().optional(),
-});
+  "moncashNumber": zod.string().optional()
+})
 
 export const UpdateFintechVendorMeResponse = zod.object({
-  id: zod.number().int(),
-  userId: zod.number().int(),
-  moncashNumber: zod.string().nullish(),
-  moncashConfirmed: zod.boolean().optional(),
-  balance: zod.number(),
-  name: zod.string().optional(),
-  email: zod.string().optional(),
-});
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "moncashNumber": zod.string().nullish(),
+  "moncashConfirmed": zod.boolean().optional(),
+  "balance": zod.number(),
+  "name": zod.string().optional(),
+  "email": zod.string().optional()
+})
+
 
 /**
  * @summary Get vendor stats
  */
 export const GetFintechVendorStatsResponse = zod.object({
-  totalEarnings: zod.number(),
-  pendingBalance: zod.number(),
-  paidOut: zod.number(),
-  totalOrders: zod.number().int(),
-});
+  "totalEarnings": zod.number(),
+  "pendingBalance": zod.number(),
+  "paidOut": zod.number(),
+  "totalOrders": zod.number().int()
+})
+
 
 /**
  * @summary List orders for my vendor account
  */
 export const GetFintechVendorOrdersResponseItem = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  customerId: zod.number().int(),
-  customerName: zod.string().optional(),
-  amount: zod.number(),
-  description: zod.string().nullish(),
-  status: zod.enum(["pending", "completed", "cancelled"]),
-  adminCommission: zod.number().optional(),
-  vendorEarnings: zod.number().optional(),
-  createdAt: zod.coerce.date(),
-});
-export const GetFintechVendorOrdersResponse = zod.array(
-  GetFintechVendorOrdersResponseItem,
-);
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "customerId": zod.number().int(),
+  "customerName": zod.string().optional(),
+  "amount": zod.number(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "adminCommission": zod.number().optional(),
+  "vendorEarnings": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetFintechVendorOrdersResponse = zod.array(GetFintechVendorOrdersResponseItem)
+
 
 /**
  * @summary List my payouts
  */
 export const GetFintechVendorPayoutsResponseItem = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  moncashNumber: zod.string().nullish(),
-  amount: zod.number(),
-  status: zod.enum(["pending", "paid"]),
-  notes: zod.string().nullish(),
-  createdAt: zod.coerce.date(),
-  paidAt: zod.coerce.date().nullish(),
-});
-export const GetFintechVendorPayoutsResponse = zod.array(
-  GetFintechVendorPayoutsResponseItem,
-);
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "moncashNumber": zod.string().nullish(),
+  "amount": zod.number(),
+  "status": zod.enum(['pending', 'paid']),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "paidAt": zod.coerce.date().nullish()
+})
+export const GetFintechVendorPayoutsResponse = zod.array(GetFintechVendorPayoutsResponseItem)
+
 
 /**
  * @summary List my orders (customer)
  */
 export const GetFintechMyOrdersResponseItem = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  customerId: zod.number().int(),
-  customerName: zod.string().optional(),
-  amount: zod.number(),
-  description: zod.string().nullish(),
-  status: zod.enum(["pending", "completed", "cancelled"]),
-  adminCommission: zod.number().optional(),
-  vendorEarnings: zod.number().optional(),
-  createdAt: zod.coerce.date(),
-});
-export const GetFintechMyOrdersResponse = zod.array(
-  GetFintechMyOrdersResponseItem,
-);
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "customerId": zod.number().int(),
+  "customerName": zod.string().optional(),
+  "amount": zod.number(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "adminCommission": zod.number().optional(),
+  "vendorEarnings": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetFintechMyOrdersResponse = zod.array(GetFintechMyOrdersResponseItem)
+
 
 /**
  * @summary Place an order
  */
 export const CreateFintechOrderBody = zod.object({
-  vendorId: zod.number().int(),
-  amount: zod.number(),
-  description: zod.string().optional(),
-});
+  "vendorId": zod.number().int(),
+  "amount": zod.number(),
+  "description": zod.string().optional()
+})
 
 export const CreateFintechOrderResponse = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  customerId: zod.number().int(),
-  customerName: zod.string().optional(),
-  amount: zod.number(),
-  description: zod.string().nullish(),
-  status: zod.enum(["pending", "completed", "cancelled"]),
-  adminCommission: zod.number().optional(),
-  vendorEarnings: zod.number().optional(),
-  createdAt: zod.coerce.date(),
-});
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "customerId": zod.number().int(),
+  "customerName": zod.string().optional(),
+  "amount": zod.number(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "adminCommission": zod.number().optional(),
+  "vendorEarnings": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+
 
 /**
  * @summary Mark order as completed (admin)
  */
 export const CompleteFintechOrderParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const CompleteFintechOrderResponse = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  customerId: zod.number().int(),
-  customerName: zod.string().optional(),
-  amount: zod.number(),
-  description: zod.string().nullish(),
-  status: zod.enum(["pending", "completed", "cancelled"]),
-  adminCommission: zod.number().optional(),
-  vendorEarnings: zod.number().optional(),
-  createdAt: zod.coerce.date(),
-});
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "customerId": zod.number().int(),
+  "customerName": zod.string().optional(),
+  "amount": zod.number(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "adminCommission": zod.number().optional(),
+  "vendorEarnings": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+
 
 /**
  * @summary Admin dashboard stats
  */
 export const GetFintechAdminStatsResponse = zod.object({
-  totalVendors: zod.number().int(),
-  totalOrders: zod.number().int(),
-  totalRevenue: zod.number(),
-  totalCommission: zod.number(),
-  pendingPayouts: zod.number(),
-  paidPayouts: zod.number(),
-});
+  "totalVendors": zod.number().int(),
+  "totalOrders": zod.number().int(),
+  "totalRevenue": zod.number(),
+  "totalCommission": zod.number(),
+  "pendingPayouts": zod.number(),
+  "paidPayouts": zod.number()
+})
+
 
 /**
  * @summary List all vendors with balances
  */
 export const GetFintechAdminVendorsResponseItem = zod.object({
-  id: zod.number().int(),
-  userId: zod.number().int(),
-  moncashNumber: zod.string().nullish(),
-  moncashConfirmed: zod.boolean().optional(),
-  balance: zod.number(),
-  name: zod.string().optional(),
-  email: zod.string().optional(),
-});
-export const GetFintechAdminVendorsResponse = zod.array(
-  GetFintechAdminVendorsResponseItem,
-);
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "moncashNumber": zod.string().nullish(),
+  "moncashConfirmed": zod.boolean().optional(),
+  "balance": zod.number(),
+  "name": zod.string().optional(),
+  "email": zod.string().optional()
+})
+export const GetFintechAdminVendorsResponse = zod.array(GetFintechAdminVendorsResponseItem)
+
 
 /**
  * @summary Mark vendor payout as paid
  */
 export const PayFintechVendorParams = zod.object({
-  id: zod.coerce.number().int(),
-});
+  "id": zod.coerce.number().int()
+})
 
 export const PayFintechVendorBody = zod.object({
-  notes: zod.string().optional(),
-});
+  "notes": zod.string().optional()
+})
 
 export const PayFintechVendorResponse = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  moncashNumber: zod.string().nullish(),
-  amount: zod.number(),
-  status: zod.enum(["pending", "paid"]),
-  notes: zod.string().nullish(),
-  createdAt: zod.coerce.date(),
-  paidAt: zod.coerce.date().nullish(),
-});
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "moncashNumber": zod.string().nullish(),
+  "amount": zod.number(),
+  "status": zod.enum(['pending', 'paid']),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "paidAt": zod.coerce.date().nullish()
+})
+
 
 /**
  * @summary List all orders (admin)
  */
 export const GetFintechAdminOrdersResponseItem = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  customerId: zod.number().int(),
-  customerName: zod.string().optional(),
-  amount: zod.number(),
-  description: zod.string().nullish(),
-  status: zod.enum(["pending", "completed", "cancelled"]),
-  adminCommission: zod.number().optional(),
-  vendorEarnings: zod.number().optional(),
-  createdAt: zod.coerce.date(),
-});
-export const GetFintechAdminOrdersResponse = zod.array(
-  GetFintechAdminOrdersResponseItem,
-);
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "customerId": zod.number().int(),
+  "customerName": zod.string().optional(),
+  "amount": zod.number(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "adminCommission": zod.number().optional(),
+  "vendorEarnings": zod.number().optional(),
+  "createdAt": zod.coerce.date()
+})
+export const GetFintechAdminOrdersResponse = zod.array(GetFintechAdminOrdersResponseItem)
+
 
 /**
  * @summary List all payouts (admin)
  */
 export const GetFintechAdminPayoutsResponseItem = zod.object({
-  id: zod.number().int(),
-  vendorId: zod.number().int(),
-  vendorName: zod.string().optional(),
-  moncashNumber: zod.string().nullish(),
-  amount: zod.number(),
-  status: zod.enum(["pending", "paid"]),
-  notes: zod.string().nullish(),
-  createdAt: zod.coerce.date(),
-  paidAt: zod.coerce.date().nullish(),
-});
-export const GetFintechAdminPayoutsResponse = zod.array(
-  GetFintechAdminPayoutsResponseItem,
-);
+  "id": zod.number().int(),
+  "vendorId": zod.number().int(),
+  "vendorName": zod.string().optional(),
+  "moncashNumber": zod.string().nullish(),
+  "amount": zod.number(),
+  "status": zod.enum(['pending', 'paid']),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "paidAt": zod.coerce.date().nullish()
+})
+export const GetFintechAdminPayoutsResponse = zod.array(GetFintechAdminPayoutsResponseItem)
+
 
 /**
  * @summary List all vendors (public, for customer order form)
  */
 export const GetFintechVendorsResponseItem = zod.object({
-  id: zod.number().int(),
-  userId: zod.number().int(),
-  moncashNumber: zod.string().nullish(),
-  moncashConfirmed: zod.boolean().optional(),
-  balance: zod.number(),
-  name: zod.string().optional(),
-  email: zod.string().optional(),
-});
-export const GetFintechVendorsResponse = zod.array(
-  GetFintechVendorsResponseItem,
-);
+  "id": zod.number().int(),
+  "userId": zod.number().int(),
+  "moncashNumber": zod.string().nullish(),
+  "moncashConfirmed": zod.boolean().optional(),
+  "balance": zod.number(),
+  "name": zod.string().optional(),
+  "email": zod.string().optional()
+})
+export const GetFintechVendorsResponse = zod.array(GetFintechVendorsResponseItem)
+
 
 /**
  * @summary Read-only monthly report for the authenticated seller
  */
-export const getSellerSalesReportQueryMonthRegExp = new RegExp(
-  "^\\d{4}-(0[1-9]|1[0-2])$",
-);
+export const getSellerSalesReportQueryMonthRegExp = new RegExp('^\\d{4}-(0[1-9]|1[0-2])$');
 export const getSellerSalesReportQueryTimezoneDefault = `UTC`;
 export const getSellerSalesReportQueryPageDefault = 1;
 
 export const getSellerSalesReportQueryLimitDefault = 20;
 export const getSellerSalesReportQueryLimitMax = 100;
 
+
+
 export const GetSellerSalesReportQueryParams = zod.object({
-  report: zod.enum(["monthly"]),
-  month: zod.coerce
-    .string()
-    .regex(getSellerSalesReportQueryMonthRegExp)
-    .optional(),
-  timezone: zod.coerce
-    .string()
-    .default(getSellerSalesReportQueryTimezoneDefault),
-  page: zod.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(getSellerSalesReportQueryPageDefault),
-  limit: zod.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(getSellerSalesReportQueryLimitMax)
-    .default(getSellerSalesReportQueryLimitDefault),
-  currency: zod.coerce.string().optional(),
-  orderStatus: zod.coerce.string().optional(),
-  paymentStatus: zod.coerce.string().optional(),
-  payoutStatus: zod.coerce.string().optional(),
-});
+  "report": zod.enum(['monthly']),
+  "month": zod.coerce.string().regex(getSellerSalesReportQueryMonthRegExp).optional(),
+  "timezone": zod.coerce.string().default(getSellerSalesReportQueryTimezoneDefault),
+  "page": zod.coerce.number().int().min(1).default(getSellerSalesReportQueryPageDefault),
+  "limit": zod.coerce.number().int().min(1).max(getSellerSalesReportQueryLimitMax).default(getSellerSalesReportQueryLimitDefault),
+  "currency": zod.coerce.string().optional(),
+  "orderStatus": zod.coerce.string().optional(),
+  "paymentStatus": zod.coerce.string().optional(),
+  "payoutStatus": zod.coerce.string().optional()
+})
 
 export const GetSellerSalesReportResponse = zod.object({
-  summary: zod.array(
-    zod.object({
-      currency: zod.string(),
-      exponent: zod.number().int(),
-      orderCount: zod.number().int(),
-      grossSalesMinor: zod.string(),
-      customerRefundsMinor: zod.string().nullable(),
-      refundsMinor: zod.string().nullable(),
-      feesMinor: zod.string().nullable(),
-      commissionsMinor: zod.string().nullable(),
-      netSellerAmountMinor: zod.string().nullable(),
-      pendingAmountMinor: zod.string().nullable(),
-      processingAmountMinor: zod.string().nullable(),
-      transferredAmountMinor: zod.string().nullable(),
-      returnedAmountMinor: zod.string().nullable(),
-      complete: zod.boolean(),
-    }),
-  ),
-  sales: zod.array(
-    zod.object({
-      id: zod.number().int(),
-      listingId: zod.number().int().nullable(),
-      canViewOrder: zod.boolean().optional(),
-      originalCommissionMinor: zod.string().optional(),
-      originalSellerEarningsMinor: zod.string().optional(),
-      title: zod.string().nullable(),
-      images: zod.array(zod.string()),
-      createdAt: zod.coerce.date(),
-      listingCountry: zod.string().nullable(),
-      currency: zod.string(),
-      exponent: zod.number().int(),
-      originalSaleMinor: zod.string(),
-      customerPaymentMinor: zod.string(),
-      customerRefundMinor: zod.string().nullable(),
-      refundsMinor: zod.string().nullable(),
-      netSaleMinor: zod.string().nullable(),
-      feesMinor: zod.string().nullable(),
-      commissionsMinor: zod.string().nullable(),
-      netSellerAmountMinor: zod.string().nullable(),
-      orderStatus: zod.string(),
-      paymentStatus: zod.string(),
-      paymentMethod: zod.string(),
-      payoutStatus: zod.string(),
-      payoutDestination: zod.string().nullable(),
-      payoutDate: zod.coerce.date().nullable(),
-      transferredMinor: zod.string().nullable(),
-      returnedMinor: zod.string().nullable(),
-      refunds: zod.array(
-        zod.object({
-          id: zod.string(),
-          source: zod.string(),
-          amountMinor: zod.string(),
-          date: zod.coerce.date().nullable(),
-        }),
-      ),
-      warnings: zod.array(zod.string()),
-    }),
-  ),
-  pagination: zod.object({
-    page: zod.number().int(),
-    limit: zod.number().int(),
-    total: zod.number().int(),
-    totalPages: zod.number().int(),
-  }),
-  filters: zod.object({
-    month: zod.string(),
-    timezone: zod.string(),
-    periodStart: zod.coerce.date(),
-    periodEnd: zod.coerce.date(),
-    availableMonths: zod.array(zod.string()),
-    availableCurrencies: zod.array(zod.string()),
-    asOf: zod.coerce.date(),
-    basis: zod.enum(["sale_created_at"]),
-  }),
-});
+  "summary": zod.array(zod.object({
+  "currency": zod.string(),
+  "exponent": zod.number().int(),
+  "orderCount": zod.number().int(),
+  "grossSalesMinor": zod.string(),
+  "customerRefundsMinor": zod.string().nullable(),
+  "refundsMinor": zod.string().nullable(),
+  "feesMinor": zod.string().nullable(),
+  "commissionsMinor": zod.string().nullable(),
+  "netSellerAmountMinor": zod.string().nullable(),
+  "pendingAmountMinor": zod.string().nullable(),
+  "processingAmountMinor": zod.string().nullable(),
+  "transferredAmountMinor": zod.string().nullable(),
+  "returnedAmountMinor": zod.string().nullable(),
+  "complete": zod.boolean()
+})),
+  "sales": zod.array(zod.object({
+  "id": zod.number().int(),
+  "listingId": zod.number().int().nullable(),
+  "canViewOrder": zod.boolean().optional(),
+  "originalCommissionMinor": zod.string().optional(),
+  "originalSellerEarningsMinor": zod.string().optional(),
+  "title": zod.string().nullable(),
+  "images": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "listingCountry": zod.string().nullable(),
+  "currency": zod.string(),
+  "exponent": zod.number().int(),
+  "originalSaleMinor": zod.string(),
+  "customerPaymentMinor": zod.string(),
+  "customerRefundMinor": zod.string().nullable(),
+  "refundsMinor": zod.string().nullable(),
+  "netSaleMinor": zod.string().nullable(),
+  "feesMinor": zod.string().nullable(),
+  "commissionsMinor": zod.string().nullable(),
+  "netSellerAmountMinor": zod.string().nullable(),
+  "orderStatus": zod.string(),
+  "paymentStatus": zod.string(),
+  "paymentMethod": zod.string(),
+  "payoutStatus": zod.string(),
+  "payoutDestination": zod.string().nullable(),
+  "payoutDate": zod.coerce.date().nullable(),
+  "transferredMinor": zod.string().nullable(),
+  "returnedMinor": zod.string().nullable(),
+  "refunds": zod.array(zod.object({
+  "id": zod.string(),
+  "source": zod.string(),
+  "amountMinor": zod.string(),
+  "date": zod.coerce.date().nullable()
+})),
+  "warnings": zod.array(zod.string())
+})),
+  "pagination": zod.object({
+  "page": zod.number().int(),
+  "limit": zod.number().int(),
+  "total": zod.number().int(),
+  "totalPages": zod.number().int()
+}),
+  "filters": zod.object({
+  "month": zod.string(),
+  "timezone": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "availableMonths": zod.array(zod.string()),
+  "availableCurrencies": zod.array(zod.string()),
+  "asOf": zod.coerce.date(),
+  "basis": zod.enum(['sale_created_at'])
+})
+})
+
+

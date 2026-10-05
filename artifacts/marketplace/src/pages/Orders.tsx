@@ -14,6 +14,8 @@ type Order = {
   amount: number;
   currency: string;
   paymentStatus: string;
+  paymentMethod: string;
+  cardRefundStatus?: string | null;
   orderStatus: string;
   trackingNumber: string | null;
   carrier: string | null;
@@ -113,10 +115,11 @@ export default function Orders() {
         title: "Kòmand kansele",
         description: data.walletRefunded
           ? `$${(data.refundAmount as number).toFixed(2)} retounen nan pòtfèy ou.`
+          : data.refundMethod === "stripe_card" ? t("cardCancellation.requested")
           : "Kontakte sipò pou rembosman ou.",
       });
       setOrders(prev =>
-        prev?.map(o => o.id === orderId ? { ...o, orderStatus: "cancelled" } : o) ?? null
+        prev?.map(o => o.id === orderId ? { ...o, orderStatus: "cancelled", cardRefundStatus: data.refundStatus ?? null } : o) ?? null
       );
     } catch {
       toast({ title: "Erè koneksyon", variant: "destructive" });
@@ -246,7 +249,12 @@ export default function Orders() {
             const carrierUrl = o.carrier && o.trackingNumber
               ? getCarrierUrl(o.carrier, o.trackingNumber)
               : null;
-            const canCancel = o.deliveryStatus !== null
+            const canCancel = o.paymentMethod === "stripe"
+              ? o.paymentStatus === "completed" && !o.escrowReleased && !o.shippedAt &&
+                ["pending", "ready_to_ship"].includes(o.orderStatus) &&
+                (!o.deliveryStatus || ["waiting", "assigned", "accepted", "driver_assigned"].includes(o.deliveryStatus)) &&
+                (!o.trackingStatus || ["label_created", "pending", "pre_transit", "not_shipped", "unknown"].includes(o.trackingStatus))
+              : o.deliveryStatus !== null
               ? o.deliveryStatus === "waiting"
               : ["pending", "ready_to_ship"].includes(o.orderStatus);
             const isConfirming = confirmingId === o.id;
@@ -329,6 +337,7 @@ export default function Orders() {
                         <span><strong className="text-foreground">Expédition :</strong> {statusLabel(o.shipmentId ? (o.trackingStatus ?? (o.deliveryStatus === "delivered" ? "delivered" : null)) : null, "shipping")}</span>
                       </div>
                       {o.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-1">Livraison estimée : {new Date(o.estimatedDelivery).toLocaleDateString()}</p>}
+                      {o.cardRefundStatus && <p className="mt-2 text-xs font-semibold">{t(`cardCancellation.${o.cardRefundStatus}`)}</p>}
                     </div>
                   </div>
                   
@@ -380,7 +389,9 @@ export default function Orders() {
                   >
                     <p className="text-sm font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-2">
                       <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" />
-                      <span>Cancel order? <strong className="font-black">${o.amount.toFixed(2)}</strong> will be refunded to your wallet.</span>
+                      <span>{o.paymentMethod === "stripe" ? t("cardCancellation.confirm")
+                        : o.paymentMethod === "wallet" ? <>Cancel order? <strong className="font-black">${o.amount.toFixed(2)}</strong> will be refunded to your wallet.</>
+                        : "Anile kòmand sa a? Kontakte sipò pou ranbousman sou mwayen peman orijinal la."}</span>
                     </p>
                     <div className="flex gap-2 shrink-0">
                       <Button

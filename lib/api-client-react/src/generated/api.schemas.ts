@@ -5,6 +5,33 @@
  * Marketplace API specification
  * OpenAPI spec version: 0.1.0
  */
+export type CardCancellationRequestStatus = typeof CardCancellationRequestStatus[keyof typeof CardCancellationRequestStatus];
+
+
+export const CardCancellationRequestStatus = {
+  requested: 'requested',
+  processing: 'processing',
+  approval_required: 'approval_required',
+  needs_review: 'needs_review',
+  refunded: 'refunded',
+} as const;
+
+export interface CardCancellationRequest {
+  id: number;
+  orderId: number;
+  status: CardCancellationRequestStatus;
+  amount: number;
+  currency: string;
+  createdAt: string;
+  refundedAt: string | null;
+}
+
+export interface CardCancellationStatus {
+  eligible: boolean;
+  canRequest: boolean;
+  request: CardCancellationRequest | null;
+}
+
 export interface SellerSalesMoneySummary {
   currency: string;
   exponent: number;
@@ -91,11 +118,11 @@ export type SellerSalesReportPagination = {
   totalPages: number;
 };
 
-export type SellerSalesReportFiltersBasis =
-  (typeof SellerSalesReportFiltersBasis)[keyof typeof SellerSalesReportFiltersBasis];
+export type SellerSalesReportFiltersBasis = typeof SellerSalesReportFiltersBasis[keyof typeof SellerSalesReportFiltersBasis];
+
 
 export const SellerSalesReportFiltersBasis = {
-  sale_created_at: "sale_created_at",
+  sale_created_at: 'sale_created_at',
 } as const;
 
 export type SellerSalesReportFilters = {
@@ -212,14 +239,13 @@ export type UserProfile = User & {
 /**
  * @nullable
  */
-export type UpdateUserBodyGender =
-  | (typeof UpdateUserBodyGender)[keyof typeof UpdateUserBodyGender]
-  | null;
+export type UpdateUserBodyGender = typeof UpdateUserBodyGender[keyof typeof UpdateUserBodyGender] | null;
+
 
 export const UpdateUserBodyGender = {
-  male: "male",
-  female: "female",
-  other: "other",
+  male: 'male',
+  female: 'female',
+  other: 'other',
 } as const;
 
 export interface UpdateUserBody {
@@ -229,9 +255,9 @@ export interface UpdateUserBody {
   bio?: string;
   avatar?: string;
   /**
-   * @nullable
-   * @pattern ^\d{4}-\d{2}-\d{2}$
-   */
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
   dateOfBirth?: string | null;
   /** @nullable */
   gender?: UpdateUserBodyGender;
@@ -247,52 +273,51 @@ export interface Category {
   children?: Category[];
 }
 
-export type ListingCurrency =
-  (typeof ListingCurrency)[keyof typeof ListingCurrency];
+export type ListingCurrency = typeof ListingCurrency[keyof typeof ListingCurrency];
+
 
 export const ListingCurrency = {
-  USD: "USD",
-  HTG: "HTG",
-  DOP: "DOP",
+  USD: 'USD',
+  HTG: 'HTG',
+  DOP: 'DOP',
 } as const;
 
-export type ListingProximityLevel =
-  | (typeof ListingProximityLevel)[keyof typeof ListingProximityLevel]
-  | null;
+export type ListingProximityLevel = typeof ListingProximityLevel[keyof typeof ListingProximityLevel] | null;
+
 
 export const ListingProximityLevel = {
-  neighborhood: "neighborhood",
-  city: "city",
-  state: "state",
-  country: "country",
-  unknown: "unknown",
+  neighborhood: 'neighborhood',
+  city: 'city',
+  state: 'state',
+  country: 'country',
+  unknown: 'unknown',
 } as const;
 
-export type ListingStatus = (typeof ListingStatus)[keyof typeof ListingStatus];
+export type ListingStatus = typeof ListingStatus[keyof typeof ListingStatus];
+
 
 export const ListingStatus = {
-  available: "available",
-  sold: "sold",
-  removed: "removed",
+  available: 'available',
+  sold: 'sold',
+  removed: 'removed',
 } as const;
 
-export type ListingModerationStatus =
-  (typeof ListingModerationStatus)[keyof typeof ListingModerationStatus];
+export type ListingModerationStatus = typeof ListingModerationStatus[keyof typeof ListingModerationStatus];
+
 
 export const ListingModerationStatus = {
-  approved: "approved",
-  pending: "pending",
-  rejected: "rejected",
+  approved: 'approved',
+  pending: 'pending',
+  rejected: 'rejected',
 } as const;
 
-export type ListingModerationRiskLevel =
-  | (typeof ListingModerationRiskLevel)[keyof typeof ListingModerationRiskLevel]
-  | null;
+export type ListingModerationRiskLevel = typeof ListingModerationRiskLevel[keyof typeof ListingModerationRiskLevel] | null;
+
 
 export const ListingModerationRiskLevel = {
-  low: "low",
-  medium: "medium",
-  high: "high",
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
 } as const;
 
 export interface Listing {
@@ -337,13 +362,13 @@ export interface Listing {
   moderationFlags: string[];
 }
 
-export type ModerationItemModerationStatus =
-  (typeof ModerationItemModerationStatus)[keyof typeof ModerationItemModerationStatus];
+export type ModerationItemModerationStatus = typeof ModerationItemModerationStatus[keyof typeof ModerationItemModerationStatus];
+
 
 export const ModerationItemModerationStatus = {
-  approved: "approved",
-  pending: "pending",
-  rejected: "rejected",
+  approved: 'approved',
+  pending: 'pending',
+  rejected: 'rejected',
 } as const;
 
 export interface ModerationItem {
@@ -380,24 +405,34 @@ export interface ListingsResponse {
   totalPages: number;
 }
 
-export type CreateListingBodyCurrency =
-  (typeof CreateListingBodyCurrency)[keyof typeof CreateListingBodyCurrency];
+export type CreateListingBodyCurrency = typeof CreateListingBodyCurrency[keyof typeof CreateListingBodyCurrency];
+
 
 export const CreateListingBodyCurrency = {
-  USD: "USD",
-  HTG: "HTG",
-  DOP: "DOP",
+  USD: 'USD',
+  HTG: 'HTG',
+  DOP: 'DOP',
 } as const;
 
-export type CreateListingBodyCondition =
-  (typeof CreateListingBodyCondition)[keyof typeof CreateListingBodyCondition];
+export type CreateListingBodyCondition = typeof CreateListingBodyCondition[keyof typeof CreateListingBodyCondition];
+
 
 export const CreateListingBodyCondition = {
-  new: "new",
-  like_new: "like_new",
-  good: "good",
-  fair: "fair",
-  poor: "poor",
+  new: 'new',
+  like_new: 'like_new',
+  good: 'good',
+  fair: 'fair',
+  poor: 'poor',
+} as const;
+
+export type CreateListingBodyDeliveryMethod = typeof CreateListingBodyDeliveryMethod[keyof typeof CreateListingBodyDeliveryMethod] | null;
+
+
+export const CreateListingBodyDeliveryMethod = {
+  motorcycle: 'motorcycle',
+  car: 'car',
+  bus: 'bus',
+  self_delivery: 'self_delivery',
 } as const;
 
 export interface CreateListingBody {
@@ -435,13 +470,23 @@ export interface CreateListingBody {
   images: string[];
 }
 
-export type UpdateListingBodyCurrency =
-  (typeof UpdateListingBodyCurrency)[keyof typeof UpdateListingBodyCurrency];
+export type UpdateListingBodyCurrency = typeof UpdateListingBodyCurrency[keyof typeof UpdateListingBodyCurrency];
+
 
 export const UpdateListingBodyCurrency = {
-  USD: "USD",
-  HTG: "HTG",
-  DOP: "DOP",
+  USD: 'USD',
+  HTG: 'HTG',
+  DOP: 'DOP',
+} as const;
+
+export type UpdateListingBodyDeliveryMethod = typeof UpdateListingBodyDeliveryMethod[keyof typeof UpdateListingBodyDeliveryMethod] | null;
+
+
+export const UpdateListingBodyDeliveryMethod = {
+  motorcycle: 'motorcycle',
+  car: 'car',
+  bus: 'bus',
+  self_delivery: 'self_delivery',
 } as const;
 
 export interface UpdateListingBody {
@@ -512,13 +557,14 @@ export interface SendMessageBody {
   imageUrl?: string;
 }
 
-export type OfferStatus = (typeof OfferStatus)[keyof typeof OfferStatus];
+export type OfferStatus = typeof OfferStatus[keyof typeof OfferStatus];
+
 
 export const OfferStatus = {
-  pending: "pending",
-  accepted: "accepted",
-  rejected: "rejected",
-  counter: "counter",
+  pending: 'pending',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  counter: 'counter',
 } as const;
 
 export interface Offer {
@@ -577,12 +623,13 @@ export interface CreateReviewBody {
   comment: string;
 }
 
-export type BoostPlan = (typeof BoostPlan)[keyof typeof BoostPlan];
+export type BoostPlan = typeof BoostPlan[keyof typeof BoostPlan];
+
 
 export const BoostPlan = {
-  "1day": "1day",
-  "3day": "3day",
-  "7day": "7day",
+  '1day': '1day',
+  '3day': '3day',
+  '7day': '7day',
 } as const;
 
 export interface Boost {
@@ -594,20 +641,21 @@ export interface Boost {
   createdAt: string;
 }
 
-export type BoostBodyPlan = (typeof BoostBodyPlan)[keyof typeof BoostBodyPlan];
+export type BoostBodyPlan = typeof BoostBodyPlan[keyof typeof BoostBodyPlan];
+
 
 export const BoostBodyPlan = {
-  "1day": "1day",
-  "3day": "3day",
-  "7day": "7day",
+  '1day': '1day',
+  '3day': '3day',
+  '7day': '7day',
 } as const;
 
-export type BoostBodyPaymentMethod =
-  (typeof BoostBodyPaymentMethod)[keyof typeof BoostBodyPaymentMethod];
+export type BoostBodyPaymentMethod = typeof BoostBodyPaymentMethod[keyof typeof BoostBodyPaymentMethod];
+
 
 export const BoostBodyPaymentMethod = {
-  card: "card",
-  usdt: "usdt",
+  card: 'card',
+  usdt: 'usdt',
 } as const;
 
 export interface BoostBody {
@@ -615,20 +663,21 @@ export interface BoostBody {
   paymentMethod: BoostBodyPaymentMethod;
 }
 
-export type ReportTargetType =
-  (typeof ReportTargetType)[keyof typeof ReportTargetType];
+export type ReportTargetType = typeof ReportTargetType[keyof typeof ReportTargetType];
+
 
 export const ReportTargetType = {
-  listing: "listing",
-  user: "user",
+  listing: 'listing',
+  user: 'user',
 } as const;
 
-export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
+export type ReportStatus = typeof ReportStatus[keyof typeof ReportStatus];
+
 
 export const ReportStatus = {
-  pending: "pending",
-  reviewed: "reviewed",
-  dismissed: "dismissed",
+  pending: 'pending',
+  reviewed: 'reviewed',
+  dismissed: 'dismissed',
 } as const;
 
 export interface Report {
@@ -642,12 +691,12 @@ export interface Report {
   createdAt: string;
 }
 
-export type CreateReportBodyTargetType =
-  (typeof CreateReportBodyTargetType)[keyof typeof CreateReportBodyTargetType];
+export type CreateReportBodyTargetType = typeof CreateReportBodyTargetType[keyof typeof CreateReportBodyTargetType];
+
 
 export const CreateReportBodyTargetType = {
-  listing: "listing",
-  user: "user",
+  listing: 'listing',
+  user: 'user',
 } as const;
 
 export interface CreateReportBody {
@@ -680,19 +729,19 @@ export interface AdminStats {
 
 export interface UploadUrlRequest {
   /**
-   * Original file name.
-   * @minLength 1
-   */
+     * Original file name.
+     * @minLength 1
+     */
   name: string;
   /**
-   * File size in bytes.
-   * @minimum 1
-   */
+     * File size in bytes.
+     * @minimum 1
+     */
   size: number;
   /**
-   * MIME type of the file (e.g. image/jpeg).
-   * @minLength 1
-   */
+     * MIME type of the file (e.g. image/jpeg).
+     * @minLength 1
+     */
   contentType: string;
 }
 
@@ -718,13 +767,13 @@ export interface UpdateFintechVendorBody {
   moncashNumber?: string;
 }
 
-export type FintechOrderStatus =
-  (typeof FintechOrderStatus)[keyof typeof FintechOrderStatus];
+export type FintechOrderStatus = typeof FintechOrderStatus[keyof typeof FintechOrderStatus];
+
 
 export const FintechOrderStatus = {
-  pending: "pending",
-  completed: "completed",
-  cancelled: "cancelled",
+  pending: 'pending',
+  completed: 'completed',
+  cancelled: 'cancelled',
 } as const;
 
 export interface FintechOrder {
@@ -747,12 +796,12 @@ export interface CreateFintechOrderBody {
   description?: string;
 }
 
-export type FintechPayoutStatus =
-  (typeof FintechPayoutStatus)[keyof typeof FintechPayoutStatus];
+export type FintechPayoutStatus = typeof FintechPayoutStatus[keyof typeof FintechPayoutStatus];
+
 
 export const FintechPayoutStatus = {
-  pending: "pending",
-  paid: "paid",
+  pending: 'pending',
+  paid: 'paid',
 } as const;
 
 export interface FintechPayout {
@@ -787,32 +836,45 @@ export interface ErrorEnvelope {
   error: string;
 }
 
-export type GetListingsParams = {
-  q?: string;
-  category?: string;
-  subcategory?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  condition?: string;
-  location?: string;
-  city?: string;
-  country?: string;
-  boosted?: boolean;
-  /**
-   * Geographic ranking scope - nearby, city, or country
-   */
-  scope?: GetListingsScope;
-  page?: number;
-  limit?: number;
+export type ListCardCancellations200Item = CardCancellationRequest & {
+  title: string;
 };
 
-export type GetListingsScope =
-  (typeof GetListingsScope)[keyof typeof GetListingsScope];
+export type CancelPurchaseOrder200 = {
+  ok: boolean;
+  walletRefunded: boolean;
+  refundAmount: number;
+  refundRequested?: boolean;
+  refundStatus?: string;
+  refundMethod?: string;
+};
+
+export type GetListingsParams = {
+q?: string;
+category?: string;
+subcategory?: string;
+minPrice?: number;
+maxPrice?: number;
+condition?: string;
+location?: string;
+city?: string;
+country?: string;
+boosted?: boolean;
+/**
+ * Geographic ranking scope - nearby, city, or country
+ */
+scope?: GetListingsScope;
+page?: number;
+limit?: number;
+};
+
+export type GetListingsScope = typeof GetListingsScope[keyof typeof GetListingsScope];
+
 
 export const GetListingsScope = {
-  nearby: "nearby",
-  city: "city",
-  country: "country",
+  nearby: 'nearby',
+  city: 'city',
+  country: 'country',
 } as const;
 
 export type UpdateMyLocationBody = {
@@ -824,16 +886,16 @@ export type UpdateMyLocationBody = {
 };
 
 export type AdminGetModerationParams = {
-  status?: AdminGetModerationStatus;
+status?: AdminGetModerationStatus;
 };
 
-export type AdminGetModerationStatus =
-  (typeof AdminGetModerationStatus)[keyof typeof AdminGetModerationStatus];
+export type AdminGetModerationStatus = typeof AdminGetModerationStatus[keyof typeof AdminGetModerationStatus];
+
 
 export const AdminGetModerationStatus = {
-  pending: "pending",
-  rejected: "rejected",
-  approved: "approved",
+  pending: 'pending',
+  rejected: 'rejected',
+  approved: 'approved',
 } as const;
 
 export type AdminRejectModerationBody = {
@@ -845,50 +907,31 @@ export type PayFintechVendorBody = {
 };
 
 export type GetSellerSalesReportParams = {
-  report: GetSellerSalesReportReport;
-  /**
-   * @pattern ^\d{4}-(0[1-9]|1[0-2])$
-   */
-  month?: string;
-  timezone?: string;
-  /**
-   * @minimum 1
-   */
-  page?: number;
-  /**
-   * @minimum 1
-   * @maximum 100
-   */
-  limit?: number;
-  currency?: string;
-  orderStatus?: string;
-  paymentStatus?: string;
-  payoutStatus?: string;
+report: GetSellerSalesReportReport;
+/**
+ * @pattern ^\d{4}-(0[1-9]|1[0-2])$
+ */
+month?: string;
+timezone?: string;
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+currency?: string;
+orderStatus?: string;
+paymentStatus?: string;
+payoutStatus?: string;
 };
 
-export type GetSellerSalesReportReport =
-  (typeof GetSellerSalesReportReport)[keyof typeof GetSellerSalesReportReport];
+export type GetSellerSalesReportReport = typeof GetSellerSalesReportReport[keyof typeof GetSellerSalesReportReport];
+
 
 export const GetSellerSalesReportReport = {
-  monthly: "monthly",
+  monthly: 'monthly',
 } as const;
 
-export type CreateListingBodyDeliveryMethod = typeof CreateListingBodyDeliveryMethod[keyof typeof CreateListingBodyDeliveryMethod] | null;
-
-
-export const CreateListingBodyDeliveryMethod = {
-  motorcycle: 'motorcycle',
-  car: 'car',
-  bus: 'bus',
-  self_delivery: 'self_delivery',
-} as const;
-
-export type UpdateListingBodyDeliveryMethod = typeof UpdateListingBodyDeliveryMethod[keyof typeof UpdateListingBodyDeliveryMethod] | null;
-
-
-export const UpdateListingBodyDeliveryMethod = {
-  motorcycle: 'motorcycle',
-  car: 'car',
-  bus: 'bus',
-  self_delivery: 'self_delivery',
-} as const;

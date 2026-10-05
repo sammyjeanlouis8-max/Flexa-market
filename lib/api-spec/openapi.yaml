@@ -40,6 +40,57 @@ tags:
   - name: stats
     description: Stats and analytics
 paths:
+  /orders/{id}/card-cancellation:
+    get:
+      operationId: getCardCancellation
+      summary: Read a pre-shipment card cancellation request and eligibility
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Buyer or seller request status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CardCancellationStatus" }
+        "404": { description: Order not found or not owned by caller }
+  /admin/card-cancellations:
+    get:
+      operationId: listCardCancellations
+      summary: Finance-admin scoped original-card cancellation requests
+      responses:
+        "200":
+          description: Requests within the administrator's country and city scope
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - { $ref: "#/components/schemas/CardCancellationRequest" }
+                    - { type: object, required: [title], properties: { title: { type: string } } }
+        "403": { description: Finance permission required }
+  /transactions/{id}/cancel:
+    post:
+      operationId: cancelPurchaseOrder
+      summary: Cancel an eligible order; card payments request the original-card refund without wallet credit
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Idempotent cancellation result; a saved card request is not a confirmed refund
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, walletRefunded, refundAmount]
+                properties:
+                  ok: { type: boolean }
+                  walletRefunded: { type: boolean }
+                  refundAmount: { type: number }
+                  refundRequested: { type: boolean }
+                  refundStatus: { type: string }
+                  refundMethod: { type: string }
+        "409": { description: "Shipment started, payout claimed, dispute active, or financial reconciliation required" }
   /healthz:
     get:
       operationId: healthCheck
@@ -1334,6 +1385,24 @@ paths:
         "503": { description: Report unavailable; no fabricated totals }
 components:
   schemas:
+    CardCancellationRequest:
+      type: object
+      required: [id, orderId, status, amount, currency, createdAt, refundedAt]
+      properties:
+        id: { type: integer }
+        orderId: { type: integer }
+        status: { type: string, enum: [requested, processing, approval_required, needs_review, refunded] }
+        amount: { type: number }
+        currency: { type: string }
+        createdAt: { type: string, format: date-time }
+        refundedAt: { type: string, format: date-time, nullable: true }
+    CardCancellationStatus:
+      type: object
+      required: [eligible, canRequest, request]
+      properties:
+        eligible: { type: boolean }
+        canRequest: { type: boolean }
+        request: { allOf: [{ $ref: "#/components/schemas/CardCancellationRequest" }], nullable: true }
     SellerSalesMoneySummary:
       type: object
       required: [currency, exponent, orderCount, grossSalesMinor, customerRefundsMinor, refundsMinor, feesMinor, commissionsMinor, netSellerAmountMinor, pendingAmountMinor, processingAmountMinor, transferredAmountMinor, returnedAmountMinor, complete]

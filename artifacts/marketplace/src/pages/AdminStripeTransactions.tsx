@@ -66,7 +66,10 @@ export default function AdminStripeTransactions() {
   }, [search]);
 
   // Detail Sheet State
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const value = Number(new URLSearchParams(window.location.search).get("transactionId"));
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  });
 
   // Refund Dialogs State
   const [refundMode, setRefundMode] = useState<"stripe" | "offline" | null>(null);

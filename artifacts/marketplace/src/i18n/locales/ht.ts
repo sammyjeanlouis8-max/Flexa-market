@@ -1,4 +1,14 @@
 export default {
+  cardCancellation: {
+    title: "Anilasyon ak ranbousman kat", policy: "Anvan ekspedisyon, ou ka anile epi mande ranbousman sou kat ou te peye a. Lajan an pa antre nan pòtfèy Flexa.",
+    cancel: "Anile epi mande ranbousman", confirm: "Anile kòmand sa a? Admin ap verifye ranbousman sou kat orijinal la. Pa gen kredi nan pòtfèy Flexa.",
+    keep: "Kenbe kòmand lan", saving: "Ap anrejistre…", error: "Demann ranbousman an pa disponib. Eseye ankò.", retry: "Eseye ankò",
+    requested: "Kòmand anile — demann ranbousman kat anrejistre; tann verifikasyon admin.",
+    processing: "Ranbousman kat an tretman — Stripe poko konfime.", approval_required: "Ranbousman an bezwen dezyèm apwobasyon.",
+    needs_review: "Ranbousman kat la bezwen rekonsilyasyon admin.", refunded: "Stripe konfime ranbousman sou kat orijinal la.",
+    held: "Peman vandè a bloke. Pa voye kòmand lan. Demann anrejistre pa vle di bank la deja ranbouse.",
+    bankDelay: "Bank ou ka pran kèk jou pou afiche ranbousman konfime a.",
+  },
   haitiCheckout: {
     offline: "Pa gen koneksyon entènèt. Rekonekte anvan ou mande yon lyen peman MonCash.",
     timeout: "Kreyasyon lyen MonCash la pran twòp tan. Peman an pa konfime. Si ou deja peye, pa peye ankò; verifye istorik rechaj ou.",

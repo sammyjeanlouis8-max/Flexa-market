@@ -1,6 +1,7 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { CARD_CANCELLATION_MIGRATIONS } from "./cardCancellation";
 
 const REQUIRED_BOOST_VIDEO_MIGRATIONS: Array<{ name: string; sql: string }> = [
   {
@@ -2808,6 +2809,7 @@ export async function runStartupMigrations(): Promise<void> {
   let applied = 0;
   let failed = 0;
 
+  migrations.push(...CARD_CANCELLATION_MIGRATIONS);
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

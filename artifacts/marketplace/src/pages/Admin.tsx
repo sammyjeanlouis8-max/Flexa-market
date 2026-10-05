@@ -14,6 +14,7 @@ import AdminWalletMonitor from "@/components/AdminWalletMonitor";
 import { useTranslation } from "react-i18next";
 import { useLocation, useSearch, Link } from "wouter";
 import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
+import AdminCardCancellations from "@/components/AdminCardCancellations";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -8725,6 +8726,7 @@ export default function Admin() {
 
         {/* ══ Returns Tab ══ */}
         <TabsContent value="returns">
+          {(isSuperAdmin || (canonicalRole === "admin" && (user as any)?.isAdmin)) && <AdminCardCancellations />}
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">

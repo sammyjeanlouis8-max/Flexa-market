@@ -88,6 +88,7 @@ export default function NotificationsDropdown() {
       case "order_confirmed": return t("notifications.orderConfirmed");
       case "order_shipped": return t("notifications.orderShipped");
       case "order_delivered": return t("notifications.orderDelivered");
+      case "card_refund": return n.message || t("notifications.defaultNotif");
       case "delivery_picked_up": return t("notifications.deliveryPickedUp");
       case "delivery_on_the_way": return t("notifications.deliveryOnTheWay");
       case "delivery_arrived": return t("notifications.deliveryArrived");
@@ -152,6 +153,8 @@ export default function NotificationsDropdown() {
         return n.listingId ? `/listings/${n.listingId}` : "/orders";
 
       // Delivery tracking
+      case "card_refund":
+        return n.referenceId ? `/orders/${n.referenceId}` : "/orders";
       case "delivery_picked_up":
       case "delivery_on_the_way":
       case "delivery_arrived":

@@ -1,4 +1,14 @@
 export default {
+  cardCancellation: {
+    title: "Cancellation and card refund", policy: "Before shipment, you can cancel and request a refund to the card you paid with. No credit is added to your Flexa wallet.",
+    cancel: "Cancel and request refund", confirm: "Cancel this order? An administrator will verify the refund to your original card. No credit is added to your Flexa wallet.",
+    keep: "Keep order", saving: "Saving…", error: "The refund request is unavailable. Please retry.", retry: "Retry",
+    requested: "Order cancelled — card refund requested, awaiting administrator verification.",
+    processing: "Card refund processing — not yet confirmed by Stripe.", approval_required: "This refund requires a second approval.",
+    needs_review: "This card refund needs administrator reconciliation.", refunded: "Stripe confirmed the refund to your original card.",
+    held: "Seller payment is held. Do not ship this order. A saved request does not mean your bank has already refunded you.",
+    bankDelay: "Your bank may take several days to display the confirmed refund.",
+  },
   haitiCheckout: {
     offline: "You are offline. Reconnect before requesting a MonCash payment link.",
     timeout: "Creating the MonCash link took too long. Payment is not confirmed. If you already paid, do not pay again; check your recharge history.",

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { synchronizeCardCancellation } from "../lib/cardCancellation";
 import {
   db,
   listingsTable,
@@ -67,7 +68,8 @@ function asCurrency(value: unknown): string {
 }
 
 function originalLocalCents(tx: typeof transactionsTable.$inferSelect): number {
-  const amount = tx.buyerTotal ?? tx.amount;
+  const amount = tx.buyerTotal ?? (tx.type === "purchase"
+    ? tx.amount + (tx.deliveryFeeUsd ?? 0) + (tx.buyerFeeAmount ?? 0) : tx.amount);
   return Math.max(0, Math.round(Number(amount) * 100));
 }
 
@@ -125,6 +127,7 @@ async function setAggregatePaymentStatus(transactionId: number, originalCents: n
       })
       .where(eq(transactionsTable.id, transactionId));
   });
+  await synchronizeCardCancellation(transactionId);
 }
 
 /**
@@ -772,6 +775,18 @@ router.post("/admin/stripe-transactions/:id/refunds", requireSuperAdmin, async (
     if (transaction.type !== "purchase") {
       res.status(409).json({ error: "Use the dedicated service reversal flow before refunding this non-purchase payment" }); return;
     }
+    const cancellations = await db.execute(sql`SELECT id, amount, currency FROM card_cancellation_requests WHERE order_id = ${transactionId}`);
+    if (cancellations.rows.length) {
+      const cancellation = cancellations.rows[0] as any;
+      const fullAmount = Math.round(Number(cancellation.amount) * 100);
+      if (amountInput !== undefined && Number(amountInput) !== fullAmount) {
+        res.status(409).json({ error: "A pre-shipment cancellation requires the full original-card refund, not a partial adjustment" }); return;
+      }
+      // One permanent provider request per cancellation, even after failures or
+      // the provider's idempotency retention window. Never issue a fresh key.
+      requestId = `card-cancellation-${cancellation.id}`;
+      reason = "requested_by_customer";
+    }
     const duplicate = await existingRequest(requestId);
     if (duplicate) {
       if (!isMatchingDuplicate(duplicate, {
@@ -803,6 +818,9 @@ router.post("/admin/stripe-transactions/:id/refunds", requireSuperAdmin, async (
     }
     const stripeCurrency = paymentIntent.currency.toUpperCase();
     const originalCents = paymentIntent.amount_received || paymentIntent.amount;
+    if (cancellations.rows.length && originalCents !== Math.round(Number((cancellations.rows[0] as any).amount) * 100)) {
+      res.status(409).json({ error: "Cancellation amount does not match the original Stripe payment; reconciliation required" }); return;
+    }
     const requestedAmountCents = amountInput === undefined ? null : amountInput as number;
     if (requestedAmountCents !== null && (requestedAmountCents <= 0 || requestedAmountCents > originalCents)) {
       res.status(400).json({ error: "Refund amount is outside the Stripe payment bounds" }); return;
@@ -983,6 +1001,10 @@ router.post("/admin/stripe-transactions/:id/refunds/:refundId/approve", requireS
 router.post("/admin/stripe-transactions/:id/refunds/offline", requireSuperAdmin, async (req, res): Promise<void> => {
   const transactionId = asId(req.params.id);
   if (!transactionId) { res.status(400).json({ error: "Invalid transaction id" }); return; }
+  const cancellations = await db.execute(sql`SELECT id FROM card_cancellation_requests WHERE order_id = ${transactionId}`);
+  if (cancellations.rows.length) {
+    res.status(409).json({ error: "This cancellation must be refunded to the original Stripe card, not through an offline adjustment" }); return;
+  }
   let amountCents: number, currency: string, reason: string, externalReference: string, requestId: string;
   try {
     amountCents = asPositiveInteger(req.body?.amountCents) ?? (() => { throw new Error("amountCents must be a positive integer"); })();

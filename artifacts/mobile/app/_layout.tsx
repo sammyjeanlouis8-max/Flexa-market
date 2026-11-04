@@ -34,6 +34,9 @@ export default function RootLayout() {
             />
             <Stack.Screen name="cart" options={{ headerShown: false }} />
             <Stack.Screen name="wallet" options={{ headerShown: false }} />
+            <Stack.Screen name="flex-card" options={{ headerShown: false }} />
+            <Stack.Screen name="music" options={{ headerShown: false }} />
+            <Stack.Screen name="tv" options={{ headerShown: false }} />
             <Stack.Screen name="orders" options={{ headerShown: false }} />
             <Stack.Screen name="orders/[id]" options={{ headerShown: false }} />
             <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />

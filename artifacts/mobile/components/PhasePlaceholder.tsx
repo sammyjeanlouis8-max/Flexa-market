@@ -13,7 +13,7 @@ type PhasePlaceholderProps = {
   detail?: string;
 };
 
-/** Native-only placeholder for features scheduled after Phase 1. */
+/** Native-only placeholder for unfinished native surfaces. */
 export function PhasePlaceholder({
   title,
   subtitle,
@@ -26,7 +26,7 @@ export function PhasePlaceholder({
   return (
     <NativeScreen title={title} subtitle={subtitle}>
       <StatusCard
-        label="Estati"
+        label="Status"
         value={phaseLabel}
         detail={detail}
         tone="warn"
@@ -35,9 +35,7 @@ export function PhasePlaceholder({
         onPress={() => router.back()}
         style={[styles.button, { borderColor: colors.border }]}
       >
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          Retounen
-        </Text>
+        <Text style={{ color: colors.foreground, fontWeight: "600" }}>Back</Text>
       </Pressable>
     </NativeScreen>
   );

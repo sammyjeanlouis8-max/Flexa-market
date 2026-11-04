@@ -40,7 +40,7 @@ export default function InboxTab() {
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.foreground }]}>Inbox</Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Native conversation list. Real-time Socket.IO chat arrives in Phase 3.
+          Native conversation list. Open a thread to send messages.
         </Text>
       </View>
 

@@ -3,11 +3,13 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { NativeScreen } from "@/components/NativeScreen";
+import { NavLink } from "@/components/NavLink";
 import { StatusCard } from "@/components/StatusCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { LOANS_NAV_VISIBLE } from "@/lib/featureFlags";
 
-/** Default UI language: English. */
+/** Default UI language: English. Loan nav intentionally hidden. */
 export default function ProfileTab() {
   const colors = useColors();
   const router = useRouter();
@@ -58,31 +60,23 @@ export default function ProfileTab() {
             </Pressable>
           </>
         ) : (
-          <>
-            <Pressable
-              onPress={() => router.push("/favorites")}
-              style={[styles.secondary, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Favorites
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push("/subscription")}
-              style={[styles.secondary, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Subscription (Apple IAP)
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push("/orders")}
-              style={[styles.secondary, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Orders (Phase 2)
-              </Text>
-            </Pressable>
+          <View style={{ gap: 10 }}>
+            <NavLink href="/favorites" label="Favorites" />
+            <NavLink href="/wallet" label="Wallet" />
+            <NavLink href="/flex-card" label="Flexa Card" />
+            <NavLink href="/orders" label="Orders" />
+            <NavLink href="/sales" label="Seller dashboard" />
+            <NavLink href="/subscription" label="Subscriptions (Apple IAP)" />
+            <NavLink href="/music" label="Flexa Music" />
+            <NavLink href="/tv" label="Flexa TV" />
+            <NavLink href="/notifications" label="Notifications" />
+            <NavLink href="/settings" label="Settings" />
+            <NavLink href="/offers" label="Offers" />
+            {(user?.isAdmin || user?.isSuperAdmin) && (
+              <NavLink href="/admin" label="Admin" />
+            )}
+            {/* Loan stays available as /loans route code, but never linked while flag is false. */}
+            {LOANS_NAV_VISIBLE ? <NavLink href="/loans" label="Loans" /> : null}
             <Pressable
               onPress={() => void logout()}
               style={[styles.secondary, { borderColor: colors.border }]}
@@ -91,7 +85,7 @@ export default function ProfileTab() {
                 Sign out
               </Text>
             </Pressable>
-          </>
+          </View>
         )}
       </View>
     </NativeScreen>

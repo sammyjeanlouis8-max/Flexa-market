@@ -1,97 +1,99 @@
-import SafeWebView from "@/components/SafeWebView";
-import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
-function IOSBoostInfo() {
-  const insets = useSafeAreaInsets();
+import { NativeScreen } from "@/components/NativeScreen";
+import { NavLink } from "@/components/NavLink";
+import { SignInGate } from "@/components/SignInGate";
+import { StatusCard } from "@/components/StatusCard";
+import { useAuth } from "@/context/AuthContext";
+import { useColors } from "@/hooks/useColors";
+import { apiFetch } from "@/lib/apiFetch";
+
+type BoostMethod = {
+  id?: string;
+  method?: string;
+  label?: string;
+  name?: string;
+};
+
+export default function BoostScreen() {
+  const colors = useColors();
+  const router = useRouter();
+  const { token } = useAuth();
+  const [methods, setMethods] = useState<BoostMethod[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiFetch<BoostMethod[] | { methods?: BoostMethod[] }>(
+        "/boost/methods",
+        { token },
+      );
+      setMethods(Array.isArray(data) ? data : data.methods ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load boost methods");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (!token) {
+    return (
+      <NativeScreen title="Boost" subtitle="Promote your listings.">
+        <SignInGate message="Sign in to buy listing boosts." />
+      </NativeScreen>
+    );
+  }
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 }]}
+    <NativeScreen
+      title="Boost"
+      subtitle="Native boost entry. Purchase initiation stays on existing /api/boost endpoints."
     >
-      <Text style={styles.icon}>🚀</Text>
-      <Text style={styles.title}>Boost Lis Ou</Text>
-      <Text style={styles.subtitle}>Mete lis ou an devan plis achetè</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sa Boost fè pou ou</Text>
-        <View style={styles.featureList}>
-          {[
-            "Lis ou parèt an tèt rechèch",
-            "Badge \"Boosted\" atire plis je",
-            "5× plis vizibilite garanti",
-            "Analitik boost an tan reyèl",
-            "Chwazi piblik ou: peyi, vil, kategori",
-          ].map(f => (
-            <View key={f} style={styles.featureRow}>
-              <Text style={styles.check}>✓</Text>
-              <Text style={styles.featureText}>{f}</Text>
-            </View>
-          ))}
+      <StatusCard
+        label="Methods loaded"
+        value={loading ? "Loading…" : String(methods.length)}
+        detail={error || "Select a listing from My listings to start a boost."}
+        tone={error ? "warn" : "ok"}
+      />
+      <View style={{ gap: 10 }}>
+        <NavLink href="/my-listings" label="Choose a listing" />
+        <NavLink href="/my-boosts" label="My active boosts" />
+        <NavLink href="/wallet" label="Wallet balance" />
+      </View>
+      {methods.map((m, idx) => (
+        <View
+          key={String(m.id ?? m.method ?? idx)}
+          style={[styles.row, { borderColor: colors.border }]}
+        >
+          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+            {m.label || m.name || m.method || `Method ${idx + 1}`}
+          </Text>
         </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Boost Vidéo</Text>
-        <View style={styles.featureList}>
-          {[
-            "Videyo promosyon nan fil aktyalite",
-            "Rive direkteman kay achetè potentyèl",
-            "Plis angajman ke lis photo nòmal",
-          ].map(f => (
-            <View key={f} style={styles.featureRow}>
-              <Text style={styles.check}>✓</Text>
-              <Text style={styles.featureText}>{f}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.infoBox}>
-        <Text style={styles.infoTitle}>💡 Kijan pou achte yon Boost</Text>
-        <Text style={styles.infoText}>
-          Achte ak jere Boosts ou sou sit web nou an. Vizite{" "}
-          <Text style={styles.infoLink}>flexamarket.com</Text>{" "}
-          sou yon navigatè. Boosts yo aktive otomatikman epi vizib nan app la imedyatman.
-        </Text>
-      </View>
-
-      <Text style={styles.note}>
-        Boosts aktif yo lye ak kont ou epi vizib sou tout platfòm.
-      </Text>
-    </ScrollView>
+      ))}
+      {loading ? <ActivityIndicator color={colors.primary} /> : null}
+      <Pressable onPress={() => router.back()} style={{ marginTop: 8 }}>
+        <Text style={{ color: colors.mutedForeground }}>Back</Text>
+      </Pressable>
+    </NativeScreen>
   );
 }
 
-export default function BoostScreen() {
-  if (Platform.OS === "ios") {
-    return <IOSBoostInfo />;
-  }
-  return <SafeWebView uri="https://flexamarket.com/boost" />;
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F172A" },
-  content: { paddingHorizontal: 20, alignItems: "center" },
-  icon: { fontSize: 56, marginBottom: 12 },
-  title: { fontSize: 26, fontWeight: "800", color: "#fff", textAlign: "center", marginBottom: 6 },
-  subtitle: { fontSize: 14, color: "#94A3B8", textAlign: "center", marginBottom: 28 },
-  card: {
-    width: "100%", backgroundColor: "#1E293B", borderRadius: 16,
-    padding: 20, marginBottom: 16, borderWidth: 1, borderColor: "#334155",
-  },
-  cardTitle: { fontSize: 16, fontWeight: "700", color: "#F97316", marginBottom: 14 },
-  featureList: { gap: 10 },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  check: { color: "#22C55E", fontSize: 14, fontWeight: "700", width: 16 },
-  featureText: { color: "#CBD5E1", fontSize: 14, flex: 1 },
-  infoBox: {
-    width: "100%", backgroundColor: "#1E3A5F", borderRadius: 14,
-    padding: 18, marginBottom: 16, borderWidth: 1, borderColor: "#2563EB33",
-  },
-  infoTitle: { color: "#93C5FD", fontSize: 15, fontWeight: "700", marginBottom: 8 },
-  infoText: { color: "#CBD5E1", fontSize: 14, lineHeight: 22 },
-  infoLink: { color: "#F97316", fontWeight: "600" },
-  note: { color: "#64748B", fontSize: 12, textAlign: "center", lineHeight: 18 },
+  row: { borderWidth: 1, borderRadius: 12, padding: 14 },
 });

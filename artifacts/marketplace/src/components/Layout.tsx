@@ -31,6 +31,7 @@ import { DeliveryMenuCountryContext, canShowFMDeliveryLinks } from "@/contexts/d
 import { useSocket } from "@/hooks/useSocket";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SearchSuggestPanel } from "@/components/SearchSuggest";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -183,25 +184,46 @@ function HeaderSearch() {
   const [, navigate] = useLocation();
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    setSuggestOpen(false);
     navigate(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : "/search");
   };
 
   return (
-    <form onSubmit={submit} className="flex-1 max-w-xl">
+    <form onSubmit={submit} className="flex-1 max-w-xl relative">
       <label className="sr-only">{t("nav.search")}</label>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <input
           type="search"
           value={q}
-          onChange={e => setQ(e.target.value)}
-          onFocus={() => { if (!q.trim()) navigate("/search"); }}
+          onChange={e => { setQ(e.target.value); setSuggestOpen(true); }}
+          onFocus={() => setSuggestOpen(true)}
+          onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+          onKeyDown={e => {
+            if (e.key === "Escape") setSuggestOpen(false);
+          }}
           placeholder={t("search.placeholder")}
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={suggestOpen}
+          aria-autocomplete="list"
           className="w-full bg-muted/60 rounded-full pl-9 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
           data-testid="input-header-search"
+        />
+        <SearchSuggestPanel
+          query={q}
+          open={suggestOpen}
+          onOpenChange={setSuggestOpen}
+          onPickQuery={(term) => {
+            setQ(term);
+            navigate(`/search?q=${encodeURIComponent(term)}`);
+          }}
+          onPickListing={(id) => navigate(`/listings/${id}`)}
+          onPickCategory={(slug) => navigate(`/search?category=${encodeURIComponent(slug)}`)}
         />
       </div>
     </form>

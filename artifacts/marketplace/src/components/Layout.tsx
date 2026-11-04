@@ -3,8 +3,8 @@ import { Link, useLocation } from "wouter";
 import { useBroadcast } from "@/contexts/broadcast";
 import {
   Home, Search, Plus, MessageCircle, User, Moon, Sun,
-  MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins,
+  MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
+  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
 import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
@@ -32,6 +32,7 @@ import { useSocket } from "@/hooks/useSocket";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
 import AdminShell from "@/components/admin/AdminShell";
+import { cn } from "@/lib/utils";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -78,14 +79,20 @@ function useUnreadMessageCount(): number {
 }
 
 // ─── Cart icon button with badge ─────────────────────────────────────────────
-function CartIconButton() {
+function CartIconButton({ light = false }: { light?: boolean }) {
   const { count } = useCart();
   return (
     <Link href="/cart" aria-label="Panye mwen">
-      <button className="relative p-2 rounded-xl hover:bg-muted transition-colors" data-testid="cart-icon-button">
-        <ShoppingCart className="h-5 w-5 text-foreground" />
+      <button
+        className={cn(
+          "relative p-2 rounded-xl transition-colors",
+          light ? "hover:bg-white/10" : "hover:bg-muted",
+        )}
+        data-testid="cart-icon-button"
+      >
+        <ShoppingCart className={cn("h-5 w-5", light ? "text-white md:text-foreground" : "text-foreground")} />
         {count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-primary text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#F97316] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none">
             {count > 9 ? "9+" : count}
           </span>
         )}
@@ -407,31 +414,28 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
         aria-hidden="true"
       />
 
-      {/* Sheet */}
+      {/* Left slide-out drawer (menu opens from top-left hamburger) */}
       <div
-        className="mobile-menu-sheet fixed bottom-0 left-0 right-0 z-[70] w-full max-w-[100vw] min-w-0 overflow-x-hidden md:hidden bg-card rounded-t-2xl shadow-2xl"
+        className="mobile-menu-sheet fixed top-0 left-0 bottom-0 z-[70] w-[min(86vw,20rem)] max-w-[100vw] overflow-x-hidden md:hidden bg-card shadow-2xl border-r border-border flex flex-col"
         style={{
-          width: "100%",
-          maxWidth: "100vw",
           boxSizing: "border-box",
-          maxHeight: "80dvh",
-          overflowY: "auto",
           overscrollBehavior: "contain",
           touchAction: "pan-y",
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("nav.menu")}
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-        </div>
-
-        {/* Close button */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border">
-          <span className="text-base font-semibold">{t("nav.menu")}</span>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border bg-[hsl(152,65%,18%)] text-white shrink-0">
+          <div className="min-w-0">
+            <p className="text-sm font-bold truncate">Flexa Market</p>
+            <p className="text-[10px] text-white/80 truncate">{t("nav.menu")}</p>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-accent text-muted-foreground"
+            className="p-1.5 rounded-full hover:bg-white/10 text-white shrink-0"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
@@ -440,9 +444,9 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
 
         {/* Menu items */}
         <div
-          className="px-3 pt-3 space-y-4"
+          className="px-3 pt-3 space-y-4 flex-1 overflow-y-auto"
           style={{
-            paddingBottom: "max(6rem, calc(env(safe-area-inset-bottom, 0px) + 4rem))",
+            paddingBottom: "max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))",
           }}
         >
           {sections.map(section => (
@@ -687,6 +691,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const [deliveryMenuCountry, setDeliveryMenuCountry] = useState<string | null | undefined>(undefined);
   const { user, logout, showLanguageModal, dismissLanguageModal } = useAuth();
   const { t } = useTranslation();
+  const { count: cartCount } = useCart();
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
@@ -771,13 +776,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   const profileHref = user ? "/settings" : "/auth/login";
 
-  // 5 fixed bottom tabs — the 5th opens the "More" drawer
+  // 5 fixed bottom tabs — Menu opens from top-left hamburger only (not bottom)
   const tabs = [
-    { href: "/",         icon: Home,          label: t("nav.home"),     key: "home" },
-    { href: "/search",   icon: Search,        label: t("nav.search"),   key: "search" },
-    { href: "/sell",     icon: Plus,          label: t("nav.sell"),     key: "sell",     highlight: true },
-    { href: "/messages", icon: MessageCircle, label: t("nav.messages"), key: "messages", badge: unread },
-    { key: "more",       icon: MoreHorizontal, label: t("nav.more"), isMore: true },
+    { href: "/",         icon: Home,           label: t("nav.home"),       key: "home" },
+    { href: "/search",   icon: LayoutGrid,     label: t("nav.categories", { defaultValue: "Categories" }), key: "categories" },
+    { href: "/messages", icon: MessageCircle,  label: t("nav.messages"),   key: "messages", badge: unread },
+    { href: "/cart",     icon: ShoppingCart,   label: t("nav.cart", { defaultValue: "Cart" }), key: "cart", badge: cartCount },
+    { href: profileHref, icon: User,           label: t("nav.account", { defaultValue: "Account" }), key: "account" },
   ] as const;
 
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
@@ -869,6 +874,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const moreActive = ["/settings", "/saved", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
     location.startsWith(p)
   );
+  const isHomePage = location === "/";
 
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
@@ -932,53 +938,81 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {/* paddingTop covers the notch / Dynamic Island on iPhone X+.
           --sat is also used because Safari viewport-fit=auto can report
           env(safe-area-inset-top) as 0 while the status area is still present. */}
-      {!isVideoFeed && <header className="mobile-app-header sticky top-0 z-50 bg-card border-b border-border shadow-sm md:pl-56">
-        <div className="mobile-app-header-row w-full max-w-7xl mx-auto px-3 h-16 flex items-center gap-3">
-
-          {/* Mobile back button — visible only on sub-pages, hidden on desktop */}
-          {showBackButton ? (
-            <>
-              <button
-                type="button"
-                onClick={handleBack}
-                className="md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full hover:bg-accent transition-colors text-foreground"
-                aria-label="Retounen"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              {/* Page title — mobile only */}
-              {pageTitle && (
-                <span className="md:hidden flex-1 text-base font-bold text-foreground truncate">{pageTitle}</span>
-              )}
-              {/* Logo + brand — desktop only on sub-pages */}
-              <Link href="/" aria-label="FLEXA MARKET home" className="hidden md:flex items-center gap-2 shrink-0">
-                <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
-                <span className="font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
-              </Link>
-              <div className="hidden md:block flex-1">
-                <HeaderSearch />
-              </div>
-            </>
-          ) : (
-            <>
-              <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2">
-                <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
-                <span className="hidden sm:block font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
-              </Link>
-              <HeaderSearch />
-            </>
+      {!isVideoFeed && (
+        <header
+          className={cn(
+            "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
+            isHomePage
+              ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white md:bg-card md:border-border md:text-foreground"
+              : "bg-card border-border",
           )}
+        >
+          <div className="mobile-app-header-row w-full max-w-7xl mx-auto px-3 h-14 md:h-16 flex items-center gap-2">
+            {/* Hamburger — mobile menu (top left). Opens left drawer with all role menus. */}
+            <button
+              type="button"
+              data-testid="nav-hamburger"
+              onClick={() => setMoreOpen(true)}
+              className={cn(
+                "md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors",
+                isHomePage ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
+              )}
+              aria-label={t("nav.menu")}
+            >
+              <Menu className="h-6 w-6" />
+            </button>
 
-          {user && <NotificationsDropdown />}
-          {user && <CartIconButton />}
-          <CommandPalette />
-          {/* Desktop language switcher; mobile language remains in the profile/guest menu */}
-          <LanguageSwitcher className="header-language-switcher shrink-0" />
-          {/* Profile menu */}
-          {user ? <UserMenu onNavigate={handleMobileTab} /> : <GuestMenu />}
+            {showBackButton ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                  aria-label="Retounen"
+                >
+                  <ArrowLeft className={cn("h-5 w-5", isHomePage && "md:text-foreground")} />
+                </button>
+                {pageTitle && (
+                  <span className="md:hidden flex-1 text-base font-bold truncate">{pageTitle}</span>
+                )}
+                <Link href="/" aria-label="FLEXA MARKET home" className="hidden md:flex items-center gap-2 shrink-0">
+                  <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
+                  <span className="font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
+                </Link>
+                <div className="hidden md:block flex-1">
+                  <HeaderSearch />
+                </div>
+              </>
+            ) : (
+              <>
+                <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0">
+                  <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-9 w-auto md:h-11" width="44" height="44" />
+                  <div className="min-w-0 hidden xs:block sm:block">
+                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isHomePage ? "text-white md:text-foreground" : "text-foreground")}>
+                      Flexa Market
+                    </span>
+                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isHomePage ? "text-white/80 md:text-muted-foreground" : "text-muted-foreground")}>
+                      Buy · Sell · Delivery
+                    </span>
+                  </div>
+                </Link>
+                <div className="hidden md:block flex-1">
+                  <HeaderSearch />
+                </div>
+                <div className="flex-1 md:hidden" />
+              </>
+            )}
 
-        </div>
-      </header>}
+            {user && <NotificationsDropdown />}
+            <CartIconButton light={isHomePage} />
+            <CommandPalette />
+            <LanguageSwitcher className="header-language-switcher shrink-0 hidden md:inline-flex" />
+            <div className="hidden md:block">
+              {user ? <UserMenu onNavigate={handleMobileTab} /> : <GuestMenu />}
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Push-notification one-time prompt */}
       {!isVideoFeed && <PushNotificationsBanner isLoggedIn={!!user} />}

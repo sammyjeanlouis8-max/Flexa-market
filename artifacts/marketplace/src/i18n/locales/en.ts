@@ -559,6 +559,14 @@ export default {
     saving: "Saving…",
   },
   home: {
+
+    deliverTo: "Deliver to",
+    shopByCategory: "Shop by Category",
+    todaysDeals: "Today's Deals",
+    boostedListings: "Boosted listings",
+    featuredProducts: "Featured Products",
+    shopNow: "Shop Now",
+    boostedBadge: "Boosted",
     featured: "Featured",
     justListed: "Just Listed",
     trending: "Trending",

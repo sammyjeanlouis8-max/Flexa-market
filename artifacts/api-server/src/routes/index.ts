@@ -74,8 +74,7 @@ import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
 import bridgeRouter from "./bridge";
 import { extractToken, verifyToken } from "../lib/auth";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { loadAuthUser } from "../middlewares/auth";
 
 const router: IRouter = Router();
 router.use(bridgeRouter);
@@ -143,20 +142,12 @@ async function profileCompletionGuard(req: Request, res: Response, next: NextFun
   const payload = verifyToken(token);
   if (!payload) { next(); return; }
 
-  const [user] = await db
-    .select({
-      id: usersTable.id,
-      name: usersTable.name,
-      avatar: usersTable.avatar,
-      country: usersTable.country,
-      location: usersTable.location,
-      isBanned: usersTable.isBanned,
-      isPhoneVerified: usersTable.isPhoneVerified,
-    })
-    .from(usersTable)
-    .where(eq(usersTable.id, payload.userId));
-
+  // Shared cache-aware load — requireAuth on the same request reuses req.user.
+  const user = await loadAuthUser(payload.userId);
   if (!user || user.isBanned) { next(); return; }
+
+  req.userId = user.id;
+  req.user = user;
 
   const profileCompleted = !!(user.name?.trim());
   if (!profileCompleted) {

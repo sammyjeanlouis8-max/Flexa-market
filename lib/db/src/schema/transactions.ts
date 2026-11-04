@@ -109,6 +109,17 @@ export const transactionsTable = pgTable("transactions", {
     .on(t.sellerUserId, t.createdAt, t.id).where(sql`${t.type} = 'purchase'`),
   legacySellerReportMonth: index("transactions_listing_report_month_idx")
     .on(t.listingId, t.createdAt, t.id).where(sql`${t.type} = 'purchase' AND ${t.sellerUserId} IS NULL`),
+  // Buyer order history + cart lookups
+  buyerCreatedAt: index("transactions_user_id_created_at_idx")
+    .on(t.userId, t.createdAt),
+  // Escrow auto-release job scan (partial — only rows that can become due)
+  autoReleaseDue: index("transactions_auto_release_due_idx")
+    .on(t.autoReleaseAt)
+    .where(sql`${t.type} = 'purchase' AND ${t.paymentStatus} = 'completed' AND ${t.escrowReleased} = false AND ${t.autoReleaseAt} IS NOT NULL`),
+  // Stripe session reconciliation
+  stripeCheckoutSession: index("transactions_stripe_checkout_session_idx")
+    .on(t.stripeCheckoutSessionId)
+    .where(sql`${t.stripeCheckoutSessionId} IS NOT NULL`),
 }));
 
 export const insertTransactionSchema = createInsertSchema(transactionsTable).omit({ id: true, createdAt: true });

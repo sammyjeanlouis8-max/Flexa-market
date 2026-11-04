@@ -2751,30 +2751,25 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
   }
   const grandTotalFinal = Math.round((grandTotalWithDelivery + cartReferralFee) * 100) / 100;
 
-  // Check wallet — must cover product total + delivery fees + referral surcharge
-  const [wallet] = await db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
-    .from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
-  const available = Math.round(((wallet?.balanceUsd ?? 0) + (wallet?.promoBalance ?? 0)) * 100) / 100;
-  if (available < grandTotalFinal) {
+  // Atomic hybrid debit (promo-first + real balance with CAS guards).
+  // Prevents concurrent cart checkouts from overdrafting the wallet.
+  const { deductWalletHybrid } = await import("./wallet");
+  const now = new Date();
+  const cartDebitNote = `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`;
+  const debit = await deductWalletHybrid(
+    userId,
+    grandTotalFinal,
+    cartDebitNote,
+    "purchase_debit",
+    userId,
+  );
+  if (!debit.ok) {
+    const available = Math.round(((debit.promoBalance ?? 0) + (debit.realBalance ?? 0)) * 100) / 100;
     res.status(402).json({
       error: `Balans ensifizan. Ou bezwen $${grandTotalFinal.toFixed(2)} (atik $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}), ou gen $${available.toFixed(2)}`,
-    }); return;
+    });
+    return;
   }
-
-  // Deduct wallet upfront — products + delivery + referral surcharge
-  const now = new Date();
-  if (wallet) {
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${grandTotalFinal}`, updatedAt: now })
-      .where(eq(promoWalletTable.userId, userId));
-  } else {
-    await db.insert(promoWalletTable).values({ userId, balanceUsd: -grandTotalFinal });
-  }
-  await db.insert(walletTransactionsTable).values({
-    userId, type: "purchase", amountUsd: -grandTotalFinal,
-    paymentRef: `CART-${Date.now()}`,
-    note: `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`,
-  }).catch(() => {});
 
   const orders: { txId: number; sellerId: number; amount: number; deliveryFee: number; title: string }[] = [];
   let refundTotal = 0;
@@ -2892,13 +2887,13 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     orders.push({ txId: txRow.id, sellerId: listing.sellerId, amount: itemTotal, deliveryFee: itemDeliveryFeeUsd, title: listing.title });
   }
 
-  // Refund items that were already sold
+  // Refund items that were already sold (credit real balance — CAS-safe add)
   if (refundTotal > 0) {
     await db.update(promoWalletTable)
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundTotal}`, updatedAt: now })
       .where(eq(promoWalletTable.userId, userId));
     await db.insert(walletTransactionsTable).values({
-      userId, type: "refund", amountUsd: refundTotal,
+      userId, type: "refund", amountUsd: refundTotal, status: "completed",
       paymentRef: `CART-REFUND-${Date.now()}`,
       note: `Ranbousman — atik ki deja vann nan panye a`,
     }).catch(() => {});

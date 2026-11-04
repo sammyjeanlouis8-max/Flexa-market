@@ -17,13 +17,20 @@ const sslConfig = DATABASE_URL.includes("ondigitalocean.com")
   ? { rejectUnauthorized: false }
   : true;
 
+// Pool sizing: default 15 (was 10). Override with PG_POOL_MAX for DO capacity planning.
+// Keep well under managed Postgres connection limits when running multiple app instances.
+const poolMax = Math.min(
+  40,
+  Math.max(5, Number.parseInt(process.env.PG_POOL_MAX ?? "15", 10) || 15),
+);
+
 export const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: sslConfig,
   keepAlive: true,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
-  max: 10,
+  max: poolMax,
 });
 
 pool.on("error", (_err) => {

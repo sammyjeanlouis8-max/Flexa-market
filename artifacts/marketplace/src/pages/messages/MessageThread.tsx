@@ -1013,8 +1013,9 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       enabled: !!user && !authLoading && Number.isInteger(convId),
       queryKey: getGetMessagesQueryKey(convId),
       staleTime: 15_000,
-      refetchInterval: 5000,
-      refetchIntervalInBackground: true,
+      // Socket onNewMessage is primary; keep a light safety-net poll.
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
       refetchOnWindowFocus: true,
       refetchOnMount: true,
       // Retry the first request quietly so the conversation can open without
@@ -1028,9 +1029,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     query: {
       enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
-      refetchInterval: 5000,
-      refetchIntervalInBackground: true,
-      refetchOnWindowFocus: true,
+      // Parent Messages list already polls; avoid a duplicate 5s storm here.
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
       refetchOnMount: true,
       retry: 0,
     },

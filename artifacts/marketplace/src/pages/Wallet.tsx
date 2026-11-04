@@ -554,7 +554,7 @@ export default function WalletPage() {
     queryKey: ["/wallet/balance"],
     queryFn: () => apiGet("/wallet/balance"),
     enabled: !!user,
-    refetchInterval: 15000,
+    refetchInterval: 60_000,
   });
 
   const availableUsd = balance?.availableUsd ?? balance?.balanceUsd ?? 0;
@@ -564,7 +564,7 @@ export default function WalletPage() {
     queryKey: ["/wallet/history"],
     queryFn: () => apiGet("/wallet/history?limit=500"),
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 90_000,
   });
   const history = historyData?.transactions;
 
@@ -820,7 +820,7 @@ export default function WalletPage() {
     queryKey: ["/cashout/my"],
     queryFn: () => apiGet("/cashout/my"),
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 60_000,
   });
   const cashoutRequests = cashoutRequestData ?? [];
 

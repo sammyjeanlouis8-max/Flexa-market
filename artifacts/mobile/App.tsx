@@ -1,7 +1,12 @@
 /**
- * Flexa Market — WebView shell with Android push notifications.
+ * LEGACY WebView shell (kept for reference + release-preflight copy checks).
  *
- * Key behaviors:
+ * Phase 0 runtime entry is expo-router (`app/_layout.tsx` + native tabs).
+ * Do not wire this file back as package "main" while migrating to native UI.
+ * Existing store binaries may still use a WebView shell until a validated
+ * native release replaces them.
+ *
+ * Key behaviors (legacy):
  * 1. Push token registration (FCM/APNs) — injected into WebView on load.
  * 2. Cold-start navigation — notification URL captured before WebView loads,
  *    injected in onLoadEnd (fixes the double-tap bug).

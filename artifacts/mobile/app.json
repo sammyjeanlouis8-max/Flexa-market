@@ -79,6 +79,8 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
+      "expo-router",
+      "expo-secure-store",
       [
         "expo-build-properties",
         {
@@ -106,7 +108,9 @@
       "./modules/flexa-background-upload/app.plugin.js",
       "./plugins/withAndroidAdaptiveLayout.js"
     ],
-    "experiments": {},
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
       "eas": {
         "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"

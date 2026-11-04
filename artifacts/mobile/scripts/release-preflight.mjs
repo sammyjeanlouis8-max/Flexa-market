@@ -6,16 +6,19 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const mobileDir = path.resolve(scriptDir, "..");
 const workspaceDir = path.resolve(mobileDir, "../..");
 
-const [appJsonText, easJsonText, appSource, workspacePackageText] = await Promise.all([
-  readFile(path.join(mobileDir, "app.json"), "utf8"),
-  readFile(path.join(mobileDir, "eas.json"), "utf8"),
-  readFile(path.join(mobileDir, "App.tsx"), "utf8"),
-  readFile(path.join(workspaceDir, "package.json"), "utf8"),
-]);
+const [appJsonText, easJsonText, appSource, workspacePackageText, mobilePackageText] =
+  await Promise.all([
+    readFile(path.join(mobileDir, "app.json"), "utf8"),
+    readFile(path.join(mobileDir, "eas.json"), "utf8"),
+    readFile(path.join(mobileDir, "App.tsx"), "utf8"),
+    readFile(path.join(workspaceDir, "package.json"), "utf8"),
+    readFile(path.join(mobileDir, "package.json"), "utf8"),
+  ]);
 
 const appConfig = JSON.parse(appJsonText).expo;
 const easConfig = JSON.parse(easJsonText);
 const workspacePackage = JSON.parse(workspacePackageText);
+const mobilePackage = JSON.parse(mobilePackageText);
 const failures = [];
 const blockedAndroidPermissions = new Set(
   appConfig.android?.blockedPermissions ?? [],
@@ -114,6 +117,17 @@ requireCondition(
   !workspacePackage.dependencies?.expo &&
     !workspacePackage.devDependencies?.expo,
   "Expo must only be declared by the mobile package; a workspace-root Expo dependency creates duplicate native modules.",
+);
+requireCondition(
+  mobilePackage.main === "expo-router/entry",
+  "Mobile package main must be expo-router/entry for the native Phase 0+ app.",
+);
+requireCondition(
+  Array.isArray(appConfig.plugins) &&
+    appConfig.plugins.some(
+      (plugin) => plugin === "expo-router" || plugin?.[0] === "expo-router",
+    ),
+  "expo-router must be listed in app.json plugins.",
 );
 
 if (failures.length > 0) {

@@ -1,12 +1,22 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+/**
+ * Native auth session context (Phase 0).
+ *
+ * Reads/writes the existing Flexa JWT on device and calls GET /api/auth/me.
+ * Does not change backend login, password, OTP, or payment flows.
+ */
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
-const TOKEN_KEY = "flexamarket_token";
+import { clearAuthToken, readAuthToken, writeAuthToken } from "@/lib/auth-storage";
+import { getApiBaseUrl } from "@/lib/config";
 
 export function getBaseUrl() {
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (domain) return `https://${domain}/api`;
-  return "https://lionfish-app-feohg.ondigitalocean.app/api";
+  return getApiBaseUrl();
 }
 
 export interface User {
@@ -51,16 +61,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = useCallback(async (t: string) => {
     try {
-      const res = await fetch(`${getBaseUrl()}/auth/me`, {
+      const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
         headers: { Authorization: `Bearer ${t}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = (await res.json()) as User;
         setUser(data);
       } else if (res.status === 401) {
         // Only a definitive invalid-token response may destroy the saved
         // session. Temporary server/proxy errors must leave the user signed in.
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        await clearAuthToken();
         setToken(null);
         setUser(null);
       }
@@ -70,28 +80,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    AsyncStorage.getItem(TOKEN_KEY)
+    readAuthToken()
       .then(async (stored) => {
         if (stored) {
           setToken(stored);
           await fetchUser(stored);
         }
       })
-      .catch(() => { /* storage unavailable — proceed as logged-out */ })
+      .catch(() => {
+        /* storage unavailable — proceed as logged-out */
+      })
       .finally(() => setIsLoading(false));
   }, [fetchUser]);
 
   const login = useCallback(
     async (newToken: string) => {
-      await AsyncStorage.setItem(TOKEN_KEY, newToken);
+      await writeAuthToken(newToken);
       setToken(newToken);
       await fetchUser(newToken);
     },
-    [fetchUser]
+    [fetchUser],
   );
 
   const logout = useCallback(async () => {
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await clearAuthToken();
     setToken(null);
     setUser(null);
   }, []);
@@ -101,7 +113,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token, fetchUser]);
 
   return (
-    <AuthContext.Provider value={{ token, user, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{ token, user, isLoading, login, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -10,9 +10,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger DigitalOcean deployment
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: |
-          curl -s -X POST \
+          set -euo pipefail
+          if [ -z "${DO_API_TOKEN:-}" ]; then
+            echo "::error::DO_API_TOKEN secret is empty"
+            exit 1
+          fi
+          response="$(curl -sS -w '\n%{http_code}' -X POST \
             "https://api.digitalocean.com/v2/apps/4a94f9b4-6ede-453e-9e8c-f1439d3ade6d/deployments" \
-            -H "Authorization: Bearer ${{ secrets.DO_API_TOKEN }}" \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d '{"force_build": true}'
+            -d '{"force_build": true}')"
+          body="$(printf '%s\n' "$response" | sed '$d')"
+          code="$(printf '%s\n' "$response" | tail -n1)"
+          echo "$body"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::DigitalOcean deploy trigger failed with HTTP $code"
+            exit 1
+          fi
+          echo "Triggered deployment successfully (HTTP $code)"

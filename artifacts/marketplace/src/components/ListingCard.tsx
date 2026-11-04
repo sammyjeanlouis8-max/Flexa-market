@@ -14,6 +14,7 @@ import { useFavorites } from "@/contexts/favorites";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { formatPrice, useExchangeRate, htgToUsd, convertToUsd } from "@/lib/currency";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { listingImageProps } from "@/lib/listingImage";
 
 type Listing = {
   id: number;
@@ -80,12 +81,13 @@ function MosaicImageTile({
     );
   }
 
+  const imgProps = listingImageProps({ variant: "mosaic" });
   return (
     <img
       src={src}
       alt={alt}
       className={className}
-      loading="lazy"
+      {...imgProps}
       onLoad={onLoad}
       onError={() => {
         setFailed(true);
@@ -108,6 +110,7 @@ export default function ListingCard({
   preview = false,
   mosaicLayout = false,
   previewFallbackImage,
+  priority = false,
 }: {
   listing: Listing;
   compact?: boolean;
@@ -117,6 +120,8 @@ export default function ListingCard({
   mosaicLayout?: boolean;
   /** Backup image used only by editable listing previews when a draft/upload URL fails. */
   previewFallbackImage?: string;
+  /** Prefer early load for above-the-fold / LCP cards on desktop Home. */
+  priority?: boolean;
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -264,7 +269,7 @@ export default function ListingCard({
               <img
                 src={img!}
                 alt={listing.title}
-                loading="lazy"
+                {...listingImageProps({ priority, variant: "card" })}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 style={{
                   filter: imgLoaded ? "none" : "blur(6px)",

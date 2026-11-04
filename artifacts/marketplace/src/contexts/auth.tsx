@@ -8,6 +8,7 @@ import {
   setCurrentSessionToken,
   setCurrentSessionUser,
 } from "@/lib/sessionToken";
+import { appPath, spaNavigate } from "@/lib/spaNavigate";
 
 type User = {
   id: number;
@@ -169,18 +170,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (redirectingRef.current) return;
     redirectingRef.current = true;
     logout();
-    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
     const currentPath = window.location.pathname + window.location.search;
     const isAuthPage = currentPath.includes("/auth/");
     const nextParam = (!isAuthPage && currentPath !== "/" && currentPath !== (import.meta.env.BASE_URL ?? "/"))
       ? `?next=${encodeURIComponent(currentPath)}`
       : "";
-    window.location.replace(`${base}/auth/login${nextParam}`);
+    // Soft SPA nav on desktop; hard replace inside native WebView shells.
+    spaNavigate(`${appPath("/auth/login")}${nextParam}`, { replace: true });
   };
 
   const redirectToSuspended = () => {
-    const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-    const suspendedPath = `${base}/auth/suspended`;
+    const suspendedPath = appPath("/auth/suspended");
     if (
       window.location.pathname === suspendedPath ||
       window.location.pathname.endsWith("/auth/suspended")
@@ -189,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (redirectingRef.current) return;
     redirectingRef.current = true;
-    window.location.replace(`${base}/auth/suspended`);
+    spaNavigate(suspendedPath, { replace: true });
   };
 
   const isCurrentSession = (expectedToken: string, expectedGeneration: number) =>

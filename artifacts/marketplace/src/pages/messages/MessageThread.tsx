@@ -1,0 +1,2234 @@
+import React, { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useRestriction } from "@/hooks/useRestriction";
+import { RestrictionBanner } from "@/components/RestrictionBanner";
+import { AdminBlockButton } from "@/components/AdminBlockModal";
+import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Send, MessageCircle, ArrowLeft, Check, CheckCheck,
+  Plus, Camera, Image, Smile, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+} from "lucide-react";
+import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
+import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  useGetConversations, useGetMessages, useSendMessage,
+  getGetMessagesQueryKey, getGetMessagesQueryOptions, getGetConversationsQueryKey,
+} from "@workspace/api-client-react";
+import { useAuth } from "@/contexts/auth";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { useSocket } from "@/hooks/useSocket";
+import { ChatViewport } from "@/components/ChatViewport";
+import { ChatDateDivider } from "@/components/ChatDateDivider";
+import { buildChatTimeline, formatChatTime, sameChatGroup } from "@/lib/chatTimeline";
+import {
+  listPendingVoices,
+  removePendingVoice,
+  savePendingVoice,
+  updatePendingVoice,
+  type PendingVoiceMessage,
+} from "@/lib/voiceOutbox";
+import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T } from "./chatTheme";
+
+let _animInjected = false;
+function injectChatAnimations() {
+  if (_animInjected || typeof document === "undefined") return;
+  _animInjected = true;
+  const el = document.createElement("style");
+  el.textContent = `
+    @keyframes msgIn { from { transform: translateY(6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes menuIn { from { transform: scale(0.92) translateY(4px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes recordWave { from { transform: scaleY(0.55); } to { transform: scaleY(1); } }
+    .msg-bubble-anim { animation: msgIn 120ms ease-out; }
+    .menu-anim { animation: menuIn 100ms ease-out; }
+  `;
+  document.head.appendChild(el);
+}
+injectChatAnimations();
+
+function formatLastSeen(lastSeenAt: string | null, t: (k: string, o?: any) => string): string {
+  if (!lastSeenAt) return "";
+  const diff = Math.floor((Date.now() - new Date(lastSeenAt).getTime()) / 1000);
+  if (diff < 60) return t("messages.lastSeenJustNow");
+  if (diff < 3600) return t("messages.lastSeenMinutes", { n: Math.floor(diff / 60) });
+  if (diff < 86400) return t("messages.lastSeenHours", { n: Math.floor(diff / 3600) });
+  return t("messages.lastSeenDays", { n: Math.floor(diff / 86400) });
+}
+
+async function uploadMedia(file: Blob, contentType: string, token: string): Promise<string> {
+  const presignRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: "media", size: file.size, contentType }),
+  });
+  if (!presignRes.ok) {
+    const err = await presignRes.json().catch(() => ({}));
+    throw new Error((err as any).error || "Presign failed");
+  }
+  const { uploadURL, objectPath } = await presignRes.json();
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: { "Content-Type": contentType, Authorization: `Bearer ${token}` },
+    body: file,
+  });
+  if (!putRes.ok) throw new Error("Upload failed");
+  // The upload proxy returns the real persisted-media URL. Wasabi URLs are
+  // same-origin `/api/storage/...` paths, while legacy Cloudinary responses
+  // may be absolute HTTPS URLs. Do not discard the Wasabi path and fall back
+  // to `objectPath`: that value is only a pre-upload placeholder.
+  try {
+    const data = await putRes.json();
+    if (
+      typeof data?.url === "string" &&
+      (/^https:\/\//i.test(data.url) || data.url.startsWith("/api/storage/"))
+    ) {
+      return data.url;
+    }
+  } catch { /* non-JSON response — fall back */ }
+  return `/api/storage/objects${(objectPath as string).replace(/^\/objects/, "")}`;
+}
+
+// ─── Context Menu ─────────────────────────────────────────────────────────────
+function BubbleContextMenu({
+  isMe, hasText, text, theme, onCopy, onDelete, onClose,
+}: {
+  isMe: boolean; hasText: boolean; text: string;
+  theme: (typeof T)[ChatTheme]; onCopy: () => void; onDelete: () => void; onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const c = theme;
+  useEffect(() => {
+    const h = () => onClose();
+    document.addEventListener("pointerdown", h, { capture: true });
+    return () => document.removeEventListener("pointerdown", h, { capture: true });
+  }, [onClose]);
+  return (
+    <div
+      className="menu-anim"
+      onPointerDown={e => e.stopPropagation()}
+      style={{
+        position: "absolute",
+        [isMe ? "right" : "left"]: 0,
+        bottom: "calc(100% + 6px)",
+        zIndex: 200,
+        background: c.contextBg,
+        border: `1px solid ${c.contextBorder}`,
+        borderRadius: 12,
+        overflow: "hidden",
+        minWidth: 160,
+        boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+      }}
+    >
+      {hasText && (
+        <button
+          type="button"
+          onClick={onCopy}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            width: "100%", padding: "11px 16px",
+            background: "none", border: "none", cursor: "pointer",
+            color: c.contextText, fontSize: 14, fontWeight: 500,
+          }}
+        >
+          <Copy style={{ width: 15, height: 15, opacity: 0.7 }} />
+          {t("messages.copy")}
+        </button>
+      )}
+      {isMe && (
+        <button
+          type="button"
+          onClick={onDelete}
+          style={{
+            display: "flex", alignItems: "center", gap: 10,
+            width: "100%", padding: "11px 16px",
+            background: "none", border: "none", cursor: "pointer",
+            color: c.contextDestructive, fontSize: 14, fontWeight: 500,
+            borderTop: `1px solid ${c.contextBorder}`,
+          }}
+        >
+          <Trash2 style={{ width: 15, height: 15 }} />
+          {t("messages.deleteMsg")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Fullscreen Media Modal ───────────────────────────────────────────────────
+function MediaModal({ url, type, onClose }: { url: string; type: "image" | "video"; onClose: () => void }) {
+  const { t } = useTranslation();
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [onClose]);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.96)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute", top: 16, left: 16,
+          width: 44, height: 44, borderRadius: "50%",
+          background: "rgba(255,255,255,0.12)", border: "none",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", zIndex: 1,
+        }}
+        aria-label={t("messages.back")}
+      >
+        <ArrowLeft style={{ width: 22, height: 22 }} />
+      </button>
+      {type === "image" ? (
+        <img
+          src={url} alt="" onClick={e => e.stopPropagation()}
+          style={{ maxWidth: "95vw", maxHeight: "90vh", objectFit: "contain", borderRadius: 10 }}
+        />
+      ) : (
+        <video
+          src={url} controls autoPlay playsInline onClick={e => e.stopPropagation()}
+          style={{ maxWidth: "95vw", maxHeight: "90vh", borderRadius: 10, outline: "none" }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Audio Bubble ─────────────────────────────────────────────────────────────
+// The live recording meter keeps its original density.
+const WAVE_BARS = [
+  0.30,0.55,0.45,0.72,0.48,1.00,0.65,0.85,0.38,0.90,
+  0.62,0.45,0.78,0.32,0.95,0.58,0.80,0.42,0.68,0.52,
+  0.88,0.35,0.65,0.50,0.75,0.45,0.60,0.30,
+];
+// Shared across voice bubbles so starting one pauses the previous recording.
+let _globalAudioEl: HTMLAudioElement | null = null;
+
+// Sub-sampled for playback compactness
+const VOICE_BARS = [
+  0.30,0.72,0.48,1.00,0.65,0.85,0.38,0.90,0.62,0.45,0.78,0.32,
+];
+
+const AudioBubble = React.memo(function AudioBubble({
+  src, isMe, theme, timestamp, statusIcon, isListened, onListened,
+}: {
+  src: string; isMe: boolean; theme: (typeof T)[ChatTheme];
+  timestamp: string; statusIcon: React.ReactNode;
+  isListened: boolean; onListened?: () => void;
+}) {
+  const { t } = useTranslation();
+  const audioRef     = useRef<HTMLAudioElement>(null);
+  const rafRef       = useRef<number | null>(null);
+  const playingRef   = useRef(false);                       // used inside rAF loop
+  const barsRef      = useRef<(HTMLDivElement | null)[]>([]); // direct DOM refs
+  const dotRef       = useRef<HTMLDivElement>(null);
+  const timeRef      = useRef<HTMLSpanElement>(null);
+  const listenedRef  = useRef(false);
+  const stallRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [playing,  setPlaying]  = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
+  const [playbackError, setPlaybackError] = useState(false);
+
+  const N = VOICE_BARS.length;
+
+  // ── colours ──────────────────────────────────────────────────────────────
+  const PLAYED_COLOR = isMe ? (theme.isDark ? "#86efac" : "#2a76d8") : "#2a76d8";
+  const IDLE_COLOR   = isMe ? (theme.isDark ? "rgba(255,255,255,0.35)" : "#95c389") : (theme.isDark ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.18)");
+  const iconColor    = isMe ? (theme.isDark ? "#ffffff" : "#243a31") : theme.textIn;
+  const timeColor    = isMe ? theme.timeOut : theme.timeIn;
+  const micColor     = isMe ? (isListened ? PLAYED_COLOR : (theme.isDark ? "rgba(255,255,255,0.5)" : "rgba(36,58,49,0.5)")) : (theme.isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)");
+
+  // ── direct-DOM waveform update at 60 fps ─────────────────────────────────
+  const paintFrame = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const frac = el.duration > 0 ? el.currentTime / el.duration : 0;
+
+    // Update each bar directly — no React re-render
+    barsRef.current.forEach((bar, i) => {
+      if (!bar) return;
+      // bar i covers the strip [i/N, (i+1)/N)
+      // it becomes fully played once frac > i/N
+      const played = frac > i / N;
+      bar.style.background = played ? PLAYED_COLOR : IDLE_COLOR;
+    });
+
+    // Move the progress dot
+    if (dotRef.current) {
+      dotRef.current.style.left = `calc(${frac * 100}% - 4px)`;
+      dotRef.current.style.opacity = el.duration > 0 ? "1" : "0";
+    }
+
+    // Update time label (cheap string op)
+    if (timeRef.current) {
+      const s = el.currentTime;
+      const m2 = Math.floor(s / 60);
+      const s2 = Math.floor(s % 60);
+      timeRef.current.textContent = `${m2}:${s2.toString().padStart(2, "0")}`;
+    }
+  }, [N, IDLE_COLOR]);
+
+  const startRaf = useCallback(() => {
+    playingRef.current = true;
+    const tick = () => {
+      if (!playingRef.current) return;
+      paintFrame();
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(tick);
+  }, [paintFrame]);
+
+  const stopRaf = useCallback(() => {
+    playingRef.current = false;
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRaf();
+      if (_globalAudioEl === audioRef.current) _globalAudioEl = null;
+      if (stallRef.current) clearTimeout(stallRef.current);
+    };
+  }, [stopRaf]);
+
+  // iOS Safari/WKWebView needs an explicit load after the media source changes.
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    setPlaybackError(false);
+    el.load();
+  }, [src]);
+
+  // ── controls ─────────────────────────────────────────────────────────────
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (playingRef.current) {
+      el.pause();
+    } else {
+      if (_globalAudioEl && _globalAudioEl !== el) _globalAudioEl.pause();
+      _globalAudioEl = el;
+      setPlaybackError(false);
+      if (el.error || el.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) el.load();
+      el.play().catch(() => {
+        setPlaying(false);
+        setPlaybackError(true);
+        if (_globalAudioEl === el) _globalAudioEl = null;
+      });
+    }
+  };
+
+  const handlePlay = () => {
+    setPlaying(true);
+    startRaf();
+    if (!isMe && !isListened && !listenedRef.current) {
+      listenedRef.current = true;
+      onListened?.();
+    }
+  };
+
+  const handlePause = () => { setPlaying(false); stopRaf(); paintFrame(); };
+
+  const handleEnded = () => {
+    setPlaying(false); stopRaf();
+    setFracSnap(0);
+    // Reset all bars and dot
+    barsRef.current.forEach(b => { if (b) b.style.background = IDLE_COLOR; });
+    if (dotRef.current) dotRef.current.style.left = "calc(0% - 4px)";
+    if (timeRef.current && audioRef.current) {
+      const d = audioRef.current.duration;
+      const m2 = Math.floor(d / 60); const s2 = Math.floor(d % 60);
+      timeRef.current.textContent = `${m2}:${s2.toString().padStart(2, "0")}`;
+    }
+    if (_globalAudioEl === audioRef.current) _globalAudioEl = null;
+  };
+
+  // Stall recovery
+  const handleStall = () => {
+    const el = audioRef.current;
+    if (!el || el.paused) return;
+    if (stallRef.current) clearTimeout(stallRef.current);
+    stallRef.current = setTimeout(() => {
+      if (el && !el.paused && el.readyState < 3) {
+        const t = el.currentTime; el.load(); el.currentTime = t; el.play().catch(() => {});
+      }
+    }, 400);
+  };
+
+  // Duration display (shown before playback / after end)
+  const fmtSecs = (s: number) => {
+    if (!isFinite(s) || s <= 0) return "0:00";
+    const m2 = Math.floor(s / 60); const s2 = Math.floor(s % 60);
+    return `${m2}:${s2.toString().padStart(2, "0")}`;
+  };
+
+  // ── render ────────────────────────────────────────────────────────────────
+  return (
+    <div style={{ padding: "4px 8px 4px 6px", width: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <audio
+        ref={audioRef} src={src} preload="auto"
+        onPlaying={handlePlay}
+        onPause={handlePause}
+        onEnded={handleEnded}
+        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }}
+        onStalled={handleStall} onSuspend={handleStall}
+        onError={() => { setPlaying(false); setPlaybackError(true); stopRaf(); }}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, height: 32 }}>
+
+        {/* ── Play / Pause button — filled circle WhatsApp style ── */}
+        <button
+          type="button" onClick={toggle}
+          aria-label={t(playing ? "messages.voicePause" : "messages.voicePlay")}
+          style={{
+            flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+            background: isMe ? (theme.isDark ? "rgba(255,255,255,0.2)" : "#c8e6bb") : (theme.isDark ? "rgba(255,255,255,0.1)" : "#ecf0e9"),
+            border: "none", cursor: "pointer", padding: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: iconColor, transition: "background 0.15s",
+            WebkitTapHighlightColor: "transparent",
+          }}
+        >
+          {playing ? (
+            <span style={{ display: "flex", gap: 2.5, alignItems: "center" }}>
+              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
+              <span style={{ width: 3, height: 11, borderRadius: 1.5, background: "currentColor", display: "block" }} />
+            </span>
+          ) : (
+            <svg width="11" height="13" viewBox="0 0 13 15" fill="currentColor" style={{ marginLeft: 2 }}>
+              <path d="M0 0 L13 7.5 L0 15 Z" />
+            </svg>
+          )}
+        </button>
+
+        {/* ── Waveform ── */}
+        <div style={{ flex: 1, minWidth: 24, position: "relative", height: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 1.5, height: "100%", overflow: "hidden" }}>
+            {VOICE_BARS.map((h, i) => (
+              <div
+                key={i}
+                ref={el => { barsRef.current[i] = el; }}
+                style={{
+                  flex: "1 1 0", minWidth: 1.5, borderRadius: 99,
+                  height: `${Math.round(h * 100)}%`,
+                  background: IDLE_COLOR,
+                  // No CSS transition — rAF handles color, transition would lag behind
+                }}
+              />
+            ))}
+          </div>
+          {/* Progress dot */}
+          <div
+            ref={dotRef}
+            style={{
+              position: "absolute", top: "50%", transform: "translateY(-50%)",
+              left: "calc(0% - 4px)", opacity: 0,
+              width: 8, height: 8, borderRadius: "50%",
+              background: PLAYED_COLOR,
+              pointerEvents: "none",
+              boxShadow: `0 1px 3px ${PLAYED_COLOR}80`,
+            }}
+          />
+        </div>
+
+        {/* Time + metadata inline */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <Mic style={{
+            width: 11, height: 11, flexShrink: 0,
+            color: micColor,
+            transition: "color 0.3s",
+          }} />
+          {/* rAF writes here directly; React only sets the initial value */}
+          <span
+            ref={timeRef}
+            style={{ fontSize: 10, color: timeColor, fontVariantNumeric: "tabular-nums", minWidth: 22 }}
+          >
+            {fmtSecs(duration)}
+          </span>
+          <span style={{ fontSize: 10, color: timeColor, whiteSpace: "nowrap" }}>{timestamp}</span>
+          {statusIcon && (
+            <span style={{ display: "flex", alignItems: "center" }}>{statusIcon}</span>
+          )}
+        </div>
+      </div>
+      {playbackError && (
+        <p style={{
+          margin: "2px 0 0 38px", fontSize: 10,
+          color: theme.isDark ? "#FCA5A5" : "#991B1B",
+        }}>
+          {t("messages.voicePlaybackError")}
+        </p>
+      )}
+    </div>
+  );
+});
+
+function PendingVoiceBubble({
+  item,
+  theme,
+  isSending,
+  onRetry,
+}: {
+  item: PendingVoiceMessage;
+  theme: (typeof T)[ChatTheme];
+  isSending: boolean;
+  onRetry: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const [src, setSrc] = useState("");
+  const failed = !!item.lastError && !isSending;
+  const statusLabel = t(isSending ? "messages.voiceSending" : failed ? "messages.voiceNotSent" : "messages.voiceWaiting");
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(new Blob([item.bytes], { type: item.mimeType }));
+    setSrc(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [item.bytes, item.mimeType]);
+
+  return (
+    <div
+      className="msg-bubble-anim"
+      style={{ display: "flex", alignItems: "flex-end", width: "100%", overflow: "hidden" }}
+    >
+      <div style={{ flex: 1 }} />
+      <div style={{
+        width: "min(200px, 85%)",
+        maxWidth: "min(200px, 85%)",
+        minWidth: 0,
+        borderRadius: "12px 12px 4px 12px",
+        background: theme.bubbleOut,
+        border: (theme as any).bubbleOutBorder ? `1px solid ${(theme as any).bubbleOutBorder}` : undefined,
+        boxShadow: !theme.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
+        overflow: "hidden",
+        opacity: 0.88,
+      }}>
+        {src && (
+          <AudioBubble
+            src={src}
+            isMe
+            theme={theme}
+            timestamp={formatChatTime(item.createdAt, i18n.language)}
+            statusIcon={(
+              <span
+                title={statusLabel}
+                aria-label={statusLabel}
+                role="status"
+                style={{ fontSize: 13, lineHeight: 1, color: theme.timeOut }}
+              >
+                {isSending ? <Loader2 aria-hidden="true" className="animate-spin" style={{ width: 11, height: 11 }} /> : failed ? "!" : "◷"}
+              </span>
+            )}
+            isListened={false}
+          />
+        )}
+        {failed && (
+          <button type="button" onClick={onRetry}
+            aria-label={`${t("messages.voiceNotSent")}. ${t("messages.voiceRetry")}`}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "flex-end",
+              width: "100%", minHeight: 36, padding: "2px 10px 7px",
+              border: "none", background: "transparent", cursor: "pointer",
+              color: theme.isDark ? "#FCA5A5" : "#991B1B", fontSize: 11, fontWeight: 600,
+            }}>
+            {t("messages.voiceNotSent")} · {t("messages.voiceRetry")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Message Bubble ───────────────────────────────────────────────────────────
+function MsgBubble({
+  msg, isMe, isLastInGroup, isLastSentByMe, onMediaTap, theme, onAudioListened,
+  translation, isTranslating, onTranslate, onDeleteMsg,
+}: {
+  msg: ChatMessage; isMe: boolean; isLastInGroup: boolean; isLastSentByMe: boolean;
+  onMediaTap: (url: string, type: "image" | "video") => void;
+  onAudioListened?: (msgId: number) => void;
+  onDeleteMsg?: (msgId: number) => void;
+  theme: (typeof T)[ChatTheme];
+  translation?: { translatedText: string; detectedLanguage: string } | null;
+  isTranslating?: boolean;
+  onTranslate?: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const c = theme;
+  const [showMenu, setShowMenu] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  if (msg.isDeleted) {
+    return (
+      <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", padding: "2px 8px" }}>
+        <span style={{ fontSize: 12, color: theme.timeOut, fontStyle: "italic", opacity: 0.55 }}>
+          {t("messages.deletedMessage")} · {formatChatTime(msg.createdAt, i18n.language)}
+        </span>
+      </div>
+    );
+  }
+
+  const mtype = (msg.messageType as MsgType) || (msg.imageUrl ? "image" : "text");
+  const mediaUrl = msg.mediaUrl || msg.imageUrl || "";
+  const isAudio = mtype === "audio" && !!mediaUrl;
+  const hasMedia = (mtype === "image" || mtype === "video") && !!mediaUrl;
+  const hasText = !!msg.content;
+
+  // Compact radii: incoming = 12 12 12 4, outgoing = 12 12 4 12
+  const TAIL = 4;
+  const br = isMe
+    ? `12px 12px ${isLastInGroup ? TAIL : 12}px 12px`
+    : `12px 12px 12px ${isLastInGroup ? TAIL : 12}px`;
+  const mediaBR = isMe
+    ? `12px 12px ${hasText ? 0 : (isLastInGroup ? TAIL : 12)}px ${hasText ? 0 : 12}px`
+    : `12px 12px ${hasText ? 0 : 12}px ${hasText ? 0 : (isLastInGroup ? TAIL : 12)}px`;
+
+  const bubbleBg = isMe ? c.bubbleOut : c.bubbleIn;
+  const bubbleBorder = (c as any)[isMe ? "bubbleOutBorder" : "bubbleInBorder"];
+  const textColor = isMe ? c.textOut : c.textIn;
+  const timeColor = isMe ? c.timeOut : c.timeIn;
+  const mediaW = "min(200px, 72vw)";
+  const bubbleMaxW = isAudio ? "min(200px, 85%)" : hasMedia && !hasText ? mediaW : "79%";
+
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const startLongPress = (e: React.PointerEvent) => {
+    pressStartRef.current = { x: e.clientX, y: e.clientY };
+    longPressRef.current = setTimeout(() => setShowMenu(true), 420);
+  };
+  const cancelLongPress = () => {
+    pressStartRef.current = null;
+    if (longPressRef.current) { clearTimeout(longPressRef.current); longPressRef.current = null; }
+  };
+  const onMoveCheck = (e: React.PointerEvent) => {
+    if (!pressStartRef.current) return;
+    const dx = e.clientX - pressStartRef.current.x;
+    const dy = e.clientY - pressStartRef.current.y;
+    // Any scroll-like movement (≥8 px) cancels the long-press so native scroll stays fluid
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) cancelLongPress();
+  };
+
+  const handleCopy = () => {
+    if (msg.content) navigator.clipboard.writeText(msg.content).catch(() => {});
+    setShowMenu(false);
+  };
+  const handleDelete = () => {
+    setShowMenu(false);
+    if (window.confirm(t("messages.confirmDelete"))) {
+      onDeleteMsg?.(msg.id);
+    }
+  };
+
+  // Read receipt: blue seen, grey sent
+  const StatusIcon = isMe ? (
+    msg.isRead
+      ? <CheckCheck style={{ width: 13, height: 13, color: c.seenColor }} />
+      : isLastSentByMe
+        ? <Check style={{ width: 13, height: 13, color: timeColor }} />
+        : <CheckCheck style={{ width: 13, height: 13, color: timeColor }} />
+  ) : null;
+
+  return (
+    <div
+      className="msg-bubble-anim"
+      style={{ display: "flex", alignItems: "flex-end", gap: 4, width: "100%", overflow: "hidden", position: "relative" }}
+    >
+      {isMe && <div style={{ flex: 1 }} />}
+
+      <div
+        style={{
+          position: "relative",
+          display: "flex", flexDirection: "column",
+          maxWidth: bubbleMaxW, minWidth: 0,
+          width: isAudio ? bubbleMaxW : undefined,
+          borderRadius: br,
+          background: bubbleBg,
+          border: bubbleBorder ? `1px solid ${bubbleBorder}` : undefined,
+          boxShadow: !c.isDark ? "0 3px 10px rgba(34,55,41,0.055)" : undefined,
+          overflow: isAudio ? "hidden" : "visible",
+          // Allow native vertical scroll even while long-press timer is running
+          touchAction: "pan-y",
+        }}
+        onPointerDown={startLongPress}
+        onPointerMove={onMoveCheck}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        onContextMenu={e => { e.preventDefault(); setShowMenu(true); }}
+      >
+        {/* Admin badge */}
+        {!isMe && msg.senderIsAdmin && (
+          <div style={{ padding: "4px 8px 0", display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: "#22D3EE",
+              background: "rgba(34,211,238,0.10)", borderRadius: 4, padding: "1px 5px",
+              border: "1px solid rgba(34,211,238,0.25)", display: "inline-flex", alignItems: "center", gap: 3,
+            }}>
+              🛡 ADM-{String(msg.senderId).padStart(4, "0")}
+            </span>
+          </div>
+        )}
+
+        {/* Image */}
+        {mtype === "image" && mediaUrl && (
+          <button
+            type="button" onClick={() => onMediaTap(mediaUrl, "image")}
+            style={{
+              display: "block", padding: 0, border: "none", cursor: "pointer",
+              background: "none", width: mediaW, borderRadius: mediaBR,
+              overflow: "hidden", flexShrink: 0,
+            } as React.CSSProperties}
+          >
+            <img
+              src={mediaUrl} alt="foto" loading="lazy"
+              style={{ display: "block", width: "100%", height: "auto", maxHeight: 200, objectFit: "cover" }}
+            />
+          </button>
+        )}
+
+        {/* Video */}
+        {mtype === "video" && mediaUrl && (
+          <button
+            type="button" onClick={() => onMediaTap(mediaUrl, "video")}
+            style={{
+              display: "block", padding: 0, border: "none", cursor: "pointer",
+              background: "#000", width: mediaW, borderRadius: 12,
+              overflow: "hidden", position: "relative", flexShrink: 0,
+              aspectRatio: "16/9",
+            } as React.CSSProperties}
+          >
+            <video
+              src={mediaUrl} preload="metadata" playsInline muted
+              style={{ display: "block", width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
+            />
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.35)" }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.92)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Play style={{ width: 16, height: 16, color: "#111827", marginLeft: 2 }} />
+              </div>
+            </div>
+          </button>
+        )}
+
+        {/* Audio */}
+        {mtype === "audio" && mediaUrl && (
+          <AudioBubble
+            src={mediaUrl} isMe={isMe} theme={c}
+            timestamp={formatChatTime(msg.createdAt, i18n.language)}
+            statusIcon={StatusIcon}
+            isListened={msg.isListened}
+            onListened={() => onAudioListened?.(msg.id)}
+          />
+        )}
+
+        {/* Text */}
+        {mtype === "text" && hasText && (
+          <div style={{ padding: "5px 6px 5px 8px" }}>
+            <div style={{
+              fontSize: 13, lineHeight: 1.35, fontWeight: 400,
+              wordBreak: "break-word", whiteSpace: "pre-wrap",
+              color: textColor,
+            }}>
+              {translation && !showOriginal ? translation.translatedText : msg.content}
+              {isMe && (
+                <span style={{ float: "right", display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 4, transform: "translateY(2px)" }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </span>
+              )}
+            </div>
+
+            {/* Translation controls — only for received text messages */}
+            {!isMe && (
+              <div style={{ marginTop: 3, display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {translation ? (
+                    <>
+                      {/* "Translated from X" badge */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9.5, color: textColor, opacity: 0.5 }}>
+                        <Globe size={9} />
+                        <span>{t("messages.translatedFrom", { lang: translation.detectedLanguage })}</span>
+                      </div>
+                      {/* Toggle original / translation */}
+                      <button
+                        type="button"
+                        onClick={() => setShowOriginal(s => !s)}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          color: textColor, opacity: 0.65, fontSize: 9.5,
+                          padding: 0, textAlign: "left",
+                          display: "inline-flex", alignItems: "center", gap: 3, width: "fit-content",
+                        }}
+                      >
+                        {showOriginal ? t("messages.showTranslation") : t("messages.showOriginal")}
+                      </button>
+                    </>
+                  ) : (
+                    /* Translate button */
+                    <button
+                      type="button"
+                      onClick={onTranslate}
+                      disabled={isTranslating}
+                      style={{
+                        background: "none", border: "none",
+                        cursor: isTranslating ? "default" : "pointer",
+                        color: textColor, opacity: isTranslating ? 0.4 : 0.6, fontSize: 9.5,
+                        padding: 0, textAlign: "left",
+                        display: "inline-flex", alignItems: "center", gap: 3, width: "fit-content",
+                      }}
+                    >
+                      {isTranslating ? (
+                        <>
+                          <Loader2 size={9} style={{ animation: "spin 1s linear infinite" }} />
+                          <span>{t("messages.translating")}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Globe size={9} />
+                          <span>{t("messages.translate")}</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </div>
+              </div>
+            )}
+            {isMe && <div style={{ clear: "both" }} />}
+          </div>
+        )}
+        {mtype !== "text" && hasText && (
+          <div style={{ padding: "4px 8px 5px" }}>
+            <p style={{
+              margin: 0, fontSize: 13, lineHeight: 1.35,
+              wordBreak: "break-word", color: textColor, opacity: 0.9,
+            }}>
+              {msg.content}
+              {isMe && (
+                <span style={{ float: "right", display: "inline-flex", alignItems: "center", gap: 2, marginLeft: 8, marginTop: 4, transform: "translateY(2px)" }}>
+                   <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                     {formatChatTime(msg.createdAt, i18n.language)}
+                   </span>
+                   {StatusIcon}
+                </span>
+              )}
+            </p>
+            {isMe && <div style={{ clear: "both" }} />}
+            {!isMe && (
+               <div style={{ marginTop: 2, display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                     <span style={{ fontSize: 9.5, color: timeColor, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                       {formatChatTime(msg.createdAt, i18n.language)}
+                     </span>
+                     {StatusIcon}
+                  </div>
+               </div>
+            )}
+          </div>
+        )}
+
+        {/* Timestamp + status (hidden for audio and text — they render their own) */}
+        {!isAudio && !hasText && (
+          <div style={{
+            position: "absolute", bottom: 4, right: 6,
+            display: "flex", alignItems: "center", gap: 3,
+            background: "rgba(0,0,0,0.4)", borderRadius: 10, padding: "2px 6px"
+          }}>
+            <span style={{ fontSize: 9.5, color: "#fff", letterSpacing: 0.1, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+              {formatChatTime(msg.createdAt, i18n.language)}
+            </span>
+            {StatusIcon}
+          </div>
+        )}
+
+        {/* Long-press context menu */}
+        {showMenu && (
+          <BubbleContextMenu
+            isMe={isMe}
+            hasText={hasText}
+            text={msg.content}
+            theme={theme}
+            onCopy={handleCopy}
+            onDelete={handleDelete}
+            onClose={() => setShowMenu(false)}
+          />
+        )}
+      </div>
+
+      {!isMe && <div style={{ flex: 1 }} />}
+    </div>
+  );
+}
+
+// ─── Message Thread ───────────────────────────────────────────────────────────
+
+export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
+  convId: number;
+  theme: (typeof T)[ChatTheme];
+  onToggleTheme: () => void;
+  onBack?: () => void;
+}) {
+  const { user, token, isLoading: authLoading } = useAuth();
+  const { isRestricted } = useRestriction();
+  const queryClient = useQueryClient();
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  // ── Hardware / WebView back-button fix ─────────────────────────────────────
+  // Problem: when inside a conversation the WebView may push extra history
+  // entries (media loads, link previews, etc.).  Calling window.history.back()
+  // would traverse those entries rather than returning to /messages.
+  // Solution: push a sentinel entry on mount so the hardware back button
+  // has exactly ONE thing to pop; intercept the resulting popstate event and
+  // navigate directly to /messages via wouter (bypasses the dirty history).
+  // The in-thread ArrowLeft button also calls window.history.back() so both
+  // paths converge through the same handler.
+  useEffect(() => {
+    if (onBack) return;
+    const sentinel = { _flexaConvBack: convId };
+    window.history.pushState(sentinel, "");
+
+    let handled = false;
+    const onPop = () => {
+      if (handled) return;
+      handled = true;
+      setLocation("/messages");
+    };
+
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      // If the sentinel is still on top (e.g. user navigated away via a Link),
+      // silently pop it so we don't leave garbage in the session history.
+      if (window.history.state?._flexaConvBack === convId) {
+        handled = true;            // prevent onPop from firing again
+        window.history.back();
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convId, onBack]);
+
+  const [text, setText] = useState("");
+  const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [typingOther, setTypingOther] = useState(false);
+  const [otherOnline, setOtherOnline] = useState<boolean | null>(null);
+  const [otherLastSeen, setOtherLastSeen] = useState<string | null>(null);
+  const [mediaModal, setMediaModal] = useState<{ url: string; type: "image" | "video" } | null>(null);
+  const [isNight, setIsNight] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingPaused, setRecordingPaused] = useState(false);
+  const [recordingSecs, setRecordingSecs] = useState(0);
+  const [voiceFinalizing, setVoiceFinalizing] = useState(false);
+  const [sendingVoiceId, setSendingVoiceId] = useState<string | null>(null);
+  const [pendingVoices, setPendingVoices] = useState<PendingVoiceMessage[]>([]);
+  const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
+  const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
+  const autoTranslatedRef = useRef<Set<number>>(new Set());
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceSessionRef = useRef<{
+    recorder: MediaRecorder;
+    stream: MediaStream;
+    chunks: Blob[];
+    recordedMime: string;
+    cancelled: boolean;
+    failed: boolean;
+    finalized: boolean;
+    finalize: () => Promise<void>;
+  } | null>(null);
+  const voiceBusyRef = useRef(false);
+
+  useEffect(() => {
+    if (!showEmojiPanel) return;
+    const closeWhenTappingOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-emoji-panel], [data-emoji-trigger]")) return;
+      setShowEmojiPanel(false);
+    };
+    document.addEventListener("pointerdown", closeWhenTappingOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
+  }, [showEmojiPanel]);
+  const voiceQueueBusyRef = useRef(false);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const recordingMeterRafRef = useRef<number | null>(null);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const recordingAnalyserRef = useRef<AnalyserNode | null>(null);
+  const recordingSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const msgContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const audioCaptureInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const socket = useSocket();
+  const c = theme;
+  const isAndroidMobile = typeof navigator !== "undefined" && (
+    /Android/i.test(navigator.userAgent) ||
+    (/FlexaMarket/i.test(navigator.userAgent) && typeof window !== "undefined" && window.innerWidth <= 374)
+  );
+  // Warm coral for light mode (matches mockup send button & attach icon), violet for dark
+  const composerActionColor = c.isDark ? "#A5B4FC" : "#df715b";
+
+  useEffect(() => {
+    const input = chatInputRef.current;
+    if (!input) return;
+    input.style.height = "0px";
+    input.style.height = `${Math.min(Math.max(input.scrollHeight, 24), 120)}px`;
+  }, [text]);
+
+  // Detect if night is active by checking pageBg
+  const isDarkMode = c.isDark;
+
+  const {
+    data: messages,
+    isLoading,
+    isFetching: messagesFetching,
+    isError: messagesError,
+    refetch: refetchMessages,
+  } = useGetMessages(convId, {
+    query: {
+      enabled: !!user && !authLoading && Number.isInteger(convId),
+      queryKey: getGetMessagesQueryKey(convId),
+      staleTime: 15_000,
+      refetchInterval: 5000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      // Retry the first request quietly so the conversation can open without
+      // exposing a transient error state to the user.
+      retry: 2,
+      retryDelay: attemptIndex => Math.min(400 * 2 ** attemptIndex, 1_500),
+    },
+    request: { timeoutMs: 6_000 },
+  });
+  const { data: convs } = useGetConversations({
+    query: {
+      enabled: !!user && !authLoading,
+      queryKey: getGetConversationsQueryKey(),
+      refetchInterval: 5000,
+      refetchIntervalInBackground: true,
+      refetchOnWindowFocus: true,
+      refetchOnMount: true,
+      retry: 0,
+    },
+    request: { timeoutMs: 6_000 },
+  });
+  const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
+  const sendMsg = useSendMessage();
+
+  useEffect(() => {
+    socket.joinConv(convId);
+    const unsub = socket.onNewMessage((msg: any) => {
+      if (msg.conversationId !== convId) return;
+      queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+        const list: any[] = Array.isArray(old) ? old : [];
+        if (list.find((m: any) => m.id === msg.id)) return list;
+        return [...list, msg];
+      });
+      queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+      setTimeout(() => scrollToBottom(true), 60);
+    });
+    const unsubListened = socket.onAudioListened(({ convId: cid, msgId }) => {
+      if (cid !== convId) return;
+      queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((m: any) => m.id === msgId ? { ...m, isListened: true } : m);
+      });
+    });
+    const unsubDeleted = socket.onMsgDeleted(({ convId: cid, msgId }) => {
+      if (cid !== convId) return;
+      queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((m: any) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m);
+      });
+    });
+    const unsubTyping = socket.onTyping(({ convId: cid }) => { if (cid === convId) setTypingOther(true); });
+    const unsubStop = socket.onStopTyping(({ convId: cid }) => { if (cid === convId) setTypingOther(false); });
+    return () => { socket.leaveConv(convId); unsub(); unsubListened(); unsubDeleted(); unsubTyping(); unsubStop(); };
+  }, [convId, queryClient, socket]);
+
+  useEffect(() => {
+    const refreshWhenAvailable = () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+      queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+    };
+    document.addEventListener("visibilitychange", refreshWhenAvailable);
+    window.addEventListener("online", refreshWhenAvailable);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenAvailable);
+      window.removeEventListener("online", refreshWhenAvailable);
+    };
+  }, [queryClient, convId]);
+
+  // ── Presence ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!conv?.otherUserId) return;
+    if (user?.id) socket.emitPresenceJoin(user.id);
+    const fetchPresence = () => {
+      fetch(`/api/users/${conv.otherUserId}/presence`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (typeof d.isOnline === "boolean") setOtherOnline(d.isOnline);
+          if (d.lastSeenAt) setOtherLastSeen(d.lastSeenAt);
+        })
+        .catch(() => {});
+    };
+    fetchPresence();
+    const unsubPresence = socket.onPresenceStatus(({ userId, isOnline, lastSeenAt }) => {
+      if (userId === conv.otherUserId) {
+        setOtherOnline(isOnline);
+        if (lastSeenAt) setOtherLastSeen(lastSeenAt);
+      }
+    });
+    socket.queryPresence(conv.otherUserId);
+    const interval = setInterval(fetchPresence, 30_000);
+    return () => { clearInterval(interval); unsubPresence(); };
+  }, [conv?.otherUserId, user?.id, token, socket]);
+
+  const isFirstLoadRef = useRef(true);
+  const prevMsgCountRef = useRef(0);
+  useEffect(() => {
+    isFirstLoadRef.current = true;
+    prevMsgCountRef.current = 0;
+  }, [convId]);
+
+  const scrollToBottom = (smooth = false) => {
+    const el = msgContainerRef.current;
+    if (!el) { bottomRef.current?.scrollIntoView({ behavior: "auto" }); return; }
+    if (smooth && el.scrollHeight - el.scrollTop - el.clientHeight < 400) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  };
+
+  useEffect(() => {
+    if (!messages) return;
+    const count = (messages as any[]).length;
+    const isFirst = isFirstLoadRef.current;
+    isFirstLoadRef.current = false;
+    // Only scroll to bottom on first load or when NEW messages arrive — never on periodic refetches
+    if (isFirst || count > prevMsgCountRef.current) {
+      scrollToBottom(!isFirst);
+    }
+    prevMsgCountRef.current = count;
+  }, [messages]);
+
+  // ── Translation helpers ────────────────────────────────────────────────────
+  const translateMessage = useCallback(async (msgId: number) => {
+    if (translatingIds.has(msgId) || translations.has(msgId)) return;
+    setTranslatingIds(prev => { const n = new Set(prev); n.add(msgId); return n; });
+    try {
+      const tk = localStorage.getItem("flexamarket_token") ?? "";
+      const res = await fetch(`/api/messages/${msgId}/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+        body: JSON.stringify({ targetLanguage: user?.preferredLanguage || "en" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTranslations(prev => new Map(prev).set(msgId, { translatedText: data.translatedText, detectedLanguage: data.detectedLanguage }));
+      }
+    } catch { /* silent — user can retry manually */ }
+    setTranslatingIds(prev => { const n = new Set(prev); n.delete(msgId); return n; });
+  }, [translatingIds, translations, user?.preferredLanguage]);
+
+  const handleTyping = () => {
+    if (user) socket.emitTyping(convId, user.id);
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      if (user) socket.emitStopTyping(convId, user.id);
+    }, 2000);
+  };
+
+  const doSend = useCallback((body: {
+    content?: string; messageType?: MsgType; mediaUrl?: string; imageUrl?: string;
+  }) => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    if (user) socket.emitStopTyping(convId, user.id);
+    sendMsg.mutate({ id: convId, data: body as any }, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+        queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+        setTimeout(() => scrollToBottom(true), 100);
+      },
+    });
+  }, [convId, queryClient, sendMsg, socket, user]);
+
+  const sendText = () => {
+    if (!text.trim() || isRestricted) return;
+    const content = text.trim();
+    setText("");
+    setShowEmojiPanel(false);
+    doSend({ content, messageType: "text" });
+  };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+  };
+
+  const stopRecordingMeter = useCallback(() => {
+    if (recordingMeterRafRef.current !== null) {
+      cancelAnimationFrame(recordingMeterRafRef.current);
+      recordingMeterRafRef.current = null;
+    }
+    recordingSourceRef.current?.disconnect();
+    recordingSourceRef.current = null;
+    recordingAnalyserRef.current = null;
+    const ctx = recordingAudioContextRef.current;
+    recordingAudioContextRef.current = null;
+    if (ctx && ctx.state !== "closed") void ctx.close().catch(() => {});
+    recordingBarRefs.current.forEach(bar => {
+      if (bar) bar.style.height = "4px";
+    });
+  }, []);
+
+  const startRecordingMeter = useCallback((stream: MediaStream) => {
+    stopRecordingMeter();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    try {
+      const ctx: AudioContext = new AudioContextCtor();
+      const analyser = ctx.createAnalyser();
+      const source = ctx.createMediaStreamSource(stream);
+      analyser.fftSize = 256;
+      analyser.minDecibels = -75;
+      analyser.maxDecibels = -20;
+      analyser.smoothingTimeConstant = 0.72;
+      source.connect(analyser);
+      recordingAudioContextRef.current = ctx;
+      recordingAnalyserRef.current = analyser;
+      recordingSourceRef.current = source;
+      if (ctx.state === "suspended") void ctx.resume().catch(() => {});
+
+      const samples = new Uint8Array(analyser.frequencyBinCount);
+      const draw = () => {
+        const recorderState = mediaRecorderRef.current?.state;
+        if (recorderState === "recording") {
+          analyser.getByteFrequencyData(samples);
+          const usableBins = Math.min(64, samples.length);
+          recordingBarRefs.current.forEach((bar, i) => {
+            if (!bar) return;
+            const bin = Math.min(usableBins - 1, 2 + Math.floor((i / WAVE_BARS.length) * (usableBins - 2)));
+            const nearby = (samples[bin] + samples[Math.min(bin + 1, usableBins - 1)]) / 2;
+            const height = Math.max(4, Math.min(42, 4 + (nearby / 255) * 42));
+            bar.style.height = `${Math.round(height)}px`;
+          });
+        } else {
+          recordingBarRefs.current.forEach(bar => {
+            if (bar) bar.style.height = "4px";
+          });
+        }
+        recordingMeterRafRef.current = requestAnimationFrame(draw);
+      };
+      recordingMeterRafRef.current = requestAnimationFrame(draw);
+    } catch {
+      stopRecordingMeter();
+    }
+  }, [stopRecordingMeter]);
+
+  const startVoiceRecording = async () => {
+    if (isRestricted || voiceBusyRef.current || uploading) return;
+    voiceBusyRef.current = true;
+    setShowEmojiPanel(false);
+    chatInputRef.current?.blur();
+    let stream: MediaStream | null = null;
+    try {
+      // Android WebView behaves more reliably when Gboard has fully dismissed
+      // before it opens the native microphone permission / capture session.
+      if (isAndroidMobile) {
+        await new Promise(resolve => window.setTimeout(resolve, 120));
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const isAppleMobile =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const candidates = isAppleMobile
+        ? ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm;codecs=opus", "audio/webm"]
+        : ["audio/webm;codecs=opus", "audio/webm", "audio/mp4;codecs=mp4a.40.2", "audio/mp4"];
+      const requestedMime = candidates.find(type => MediaRecorder.isTypeSupported(type)) ?? "";
+      const mr = requestedMime
+        ? new MediaRecorder(stream, { mimeType: requestedMime })
+        : new MediaRecorder(stream);
+      const recordedMime = mr.mimeType || requestedMime || (isAppleMobile ? "audio/mp4" : "audio/webm");
+      const activeStream = stream;
+      const session = {
+        recorder: mr,
+        stream: activeStream,
+        chunks: [] as Blob[],
+        recordedMime,
+        cancelled: false,
+        failed: false,
+        finalized: false,
+        finalize: async () => {},
+      };
+      const finalizeSession = async () => {
+        if (session.finalized) return;
+        session.finalized = true;
+        stopRecordingMeter();
+        session.stream.getTracks().forEach(t => t.stop());
+        if (voiceSessionRef.current === session) voiceSessionRef.current = null;
+        if (mediaRecorderRef.current === session.recorder) mediaRecorderRef.current = null;
+        try {
+          if (session.cancelled || session.failed) return;
+          const blob = new Blob(session.chunks, { type: session.recordedMime });
+          if (blob.size < 100) return;
+          try {
+            // Persist before uploading so a weak connection cannot destroy the recording.
+            const uploadMime = session.recordedMime.split(";")[0].trim();
+            const queuedVoice = await savePendingVoice({ conversationId: convId, blob, mimeType: uploadMime });
+            setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
+            setTimeout(() => scrollToBottom(true), 50);
+            void flushPendingVoices();
+          } catch {
+            toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
+          }
+        } finally {
+          session.chunks = [];
+          voiceBusyRef.current = false;
+          setVoiceFinalizing(false);
+        }
+      };
+      session.finalize = finalizeSession;
+      voiceSessionRef.current = session;
+      mr.ondataavailable = e => { if (e.data.size > 0) session.chunks.push(e.data); };
+      mr.onstop = () => { void session.finalize(); };
+      mr.onerror = () => {
+        session.failed = true;
+        setVoiceFinalizing(true);
+        stopRecordingMeter();
+        session.stream.getTracks().forEach(t => t.stop());
+        setIsRecording(false);
+        stopRecordingTimer();
+        toast({ title: t("messages.voiceUploadFailed"), variant: "destructive" });
+        // Browsers normally dispatch stop after error; cover implementations
+        // that transition directly to inactive without a stop callback.
+        if (session.recorder.state === "inactive") {
+          queueMicrotask(() => { void session.finalize(); });
+        }
+      };
+      mr.start(100);
+      mediaRecorderRef.current = mr;
+      setIsRecording(true);
+      setRecordingPaused(false);
+      setRecordingSecs(0);
+      startRecordingMeter(stream);
+      recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+    } catch {
+      stream?.getTracks().forEach(t => t.stop());
+      voiceBusyRef.current = false;
+      setVoiceFinalizing(false);
+      stopRecordingMeter();
+      toast({ title: t("messages.micDenied"), variant: "destructive" });
+    }
+  };
+
+  const sendQueuedVoice = useCallback((body: { messageType: "audio"; mediaUrl: string; content: string }) => new Promise<void>((resolve, reject) => {
+      sendMsg.mutate({ id: convId, data: body as any }, {
+        onSuccess: (createdMessage: any) => {
+            // Put the confirmed message into the cache before removing its local
+            // outbox bubble. This prevents a successful voice send from
+            // disappearing in the gap before the refetch returns.
+            if (createdMessage?.id) {
+              queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+                const list: any[] = Array.isArray(old) ? old : [];
+                return list.some(message => message.id === createdMessage.id)
+                  ? list
+                  : [...list, createdMessage];
+              });
+            }
+            queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+            queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
+            setTimeout(() => scrollToBottom(true), 100);
+            resolve();
+          },
+        onError: reject,
+      });
+    }), [convId, queryClient, sendMsg]);
+
+    const flushPendingVoices = useCallback(async () => {
+      if (voiceQueueBusyRef.current || isRestricted) return;
+      voiceQueueBusyRef.current = true;
+      try {
+        const pending = await listPendingVoices(convId);
+        setPendingVoices(pending);
+        if (typeof navigator !== "undefined" && !navigator.onLine) return;
+        for (const item of pending) {
+          setSendingVoiceId(item.id);
+          try {
+            let mediaUrl = item.mediaUrl;
+            if (!mediaUrl) {
+              setUploading(true);
+              const token = localStorage.getItem("flexamarket_token") ?? "";
+              const blob = new Blob([item.bytes], { type: item.mimeType });
+              mediaUrl = await uploadMedia(blob, item.mimeType, token);
+              await updatePendingVoice(item.id, { mediaUrl });
+            }
+            await sendQueuedVoice({ messageType: "audio", mediaUrl, content: "" });
+            await removePendingVoice(item.id);
+            setPendingVoices(current => current.filter(voice => voice.id !== item.id));
+          } catch (error) {
+            const failure = {
+              attempts: item.attempts + 1,
+              lastError: error instanceof Error ? error.message : "Voice delivery failed",
+            };
+            await updatePendingVoice(item.id, failure).catch(() => {});
+            setPendingVoices(current => current.map(voice => voice.id === item.id ? { ...voice, ...failure } : voice));
+            break;
+          } finally {
+            setSendingVoiceId(null);
+            setUploading(false);
+          }
+        }
+      } catch (error) {
+        console.error("Unable to process pending voice messages", error);
+      } finally {
+        voiceQueueBusyRef.current = false;
+      }
+    }, [convId, isRestricted, sendQueuedVoice]);
+
+    useEffect(() => {
+      const wakeQueue = () => { void flushPendingVoices(); };
+      void flushPendingVoices();
+      window.addEventListener("online", wakeQueue);
+      window.addEventListener("focus", wakeQueue);
+      document.addEventListener("visibilitychange", wakeQueue);
+      const retryTimer = window.setInterval(wakeQueue, 15000);
+      return () => {
+        window.removeEventListener("online", wakeQueue);
+        window.removeEventListener("focus", wakeQueue);
+        document.removeEventListener("visibilitychange", wakeQueue);
+        window.clearInterval(retryTimer);
+      };
+    }, [flushPendingVoices]);
+
+      const stopVoiceRecording = (cancel = false) => {
+    stopRecordingTimer();
+    setIsRecording(false);
+    setRecordingPaused(false);
+    setRecordingSecs(0);
+    const session = voiceSessionRef.current;
+    if (!session) return;
+    session.cancelled = cancel;
+    setVoiceFinalizing(true);
+    stopRecordingMeter();
+    if (session.recorder.state !== "inactive") {
+      session.recorder.stop();
+    } else {
+      void session.finalize();
+    }
+  };
+
+  const toggleRecordingPause = () => {
+    const mr = mediaRecorderRef.current;
+    if (!mr) return;
+    if (mr.state === "recording") {
+      mr.pause();
+      stopRecordingTimer();
+      setRecordingPaused(true);
+    } else if (mr.state === "paused") {
+      mr.resume();
+      setRecordingPaused(false);
+      recordingTimerRef.current = setInterval(() => setRecordingSecs(s => s + 1), 1000);
+    }
+  };
+
+  const fmtRecSecs = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const tkn = localStorage.getItem("flexamarket_token") ?? "";
+    for (const file of files) {
+      const isVideo = file.type.startsWith("video/");
+      const isImage = file.type.startsWith("image/");
+      if (!isImage && !isVideo) {
+        alert(t("messages.onlyPhotosVideos"));
+        return;
+      }
+      const limitMB = isVideo ? 50 : 10;
+      if (file.size > limitMB * 1024 * 1024) {
+        alert(t("messages.fileTooLarge", { size: limitMB }));
+        return;
+      }
+    }
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const isVideo = file.type.startsWith("video/");
+        const url = await uploadMedia(file, file.type, tkn);
+        doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
+      }
+    } catch { alert(t("messages.uploadFailed")); }
+    finally { setUploading(false); }
+  };
+
+  const handleAudioCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert(t("messages.fileTooLarge", { size: 25 }));
+      return;
+    }
+    try {
+      const contentType = file.type || "audio/mp4";
+      const queuedVoice = await savePendingVoice({
+        conversationId: convId,
+        blob: file,
+        mimeType: contentType,
+      });
+      setPendingVoices(current => [...current.filter(item => item.id !== queuedVoice.id), queuedVoice]);
+      setTimeout(() => scrollToBottom(true), 50);
+      void flushPendingVoices();
+    } catch {
+      alert(t("messages.uploadFailed"));
+    }
+  };
+
+  useEffect(() => () => {
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    stopRecordingTimer();
+    const session = voiceSessionRef.current;
+    if (session) {
+      session.cancelled = true;
+      if (session.recorder.state !== "inactive") session.recorder.stop();
+      else void session.finalize();
+      session.stream.getTracks().forEach(track => track.stop());
+    }
+    stopRecordingMeter();
+  }, [stopRecordingMeter]);
+
+  const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
+  const timeline = buildChatTimeline(msgList, pendingVoices);
+  // Find the last message sent by me (for status icon)
+  let lastSentByMeId: number | null = null;
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i];
+    if (entry.kind === "message" && Number(entry.item.senderId) === Number(user?.id)) {
+      lastSentByMeId = entry.item.id;
+      break;
+    }
+  }
+
+  // Auto-translate all incoming text messages to match the user's app language
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!user?.preferredLanguage || !msgList.length) return;
+    const received = msgList.filter(m => m.senderId !== user.id && m.messageType === "text" && !!m.content?.trim());
+    for (const m of received) {
+      if (!autoTranslatedRef.current.has(m.id) && !translations.has(m.id)) {
+        autoTranslatedRef.current.add(m.id);
+        translateMessage(m.id);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgList.length, user?.preferredLanguage]);
+
+  // Called by AudioBubble when the recipient first plays a voice note.
+  const handleAudioListened = useCallback((msgId: number) => {
+    const tkn = localStorage.getItem("flexamarket_token") ?? "";
+    fetch(`/api/conversations/${convId}/messages/${msgId}/listened`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${tkn}` },
+    }).catch(() => {});
+    // Optimistic local update (socket event will confirm for sender)
+    queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+      if (!Array.isArray(old)) return old;
+      return old.map((m: any) => m.id === msgId ? { ...m, isListened: true } : m);
+    });
+  }, [convId, queryClient]);
+
+  const handleDeleteMsg = useCallback((msgId: number) => {
+    const tkn = localStorage.getItem("flexamarket_token") ?? "";
+    fetch(`/api/conversations/${convId}/messages/${msgId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${tkn}` },
+    }).catch(() => {});
+    // Optimistic local update — socket event will sync to the other party
+    queryClient.setQueryData(getGetMessagesQueryKey(convId), (old: any) => {
+      if (!Array.isArray(old)) return old;
+      return old.map((m: any) => m.id === msgId ? { ...m, isDeleted: true, content: "" } : m);
+    });
+  }, [convId, queryClient]);
+
+  // ── iOS safe-area top inset (inline — more reliable than CSS class in WKWebView)
+  // max(env(safe-area-inset-top), var(--sat)) can silently return 0 in some
+  // WKWebView builds. Reading the JS-set CSS variable directly and applying it
+  // as an inline numeric value is guaranteed to win over any CSS rule.
+  const threadHeaderTopPad = (() => {
+    if (typeof document === "undefined") return 8;
+    // Priority 1: injected by the native React Native WebView before page load
+    const native = (window as any).__flexaNativeSafeTop;
+    if (typeof native === "number" && native > 0) return native + 8;
+    // Priority 2: --sat set synchronously in index.html bootstrap
+    const v = document.documentElement.style.getPropertyValue("--sat") ||
+              getComputedStyle(document.documentElement).getPropertyValue("--sat");
+    const sat = parseInt(v, 10);
+    if (!isNaN(sat) && sat > 0) return sat + 8;
+    // Priority 3: FlexaMarket WebView UA or standard iOS UA
+    if (/FlexaMarket|iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      return (window.screen.height >= 812 ? 59 : 20) + 8;
+    }
+    return 8;
+  })();
+
+  return (
+    <ChatViewport background={c.pageBg}>
+
+      {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
+      <div className="chat-thread-header" style={{
+        display: "flex", alignItems: "center", gap: 11,
+        paddingTop: threadHeaderTopPad,
+        paddingBottom: "11px", paddingLeft: "13px", paddingRight: "13px",
+        borderBottom: `1px solid ${c.headerBorder}`,
+        background: c.headerBg, flexShrink: 0, overflow: "hidden",
+      }}>
+        {/* Back button — always visible.
+            Uses window.history.back() to pop the sentinel we pushed on mount.
+            The popstate handler then calls setLocation("/messages"), which
+            ensures we land on the list regardless of any extra WebView history
+            entries that accumulated while the conversation was open. */}
+        <button
+          type="button"
+          onClick={onBack ?? (() => window.history.back())}
+          style={{
+            width: 40, height: 40, borderRadius: "50%", background: "transparent",
+            border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+            color: c.nameColor, cursor: "pointer", flexShrink: 0,
+            touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+            userSelect: "none",
+          } as React.CSSProperties}
+        >
+          <ArrowLeft style={{ width: 21, height: 21 }} />
+        </button>
+
+      {conv && (<>
+
+          {/* Avatar with rounded-square shape + online indicator — mockup approved style */}
+          <Link href={`/profile/${conv.otherUserId}`} style={{ flexShrink: 0 }}>
+            <div style={{ position: "relative", cursor: "pointer" }}>
+              <div style={{
+                width: 43, height: 43, borderRadius: 14,
+                overflow: "hidden", flexShrink: 0,
+                background: "linear-gradient(145deg, #203a4f, #df795e)",
+                boxShadow: "0 4px 10px rgba(37,52,50,0.14)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {conv.otherUserAvatar ? (
+                  <img
+                    src={conv.otherUserAvatar}
+                    alt={conv.otherUserName}
+                    style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                    {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
+                  </span>
+                )}
+              </div>
+              {/* Online indicator — bottom-right of avatar */}
+              <span style={{
+                position: "absolute", right: -1, bottom: -1,
+                width: 11, height: 11, borderRadius: "50%",
+                background: otherOnline ? c.presenceOn : "transparent",
+                border: otherOnline ? `2px solid ${c.isDark ? c.headerBg : "#fffefa"}` : "none",
+              }} />
+            </div>
+          </Link>
+
+          {/* Name + status */}
+          <Link href={`/profile/${conv.otherUserId}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: c.nameColor, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {conv.otherUserName}
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+              {otherOnline && (
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.presenceOn, flexShrink: 0 }} />
+              )}
+              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: otherOnline ? c.presenceOn : c.presenceOff }}>
+                {otherOnline
+                  ? t("messages.online")
+                  : otherLastSeen
+                    ? formatLastSeen(otherLastSeen, t)
+                    : ""}
+              </p>
+            </div>
+          </Link>
+
+          {/* Actions — compact (40×40) */}
+          <div className="chat-header-actions" style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+            {/* Theme toggle */}
+            <button
+              className="chat-theme-toggle"
+              type="button"
+              onClick={onToggleTheme}
+              title={isDarkMode ? t("messages.sunlightMode") : t("messages.nightMode")}
+              style={{
+                width: 40, height: 40, borderRadius: "50%",
+                background: "transparent", border: "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              {isDarkMode
+                ? <Sun style={{ width: 19, height: 19, color: "#FCD34D" }} />
+                : <Moon style={{ width: 19, height: 19, color: "#818CF8" }} />}
+            </button>
+
+            {/* Video call */}
+            <button type="button" style={{
+              width: 40, height: 40, borderRadius: "50%", background: "transparent",
+              border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", flexShrink: 0,
+            }}>
+              <Video style={{ width: 19, height: 19, color: c.iconColor }} />
+            </button>
+
+            {/* Profile */}
+            <Link href={`/profile/${conv.otherUserId}`}>
+              <button type="button" style={{
+                width: 40, height: 40, borderRadius: "50%", background: "transparent",
+                border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", flexShrink: 0,
+              }}>
+                <Phone style={{ width: 19, height: 19, color: c.iconColor }} />
+              </button>
+            </Link>
+
+            {/* Admin block */}
+            {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
+              <AdminBlockButton
+                targetUserId={conv.otherUserId}
+                targetUserName={conv.otherUserName}
+                variant="icon"
+              />
+            )}
+          </div>
+        </>)}
+      </div>
+
+      {/* Keep the reason for the conversation visible while the thread is open. */}
+      {conv?.listingId && (
+        <Link
+          href={`/listings/${conv.listingId}`}
+          style={{ textDecoration: "none", flexShrink: 0 }}
+        >
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            padding: "9px 13px",
+            background: c.contextBg,
+            borderBottom: `1px solid ${c.contextBorder}`,
+            color: c.contextText,
+          }}>
+            <div style={{
+              width: 50, height: 50, borderRadius: 10, overflow: "hidden",
+              flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {conv.listingImage ? (
+                <img
+                  src={conv.listingImage}
+                  alt={conv.listingTitle}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <span style={{ fontSize: 22 }}>🛍️</span>
+              )}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{
+                margin: 0, fontSize: 10, fontWeight: 800,
+                letterSpacing: "0.08em", textTransform: "uppercase",
+                color: c.listSub,
+              }}>
+                {t("messages.productContext")}
+              </p>
+              <p style={{
+                margin: "3px 0 0", fontSize: 14, fontWeight: 700,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {conv.listingTitle}
+              </p>
+              {conv.listingPrice > 0 && (
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: c.listSub }}>
+                  ${Number(conv.listingPrice).toFixed(2)}
+                </p>
+              )}
+            </div>
+            <span aria-hidden="true" style={{ fontSize: 25, lineHeight: 1, color: c.listSub }}>›</span>
+          </div>
+        </Link>
+      )}
+
+      {/* ── Messages scroll area — warm ivory/mint radial gradient background ── */}
+      <div
+        ref={msgContainerRef}
+        style={{
+          flex: 1, overflowY: "auto", overflowX: "hidden",
+          background: c.isDark
+            ? c.pageBg
+            : `radial-gradient(circle at 10% 16%, rgba(241,229,201,0.4), transparent 28%),
+               radial-gradient(circle at 92% 67%, rgba(218,236,225,0.7), transparent 30%),
+               #f8f8f3`,
+          position: "relative",
+          // Explicitly tell iOS this container handles vertical pan — prevents
+          // the browser from suspending scroll when a child captures pointerdown
+          touchAction: "pan-y",
+          overscrollBehavior: "contain",
+        } as React.CSSProperties}
+      >
+        {isLoading && msgList.length === 0 && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            <p style={{ color: c.listSub, fontSize: 14 }}>{t("messages.loading")}</p>
+          </div>
+        )}
+        {messagesError && msgList.length === 0 && !messagesFetching && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: 24, textAlign: "center" }}>
+              <MessageCircle style={{ width: 36, height: 36, color: c.emptyIcon }} />
+              <p style={{ color: c.listSub, fontSize: 14, margin: 0, maxWidth: 250 }}>
+                {t("messages.loadError", "Nou pa ka chaje mesaj yo kounye a.")}
+              </p>
+              <button
+                type="button"
+                onClick={() => void refetchMessages()}
+                disabled={messagesFetching}
+                style={{
+                  border: "none", borderRadius: 10, padding: "10px 18px",
+                  background: c.sendBg, color: "#fff", fontWeight: 700,
+                  cursor: messagesFetching ? "wait" : "pointer", opacity: messagesFetching ? 0.6 : 1,
+                }}
+              >
+                {t("messages.retry", { defaultValue: "Try again", lng: "en" })}
+              </button>
+            </div>
+          </div>
+        )}
+        {messagesError && msgList.length > 0 && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "6px 14px 0" }}>
+            <button
+              type="button"
+              onClick={() => void refetchMessages()}
+              disabled={messagesFetching}
+              style={{
+                border: "none", background: "transparent", color: c.listSub,
+                fontSize: 12, textDecoration: "underline", cursor: messagesFetching ? "wait" : "pointer",
+              }}
+            >
+              {t("messages.refresh", "Pwoblèm koneksyon — chaje ankò")}
+            </button>
+          </div>
+        )}
+        {!isLoading && !messagesError && msgList.length === 0 && pendingVoices.length === 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "0 32px" }}>
+            <MessageCircle style={{ width: 40, height: 40, color: c.emptyIcon, marginBottom: 8 }} />
+            <p style={{ fontSize: 14, color: c.emptyText, margin: 0 }}>
+              {t("messages.startConversation", "Kòmanse konvèsasyon an")}
+            </p>
+          </div>
+        )}
+
+        {(msgList.length > 0 || pendingVoices.length > 0) && (
+          <div style={{ display: "flex", flexDirection: "column", padding: "18px 14px 12px", maxWidth: 680, margin: "0 auto", boxSizing: "border-box", overflowX: "hidden" }}>
+            <div style={{ flex: 1 }} />
+            {timeline.map((entry, idx) => {
+              const prev = timeline[idx - 1];
+              const next = timeline[idx + 1];
+              const startsDay = entry.day != null && entry.day !== prev?.day;
+              const isFirstInGroup = !sameChatGroup(prev, entry, Number(user?.id));
+              const isLastInGroup = !sameChatGroup(entry, next, Number(user?.id));
+
+              return (
+                <React.Fragment key={entry.key}>
+                  {startsDay && <ChatDateDivider createdAt={entry.createdAt} isDark={c.isDark} />}
+                  <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 8 : 2 }}>
+                    {entry.kind === "pending" ? (
+                      <PendingVoiceBubble item={entry.item} theme={c}
+                        isSending={sendingVoiceId === entry.item.id}
+                        onRetry={() => void flushPendingVoices()} />
+                    ) : (
+                      <MsgBubble
+                        msg={entry.item} isMe={Number(entry.item.senderId) === Number(user?.id)}
+                        isLastInGroup={isLastInGroup}
+                        isLastSentByMe={entry.item.id === lastSentByMeId}
+                        onMediaTap={(url, type) => setMediaModal({ url, type })}
+                        theme={theme}
+                        onAudioListened={handleAudioListened}
+                        onDeleteMsg={handleDeleteMsg}
+                        translation={translations.get(entry.item.id) ?? null}
+                        isTranslating={translatingIds.has(entry.item.id)}
+                        onTranslate={() => translateMessage(entry.item.id)}
+                      />
+                    )}
+                  </div>
+                </React.Fragment>
+              );
+            })}
+
+            {/* Typing indicator — warm ivory bubble */}
+            {typingOther && (
+              <div style={{ display: "flex", justifyContent: "flex-start", marginTop: 9, paddingLeft: 4 }}>
+                <div style={{
+                  background: c.typingBg,
+                  border: `1px solid ${c.isDark ? "rgba(255,255,255,0.10)" : "rgba(223,230,221,0.9)"}`,
+                  borderRadius: "18px 18px 18px 5px",
+                  padding: "10px 16px",
+                  boxShadow: c.isDark ? "none" : "0 3px 10px rgba(34,55,41,0.055)",
+                }}>
+                  <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                    {[0, 150, 300].map(delay => (
+                      <span key={delay} className="w-2 h-2 rounded-full animate-bounce" style={{ backgroundColor: c.typingDot, animationDelay: `${delay}ms`, display: "block", width: 7, height: 7, borderRadius: "50%" }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Emoji panel — slides up / down with animation ── */}
+      <TikTokEmojiPanel
+        visible={showEmojiPanel}
+        onRequestClose={() => {
+          setShowEmojiPanel(false);
+          setTimeout(() => chatInputRef.current?.focus(), 30);
+        }}
+        onEmojiSelect={(emoji) => {
+          setText(prev => insertEmojiAtCursor(chatInputRef.current, prev, emoji));
+          setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 30);
+        }}
+      />
+
+      {/* ── Input bar ──
+          IMPORTANT: do NOT set paddingBottom here — the .chat-input-bar CSS
+          class owns it so that env(safe-area-inset-bottom) is applied and
+          the home indicator / Dynamic Island never blocks the buttons. */}
+      <div className="chat-input-bar" style={{
+        flexShrink: 0,
+        // The viewport flex column already anchors this sibling below the
+        // message scroller. Sticky adds a second WebKit scroll constraint.
+        position: "relative", zIndex: 10,
+        background: c.inputWrapBg,
+        borderTop: `1px solid ${c.headerBorder}`,
+        paddingTop: "8px", paddingLeft: "10px", paddingRight: "10px",
+        /* paddingBottom intentionally omitted — CSS class handles safe-area */
+        maxWidth: "100vw", overflow: "hidden",
+      }}>
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
+        <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
+
+            {isRestricted ? (
+          <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
+        ) : isRecording ? (
+          <div style={{
+            width: "100%", boxSizing: "border-box",
+            background: c.isDark ? c.inputBg : "#FFFFFF",
+            border: `1px solid ${c.isDark ? c.listBorder : "#E5E7EB"}`,
+            borderRadius: 28, padding: "13px 16px 12px",
+            boxShadow: c.isDark ? "none" : "0 2px 10px rgba(15,23,42,0.06)",
+          }}>
+            {/* Live recording waveform */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <span style={{
+                flexShrink: 0, width: 42,
+                color: c.isDark ? "#F8FAFC" : "#111827",
+                fontSize: 19, fontWeight: 500, fontVariantNumeric: "tabular-nums",
+              }}>
+                {fmtRecSecs(recordingSecs)}
+              </span>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 3, height: 46, flex: 1, minWidth: 0, overflow: "hidden",
+              }}>
+                {WAVE_BARS.map((height, i) => (
+                  <span
+                    key={i}
+                    ref={el => { recordingBarRefs.current[i] = el; }}
+                    style={{
+                      width: 3, minWidth: 2, height: "4px",
+                      borderRadius: 99, background: composerActionColor, opacity: recordingPaused ? 0.55 : 0.95,
+                      transformOrigin: "center",
+                      transition: "height 80ms linear, opacity 120ms ease",
+                    }}
+                  />
+                ))}
+              </div>
+              <span style={{
+                flexShrink: 0, borderRadius: 14, padding: "7px 10px",
+                background: c.isDark ? "rgba(165,180,252,0.14)" : "#EEF3FF",
+                color: composerActionColor, fontSize: 13, fontWeight: 700,
+              }}>
+                1x
+              </span>
+            </div>
+
+            {/* Recording controls */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr auto 1fr",
+              alignItems: "center", marginTop: 12,
+            }}>
+              <button
+                type="button"
+                onClick={() => stopVoiceRecording(true)}
+                aria-label={t("messages.deleteRecording", "Efase recording la")}
+                style={{
+                  justifySelf: "start", width: 44, height: 44, borderRadius: "50%",
+                  background: "none", border: "none", color: composerActionColor,
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <Trash2 style={{ width: 28, height: 28, strokeWidth: 1.8 }} />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleRecordingPause}
+                aria-label={recordingPaused
+                  ? t("messages.resumeRecording", "Kontinye recording la")
+                  : t("messages.pauseRecording", "Mete recording la sou poz")}
+                style={{
+                  justifySelf: "center", width: 58, height: 58, borderRadius: "50%",
+                  background: "none", border: `2px solid ${composerActionColor}`,
+                  color: composerActionColor, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {recordingPaused ? (
+                  <Play style={{ width: 23, height: 23, fill: "currentColor", marginLeft: 3 }} />
+                ) : (
+                  <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ width: 5, height: 22, borderRadius: 3, background: "currentColor" }} />
+                    <span style={{ width: 5, height: 22, borderRadius: 3, background: "currentColor" }} />
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => stopVoiceRecording(false)}
+                aria-label={t("messages.sendVoice", "Voye recording la")}
+                style={{
+                  justifySelf: "end", width: 58, height: 58, borderRadius: "50%",
+                  background: composerActionColor, border: "none", color: "#FFFFFF",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: "0 3px 8px rgba(37,99,235,0.22)",
+                }}
+              >
+                <Play style={{ width: 27, height: 27, fill: "currentColor", marginLeft: 3 }} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{
+            display: "flex", alignItems: "flex-end",
+            gap: isAndroidMobile ? 6 : 8,
+            minWidth: 0,
+            minHeight: isAndroidMobile ? 48 : 53,
+          }}>
+
+            {/* Add attachment — rounded circle with warm bg matching mockup */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              aria-label={t("messages.attach", "Ajoute foto oswa videyo")}
+              style={{
+                flexShrink: 0,
+                width: isAndroidMobile ? 36 : 38,
+                height: isAndroidMobile ? 36 : 38,
+                borderRadius: "50%",
+                background: c.isDark ? c.iconActiveBg : "#f0f3ed",
+                border: "none", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                color: composerActionColor, opacity: uploading ? 0.4 : 1,
+              }}
+            >
+              <Plus style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+            </button>
+
+            {/* Text pill — bordered rounded pill with cream/white background */}
+            <div style={{
+              minHeight: isAndroidMobile ? 44 : 46, minWidth: 0, flex: 1,
+              display: "flex", alignItems: "flex-end",
+              border: `1.5px solid ${c.isDark ? c.listBorder : "#d7ddd7"}`,
+              borderRadius: 24,
+              background: c.isDark ? c.inputBg : "#fff",
+              boxShadow: c.isDark ? "none" : "0 2px 10px rgba(27, 44, 35, 0.05)",
+              padding: "5px 5px 5px 2px",
+            }}>
+              <textarea
+                ref={chatInputRef}
+                value={text}
+                onChange={e => { setText(e.target.value); handleTyping(); }}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(); } }}
+                placeholder={uploading ? t("messages.uploading") : t("messages.placeholder")}
+                disabled={uploading}
+                className="chat-input w-full"
+                rows={1}
+                style={{
+                  fontSize: 16,
+                  lineHeight: "22px",
+                  minHeight: 34,
+                  maxHeight: isAndroidMobile ? 88 : 120,
+                  background: "transparent",
+                  border: "none",
+                  borderRadius: 18,
+                  color: c.inputText,
+                  padding: "6px 8px 6px 13px",
+                  outline: "none",
+                  boxShadow: "none",
+                  flex: 1,
+                  minWidth: 0,
+                  resize: "none",
+                  overflowY: "auto",
+                  fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", flexShrink: 0, height: 34 }}>
+                <button
+                  type="button"
+                  data-emoji-trigger
+                  onClick={() => {
+                    const next = !showEmojiPanel;
+                    setShowEmojiPanel(next);
+                    if (next) {
+                      chatInputRef.current?.blur();
+                      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
+                    } else {
+                      chatInputRef.current?.focus();
+                    }
+                  }}
+                  style={{
+                    width: 34, height: 34, borderRadius: "50%",
+                    background: showEmojiPanel ? "rgba(223,113,91,0.12)" : "none",
+                    border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: composerActionColor,
+                  }}
+                  aria-label={t("messages.sticker", "Sticker ak emoji")}
+                >
+                  <Smile style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+                </button>
+                {!isAndroidMobile && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      disabled={uploading}
+                      aria-label={t("messages.camera", "Pran yon foto")}
+                      style={{
+                        width: 34, height: 34, borderRadius: "50%",
+                        background: "none", border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                      }}
+                    >
+                      <Camera style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      aria-label={t("messages.attach", "Chwazi foto oswa videyo")}
+                      style={{
+                        width: 34, height: 34, borderRadius: "50%",
+                        background: "none", border: "none", cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                      }}
+                    >
+                      <Image style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Send / Mic — coral circle matching mockup */}
+            {text.trim() ? (
+              <button
+                type="button"
+                onClick={sendText}
+                disabled={uploading}
+                style={{
+                  flexShrink: 0,
+                  width: isAndroidMobile ? 41 : 43,
+                  height: isAndroidMobile ? 41 : 43,
+                  borderRadius: "50%",
+                  background: c.sendBg, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff", opacity: uploading ? 0.3 : 1,
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                }}
+              >
+                <Send style={{ width: 17, height: 17 }} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={isAndroidMobile ? () => audioCaptureInputRef.current?.click() : startVoiceRecording}
+                disabled={uploading || voiceFinalizing}
+                style={{
+                  flexShrink: 0,
+                  width: isAndroidMobile ? 41 : 43,
+                  height: isAndroidMobile ? 41 : 43,
+                  borderRadius: "50%",
+                  background: c.sendBg, border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                }}
+                aria-label={t("messages.recordVoice")}
+              >
+                <Mic style={{ width: 19, height: 19 }} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Media modal */}
+      {mediaModal && (
+        <MediaModal url={mediaModal.url} type={mediaModal.type} onClose={() => setMediaModal(null)} />
+      )}
+    </ChatViewport>
+  );
+}
+

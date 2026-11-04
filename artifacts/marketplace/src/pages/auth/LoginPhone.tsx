@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { PUBLIC_LANGUAGES } from "@/i18n";
 import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY } from "@/lib/phoneCountries";
+import { appPath, spaNavigate } from "@/lib/spaNavigate";
 
 const STEPS = [
   { label: "Phone", icon: Phone },
@@ -72,7 +73,7 @@ export default function LoginPhone() {
                 const params = new URLSearchParams(window.location.search);
                 const next = params.get("next");
                 if (next && next.startsWith("/") && !next.startsWith("//")) {
-                  window.location.href = next;
+                  spaNavigate(next, { replace: true });
                 } else {
                   setLocation("/");
                 }
@@ -85,8 +86,7 @@ export default function LoginPhone() {
                   return;
                 }
                 if (status === 403 || rawMsg.toLowerCase().includes("suspend")) {
-                  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-                  window.location.replace(`${base}/auth/suspended`);
+                  spaNavigate(appPath("/auth/suspended"), { replace: true });
                   return;
                 }
                 const msg = rawMsg || t("auth.noPhoneAccount", "No account found for this phone. Please sign up.");

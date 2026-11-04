@@ -31,6 +31,7 @@ import { DeliveryMenuCountryContext, canShowFMDeliveryLinks } from "@/contexts/d
 import { useSocket } from "@/hooks/useSocket";
 import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
+import AdminShell from "@/components/admin/AdminShell";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -883,9 +884,11 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isPaymentOperations =
     location === "/admin/stripe-transactions"
     || location === "/admin/moncash-transactions";
+  // Full enterprise admin console — hide marketplace chrome (bottom nav / storefront sidebar).
+  const isAdminConsole = /^\/admin(?:\/|$)/.test(location);
 
   // Pages where the footer should NOT render (full-screen / chat-like UIs)
-  const noFooter = isSellPage || [
+  const noFooter = isSellPage || isAdminConsole || [
     /^\/messages/,
     /^\/auth\//,
     /^\/checkout/,
@@ -909,6 +912,17 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/music(\/|$)/,
     /^\/music\/upload$/,
   ].some(rx => rx.test(location));
+
+  // Immersive admin shell — do not nest marketplace header/nav around it.
+  if (isAdminConsole) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div className="app-shell admin-console-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col min-h-dvh">
+          <AdminShell>{children}</AdminShell>
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
 
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>

@@ -43,6 +43,13 @@ import {
 } from "../lib/promaxBoostGating";
 import { logger } from "../lib/logger";
 import { getAdminScopeCities, listingInAdminScope, parseAdminCountries } from "../lib/adminScope";
+import {
+  normalizeSearchQuery,
+  searchTokens,
+  containsPattern,
+  prefixPattern,
+  suggestCorrection,
+} from "../lib/searchQuery";
 
 const CITIES_BY_COUNTRY: Record<string, string[]> = {
   Haiti: ["Port-au-Prince","Cap-Haïtien","Pétion-Ville","Delmas","Carrefour","Jacmel","Les Cayes","Gonaïves","Jérémie","Port-de-Paix"],
@@ -333,14 +340,47 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
   ];
   excludeBlockedSellers(baseConditions, req.userId);
-  if (q) baseConditions.push(or(ilike(listingsTable.title, `%${q}%`), ilike(listingsTable.description, `%${q}%`))!);
+  const searchQ = normalizeSearchQuery(q);
+  const isTextSearch = searchQ.length >= 1;
+  if (isTextSearch) {
+    const phrase = or(
+      ilike(listingsTable.title, containsPattern(searchQ)),
+      ilike(listingsTable.description, containsPattern(searchQ)),
+      ilike(listingsTable.city!, containsPattern(searchQ)),
+      ilike(listingsTable.location, containsPattern(searchQ)),
+      ilike(categoriesTable.name, containsPattern(searchQ)),
+    )!;
+    const tokens = searchTokens(searchQ);
+    if (tokens.length > 1) {
+      const tokenAnd = and(
+        ...tokens.map((tok) =>
+          or(
+            ilike(listingsTable.title, containsPattern(tok)),
+            ilike(listingsTable.description, containsPattern(tok)),
+            ilike(listingsTable.city!, containsPattern(tok)),
+            ilike(listingsTable.location, containsPattern(tok)),
+            ilike(categoriesTable.name, containsPattern(tok)),
+          )!,
+        ),
+      )!;
+      baseConditions.push(or(phrase, tokenAnd)!);
+    } else {
+      baseConditions.push(phrase);
+    }
+  }
   if (category) baseConditions.push(eq(categoriesTable.slug, category));
   if (subcategory) baseConditions.push(eq(subcategoriesTable.slug, subcategory));
   if (minPrice) baseConditions.push(gte(listingsTable.price, parseFloat(minPrice)));
   if (maxPrice) baseConditions.push(lte(listingsTable.price, parseFloat(maxPrice)));
   if (condition) baseConditions.push(eq(listingsTable.condition, condition));
-  if (location) baseConditions.push(ilike(listingsTable.location, `%${location}%`));
-  if (city) baseConditions.push(ilike(listingsTable.city!, `%${city}%`));
+  if (location) {
+    const locQ = normalizeSearchQuery(location);
+    if (locQ) baseConditions.push(ilike(listingsTable.location, containsPattern(locQ)));
+  }
+  if (city) {
+    const cityQ = normalizeSearchQuery(city);
+    if (cityQ) baseConditions.push(ilike(listingsTable.city!, containsPattern(cityQ)));
+  }
   if (boosted === "true") baseConditions.push(eq(listingsTable.isBoosted, true));
 
   const isAdmin = hasRole(req.user, "admin");
@@ -390,7 +430,8 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   const requestedHourKey = typeof hourKey === "string" && hourKey.trim() ? hourKey.trim() : undefined;
   const promaxResolution = await getPromaxOrderMetadataForHour(requestedHourKey);
   const promaxOrder = promaxResolution.order;
-  const promaxSnapshot = promaxDisabled === "1" || promaxDisabled === "true"
+  // Text search uses relevance ranking + DB pagination — skip PROMAX full-set reorder.
+  const promaxSnapshot = isTextSearch || promaxDisabled === "1" || promaxDisabled === "true"
     ? null
     : promaxResolution.snapshot;
   if (!promaxSnapshot && requestedHourKey) {
@@ -506,6 +547,17 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   let expandedFromScope: string | null = null;
   let runConditions = [...baseConditions];
 
+  const relevanceSql = isTextSearch
+    ? sql<number>`(CASE
+        WHEN ${listingsTable.title} ILIKE ${prefixPattern(searchQ)} THEN 0
+        WHEN ${listingsTable.title} ILIKE ${containsPattern(searchQ)} THEN 1
+        WHEN ${categoriesTable.name} ILIKE ${containsPattern(searchQ)} THEN 2
+        WHEN COALESCE(${listingsTable.city}, '') ILIKE ${containsPattern(searchQ)} THEN 3
+        WHEN ${listingsTable.location} ILIKE ${containsPattern(searchQ)} THEN 4
+        ELSE 5
+      END)`
+    : sql<number>`(0)::int`;
+
   async function runQuery(conds: typeof runConditions) {
     const query = db.select({
         listings: listingsTable,
@@ -521,27 +573,88 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
       .where(and(...conds))
       .orderBy(
-        // 1. Paid boosts always surface first — sellers paid for this visibility
-        desc(listingsTable.isBoosted),
-        // 2. New arrivals lead their eligible country/state/city scope. The
-        // geographic WHERE conditions above decide eligibility; freshness
-        // must not be buried behind referral or subscription ranking.
-        desc(listingsTable.createdAt),
-        // 3. Nearest first — actual Haversine km; listings without GPS fall to end
-        sql`${distanceSql} ASC NULLS LAST`,
-        // 4. Text-based proximity for no-coords listings (city/state/country match)
-        desc(proximitySql),
-        // 5. Referral points remain a tie-breaker for equally fresh listings
-        desc(usersTable.referralPoints),
-        // 6. Subscription tier remains a final tie-breaker
-        desc(subTierSql),
-        desc(listingsTable.id),
+        ...(isTextSearch
+          ? [
+              // Text search: match quality first, then boost / freshness / geo
+              sql`${relevanceSql} ASC`,
+              desc(listingsTable.isBoosted),
+              desc(listingsTable.createdAt),
+              sql`${distanceSql} ASC NULLS LAST`,
+              desc(proximitySql),
+              desc(listingsTable.id),
+            ]
+          : [
+              // Browse feed: paid boosts, freshness, geo, referral, subscription
+              desc(listingsTable.isBoosted),
+              desc(listingsTable.createdAt),
+              sql`${distanceSql} ASC NULLS LAST`,
+              desc(proximitySql),
+              desc(usersTable.referralPoints),
+              desc(subTierSql),
+              desc(listingsTable.id),
+            ]),
       );
     // The persisted PROMAX snapshot is the server-owned order.  Fetching the
     // candidate set before slicing is necessary so a late-page item cannot
     // jump ahead merely because the database's legacy order returned it first.
     if (promaxSnapshot) return filterOrganicCountryRows(await query);
     return query;
+  }
+
+  // Free-text search: SQL pagination + relevance order (no PROMAX / scope cascade).
+  if (isTextSearch) {
+    effectiveScope = "country";
+    const [{ total: searchTotal }] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(listingsTable)
+      .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
+      .where(and(...baseConditions));
+    const total = Number(searchTotal ?? 0);
+    const searchRows = await db
+      .select({
+        listings: listingsTable,
+        users: usersTable,
+        categories: categoriesTable,
+        subcategories: subcategoriesTable,
+        proximity: proximitySql,
+        distanceKm: distanceSql,
+      })
+      .from(listingsTable)
+      .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
+      .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
+      .leftJoin(subcategoriesTable, eq(listingsTable.subcategoryId, subcategoriesTable.id))
+      .where(and(...baseConditions))
+      .orderBy(
+        sql`${relevanceSql} ASC`,
+        desc(listingsTable.isBoosted),
+        desc(listingsTable.createdAt),
+        sql`${distanceSql} ASC NULLS LAST`,
+        desc(proximitySql),
+        desc(listingsTable.id),
+      )
+      .limit(limitNum)
+      .offset(offset);
+
+    const listings = await Promise.all(searchRows.map((row) =>
+      formatListing(row.listings, row.users!, row.categories, row.subcategories, geoUser, {
+        distanceKm: row.distanceKm,
+        proximityLevel: scoreToLevel(Number(row.proximity ?? 0)),
+        promaxGroup: deriveLegacyPromaxGroup(isActiveVip(row.users ?? {}, promaxNow)),
+        promaxPosition: null,
+      }),
+    ));
+    res.json({
+      listings,
+      total,
+      page: pageNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      scope: effectiveScope,
+      expandedFromScope: null,
+      promaxRotation: null,
+      promaxFallback: true,
+      search: { q: searchQ, mode: "relevance" },
+    });
+    return;
   }
 
   const requestedScope = pinnedResolvedScope ?? scope;
@@ -2248,7 +2361,11 @@ router.post("/listings/search-history", requireAuth, async (req, res): Promise<v
       res.status(400).json({ error: "query too short" });
       return;
     }
-    const q = query.trim().toLowerCase().slice(0, 120);
+    const q = normalizeSearchQuery(query).toLowerCase();
+    if (q.length < 2) {
+      res.status(400).json({ error: "query too short" });
+      return;
+    }
 
     await db
       .insert(searchHistoryTable)
@@ -2293,6 +2410,211 @@ router.get("/listings/search-history", requireAuth, async (req, res): Promise<vo
 });
 
 /**
+ * DELETE /listings/search-history
+ * Clears the authenticated user's search history (optional ?query= to delete one term).
+ */
+router.delete("/listings/search-history", requireAuth, async (req, res): Promise<void> => {
+  try {
+    const raw = typeof req.query.query === "string" ? req.query.query : "";
+    const one = normalizeSearchQuery(raw).toLowerCase();
+    if (one) {
+      await db
+        .delete(searchHistoryTable)
+        .where(and(
+          eq(searchHistoryTable.userId, req.userId!),
+          eq(searchHistoryTable.query, one),
+        ));
+    } else {
+      await db
+        .delete(searchHistoryTable)
+        .where(eq(searchHistoryTable.userId, req.userId!));
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "DELETE search-history ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to clear search history" });
+  }
+});
+
+/**
+ * GET /listings/search-popular
+ * Aggregated popular search terms (anonymous-safe). Optional country scoping via viewer.
+ */
+router.get("/listings/search-popular", optionalAuth, async (req, res): Promise<void> => {
+  try {
+    const limitNum = Math.min(parseInt(String(req.query.limit ?? "8"), 10) || 8, 20);
+    const rows = await db
+      .select({
+        query: searchHistoryTable.query,
+        count: sql<number>`sum(${searchHistoryTable.searchCount})::int`,
+      })
+      .from(searchHistoryTable)
+      .groupBy(searchHistoryTable.query)
+      .orderBy(sql`sum(${searchHistoryTable.searchCount}) DESC`, desc(searchHistoryTable.query))
+      .limit(limitNum);
+    res.json({
+      searches: rows.map((r) => ({ query: r.query, count: Number(r.count ?? 0) })),
+    });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "GET search-popular ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to load popular searches" });
+  }
+});
+
+/**
+ * GET /listings/suggest?q=
+ * Lightweight autocomplete: listing titles, matching categories, history, popular, did-you-mean.
+ * No PROMAX. Caps at a handful of rows for speed.
+ */
+router.get("/listings/suggest", optionalAuth, async (req, res): Promise<void> => {
+  try {
+    const searchQ = normalizeSearchQuery(req.query.q);
+    const countryParam = typeof req.query.country === "string" ? req.query.country : undefined;
+
+    let history: { query: string; count: number }[] = [];
+    if (req.userId) {
+      history = await db
+        .select({ query: searchHistoryTable.query, count: searchHistoryTable.searchCount })
+        .from(searchHistoryTable)
+        .where(eq(searchHistoryTable.userId, req.userId))
+        .orderBy(desc(searchHistoryTable.lastSearchedAt), desc(searchHistoryTable.searchCount))
+        .limit(8);
+    }
+
+    const popularRows = await db
+      .select({
+        query: searchHistoryTable.query,
+        count: sql<number>`sum(${searchHistoryTable.searchCount})::int`,
+      })
+      .from(searchHistoryTable)
+      .groupBy(searchHistoryTable.query)
+      .orderBy(sql`sum(${searchHistoryTable.searchCount}) DESC`)
+      .limit(12);
+
+    const popular = popularRows.map((r) => ({
+      query: r.query,
+      count: Number(r.count ?? 0),
+    }));
+
+    if (searchQ.length < 1) {
+      res.json({
+        listings: [],
+        categories: [],
+        history: history.slice(0, 6),
+        popular: popular.slice(0, 6),
+        didYouMean: null,
+        q: "",
+      });
+      return;
+    }
+
+    const conditions: any[] = [
+      eq(listingsTable.status, "available"),
+      eq(listingsTable.moderationStatus, "approved"),
+      listingHasUsableImageSql(),
+      or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
+      or(
+        ilike(listingsTable.title, containsPattern(searchQ)),
+        ilike(listingsTable.description, containsPattern(searchQ)),
+        ilike(listingsTable.city!, containsPattern(searchQ)),
+        ilike(categoriesTable.name, containsPattern(searchQ)),
+      )!,
+    ];
+    excludeBlockedSellers(conditions, req.userId);
+
+    const isAdmin = hasRole(req.user, "admin");
+    if (req.userId && req.user?.country && !isAdmin) {
+      conditions.push(eq(listingsTable.country!, req.user.country));
+    } else if (isAdmin) {
+      enforceAdminCountryScope(conditions, req.user, countryParam);
+    } else if (!req.userId && countryParam) {
+      conditions.push(eq(listingsTable.country!, countryParam));
+    }
+
+    const listingRows = await db
+      .select({
+        id: listingsTable.id,
+        title: listingsTable.title,
+        price: listingsTable.price,
+        currency: listingsTable.currency,
+        images: listingsTable.images,
+        city: listingsTable.city,
+        country: listingsTable.country,
+        categorySlug: categoriesTable.slug,
+        categoryName: categoriesTable.name,
+        categoryIcon: categoriesTable.icon,
+      })
+      .from(listingsTable)
+      .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
+      .where(and(...conditions))
+      .orderBy(
+        sql`(CASE
+          WHEN ${listingsTable.title} ILIKE ${prefixPattern(searchQ)} THEN 0
+          WHEN ${listingsTable.title} ILIKE ${containsPattern(searchQ)} THEN 1
+          ELSE 2
+        END) ASC`,
+        desc(listingsTable.isBoosted),
+        desc(listingsTable.createdAt),
+      )
+      .limit(8);
+
+    const categoryRows = await db
+      .select({
+        id: categoriesTable.id,
+        slug: categoriesTable.slug,
+        name: categoriesTable.name,
+        icon: categoriesTable.icon,
+      })
+      .from(categoriesTable)
+      .where(and(
+        isNull(categoriesTable.parentId),
+        ilike(categoriesTable.name, containsPattern(searchQ)),
+      ))
+      .limit(5);
+
+    const filteredHistory = history
+      .filter((h) => h.query.includes(searchQ.toLowerCase()))
+      .slice(0, 5);
+
+    const correctionPool = [
+      ...popular.map((p) => p.query),
+      ...history.map((h) => h.query),
+      ...categoryRows.map((c) => c.name),
+    ];
+    const didYouMean = suggestCorrection(searchQ, correctionPool);
+
+    res.json({
+      q: searchQ,
+      didYouMean,
+      listings: listingRows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        price: row.price,
+        currency: row.currency,
+        image: Array.isArray(row.images) && row.images.length > 0 ? row.images[0] : null,
+        city: row.city,
+        country: row.country,
+        categorySlug: row.categorySlug,
+        categoryName: row.categoryName,
+      })),
+      categories: categoryRows.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        icon: c.icon,
+      })),
+      history: filteredHistory,
+      popular: popular
+        .filter((p) => p.query.includes(searchQ.toLowerCase()) || searchQ.toLowerCase().includes(p.query))
+        .slice(0, 5),
+    });
+  } catch (err: any) {
+    req.log?.error?.({ err }, "GET listings/suggest ERROR");
+    if (!res.headersSent) res.status(500).json({ error: "Failed to load suggestions" });
+  }
+});
+
+/**
  * GET /listings/personalized
  * Returns up to 20 listings that match the user's top search terms.
  * Falls back to an empty list if the user has no search history.
@@ -2317,8 +2639,10 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     // 2. Build OR conditions — title or description matches any top term
     const termConditions = topTerms.map(term =>
       or(
-        ilike(listingsTable.title, `%${term}%`),
-        ilike(listingsTable.description, `%${term}%`)
+        ilike(listingsTable.title, containsPattern(term)),
+        ilike(listingsTable.description, containsPattern(term)),
+        ilike(listingsTable.city!, containsPattern(term)),
+        ilike(categoriesTable.name, containsPattern(term)),
       )!
     );
 

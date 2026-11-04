@@ -5,7 +5,7 @@ import {
   SEARCH_DEFAULT_MAX_PRICE,
   useSearchUrlSync,
 } from "@/hooks/useSearchUrlSync";
-import { Search as SearchIcon, SlidersHorizontal, X, Globe, ChevronRight, ShieldCheck, Camera, ImageIcon, Sparkles, AlertCircle, Loader2 } from "lucide-react";
+import { Search as SearchIcon, SlidersHorizontal, X, Globe, ChevronRight, ShieldCheck, Camera, ImageIcon, Sparkles, AlertCircle, Loader2, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MobileSelect } from "@/components/ui/mobile-select";
@@ -19,6 +19,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "@/lib/api";
+import { SearchSuggestPanel } from "@/components/SearchSuggest";
+import { useLocation } from "wouter";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES } from "@/lib/countries";
 
@@ -285,8 +287,11 @@ export default function SearchPage() {
   const [vsPreview, setVsPreview] = useState<string | null>(null);
   const [vsResult, setVsResult] = useState<{ keywords: string; description: string; confidence: string } | null>(null);
   const [vsError, setVsError] = useState<string | null>(null);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [popularEmpty, setPopularEmpty] = useState<Array<{ query: string; count: number }>>([]);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const [, navigate] = useLocation();
 
   const runVisualSearch = useCallback(async (file: File) => {
     setVsStatus("analyzing");
@@ -359,6 +364,13 @@ export default function SearchPage() {
       body: JSON.stringify({ query: debouncedQ.trim(), category: category || undefined }),
     }).catch(() => {});
   }, [debouncedQ, user?.id]); // category intentionally omitted — one history row per term
+
+  // Popular terms for empty-state chips
+  useEffect(() => {
+    apiFetch<{ searches: Array<{ query: string; count: number }> }>("/api/listings/search-popular?limit=6")
+      .then((d) => setPopularEmpty(d.searches ?? []))
+      .catch(() => setPopularEmpty([]));
+  }, []);
 
   const { data: categories } = useGetCategories();
 
@@ -574,22 +586,32 @@ export default function SearchPage() {
       {/* Search bar */}
       <div className="flex gap-2 mb-6">
         <div className="relative flex-1">
-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             value={q}
-            onChange={e => { setQ(e.target.value); setPage(1); }}
+            onChange={e => { setQ(e.target.value); setPage(1); setSuggestOpen(true); }}
+            onFocus={() => setSuggestOpen(true)}
+            onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+            onKeyDown={e => {
+              if (e.key === "Escape") setSuggestOpen(false);
+              if (e.key === "Enter") setSuggestOpen(false);
+            }}
             placeholder={
               userCountry
                 ? t("search.placeholderCountry", { country: userCountry })
                 : t("search.placeholder")
             }
             className="pl-9 pr-10"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={suggestOpen}
+            aria-autocomplete="list"
             data-testid="input-search"
           />
           {/* Camera icon inside the input — right side, like Temu */}
           <button
             type="button"
-            onClick={() => { resetVisualSearch(); setVsOpen(true); }}
+            onClick={() => { resetVisualSearch(); setVsOpen(true); setSuggestOpen(false); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all active:scale-90"
             title={t("search.visualSearchBtn")}
             data-testid="btn-visual-search"
@@ -597,6 +619,14 @@ export default function SearchPage() {
           >
             <Camera className="h-4 w-4" />
           </button>
+          <SearchSuggestPanel
+            query={q}
+            open={suggestOpen}
+            onOpenChange={setSuggestOpen}
+            onPickQuery={(term) => { setQ(term); setPage(1); }}
+            onPickListing={(id) => navigate(`/listings/${id}`)}
+            onPickCategory={(slug) => { setCategory(slug); setSubcategory(""); setPage(1); setQ(""); }}
+          />
         </div>
         <Sheet>
           <SheetTrigger asChild>
@@ -706,10 +736,42 @@ export default function SearchPage() {
               )}
             </>
           ) : (
-            <div className="text-center py-20 bg-card border border-border rounded-xl">
-              <SearchIcon className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <div className="text-center py-16 px-4 bg-card border border-border rounded-xl">
+              <SearchIcon className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="font-semibold text-foreground">{t("search.noListingsTitle")}</p>
               <p className="text-sm text-muted-foreground mt-1">{t("search.noListingsDesc")}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("search.noListingsHint")}</p>
+              {activeFiltersCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4"
+                  onClick={clearFilters}
+                  data-testid="button-clear-filters-empty"
+                >
+                  {t("search.clearFilters")}
+                </Button>
+              )}
+              {popularEmpty.length > 0 && (
+                <div className="mt-6 max-w-md mx-auto">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center justify-center gap-1.5">
+                    <Flame className="h-3.5 w-3.5" />
+                    {t("search.tryPopular")}
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {popularEmpty.map((p) => (
+                      <button
+                        key={p.query}
+                        type="button"
+                        onClick={() => { setQ(p.query); setPage(1); }}
+                        className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60 transition-colors"
+                      >
+                        {p.query}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

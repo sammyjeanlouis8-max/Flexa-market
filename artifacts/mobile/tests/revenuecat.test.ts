@@ -59,8 +59,24 @@ test("subscription screen blocks Stripe language and stays native", () => {
   );
   assert.match(source, /Apple In-App Purchase/);
   assert.match(source, /isStripeSubscriptionCheckoutBlockedOnIos/);
+  assert.match(source, /Default UI language: English/);
   assert.doesNotMatch(source, /SafeWebView|react-native-webview/);
   assert.doesNotMatch(source, /\/api\/subscription\/checkout/);
+});
+
+test("store identity targets ASC app 6754947270 / com.flexamarket.mobile", async () => {
+  const {
+    ASC_APP_ID,
+    IOS_BUNDLE_IDENTIFIER,
+    IOS_MARKETING_VERSION,
+    LATEST_KNOWN_TESTFLIGHT_BUILD,
+    MIN_NEXT_IOS_BUILD_NUMBER,
+  } = await import("../lib/storeIdentity.ts");
+  assert.equal(IOS_BUNDLE_IDENTIFIER, "com.flexamarket.mobile");
+  assert.equal(ASC_APP_ID, "6754947270");
+  assert.equal(IOS_MARKETING_VERSION, "1.0.1");
+  assert.equal(LATEST_KNOWN_TESTFLIGHT_BUILD, 100);
+  assert.equal(MIN_NEXT_IOS_BUILD_NUMBER, 101);
 });
 
 test("mobile sources never embed RevenueCat secret sk_ keys", () => {

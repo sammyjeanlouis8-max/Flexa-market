@@ -8,6 +8,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "flexamarket",
     "userInterfaceStyle": "automatic",
+    "locales": {
+      "en": "./locales/en.json"
+    },
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/icon.png",
@@ -17,7 +20,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.flexamarket.mobile",
-      "buildNumber": "4",
+      "buildNumber": "101",
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {

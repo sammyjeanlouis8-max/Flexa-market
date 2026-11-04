@@ -7,6 +7,7 @@ import { StatusCard } from "@/components/StatusCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
+/** Default UI language: English. */
 export default function SellTab() {
   const colors = useColors();
   const router = useRouter();
@@ -14,19 +15,19 @@ export default function SellTab() {
 
   return (
     <NativeScreen
-      title="Vann"
-      subtitle="Fòm piblikasyon natif natal ap vini nan Faz 2. Pa gen WebView sou ekran sa a."
+      title="Sell"
+      subtitle="Native listing publish arrives in Phase 2. This screen has no WebView."
     >
       <StatusCard
-        label="Kont"
-        value={token ? "Sèsyon aktif" : "Bezwen koneksyon"}
-        detail="Menm kont customer/seller. API /listings deja pare sou backend."
+        label="Account"
+        value={token ? "Session active" : "Sign-in required"}
+        detail="Same customer/seller account. Listings API is ready on the backend."
         tone={token ? "ok" : "warn"}
       />
       <StatusCard
-        label="Faz"
-        value="Faz 2"
-        detail="Kreye anons, foto, ak boost natif natal."
+        label="Phase"
+        value="Phase 2"
+        detail="Native create listing, photos, and boosts."
         tone="warn"
       />
       {!token ? (
@@ -34,7 +35,7 @@ export default function SellTab() {
           onPress={() => router.push("/auth/login")}
           style={[styles.primary, { backgroundColor: colors.primary }]}
         >
-          <Text style={styles.primaryText}>Konekte</Text>
+          <Text style={styles.primaryText}>Sign in</Text>
         </Pressable>
       ) : null}
     </NativeScreen>

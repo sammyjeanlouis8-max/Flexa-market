@@ -34,8 +34,12 @@ requireCondition(
 );
 requireCondition(
   /^\d+$/.test(appConfig.ios?.buildNumber ?? "") &&
-    Number(appConfig.ios.buildNumber) >= 4,
-  "iOS build number must be an integer at least 4.",
+    Number(appConfig.ios.buildNumber) >= 101,
+  "iOS build number must be an integer at least 101 (above TestFlight build 100 for com.flexamarket.mobile).",
+);
+requireCondition(
+  appConfig.version === "1.0.1",
+  "iOS marketing version must remain 1.0.1 for App Store Connect app 6754947270 unless intentionally bumped.",
 );
 requireCondition(
   appConfig.ios?.entitlements?.["aps-environment"] === "production",

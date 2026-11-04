@@ -36,7 +36,7 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       },
       onError: (err) => {
-        setFormError(formatApiError(err, "Koneksyon echwe. Eseye ankò."));
+        setFormError(formatApiError(err, "Sign-in failed. Please try again."));
       },
     },
   });
@@ -45,7 +45,7 @@ export default function LoginScreen() {
     setFormError(null);
     const trimmed = email.trim();
     if (!trimmed || !password) {
-      setFormError("Antre imèl ak modpas ou.");
+      setFormError("Enter your email and password.");
       return;
     }
     loginMutation.mutate({ data: { email: trimmed, password } });
@@ -62,19 +62,19 @@ export default function LoginScreen() {
       >
         <View style={styles.body}>
           <Pressable onPress={() => router.back()}>
-            <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+            <Text style={{ color: colors.mutedForeground }}>Back</Text>
           </Pressable>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Konekte
+            Sign in
           </Text>
           <Text style={{ color: colors.mutedForeground, marginBottom: 8 }}>
-            Menm kont Flexa Market (API egzistan).
+            Same Flexa Market account (existing API).
           </Text>
 
           <TextInput
             value={email}
             onChangeText={setEmail}
-            placeholder="Imèl"
+            placeholder="Email"
             placeholderTextColor={colors.mutedForeground}
             autoCapitalize="none"
             keyboardType="email-address"
@@ -91,7 +91,7 @@ export default function LoginScreen() {
           <TextInput
             value={password}
             onChangeText={setPassword}
-            placeholder="Modpas"
+            placeholder="Password"
             placeholderTextColor={colors.mutedForeground}
             secureTextEntry
             autoComplete="password"
@@ -117,13 +117,13 @@ export default function LoginScreen() {
             {loginMutation.isPending ? (
               <ActivityIndicator color="#0F172A" />
             ) : (
-              <Text style={styles.ctaText}>Konekte</Text>
+              <Text style={styles.ctaText}>Sign in</Text>
             )}
           </Pressable>
 
           <Link href="/auth/register" style={{ marginTop: 12 }}>
             <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              Kreye yon kont
+              Create an account
             </Text>
           </Link>
         </View>

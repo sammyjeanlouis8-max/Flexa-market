@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
+/** Default UI language: English. */
 export default function InboxTab() {
   const colors = useColors();
   const router = useRouter();
@@ -37,22 +38,22 @@ export default function InboxTab() {
       edges={["top", "left", "right"]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Mesaj</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>Inbox</Text>
         <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-          Lis konvèsasyon natif natal. Chat tan-reyèl (Socket.IO) = Faz 3.
+          Native conversation list. Real-time Socket.IO chat arrives in Phase 3.
         </Text>
       </View>
 
       {!token ? (
         <View style={styles.center}>
           <Text style={{ color: colors.mutedForeground, marginBottom: 12 }}>
-            Konekte pou wè mesaj ou yo.
+            Sign in to view your messages.
           </Text>
           <Pressable
             onPress={() => router.push("/auth/login")}
             style={[styles.cta, { backgroundColor: colors.primary }]}
           >
-            <Text style={styles.ctaText}>Konekte</Text>
+            <Text style={styles.ctaText}>Sign in</Text>
           </Pressable>
         </View>
       ) : isLoading ? (
@@ -61,10 +62,10 @@ export default function InboxTab() {
         </View>
       ) : isError ? (
         <View style={styles.center}>
-          <Text style={{ color: colors.foreground }}>Pa ka chaje mesaj</Text>
+          <Text style={{ color: colors.foreground }}>Could not load messages</Text>
           <Pressable onPress={() => void refetch()} style={{ marginTop: 12 }}>
             <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              Eseye ankò
+              Try again
             </Text>
           </Pressable>
         </View>
@@ -77,7 +78,7 @@ export default function InboxTab() {
             <Text
               style={{ color: colors.mutedForeground, textAlign: "center" }}
             >
-              Pa gen konvèsasyon pou kounye a.
+              No conversations yet.
             </Text>
           }
           renderItem={({ item }) => (
@@ -89,7 +90,7 @@ export default function InboxTab() {
                 style={{ color: colors.foreground, fontWeight: "600" }}
                 numberOfLines={1}
               >
-                {item.otherUserName || `Konvèsasyon #${item.id}`}
+                {item.otherUserName || `Conversation #${item.id}`}
               </Text>
               <Text
                 style={{ color: colors.mutedForeground, fontSize: 12 }}
@@ -101,7 +102,7 @@ export default function InboxTab() {
                 style={{ color: colors.mutedForeground, fontSize: 13 }}
                 numberOfLines={2}
               >
-                {item.lastMessage || "Pa gen mesaj"}
+                {item.lastMessage || "No messages"}
               </Text>
             </Pressable>
           )}

@@ -7,6 +7,7 @@ import { StatusCard } from "@/components/StatusCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 
+/** Default UI language: English. */
 export default function ProfileTab() {
   const colors = useColors();
   const router = useRouter();
@@ -14,28 +15,28 @@ export default function ProfileTab() {
 
   return (
     <NativeScreen
-      title="Pwofil"
-      subtitle="Sèsyon natif natal ak JWT lokal (SecureStore). Pa gen WebView."
+      title="Profile"
+      subtitle="Native session with JWT in SecureStore. No WebView."
     >
       <StatusCard
-        label="Itilizatè"
+        label="User"
         value={
           isLoading
-            ? "Ap chaje…"
-            : user?.name || user?.email || (token ? "Konekte" : "Envite")
+            ? "Loading…"
+            : user?.name || user?.email || (token ? "Signed in" : "Guest")
         }
         detail={
           user?.email
             ? user.email
             : token
-              ? "Jeton JWT aktif"
-              : "Konekte pou jere favori, lòd, ak mesaj"
+              ? "JWT token active"
+              : "Sign in to manage favorites, orders, and messages"
         }
         tone={token ? "ok" : "neutral"}
       />
 
       {user?.role ? (
-        <StatusCard label="Wòl" value={String(user.role)} tone="ok" />
+        <StatusCard label="Role" value={String(user.role)} tone="ok" />
       ) : null}
 
       <View style={styles.actions}>
@@ -45,14 +46,14 @@ export default function ProfileTab() {
               onPress={() => router.push("/auth/login")}
               style={[styles.primary, { backgroundColor: colors.primary }]}
             >
-              <Text style={styles.primaryText}>Konekte</Text>
+              <Text style={styles.primaryText}>Sign in</Text>
             </Pressable>
             <Pressable
               onPress={() => router.push("/auth/register")}
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Kreye kont
+                Create account
               </Text>
             </Pressable>
           </>
@@ -63,7 +64,7 @@ export default function ProfileTab() {
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Favori
+                Favorites
               </Text>
             </Pressable>
             <Pressable
@@ -71,7 +72,7 @@ export default function ProfileTab() {
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Abònman (Apple IAP)
+                Subscription (Apple IAP)
               </Text>
             </Pressable>
             <Pressable
@@ -79,7 +80,7 @@ export default function ProfileTab() {
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Lòd (Faz 2)
+                Orders (Phase 2)
               </Text>
             </Pressable>
             <Pressable
@@ -87,7 +88,7 @@ export default function ProfileTab() {
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Dekonekte
+                Sign out
               </Text>
             </Pressable>
           </>

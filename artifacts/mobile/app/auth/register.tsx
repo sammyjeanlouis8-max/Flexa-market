@@ -39,7 +39,7 @@ export default function RegisterScreen() {
         await persistSession(data.token);
         router.replace("/(tabs)");
       },
-      onError: (err) => setFormError(formatApiError(err, "Enskripsyon echwe.")),
+      onError: (err) => setFormError(formatApiError(err, "Registration failed.")),
     },
   });
 
@@ -48,15 +48,15 @@ export default function RegisterScreen() {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (!trimmedName || !trimmedEmail || !password || !country.trim()) {
-      setFormError("Ranpli non, imèl, modpas, ak peyi.");
+      setFormError("Fill in name, email, password, and country.");
       return;
     }
     if (password.length < 8) {
-      setFormError("Modpas la dwe gen omwen 8 karaktè.");
+      setFormError("Password la dwe gen omwen 8 karaktè.");
       return;
     }
     if (!eulaAccepted) {
-      setFormError("Ou dwe aksepte kondisyon yo (EULA).");
+      setFormError("You must accept the terms (EULA).");
       return;
     }
     registerMutation.mutate({
@@ -84,21 +84,21 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Pressable onPress={() => router.back()}>
-            <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+            <Text style={{ color: colors.mutedForeground }}>Back</Text>
           </Pressable>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Kreye kont
+            Create account
           </Text>
           <Text style={{ color: colors.mutedForeground }}>
-            Menm API enskripsyon Flexa Market.
+            Same Flexa Market registration API.
           </Text>
 
           {(
             [
-              ["Non konplè", name, setName, "name"],
-              ["Imèl", email, setEmail, "email"],
-              ["Modpas", password, setPassword, "password"],
-              ["Peyi", country, setCountry, "country"],
+              ["Full name", name, setName, "name"],
+              ["Email", email, setEmail, "email"],
+              ["Password", password, setPassword, "password"],
+              ["Country", country, setCountry, "country"],
             ] as const
           ).map(([label, value, setter, key]) => (
             <TextInput
@@ -135,7 +135,7 @@ export default function RegisterScreen() {
               ]}
             />
             <Text style={{ color: colors.mutedForeground, flex: 1, lineHeight: 20 }}>
-              Mwen aksepte kondisyon itilizasyon Flexa Market (EULA).
+              I accept the Flexa Market terms of use (EULA).
             </Text>
           </Pressable>
 
@@ -151,13 +151,13 @@ export default function RegisterScreen() {
             {registerMutation.isPending ? (
               <ActivityIndicator color="#0F172A" />
             ) : (
-              <Text style={styles.ctaText}>Kreye kont</Text>
+              <Text style={styles.ctaText}>Create account</Text>
             )}
           </Pressable>
 
           <Link href="/auth/login" style={{ marginTop: 8 }}>
             <Text style={{ color: colors.primary, fontWeight: "600" }}>
-              Genyen kont deja? Konekte
+              Already have an account? Sign in
             </Text>
           </Link>
         </ScrollView>

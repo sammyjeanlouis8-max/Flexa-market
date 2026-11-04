@@ -31,7 +31,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Accueil",
+          title: "Home",
           tabBarIcon: ({ color, size }) => (
             <Feather name="home" color={color} size={size} />
           ),
@@ -40,7 +40,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{
-          title: "Rechèch",
+          title: "Search",
           tabBarIcon: ({ color, size }) => (
             <Feather name="search" color={color} size={size} />
           ),
@@ -49,7 +49,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="sell"
         options={{
-          title: "Vann",
+          title: "Sell",
           tabBarIcon: ({ color, size }) => (
             <Feather name="plus-circle" color={color} size={size} />
           ),
@@ -58,7 +58,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "Mesaj",
+          title: "Inbox",
           tabBarIcon: ({ color, size }) => (
             <Feather name="message-circle" color={color} size={size} />
           ),
@@ -67,7 +67,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: "Pwofil",
+          title: "Profile",
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" color={color} size={size} />
           ),

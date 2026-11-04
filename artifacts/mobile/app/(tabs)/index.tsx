@@ -1,5 +1,6 @@
 /**
  * Home — Phase 1 native marketplace feed (existing /api/listings).
+ * Default UI language: English.
  */
 import { useGetListings } from "@workspace/api-client-react";
 import { useRouter } from "expo-router";
@@ -45,10 +46,10 @@ export default function HomeTab() {
             Flexa Market
           </Text>
           <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-            Faz {NATIVE_APP_PHASE} ·{" "}
+            Phase {NATIVE_APP_PHASE} ·{" "}
             {token
-              ? `Byenveni${user?.name ? `, ${user.name}` : ""}`
-              : "Envite"}
+              ? `Welcome${user?.name ? `, ${user.name}` : ""}`
+              : "Guest"}
           </Text>
         </View>
         <Pressable
@@ -56,7 +57,7 @@ export default function HomeTab() {
           style={[styles.iconBtn, { borderColor: colors.border }]}
         >
           <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-            Panier
+            Cart
           </Text>
         </Pressable>
       </View>
@@ -65,22 +66,22 @@ export default function HomeTab() {
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={{ color: colors.mutedForeground, marginTop: 12 }}>
-            Ap chaje anons yo…
+            Loading listings…
           </Text>
         </View>
       ) : isError && listings.length === 0 ? (
         <View style={styles.center}>
           <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-            Pa ka chaje anons yo
+            Could not load listings
           </Text>
           <Text style={{ color: colors.mutedForeground, marginTop: 6 }}>
-            {error instanceof Error ? error.message : "Erè rezo"}
+            {error instanceof Error ? error.message : "Network error"}
           </Text>
           <Pressable
             onPress={() => void refetch()}
             style={[styles.retry, { backgroundColor: colors.primary }]}
           >
-            <Text style={styles.retryText}>Eseye ankò</Text>
+            <Text style={styles.retryText}>Try again</Text>
           </Pressable>
         </View>
       ) : (
@@ -99,13 +100,13 @@ export default function HomeTab() {
           }
           ListEmptyComponent={
             <Text style={{ color: colors.mutedForeground, textAlign: "center" }}>
-              Pa gen anons pou kounye a.
+              No listings yet.
             </Text>
           }
           ListFooterComponent={
             <View style={styles.footer}>
               <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                {listings.length} / {data?.total ?? listings.length} anons
+                {listings.length} / {data?.total ?? listings.length} listings
               </Text>
             </View>
           }

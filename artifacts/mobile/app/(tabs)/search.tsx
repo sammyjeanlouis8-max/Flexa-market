@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ListingCard } from "@/components/ListingCard";
 import { useColors } from "@/hooks/useColors";
 
+/** Default UI language: English. */
 export default function SearchTab() {
   const colors = useColors();
   const [query, setQuery] = useState("");
@@ -32,11 +33,11 @@ export default function SearchTab() {
       edges={["top", "left", "right"]}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Rechèch</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>Search</Text>
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Chèche pwodui, vil, kategori…"
+          placeholder="Search products, city, category…"
           placeholderTextColor={colors.mutedForeground}
           autoCapitalize="none"
           autoCorrect={false}
@@ -52,9 +53,9 @@ export default function SearchTab() {
         />
         <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
           {deferredQuery
-            ? `Rezilta pou “${deferredQuery}”`
-            : "Anons boost / rekòmande"}
-          {isFetching ? " · ap chaje…" : ""}
+            ? `Results for “${deferredQuery}”`
+            : "Boosted / recommended listings"}
+          {isFetching ? " · loading…" : ""}
         </Text>
       </View>
 
@@ -64,7 +65,7 @@ export default function SearchTab() {
         </View>
       ) : isError ? (
         <View style={styles.center}>
-          <Text style={{ color: colors.foreground }}>Erè rechèch</Text>
+          <Text style={{ color: colors.foreground }}>Search failed</Text>
         </View>
       ) : (
         <FlatList
@@ -77,7 +78,7 @@ export default function SearchTab() {
             <Text
               style={{ color: colors.mutedForeground, textAlign: "center" }}
             >
-              Pa gen rezilta.
+              No results.
             </Text>
           }
           renderItem={({ item }) => <ListingCard item={item} />}

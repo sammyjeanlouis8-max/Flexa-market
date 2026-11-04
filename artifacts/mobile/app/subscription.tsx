@@ -1,9 +1,10 @@
 /**
  * Native iOS subscription screen — Apple IAP via RevenueCat only.
  * Stripe / wallet checkout is intentionally unavailable on iOS (App Store rules).
+ * Default UI language: English.
  */
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -18,11 +19,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useRevenueCat } from "@/hooks/useRevenueCat";
+import { getApiBaseUrl } from "@/lib/config";
+import { isStripeSubscriptionCheckoutBlockedOnIos } from "@/lib/revenuecat/client";
 import {
   FALLBACK_PRICE_LABEL,
   type PaidPlanId,
 } from "@/lib/revenuecat/products";
-import { isStripeSubscriptionCheckoutBlockedOnIos } from "@/lib/revenuecat/client";
 
 const PLANS: {
   id: PaidPlanId;
@@ -33,23 +35,30 @@ const PLANS: {
     id: "standard",
     title: "Standard",
     features: [
-      "Jiska 50 lis aktif",
-      "Badge vandè verifye",
-      "Statistik lavant",
-      "Sipò prioritè",
+      "Up to 50 active listings",
+      "Verified seller badge",
+      "Sales statistics",
+      "Priority support",
     ],
   },
   {
     id: "premium",
     title: "Premium",
     features: [
-      "Lis ilimite",
-      "Badge Premium",
-      "Upload videyo pou lis",
-      "Sipò VIP",
+      "Unlimited listings",
+      "Premium badge",
+      "Video uploads for listings",
+      "VIP support",
     ],
   },
 ];
+
+type ServerSubscription = {
+  plan?: string | null;
+  expiresAt?: string | null;
+  source?: string | null;
+  billingProvider?: string | null;
+};
 
 export default function SubscriptionScreen() {
   const colors = useColors();
@@ -57,8 +66,30 @@ export default function SubscriptionScreen() {
   const { token } = useAuth();
   const iap = useRevenueCat();
   const [message, setMessage] = useState<string | null>(null);
+  const [serverSub, setServerSub] = useState<ServerSubscription | null>(null);
 
   const stripeBlocked = isStripeSubscriptionCheckoutBlockedOnIos();
+
+  const loadServerSubscription = useCallback(async () => {
+    if (!token) {
+      setServerSub(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/subscription/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as ServerSubscription;
+      setServerSub(data);
+    } catch {
+      /* non-fatal */
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadServerSubscription();
+  }, [loadServerSubscription]);
 
   if (Platform.OS !== "ios") {
     return (
@@ -68,14 +99,14 @@ export default function SubscriptionScreen() {
       >
         <View style={styles.body}>
           <Pressable onPress={() => router.back()}>
-            <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+            <Text style={{ color: colors.mutedForeground }}>Back</Text>
           </Pressable>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Abònman
+            Subscription
           </Text>
           <Text style={{ color: colors.mutedForeground, lineHeight: 22 }}>
-            Achte abònman dijital sou Android ap vini ak Google Play Billing
-            (RevenueCat). Sou iOS, Apple IAP obligatwa.
+            Digital subscriptions on Android will use Google Play Billing via
+            RevenueCat. On iOS, Apple In-App Purchase is required.
           </Text>
         </View>
       </SafeAreaView>
@@ -89,20 +120,33 @@ export default function SubscriptionScreen() {
     >
       <ScrollView contentContainerStyle={styles.body}>
         <Pressable onPress={() => router.back()}>
-          <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+          <Text style={{ color: colors.mutedForeground }}>Back</Text>
         </Pressable>
         <Text style={[styles.title, { color: colors.foreground }]}>
           Flexa Market Premium
         </Text>
         <Text style={{ color: colors.mutedForeground, lineHeight: 22 }}>
-          Abònman atravè Apple In-App Purchase (RevenueCat). Pa gen Stripe sou
-          iOS pou kontni dijital.
+          Subscribe with Apple In-App Purchase (RevenueCat). Stripe checkout is
+          not offered on iOS for digital subscriptions.
         </Text>
 
         {stripeBlocked ? (
           <View style={[styles.banner, { borderColor: colors.border }]}>
             <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-              Checkout Stripe / wallet bloke sou iOS — règleman App Store.
+              Stripe and wallet subscription checkout are blocked on iOS (App
+              Store rules).
+            </Text>
+          </View>
+        ) : null}
+
+        {serverSub?.plan ? (
+          <View style={[styles.banner, { borderColor: colors.border }]}>
+            <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+              Server plan: {serverSub.plan}
+            </Text>
+            <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+              Provider: {serverSub.billingProvider || serverSub.source || "n/a"}
+              {serverSub.expiresAt ? ` · expires ${serverSub.expiresAt}` : ""}
             </Text>
           </View>
         ) : null}
@@ -112,7 +156,7 @@ export default function SubscriptionScreen() {
             onPress={() => router.push("/auth/login")}
             style={[styles.cta, { backgroundColor: colors.primary }]}
           >
-            <Text style={styles.ctaText}>Konekte pou abònman</Text>
+            <Text style={styles.ctaText}>Sign in to subscribe</Text>
           </Pressable>
         ) : null}
 
@@ -125,16 +169,17 @@ export default function SubscriptionScreen() {
 
         {PLANS.map((plan) => {
           const store = iap.productFor(plan.id);
-          const price =
-            store?.priceString || FALLBACK_PRICE_LABEL[plan.id];
-          const active = iap.activePlans.includes(plan.id);
+          const price = store?.priceString || FALLBACK_PRICE_LABEL[plan.id];
+          const active =
+            iap.activePlans.includes(plan.id) ||
+            serverSub?.plan === plan.id;
           return (
             <View
               key={plan.id}
               style={[styles.card, { borderColor: colors.border }]}
             >
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                {plan.title} — {price}/mwa
+                {plan.title} — {price}/mo
               </Text>
               {plan.features.map((f) => (
                 <Text
@@ -146,7 +191,7 @@ export default function SubscriptionScreen() {
               ))}
               {active ? (
                 <Text style={[styles.active, { color: colors.primary }]}>
-                  Plan aktif
+                  Active plan
                 </Text>
               ) : (
                 <Pressable
@@ -156,10 +201,11 @@ export default function SubscriptionScreen() {
                     const outcome = await iap.buy(plan.id);
                     if (outcome.status === "purchased") {
                       setMessage(
-                        "Acha reyisi. Abònman ap aktive atravè RevenueCat (kèk segonn).",
+                        "Purchase succeeded. Your plan will activate via RevenueCat shortly.",
                       );
+                      setTimeout(() => void loadServerSubscription(), 2000);
                     } else if (outcome.status === "cancelled") {
-                      setMessage("Acha anile.");
+                      setMessage("Purchase cancelled.");
                     } else {
                       setMessage(outcome.message);
                     }
@@ -179,9 +225,7 @@ export default function SubscriptionScreen() {
                     <ActivityIndicator color="#0F172A" />
                   ) : (
                     <Text style={styles.ctaText}>
-                      {store
-                        ? `Kòmanse · ${store.priceString}`
-                        : "Pwodui ap chaje…"}
+                      {store ? `Start · ${store.priceString}` : "Loading product…"}
                     </Text>
                   )}
                 </Pressable>
@@ -196,11 +240,10 @@ export default function SubscriptionScreen() {
             setMessage(null);
             try {
               await iap.restore();
-              setMessage("Restore fini. Verifye plan aktif ou.");
+              setMessage("Restore finished. Check your active plan above.");
+              setTimeout(() => void loadServerSubscription(), 1500);
             } catch (err) {
-              setMessage(
-                err instanceof Error ? err.message : "Restore echwe.",
-              );
+              setMessage(err instanceof Error ? err.message : "Restore failed.");
             }
           }}
           style={[styles.secondary, { borderColor: colors.border }]}
@@ -215,7 +258,7 @@ export default function SubscriptionScreen() {
           style={[styles.secondary, { borderColor: colors.border }]}
         >
           <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-            Jere abònman Apple
+            Manage Apple subscriptions
           </Text>
         </Pressable>
       </ScrollView>
@@ -231,6 +274,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
+    gap: 4,
   },
   card: {
     borderWidth: 1,

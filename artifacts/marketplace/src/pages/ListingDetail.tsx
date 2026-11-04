@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useGetListing, useGetListings, useGetCategories, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import { useGetListing, useGetListings, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
 import ListingCard from "@/components/ListingCard";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
@@ -158,6 +158,7 @@ export default function ListingDetail() {
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(new Set());
   const [pdpTab, setPdpTab] = useState<"details" | "specs" | "reviews" | "qa">("details");
   const [pdpSearchQ, setPdpSearchQ] = useState("");
+  const [galleryFullscreen, setGalleryFullscreen] = useState(false);
 
   // Reset mute state whenever the user swipes to a different media item.
   // Guarantees every boost video starts muted (browsers require muted for autoplay).
@@ -256,7 +257,6 @@ export default function ListingDetail() {
     query: { enabled: !!id, queryKey: getGetListingQueryKey(id) },
   });
 
-  const { data: categories } = useGetCategories();
   const relatedCategory = listing?.categorySlug || listing?.category;
   const { data: relatedData } = useGetListings(
     { category: relatedCategory || undefined, limit: 8 },
@@ -1392,34 +1392,6 @@ export default function ListingDetail() {
         <span className="text-foreground/80 truncate inline-block max-w-[40vw] lg:max-w-none align-bottom">{listing.title}</span>
       </nav>
 
-      {/* Desktop category strip */}
-      {categories && categories.length > 0 && (
-        <div className="hidden lg:block border-b border-border/50 bg-white">
-          <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto scrollbar-none py-2" data-testid="pdp-category-nav">
-            <Link
-              href="/search"
-              className="flex-shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            >
-              {t("nav.all", { defaultValue: "All" })}
-            </Link>
-            {categories.slice(0, 12).map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/search?category=${encodeURIComponent(cat.slug || cat.name)}`}
-                className={cn(
-                  "flex-shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-md transition-colors",
-                  listing.categorySlug === cat.slug || listing.category === cat.name
-                    ? "text-[#F97316] bg-orange-50"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                )}
-              >
-                {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Desktop three-column product stage */}
       <div
         className="lg:max-w-7xl lg:mx-auto lg:px-4 lg:pt-5 lg:pb-2 lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(300px,1.15fr)_minmax(260px,320px)] lg:gap-6 lg:items-start"
@@ -1427,7 +1399,7 @@ export default function ListingDetail() {
       >
 
       {/* ══════════ HERO GALLERY — vertical thumbs + main stage ══════════ */}
-      <div className="relative bg-white lg:sticky lg:top-20 lg:self-start" data-testid="pdp-gallery">
+      <div className="relative bg-white lg:sticky lg:top-28 lg:self-start" data-testid="pdp-gallery">
         <div className="flex gap-2 px-2 pt-3 pb-1 md:px-4 md:pt-4 lg:px-0 lg:pt-0">
           {/* Vertical thumbnail rail */}
           {totalMedia > 1 && (
@@ -1556,33 +1528,68 @@ export default function ListingDetail() {
                 <Film className="h-3 w-3" aria-hidden="true" /> {t("tr.promoVideo")}
               </div>
             )}
+
+            {/* Desktop hover-to-zoom */}
+            {currentMedia?.type !== "video" && (
+              <div
+                className="hidden lg:block absolute inset-0 z-[5] cursor-zoom-in"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width - 0.5) * -80;
+                  const y = ((e.clientY - rect.top) / rect.height - 0.5) * -80;
+                  setZoom(2.2);
+                  setPanX(x);
+                  setPanY(y);
+                }}
+                onMouseLeave={() => { setZoom(1); setPanX(0); setPanY(0); }}
+                onDoubleClick={() => setGalleryFullscreen(true)}
+                aria-hidden
+              />
+            )}
           </div>
         </div>
 
-        {/* Dots + counter under gallery */}
-        {totalMedia > 1 && (
-          <div className="flex items-center justify-center gap-3 px-3 py-2" aria-hidden="true">
-            <div className="flex gap-1.5 items-center">
-              {mediaItems.map((item, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setImgIndex(i)}
-                  className={cn(
-                    "rounded-full transition-all",
-                    i === imgIndex
-                      ? item.type === "video" ? "bg-[#F97316] w-2 h-2" : "bg-foreground w-2 h-2"
-                      : "bg-muted-foreground/35 w-1.5 h-1.5",
-                  )}
-                  aria-label={`Go to media ${i + 1}`}
-                />
-              ))}
+        {/* Dots + counter + zoom/expand hints */}
+        <div className="flex items-center justify-between gap-3 px-3 py-2 lg:px-0">
+          {totalMedia > 1 ? (
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <div className="flex gap-1.5 items-center">
+                {mediaItems.map((item, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setImgIndex(i)}
+                    className={cn(
+                      "rounded-full transition-all",
+                      i === imgIndex
+                        ? item.type === "video" ? "bg-[#F97316] w-2 h-2" : "bg-foreground w-2 h-2"
+                        : "bg-muted-foreground/35 w-1.5 h-1.5",
+                    )}
+                    aria-label={`Go to media ${i + 1}`}
+                  />
+                ))}
+              </div>
+              <span className="text-[12px] text-muted-foreground tabular-nums font-medium">
+                {imgIndex + 1} / {totalMedia}
+              </span>
             </div>
-            <span className="text-[12px] text-muted-foreground tabular-nums font-medium">
-              {imgIndex + 1} / {totalMedia}
+          ) : <span />}
+          <div className="hidden lg:flex items-center gap-3 text-[12px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Search className="h-3.5 w-3.5" />
+              {t("listing.hoverToZoom", { defaultValue: "Hover to zoom" })}
             </span>
+            <button
+              type="button"
+              onClick={() => setGalleryFullscreen(true)}
+              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              data-testid="button-gallery-fullscreen"
+              aria-label={t("listing.fullscreen", { defaultValue: "Fullscreen" })}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ══════════ CENTER: PRODUCT INFO ══════════ */}
@@ -1689,6 +1696,22 @@ export default function ListingDetail() {
                 </p>
               </div>
             </div>
+
+            {/* Real product attributes only — no invented variants */}
+            {((listing as any).itemSize || rawStock != null) && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(listing as any).itemSize && (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg border-2 border-[#F97316] text-[13px] font-semibold bg-orange-50/50">
+                    {t("listing.size", { defaultValue: "Size" })}: {(listing as any).itemSize}
+                  </span>
+                )}
+                {rawStock != null && (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg border border-border text-[13px] font-medium text-muted-foreground">
+                    {t("listing.stockCurrent", { count: maxBuyQty })}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* BNPL teaser */}
@@ -1789,21 +1812,47 @@ export default function ListingDetail() {
 
       {/* ══════════ RIGHT: DESKTOP PURCHASE PANEL ══════════ */}
       <aside
-        className="hidden lg:block sticky top-20 self-start"
+        className="hidden lg:block sticky top-28 self-start"
         data-testid="pdp-purchase-panel"
       >
-        <div className="rounded-xl border border-border bg-white shadow-sm p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-white shadow-sm p-5 space-y-3.5">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[26px] font-bold tabular-nums">
+            <span className="text-[28px] font-bold tabular-nums tracking-tight">
               {promoValidation?.valid
                 ? `$${promoValidation.finalPrice.toFixed(2)}`
                 : formatPrice(listing.price, country, (listing as any).currency)}
             </span>
             {promoValidation?.valid && promoValidation.discountAmount > 0 && (
-              <span className="text-sm line-through text-muted-foreground tabular-nums">
-                ${effectiveListingPriceUsd.toFixed(2)}
-              </span>
+              <>
+                <span className="text-sm line-through text-muted-foreground tabular-nums">
+                  ${effectiveListingPriceUsd.toFixed(2)}
+                </span>
+                <span className="text-[11px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  −${promoValidation.discountAmount.toFixed(2)}
+                </span>
+              </>
             )}
+          </div>
+
+          <div className="flex items-start gap-2 text-[13px]">
+            <Truck className="h-4 w-4 mt-0.5 shrink-0 text-[hsl(152,65%,28%)]" />
+            <div>
+              <p
+                className="leading-snug font-semibold"
+                dangerouslySetInnerHTML={{
+                  __html: t("listing.standardFreeShipping")
+                    .replace("FREE", `<strong class="text-[hsl(152,65%,28%)]">FREE</strong>`)
+                    .replace("GRATUIT", `<strong class="text-[hsl(152,65%,28%)]">GRATUIT</strong>`)
+                    .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
+                }}
+              />
+              {(user?.location || user?.country) && (
+                <p className="text-[12px] text-[#0066c0] mt-1 flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {t("home.deliverTo", { defaultValue: "Deliver to" })} {user?.location || user?.country}
+                </p>
+              )}
+            </div>
           </div>
 
           {inStock ? (
@@ -1814,34 +1863,20 @@ export default function ListingDetail() {
             <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
           )}
 
-          <div className="flex items-start gap-2 text-[13px]">
-            <Truck className="h-4 w-4 mt-0.5 shrink-0" />
-            <p
-              className="leading-snug"
-              dangerouslySetInnerHTML={{
-                __html: t("listing.standardFreeShipping")
-                  .replace("FREE", `<strong class="text-[hsl(152,65%,28%)]">FREE</strong>`)
-                  .replace("GRATUIT", `<strong class="text-[hsl(152,65%,28%)]">GRATUIT</strong>`)
-                  .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
-              }}
-            />
-          </div>
-
           {!isOwner && listing.status === "available" && (
             <>
               <label className="block">
-                <span className="text-[12px] font-semibold text-muted-foreground mb-1 block">
-                  {t("listing.quantity", { defaultValue: "Quantity" })}
-                </span>
                 <select
                   value={buyQty}
                   onChange={(e) => setBuyQty(Number(e.target.value))}
                   disabled={!canPurchaseQty}
-                  className="w-full appearance-none h-10 rounded-lg bg-muted/60 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
+                  className="w-full appearance-none h-11 rounded-lg bg-muted/70 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
                   data-testid="pdp-quantity-select-desktop"
                 >
                   {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>{n}</option>
+                    <option key={n} value={n}>
+                      {t("listing.quantity", { defaultValue: "Quantity" })}: {n}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -1852,7 +1887,7 @@ export default function ListingDetail() {
                 disabled={!canPurchaseQty}
                 data-testid="button-add-to-cart-desktop"
                 className={cn(
-                  "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all disabled:opacity-50",
+                  "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-sm",
                   isInCart(id)
                     ? "bg-[hsl(152,65%,22%)] text-white"
                     : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground",
@@ -1866,12 +1901,44 @@ export default function ListingDetail() {
                 onClick={handleBuyNowClick}
                 disabled={!canPurchaseQty}
                 data-testid="button-buy-now-desktop"
-                className="w-full h-11 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex items-center justify-center transition-all disabled:opacity-50"
+                className="w-full h-11 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex items-center justify-center transition-all disabled:opacity-50 shadow-sm"
               >
                 {t("buttons.buyNow")}
               </button>
             </>
           )}
+
+          {!isOwner && (
+            <button
+              type="button"
+              onClick={handleChat}
+              disabled={createConv.isPending}
+              data-testid="button-chat-seller-desktop"
+              className="w-full h-10 rounded-full border-2 border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
+            </button>
+          )}
+
+          <div className="pt-1 space-y-1.5 text-[12px] text-muted-foreground">
+            <p>
+              {t("listing.soldBy")}{" "}
+              <button type="button" onClick={() => setLocation(`/profile/${listing.sellerId}`)} className="text-[#0066c0] font-semibold hover:underline">
+                {listing.sellerName}
+              </button>
+            </p>
+            {country && (
+              <p className="flex items-center gap-1.5 text-foreground/80">
+                <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(152,65%,28%)] shrink-0" />
+                {t("tr.returnDays", { count: getReturnDays(country) })}
+              </p>
+            )}
+            <p className="flex items-center gap-1.5 text-foreground/80">
+              <Shield className="h-3.5 w-3.5 text-[hsl(152,65%,28%)] shrink-0" />
+              {t("tr.escrow")}
+            </p>
+          </div>
 
           <button
             type="button"
@@ -1882,48 +1949,30 @@ export default function ListingDetail() {
             <Heart className={cn("h-4 w-4", isFav && "fill-red-500 text-red-500")} />
             {isFav ? t("listing.inWishlist", { defaultValue: "Saved" }) : t("listing.addToWishlist", { defaultValue: "Add to Wishlist" })}
           </button>
-
-          {!isOwner && (
-            <Button
-              variant="outline"
-              className="w-full h-10"
-              onClick={handleChat}
-              disabled={createConv.isPending}
-              data-testid="button-chat-seller-desktop"
-            >
-              <MessageCircle className="h-4 w-4 mr-2" />
-              {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
-            </Button>
-          )}
-
-          <div className="pt-2 border-t border-border space-y-2">
-            <button
-              type="button"
-              onClick={() => setLocation(`/profile/${listing.sellerId}`)}
-              className="flex items-center gap-2 w-full text-left"
-            >
-              <Avatar className="h-9 w-9">
-                <AvatarImage src={listing.sellerAvatar ?? undefined} />
-                <AvatarFallback className="bg-[hsl(152,65%,22%)] text-white text-sm font-bold">{listing.sellerName[0]}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="text-[13px] font-bold truncate">{listing.sellerName}</p>
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                  {listing.sellerRating.toFixed(1)}
-                </p>
-              </div>
-            </button>
-            {country && (
-              <p className="text-[12px] text-muted-foreground leading-snug">
-                {t("tr.returnDays", { count: getReturnDays(country) })} · {t("tr.escrow")}
-              </p>
-            )}
-          </div>
         </div>
       </aside>
 
       </div>{/* end desktop three-column stage */}
+
+      {/* Desktop trust bar — real policies only (no invented warranties) */}
+      <div className="hidden lg:block max-w-7xl mx-auto px-4 py-4" data-testid="pdp-trust-bar">
+        <div className="grid grid-cols-4 gap-4 rounded-xl border border-border bg-white px-4 py-3.5">
+          {[
+            { icon: Truck, label: t("listing.freeShipping", { defaultValue: "Free Shipping" }), sub: t("listing.standardFreeShipping").slice(0, 40) },
+            { icon: CheckCircle2, label: t("tr.easyReturns", { defaultValue: "Easy Returns" }), sub: country ? t("tr.returnDays", { count: getReturnDays(country) }) : t("tr.returnDesc") },
+            { icon: Shield, label: t("tr.escrow", { defaultValue: "Buyer Protection" }), sub: t("tr.escrowDesc") },
+            { icon: Headphones, label: t("listing.support", { defaultValue: "Support" }), sub: t("nav.helpCenter", { defaultValue: "Help Center" }) },
+          ].map((item) => (
+            <div key={item.label} className="flex items-start gap-2.5 min-w-0">
+              <item.icon className="h-5 w-5 text-[hsl(152,65%,28%)] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-foreground leading-tight">{item.label}</p>
+                <p className="text-[11px] text-muted-foreground truncate leading-snug mt-0.5">{item.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Safety actions */}
       {user && user.id !== listing.sellerId && (
@@ -2393,6 +2442,42 @@ export default function ListingDetail() {
         </div>,
         document.body
       )}
+
+      {/* Gallery fullscreen */}
+      <Dialog open={galleryFullscreen} onOpenChange={setGalleryFullscreen}>
+        <DialogContent className="max-w-5xl w-[95vw] p-2 bg-black border-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{listing.title}</DialogTitle>
+          </DialogHeader>
+          <div className="relative w-full aspect-[4/3] max-h-[85vh] flex items-center justify-center">
+            {currentMedia?.type === "video" ? (
+              <video src={currentMedia.url} controls autoPlay playsInline className="max-w-full max-h-full object-contain" />
+            ) : currentMedia ? (
+              <img src={currentMedia.url} alt={listing.title} className="max-w-full max-h-full object-contain" {...listingImageProps({ variant: "detail" })} />
+            ) : null}
+            {totalMedia > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2"
+                  aria-label="Previous"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2"
+                  aria-label="Next"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Offer Dialog */}
       {/* ── DELETE CONFIRM DIALOG ── */}

@@ -1,18 +1,129 @@
 name: Deploy to DigitalOcean
 
+# Automatic production deploy: push/merge to main → App Platform redeploy.
+# Manual runs support dry-run secret validation without deploying.
+#
+# Existing App Platform application (DO NOT create a new app):
+#   4a94f9b4-6ede-453e-9e8c-f1439d3ade6d
+# Optional override: repository variable DO_APP_ID (Settings → Variables).
+# Required secret: DO_API_TOKEN (Settings → Secrets → Actions).
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate secrets only — do NOT create a DigitalOcean deployment"
+        type: boolean
+        default: true
+      force_build:
+        description: "Force DigitalOcean rebuild when deploying"
+        type: boolean
+        default: true
+
+concurrency:
+  group: digitalocean-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Prefer repo variable when set; otherwise the known existing Flexa Market app.
+      DO_APP_ID: ${{ vars.DO_APP_ID || '4a94f9b4-6ede-453e-9e8c-f1439d3ade6d' }}
     steps:
-      - name: Trigger DigitalOcean deployment
+      - name: Verify required GitHub Actions secrets
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: |
-          curl -s -X POST \
-            "https://api.digitalocean.com/v2/apps/4a94f9b4-6ede-453e-9e8c-f1439d3ade6d/deployments" \
-            -H "Authorization: Bearer ${{ secrets.DO_API_TOKEN }}" \
+          set -euo pipefail
+          missing=0
+          if [ -z "${DO_API_TOKEN}" ]; then
+            echo "::error::Missing repository secret DO_API_TOKEN"
+            echo "Add it at: Settings → Secrets and variables → Actions → New repository secret"
+            missing=1
+          else
+            echo "DO_API_TOKEN is present (value redacted)"
+          fi
+          if [ -z "${DO_APP_ID}" ]; then
+            echo "::error::DO_APP_ID is empty"
+            missing=1
+          else
+            # Print only the UUID used for deploy targeting — not a secret.
+            echo "DO_APP_ID target: ${DO_APP_ID}"
+          fi
+          # Built-in Actions GITHUB_TOKEN is automatic; do not create a custom
+          # repository secret with that reserved name.
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            echo "Built-in Actions GITHUB_TOKEN is available (value redacted)"
+          fi
+          exit "$missing"
+
+      - name: Dry-run — validate DO token against existing app (no deploy)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Read-only GET — confirms auth + existing app id. Does NOT create a deployment.
+          response="$(curl -sS -w "\n%{http_code}" -X GET \
+            "https://api.digitalocean.com/v2/apps/${DO_APP_ID}" \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
+            -H "Content-Type: application/json")"
+          body="$(printf '%s\n' "$response" | sed '$d')"
+          code="$(printf '%s\n' "$response" | tail -n1)"
+          echo "DigitalOcean GET /apps/{id} HTTP status: ${code}"
+          if command -v python3 >/dev/null 2>&1; then
+            printf '%s' "$body" | python3 -c 'import sys,json
+try:
+  d=json.load(sys.stdin)
+  app=d.get("app") or {}
+  print("app.id:", app.get("id") or d.get("id") or "n/a")
+  spec=app.get("spec") or {}
+  print("app.name:", spec.get("name") or app.get("default_ingress") or "n/a")
+  if d.get("message"): print("DO message:", d.get("message"))
+except Exception:
+  print("DO response: (non-JSON or truncated)")' || true
+          fi
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::Dry-run auth/app validation failed with HTTP ${code}"
+            echo "Check DO_API_TOKEN and that DO_APP_ID matches the existing Flexa Market app."
+            exit 1
+          fi
+          echo "Dry run OK: token authenticates and existing app is reachable."
+          echo "No DigitalOcean deployment was triggered."
+
+      - name: Trigger DigitalOcean deployment
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+          FORCE_BUILD: ${{ github.event_name == 'push' && 'true' || (inputs.force_build && 'true' || 'false') }}
+        run: |
+          set -euo pipefail
+          # Never echo DO_API_TOKEN. Fail on non-2xx so unauthorized tokens cannot look green.
+          response="$(curl -sS -w "\n%{http_code}" -X POST \
+            "https://api.digitalocean.com/v2/apps/${DO_APP_ID}/deployments" \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d '{"force_build": true}'
+            -d "{\"force_build\": ${FORCE_BUILD}}")"
+          body="$(printf '%s\n' "$response" | sed '$d')"
+          code="$(printf '%s\n' "$response" | tail -n1)"
+          echo "DigitalOcean HTTP status: ${code}"
+          # Log only id/message keys if JSON; never dump unexpected payloads.
+          if command -v python3 >/dev/null 2>&1; then
+            printf '%s' "$body" | python3 -c 'import sys,json
+try:
+  d=json.load(sys.stdin)
+  print("DO response id:", d.get("id") or (d.get("deployment") or {}).get("id") or "n/a")
+  if d.get("message"): print("DO message:", d.get("message"))
+except Exception:
+  print("DO response: (non-JSON or truncated)")' || true
+          fi
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::DigitalOcean deploy request failed with HTTP ${code}"
+            exit 1
+          fi
+          echo "DigitalOcean deployment request accepted for app ${DO_APP_ID}."

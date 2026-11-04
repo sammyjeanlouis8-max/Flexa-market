@@ -1834,14 +1834,14 @@ export default function ListingDetail() {
         {/* spacer so content clears the sticky buy bar — always rendered
             when the buy bar could appear so the layout never shifts when the
             buy dialog opens / closes (removing it caused the page to jump) */}
-        {!isOwner && listing.status === "available" && (
+        {!isOwner && listing.status === "available" && (listing as any).stockQuantity !== 0 && (
           <div className="h-[calc(6rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
         )}
 
       </div>
 
       {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
-      {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
+      {!isOwner && listing.status === "available" && (listing as any).stockQuantity !== 0 && !buyNowOpen && createPortal(
         <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-background border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.10)] flex items-center gap-2.5 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
 
           {/* Add to Cart */}

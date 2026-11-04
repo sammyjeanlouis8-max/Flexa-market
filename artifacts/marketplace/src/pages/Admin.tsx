@@ -264,9 +264,9 @@ function BroadcastEmailPanel() {
 }
 
 function StatCard({
-  icon: Icon, label, value, color, bg, alert = false, onClick,
+  icon: Icon, label, value, alert = false, onClick,
 }: {
-  icon: any; label: string; value: number | string; color: string; bg: string; alert?: boolean; onClick?: () => void;
+  icon: any; label: string; value: number | string; alert?: boolean; onClick?: () => void;
 }) {
   const isAlert = alert && Number(value) > 0;
   return (
@@ -275,21 +275,32 @@ function StatCard({
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={onClick ? e => e.key === "Enter" && onClick() : undefined}
-      className={`relative overflow-hidden rounded-2xl border p-4 transition-all select-none
-        ${isAlert ? "border-amber-400 bg-amber-50/60 dark:bg-amber-950/20" : `${bg} border-border/60`}
-        ${onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]" : ""}
+      className={`relative overflow-hidden rounded-xl border p-3.5 transition-colors select-none
+        ${isAlert ? "border-amber-300/70 bg-amber-50/50 dark:bg-amber-950/20" : "border-border bg-card"}
+        ${onClick ? "cursor-pointer hover:bg-accent/50 active:scale-[0.98]" : ""}
       `}
     >
-      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${color} mb-3 shadow-sm`}>
-        <Icon className="h-5 w-5" />
+      <div className={`inline-flex h-9 w-9 items-center justify-center rounded-lg mb-2.5 ${
+        isAlert ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-primary/10 text-primary"
+      }`}>
+        <Icon className="h-4 w-4" />
       </div>
-      <p className={`text-2xl font-black leading-none ${isAlert ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+      <p className={`text-2xl font-bold tabular-nums leading-none tracking-tight ${isAlert ? "text-amber-700 dark:text-amber-400" : "text-foreground"}`}>
         {value}
       </p>
-      <p className="text-[11px] text-muted-foreground mt-1 font-medium">{label}</p>
+      <p className="text-[11px] text-muted-foreground mt-1.5 font-medium leading-snug">{label}</p>
       {isAlert && (
-        <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+        <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-amber-500" />
       )}
+    </div>
+  );
+}
+
+function VisitStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-border bg-background px-3 py-3 text-center">
+      <p className="text-xl font-bold tabular-nums text-foreground leading-none">{value.toLocaleString()}</p>
+      <p className="text-[11px] text-muted-foreground mt-1.5 font-medium">{label}</p>
     </div>
   );
 }
@@ -2560,22 +2571,18 @@ export default function Admin() {
   return (
     <div className="max-w-7xl mx-auto px-3 py-5">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
-        <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${isSuperAdmin ? "bg-purple-600" : "bg-primary"}`}>
-          {isSuperAdmin ? <Crown className="h-5 w-5 text-white" /> : <Shield className="h-5 w-5 text-white" />}
+      <div className="flex items-center gap-2.5 mb-5">
+        <div className="h-9 w-9 rounded-xl flex items-center justify-center bg-primary">
+          {isSuperAdmin ? <Crown className="h-4.5 w-4.5 h-[18px] w-[18px] text-primary-foreground" /> : <Shield className="h-[18px] w-[18px] text-primary-foreground" />}
         </div>
-        <div>
-          <h1 className="text-xl font-extrabold text-foreground leading-tight">{isModerator ? "Panel Modération" : "Admin Panel"}</h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl font-bold text-foreground leading-tight tracking-tight">{isModerator ? "Panel Modération" : "Admin Panel"}</h1>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
             <p className="text-xs text-muted-foreground">
               {isSuperAdmin ? "Super Admin — full access" : isModerator ? "Modérateur — accès limité" : "Admin — limited access"}
             </p>
             {me?.scopeLevel && !isSuperAdmin && (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                ${me.scopeCity ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                  : me.scopeDepartment ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
-                  : me.scopeCountry ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                  : "bg-secondary text-secondary-foreground"}`}>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
                 <MapPin className="h-2.5 w-2.5" />
                 {me.scopeCity ?? me.scopeDepartment ?? me.scopeCountry ?? "Global"}
                 {" · "}{me.scopeLevel}
@@ -2583,24 +2590,44 @@ export default function Admin() {
             )}
           </div>
         </div>
-        {s?.flaggedUsers > 0 && <Badge variant="destructive" className="ml-auto animate-pulse">{s.flaggedUsers} Flagged</Badge>}
+        {s?.flaggedUsers > 0 && <Badge variant="destructive" className="ml-auto shrink-0">{s.flaggedUsers} Flagged</Badge>}
       </div>
+
+      {/* Site visits — day / month / year */}
+      {s && !isModerator && (
+        <div className="mb-4 rounded-xl border border-border bg-card p-3.5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+              <Eye className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground leading-tight">Site visits</p>
+              <p className="text-[11px] text-muted-foreground">Unique visitors · UTC day</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <VisitStat label="Today" value={Number(s.visitsToday ?? 0)} />
+            <VisitStat label="This month" value={Number(s.visitsMonth ?? 0)} />
+            <VisitStat label="This year" value={Number(s.visitsYear ?? 0)} />
+          </div>
+        </div>
+      )}
 
       {/* Stats Grid */}
       {s && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
-          <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
-          <StatCard icon={Wifi} label="Online Kounye a" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
-          <StatCard icon={Package} label="Anons Aktif" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
-          {!isModerator && <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />}
-          {!isModerator && <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />}
-          <StatCard icon={AlertTriangle} label="Flagged" value={s.flaggedUsers ?? 0} color="bg-orange-600 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setAdminTab("flagged")} />
-          <StatCard icon={Flag} label="Rapò" value={s.pendingReports} color="bg-red-600 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("reports")} />
-          {!isModerator && <StatCard icon={Truck} label="Chofe Atant" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />}
-          {!isModerator && <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />}
-          {!isModerator && <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />}
-          {!isModerator && <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
-          {!isModerator && <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-4">
+          <StatCard icon={Users} label="Users" value={s.totalUsers} onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
+          <StatCard icon={Wifi} label="Online now" value={s.onlineUsers ?? 0} />
+          <StatCard icon={Package} label="Active listings" value={s.activeListings} onClick={() => setAdminTab("listings")} />
+          {!isModerator && <StatCard icon={Zap} label="Boosted" value={s.boostedListings ?? 0} onClick={() => setAdminTab("boosts")} />}
+          {!isModerator && <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} onClick={() => setAdminTab("listings")} />}
+          <StatCard icon={AlertTriangle} label="Flagged" value={s.flaggedUsers ?? 0} alert onClick={() => setAdminTab("flagged")} />
+          <StatCard icon={Flag} label="Reports" value={s.pendingReports} alert onClick={() => setAdminTab("reports")} />
+          {!isModerator && <StatCard icon={Truck} label="Drivers pending" value={driverApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/driver-applications")} />}
+          {!isModerator && <StatCard icon={ShieldCheck} label="Agents pending" value={kycAgentApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/agent-applications")} />}
+          {!isModerator && <StatCard icon={Landmark} label="Loans pending" value={loanAdminPending} alert onClick={() => goToTab("loans")} />}
+          {!isModerator && <StatCard icon={Briefcase} label="Employers pending" value={employerApps.filter((a: any) => a.status === "pending").length} alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
+          {!isModerator && <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
         </div>
       )}
 

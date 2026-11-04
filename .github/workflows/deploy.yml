@@ -1,18 +1,77 @@
 name: Deploy to DigitalOcean
 
+# Automatic production deploy still only runs on pushes to main.
+# Manual runs support a dry-run secret check without deploying.
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate secrets only — do NOT create a DigitalOcean deployment"
+        type: boolean
+        default: true
+      force_build:
+        description: "Force DigitalOcean rebuild when deploying"
+        type: boolean
+        default: true
+
+concurrency:
+  group: digitalocean-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Trigger DigitalOcean deployment
+      - name: Verify required GitHub Actions secrets
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
         run: |
-          curl -s -X POST \
+          set -euo pipefail
+          missing=0
+          if [ -z "${DO_API_TOKEN}" ]; then
+            echo "::error::Missing repository secret DO_API_TOKEN"
+            echo "Add it at: Settings → Secrets and variables → Actions → New repository secret"
+            missing=1
+          else
+            echo "DO_API_TOKEN is present (value redacted)"
+          fi
+          # GitHub Actions provides an automatic GITHUB_TOKEN; do not create a
+          # custom Actions secret with that reserved name.
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            echo "Built-in Actions GITHUB_TOKEN is available (value redacted)"
+          fi
+          exit "$missing"
+
+      - name: Skip DigitalOcean deploy (dry run)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          echo "Dry run complete. No DigitalOcean deployment was triggered."
+          echo "Uncheck dry_run on workflow_dispatch (or push to main) when ready to deploy."
+
+      - name: Trigger DigitalOcean deployment
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run) }}
+        env:
+          DO_API_TOKEN: ${{ secrets.DO_API_TOKEN }}
+          FORCE_BUILD: ${{ github.event_name == 'push' && 'true' || inputs.force_build }}
+        run: |
+          set -euo pipefail
+          # Never echo DO_API_TOKEN. Only POST the deploy request.
+          response="$(curl -sS -w "\n%{http_code}" -X POST \
             "https://api.digitalocean.com/v2/apps/4a94f9b4-6ede-453e-9e8c-f1439d3ade6d/deployments" \
-            -H "Authorization: Bearer ${{ secrets.DO_API_TOKEN }}" \
+            -H "Authorization: Bearer ${DO_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d '{"force_build": true}'
+            -d "{\"force_build\": ${FORCE_BUILD}}")"
+          body="$(printf '%s\n' "$response" | sed '$d')"
+          code="$(printf '%s\n' "$response" | tail -n1)"
+          echo "DigitalOcean HTTP status: ${code}"
+          # Avoid dumping full API JSON in case it includes sensitive fields.
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::DigitalOcean deploy request failed with HTTP ${code}"
+            exit 1
+          fi
+          echo "DigitalOcean deployment request accepted."

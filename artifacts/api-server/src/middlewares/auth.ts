@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { hasPermission, type AdminPermission } from "../lib/adminPermissions";
 
 // ─── Online presence (in-memory) ─────────────────────────────────────────────
 // Any authenticated request marks the user as "online" for the next 5 minutes.
@@ -97,8 +98,14 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
 export async function requireSuperAdmin(req: Request, res: Response, next: NextFunction): Promise<void> {
   await requireAuth(req, res, async () => {
-    if (!req.user?.isSuperAdmin) {
+    // Canonical role wins over a stale isSuperAdmin flag on demoted staff.
+    if (getRole(req.user) !== "superadmin") {
       res.status(403).json({ error: "Super Admin access required" });
+      return;
+    }
+    if (isAdminAccessSuspended(req.user)) {
+      const until = (req.user as any)?.adminSuspendedUntil;
+      res.status(403).json({ error: "Admin account suspended", suspended: true, until: until ?? null });
       return;
     }
     next();
@@ -154,6 +161,40 @@ export function requireRole(min: Role) {
 
 export const requireSupport = requireRole("support");
 export const requireModerator = requireRole("moderator");
+
+/**
+ * requirePermission — fine-grained admin capability gate.
+ * Uses the role permission matrix (adminPermissions.ts). Backend-only enforcement.
+ */
+export function requirePermission(permission: AdminPermission) {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    await requireAuth(req, res, async () => {
+      if (isAdminAccessSuspended(req.user)) {
+        const until = (req.user as any)?.adminSuspendedUntil;
+        res.status(403).json({ error: "Admin account suspended", suspended: true, until: until ?? null });
+        return;
+      }
+      const role = getRole(req.user);
+      if (!hasPermission(role, permission)) {
+        res.status(403).json({
+          error: `Permission denied: ${permission}`,
+          code: "PERMISSION_DENIED",
+          permission,
+        });
+        return;
+      }
+      next();
+    });
+  };
+}
+
+export function userHasPermission(
+  user: typeof usersTable.$inferSelect | undefined | null,
+  permission: AdminPermission,
+): boolean {
+  if (!user || isAdminAccessSuspended(user)) return false;
+  return hasPermission(getRole(user), permission);
+}
 
 /**
  * requireNotRestricted — blocks restricted users from social actions.

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, promoWalletTable, walletTransactionsTable, walletTransfersTable, platformSettingsTable, usersTable, rechargeCardsTable, notificationsTable } from "@workspace/db";
 import { eq, desc, sql, and, gte, ilike, or, not } from "drizzle-orm";
-import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin } from "../middlewares/auth";
+import { requireAuth, requireCardNotBlocked, requireAdmin, requireFinanceAdmin, requireSuperAdmin, requirePermission } from "../middlewares/auth";
 import { logger } from "../lib/logger";
 import { getStripeClient } from "../lib/stripeClient";
 
@@ -1574,7 +1574,7 @@ function generateRechargeCode(): string {
 }
 
 // POST /api/admin/recharge-cards/generate — admin creates a batch of cards
-router.post("/admin/recharge-cards/generate", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/recharge-cards/generate", requirePermission("rechargeCards"), async (req, res): Promise<void> => {
   const { amountUsd, quantity, expiresAt } = req.body as { amountUsd: number; quantity: number; expiresAt?: string };
   if (!amountUsd || amountUsd <= 0) { res.status(400).json({ error: "amountUsd obligatwa" }); return; }
   const qty = Math.min(Math.max(1, Math.floor(quantity ?? 1)), 500);
@@ -1599,7 +1599,7 @@ router.post("/admin/recharge-cards/generate", requireAdmin, async (req, res): Pr
 });
 
 // GET /api/admin/recharge-cards — list all cards (paginated)
-router.get("/admin/recharge-cards", requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/recharge-cards", requirePermission("rechargeCards"), async (req, res): Promise<void> => {
   const cards = await db
     .select({
       id: rechargeCardsTable.id,

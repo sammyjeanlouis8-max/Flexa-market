@@ -4,8 +4,10 @@ import {
   hasFinanceAdminAccess,
   hasRole,
   isAdminAccessSuspended,
+  userHasPermission,
 } from "../middlewares/auth";
 import { listingInAdminScope, userInAdminScope } from "../lib/adminScope";
+import { hasPermission } from "../lib/adminPermissions";
 
 const baseUser = {
   id: 1,
@@ -59,6 +61,22 @@ describe("canonical staff authorization", () => {
   it("keeps canonical finance admins and superadmins authorized", () => {
     expect(hasFinanceAdminAccess({ ...baseUser, role: "admin", isAdmin: true })).toBe(true);
     expect(hasFinanceAdminAccess({ ...baseUser, role: "superadmin", isSuperAdmin: true })).toBe(true);
+  });
+
+  it("blocks moderator privilege escalation into refunds and admin team", () => {
+    const moderator = { ...baseUser, role: "moderator", isAdmin: true, isSuperAdmin: true };
+    expect(getRole(moderator)).toBe("moderator");
+    expect(hasPermission("moderator", "refunds")).toBe(false);
+    expect(hasPermission("moderator", "adminTeam")).toBe(false);
+    expect(userHasPermission(moderator, "refunds")).toBe(false);
+    expect(userHasPermission(moderator, "moderation")).toBe(true);
+  });
+
+  it("allows admin bans but not refunds", () => {
+    const admin = { ...baseUser, role: "admin", isAdmin: true };
+    expect(userHasPermission(admin, "bans")).toBe(true);
+    expect(userHasPermission(admin, "refunds")).toBe(false);
+    expect(userHasPermission({ ...baseUser, role: "superadmin", isSuperAdmin: true }, "refunds")).toBe(true);
   });
 });
 

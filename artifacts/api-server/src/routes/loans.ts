@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, usersTable, notificationsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requirePermission, hasRole } from "../middlewares/auth";
 import { deductWallet } from "./wallet";
 import { logger } from "../lib/logger";
 import { loanAccessPolicy } from "../lib/loanPolicy";
@@ -281,8 +281,8 @@ router.get("/loans/eligibility", requireAuth, async (req, res) => {
   try {
     const actor = (req as any).user;
     const userId = actor.id;
-    const isSuperAdmin = !!actor.isSuperAdmin;
-    const isAdminUser  = !isSuperAdmin && !!actor.isAdmin;
+    // Canonical role — do not trust legacy isAdmin on moderators/support.
+    const isStaffBypass = hasRole(actor, "admin");
 
     const m = await fetchEligibilityMetrics(userId);
     if (!m) { res.status(404).json({ error: "User not found" }); return; }
@@ -295,8 +295,8 @@ router.get("/loans/eligibility", requireAuth, async (req, res) => {
     // Eligibility uses the authenticated account country only. Admin roles
     // never bypass the supported-country requirement.
     const countryEligible  = ELIGIBLE_COUNTRIES.includes(user.country ?? "");
-    const timeEligible     = isSuperAdmin || isAdminUser || daysOnPlatform >= MIN_DAYS;
-    const listingEligible  = isSuperAdmin || isAdminUser || activeListingCount >= 10;
+    const timeEligible     = isStaffBypass || daysOnPlatform >= MIN_DAYS;
+    const listingEligible  = isStaffBypass || activeListingCount >= 10;
 
     const appRes = await db.execute(sql`
       SELECT id, status, amount_requested, term_months, created_at, reviewer_note,
@@ -375,8 +375,7 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
       res.status(403).json({ error: "Loans are not available for this account or application." });
       return;
     }
-    const isSuperAdmin = !!actor.isSuperAdmin;
-    const isAdminUser  = !isSuperAdmin && !!actor.isAdmin;
+    const isStaffBypass = hasRole(actor, "admin");
 
     const { user, daysOnPlatform, activeListingCount } = m;
 
@@ -391,7 +390,7 @@ router.post("/loans/apply", requireAuth, async (req, res) => {
 
     // Admins may bypass the normal account-age/listing gates for internal
     // testing, but never the supported-country gate above.
-    if (!isSuperAdmin && !isAdminUser) {
+    if (!isStaffBypass) {
       if (activeListingCount < 10) {
         res.status(403).json({
           error: `Ou bezwen oumenm 10 atik disponib pou vann pou aplike. Ou gen ${activeListingCount} kounye a.`,
@@ -575,13 +574,9 @@ router.post("/loans/:id/retry-payment", requireAuth, async (req, res) => {
 });
 
 // ── GET /api/admin/loans ───────────────────────────────────────────────────────
-router.get("/admin/loans", requireAuth, async (req, res) => {
+router.get("/admin/loans", requirePermission("loans"), async (req, res) => {
   try {
     const actor = (req as any).user;
-    if (!actor.isAdmin && !actor.isSuperAdmin) {
-      res.status(403).json({ error: "Admin only" });
-      return;
-    }
 
     const allowedCountries = resolveAdminCountries(actor);
     const countryClause = allowedCountries && allowedCountries.length > 0
@@ -634,12 +629,8 @@ router.get("/admin/loans", requireAuth, async (req, res) => {
 });
 
 // ── GET /api/admin/loans/:id/installments ─────────────────────────────────────
-router.get("/admin/loans/:id/installments", requireAuth, async (req, res) => {
+router.get("/admin/loans/:id/installments", requirePermission("loans"), async (req, res) => {
   try {
-    const actor = (req as any).user;
-    if (!actor.isAdmin && !actor.isSuperAdmin) {
-      res.status(403).json({ error: "Admin only" }); return;
-    }
     const loanId = parseInt(req.params.id as string, 10);
 
     const rows = await db.execute(sql`
@@ -661,12 +652,8 @@ router.get("/admin/loans/:id/installments", requireAuth, async (req, res) => {
 });
 
 // ── POST /api/admin/loans/:id/installments/:instId/retry ──────────────────────
-router.post("/admin/loans/:id/installments/:instId/retry", requireAuth, async (req, res) => {
+router.post("/admin/loans/:id/installments/:instId/retry", requirePermission("loans"), async (req, res) => {
   try {
-    const actor = (req as any).user;
-    if (!actor.isAdmin && !actor.isSuperAdmin) {
-      res.status(403).json({ error: "Admin only" }); return;
-    }
     const loanId = parseInt(req.params.id as string, 10);
     const instId = parseInt(req.params.instId as string, 10);
 
@@ -694,12 +681,9 @@ router.post("/admin/loans/:id/installments/:instId/retry", requireAuth, async (r
 });
 
 // ── PATCH /api/admin/loans/:id ────────────────────────────────────────────────
-router.patch("/admin/loans/:id", requireAuth, async (req, res) => {
+router.patch("/admin/loans/:id", requirePermission("loans"), async (req, res) => {
   try {
     const actor = (req as any).user;
-    if (!actor.isAdmin && !actor.isSuperAdmin) {
-      res.status(403).json({ error: "Admin only" }); return;
-    }
     const loanId = parseInt(req.params.id as string, 10);
 
     if (!actor.isSuperAdmin) {

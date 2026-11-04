@@ -54,12 +54,22 @@ It deploys on **push to `main`** (and optional manual `workflow_dispatch`).
 **Where to paste:**
 
 1. Open: https://github.com/sammyjeanlouis8-max/Flexa-market/settings/secrets/actions  
-2. **New repository secret**
+2. **New repository secret** (or update existing)
 3. Name: `DO_API_TOKEN` (exact)
 4. Value: DigitalOcean API token with App Platform deploy permission
 5. Save
 
 **Do not** create a custom GitHub Actions secret named `GITHUB_TOKEN` — that name is **reserved** by GitHub Actions for the built-in job token.
+
+### Existing App Platform app ID
+
+Workflow targets the **existing** Flexa Market app only:
+
+`4a94f9b4-6ede-453e-9e8c-f1439d3ade6d`
+
+Optional override: repository **variable** `DO_APP_ID`  
+(Settings → Secrets and variables → Actions → Variables).  
+Do **not** create a new DigitalOcean app or database for this workflow.
 
 ---
 
@@ -67,9 +77,11 @@ It deploys on **push to `main`** (and optional manual `workflow_dispatch`).
 
 | Trigger | Behavior |
 |---|---|
-| Push to `main` | Triggers DigitalOcean deploy (production) |
+| Push / merge to `main` | Triggers DigitalOcean deploy (production) |
 | `workflow_dispatch` with `dry_run=true` (default) | Checks secrets only — **no deploy** |
 | `workflow_dispatch` with `dry_run=false` | Triggers deploy when you explicitly ask |
+
+**Recommended before a real release:** merge the hardened deploy workflow (#46), then run Actions → Deploy to DigitalOcean → `dry_run=true` to confirm `DO_API_TOKEN` without deploying.
 
 **Do not deploy until the owner explicitly approves.**
 
@@ -77,8 +89,9 @@ It deploys on **push to `main`** (and optional manual `workflow_dispatch`).
 
 ## 4) Checklist
 
-- [ ] Cursor Runtime Secret `GITHUB_TOKEN` added
-- [ ] New Cloud Agent started after adding the secret
-- [ ] GitHub Actions secret `DO_API_TOKEN` present
-- [ ] `./scripts/verify-github-auth.sh` reports OK in a **new** agent
-- [ ] Deploy dry-run run from Actions (optional) before any real deploy
+- [ ] Cursor Runtime Secret `GITHUB_TOKEN` added (optional for agents)
+- [ ] New Cloud Agent started after adding agent secrets
+- [ ] GitHub Actions secret `DO_API_TOKEN` present / updated
+- [ ] Confirm target app id `4a94f9b4-6ede-453e-9e8c-f1439d3ade6d`
+- [ ] Deploy dry-run from Actions before any real deploy
+- [ ] Owner approval before merge-to-main release wave

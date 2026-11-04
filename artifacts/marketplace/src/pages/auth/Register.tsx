@@ -155,15 +155,15 @@ export default function Register() {
   return (
     <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-2" />
-          <h1 className="text-3xl font-extrabold text-foreground mt-4">{t("auth.createAccount")}</h1>
-          <p className="text-muted-foreground mt-1">{t("auth.joinSubtitle")}</p>
+        <div className="text-center mb-5">
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-14 sm:h-16 w-auto max-w-[48vw] object-contain mx-auto" />
+          <h1 className="text-2xl font-extrabold text-foreground mt-3">{t("auth.createAccount")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("auth.joinSubtitle")}</p>
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-8 shadow-lg">
+        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-sm">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3.5">
 
               <FormField control={form.control} name="name" render={({ field }) => (
                 <FormItem>

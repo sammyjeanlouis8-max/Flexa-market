@@ -98,7 +98,7 @@ export default function Sales() {
   const isEmpty = !!data && data.sales.length === 0;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-5 space-y-4">
       <div>
         <button type="button" onClick={() => history.back()} data-testid="button-back"
           className="inline-flex items-center h-11 -ml-2 px-2 text-sm font-medium text-muted-foreground hover:text-foreground">

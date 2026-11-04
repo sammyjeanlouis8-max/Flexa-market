@@ -103,13 +103,13 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
       {/* Header */}
-      <div className="bg-card border border-border rounded-2xl p-6 mb-6">
-        <div className="flex items-start gap-4">
-          <Avatar className="h-20 w-20 flex-shrink-0">
+      <div className="bg-card border border-border rounded-xl p-4 sm:p-5 mb-4">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <Avatar className="h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0">
             <AvatarImage src={p.avatar ?? undefined} />
-            <AvatarFallback className="text-2xl font-black bg-primary text-primary-foreground">{p.name[0]}</AvatarFallback>
+            <AvatarFallback className="text-xl font-black bg-primary text-primary-foreground">{p.name[0]}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-extrabold text-foreground leading-tight break-words">{p.name}</h1>
@@ -193,18 +193,18 @@ export default function ProfilePage() {
       </div>
 
       <Tabs defaultValue="listings">
-        <TabsList className="mb-6">
+        <TabsList className="mb-4">
           <TabsTrigger value="listings" data-testid="tab-listings">{t("profile.listings")} ({(listings as any[])?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="reviews" data-testid="tab-reviews">{t("profile.reviews")} ({(reviews as any[])?.length ?? 0})</TabsTrigger>
         </TabsList>
         <TabsContent value="listings">
           {(listings as any[])?.length === 0 ? (
-            <div className="text-center py-16 bg-card border border-border rounded-xl">
-              <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <div className="text-center py-12 bg-card border border-border rounded-xl">
+              <Package className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("profile.noListings")}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
               {(listings as any[])?.map((l: any) => (
                 <div key={l.id} className="min-w-0">
                   <ListingCard listing={l} />
@@ -223,14 +223,14 @@ export default function ProfilePage() {
         </TabsContent>
         <TabsContent value="reviews">
           {(reviews as any[])?.length === 0 ? (
-            <div className="text-center py-16 bg-card border border-border rounded-xl">
-              <Star className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <div className="text-center py-12 bg-card border border-border rounded-xl">
+              <Star className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("profile.noReviews")}</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {(reviews as any[])?.map((r: any) => (
-                <div key={r.id} className="bg-card border border-border rounded-xl p-4" data-testid={`review-${r.id}`}>
+                <div key={r.id} className="bg-card border border-border rounded-xl p-3.5" data-testid={`review-${r.id}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={r.reviewerAvatar} />

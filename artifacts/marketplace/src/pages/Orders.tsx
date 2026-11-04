@@ -37,18 +37,18 @@ type Order = {
 
 const statusLabel = (status: string | null | undefined, kind: "order" | "payment" | "shipping") => {
   const labels: Record<string, string> = {
-    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
-    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
-    completed: "Terminée", cancelled: "Annulée", failed: "Échoué",
-    completed_payment: "Payé", paid: "Payé", refunded: "Remboursé",
-    partially_refunded: "Partiellement remboursé", not_shipped: "Non expédiée",
-    label_created: "Étiquette créée", in_transit: "En transit",
-    out_for_delivery: "En cours de livraison", exception: "Exception",
-    returned: "Colis retourné",
+    pending: "Pending", ready_to_ship: "Confirmed", confirmed: "Confirmed",
+    processing: "Processing", shipped: "Shipped", delivered: "Delivered",
+    completed: "Completed", cancelled: "Cancelled", failed: "Failed",
+    completed_payment: "Paid", paid: "Paid", refunded: "Refunded",
+    partially_refunded: "Partially refunded", not_shipped: "Not shipped",
+    label_created: "Label created", in_transit: "In transit",
+    out_for_delivery: "Out for delivery", exception: "Exception",
+    returned: "Returned", waiting: "Awaiting driver", assigned: "Driver assigned",
   };
-  if (kind === "payment" && status === "completed") return "Payé";
-  if (kind === "shipping" && !status) return "Non expédiée";
-  return labels[status ?? ""] ?? status ?? "Non disponible";
+  if (kind === "payment" && status === "completed") return "Paid";
+  if (kind === "shipping" && !status) return "Not shipped";
+  return labels[status ?? ""] ?? (status ? status.replace(/_/g, " ") : "Unavailable");
 };
 
 export default function Orders() {
@@ -243,7 +243,7 @@ export default function Orders() {
       )}
 
       {filteredOrders && filteredOrders.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {filteredOrders.map(o => {
             const img = o.listingImages?.[0] ?? null;
             const carrierUrl = o.carrier && o.trackingNumber
@@ -259,54 +259,52 @@ export default function Orders() {
               : ["pending", "ready_to_ship"].includes(o.orderStatus);
             const isConfirming = confirmingId === o.id;
             const isCancelling = cancellingId === o.id;
+            const shipStatus = o.shipmentId
+              ? (o.trackingStatus ?? (o.deliveryStatus === "delivered" ? "delivered" : null))
+              : (o.deliveryStatus ?? null);
 
             return (
-              <div key={o.id} className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
+              <div key={o.id} className="rounded-xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
                 <div
-                  className="flex flex-col md:flex-row md:items-center gap-4 p-5 cursor-pointer"
+                  className="flex flex-col md:flex-row md:items-center gap-3 p-3.5 cursor-pointer"
                   onClick={() => { setConfirmingId(null); setLocation(`/orders/${o.id}`); }}
                   data-testid={`order-row-${o.id}`}
                 >
-                  <div className="flex gap-4 items-start md:items-center flex-1 min-w-0">
+                  <div className="flex gap-3 items-start md:items-center flex-1 min-w-0">
                     {img ? (
                       <img
                         src={img} alt=""
                         loading="lazy"
-                        className="w-20 h-20 rounded-xl object-cover border border-border/50 flex-shrink-0"
+                        className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover border border-border/50 flex-shrink-0"
                         onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='12' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
                       />
                     ) : (
-                      <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-muted/50 border border-border/50 flex items-center justify-center">
-                        <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg flex-shrink-0 bg-muted/50 border border-border/50 flex items-center justify-center">
+                        <ShoppingBag className="h-6 w-6 text-muted-foreground/30" />
                       </div>
                     )}
                     
-                    <div className="flex-1 min-w-0 py-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <span className="font-mono text-[11px] font-bold tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md">
+                    <div className="flex-1 min-w-0 py-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        <span className="font-mono text-[10px] font-bold tracking-wider text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
                           #{String(o.id).padStart(6, "0")}
                         </span>
                         <FulfillmentBadge status={o.orderStatus} type="order" />
                         {o.shipmentId && o.trackingStatus && (
                           <FulfillmentBadge status={o.trackingStatus} type="tracking" />
                         )}
-                        {o.listingCountry === "Haiti" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800">
-                            Local: HT
-                          </span>
-                        )}
-                        {o.listingCountry === "Dominican Republic" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800">
-                            Local: DR
+                        {(o.listingCountry === "Haiti" || o.listingCountry === "Dominican Republic") && (
+                          <span className="inline-flex items-center text-[9px] font-bold uppercase tracking-wider text-orange-800 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded dark:bg-orange-950/30 dark:text-orange-300 dark:border-orange-800">
+                            {o.listingCountry === "Haiti" ? "HT" : "DR"}
                           </span>
                         )}
                       </div>
                       
-                      <p className="font-bold text-foreground truncate text-base mb-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      <p className="font-bold text-foreground truncate text-[13px] sm:text-sm mb-0.5 group-hover:text-primary transition-colors">
                         {o.listingTitle}
                       </p>
                       
-                      <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground flex-wrap">
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground flex-wrap">
                         <span>{t("orders.from", { seller: o.sellerName ?? "Seller" })}</span>
                         <span className="w-1 h-1 rounded-full bg-border"></span>
                         <span>{new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
@@ -331,52 +329,49 @@ export default function Orders() {
                           </>
                         )}
                       </div>
-                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
-                        <span><strong className="text-foreground">Commande :</strong> {statusLabel(o.orderStatus, "order")}</span>
-                        <span><strong className="text-foreground">Paiement :</strong> {statusLabel(o.paymentStatus, "payment")}</span>
-                        <span><strong className="text-foreground">Expédition :</strong> {statusLabel(o.shipmentId ? (o.trackingStatus ?? (o.deliveryStatus === "delivered" ? "delivered" : null)) : null, "shipping")}</span>
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                        <span><strong className="text-foreground font-semibold">Order:</strong> {statusLabel(o.orderStatus, "order")}</span>
+                        <span><strong className="text-foreground font-semibold">Payment:</strong> {statusLabel(o.paymentStatus, "payment")}</span>
+                        <span><strong className="text-foreground font-semibold">Shipping:</strong> {statusLabel(shipStatus, "shipping")}</span>
                       </div>
-                      {o.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-1">Livraison estimée : {new Date(o.estimatedDelivery).toLocaleDateString()}</p>}
-                      {o.cardRefundStatus && <p className="mt-2 text-xs font-semibold">{t(`cardCancellation.${o.cardRefundStatus}`)}</p>}
+                      {o.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-0.5">Est. delivery: {new Date(o.estimatedDelivery).toLocaleDateString()}</p>}
+                      {o.cardRefundStatus && <p className="mt-1 text-xs font-semibold">{t(`cardCancellation.${o.cardRefundStatus}`)}</p>}
                     </div>
                   </div>
                   
-                  <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 md:w-32 border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0">
+                  <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-2 md:w-36 border-t md:border-t-0 pt-3 md:pt-0 mt-1 md:mt-0">
                     <div className="flex flex-col items-start md:items-end">
-                      <span className="font-black text-lg text-foreground">${o.amount.toFixed(2)}</span>
+                      <span className="font-black text-base tabular-nums text-foreground">${o.amount.toFixed(2)}</span>
+                      <span className="text-[10px] text-muted-foreground capitalize">{o.paymentMethod === "stripe" ? "Card" : o.paymentMethod ?? "Payment"}</span>
                       {o.escrowReleased && (
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-1">
-                          <CheckCircle2 className="h-3 w-3" /> Settled
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Funds released
                         </span>
                       )}
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {canCancel ? (
                         <Button
-                          size="icon"
-                          variant="ghost"
-                          className={cn(
-                            "h-9 w-9 rounded-xl transition-all",
-                            isConfirming
-                              ? "bg-rose-500 text-white hover:bg-rose-600 dark:bg-rose-600"
-                              : "text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                          )}
+                          size="sm"
+                          variant={isConfirming ? "destructive" : "outline"}
+                          className="h-9 px-2.5 rounded-lg text-xs font-bold gap-1"
                           onClick={e => handleCancelClick(o.id, e)}
                           disabled={isCancelling}
-                          title="Cancel Order"
+                          title="Cancel order"
+                          data-testid={`button-cancel-order-${o.id}`}
                         >
                           {isCancelling
-                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             : isConfirming
-                              ? <AlertTriangle className="h-4 w-4" />
-                              : <XCircle className="h-4 w-4" />
+                              ? <><AlertTriangle className="h-3.5 w-3.5" /> Confirm</>
+                              : <><XCircle className="h-3.5 w-3.5" /> Cancel</>
                           }
                         </Button>
                       ) : null}
                       
-                      <Button size="sm" variant="secondary" className="h-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors gap-1.5" onClick={e => { e.stopPropagation(); setConfirmingId(null); setLocation(`/orders/${o.id}`); }}>
-                        <Eye className="h-4 w-4" /> {o.trackingNumber ? "Suivre le colis" : "Voir la commande"}
+                      <Button size="sm" variant="secondary" className="h-9 rounded-lg gap-1.5 text-xs font-bold" onClick={e => { e.stopPropagation(); setConfirmingId(null); setLocation(`/orders/${o.id}`); }} data-testid={`button-view-order-${o.id}`}>
+                        <Eye className="h-3.5 w-3.5" /> {o.trackingNumber ? "Track" : "View"}
                       </Button>
                     </div>
                   </div>

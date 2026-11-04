@@ -775,15 +775,15 @@ export default function Settings() {
   ];
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-6 pb-24">
+    <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-5 space-y-4 pb-24">
       {/* Identity card */}
-      <Card className="p-5 flex items-center gap-4">
-        <Avatar className="h-16 w-16">
+      <Card className="p-4 flex items-center gap-3">
+        <Avatar className="h-12 w-12">
           <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
           <AvatarFallback>{user.name?.[0]?.toUpperCase() ?? "?"}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-lg truncate" data-testid="text-settings-user-name">{user.name}</p>
+          <p className="font-semibold text-base truncate" data-testid="text-settings-user-name">{user.name}</p>
           <p className="text-sm text-muted-foreground truncate" data-testid="text-settings-user-email">{user.email}</p>
           {user.isVerified && (
             <span className="inline-block mt-1 text-xs font-semibold text-green-700 bg-green-100 dark:bg-green-950 dark:text-green-400 px-2 py-0.5 rounded-full">
@@ -867,11 +867,11 @@ function SettingsGroup({ title, rows }: { title: string; rows: SettingsRow[] }) 
         {rows.map(({ icon: Icon, label, sub, to, testid }) => (
           <Link key={to} href={to}>
             <button
-              className="w-full flex items-center gap-3 p-4 hover:bg-accent transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3.5 py-3 hover:bg-accent transition-colors text-left"
               data-testid={testid}
             >
-              <div className="bg-primary/10 text-primary rounded-lg p-2 flex-shrink-0">
-                <Icon className="h-5 w-5" />
+              <div className="bg-primary/10 text-primary rounded-md p-1.5 flex-shrink-0">
+                <Icon className="h-4 w-4" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm">{label}</p>

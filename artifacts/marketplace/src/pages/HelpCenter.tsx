@@ -76,13 +76,13 @@ export default function HelpCenter() {
       {/* Hero */}
       <div className="relative overflow-hidden bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(249,115,22,0.15),transparent_65%)]" />
-        <div className="relative z-10 max-w-3xl mx-auto px-4 py-16 text-center">
-          <span className="inline-block bg-primary/20 text-primary text-xs font-bold px-3 py-1 rounded-full mb-4">Sant Èd</span>
-          <h1 className="text-3xl md:text-4xl font-black text-white mb-3">Kijan nou ka ede w?</h1>
-          <p className="text-white/60 text-sm mb-8">Jwenn repons imedyatman pou kesyon ki pi komen yo.</p>
+        <div className="relative z-10 max-w-3xl mx-auto px-4 py-8 sm:py-10 text-center">
+          <span className="inline-block bg-primary/20 text-primary text-xs font-bold px-2.5 py-0.5 rounded-md mb-3">Sant Èd</span>
+          <h1 className="text-xl md:text-2xl font-black text-white mb-2">Kijan nou ka ede w?</h1>
+          <p className="text-white/60 text-sm mb-5">Jwenn repons imedyatman pou kesyon ki pi komen yo.</p>
           <Link
             href="/faq"
-            className="inline-flex items-center gap-2 bg-primary text-white font-bold px-6 py-3 rounded-full shadow-xl hover:opacity-90 transition-opacity"
+            className="inline-flex items-center gap-2 min-h-10 bg-primary text-white font-bold px-5 py-2.5 rounded-md hover:opacity-90 transition-opacity text-sm"
           >
             <Search className="h-4 w-4" />
             Gade FAQ konplè a
@@ -91,14 +91,14 @@ export default function HelpCenter() {
       </div>
 
       {/* Categories grid */}
-      <div className="max-w-4xl mx-auto px-4 py-10">
-        <h2 className="text-lg font-bold text-foreground mb-6">Kategori sipò</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-6 sm:py-8">
+        <h2 className="text-base font-bold text-foreground mb-4">Kategori sipò</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {categories.map(cat => (
-            <div key={cat.title} className="bg-card rounded-2xl border border-border p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat.color}`}>
-                  <cat.icon className="h-5 w-5" />
+            <div key={cat.title} className="bg-card rounded-xl border border-border p-4">
+              <div className="flex items-center gap-2.5 mb-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${cat.color}`}>
+                  <cat.icon className="h-4 w-4" />
                 </div>
                 <h3 className="font-bold text-foreground text-sm">{cat.title}</h3>
               </div>
@@ -120,21 +120,21 @@ export default function HelpCenter() {
         </div>
 
         {/* Still need help */}
-        <div className="mt-10 p-6 rounded-2xl bg-primary/5 border border-primary/15 text-center">
-          <HelpCircle className="h-8 w-8 text-primary mx-auto mb-3" />
+        <div className="mt-6 p-4 sm:p-5 rounded-xl bg-primary/5 border border-primary/15 text-center">
+          <HelpCircle className="h-7 w-7 text-primary mx-auto mb-2" />
           <h3 className="font-bold text-foreground mb-1">Ou poko jwenn repons ou?</h3>
           <p className="text-sm text-muted-foreground mb-4">Ekip sipò nou disponib pou reponn ou nan 24 è.</p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="flex flex-col sm:flex-row gap-2.5 justify-center">
             <Link
               href="/support"
-              className="inline-flex items-center justify-center gap-2 bg-primary text-white font-bold px-5 py-2.5 rounded-full hover:opacity-90 transition-opacity text-sm"
+              className="inline-flex items-center justify-center gap-2 min-h-10 bg-primary text-white font-bold px-4 py-2 rounded-md hover:opacity-90 transition-opacity text-sm"
             >
               <MessageCircle className="h-4 w-4" />
               Chat ak sipò
             </Link>
             <a
               href="mailto:support@flexamarket.com"
-              className="inline-flex items-center justify-center gap-2 border border-primary text-primary font-bold px-5 py-2.5 rounded-full hover:bg-primary/10 transition-colors text-sm"
+              className="inline-flex items-center justify-center gap-2 min-h-10 border border-primary text-primary font-bold px-4 py-2 rounded-md hover:bg-primary/10 transition-colors text-sm"
             >
               Ekri yon email
             </a>

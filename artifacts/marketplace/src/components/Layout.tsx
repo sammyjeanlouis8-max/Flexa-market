@@ -999,16 +999,16 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             aria-label="CalcAI"
             className={`
               fixed z-40 flex items-center justify-center
-              h-12 w-12 rounded-full shadow-lg
+              h-11 w-11 rounded-full shadow-md
               bg-gradient-to-br from-orange-500 to-amber-400
               hover:from-orange-600 hover:to-amber-500
               active:scale-95 transition-all duration-150
-              right-4 md:right-6
-              bottom-[calc(64px+max(env(safe-area-inset-bottom,0px),var(--flexa-android-bottom,0px))+14px)]
-              md:bottom-6
+              right-3 md:right-5
+              bottom-[calc(64px+max(env(safe-area-inset-bottom,0px),var(--flexa-android-bottom,0px))+12px)]
+              md:bottom-5
             `}
           >
-            <Calculator className="h-5 w-5 text-white" />
+            <Calculator className="h-5 w-5 text-white" aria-hidden="true" />
           </button>
         </Link>
       )}

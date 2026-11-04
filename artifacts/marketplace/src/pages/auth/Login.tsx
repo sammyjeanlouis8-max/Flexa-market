@@ -92,15 +92,15 @@ export default function Login() {
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-2" />
-          <h1 className="text-3xl font-extrabold text-foreground mt-4">{t("auth.welcomeBack")}</h1>
-          <p className="text-muted-foreground mt-1">{t("auth.signInSubtitle")}</p>
+        <div className="text-center mb-5">
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-14 sm:h-16 w-auto max-w-[48vw] object-contain mx-auto" />
+          <h1 className="text-2xl font-extrabold text-foreground mt-3">{t("auth.welcomeBack")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("auth.signInSubtitle")}</p>
         </div>
 
-        <div className="bg-card border border-card-border rounded-2xl p-8 shadow-lg">
+        <div className="bg-card border border-card-border rounded-xl p-5 sm:p-6 shadow-sm">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3.5">
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("auth.email")}</FormLabel>

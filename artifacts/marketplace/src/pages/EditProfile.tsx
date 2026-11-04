@@ -160,7 +160,7 @@ function ChangePasswordCard() {
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm">
+    <div className="bg-card border border-border rounded-xl p-4 mb-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="font-bold text-foreground text-base flex items-center gap-1.5">
@@ -295,7 +295,7 @@ function StoreManagerCard() {
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm mb-4">
+    <div className="bg-card border border-border rounded-xl p-4 shadow-sm mb-4">
       <div className="flex items-center gap-2 mb-1">
         <Store className="h-4 w-4 text-primary" />
         <h2 className="font-bold text-foreground text-base">{t("editProfile.localManager")}</h2>
@@ -415,7 +415,7 @@ function PickupHoursCard({ initialSchedule }: { initialSchedule: PickupSlot[] | 
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+    <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="font-bold text-foreground text-base flex items-center gap-1.5">
@@ -736,21 +736,21 @@ export default function EditProfile() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6 pb-16">
+    <div className="max-w-md mx-auto px-3 sm:px-4 py-4 sm:py-5 pb-16">
       <AutoSaveIndicator />
       {user && (
         <button
           onClick={() => setLocation(`/profile/${user.id}`)}
-          className="text-sm text-muted-foreground hover:text-primary mb-5 flex items-center gap-1 transition-colors"
+          className="text-sm text-muted-foreground hover:text-primary mb-4 flex items-center gap-1 transition-colors"
         >
           {t("editProfile.backToProfile")}
         </button>
       )}
 
       {/* ── Hero: Avatar ── */}
-      <div className="flex flex-col items-center mb-8">
+      <div className="flex flex-col items-center mb-5">
         <div className="relative mb-3">
-          <Avatar className="h-32 w-32 ring-4 ring-background shadow-xl">
+          <Avatar className="h-24 w-24 ring-2 ring-background shadow-md">
             <AvatarImage src={avatar || undefined} className="object-cover" />
             <AvatarFallback className="text-5xl font-black bg-primary text-primary-foreground">
               {name?.[0]?.toUpperCase() ?? "?"}
@@ -782,7 +782,7 @@ export default function EditProfile() {
       </div>
 
       {/* ── Profile Strength ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm">
+      <div className="bg-card border border-border rounded-xl p-4 mb-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">{t("editProfile.profileStrength")}</p>
@@ -805,7 +805,7 @@ export default function EditProfile() {
       </div>
 
       {/* ── About You card ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm space-y-5">
+      <div className="bg-card border border-border rounded-xl p-4 mb-4 shadow-sm space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-foreground text-base">{t("editProfile.aboutYou")}</h2>
         </div>
@@ -905,7 +905,7 @@ export default function EditProfile() {
       </div>
 
       {/* ── Country & Phone card ── */}
-      <div className={`bg-card border rounded-2xl p-5 mb-4 shadow-sm ${countryLocked ? "border-orange-300 dark:border-orange-700" : "border-border"}`}>
+      <div className={`bg-card border rounded-xl p-4 mb-4 shadow-sm ${countryLocked ? "border-orange-300 dark:border-orange-700" : "border-border"}`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
@@ -955,7 +955,7 @@ export default function EditProfile() {
       </div>
 
       {/* ── Phone Number card ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm">
+      <div className="bg-card border border-border rounded-xl p-4 mb-4 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
@@ -1051,7 +1051,7 @@ export default function EditProfile() {
       <ChangePasswordCard />
 
       {/* ── Language card ── */}
-      <div className="bg-card border border-border rounded-2xl p-5 shadow-sm mb-4">
+      <div className="bg-card border border-border rounded-xl p-4 shadow-sm mb-4">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-foreground text-base">{t("settings.language")}</h2>

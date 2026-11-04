@@ -113,9 +113,9 @@ export default function LoginPhone() {
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>
       <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-1" />
-          <p className="text-muted-foreground text-sm">
+        <div className="text-center mb-5">
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-14 sm:h-16 w-auto max-w-[48vw] object-contain mx-auto" />
+          <p className="text-muted-foreground text-sm mt-3">
             {t("auth.signInWithPhoneSubtitle", "Sign in with your phone number — no password needed.")}
           </p>
         </div>
@@ -149,7 +149,7 @@ export default function LoginPhone() {
           })}
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-lg">
+        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-sm">
           {step === 1 && (
             <div>
               <h2 className="text-xl font-extrabold text-foreground mb-1">{t("auth.phone")}</h2>

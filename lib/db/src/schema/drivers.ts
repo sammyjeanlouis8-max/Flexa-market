@@ -102,6 +102,10 @@ export const driversTable = pgTable("drivers", {
   commune: text("commune"),
   department: text("department"),
   zone: text("zone"),
+  /** Canonical primary / home commune for service-zone resolution. */
+  primaryCommune: text("primary_commune"),
+  /** JSON string array of authorized communes. Super Admin controlled — drivers cannot self-expand. */
+  authorizedCommunes: text("authorized_communes"),
   isOnline: boolean("is_online").notNull().default(false),
   lastLocationAt: timestamp("last_location_at", { withTimezone: true }),
   // Suspension details
@@ -114,6 +118,27 @@ export const driversTable = pgTable("drivers", {
   byUserId: index("drivers_user_id_idx").on(t.userId),
   byCountry: index("drivers_country_idx").on(t.country),
 }));
+
+/** Super-Admin configurable Haiti service zones (primary commune → authorized communes). */
+export const haitiServiceZonesTable = pgTable("haiti_service_zones", {
+  id: serial("id").primaryKey(),
+  department: text("department").notNull(),
+  primaryCommune: text("primary_commune").notNull(),
+  /** JSON string array of communes the driver may pick up from / deliver to. */
+  authorizedCommunes: text("authorized_communes").notNull(),
+  maxDistanceKm: real("max_distance_km"),
+  maxTravelMinutes: integer("max_travel_minutes"),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  updatedById: integer("updated_by_id").references(() => usersTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byPrimary: index("haiti_service_zones_primary_idx").on(t.primaryCommune),
+  byDept: index("haiti_service_zones_department_idx").on(t.department),
+}));
+
+export type HaitiServiceZone = typeof haitiServiceZonesTable.$inferSelect;
 
 export const deliveriesTable = pgTable("deliveries", {
   id: serial("id").primaryKey(),

@@ -2647,6 +2647,55 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // Haiti motorcycle smart dispatch — service zones + per-driver authorization
+  migrations.push({ name: "drivers.primary_commune", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS primary_commune text" });
+  migrations.push({ name: "drivers.authorized_communes", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS authorized_communes text" });
+  migrations.push({
+    name: "haiti_service_zones.create",
+    sql: `CREATE TABLE IF NOT EXISTS haiti_service_zones (
+      id SERIAL PRIMARY KEY,
+      department TEXT NOT NULL,
+      primary_commune TEXT NOT NULL,
+      authorized_communes TEXT NOT NULL,
+      max_distance_km REAL,
+      max_travel_minutes INTEGER,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      notes TEXT,
+      updated_by_id INTEGER REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "haiti_service_zones.primary_idx",
+    sql: "CREATE INDEX IF NOT EXISTS haiti_service_zones_primary_idx ON haiti_service_zones(primary_commune)",
+  });
+  migrations.push({
+    name: "haiti_service_zones.unique_primary",
+    sql: "CREATE UNIQUE INDEX IF NOT EXISTS haiti_service_zones_primary_unique ON haiti_service_zones(lower(primary_commune))",
+  });
+  // Seed default Ouest metro zones (idempotent)
+  migrations.push({
+    name: "haiti_service_zones.seed_ouest_v1",
+    sql: `
+      INSERT INTO haiti_service_zones (department, primary_commune, authorized_communes, notes)
+      VALUES
+        ('Ouest', 'Carrefour', '["Carrefour","Port-au-Prince","Delmas"]', 'Default metro zone'),
+        ('Ouest', 'Port-au-Prince', '["Port-au-Prince","Delmas","Pétion-Ville","Carrefour","Tabarre"]', 'Default metro zone'),
+        ('Ouest', 'Delmas', '["Delmas","Port-au-Prince","Pétion-Ville","Tabarre"]', 'Default metro zone'),
+        ('Ouest', 'Pétion-Ville', '["Pétion-Ville","Port-au-Prince","Delmas","Tabarre","Kenscoff"]', 'Default metro zone'),
+        ('Ouest', 'Tabarre', '["Tabarre","Port-au-Prince","Delmas","Croix-des-Bouquets"]', 'Default metro zone'),
+        ('Nord', 'Cap-Haïtien', '["Cap-Haïtien"]', 'Default northern zone')
+      ON CONFLICT DO NOTHING
+    `,
+  });
+  // Backfill primary_commune from city/commune when missing
+  migrations.push({
+    name: "drivers.backfill_primary_commune_v1",
+    sql: `UPDATE drivers SET primary_commune = COALESCE(NULLIF(commune, ''), NULLIF(city, ''))
+      WHERE primary_commune IS NULL AND (commune IS NOT NULL OR city IS NOT NULL)`,
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt

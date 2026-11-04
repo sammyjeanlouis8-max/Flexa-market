@@ -2,13 +2,20 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useGetListing, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
@@ -69,7 +76,7 @@ export default function ListingDetail() {
   const id = parseInt(params?.id ?? "0", 10);
   const [, setLocation] = useLocation();
   const { user, token } = useAuth();
-  const { addItem, removeItem, isInCart, items: cartItems } = useCart();
+  const { addItem, removeItem, isInCart, updateQuantity, items: cartItems } = useCart();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -561,6 +568,19 @@ export default function ListingDetail() {
     return () => el.removeEventListener("touchmove", onMove);
   }, []);
 
+  // Keep quantity within live stock — null stock means single-item listing (max 1)
+  useEffect(() => {
+    const raw = (listing as any)?.stockQuantity;
+    const max =
+      raw == null || Number.isNaN(Number(raw))
+        ? 1
+        : Math.max(0, Math.min(99, Math.floor(Number(raw))));
+    setBuyQty((q) => {
+      if (max <= 0) return 1;
+      return Math.min(Math.max(1, q), max);
+    });
+  }, [(listing as any)?.stockQuantity, listing?.id]);
+
   if (isLoading) {
     // Skeleton mirrors the compact product layout so the page doesn't reflow.
     return (
@@ -691,7 +711,16 @@ export default function ListingDetail() {
   // anyone who chose Haiti as their country in their profile gets the
   // mobile-money options on every listing they buy, since those are the
   // payment rails their phone supports. Admins bypass for auditing.
-  const isAdminViewer = !!(user?.isAdmin || (user as any)?.isSuperAdmin);
+  const canonicalRole = String(user?.role ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  const isModeratorViewer = canonicalRole === "moderator";
+  const isSuperAdminViewer = !!(user as any)?.isSuperAdmin || canonicalRole === "super_admin";
+  const isAdminViewer = !!(
+    user?.isAdmin ||
+    isSuperAdminViewer ||
+    isModeratorViewer ||
+    canonicalRole === "admin"
+  );
+  const canAdminBoost = !!(user?.isAdmin || isSuperAdminViewer) && !isModeratorViewer;
   const showMobileMoney = viewerCountry === "Haiti" || isAdminViewer;
 
   const searchFriendUsers = async () => {
@@ -1176,6 +1205,14 @@ export default function ListingDetail() {
   const isFav = (listing as any).isFavorited;
   const isOwner = (listing as any).isOwner;
 
+  // null stock = single-item listing (purchase marks sold); otherwise cap at stock
+  const rawStock = (listing as any).stockQuantity;
+  const maxBuyQty =
+    rawStock == null || Number.isNaN(Number(rawStock))
+      ? 1
+      : Math.max(0, Math.min(99, Math.floor(Number(rawStock))));
+  const canPurchaseQty = maxBuyQty > 0 && listing.status === "available";
+
   return (
     <div className="min-h-screen bg-background">
 
@@ -1208,7 +1245,7 @@ export default function ListingDetail() {
             />
             <button
               onClick={() => setVideoMuted(m => !m)}
-              className="absolute bottom-12 right-3 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 z-10"
+              className="absolute bottom-12 left-3 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 z-10"
               aria-label={videoMuted ? "Unmute video" : "Mute video"}
             >
               {videoMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
@@ -1291,29 +1328,27 @@ export default function ListingDetail() {
           </>
         )}
 
-        {/* Image counter */}
+        {/* Pagination: counter + dots — spaced so they never collide */}
         {totalMedia > 1 && (
-          <div
-            className="absolute bottom-3 right-3 z-10 px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-white text-[11px] font-semibold tabular-nums tracking-wide shadow-sm"
-            aria-hidden="true"
-          >
-            {imgIndex + 1}/{totalMedia}
-          </div>
-        )}
-
-        {/* Dot indicator */}
-        {totalMedia > 1 && (
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1 z-10" aria-hidden="true">
-            {mediaItems.map((item, i) => (
-              <div
-                key={i}
-                className={`h-1 rounded-full transition-all duration-300 ${
-                  i === imgIndex
-                    ? item.type === "video" ? "bg-orange-400 w-3.5 shadow-sm" : "bg-white w-3.5 shadow-sm"
-                    : item.type === "video" ? "bg-orange-300/60 w-1" : "bg-white/50 w-1"
-                }`}
-              />
-            ))}
+          <div className="absolute bottom-3 inset-x-3 z-10 flex items-center justify-between gap-2 pointer-events-none">
+            <div
+              className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-white text-[11px] font-semibold tabular-nums tracking-wide shadow-sm"
+              aria-hidden="true"
+            >
+              {imgIndex + 1}/{totalMedia}
+            </div>
+            <div className="flex gap-1 max-w-[55%] justify-end overflow-hidden" aria-hidden="true">
+              {mediaItems.map((item, i) => (
+                <div
+                  key={i}
+                  className={`h-1 rounded-full flex-shrink-0 transition-all duration-300 ${
+                    i === imgIndex
+                      ? item.type === "video" ? "bg-orange-400 w-3.5 shadow-sm" : "bg-white w-3.5 shadow-sm"
+                      : item.type === "video" ? "bg-orange-300/60 w-1" : "bg-white/50 w-1"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -1457,26 +1492,49 @@ export default function ListingDetail() {
         <div className="px-4 py-3 space-y-2">
           <h1 className="text-[15px] font-bold text-foreground leading-snug">{listing.title}</h1>
 
-          {/* Price row: strikethrough → DERNIER JOUR badge → current price */}
+          {/* Price: only show real promo savings — never invent compare-at / fake % */}
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-sm line-through text-muted-foreground">${(effectiveListingPriceUsd * 1.74).toFixed(2)}</span>
+            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
+              <span className="text-sm line-through text-muted-foreground tabular-nums">
+                ${effectiveListingPriceUsd.toFixed(2)}
+              </span>
+            )}
             {listing.isBoosted && (
               <span className="text-[10px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded leading-none">{t("listing.lastDay")}</span>
             )}
-            <span className="text-2xl font-black text-red-600 tabular-nums">{formatPrice(listing.price, country, (listing as any).currency)}</span>
+            <span className={`text-2xl font-black tabular-nums ${promoValidation?.valid ? "text-emerald-600" : "text-foreground"}`}>
+              {promoValidation?.valid
+                ? `$${promoValidation.finalPrice.toFixed(2)}`
+                : formatPrice(listing.price, country, (listing as any).currency)}
+            </span>
           </div>
 
-          {/* Discount + stock badges */}
-          <div className="flex gap-1.5 flex-wrap">
-            <span className="text-[11px] font-bold bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-300/80 dark:border-orange-700 px-1.5 py-0.5 rounded">
-              74% {t("checkout.discount")}
-            </span>
-            {(listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 && (
-              <span className="text-[11px] font-bold bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 px-1.5 py-0.5 rounded flex items-center gap-1">
+          {/* Availability + real promo badge only */}
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {listing.status === "sold" ? (
+              <Badge variant="destructive" className="text-[11px] font-bold">{t("checkout.soldBadge")}</Badge>
+            ) : (listing as any).stockQuantity != null && (listing as any).stockQuantity <= 0 ? (
+              <Badge variant="destructive" className="text-[11px] font-bold">{t("checkout.soldBadge")}</Badge>
+            ) : (listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 ? (
+              <span className="text-[11px] font-bold bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 px-1.5 py-0.5 rounded">
                 {t("checkout.almostGoneWithCount", { count: (listing as any).stockQuantity })}
               </span>
+            ) : (
+              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">
+                {t("search.condition")}: {{
+                  new: t("search.conditionNew"),
+                  like_new: t("search.conditionLikeNew"),
+                  good: t("search.conditionGood"),
+                  fair: t("search.conditionFair"),
+                  poor: t("search.conditionPoor"),
+                }[listing.condition] ?? listing.condition.replace("_", " ")}
+              </span>
             )}
-            {listing.status === "sold" && <Badge variant="destructive" className="text-[11px] font-bold">{t("checkout.soldBadge")}</Badge>}
+            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
+              <span className="text-[11px] font-bold bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-300/80 dark:border-orange-700 px-1.5 py-0.5 rounded">
+                −${promoValidation.discountAmount.toFixed(2)} {t("checkout.discount")}
+              </span>
+            )}
           </div>
 
           {/* BNPL teaser */}
@@ -1518,6 +1576,7 @@ export default function ListingDetail() {
         </div>
 
         {/* ── QUANTITY SELECTOR ── */}
+        {!isOwner && listing.status === "available" && (
         <div className="px-4 py-3 space-y-2">
           <div className="flex items-center gap-3">
             <img
@@ -1535,19 +1594,27 @@ export default function ListingDetail() {
                   poor: t("search.conditionPoor"),
                 }[listing.condition] ?? listing.condition.replace("_", " ")}</strong>
                 {(listing as any).weightLbs != null && <span className="ml-2">⚖️ {(listing as any).weightLbs} lbs</span>}
+                {rawStock != null && (
+                  <span className="ml-2 tabular-nums">{t("listing.stockCurrent", { count: maxBuyQty })}</span>
+                )}
               </p>
               <div className="flex items-center gap-3">
                 <button
+                  type="button"
                   onClick={() => setBuyQty(q => Math.max(1, q - 1))}
-                  disabled={buyQty <= 1}
+                  disabled={buyQty <= 1 || !canPurchaseQty}
+                  aria-label="Decrease quantity"
                   className="w-9 h-9 rounded-lg border border-border flex items-center justify-center font-bold text-lg text-foreground hover:border-primary active:scale-90 transition-all disabled:opacity-30 select-none"
                 >
                   −
                 </button>
-                <span className="text-base font-black w-6 text-center tabular-nums">{buyQty}</span>
+                <span className="text-base font-black w-6 text-center tabular-nums" aria-live="polite">{buyQty}</span>
                 <button
-                  onClick={() => setBuyQty(q => q + 1)}
-                  className="w-9 h-9 rounded-lg border border-primary bg-primary/10 flex items-center justify-center font-bold text-lg text-primary hover:bg-primary/20 active:scale-90 transition-all select-none"
+                  type="button"
+                  onClick={() => setBuyQty(q => Math.min(maxBuyQty, q + 1))}
+                  disabled={!canPurchaseQty || buyQty >= maxBuyQty}
+                  aria-label="Increase quantity"
+                  className="w-9 h-9 rounded-lg border border-primary bg-primary/10 flex items-center justify-center font-bold text-lg text-primary hover:bg-primary/20 active:scale-90 transition-all disabled:opacity-30 select-none"
                 >
                   +
                 </button>
@@ -1559,6 +1626,7 @@ export default function ListingDetail() {
             <span>{t("tr.freeShippingOn", { count: buyQty })}</span>
           </div>
         </div>
+        )}
 
         {/* ── SELLER + SHIPPING ── */}
         <div className="px-4 py-3 space-y-2.5">
@@ -1763,53 +1831,74 @@ export default function ListingDetail() {
         )}
 
         {isAdminViewer && !isOwner && (
-          <div className="px-4 py-3 space-y-2 border-y bg-amber-50/40 dark:bg-amber-950/10">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-              <Shield className="h-3.5 w-3.5" />
-              {t("listing.adminControls")}
+          <div className="px-4 py-2.5 border-y bg-amber-50/40 dark:bg-amber-950/10 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-300 min-w-0">
+              <Shield className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="truncate">{t("listing.adminControls")}</span>
+              {isModeratorViewer && !canAdminBoost && (
+                <span className="font-semibold normal-case tracking-normal text-amber-700/80 dark:text-amber-400/80">· Moderator</span>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Button size="sm" variant="outline" className="h-9 px-2 text-xs justify-center" onClick={() => setLocation(`/sell?edit=${id}`)} data-testid="button-admin-edit-listing">
-                <Pencil className="h-3.5 w-3.5 mr-1" /> {t("listing.adminEdit")}
-              </Button>
-              <Button
-                size="sm"
-                className="h-9 px-2 text-xs bg-green-600 hover:bg-green-700 text-white justify-center"
-                disabled={adminActioning !== null}
-                onClick={() => handleAdminListingAction("approve")}
-                data-testid="button-admin-approve-listing"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                {adminActioning === "approve" ? "..." : t("listing.adminApprove")}
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-9 px-2 text-xs justify-center"
-                disabled={adminActioning !== null}
-                onClick={() => { setAdminReason(""); setAdminConfirmAction("reject"); }}
-                data-testid="button-admin-reject-listing"
-              >
-                <AlertTriangle className="h-3.5 w-3.5 mr-1" />
-                {adminActioning === "reject" ? "..." : t("listing.adminReject")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-9 px-2 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:text-red-300 justify-center"
-                disabled={adminActioning !== null}
-                onClick={() => setAdminConfirmAction("delete")}
-                data-testid="button-admin-delete-listing"
-              >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                {adminActioning === "delete" ? "..." : t("listing.adminDelete")}
-              </Button>
-            </div>
-            {!isAndroidApp() && <Button variant="outline" size="sm" className="w-full h-9 border-amber-400 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20" onClick={() => setLocation(`/boost/${id}`)} data-testid="button-admin-boost-listing">
-              <Zap className="h-3.5 w-3.5 mr-1" />
-              <Shield className="h-3 w-3 mr-1 opacity-70" />
-              {t("listing.adminBoost")}
-            </Button>}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2.5 text-xs gap-1.5 border-amber-300/80 text-amber-900 dark:text-amber-200"
+                  disabled={adminActioning !== null}
+                  data-testid="button-admin-menu"
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                  {adminActioning ? "..." : t("nav.more")}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => setLocation(`/sell?edit=${id}`)}
+                  data-testid="button-admin-edit-listing"
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-2" />
+                  {t("listing.adminEdit")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={adminActioning !== null}
+                  onClick={() => void handleAdminListingAction("approve")}
+                  data-testid="button-admin-approve-listing"
+                  className="text-green-700 focus:text-green-700 dark:text-green-400"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-2" />
+                  {t("listing.adminApprove")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={adminActioning !== null}
+                  onClick={() => { setAdminReason(""); setAdminConfirmAction("reject"); }}
+                  data-testid="button-admin-reject-listing"
+                  className="text-amber-700 focus:text-amber-700 dark:text-amber-400"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5 mr-2" />
+                  {t("listing.adminReject")}
+                </DropdownMenuItem>
+                {canAdminBoost && !isAndroidApp() && (
+                  <DropdownMenuItem
+                    onClick={() => setLocation(`/boost/${id}`)}
+                    data-testid="button-admin-boost-listing"
+                  >
+                    <Zap className="h-3.5 w-3.5 mr-2" />
+                    {t("listing.adminBoost")}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={adminActioning !== null}
+                  onClick={() => setAdminConfirmAction("delete")}
+                  data-testid="button-admin-delete-listing"
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-2" />
+                  {t("listing.adminDelete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
 
@@ -1860,12 +1949,23 @@ export default function ListingDetail() {
           {/* Add to Cart */}
           {user && user.id !== listing.sellerId && (() => {
             const inCart = isInCart(id);
+            const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
             return (
               <button
                 onClick={() => {
+                  if (!canPurchaseQty) {
+                    toast({ title: t("checkout.soldBadge"), variant: "destructive" });
+                    return;
+                  }
                   if (inCart) {
-                    removeItem(id);
-                    toast({ title: t("listing.removeFromCart") });
+                    const existingQty = cartItems.find((i) => i.listingId === id)?.quantity ?? 1;
+                    if (existingQty === qty) {
+                      removeItem(id);
+                      toast({ title: t("listing.removeFromCart") });
+                    } else {
+                      updateQuantity(id, qty);
+                      toast({ title: t("listing.inCart"), description: `×${qty}` });
+                    }
                   } else {
                     addItem({
                       listingId: id,
@@ -1875,12 +1975,14 @@ export default function ListingDetail() {
                       image: (listing as any).images?.[0] ?? null,
                       country: (listing as any).country ?? null,
                       sellerId: listing.sellerId,
+                      quantity: qty,
                     });
-                    toast({ title: `✅ ${t("listing.addedToCart")}`, description: listing.title });
+                    toast({ title: `✅ ${t("listing.addedToCart")}`, description: `${listing.title} ×${qty}` });
                   }
                 }}
                 data-testid="button-add-to-cart"
-                className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl border font-bold text-sm transition-all active:scale-95 ${
+                disabled={!canPurchaseQty}
+                className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl border font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${
                   inCart
                     ? "border-green-500 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
                     : "border-border text-foreground bg-background hover:bg-muted"
@@ -1894,15 +1996,28 @@ export default function ListingDetail() {
 
           {/* Buy Now */}
           <button
-            onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return null; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
+            onClick={() => {
+              if (!canPurchaseQty) {
+                toast({ title: t("checkout.soldBadge"), variant: "destructive" });
+                return;
+              }
+              if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+              setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
+            }}
             data-testid="button-buy-now"
-            className="flex-[1.6] h-11 flex items-center justify-center gap-1.5 rounded-xl font-black text-sm text-white active:scale-95 transition-all"
+            disabled={!canPurchaseQty}
+            className="flex-[1.6] h-11 flex items-center justify-center gap-1.5 rounded-xl font-black text-sm text-white active:scale-95 transition-all disabled:opacity-50"
             style={{ background: "linear-gradient(135deg,#fb923c 0%,#f97316 60%,#ea6c08 100%)" }}
           >
             <Zap className="h-4 w-4 flex-shrink-0" />
             <div className="flex flex-col items-start leading-tight">
               <span className="text-[13px] font-black">{t("buttons.buyNow")}</span>
-              <span className="text-[10px] font-semibold opacity-90">{formatPrice(listing.price, country, (listing as any).currency)}</span>
+              <span className="text-[10px] font-semibold opacity-90">
+                {promoValidation?.valid
+                  ? `$${promoValidation.finalPrice.toFixed(2)}`
+                  : formatPrice(listing.price, country, (listing as any).currency)}
+                {buyQty > 1 ? ` ×${buyQty}` : ""}
+              </span>
             </div>
           </button>
         </div>,

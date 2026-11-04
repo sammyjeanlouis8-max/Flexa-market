@@ -860,13 +860,20 @@ export default function Home() {
               className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
               aria-label="Marketplace products"
             >
-              {promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
-                listings.map((listing) => (
-                  <div key={listing.id} data-promax-group={key} className="min-w-0">
-                    <ListingCard listing={listing} mosaicLayout />
-                  </div>
-                )),
-              )}
+              {(() => {
+                let aboveFoldIndex = 0;
+                return promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
+                  listings.map((listing) => {
+                    const priority = aboveFoldIndex < 4;
+                    aboveFoldIndex += 1;
+                    return (
+                      <div key={listing.id} data-promax-group={key} className="min-w-0">
+                        <ListingCard listing={listing} mosaicLayout priority={priority} />
+                      </div>
+                    );
+                  }),
+                );
+              })()}
               <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : null} />
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (

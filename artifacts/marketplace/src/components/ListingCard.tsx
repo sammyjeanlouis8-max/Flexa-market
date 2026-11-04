@@ -108,6 +108,7 @@ export default function ListingCard({
   preview = false,
   mosaicLayout = false,
   previewFallbackImage,
+  priority = false,
 }: {
   listing: Listing;
   compact?: boolean;
@@ -117,6 +118,8 @@ export default function ListingCard({
   mosaicLayout?: boolean;
   /** Backup image used only by editable listing previews when a draft/upload URL fails. */
   previewFallbackImage?: string;
+  /** Prefer early load for above-the-fold / LCP cards on desktop Home. */
+  priority?: boolean;
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -264,7 +267,9 @@ export default function ListingCard({
               <img
                 src={img!}
                 alt={listing.title}
-                loading="lazy"
+                loading={priority ? "eager" : "lazy"}
+                decoding="async"
+                fetchPriority={priority ? "high" : "auto"}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 style={{
                   filter: imgLoaded ? "none" : "blur(6px)",

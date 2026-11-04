@@ -18,6 +18,8 @@ import GlobalBroadcastPlayer from "@/components/GlobalBroadcastPlayer";
 import GlobalMusicPlayer from "@/components/GlobalMusicPlayer";
 import VideoUploadCenter from "@/components/VideoUploadCenter";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
+import { prefetchCriticalRoutes } from "@/lib/prefetchRoutes";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -180,23 +182,12 @@ function RedirectHome() {
   return null;
 }
 
-// ── Page skeleton shown while a lazy chunk is loading ─────────────────────────
-function PageSkeleton() {
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8 animate-pulse">
-      <div className="h-7 bg-muted rounded w-40 mb-6" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="aspect-[4/3] bg-muted rounded-xl" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Routed layout (authenticated + public pages) ───────────────────────────────
 function LayoutRoutes() {
   const [, setLocation] = useLocation();
+  useEffect(() => {
+    prefetchCriticalRoutes();
+  }, []);
   const routes = (
     <Suspense fallback={<PageSkeleton />}>
         <Switch>

@@ -1,5 +1,10 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useSEO } from "@/hooks/useSEO";
+import {
+  getInitialSearchUrlState,
+  SEARCH_DEFAULT_MAX_PRICE,
+  useSearchUrlSync,
+} from "@/hooks/useSearchUrlSync";
 import { Search as SearchIcon, SlidersHorizontal, X, Globe, ChevronRight, ShieldCheck, Camera, ImageIcon, Sparkles, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -232,17 +237,47 @@ type VisualSearchStatus = "idle" | "analyzing" | "done" | "error";
 export default function SearchPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  useSEO({ title: "Rechèch Annons", description: "Chèche annons ann Ayiti — elektwonik, rad, machin, meuble ak plis sou FLEXA MARKET.", path: "/search" });
-  const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+  useSEO({
+    title: "Search Listings",
+    description:
+      "Search Flexa Market listings — electronics, fashion, vehicles, furniture and more across Haiti and the Caribbean.",
+    path: "/search",
+  });
+  const initialUrl = getInitialSearchUrlState();
 
-  const [q, setQ] = useState(params.get("q") ?? "");
-  const [category, setCategory] = useState(params.get("category") ?? "");
-  const [subcategory, setSubcategory] = useState(params.get("subcategory") ?? "");
-  const [condition, setCondition] = useState("");
-  const [city, setCity] = useState("");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000]);
-  const [page, setPage] = useState(1);
+  const [q, setQ] = useState(initialUrl.q);
+  const [category, setCategory] = useState(initialUrl.category);
+  const [subcategory, setSubcategory] = useState(initialUrl.subcategory);
+  const [condition, setCondition] = useState(initialUrl.condition);
+  const [city, setCity] = useState(initialUrl.city);
+  const [priceRange, setPriceRange] = useState<[number, number]>([
+    initialUrl.minPrice,
+    initialUrl.maxPrice,
+  ]);
+  const [page, setPage] = useState(initialUrl.page);
   const [adminCountry, setAdminCountry] = useState<string | null>(null);
+
+  useSearchUrlSync(
+    {
+      q,
+      category,
+      subcategory,
+      condition,
+      city,
+      minPrice: priceRange[0],
+      maxPrice: priceRange[1],
+      page,
+    },
+    (next) => {
+      setQ(next.q);
+      setCategory(next.category);
+      setSubcategory(next.subcategory);
+      setCondition(next.condition);
+      setCity(next.city);
+      setPriceRange([next.minPrice, next.maxPrice]);
+      setPage(next.page);
+    },
+  );
 
   // ── Visual search state ──────────────────────────────────────────────────────
   const [vsOpen, setVsOpen] = useState(false);
@@ -356,7 +391,7 @@ export default function SearchPage() {
       subcategory: subcategory || undefined,
       condition: condition || undefined,
       minPrice: priceRange[0] || undefined,
-      maxPrice: priceRange[1] < 5000 ? priceRange[1] : undefined,
+      maxPrice: priceRange[1] < SEARCH_DEFAULT_MAX_PRICE ? priceRange[1] : undefined,
       city: debouncedCity || undefined,
       ...(isAdmin && effectiveAdminCountry != null ? { country: effectiveAdminCountry } : {}),
       page,
@@ -375,7 +410,7 @@ export default function SearchPage() {
 
   const clearFilters = useCallback(() => {
     setQ(""); setCategory(""); setSubcategory(""); setCondition("");
-    setCity(""); setPriceRange([0, 5000]); setPage(1);
+    setCity(""); setPriceRange([0, SEARCH_DEFAULT_MAX_PRICE]); setPage(1);
     if (isSuperAdmin) setAdminCountry(null);
   }, [isSuperAdmin]);
 
@@ -394,7 +429,7 @@ export default function SearchPage() {
 
   const activeFiltersCount =
     [category, subcategory, condition, city, q].filter(Boolean).length +
-    (priceRange[0] > 0 || priceRange[1] < 5000 ? 1 : 0);
+    (priceRange[0] > 0 || priceRange[1] < SEARCH_DEFAULT_MAX_PRICE ? 1 : 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">

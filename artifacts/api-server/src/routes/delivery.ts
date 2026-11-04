@@ -11,6 +11,10 @@ import { sendSms } from "../lib/twilio";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { calculateDeliveryPrice, getAvailableCities, haversineKm, lookupCity, getOsrmDistanceKm, DRIVER_COMMISSION_PCT } from "../lib/deliveryPricing";
+import { runDriverIdentityVerification } from "../lib/driverDocumentOcr";
+import { canonicalizeDriverAppStatus } from "../lib/driverIdVerification";
+import { isDriverDocRef, driverDocKeyFromRef } from "../lib/driverDocRefs";
+import { getSignedStreamUrl, isConfigured as wasabiConfigured } from "../lib/wasabi";
 
 // ── Haiti department → communes map ──────────────────────────────────────────
 // All values lowercase for case-insensitive SQL matching.
@@ -305,6 +309,35 @@ router.get("/driver/my-application", requireAuth, async (req, res): Promise<void
   });
 });
 
+async function resolveDocUrlForServerFetch(refOrUrl: string | null | undefined): Promise<string | null> {
+  if (!refOrUrl) return null;
+  const raw = String(refOrUrl);
+  if (raw.startsWith("didoc:url:")) {
+    try {
+      return Buffer.from(raw.slice("didoc:url:".length), "base64url").toString("utf8");
+    } catch {
+      return null;
+    }
+  }
+  if (isDriverDocRef(raw)) {
+    const key = driverDocKeyFromRef(raw);
+    if (!key) return null;
+    if (wasabiConfigured()) {
+      try { return await getSignedStreamUrl(key, 300); } catch { return null; }
+    }
+    return `/api/storage/objects/${key}`;
+  }
+  return raw;
+}
+
+function appendVerificationHistory(existing: string | null | undefined, entry: Record<string, unknown>): string {
+  let list: unknown[] = [];
+  try { list = existing ? JSON.parse(existing) : []; } catch { list = []; }
+  if (!Array.isArray(list)) list = [];
+  list.push({ ...entry, at: new Date().toISOString() });
+  return JSON.stringify(list.slice(-50));
+}
+
 // POST /api/delivery/apply — submit driver application
 router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
@@ -321,9 +354,17 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
     .where(eq(driverApplicationsTable.userId, userId))
     .limit(1);
 
-  if (existing.length > 0 && ["pending", "approved"].includes(existing[0].status)) {
-    res.status(409).json({ error: "Application already submitted", status: existing[0].status });
-    return;
+  if (existing.length > 0) {
+    const st = existing[0].status;
+    const canon = canonicalizeDriverAppStatus(st);
+    const inFlight = new Set([
+      "pending", "pending_review", "submitted", "ai_processing", "approved",
+    ]);
+    // Allow resubmit only after rejection / needs_correction / needs_changes
+    if (inFlight.has(st) || inFlight.has(canon)) {
+      res.status(409).json({ error: "Application already submitted", status: st });
+      return;
+    }
   }
 
   const {
@@ -344,6 +385,7 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
     insuranceNumber, selfiePhotoUrl,
     bankName, bankAccountName, bankAccountNumber, preferredPaymentMethod,
     workZones, workHours, maxDeliveryKm,
+    photoNationalId, cinNumber, operatingArea,
   } = req.body;
 
   if (!firstName || !lastName || !city || !whatsappNumber || !callPhone) {
@@ -351,15 +393,57 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const isHaiti = String(country).toLowerCase() === "haiti" || String(country).toLowerCase() === "ht";
+  const vType = vehicleType ? String(vehicleType).toLowerCase() : "";
+  const isMotorcycle = ["moto", "motorcycle", "motorbike"].includes(vType);
+
+  // Haiti motorcycle enterprise path — require CIN + license + DOB + address
+  const nationalIdRef = photoNationalId
+    ? String(photoNationalId)
+    : (facePhotoFront ? String(facePhotoFront) : null); // legacy form mapped ID → facePhotoFront
+  const licenseFrontRef = photoLicenseFront ? String(photoLicenseFront) : null;
+
+  if (isHaiti) {
+    if (!isMotorcycle) {
+      res.status(400).json({
+        error: "Haiti driver applications are limited to motorcycle (moto) delivery.",
+        code: "HAITI_MOTORCYCLE_ONLY",
+      });
+      return;
+    }
+    if (!String(dateOfBirth ?? "").trim()) {
+      res.status(400).json({ error: "Date of birth is required for Haiti motorcycle drivers" });
+      return;
+    }
+    if (!String(address ?? "").trim() || String(address).trim().length < 5) {
+      res.status(400).json({ error: "Residential address is required for Haiti motorcycle drivers" });
+      return;
+    }
+    if (!nationalIdRef) {
+      res.status(400).json({ error: "Haitian National Identification Card (CIN) photo is required" });
+      return;
+    }
+    if (!licenseFrontRef) {
+      res.status(400).json({ error: "Driving license (permis de conduire) photo is required" });
+      return;
+    }
+  }
+
+  const historySeed = appendVerificationHistory(null, {
+    actor: "system",
+    action: "submitted",
+    note: isHaiti ? "Haiti motorcycle application submitted" : "Driver application submitted",
+  });
+
   const [app] = await db
     .insert(driverApplicationsTable)
     .values({
       userId,
-      status: "pending",
+      status: isHaiti ? "ai_processing" : "pending",
       firstName: String(firstName).trim().slice(0, 80),
       lastName: String(lastName).trim().slice(0, 80),
-      dateOfBirth: String(dateOfBirth).trim(),
-      address: String(address).trim().slice(0, 200),
+      dateOfBirth: String(dateOfBirth ?? "").trim(),
+      address: String(address ?? "").trim().slice(0, 200),
       city: String(city).trim().slice(0, 100),
       country: country,
       whatsappNumber: String(whatsappNumber).trim().slice(0, 30),
@@ -387,7 +471,7 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
       // New document photo fields
       photoVehicleRegistration: photoVehicleRegistration ? String(photoVehicleRegistration) : null,
       photoVehicleInsurance: photoVehicleInsurance ? String(photoVehicleInsurance) : null,
-      photoLicenseFront: photoLicenseFront ? String(photoLicenseFront) : null,
+      photoLicenseFront: licenseFrontRef,
       photoLicenseBack: photoLicenseBack ? String(photoLicenseBack) : null,
       photoVehicleFront: photoVehicleFront ? String(photoVehicleFront) : null,
       photoVehicleSide: photoVehicleSide ? String(photoVehicleSide) : null,
@@ -407,10 +491,83 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
       workZones: workZones ? JSON.stringify(workZones) : null,
       workHours: workHours ? JSON.stringify(workHours) : null,
       maxDeliveryKm: maxDeliveryKm ? Number(maxDeliveryKm) : null,
-    })
+      photoNationalId: nationalIdRef,
+      cinNumber: cinNumber ? String(cinNumber).trim().slice(0, 40) : null,
+      operatingArea: operatingArea ? String(operatingArea).trim().slice(0, 120) : (city ? String(city).trim().slice(0, 120) : null),
+      aiVerificationStatus: isHaiti ? "ai_processing" : null,
+      verificationHistory: historySeed,
+    } as any)
     .returning();
 
   const appId = `DRV-${String(app.id).padStart(10, "0")}`;
+
+  // Haiti motorcycle: run AI OCR then set pending_review / needs_correction.
+  // Never auto-approve or auto-reject — administrators make final decisions.
+  if (isHaiti) {
+    try {
+      const [cinUrl, licenseUrl] = await Promise.all([
+        resolveDocUrlForServerFetch(nationalIdRef),
+        resolveDocUrlForServerFetch(licenseFrontRef),
+      ]);
+      const bundle = await runDriverIdentityVerification({
+        registeredFullName: `${firstName} ${lastName}`,
+        cinImageUrl: cinUrl,
+        licenseImageUrl: licenseUrl,
+      });
+      const history = appendVerificationHistory(historySeed, {
+        actor: "system_ai",
+        action: "ai_verification",
+        outcome: bundle.decision.outcome,
+        nextStatus: bundle.nextStatus,
+        flags: bundle.decision.flags,
+        // Do not store raw OCR dumps in history beyond decision metadata
+      });
+      await db.update(driverApplicationsTable).set({
+        status: bundle.nextStatus,
+        aiVerificationStatus: bundle.decision.outcome,
+        aiVerificationResult: JSON.stringify(bundle.storedResult),
+        verificationHistory: history,
+        updatedAt: new Date(),
+        ...(bundle.nextStatus === "needs_correction"
+          ? { allowEdit: true, adminNote: "AI requested clearer identity documents. Please re-upload CIN and/or driving license." }
+          : {}),
+      } as any).where(eq(driverApplicationsTable.id, app.id));
+
+      const [updated] = await db.select().from(driverApplicationsTable).where(eq(driverApplicationsTable.id, app.id)).limit(1);
+      res.status(201).json({
+        application: updated ?? app,
+        applicationId: appId,
+        aiVerification: {
+          outcome: bundle.decision.outcome,
+          status: bundle.nextStatus,
+          summary: bundle.decision.summary,
+          flags: bundle.decision.flags,
+          finalApprovalRequired: true,
+        },
+      });
+      return;
+    } catch (err: any) {
+      req.log?.error({ err: err?.message }, "driver AI verification failed — pending human review");
+      const history = appendVerificationHistory(historySeed, {
+        actor: "system_ai",
+        action: "ai_verification_error",
+        nextStatus: "pending_review",
+      });
+      await db.update(driverApplicationsTable).set({
+        status: "pending_review",
+        aiVerificationStatus: "pending_review",
+        aiVerificationResult: JSON.stringify({
+          version: 1,
+          outcome: "pending_review",
+          summary: "AI verification error — queued for human review",
+          finalApprovalRequired: true,
+        }),
+        verificationHistory: history,
+        updatedAt: new Date(),
+      } as any).where(eq(driverApplicationsTable.id, app.id));
+    }
+  }
+
   res.status(201).json({ application: app, applicationId: appId });
 });
 
@@ -423,7 +580,19 @@ router.get("/admin/delivery/applications", requireAdmin, async (req, res): Promi
   const scopeConds = driverAppScopeConditions(admin);
 
   const conditions: any[] = [];
-  if (status) conditions.push(eq(driverApplicationsTable.status, String(status)));
+  if (status && status !== "all") {
+    const st = String(status);
+    // Legacy "pending" filter includes enterprise pending_review / submitted / ai_processing
+    if (st === "pending" || st === "pending_review") {
+      conditions.push(inArray(driverApplicationsTable.status, [
+        "pending", "pending_review", "submitted", "ai_processing",
+      ]));
+    } else if (st === "needs_changes" || st === "needs_correction") {
+      conditions.push(inArray(driverApplicationsTable.status, ["needs_changes", "needs_correction"]));
+    } else {
+      conditions.push(eq(driverApplicationsTable.status, st));
+    }
+  }
   conditions.push(...scopeConds);
 
   const apps = await db
@@ -459,6 +628,12 @@ router.get("/admin/delivery/applications", requireAdmin, async (req, res): Promi
       facePhotoLeft: driverApplicationsTable.facePhotoLeft,
       facePhotoRight: driverApplicationsTable.facePhotoRight,
       facePhotoHoldingId: driverApplicationsTable.facePhotoHoldingId,
+      photoNationalId: (driverApplicationsTable as any).photoNationalId,
+      cinNumber: (driverApplicationsTable as any).cinNumber,
+      operatingArea: (driverApplicationsTable as any).operatingArea,
+      aiVerificationStatus: (driverApplicationsTable as any).aiVerificationStatus,
+      aiVerificationResult: (driverApplicationsTable as any).aiVerificationResult,
+      verificationHistory: (driverApplicationsTable as any).verificationHistory,
       adminNote: driverApplicationsTable.adminNote,
       dateOfBirth: driverApplicationsTable.dateOfBirth,
       address: driverApplicationsTable.address,
@@ -482,7 +657,26 @@ router.get("/admin/delivery/applications", requireAdmin, async (req, res): Promi
     .orderBy(desc(driverApplicationsTable.createdAt))
     .limit(200);
 
-  res.json({ applications: apps });
+  // Never expose raw identity CDN URLs in list payloads — replace didoc refs with view endpoints.
+  const scrubbed = apps.map((a: any) => {
+    const scrub = (v: string | null | undefined) => {
+      if (!v) return v;
+      if (String(v).startsWith("didoc:")) {
+        return `/api/driver/identity-documents/view?ref=${encodeURIComponent(v)}`;
+      }
+      return v;
+    };
+    return {
+      ...a,
+      photoNationalId: scrub(a.photoNationalId),
+      photoLicenseFront: scrub(a.photoLicenseFront),
+      photoLicenseBack: scrub(a.photoLicenseBack),
+      facePhotoHoldingId: scrub(a.facePhotoHoldingId),
+      statusCanonical: canonicalizeDriverAppStatus(a.status),
+    };
+  });
+
+  res.json({ applications: scrubbed });
 });
 
 // PATCH /api/admin/delivery/applications/:id/approve
@@ -504,8 +698,30 @@ router.patch("/admin/delivery/applications/:id/approve", requireAdmin, async (re
 
   await db
     .update(driverApplicationsTable)
-    .set({ status: "approved", adminNote: adminNote ?? null, reviewedById: adminId, reviewedAt: new Date() })
+    .set({
+      status: "approved",
+      adminNote: adminNote ?? null,
+      reviewedById: adminId,
+      reviewedAt: new Date(),
+      verificationHistory: appendVerificationHistory((app as any).verificationHistory, {
+        actorId: adminId,
+        action: "approved",
+        note: adminNote ?? null,
+      }),
+    } as any)
     .where(eq(driverApplicationsTable.id, appId));
+
+  await logAdminAction(req, {
+    actionType: "driver_approve",
+    actionCategory: "driver",
+    description: `Approved driver application #${appId} for ${app.firstName} ${app.lastName}`,
+    targetType: "driver_application",
+    targetId: appId,
+    targetName: `${app.firstName} ${app.lastName}`,
+    beforeState: { status: app.status },
+    afterState: { status: "approved" },
+    riskLevel: "high",
+  }).catch(() => {});
 
   // Create driver record (copy vehicle fields from application)
   const existing = await db.select({ id: driversTable.id }).from(driversTable).where(eq(driversTable.userId, app.userId)).limit(1);
@@ -560,13 +776,37 @@ router.patch("/admin/delivery/applications/:id/reject", requireAdmin, async (req
 
   await db
     .update(driverApplicationsTable)
-    .set({ status: "rejected", adminNote: adminNote ?? null, reviewedById: adminId, reviewedAt: new Date(), allowEdit: allowEdit === true })
+    .set({
+      status: "rejected",
+      adminNote: adminNote ?? null,
+      reviewedById: adminId,
+      reviewedAt: new Date(),
+      allowEdit: allowEdit === true,
+      verificationHistory: appendVerificationHistory((app as any).verificationHistory, {
+        actorId: adminId,
+        action: "rejected",
+        note: adminNote ?? null,
+        allowEdit: allowEdit === true,
+      }),
+    } as any)
     .where(eq(driverApplicationsTable.id, appId));
 
   // Only suspend the driver record for hard rejections (not when edit is allowed)
   if (!allowEdit) {
     await db.update(driversTable).set({ status: "suspended" }).where(eq(driversTable.userId, app.userId)).catch(() => {});
   }
+
+  await logAdminAction(req, {
+    actionType: "driver_reject",
+    actionCategory: "driver",
+    description: `Rejected driver application #${appId} for ${app.firstName} ${app.lastName}`,
+    targetType: "driver_application",
+    targetId: appId,
+    targetName: `${app.firstName} ${app.lastName}`,
+    beforeState: { status: app.status },
+    afterState: { status: "rejected", allowEdit: allowEdit === true },
+    riskLevel: "high",
+  }).catch(() => {});
 
   await db.insert(notificationsTable).values({
     userId: app.userId,
@@ -590,11 +830,17 @@ router.patch("/admin/delivery/applications/:id/request-changes", requireAdmin, a
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
 
   await db.update(driverApplicationsTable).set({
-    status: "needs_changes",
+    status: "needs_correction",
     adminNote: adminNote ?? null,
     reviewedById: adminId,
     reviewedAt: new Date(),
     updatedAt: new Date(),
+    allowEdit: true,
+    verificationHistory: appendVerificationHistory((app as any).verificationHistory, {
+      actorId: adminId,
+      action: "request_correction",
+      note: changesRequestedReason ?? adminNote ?? null,
+    }),
   } as any).where(eq(driverApplicationsTable.id, appId));
 
   await db.insert(notificationsTable).values({
@@ -611,7 +857,7 @@ router.patch("/admin/delivery/applications/:id/request-changes", requireAdmin, a
     targetId: appId,
     targetName: `${app.firstName} ${app.lastName}`,
     beforeState: { status: app.status },
-    afterState: { status: "needs_changes", changesRequestedReason },
+    afterState: { status: "needs_correction", changesRequestedReason },
     riskLevel: "low",
   });
 

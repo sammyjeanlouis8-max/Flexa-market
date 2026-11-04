@@ -140,7 +140,7 @@ export default function DriverApplicationStatus() {
         </div>
 
         {/* Rejection / changes reason */}
-        {(status === "rejected" || status === "needs_changes") && (app.rejectionReason ?? app.adminNote) && (
+        {(status === "rejected" || status === "needs_changes" || status === "needs_correction") && (app.rejectionReason ?? app.adminNote) && (
           <div className={cn(
             "rounded-2xl px-4 py-4 border",
             status === "rejected"
@@ -196,7 +196,7 @@ export default function DriverApplicationStatus() {
         )}
 
         {/* Pending timeline */}
-        {status === "pending" && (
+        {(status === "pending" || status === "pending_review" || status === "submitted" || status === "ai_processing") && (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 px-4 py-4">
             <p className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-4">{t("driverApply.pendingSummary")}</p>
             <div className="space-y-4">

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useGetListing, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import { useGetListing, useGetListings, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import ListingCard from "@/components/ListingCard";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -155,6 +156,9 @@ export default function ListingDetail() {
   // cached listing query back into a loading state during browser back/forward
   // navigation; declaring this hook below that return changes the hook count.
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(new Set());
+  const [pdpTab, setPdpTab] = useState<"details" | "specs" | "reviews" | "qa">("details");
+  const [pdpSearchQ, setPdpSearchQ] = useState("");
+  const [galleryFullscreen, setGalleryFullscreen] = useState(false);
 
   // Reset mute state whenever the user swipes to a different media item.
   // Guarantees every boost video starts muted (browsers require muted for autoplay).
@@ -252,6 +256,13 @@ export default function ListingDetail() {
   const { data: listing, isLoading } = useGetListing(id, {
     query: { enabled: !!id, queryKey: getGetListingQueryKey(id) },
   });
+
+  const relatedCategory = listing?.categorySlug || listing?.category;
+  const { data: relatedData } = useGetListings(
+    { category: relatedCategory || undefined, limit: 8 },
+    { query: { enabled: !!relatedCategory, queryKey: getGetListingsQueryKey({ category: relatedCategory || undefined, limit: 8 }) } },
+  );
+  const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -1214,202 +1225,758 @@ export default function ListingDetail() {
       : Math.max(0, Math.min(99, Math.floor(Number(rawStock))));
   const canPurchaseQty = maxBuyQty > 0 && listing.status === "available";
 
-  return (
-    <div className="min-h-screen bg-background">
+  const conditionLabels: Record<string, string> = {
+    new: t("search.conditionNew"),
+    like_new: t("search.conditionLikeNew"),
+    good: t("search.conditionGood"),
+    fair: t("search.conditionFair"),
+    poor: t("search.conditionPoor"),
+  };
+  const conditionLabel = conditionLabels[listing.condition] ?? listing.condition.replace("_", " ");
 
-      {/* ══════════ HERO IMAGE — compact marketplace gallery ══════════ */}
-      <div
-        ref={heroRef}
-        className="relative w-full bg-muted/30 dark:bg-black overflow-hidden aspect-square sm:aspect-[5/4] md:aspect-[3/2] max-h-[min(52vh,360px)] md:max-h-[min(58vw,420px)]"
-        style={{ touchAction: zoom > 1 ? "none" : "pan-y" }}
-        onTouchStart={onHeroTouchStart}
-        onTouchMove={onHeroTouchMove}
-        onTouchEnd={onHeroTouchEnd}
-      >
-        {currentMedia?.type === "video" ? (
-          <div className="relative w-full h-full">
-            <video
-              key={currentMedia.url}
-              src={currentMedia.url}
-              autoPlay
-              muted={videoMuted}
-              loop
-              playsInline
-              className="w-full h-full object-contain"
-              preload="auto"
-              style={{
-                transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
-                transformOrigin: "center center",
-                transition: pinchRef.current || panStartRef.current ? "none" : "transform 0.22s ease",
-                willChange: "transform",
-              }}
-            />
-            <button
-              onClick={() => setVideoMuted(m => !m)}
-              className="absolute bottom-12 left-3 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 z-10"
-              aria-label={videoMuted ? "Unmute video" : "Mute video"}
-            >
-              {videoMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
-            </button>
+  const inStock =
+    listing.status === "available"
+    && (rawStock == null || maxBuyQty > 0);
+
+  const handleAddToCartClick = () => {
+    if (!canPurchaseQty) {
+      toast({ title: t("checkout.soldBadge"), variant: "destructive" });
+      return;
+    }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
+    const inCart = isInCart(id);
+    if (inCart) {
+      const existingQty = cartItems.find((i) => i.listingId === id)?.quantity ?? 1;
+      if (existingQty === qty) {
+        removeItem(id);
+        toast({ title: t("listing.removeFromCart") });
+      } else {
+        updateQuantity(id, qty);
+        toast({ title: t("listing.inCart"), description: `×${qty}` });
+      }
+    } else {
+      addItem({
+        listingId: id,
+        title: listing.title,
+        price: listing.price,
+        currency: (listing as any).currency ?? "USD",
+        image: (listing as any).images?.[0] ?? null,
+        country: (listing as any).country ?? null,
+        sellerId: listing.sellerId,
+        quantity: qty,
+      });
+      toast({ title: `✅ ${t("listing.addedToCart")}`, description: `${listing.title} ×${qty}` });
+    }
+  };
+
+  const handleBuyNowClick = () => {
+    if (!canPurchaseQty) {
+      toast({ title: t("checkout.soldBadge"), variant: "destructive" });
+      return;
+    }
+    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
+  };
+
+  const renderThumb = (item: (typeof mediaItems)[number], i: number, sizeClass: string) => (
+    <button
+      key={i}
+      type="button"
+      onClick={() => setImgIndex(i)}
+      className={cn(
+        "relative flex-shrink-0 overflow-hidden border-2 bg-muted transition-all rounded-md",
+        sizeClass,
+        i === imgIndex ? "border-[#F97316] ring-1 ring-[#F97316]/30" : "border-transparent opacity-75 hover:opacity-100",
+      )}
+      aria-label={item.type === "video" ? `Video ${i + 1}` : `Image ${i + 1}`}
+      aria-current={i === imgIndex}
+    >
+      {item.type === "video" ? (
+        <>
+          <video src={item.url} preload="metadata" playsInline muted className="w-full h-full object-cover pointer-events-none" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <Play className="h-3 w-3 text-white fill-white" />
           </div>
-        ) : currentMedia && !failedMediaUrls.has(currentMedia.url) ? (
-          <img
-            src={currentMedia.url}
-            alt={listing.title}
-            className="w-full h-full object-contain"
-            draggable={false}
-            onError={() => addFailedUrl(currentMedia.url)}
-            {...listingImageProps({ priority: true, variant: "detail" })}
-            style={{
-              transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
-              transformOrigin: "center center",
-              transition: pinchRef.current || panStartRef.current ? "none" : "transform 0.22s ease",
-              willChange: "transform",
-              userSelect: "none",
-            }}
-          />
-        ) : (
-          <div
-            className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5"
-            role="img"
-            aria-label={t("sell.images")}
-          >
-            <ImageIcon className="h-14 w-14 text-primary/45" aria-hidden="true" />
-          </div>
-        )}
-
-        {/* Back button overlay */}
-        <button
-          onClick={() => history.back()}
-          className="absolute top-4 left-3 z-20 w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center active:scale-90 transition-transform"
-          aria-label="Go back"
-          data-testid="button-back"
-        >
-          <ChevronLeft className="h-5 w-5 text-white" aria-hidden="true" />
-        </button>
-
-        {/* Top-right overlay: fav + share only (report/block sit below gallery) */}
-        <div className="absolute top-3 right-3 z-20 flex gap-2">
-          <button
-            onClick={handleFav}
-            aria-label={isFav ? "Remove favorite" : "Add to favorites"}
-            data-testid="button-favorite"
-            className={`w-9 h-9 rounded-full backdrop-blur-md flex items-center justify-center active:scale-90 transition-all ${isFav ? "bg-red-500 shadow-lg" : "bg-black/40"}`}
-          >
-            <Heart className={`h-4 w-4 text-white ${isFav ? "fill-white" : ""}`} aria-hidden="true" />
-          </button>
-          <button
-            onClick={handleShare}
-            aria-label="Share listing"
-            data-testid="button-share-listing"
-            className="w-9 h-9 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center active:scale-90 transition-transform"
-          >
-            <Share2 className="h-4 w-4 text-white" aria-hidden="true" />
-          </button>
+          {item.isPromo && (
+            <div className="absolute bottom-0 inset-x-0 bg-orange-500 text-white text-[7px] font-bold text-center py-0.5">{t("tr.promoBadge")}</div>
+          )}
+        </>
+      ) : failedMediaUrls.has(item.url) ? (
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5">
+          <ImageIcon className="h-3.5 w-3.5 text-primary/40" aria-hidden="true" />
         </div>
+      ) : (
+        <img
+          src={item.url}
+          alt=""
+          className="w-full h-full object-cover"
+          onError={() => addFailedUrl(item.url)}
+          {...listingImageProps({ variant: "detail" })}
+        />
+      )}
+    </button>
+  );
 
-        {/* Nav arrows - Desktop only, since mobile uses swipe */}
-        {totalMedia > 1 && (
-          <>
-            <button
-              onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
-              aria-label="Previous image"
-              className="hidden md:block absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white rounded-full p-2 z-10 transition-colors"
-              data-testid="button-img-prev"
-            >
-              <ChevronLeft className="h-6 w-6" aria-hidden="true" />
-            </button>
-            <button
-              onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
-              aria-label="Next image"
-              className="hidden md:block absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 backdrop-blur-sm text-white rounded-full p-2 z-10 transition-colors"
-              data-testid="button-img-next"
-            >
-              <ChevronRight className="h-6 w-6" aria-hidden="true" />
-            </button>
-          </>
-        )}
+  return (
+    <div className="min-h-screen bg-white text-foreground fm-pdp-amazon">
 
-        {/* Pagination: counter + dots — spaced so they never collide */}
-        {totalMedia > 1 && (
-          <div className="absolute bottom-3 inset-x-3 z-10 flex items-center justify-between gap-2 pointer-events-none">
-            <div
-              className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-white text-[11px] font-semibold tabular-nums tracking-wide shadow-sm"
-              aria-hidden="true"
-            >
-              {imgIndex + 1}/{totalMedia}
-            </div>
-            <div className="flex gap-1 max-w-[55%] justify-end overflow-hidden" aria-hidden="true">
-              {mediaItems.map((item, i) => (
-                <div
-                  key={i}
-                  className={`h-1 rounded-full flex-shrink-0 transition-all duration-300 ${
-                    i === imgIndex
-                      ? item.type === "video" ? "bg-orange-400 w-3.5 shadow-sm" : "bg-white w-3.5 shadow-sm"
-                      : item.type === "video" ? "bg-orange-300/60 w-1" : "bg-white/50 w-1"
-                  }`}
-                />
-              ))}
-            </div>
+      {/* ═══ MOBILE: Amazon-style search + deliver strip (continues green header) ═══ */}
+      <div className="md:hidden bg-[hsl(152,65%,18%)] text-white px-3 pb-2.5 pt-1 space-y-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = pdpSearchQ.trim();
+            setLocation(q ? `/search?q=${encodeURIComponent(q)}` : "/search");
+          }}
+          className="flex gap-2 items-stretch"
+        >
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={pdpSearchQ}
+              onChange={(e) => setPdpSearchQ(e.target.value)}
+              placeholder={t("home.searchPlaceholder", { defaultValue: "Search for products, brands, and more..." })}
+              className="pl-9 pr-3 h-11 rounded-lg bg-white border-0 text-sm text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-[#F97316]"
+              data-testid="input-search-pdp-mobile"
+            />
           </div>
-        )}
-
-        {/* Boosted badge */}
-        {listing.isBoosted && (
-          <div className="absolute top-14 left-3 z-10 bg-primary text-primary-foreground text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
-            <Zap className="h-3 w-3" aria-hidden="true" /> {t("listing.featured")}
-          </div>
-        )}
-
-        {/* Promo video badge */}
-        {currentMedia?.isPromo && (
-          <div className="absolute top-14 right-3 z-10 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
-            <Film className="h-3 w-3" aria-hidden="true" /> {t("tr.promoVideo")}
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 rounded-lg bg-[#F97316] hover:bg-[#ea6a0c] text-white shrink-0"
+            data-testid="button-search-pdp-mobile"
+            aria-label={t("buttons.search")}
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+        </form>
+        {((listing as any).city || listing.location || country) && (
+          <div className="flex items-center gap-1.5 text-[12px] text-white/95" data-testid="pdp-deliver-to">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+              <strong>{(listing as any).city ?? listing.location ?? country}</strong>
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
           </div>
         )}
       </div>
 
-      {/* Thumbnail strip — mobile + desktop for multi-image browsing */}
-      {totalMedia > 1 && (
-        <div className="flex gap-1.5 px-3 py-2 overflow-x-auto scrollbar-none bg-background border-b border-border/60" aria-label="Image thumbnails">
-          {mediaItems.map((item, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setImgIndex(i)}
-              className={`relative flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden border-2 bg-muted transition-all ${i === imgIndex ? "border-primary ring-1 ring-primary/30" : "border-transparent opacity-70"}`}
+      {/* Breadcrumbs */}
+      <nav
+        className="px-3 py-2 text-[12px] text-[#0066c0] bg-white border-b border-border/40 overflow-x-auto scrollbar-none whitespace-nowrap"
+        aria-label="Breadcrumb"
+        data-testid="pdp-breadcrumbs"
+      >
+        <Link href="/" className="hover:underline text-[#0066c0]">{t("nav.home")}</Link>
+        <span className="mx-1.5 text-muted-foreground">›</span>
+        <Link
+          href={`/search?category=${encodeURIComponent(listing.categorySlug || listing.category)}`}
+          className="hover:underline text-[#0066c0]"
+        >
+          {listing.category}
+        </Link>
+        {listing.subcategory && (
+          <>
+            <span className="mx-1.5 text-muted-foreground">›</span>
+            <Link
+              href={`/search?category=${encodeURIComponent(listing.categorySlug || listing.category)}&subcategory=${encodeURIComponent(listing.subcategorySlug || listing.subcategory)}`}
+              className="hover:underline text-[#0066c0]"
             >
-              {item.type === "video" ? (
-                <>
-                  <video src={item.url} preload="metadata" playsInline muted className="w-full h-full object-cover pointer-events-none" />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                    <Play className="h-3 w-3 text-white fill-white" />
-                  </div>
-                  {item.isPromo && (
-                    <div className="absolute bottom-0 inset-x-0 bg-orange-500 text-white text-[8px] font-bold text-center py-0.5">{t("tr.promoBadge")}</div>
-                  )}
-                </>
-              ) : failedMediaUrls.has(item.url) ? (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5">
-                  <ImageIcon className="h-4 w-4 text-primary/40" aria-hidden="true" />
-                </div>
-              ) : (
-                <img
-                  src={item.url}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={() => addFailedUrl(item.url)}
-                  {...listingImageProps({ variant: "detail" })}
+              {listing.subcategory}
+            </Link>
+          </>
+        )}
+        <span className="mx-1.5 text-muted-foreground">›</span>
+        <span className="text-foreground/80 truncate inline-block max-w-[40vw] lg:max-w-none align-bottom">{listing.title}</span>
+      </nav>
+
+      {/* Desktop three-column product stage */}
+      <div
+        className="lg:max-w-7xl lg:mx-auto lg:px-4 lg:pt-5 lg:pb-2 lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(300px,1.15fr)_minmax(260px,320px)] lg:gap-6 lg:items-start"
+        data-testid="pdp-desktop-stage"
+      >
+
+      {/* ══════════ HERO GALLERY — vertical thumbs + main stage ══════════ */}
+      <div className="relative bg-white lg:sticky lg:top-28 lg:self-start" data-testid="pdp-gallery">
+        <div className="flex gap-2 px-2 pt-3 pb-1 md:px-4 md:pt-4 lg:px-0 lg:pt-0">
+          {/* Vertical thumbnail rail */}
+          {totalMedia > 1 && (
+            <div
+              className="flex flex-col gap-1.5 overflow-y-auto max-h-[min(52vh,380px)] md:max-h-[420px] lg:max-h-[480px] pr-0.5 scrollbar-none shrink-0"
+              aria-label="Image thumbnails"
+            >
+              {mediaItems.map((item, i) => renderThumb(item, i, "w-11 h-11 md:w-14 md:h-14"))}
+            </div>
+          )}
+
+          {/* Main media stage */}
+          <div
+            ref={heroRef}
+            className="relative flex-1 min-w-0 bg-muted/20 overflow-hidden aspect-square sm:aspect-[5/4] md:aspect-[4/3] lg:aspect-square max-h-[min(52vh,380px)] md:max-h-[420px] lg:max-h-[480px] rounded-sm"
+            style={{ touchAction: zoom > 1 ? "none" : "pan-y" }}
+            onTouchStart={onHeroTouchStart}
+            onTouchMove={onHeroTouchMove}
+            onTouchEnd={onHeroTouchEnd}
+          >
+            {currentMedia?.type === "video" ? (
+              <div className="relative w-full h-full">
+                <video
+                  key={currentMedia.url}
+                  src={currentMedia.url}
+                  autoPlay
+                  muted={videoMuted}
+                  loop
+                  playsInline
+                  className="w-full h-full object-contain"
+                  preload="auto"
+                  style={{
+                    transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
+                    transformOrigin: "center center",
+                    transition: pinchRef.current || panStartRef.current ? "none" : "transform 0.22s ease",
+                    willChange: "transform",
+                  }}
                 />
-              )}
+                <button
+                  onClick={() => setVideoMuted(m => !m)}
+                  className="absolute bottom-12 left-3 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 z-10"
+                  aria-label={videoMuted ? "Unmute video" : "Mute video"}
+                >
+                  {videoMuted ? <VolumeX className="h-4 w-4" aria-hidden="true" /> : <Volume2 className="h-4 w-4" aria-hidden="true" />}
+                </button>
+              </div>
+            ) : currentMedia && !failedMediaUrls.has(currentMedia.url) ? (
+              <img
+                src={currentMedia.url}
+                alt={listing.title}
+                className="w-full h-full object-contain"
+                draggable={false}
+                onError={() => addFailedUrl(currentMedia.url)}
+                {...listingImageProps({ priority: true, variant: "detail" })}
+                style={{
+                  transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
+                  transformOrigin: "center center",
+                  transition: pinchRef.current || panStartRef.current ? "none" : "transform 0.22s ease",
+                  willChange: "transform",
+                  userSelect: "none",
+                }}
+              />
+            ) : (
+              <div
+                className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/15 via-muted to-primary/5"
+                role="img"
+                aria-label={t("sell.images")}
+              >
+                <ImageIcon className="h-14 w-14 text-primary/45" aria-hidden="true" />
+              </div>
+            )}
+
+            {/* Share + Favorite — top right of media */}
+            <div className="absolute top-2 right-2 z-20 flex flex-col gap-2">
+              <button
+                onClick={handleShare}
+                aria-label="Share listing"
+                data-testid="button-share-listing"
+                className="w-9 h-9 rounded-full bg-white border border-border/70 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
+              >
+                <Share2 className="h-4 w-4 text-foreground" aria-hidden="true" />
+              </button>
+              <button
+                onClick={handleFav}
+                aria-label={isFav ? "Remove favorite" : "Add to favorites"}
+                data-testid="button-favorite"
+                className={cn(
+                  "w-9 h-9 rounded-full border shadow-sm flex items-center justify-center active:scale-90 transition-all",
+                  isFav ? "bg-red-500 border-red-500" : "bg-white border-border/70",
+                )}
+              >
+                <Heart className={cn("h-4 w-4", isFav ? "text-white fill-white" : "text-foreground")} aria-hidden="true" />
+              </button>
+            </div>
+
+            {/* Desktop nav arrows */}
+            {totalMedia > 1 && (
+              <>
+                <button
+                  onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
+                  aria-label="Previous image"
+                  className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-border shadow-sm text-foreground rounded-full p-2 z-10 transition-colors"
+                  data-testid="button-img-prev"
+                >
+                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                </button>
+                <button
+                  onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
+                  aria-label="Next image"
+                  className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white border border-border shadow-sm text-foreground rounded-full p-2 z-10 transition-colors"
+                  data-testid="button-img-next"
+                >
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </>
+            )}
+
+            {listing.isBoosted && (
+              <div className="absolute top-2 left-2 z-10 bg-[hsl(152,65%,22%)] text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+                <Zap className="h-3 w-3" aria-hidden="true" /> {t("listing.featured")}
+              </div>
+            )}
+
+            {currentMedia?.isPromo && (
+              <div className="absolute bottom-10 left-2 z-10 bg-orange-500 text-white text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-sm flex items-center gap-1 shadow-sm">
+                <Film className="h-3 w-3" aria-hidden="true" /> {t("tr.promoVideo")}
+              </div>
+            )}
+
+            {/* Desktop hover-to-zoom */}
+            {currentMedia?.type !== "video" && (
+              <div
+                className="hidden lg:block absolute inset-0 z-[5] cursor-zoom-in"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width - 0.5) * -80;
+                  const y = ((e.clientY - rect.top) / rect.height - 0.5) * -80;
+                  setZoom(2.2);
+                  setPanX(x);
+                  setPanY(y);
+                }}
+                onMouseLeave={() => { setZoom(1); setPanX(0); setPanY(0); }}
+                onDoubleClick={() => setGalleryFullscreen(true)}
+                aria-hidden
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Dots + counter + zoom/expand hints */}
+        <div className="flex items-center justify-between gap-3 px-3 py-2 lg:px-0">
+          {totalMedia > 1 ? (
+            <div className="flex items-center gap-3" aria-hidden="true">
+              <div className="flex gap-1.5 items-center">
+                {mediaItems.map((item, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setImgIndex(i)}
+                    className={cn(
+                      "rounded-full transition-all",
+                      i === imgIndex
+                        ? item.type === "video" ? "bg-[#F97316] w-2 h-2" : "bg-foreground w-2 h-2"
+                        : "bg-muted-foreground/35 w-1.5 h-1.5",
+                    )}
+                    aria-label={`Go to media ${i + 1}`}
+                  />
+                ))}
+              </div>
+              <span className="text-[12px] text-muted-foreground tabular-nums font-medium">
+                {imgIndex + 1} / {totalMedia}
+              </span>
+            </div>
+          ) : <span />}
+          <div className="hidden lg:flex items-center gap-3 text-[12px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Search className="h-3.5 w-3.5" />
+              {t("listing.hoverToZoom", { defaultValue: "Hover to zoom" })}
+            </span>
+            <button
+              type="button"
+              onClick={() => setGalleryFullscreen(true)}
+              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              data-testid="button-gallery-fullscreen"
+              aria-label={t("listing.fullscreen", { defaultValue: "Fullscreen" })}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════ CENTER: PRODUCT INFO ══════════ */}
+      <div className="min-w-0">
+
+        {/* ── TITLE + RATING + PRICE ── */}
+        <div className="px-4 py-3 space-y-2.5 border-b border-border/60 lg:border-0 lg:px-0 lg:pt-0">
+          <h1 className="text-[17px] md:text-[22px] lg:text-[24px] font-bold text-foreground leading-snug tracking-tight" data-testid="pdp-title">
+            {listing.title}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+            <button
+              type="button"
+              onClick={() => setLocation(`/profile/${listing.sellerId}`)}
+              className="text-[#0066c0] hover:underline font-medium"
+              data-testid="button-view-seller"
+            >
+              {t("listing.soldBy")} {listing.sellerName}
+              {listing.sellerIsVerified && <BadgeCheck className="inline h-3.5 w-3.5 ml-1 fill-blue-500 text-white align-text-bottom" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPdpTab("reviews")}
+              className="flex items-center gap-1 text-[#0066c0] hover:underline"
+              data-testid="pdp-rating-link"
+            >
+              <span className="flex items-center gap-0.5" aria-hidden>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Star
+                    key={n}
+                    className={cn(
+                      "h-3.5 w-3.5",
+                      n <= Math.round(listing.sellerRating)
+                        ? "fill-amber-400 text-amber-400"
+                        : "fill-muted text-muted-foreground/40",
+                    )}
+                  />
+                ))}
+              </span>
+              <span className="tabular-nums font-medium">{listing.sellerRating.toFixed(1)}</span>
+            </button>
+            {listing.isBoosted && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-[#F97316] text-white px-2 py-0.5 rounded-sm">
+                <Zap className="h-3 w-3" /> {t("listing.featured")}
+              </span>
+            )}
+          </div>
+
+          {/* Price — real promo savings only */}
+          <div className="flex items-baseline gap-2.5 flex-wrap pt-0.5">
+            <span
+              className={cn(
+                "text-[28px] font-bold tabular-nums leading-none",
+                promoValidation?.valid ? "text-[hsl(152,65%,22%)]" : "text-foreground",
+              )}
+              data-testid="pdp-price"
+            >
+              {promoValidation?.valid
+                ? `$${promoValidation.finalPrice.toFixed(2)}`
+                : formatPrice(listing.price, country, (listing as any).currency)}
+            </span>
+            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
+              <>
+                <span className="text-sm line-through text-muted-foreground tabular-nums">
+                  ${effectiveListingPriceUsd.toFixed(2)}
+                </span>
+                <span className="text-[11px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  −${promoValidation.discountAmount.toFixed(2)} {t("checkout.discount")}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Availability — real stock / status only */}
+          <div className="space-y-1.5 pt-1">
+            {listing.status === "sold" || ((listing as any).stockQuantity != null && (listing as any).stockQuantity <= 0) ? (
+              <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
+            ) : (listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 ? (
+              <p className="text-[14px] font-bold text-red-600">
+                {t("checkout.almostGoneWithCount", { count: (listing as any).stockQuantity })}
+              </p>
+            ) : inStock ? (
+              <p className="text-[14px] font-bold text-[hsl(152,65%,28%)]" data-testid="pdp-in-stock">
+                {t("listing.inStock", { defaultValue: "In Stock" })}
+                <span className="font-semibold text-foreground/70"> · {conditionLabel}</span>
+              </p>
+            ) : null}
+
+            <div className="flex items-start gap-2 text-[13px] text-foreground">
+              <Truck className="h-4 w-4 mt-0.5 text-foreground shrink-0" aria-hidden />
+              <div>
+                <p
+                  className="font-semibold leading-snug"
+                  dangerouslySetInnerHTML={{
+                    __html: t("listing.standardFreeShipping")
+                      .replace("FREE", `<strong class="text-[hsl(152,65%,28%)]">FREE</strong>`)
+                      .replace("GRATUIT", `<strong class="text-[hsl(152,65%,28%)]">GRATUIT</strong>`)
+                      .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
+                  }}
+                />
+                <p className="text-[12px] text-muted-foreground mt-0.5">
+                  {t("listing.freeShippingQty", { count: buyQty })}
+                </p>
+              </div>
+            </div>
+
+            {/* Real product attributes only — no invented variants */}
+            {((listing as any).itemSize || rawStock != null) && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(listing as any).itemSize && (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg border-2 border-[#F97316] text-[13px] font-semibold bg-orange-50/50">
+                    {t("listing.size", { defaultValue: "Size" })}: {(listing as any).itemSize}
+                  </span>
+                )}
+                {rawStock != null && (
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-lg border border-border text-[13px] font-medium text-muted-foreground">
+                    {t("listing.stockCurrent", { count: maxBuyQty })}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* BNPL teaser */}
+          {bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
+            <button
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
+            >
+              <span>{t("tr.payToday")} <strong className="text-foreground">${(effectiveListingPriceUsd / 3).toFixed(2)}</strong> {t("tr.payTodayWith")}</span>
+              {bnplSettings.affirmEnabled && <span className="font-black text-[#00d647]">Affirm</span>}
+              {bnplSettings.klarnaEnabled && <><span>&</span><span className="font-black text-[#ff69a2]">Klarna</span></>}
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          )}
+
+          {/* Promo code */}
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-dashed border-border bg-muted/30 text-xs">
+            <Gift className="h-3.5 w-3.5 text-[#F97316] flex-shrink-0" />
+            <input
+              value={promoCode}
+              onChange={e => setPromoCode(e.target.value.toUpperCase())}
+              placeholder={t("cart.promoPlaceholder")}
+              className="flex-1 bg-transparent outline-none text-foreground min-w-0 placeholder:text-muted-foreground"
+            />
+            {promoCode.length >= 3 && (
+              <button onClick={validatePromoCode} disabled={promoValidating} className="text-[#F97316] font-black flex-shrink-0 disabled:opacity-50">
+                {promoValidating ? "…" : "Aplike"}
+              </button>
+            )}
+          </div>
+          {promoValidation?.valid && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-green-50 border border-green-200 text-xs font-bold text-green-700">
+              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+              ${promoValidation.discountAmount.toFixed(2)} reduksyon aplike · Total: ${promoValidation.finalPrice.toFixed(2)}
+            </div>
+          )}
+          {promoError && <p className="text-xs text-red-500">{promoError}</p>}
+        </div>
+
+        {/* ── QUANTITY + PRIMARY CTAs (mobile / tablet) ── */}
+        {!isOwner && listing.status === "available" && (
+          <div className="px-4 py-3 space-y-3 border-b border-border/60 lg:hidden">
+            <label className="block">
+              <span className="sr-only">{t("listing.quantity", { defaultValue: "Quantity" })}</span>
+              <div className="relative">
+                <select
+                  value={buyQty}
+                  onChange={(e) => setBuyQty(Number(e.target.value))}
+                  disabled={!canPurchaseQty}
+                  className="w-full appearance-none h-11 rounded-lg bg-muted/60 border border-border px-3 pr-10 text-[14px] font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-[#F97316]/40 disabled:opacity-50"
+                  data-testid="pdp-quantity-select"
+                >
+                  {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {t("listing.quantity", { defaultValue: "Quantity" })}: {n}
+                    </option>
+                  ))}
+                </select>
+                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 rotate-90 text-muted-foreground" />
+              </div>
+            </label>
+            {rawStock != null && (
+              <p className="text-[12px] text-muted-foreground tabular-nums">
+                {t("listing.stockCurrent", { count: maxBuyQty })} · {conditionLabel}
+                {(listing as any).weightLbs != null && <> · {(listing as any).weightLbs} lbs</>}
+              </p>
+            )}
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={handleAddToCartClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-add-to-cart-inline"
+                className={cn(
+                  "flex-1 h-12 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50",
+                  isInCart(id)
+                    ? "bg-[hsl(152,65%,22%)] text-white"
+                    : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground shadow-sm",
+                )}
+              >
+                <ShoppingCart className="h-4 w-4 shrink-0" />
+                {isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}
+              </button>
+              <button
+                type="button"
+                onClick={handleBuyNowClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-buy-now-inline"
+                className="flex-1 h-12 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                {t("buttons.buyNow")}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>{/* end center column */}
+
+      {/* ══════════ RIGHT: DESKTOP PURCHASE PANEL ══════════ */}
+      <aside
+        className="hidden lg:block sticky top-28 self-start"
+        data-testid="pdp-purchase-panel"
+      >
+        <div className="rounded-xl border border-border bg-white shadow-sm p-5 space-y-3.5">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-[28px] font-bold tabular-nums tracking-tight">
+              {promoValidation?.valid
+                ? `$${promoValidation.finalPrice.toFixed(2)}`
+                : formatPrice(listing.price, country, (listing as any).currency)}
+            </span>
+            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
+              <>
+                <span className="text-sm line-through text-muted-foreground tabular-nums">
+                  ${effectiveListingPriceUsd.toFixed(2)}
+                </span>
+                <span className="text-[11px] font-bold bg-red-600 text-white px-2 py-0.5 rounded-full">
+                  −${promoValidation.discountAmount.toFixed(2)}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-start gap-2 text-[13px]">
+            <Truck className="h-4 w-4 mt-0.5 shrink-0 text-[hsl(152,65%,28%)]" />
+            <div>
+              <p
+                className="leading-snug font-semibold"
+                dangerouslySetInnerHTML={{
+                  __html: t("listing.standardFreeShipping")
+                    .replace("FREE", `<strong class="text-[hsl(152,65%,28%)]">FREE</strong>`)
+                    .replace("GRATUIT", `<strong class="text-[hsl(152,65%,28%)]">GRATUIT</strong>`)
+                    .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
+                }}
+              />
+              {(user?.location || user?.country) && (
+                <p className="text-[12px] text-[#0066c0] mt-1 flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {t("home.deliverTo", { defaultValue: "Deliver to" })} {user?.location || user?.country}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {inStock ? (
+            <p className="text-[14px] font-bold text-[hsl(152,65%,28%)]">
+              {t("listing.inStock", { defaultValue: "In Stock" })}
+            </p>
+          ) : (
+            <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
+          )}
+
+          {!isOwner && listing.status === "available" && (
+            <>
+              <label className="block">
+                <select
+                  value={buyQty}
+                  onChange={(e) => setBuyQty(Number(e.target.value))}
+                  disabled={!canPurchaseQty}
+                  className="w-full appearance-none h-11 rounded-lg bg-muted/70 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
+                  data-testid="pdp-quantity-select-desktop"
+                >
+                  {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {t("listing.quantity", { defaultValue: "Quantity" })}: {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleAddToCartClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-add-to-cart-desktop"
+                className={cn(
+                  "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-sm",
+                  isInCart(id)
+                    ? "bg-[hsl(152,65%,22%)] text-white"
+                    : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground",
+                )}
+              >
+                <ShoppingCart className="h-4 w-4" />
+                {isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}
+              </button>
+              <button
+                type="button"
+                onClick={handleBuyNowClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-buy-now-desktop"
+                className="w-full h-11 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex items-center justify-center transition-all disabled:opacity-50 shadow-sm"
+              >
+                {t("buttons.buyNow")}
+              </button>
+            </>
+          )}
+
+          {!isOwner && (
+            <button
+              type="button"
+              onClick={handleChat}
+              disabled={createConv.isPending}
+              data-testid="button-chat-seller-desktop"
+              className="w-full h-10 rounded-full border-2 border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] text-[13px] font-bold flex items-center justify-center gap-2 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
+            </button>
+          )}
+
+          <div className="pt-1 space-y-1.5 text-[12px] text-muted-foreground">
+            <p>
+              {t("listing.soldBy")}{" "}
+              <button type="button" onClick={() => setLocation(`/profile/${listing.sellerId}`)} className="text-[#0066c0] font-semibold hover:underline">
+                {listing.sellerName}
+              </button>
+            </p>
+            {country && (
+              <p className="flex items-center gap-1.5 text-foreground/80">
+                <CheckCircle2 className="h-3.5 w-3.5 text-[hsl(152,65%,28%)] shrink-0" />
+                {t("tr.returnDays", { count: getReturnDays(country) })}
+              </p>
+            )}
+            <p className="flex items-center gap-1.5 text-foreground/80">
+              <Shield className="h-3.5 w-3.5 text-[hsl(152,65%,28%)] shrink-0" />
+              {t("tr.escrow")}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleFav}
+            className="w-full h-10 rounded-lg border border-border text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-muted/40 transition-colors"
+            data-testid="button-favorite-desktop"
+          >
+            <Heart className={cn("h-4 w-4", isFav && "fill-red-500 text-red-500")} />
+            {isFav ? t("listing.inWishlist", { defaultValue: "Saved" }) : t("listing.addToWishlist", { defaultValue: "Add to Wishlist" })}
+          </button>
+        </div>
+      </aside>
+
+      </div>{/* end desktop three-column stage */}
+
+      {/* Desktop trust bar — real policies only (no invented warranties) */}
+      <div className="hidden lg:block max-w-7xl mx-auto px-4 py-4" data-testid="pdp-trust-bar">
+        <div className="grid grid-cols-4 gap-4 rounded-xl border border-border bg-white px-4 py-3.5">
+          {[
+            { icon: Truck, label: t("listing.freeShipping", { defaultValue: "Free Shipping" }), sub: t("listing.standardFreeShipping").slice(0, 40) },
+            { icon: CheckCircle2, label: t("tr.easyReturns", { defaultValue: "Easy Returns" }), sub: country ? t("tr.returnDays", { count: getReturnDays(country) }) : t("tr.returnDesc") },
+            { icon: Shield, label: t("tr.escrow", { defaultValue: "Buyer Protection" }), sub: t("tr.escrowDesc") },
+            { icon: Headphones, label: t("listing.support", { defaultValue: "Support" }), sub: t("nav.helpCenter", { defaultValue: "Help Center" }) },
+          ].map((item) => (
+            <div key={item.label} className="flex items-start gap-2.5 min-w-0">
+              <item.icon className="h-5 w-5 text-[hsl(152,65%,28%)] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-foreground leading-tight">{item.label}</p>
+                <p className="text-[11px] text-muted-foreground truncate leading-snug mt-0.5">{item.sub}</p>
+              </div>
+            </div>
           ))}
         </div>
-      )}
+      </div>
 
-      {/* Safety actions — kept available, out of the hero overlay */}
+      {/* Safety actions */}
       {user && user.id !== listing.sellerId && (
-        <div className="flex items-center justify-end gap-3 px-4 py-1.5 text-[11px] border-b border-border/50 bg-muted/20">
+        <div className="flex items-center justify-end gap-3 px-4 py-1.5 text-[11px] border-b border-border/50 bg-muted/20 lg:max-w-7xl lg:mx-auto">
           <button
             type="button"
             className="text-muted-foreground hover:text-destructive transition-colors"
@@ -1444,8 +2011,8 @@ export default function ListingDetail() {
 
       {/* Listing video (non-boost) */}
       {listingVideoUrl && (
-        <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-border bg-black relative" data-testid="listing-video">
-          <video src={listingVideoUrl} controls playsInline className="w-full max-h-56 object-contain" preload="metadata" />
+        <div className="mx-4 mt-2 lg:max-w-7xl lg:mx-auto lg:px-4 rounded-xl overflow-hidden border border-border bg-black relative" data-testid="listing-video">
+          <video src={listingVideoUrl} controls playsInline className="w-full max-h-56 lg:max-h-80 object-contain" preload="metadata" />
           {isOwner && (
             <button
               onClick={() => setRemoveVideoConfirmOpen(true)}
@@ -1459,188 +2026,46 @@ export default function ListingDetail() {
         </div>
       )}
 
-      {/* ══════════ TRUST STRIP ══════════ */}
-      <div className="flex overflow-x-auto scrollbar-none bg-emerald-700 text-white text-[11px] font-semibold">
-        <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-r border-white/20 whitespace-nowrap">
-          <Shield className="h-3 w-3 flex-shrink-0" /> {t("listing.noImportFees")}
-        </div>
-        <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-r border-white/20 whitespace-nowrap">
-          <Truck className="h-3 w-3 flex-shrink-0" /> {t("listing.localWarehouse")}
-        </div>
-        <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 whitespace-nowrap">
-          {t("listing.lateCredit")}
-        </div>
-      </div>
+      {/* ══════════ BELOW-FOLD SECTIONS ══════════ */}
+      <div className="pb-8 lg:max-w-7xl lg:mx-auto lg:px-4">
 
-      {/* ══════════ SALES + SELLER STRIP ══════════ */}
-      <div className="flex items-center gap-2 px-4 py-1.5 text-[11px] text-muted-foreground border-b border-border">
-        <span className="font-semibold">{formatViewCount(displayViewCount ?? listing.viewCount ?? 0)} {t("listing.views")}</span>
-        <span>·</span>
-        <span>{t("listing.soldBy")}</span>
-        <button
-          onClick={() => setLocation(`/profile/${listing.sellerId}`)}
-          className="flex items-center gap-1 font-bold text-foreground hover:text-primary transition-colors"
-          data-testid="button-view-seller"
-        >
-          {listing.sellerName}
-          {listing.sellerIsVerified && <BadgeCheck className="h-3 w-3 fill-blue-500 text-white" />}
-          <ChevronRight className="h-3 w-3 opacity-60" />
-        </button>
-      </div>
-
-      {/* ══════════ MAIN CONTENT ══════════ */}
-      <div className="divide-y divide-border pb-8">
-
-        {/* ── TITLE + PRICE SECTION ── */}
-        <div className="px-4 py-3 space-y-2">
-          <h1 className="text-[15px] font-bold text-foreground leading-snug">{listing.title}</h1>
-
-          {/* Price: only show real promo savings — never invent compare-at / fake % */}
-          <div className="flex items-baseline gap-2 flex-wrap">
-            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
-              <span className="text-sm line-through text-muted-foreground tabular-nums">
-                ${effectiveListingPriceUsd.toFixed(2)}
-              </span>
-            )}
-            {listing.isBoosted && (
-              <span className="text-[10px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded leading-none">{t("listing.lastDay")}</span>
-            )}
-            <span className={`text-2xl font-black tabular-nums ${promoValidation?.valid ? "text-emerald-600" : "text-foreground"}`}>
-              {promoValidation?.valid
-                ? `$${promoValidation.finalPrice.toFixed(2)}`
-                : formatPrice(listing.price, country, (listing as any).currency)}
-            </span>
-          </div>
-
-          {/* Availability + real promo badge only */}
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {listing.status === "sold" ? (
-              <Badge variant="destructive" className="text-[11px] font-bold">{t("checkout.soldBadge")}</Badge>
-            ) : (listing as any).stockQuantity != null && (listing as any).stockQuantity <= 0 ? (
-              <Badge variant="destructive" className="text-[11px] font-bold">{t("checkout.soldBadge")}</Badge>
-            ) : (listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 ? (
-              <span className="text-[11px] font-bold bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 px-1.5 py-0.5 rounded">
-                {t("checkout.almostGoneWithCount", { count: (listing as any).stockQuantity })}
-              </span>
-            ) : (
-              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded">
-                {t("search.condition")}: {{
-                  new: t("search.conditionNew"),
-                  like_new: t("search.conditionLikeNew"),
-                  good: t("search.conditionGood"),
-                  fair: t("search.conditionFair"),
-                  poor: t("search.conditionPoor"),
-                }[listing.condition] ?? listing.condition.replace("_", " ")}
-              </span>
-            )}
-            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
-              <span className="text-[11px] font-bold bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-300/80 dark:border-orange-700 px-1.5 py-0.5 rounded">
-                −${promoValidation.discountAmount.toFixed(2)} {t("checkout.discount")}
-              </span>
-            )}
-          </div>
-
-          {/* BNPL teaser */}
-          {bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
-            <button
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return null; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
-            >
-              <span>{t("tr.payToday")} <strong className="text-foreground">${(effectiveListingPriceUsd / 3).toFixed(2)}</strong> {t("tr.payTodayWith")}</span>
-              {bnplSettings.affirmEnabled && <span className="font-black text-[#00d647]">Affirm</span>}
-              {bnplSettings.klarnaEnabled && <><span>&</span><span className="font-black text-[#ff69a2]">Klarna</span></>}
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
-
-          {/* Promo code input strip */}
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded-xl border border-dashed border-border bg-muted/20 text-xs">
-            <Gift className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
-            <input
-              value={promoCode}
-              onChange={e => setPromoCode(e.target.value.toUpperCase())}
-              placeholder={t("cart.promoPlaceholder")}
-              className="flex-1 bg-transparent outline-none text-foreground min-w-0 placeholder:text-muted-foreground"
-            />
-            {promoCode.length >= 3 && (
-              <button onClick={validatePromoCode} disabled={promoValidating} className="text-orange-600 font-black flex-shrink-0 disabled:opacity-50">
-                {promoValidating ? "…" : "Aplike"}
-              </button>
-            )}
-          </div>
-          {promoValidation?.valid && (
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-xs font-bold text-green-700 dark:text-green-400">
-              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
-              ${promoValidation.discountAmount.toFixed(2)} reduksyon aplike · Total: ${promoValidation.finalPrice.toFixed(2)}
-            </div>
-          )}
-          {promoError && <p className="text-xs text-red-500">{promoError}</p>}
-
-        </div>
-
-        {/* ── QUANTITY SELECTOR ── */}
-        {!isOwner && listing.status === "available" && (
-        <div className="px-4 py-3 space-y-2">
-          <div className="flex items-center gap-3">
-            <img
-              src={(listing as any).images?.[0] ?? "https://placehold.co/56x56/f97316/white?text=FM"}
-              alt=""
-              className="w-12 h-12 rounded-lg object-cover border border-border flex-shrink-0"
-              {...listingImageProps({ variant: "card" })}
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-[11px] text-muted-foreground mb-1.5">
-                {t("search.condition")}: <strong className="text-foreground capitalize">{{
-                  new: t("search.conditionNew"),
-                  like_new: t("search.conditionLikeNew"),
-                  good: t("search.conditionGood"),
-                  fair: t("search.conditionFair"),
-                  poor: t("search.conditionPoor"),
-                }[listing.condition] ?? listing.condition.replace("_", " ")}</strong>
-                {(listing as any).weightLbs != null && <span className="ml-2">⚖️ {(listing as any).weightLbs} lbs</span>}
-                {rawStock != null && (
-                  <span className="ml-2 tabular-nums">{t("listing.stockCurrent", { count: maxBuyQty })}</span>
+        {/* ── PDP TABS ── */}
+        <div className="sticky top-14 md:top-16 z-30 bg-white border-b border-border" data-testid="pdp-tabs">
+          <div className="flex overflow-x-auto scrollbar-none" role="tablist">
+            {([
+              { id: "details" as const, label: t("listing.description", { defaultValue: "Product Details" }) },
+              { id: "specs" as const, label: t("listing.specifications", { defaultValue: "Specifications" }) },
+              { id: "reviews" as const, label: t("listing.reviews", { defaultValue: "Reviews" }) },
+              { id: "qa" as const, label: t("listing.qa", { defaultValue: "Q&A" }) },
+            ]).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={pdpTab === tab.id}
+                onClick={() => setPdpTab(tab.id)}
+                className={cn(
+                  "flex-shrink-0 px-4 py-3 text-[13px] font-semibold border-b-2 transition-colors whitespace-nowrap",
+                  pdpTab === tab.id
+                    ? "border-[#F97316] text-[#F97316]"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
-              </p>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setBuyQty(q => Math.max(1, q - 1))}
-                  disabled={buyQty <= 1 || !canPurchaseQty}
-                  aria-label="Decrease quantity"
-                  className="w-9 h-9 rounded-lg border border-border flex items-center justify-center font-bold text-lg text-foreground hover:border-primary active:scale-90 transition-all disabled:opacity-30 select-none"
-                >
-                  −
-                </button>
-                <span className="text-base font-black w-6 text-center tabular-nums" aria-live="polite">{buyQty}</span>
-                <button
-                  type="button"
-                  onClick={() => setBuyQty(q => Math.min(maxBuyQty, q + 1))}
-                  disabled={!canPurchaseQty || buyQty >= maxBuyQty}
-                  aria-label="Increase quantity"
-                  className="w-9 h-9 rounded-lg border border-primary bg-primary/10 flex items-center justify-center font-bold text-lg text-primary hover:bg-primary/20 active:scale-90 transition-all disabled:opacity-30 select-none"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 rounded-lg px-2.5 py-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
-            <span>{t("tr.freeShippingOn", { count: buyQty })}</span>
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
         </div>
-        )}
 
-        {/* ── SELLER + SHIPPING ── */}
-        <div className="px-4 py-3 space-y-2.5">
+        {/* ── SELLER CONTACT (always visible) ── */}
+        <div className="px-4 py-3 space-y-2.5 border-b border-border/60">
           <button
             onClick={() => setLocation(`/profile/${listing.sellerId}`)}
             className="flex items-center gap-2.5 w-full text-left"
           >
-            <Avatar className="h-9 w-9 flex-shrink-0">
+            <Avatar className="h-10 w-10 flex-shrink-0">
               <AvatarImage src={listing.sellerAvatar ?? undefined} />
-              <AvatarFallback className="bg-primary text-primary-foreground font-bold text-sm">{listing.sellerName[0]}</AvatarFallback>
+              <AvatarFallback className="bg-[hsl(152,65%,22%)] text-white font-bold text-sm">{listing.sellerName[0]}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
@@ -1656,22 +2081,6 @@ export default function ListingDetail() {
             <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           </button>
 
-          <div className="space-y-1.5 text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Truck className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-              <strong className="text-foreground">{t("listing.shippedBy")}</strong>
-            </div>
-            <div className="flex items-start gap-2">
-              <CreditCard className="h-3.5 w-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
-              <span dangerouslySetInnerHTML={{ __html: t("listing.standardFreeShipping").replace("FREE", `<strong class="text-green-600 dark:text-green-400">FREE</strong>`).replace("GRATUIT", `<strong class="text-green-600 dark:text-green-400">GRATUIT</strong>`).replace("GRATIS", `<strong class="text-green-600 dark:text-green-400">GRATIS</strong>`) }} />
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-              <span className="text-green-700 dark:text-green-400 font-semibold">{t("listing.freeShippingQty", { count: buyQty })}</span>
-            </div>
-          </div>
-
-          {/* Secondary contact buttons — hidden from the listing owner */}
           {!isOwner && <div className="flex gap-2">
             <Button variant="outline" size="sm" className="flex-1" onClick={handleChat} disabled={createConv.isPending} data-testid="button-chat-seller">
               <MessageCircle className="h-3.5 w-3.5 mr-1.5" />
@@ -1688,7 +2097,7 @@ export default function ListingDetail() {
             <Button
               variant="outline"
               size="sm"
-              className="w-full text-green-700 border-green-300 dark:text-green-400 dark:border-green-700"
+              className="w-full text-green-700 border-green-300"
               onClick={handleWhatsApp}
               data-testid="button-whatsapp"
             >
@@ -1698,81 +2107,129 @@ export default function ListingDetail() {
           )}
         </div>
 
-        {/* ── DESCRIPTION ── */}
-        <div className="px-4 py-3 space-y-2">
-          <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t("listing.description")}</h2>
-          <p className="text-[13px] text-foreground/80 leading-relaxed">{listing.description}</p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <Badge variant="outline" className="text-xs">{listing.category}</Badge>
-            <Badge variant="secondary" className="text-xs">{{
-                new: t("search.conditionNew"),
-                like_new: t("search.conditionLikeNew"),
-                good: t("search.conditionGood"),
-                fair: t("search.conditionFair"),
-                poor: t("search.conditionPoor"),
-              }[listing.condition] ?? listing.condition.replace("_", " ")}</Badge>
-            {(listing as any).weightLbs != null && (
-              <Badge variant="outline" className="text-xs gap-1">⚖️ {(listing as any).weightLbs} lbs</Badge>
-            )}
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <MapPin className="h-3 w-3" /> {(listing as any).city ?? listing.location}
+        {/* ── TAB: DETAILS ── */}
+        {pdpTab === "details" && (
+          <>
+            <div className="px-4 py-3 space-y-2">
+              <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{t("listing.description")}</h2>
+              <p className="text-[13px] text-foreground/85 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Badge variant="outline" className="text-xs">{listing.category}</Badge>
+                <Badge variant="secondary" className="text-xs">{conditionLabel}</Badge>
+                {(listing as any).weightLbs != null && (
+                  <Badge variant="outline" className="text-xs gap-1">{(listing as any).weightLbs} lbs</Badge>
+                )}
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <MapPin className="h-3 w-3" /> {(listing as any).city ?? listing.location}
+                </div>
+                {country && (
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Globe className="h-3 w-3" /> {country}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border">
+                <span>{formatViewCount(displayViewCount ?? listing.viewCount ?? 0)} {t("listing.views")}</span>
+                <span>{listing.favoriteCount} {t("listing.saves")}</span>
+                <span>{t("listing.postedOn")} {new Date(listing.createdAt).toLocaleDateString()}</span>
+              </div>
             </div>
+
             {country && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Globe className="h-3 w-3" /> {country}
+              <div className="px-4 py-3">
+                <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{t("tr.deliveryReturns")}</h2>
+                <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 bg-green-50/70">
+                    <span className="text-base leading-none mt-0.5" aria-hidden>↩️</span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-bold text-green-800 leading-tight">
+                        {t("tr.returnDays", { count: getReturnDays(country) })}
+                      </p>
+                      <p className="text-[11px] text-green-700/80 mt-0.5 leading-snug">{t("tr.returnDesc")}</p>
+                    </div>
+                  </div>
+                  {isHaitiListingCountry ? (
+                    <div className="flex items-start gap-2.5 px-3 py-2.5 bg-blue-50/70">
+                      <span className="text-base leading-none mt-0.5" aria-hidden>🚗</span>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-blue-800 leading-tight">{t("tr.deliveryDriver")}</p>
+                        <p className="text-[11px] text-blue-700/80 mt-0.5 leading-snug">{t("tr.deliveryDriverDesc")}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2.5 px-3 py-2.5 bg-blue-50/70">
+                      <span className="text-base leading-none mt-0.5" aria-hidden>📦</span>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-bold text-blue-800 leading-tight">{t("tr.localDelivery")}</p>
+                        <p className="text-[11px] text-blue-700/80 mt-0.5 leading-snug">{t("tr.localDeliveryDesc")}</p>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2.5 px-3 py-2.5 bg-emerald-50/70">
+                    <span className="text-base leading-none mt-0.5" aria-hidden>🔒</span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-bold text-emerald-800 leading-tight">{t("tr.escrow")}</p>
+                      <p className="text-[11px] text-emerald-700/80 mt-0.5 leading-snug">{t("tr.escrowDesc")}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border">
-            <span>{formatViewCount(displayViewCount ?? listing.viewCount ?? 0)} {t("listing.views")}</span>
-            <span>{listing.favoriteCount} {t("listing.saves")}</span>
-            <span>{t("listing.postedOn")} {new Date(listing.createdAt).toLocaleDateString()}</span>
-          </div>
-        </div>
+          </>
+        )}
 
-        {/* ── DELIVERY & RETURN POLICY (compact Amazon-style rows) ── */}
-        {country && (
+        {/* ── TAB: SPECS ── */}
+        {pdpTab === "specs" && (
           <div className="px-4 py-3">
-            <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{t("tr.deliveryReturns")}</h2>
-            <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
-              <div className="flex items-start gap-2.5 px-3 py-2.5 bg-green-50/70 dark:bg-green-950/15">
-                <span className="text-base leading-none mt-0.5" aria-hidden>↩️</span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-green-800 dark:text-green-300 leading-tight">
-                    {t("tr.returnDays", { count: getReturnDays(country) })}
-                  </p>
-                  <p className="text-[11px] text-green-700/80 dark:text-green-400/80 mt-0.5 leading-snug">
-                    {t("tr.returnDesc")}
-                  </p>
+            <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">
+              {t("listing.specifications", { defaultValue: "Specifications" })}
+            </h2>
+            <dl className="rounded-xl border border-border divide-y divide-border overflow-hidden text-[13px]">
+              {[
+                { label: t("search.condition"), value: conditionLabel },
+                { label: t("sell.category", { defaultValue: "Category" }), value: listing.category },
+                listing.subcategory ? { label: t("sell.subcategory", { defaultValue: "Subcategory" }), value: listing.subcategory } : null,
+                country ? { label: t("listing.location", { defaultValue: "Location" }), value: [(listing as any).city, country].filter(Boolean).join(", ") } : null,
+                (listing as any).weightLbs != null ? { label: t("listing.weight", { defaultValue: "Weight" }), value: `${(listing as any).weightLbs} lbs` } : null,
+                rawStock != null ? { label: t("listing.stock", { defaultValue: "Stock" }), value: String(maxBuyQty) } : null,
+              ].filter(Boolean).map((row) => (
+                <div key={row!.label} className="grid grid-cols-2 gap-2 px-3 py-2.5">
+                  <dt className="text-muted-foreground font-medium">{row!.label}</dt>
+                  <dd className="text-foreground font-semibold text-right">{row!.value}</dd>
                 </div>
-              </div>
+              ))}
+            </dl>
+          </div>
+        )}
 
-              {isHaitiListingCountry ? (
-                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-blue-50/70 dark:bg-blue-950/15">
-                  <span className="text-base leading-none mt-0.5" aria-hidden>🚗</span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-bold text-blue-800 dark:text-blue-300 leading-tight">{t("tr.deliveryDriver")}</p>
-                    <p className="text-[11px] text-blue-700/80 dark:text-blue-400/80 mt-0.5 leading-snug">{t("tr.deliveryDriverDesc")}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start gap-2.5 px-3 py-2.5 bg-blue-50/70 dark:bg-blue-950/15">
-                  <span className="text-base leading-none mt-0.5" aria-hidden>📦</span>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-bold text-blue-800 dark:text-blue-300 leading-tight">{t("tr.localDelivery")}</p>
-                    <p className="text-[11px] text-blue-700/80 dark:text-blue-400/80 mt-0.5 leading-snug">{t("tr.localDeliveryDesc")}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-start gap-2.5 px-3 py-2.5 bg-violet-50/70 dark:bg-violet-950/15">
-                <span className="text-base leading-none mt-0.5" aria-hidden>🔒</span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-bold text-violet-800 dark:text-violet-300 leading-tight">{t("tr.escrow")}</p>
-                  <p className="text-[11px] text-violet-700/80 dark:text-violet-400/80 mt-0.5 leading-snug">{t("tr.escrowDesc")}</p>
-                </div>
-              </div>
+        {/* ── TAB: REVIEWS ── */}
+        {pdpTab === "reviews" && (
+          <div className="px-4 py-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+              <span className="text-lg font-bold tabular-nums">{listing.sellerRating.toFixed(1)}</span>
+              <span className="text-sm text-muted-foreground">{t("listing.sellerRating", { defaultValue: "Seller rating" })}</span>
             </div>
+            {user && !isOwner && (
+              <button
+                onClick={() => setReviewOpen(true)}
+                className="flex items-center gap-2 text-sm text-[#F97316] font-semibold hover:underline"
+                data-testid="button-leave-review"
+              >
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                {t("review.rateSeller", { defaultValue: "Rate this seller" })}
+              </button>
+            )}
+            <p className="text-[12px] text-muted-foreground">
+              {t("listing.reviewsHint", { defaultValue: "Ratings reflect this seller’s overall marketplace reputation." })}
+            </p>
+          </div>
+        )}
+
+        {/* ── TAB: Q&A (comments) ── */}
+        {pdpTab === "qa" && (
+          <div className="px-4 pt-2 pb-2">
+            <CommentsSection listingId={id} />
           </div>
         )}
 
@@ -1922,100 +2379,58 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {/* ── REVIEW PROMPT ── */}
-        {user && !isOwner && (
-          <div className="px-4 py-3">
-            <button onClick={() => setReviewOpen(true)} className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 hover:underline" data-testid="button-leave-review">
-              <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-              {t("review.rateSeller", { defaultValue: "Rate this seller" })}
-            </button>
+        {/* ── RELATED PRODUCTS (same category, real listings only) ── */}
+        {relatedListings.length > 0 && (
+          <div className="px-4 pt-4 pb-2" data-testid="pdp-related">
+            <h2 className="text-[15px] font-bold mb-3">
+              {t("listing.relatedProducts", { defaultValue: "Related products" })}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+              {relatedListings.map((item: any) => (
+                <ListingCard key={item.id} listing={item} showAddToCart />
+              ))}
+            </div>
           </div>
         )}
-
-        {/* ── COMMENTS ── */}
-        <div className="px-4 pt-4 pb-2">
-          <CommentsSection listingId={id} />
-        </div>
 
         {/* spacer so content clears the sticky buy bar — always rendered
             when the buy bar could appear so the layout never shifts when the
             buy dialog opens / closes (removing it caused the page to jump) */}
         {!isOwner && listing.status === "available" && (
-          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
+          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
       {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
       {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
-        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-background/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))]">
+        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
 
-          {/* Add to Cart */}
-          {user && user.id !== listing.sellerId && (() => {
-            const inCart = isInCart(id);
-            const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
-            return (
-              <button
-                onClick={() => {
-                  if (!canPurchaseQty) {
-                    toast({ title: t("checkout.soldBadge"), variant: "destructive" });
-                    return;
-                  }
-                  if (inCart) {
-                    const existingQty = cartItems.find((i) => i.listingId === id)?.quantity ?? 1;
-                    if (existingQty === qty) {
-                      removeItem(id);
-                      toast({ title: t("listing.removeFromCart") });
-                    } else {
-                      updateQuantity(id, qty);
-                      toast({ title: t("listing.inCart"), description: `×${qty}` });
-                    }
-                  } else {
-                    addItem({
-                      listingId: id,
-                      title: listing.title,
-                      price: listing.price,
-                      currency: (listing as any).currency ?? "USD",
-                      image: (listing as any).images?.[0] ?? null,
-                      country: (listing as any).country ?? null,
-                      sellerId: listing.sellerId,
-                      quantity: qty,
-                    });
-                    toast({ title: `✅ ${t("listing.addedToCart")}`, description: `${listing.title} ×${qty}` });
-                  }
-                }}
-                data-testid="button-add-to-cart"
-                disabled={!canPurchaseQty}
-                className={`flex-1 flex items-center justify-center gap-1.5 h-11 rounded-xl border font-bold text-sm transition-all active:scale-95 disabled:opacity-50 ${
-                  inCart
-                    ? "border-green-500 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400"
-                    : "border-border text-foreground bg-background hover:bg-muted"
-                }`}
-              >
-                <ShoppingCart className="h-4 w-4 flex-shrink-0" />
-                <span className="text-[12px]">{inCart ? t("listing.inCart") : t("listing.addToCart")}</span>
-              </button>
-            );
-          })()}
-
-          {/* Buy Now */}
+          {/* Add to Cart — Amazon yellow */}
           <button
-            onClick={() => {
-              if (!canPurchaseQty) {
-                toast({ title: t("checkout.soldBadge"), variant: "destructive" });
-                return;
-              }
-              if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
-              setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
-            }}
+            onClick={handleAddToCartClick}
+            data-testid="button-add-to-cart"
+            disabled={!canPurchaseQty}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 h-12 rounded-full font-bold text-sm transition-all active:scale-95 disabled:opacity-50",
+              isInCart(id)
+                ? "bg-[hsl(152,65%,22%)] text-white"
+                : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground shadow-sm",
+            )}
+          >
+            <ShoppingCart className="h-4 w-4 flex-shrink-0" />
+            <span className="text-[13px]">{isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}</span>
+          </button>
+
+          {/* Buy Now — Flexa orange */}
+          <button
+            onClick={handleBuyNowClick}
             data-testid="button-buy-now"
             disabled={!canPurchaseQty}
-            className="flex-[1.6] h-11 flex items-center justify-center gap-1.5 rounded-xl font-black text-sm text-white active:scale-95 transition-all disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg,#fb923c 0%,#f97316 60%,#ea6c08 100%)" }}
+            className="flex-[1.4] h-12 flex items-center justify-center gap-1.5 rounded-full font-bold text-sm text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm active:scale-95 transition-all disabled:opacity-50"
           >
-            <Zap className="h-4 w-4 flex-shrink-0" />
             <div className="flex flex-col items-start leading-tight">
-              <span className="text-[13px] font-black">{t("buttons.buyNow")}</span>
+              <span className="text-[13px] font-bold">{t("buttons.buyNow")}</span>
               <span className="text-[10px] font-semibold opacity-90">
                 {promoValidation?.valid
                   ? `$${promoValidation.finalPrice.toFixed(2)}`
@@ -2027,6 +2442,42 @@ export default function ListingDetail() {
         </div>,
         document.body
       )}
+
+      {/* Gallery fullscreen */}
+      <Dialog open={galleryFullscreen} onOpenChange={setGalleryFullscreen}>
+        <DialogContent className="max-w-5xl w-[95vw] p-2 bg-black border-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{listing.title}</DialogTitle>
+          </DialogHeader>
+          <div className="relative w-full aspect-[4/3] max-h-[85vh] flex items-center justify-center">
+            {currentMedia?.type === "video" ? (
+              <video src={currentMedia.url} controls autoPlay playsInline className="max-w-full max-h-full object-contain" />
+            ) : currentMedia ? (
+              <img src={currentMedia.url} alt={listing.title} className="max-w-full max-h-full object-contain" {...listingImageProps({ variant: "detail" })} />
+            ) : null}
+            {totalMedia > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setImgIndex(i => (i - 1 + totalMedia) % totalMedia)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2"
+                  aria-label="Previous"
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImgIndex(i => (i + 1) % totalMedia)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/90 rounded-full p-2"
+                  aria-label="Next"
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Offer Dialog */}
       {/* ── DELETE CONFIRM DIALOG ── */}

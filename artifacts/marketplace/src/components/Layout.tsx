@@ -33,6 +33,7 @@ import { prefetchRoute } from "@/lib/prefetchRoutes";
 import { CommandPalette } from "@/components/CommandPalette";
 import AdminShell from "@/components/admin/AdminShell";
 import { cn } from "@/lib/utils";
+import { useGetCategories } from "@workspace/api-client-react";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
@@ -90,7 +91,7 @@ function CartIconButton({ light = false }: { light?: boolean }) {
         )}
         data-testid="cart-icon-button"
       >
-        <ShoppingCart className={cn("h-5 w-5", light ? "text-white md:text-foreground" : "text-foreground")} />
+        <ShoppingCart className={cn("h-5 w-5", light ? "text-white" : "text-foreground")} />
         {count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#F97316] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none">
             {count > 9 ? "9+" : count}
@@ -187,7 +188,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
 }
 
 // ─── Top search bar ───────────────────────────────────────────────────────────
-function HeaderSearch() {
+function HeaderSearch({ marketStyle = false }: { marketStyle?: boolean }) {
   const [, navigate] = useLocation();
   const { t } = useTranslation();
   const [q, setQ] = useState("");
@@ -196,6 +197,33 @@ function HeaderSearch() {
     e.preventDefault();
     navigate(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : "/search");
   };
+
+  if (marketStyle) {
+    return (
+      <form onSubmit={submit} className="flex-1 max-w-2xl flex gap-0 items-stretch">
+        <label className="sr-only">{t("nav.search")}</label>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="search"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder={t("home.searchPlaceholder", { defaultValue: "Search for products, brands, and more..." })}
+            className="w-full h-10 bg-white text-foreground rounded-l-md rounded-r-none pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#F97316]/50"
+            data-testid="input-header-search"
+          />
+        </div>
+        <button
+          type="submit"
+          className="h-10 w-11 rounded-r-md bg-[#F97316] hover:bg-[#ea6a0c] text-white flex items-center justify-center shrink-0"
+          aria-label={t("buttons.search")}
+          data-testid="button-header-search"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="flex-1 max-w-xl">
@@ -695,6 +723,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const unread = useUnreadMessageCount();
   const boostAd = useBoostAdTrigger();
   const bs = useBroadcast();
+  const { data: marketCategories } = useGetCategories();
   const [moreOpen, setMoreOpen] = useState(false);
   const [showInlineSell, setShowInlineSell] = useState(false);
   const [showInlineMessages, setShowInlineMessages] = useState(false);
@@ -756,8 +785,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     }
   }, [location, showInlineMessages, showInlineSell, inlineRoute]);
 
-  // Back button: show on mobile for every page except home, messages, and auth
-  const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
+  // Back button: show on mobile for every page except home, messages, auth, and PDP
+  // PDP uses Amazon-style chrome (hamburger + brand) — no back chevron
+  const showBackButton =
+    location !== "/"
+    && !location.startsWith("/messages")
+    && !location.startsWith("/auth/")
+    && !/^\/listings\/[^/]+/.test(location);
 
   // When leaving the TV page with an active broadcast OR film playing,
   // always use navigate("/") so GlobalBroadcastPlayer keeps its React state
@@ -875,7 +909,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     location.startsWith(p)
   );
   const isHomePage = location === "/";
-
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
   // Video feed also needs full-height, immersive layout
@@ -884,6 +917,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
   const isListingDetail = /^\/listings\/[^/]+/.test(location);
+  // Amazon-style dark green chrome on home + product detail (mobile)
+  const isMarketGreenHeader = isHomePage || isListingDetail;
   const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   // Cover regular navigation and Android's inline posting screen.
   const isSellPage = showInlineSell || /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
@@ -953,8 +988,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         <header
           className={cn(
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
-            isHomePage
-              ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white md:bg-card md:border-border md:text-foreground"
+            isMarketGreenHeader
+              ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white"
               : "bg-card border-border",
           )}
         >
@@ -966,7 +1001,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               onClick={() => setMoreOpen(true)}
               className={cn(
                 "md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                isHomePage ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
+                isMarketGreenHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
               )}
               aria-label={t("nav.menu")}
             >
@@ -978,14 +1013,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                  className={cn(
+                    "md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                    isMarketGreenHeader ? "hover:bg-white/10 text-white" : "hover:bg-accent text-foreground",
+                  )}
                   aria-label="Retounen"
                 >
-                  <ArrowLeft className={cn("h-5 w-5", isHomePage && "md:text-foreground")} />
+                  <ArrowLeft className="h-5 w-5" />
                 </button>
-                {pageTitle && (
+                {/* On PDP keep brand visible instead of long page title */}
+                {isListingDetail ? (
+                  <Link href="/" className="md:hidden flex items-center gap-1.5 min-w-0 flex-1">
+                    <img src="/flexa-logo-v2.png" alt="" className="h-8 w-auto" width="32" height="32" />
+                    <span className="font-bold text-[13px] truncate text-white">Flexa Market</span>
+                  </Link>
+                ) : pageTitle ? (
                   <span className="md:hidden flex-1 text-base font-bold truncate">{pageTitle}</span>
-                )}
+                ) : null}
                 <Link href="/" aria-label="FLEXA MARKET home" className="hidden md:flex items-center gap-2 shrink-0">
                   <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
                   <span className="font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
@@ -996,32 +1040,95 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               </>
             ) : (
               <>
-                <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0">
+                <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0 flex-1 md:flex-none">
                   <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-9 w-auto md:h-11" width="44" height="44" />
-                  <div className="min-w-0 hidden xs:block sm:block">
-                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isHomePage ? "text-white md:text-foreground" : "text-foreground")}>
+                  <div className="min-w-0">
+                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isMarketGreenHeader ? "text-white" : "text-foreground")}>
                       Flexa Market
                     </span>
-                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isHomePage ? "text-white/80 md:text-muted-foreground" : "text-muted-foreground")}>
+                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isMarketGreenHeader ? "text-white/80" : "text-muted-foreground")}>
                       Buy · Sell · Delivery
                     </span>
                   </div>
                 </Link>
-                <div className="hidden md:block flex-1">
-                  <HeaderSearch />
+                <div className="hidden md:block flex-1 px-4">
+                  <HeaderSearch marketStyle={isMarketGreenHeader} />
                 </div>
-                <div className="flex-1 md:hidden" />
               </>
             )}
 
-            {user && <NotificationsDropdown />}
-            <CartIconButton light={isHomePage} />
+            {/* Deliver to — desktop market chrome */}
+            {isMarketGreenHeader && (
+              <div
+                className="hidden lg:flex items-center gap-1.5 shrink-0 max-w-[140px] xl:max-w-[180px] text-white/95 px-2 py-1 rounded-lg hover:bg-white/10"
+                data-testid="header-deliver-to"
+                title={user?.location || user?.country || undefined}
+              >
+                <MapPin className="h-4 w-4 shrink-0" />
+                <div className="min-w-0 leading-tight">
+                  <p className="text-[10px] text-white/75 truncate">{t("home.deliverTo", { defaultValue: "Deliver to" })}</p>
+                  <p className="text-[12px] font-bold truncate">{user?.location || user?.country || "—"}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Account */}
+            <Link
+              href={profileHref}
+              className={cn(
+                "shrink-0 rounded-xl transition-colors flex items-center gap-1.5",
+                isMarketGreenHeader ? "text-white hover:bg-white/10 p-2" : "text-foreground hover:bg-muted p-2",
+              )}
+              aria-label={t("nav.account", { defaultValue: "Account" })}
+              data-testid="header-account-icon"
+            >
+              <User className="h-5 w-5 shrink-0" />
+              <span className="hidden xl:block text-[12px] font-semibold leading-tight max-w-[90px]">
+                {user
+                  ? t("nav.account", { defaultValue: "Account" })
+                  : t("nav.signIn", { defaultValue: "Sign In" })}
+              </span>
+            </Link>
+            {user && <NotificationsDropdown light={isMarketGreenHeader} />}
+            <CartIconButton light={isMarketGreenHeader} />
             <CommandPalette />
-            <LanguageSwitcher className="header-language-switcher shrink-0 hidden md:inline-flex" />
-            <div className="hidden md:block">
+            <LanguageSwitcher className={cn("header-language-switcher shrink-0 hidden md:inline-flex", isMarketGreenHeader && "text-white")} />
+            <div className={cn("hidden md:block", isMarketGreenHeader && "[&_button]:text-white [&_button:hover]:bg-white/10")}>
               {user ? <UserMenu onNavigate={handleMobileTab} /> : <GuestMenu />}
             </div>
           </div>
+
+          {/* Secondary category nav — Amazon-style under green header */}
+          {isMarketGreenHeader && marketCategories && marketCategories.length > 0 && (
+            <div className="hidden md:block bg-[hsl(152,65%,14%)] border-t border-white/10">
+              <div className="max-w-7xl mx-auto px-3 flex items-center gap-1 overflow-x-auto scrollbar-none h-10" data-testid="header-category-nav">
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(true)}
+                  className="flex items-center gap-1.5 shrink-0 px-2.5 h-8 rounded-md text-white text-[13px] font-bold hover:bg-white/10"
+                  data-testid="header-nav-all"
+                >
+                  <Menu className="h-4 w-4" />
+                  {t("nav.all", { defaultValue: "All" })}
+                </button>
+                <Link
+                  href="/search?boosted=true"
+                  className="shrink-0 px-2.5 h-8 inline-flex items-center rounded-md text-white/95 text-[13px] font-semibold hover:bg-white/10"
+                >
+                  {t("home.todaysDeals", { defaultValue: "Today's Deals" })}
+                </Link>
+                {(marketCategories as Array<{ id: number; name: string; slug: string }>).slice(0, 10).map((cat) => (
+                  <Link
+                    key={cat.id}
+                    href={`/search?category=${encodeURIComponent(cat.slug || cat.name)}`}
+                    className="shrink-0 px-2.5 h-8 inline-flex items-center rounded-md text-white/90 text-[13px] font-medium hover:bg-white/10 whitespace-nowrap"
+                  >
+                    {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </header>
       )}
 

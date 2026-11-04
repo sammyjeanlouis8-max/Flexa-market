@@ -599,6 +599,15 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
   const digitRefs = useRef<(HTMLInputElement | null)[]>([]);
   const pickupInputRef = useRef<HTMLInputElement>(null);
   const dropoffInputRef = useRef<HTMLInputElement>(null);
+  const actionLockRef = useRef(false);
+
+  const withActionLock = (fn: () => void | Promise<void>) => {
+    if (updating || actionLockRef.current) return;
+    actionLockRef.current = true;
+    void Promise.resolve(fn()).finally(() => {
+      window.setTimeout(() => { actionLockRef.current = false; }, 400);
+    });
+  };
 
   // Countdown timer for buyer_absent 2h reschedule grace period
   const [countdown, setCountdown] = useState<string>("");
@@ -874,100 +883,147 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
   const earningsUsd   = delivery.driverEarnings ?? (delivery.feeUsd   != null ? Math.round(delivery.feeUsd   * 0.80 * 100) / 100 : null);
   const earningsLocal = delivery.feeLocal != null ? Math.round(delivery.feeLocal * 0.80) : null;
 
-  return (
-    <div className="bg-white dark:bg-gray-950 border border-border rounded-3xl overflow-hidden shadow-lg">
+  const productName = delivery.listingTitle?.trim() || t("availableDeliveries.cardGenericItem");
+  const isMoto = delivery.deliveryMethod === "motorcycle";
 
-      {/* ── Status bar ── */}
-      <div className={`${cfg.color} px-4 py-3`}>
-        <div className="flex items-center justify-between">
-          <p className="text-white font-black text-sm">
+  return (
+    <article className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+
+      {/* ── Compact status bar ── */}
+      <div className={`${cfg.color} px-3 py-2`}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-white font-black text-[13px] tabular-nums">
             {delivery.transactionIdNum ? `BZH-${String(delivery.transactionIdNum).padStart(6,"0")}` : `FM-${delivery.id}`}
           </p>
-          <p className="text-white/85 text-xs font-semibold">{cfg.label}</p>
+          <p className="text-white/90 text-[11px] font-semibold truncate max-w-[55%] text-right">{cfg.label}</p>
         </div>
-        <div className="flex items-center gap-1.5 mt-2">
+        <div className="flex items-center gap-1 mt-1.5">
           {progressSteps.map(s => (
-            <div key={s} className={`h-1.5 flex-1 rounded-full transition-all ${s <= cfg.step ? "bg-white" : "bg-white/30"}`} />
+            <div key={s} className={`h-1 flex-1 rounded-full transition-all ${s <= cfg.step ? "bg-white" : "bg-white/30"}`} />
           ))}
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-3 space-y-2.5">
 
         {/* ── Screen 2 banner: arrived at buyer ── */}
         {(isArrived || (isArrived && showCodeEntry)) && (
-          <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-2xl px-4 py-3">
-            <MapPin className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-black text-sm text-emerald-700 dark:text-emerald-400">{t("availableDeliveries.dropoffArrivedTitle")}</p>
-              <p className="text-xs text-emerald-700/80 dark:text-emerald-500 mt-0.5">{t("availableDeliveries.dropoffArrivedDesc")}</p>
+          <div className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl px-2.5 py-2">
+            <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="font-bold text-[13px] text-emerald-700 dark:text-emerald-400 leading-tight">{t("availableDeliveries.dropoffArrivedTitle")}</p>
+              <p className="text-[11px] text-emerald-700/80 dark:text-emerald-500 mt-0.5 leading-snug">{t("availableDeliveries.dropoffArrivedDesc")}</p>
             </div>
           </div>
         )}
 
-        {/* ── Product card ── */}
-        {delivery.listingTitle && (
-          <div className="flex items-center gap-3 border border-border rounded-2xl px-3 py-2.5">
-            {delivery.listingImage ? (
-              <img src={delivery.listingImage} alt={delivery.listingTitle}
-                className="h-14 w-14 rounded-xl object-cover shrink-0 border border-border" />
-            ) : (
-              <div className="h-14 w-14 rounded-xl bg-muted flex items-center justify-center shrink-0 border border-border">
-                <Package className="h-5 w-5 text-muted-foreground" />
+        {/* ── Earnings + product thumbnail row ── */}
+        <div className="flex items-start gap-2.5">
+          {delivery.listingImage ? (
+            <img
+              src={delivery.listingImage}
+              alt={productName}
+              width={80}
+              height={80}
+              loading="lazy"
+              decoding="async"
+              className="h-20 w-20 rounded-xl object-cover shrink-0 border border-border bg-muted"
+            />
+          ) : (
+            <div className="h-20 w-20 rounded-xl bg-muted/70 border border-border flex items-center justify-center shrink-0">
+              <Package className="h-7 w-7 text-muted-foreground/55" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1 space-y-1">
+            {earningsUsd != null && (
+              <div className="inline-flex items-baseline gap-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 px-2 py-1">
+                <span className="text-[9px] font-black uppercase tracking-wider opacity-80">{t("availableDeliveries.cardYouEarn")}</span>
+                <span className="text-base font-black tabular-nums leading-none">${earningsUsd.toFixed(2)}</span>
+                {earningsLocal != null && earningsLocal > 0 && (
+                  <span className="text-[10px] font-semibold opacity-70">≈ {earningsLocal.toLocaleString()}</span>
+                )}
               </div>
             )}
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">📦 {t("availableDeliveries.product")}</p>
-              <p className="text-sm font-bold text-foreground leading-tight truncate">{delivery.listingTitle}</p>
-              {earningsUsd != null && (
-                <p className="text-base font-black text-emerald-600 mt-0.5">${earningsUsd.toFixed(2)} <span className="text-[10px] font-semibold text-muted-foreground">USD</span></p>
+            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">{t("availableDeliveries.product")}</p>
+            <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{productName}</p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                isMoto
+                  ? "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
+                  : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+              }`}>
+                {isMoto ? <Bike className="h-3 w-3" /> : <Car className="h-3 w-3" />}
+                {isMoto ? t("availableDeliveries.motoLabel") : t("availableDeliveries.carLabel")}
+              </span>
+              {delivery.distanceKm != null && delivery.distanceKm > 0 && (
+                <span className="text-[10px] font-semibold text-muted-foreground bg-muted/60 rounded-md px-1.5 py-0.5 tabular-nums">
+                  {delivery.distanceKm.toFixed(1)} km
+                </span>
+              )}
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted/60 rounded-md px-1.5 py-0.5">
+                {t("availableDeliveries.cardOneItem")}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Compact route: pickup → drop-off ── */}
+        <div className="flex items-stretch gap-2.5 rounded-xl bg-muted/35 px-2.5 py-2">
+          <div className="flex flex-col items-center shrink-0 pt-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white dark:border-card shadow-sm" />
+            <div className="w-px flex-1 bg-border my-0.5 min-h-[14px]" />
+            <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+          </div>
+          <div className="flex-1 space-y-1.5 min-w-0">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("availableDeliveries.cardPickupPoint")}</p>
+              <p className="text-[13px] font-bold text-foreground truncate leading-tight">{delivery.pickupCity ?? delivery.pickupAddress ?? "—"}</p>
+              {delivery.pickupAddress && delivery.pickupCity && (
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">{delivery.pickupAddress}</p>
+              )}
+            </div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">{t("availableDeliveries.cardDropoffPoint")}</p>
+                <p className="text-[13px] font-bold text-foreground truncate leading-tight">{delivery.deliveryCity ?? "—"}</p>
+                {delivery.deliveryAddress && (
+                  <p className="text-[11px] text-muted-foreground truncate leading-tight">{delivery.deliveryAddress}</p>
+                )}
+              </div>
+              {(delivery.deliveryAddress || delivery.deliveryCity) && (
+                <a
+                  href={`https://maps.google.com/?q=${encodeURIComponent([delivery.deliveryAddress, delivery.deliveryCity].filter(Boolean).join(", "))}`}
+                  target="_blank" rel="noreferrer"
+                  className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center hover:bg-blue-200 transition-colors shrink-0"
+                  aria-label={t("availableDeliveries.cardDeliveryAddress")}
+                >
+                  <Navigation className="h-4 w-4 text-blue-700 dark:text-blue-400" />
+                </a>
               )}
             </div>
           </div>
-        )}
-
-        {/* ── Buyer info rows (KLIYAN / TELEFÒN / ADRÈS) ── */}
-        <div className="space-y-3">
-          {/* KLIYAN */}
-          {delivery.buyerName && (
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardBuyer")}</p>
-              <p className="text-sm font-semibold text-foreground">{delivery.buyerName}</p>
-            </div>
-          )}
-
-          {/* TELEFÒN */}
-          {delivery.buyerPhone && (
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardPhone")}</p>
-                <p className="text-sm font-semibold text-foreground">{delivery.buyerPhone}</p>
-              </div>
-              <a href={`tel:${delivery.buyerPhone}`}
-                className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center hover:bg-emerald-200 transition-colors shrink-0">
-                <Phone className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
-              </a>
-            </div>
-          )}
-
-          {/* ADRÈS LIVREZON */}
-          {(delivery.deliveryAddress || delivery.deliveryCity) && (
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">{t("availableDeliveries.cardDeliveryAddress")}</p>
-                <p className="text-sm font-semibold text-foreground leading-snug">
-                  {[delivery.deliveryAddress, delivery.deliveryCity].filter(Boolean).join(", ")}
-                </p>
-              </div>
-              <a
-                href={`https://maps.google.com/?q=${encodeURIComponent([delivery.deliveryAddress, delivery.deliveryCity].filter(Boolean).join(", "))}`}
-                target="_blank" rel="noreferrer"
-                className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center hover:bg-blue-200 transition-colors shrink-0 mt-1">
-                <MapPin className="h-5 w-5 text-blue-700 dark:text-blue-400" />
-              </a>
-            </div>
-          )}
         </div>
+
+        {/* ── Buyer + phone (compact) ── */}
+        {(delivery.buyerName || delivery.buyerPhone) && (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-border/70 px-2.5 py-2">
+            <div className="min-w-0">
+              {delivery.buyerName && (
+                <p className="text-[13px] font-semibold text-foreground truncate">{delivery.buyerName}</p>
+              )}
+              {delivery.buyerPhone && (
+                <p className="text-[11px] text-muted-foreground tabular-nums">{delivery.buyerPhone}</p>
+              )}
+            </div>
+            {delivery.buyerPhone && (
+              <a href={`tel:${delivery.buyerPhone}`}
+                className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center hover:bg-emerald-200 transition-colors shrink-0"
+                aria-label={t("availableDeliveries.cardPhone")}>
+                <Phone className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />
+              </a>
+            )}
+          </div>
+        )}
 
         {/* ── Screen 3: Code entry (arrived + showCodeEntry) ── */}
         {isArrived && showCodeEntry ? (
@@ -1110,12 +1166,12 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
                   </div>
                 </div>
                 <Button
-                  className="w-full rounded-2xl py-5 font-black text-base bg-slate-700 hover:bg-slate-800 text-white shadow-md"
-                  onClick={handleDriverReturn}
+                  className="w-full h-11 rounded-xl font-bold text-sm bg-slate-700 hover:bg-slate-800 text-white shadow-sm"
+                  onClick={() => withActionLock(handleDriverReturn)}
                   disabled={reportingAbsent || updating}
                 >
                   {reportingAbsent
-                    ? <Loader2 className="h-5 w-5 animate-spin" />
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
                     : "↩ Fè Retou bay Machann"}
                 </Button>
               </>
@@ -1154,12 +1210,12 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
                 className="w-full text-center text-3xl font-black tracking-[12px] bg-transparent outline-none border-2 border-slate-200 dark:border-slate-700 rounded-xl py-3 focus:border-indigo-500 dark:focus:border-indigo-400 placeholder:text-slate-300 dark:placeholder:text-slate-600 transition-colors"
               />
               <Button
-                className="w-full rounded-2xl py-5 font-black text-base bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
-                onClick={handleConfirmBuyerReturn}
+                className="w-full h-11 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                onClick={() => withActionLock(handleConfirmBuyerReturn)}
                 disabled={buyerReturnCodeInput.length < 6 || confirmingBuyerReturn || updating}
               >
                 {confirmingBuyerReturn
-                  ? <><Loader2 className="h-5 w-5 animate-spin mr-2" />Ap verifye…</>
+                  ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Ap verifye…</>
                   : "✅ Konfime Retou"}
               </Button>
             </div>
@@ -1167,8 +1223,8 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             {/* Seller closed button */}
             <Button
               variant="outline"
-              className="w-full rounded-2xl py-3 text-sm border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20 font-bold"
-              onClick={handleSellerClosed}
+              className="w-full h-10 rounded-xl text-sm border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20 font-semibold"
+              onClick={() => withActionLock(handleSellerClosed)}
               disabled={reportingSellerClosed || updating}
             >
               {reportingSellerClosed
@@ -1256,21 +1312,21 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             ) : (
               <Button
                 variant="outline"
-                className="w-full rounded-2xl py-3 text-sm border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-900/30 font-bold"
+                className="w-full h-10 rounded-xl text-sm border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-900/30 font-semibold"
                 onClick={() => dropoffInputRef.current?.click()}
                 disabled={uploadingDropoff}
               >
-                {uploadingDropoff ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Camera className="h-4 w-4 mr-2" />}
+                {uploadingDropoff ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Camera className="h-4 w-4 mr-1.5" />}
                 Foto Livrezon (Prèv Remèt)
               </Button>
             )}
 
             {/* ── PRIMARY: Kliyan Prezan button (always active) ── */}
             <Button
-              className="w-full rounded-2xl py-5 font-black text-lg bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2"
+              className="w-full h-11 rounded-xl font-bold text-sm bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white shadow-sm flex items-center justify-center gap-1.5"
               onClick={() => { setDigits(Array(6).fill("")); setShowCodeEntry(true); }}
             >
-              <CheckCircle className="h-6 w-6 shrink-0" />
+              <CheckCircle className="h-4 w-4 shrink-0" />
               Kliyan Prezan — Antre Kòd
             </Button>
 
@@ -1278,33 +1334,33 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             {arrivedWaitAllowed || !delivery.arrivedAt ? (
               <Button
                 variant="outline"
-                className="w-full rounded-2xl py-3 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-bold"
-                onClick={handleReportBuyerAbsent}
+                className="w-full h-10 rounded-xl text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-semibold"
+                onClick={() => withActionLock(handleReportBuyerAbsent)}
                 disabled={reportingAbsent || updating}
               >
                 {reportingAbsent
-                  ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  : <AlertCircle className="h-4 w-4 mr-2" />}
+                  ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+                  : <AlertCircle className="h-4 w-4 mr-1.5" />}
                 Kliyan Pa Prezan
               </Button>
             ) : (
               /* Locked — show countdown in button */
-              <div className="w-full rounded-2xl py-3 px-4 border-2 border-dashed border-slate-300 dark:border-slate-700 text-center opacity-70 cursor-not-allowed">
+              <div className="w-full rounded-xl py-2.5 px-3 border border-dashed border-slate-300 dark:border-slate-700 text-center opacity-70 cursor-not-allowed">
                 <p className="text-[10px] font-black text-slate-500 dark:text-slate-500 uppercase tracking-widest">🔒 Rapòte Absan Aktive Nan</p>
-                <p className="text-xl font-black text-slate-600 dark:text-slate-400 tabular-nums mt-0.5">{arrivedCountdown}</p>
+                <p className="text-lg font-black text-slate-600 dark:text-slate-400 tabular-nums mt-0.5">{arrivedCountdown}</p>
               </div>
             )}
           </div>
 
         ) : isBeforeArrived ? (
           /* ── Screen 1: heading to buyer ── */
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {/* Instruction banner */}
-            <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl px-4 py-3">
-              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-xl px-2.5 py-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-black text-xs text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-0.5">Enstriksyon</p>
-                <p className="text-xs text-amber-700/80 dark:text-amber-500 leading-relaxed">
+                <p className="font-bold text-[11px] text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-0.5">Enstriksyon</p>
+                <p className="text-[11px] text-amber-700/80 dark:text-amber-500 leading-snug">
                   Mande kliyan an pou li ba ou kòd konfimasyon an lè ou rive.
                 </p>
               </div>
@@ -1312,12 +1368,13 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
 
             {/* Primary action button */}
             <Button
-              className="w-full rounded-2xl py-5 font-black text-base bg-emerald-500 hover:bg-emerald-600 text-white shadow-md shadow-emerald-500/25"
-              onClick={() => onUpdateStatus(delivery.id, nextStatus[delivery.status])}
+              className="w-full h-11 rounded-xl font-bold text-sm bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm"
+              onClick={() => withActionLock(() => onUpdateStatus(delivery.id, nextStatus[delivery.status]))}
               disabled={updating}
+              aria-busy={updating}
             >
               {updating
-                ? <Loader2 className="h-5 w-5 animate-spin" />
+                ? <Loader2 className="h-4 w-4 animate-spin" />
                 : nextLabel[delivery.status]}
             </Button>
 
@@ -1343,11 +1400,11 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-full rounded-2xl py-3 text-sm border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-900/30 font-bold"
+                    className="w-full h-10 rounded-xl text-sm border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-900/30 font-semibold"
                     onClick={() => pickupInputRef.current?.click()}
                     disabled={uploadingPickup}
                   >
-                    {uploadingPickup ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Camera className="h-4 w-4 mr-2" />}
+                    {uploadingPickup ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Camera className="h-4 w-4 mr-1.5" />}
                     Foto Prise (Prèv Ranmasaj)
                   </Button>
                 )}
@@ -1358,14 +1415,14 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
             {delivery.status === "driver_assigned" && (
               <>
                 <Button variant="outline"
-                  className="w-full rounded-2xl py-3 text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-bold"
-                  onClick={handleReportFailed} disabled={reportingFailed || updating}>
-                  {reportingFailed ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <AlertCircle className="h-4 w-4 mr-2" />}
+                  className="w-full h-10 rounded-xl text-sm border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/20 font-semibold"
+                  onClick={() => withActionLock(handleReportFailed)} disabled={reportingFailed || updating}>
+                  {reportingFailed ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <AlertCircle className="h-4 w-4 mr-1.5" />}
                   Machann Pa Prezan
                 </Button>
                 <Button variant="outline"
-                  className="w-full rounded-2xl py-3 text-sm border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
-                  onClick={() => onDriverCancel(delivery.id)} disabled={updating}
+                  className="w-full h-10 rounded-xl text-sm border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20 font-semibold"
+                  onClick={() => withActionLock(() => onDriverCancel(delivery.id))} disabled={updating}
                   data-testid="button-driver-cancel">
                   Anile Livrezon Sa
                 </Button>
@@ -1375,7 +1432,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
 
         ) : null}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1389,7 +1446,7 @@ function DriverStatsBar({ stats, onToggle, toggling }: {
   const { t } = useTranslation();
 
   return (
-    <div className="bg-gradient-to-r from-card to-card border border-border rounded-3xl p-4 mb-4 shadow-sm">
+    <div className="bg-card border border-border rounded-2xl p-3 mb-3 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -2087,7 +2144,7 @@ export default function AvailableDeliveries() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {mine.map(d => (
                 <ActiveDeliveryCard
                   key={d.id}

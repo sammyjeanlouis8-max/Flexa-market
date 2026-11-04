@@ -582,90 +582,112 @@ export default function AdminDeliveryPanel() {
             const SIcon = STATUS_ICON[d.status] ?? Truck;
             const platformFee = d.feeUsd ? d.feeUsd * 0.20 : 0;
             return (
-              <div key={d.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                {/* Colored top bar by status */}
-                <div className={`h-1 w-full ${
+              <article key={d.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                <div className={`h-0.5 w-full ${
                   d.status === "delivered" ? "bg-emerald-500" :
                   d.status === "cancelled" ? "bg-red-500" :
                   d.status === "on_the_way" ? "bg-orange-500" :
                   d.status === "waiting" ? "bg-amber-400" : "bg-blue-500"
                 }`} />
 
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    {/* Transport method icon */}
-                    <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center shrink-0 border border-border">
-                      <MethodIcon className="h-5 w-5 text-muted-foreground" />
-                    </div>
+                <div className="p-3">
+                  <div className="flex items-start gap-2.5">
+                    {d.listingImage ? (
+                      <img
+                        src={d.listingImage}
+                        alt={d.listingTitle ?? `FL-${d.id}`}
+                        width={72}
+                        height={72}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-[72px] w-[72px] rounded-xl object-cover shrink-0 border border-border bg-muted"
+                      />
+                    ) : (
+                      <div className="h-[72px] w-[72px] rounded-xl bg-muted flex items-center justify-center shrink-0 border border-border">
+                        <MethodIcon className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
 
-                    {/* Main info */}
-                    <div className="flex-1 min-w-0 space-y-2">
-                      {/* ID + status + country */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-sm text-foreground">FL-{d.id}</span>
-                        <Badge className={`text-[10px] px-2 py-0.5 flex items-center gap-1 ${STATUS_COLOR[d.status] ?? ""}`}>
-                          <SIcon className="h-3 w-3" />
-                          {STATUS_LABEL[d.status] ?? d.status}
-                        </Badge>
-                        <span className="text-base leading-none">{d.country === "Haiti" ? "🇭🇹" : "🇩🇴"}</span>
-                        <span className="text-[10px] text-muted-foreground ml-auto">
-                          {new Date(String(d.createdAt).replace(" ", "T")).toLocaleDateString("fr-HT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-black text-[13px] text-foreground tabular-nums">FL-{d.id}</span>
+                            <Badge className={`text-[10px] px-1.5 py-0 flex items-center gap-1 ${STATUS_COLOR[d.status] ?? ""}`}>
+                              <SIcon className="h-3 w-3" />
+                              {STATUS_LABEL[d.status] ?? d.status}
+                            </Badge>
+                            <span className="text-sm leading-none" aria-hidden>{d.country === "Haiti" ? "🇭🇹" : "🇩🇴"}</span>
+                          </div>
+                          {d.listingTitle && (
+                            <p className="text-[12px] font-semibold text-foreground leading-snug line-clamp-1 mt-0.5">{d.listingTitle}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          {d.feeUsd != null && d.feeUsd > 0 ? (
+                            <>
+                              <p className="font-black text-[15px] text-primary tabular-nums">${parseFloat(String(d.feeUsd)).toFixed(2)}</p>
+                              <p className="text-[10px] text-muted-foreground">{t("adminDelivery.deliveryFeeLabel")}</p>
+                              <p className="text-[10px] font-bold text-emerald-600">
+                                +${platformFee.toFixed(2)} {t("adminDelivery.platformLabel")}
+                              </p>
+                            </>
+                          ) : d.driverEarnings ? (
+                            <>
+                              <p className="font-black text-[15px] text-emerald-600 tabular-nums">${parseFloat(String(d.driverEarnings)).toFixed(2)}</p>
+                              <p className="text-[10px] text-muted-foreground">{t("adminDelivery.driverLabel")}</p>
+                            </>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">—</p>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Route */}
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                          <span className="font-semibold">{d.pickupCity ?? "?"}</span>
-                        </div>
-                        <div className="flex-1 border-t border-dashed border-border" />
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                          <span className="font-semibold">{d.deliveryCity ?? "?"}</span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-[12px] min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                        <span className="font-semibold truncate">{d.pickupCity ?? "?"}</span>
+                        <span className="text-muted-foreground shrink-0">→</span>
+                        <MapPin className="h-3 w-3 text-emerald-500 shrink-0" />
+                        <span className="font-semibold truncate">{d.deliveryCity ?? "?"}</span>
                         {d.distanceKm != null && (
-                          <span className="text-xs font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-lg shrink-0">
+                          <span className="text-[10px] font-bold text-foreground bg-muted/60 px-1.5 py-0.5 rounded-md shrink-0 tabular-nums">
                             {d.distanceKm.toFixed(1)} km
                           </span>
                         )}
                       </div>
 
-                      {/* Actors */}
-                      <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap text-[11px] text-muted-foreground">
                         {d.sellerName && (
-                          <div className="flex items-center gap-1.5">
-                            <Avatar className="h-5 w-5 border border-border">
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <Avatar className="h-4 w-4 border border-border">
                               <AvatarImage src={d.sellerAvatar ?? undefined} />
-                              <AvatarFallback className="text-[8px] bg-muted">{d.sellerName[0]}</AvatarFallback>
+                              <AvatarFallback className="text-[7px] bg-muted">{d.sellerName[0]}</AvatarFallback>
                             </Avatar>
-                            <span className="text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground">{d.sellerName}</span> (vandè)
-                            </span>
-                          </div>
+                            <span className="truncate"><span className="font-medium text-foreground">{d.sellerName}</span> (vandè)</span>
+                          </span>
                         )}
                         {d.driverName ? (
-                          <div className="flex items-center gap-1.5">
-                            <Avatar className="h-5 w-5 border border-primary/30">
+                          <span className="inline-flex items-center gap-1 min-w-0">
+                            <Avatar className="h-4 w-4 border border-primary/30">
                               <AvatarImage src={d.driverAvatar ?? undefined} />
-                              <AvatarFallback className="text-[8px] bg-primary/10 text-primary">{d.driverName[0]}</AvatarFallback>
+                              <AvatarFallback className="text-[7px] bg-primary/10 text-primary">{d.driverName[0]}</AvatarFallback>
                             </Avatar>
-                            <span className="text-xs text-muted-foreground">
-                              <span className="font-medium text-foreground">{d.driverName}</span> ({t("adminDelivery.driverLabel")})
-                            </span>
-                          </div>
+                            <span className="truncate"><span className="font-medium text-foreground">{d.driverName}</span> ({t("adminDelivery.driverLabel")})</span>
+                          </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground italic">{t("adminDelivery.noDriver")}</span>
+                          <span className="italic">{t("adminDelivery.noDriver")}</span>
                         )}
+                        <span className="ml-auto tabular-nums">
+                          {new Date(String(d.createdAt).replace(" ", "T")).toLocaleDateString("fr-HT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        </span>
                       </div>
 
-                      {/* Delivery photo thumbnails */}
                       {(d.pickupPhotoUrl || d.dropoffPhotoUrl) && (
-                        <div className="flex gap-2 pt-1">
+                        <div className="flex gap-2 pt-0.5">
                           {d.pickupPhotoUrl && (
                             <a href={d.pickupPhotoUrl} target="_blank" rel="noopener noreferrer"
                               className="relative rounded-xl overflow-hidden border border-border block shrink-0">
-                              <img src={d.pickupPhotoUrl} alt="Prise" className="w-16 h-16 object-cover" />
+                              <img src={d.pickupPhotoUrl} alt="Prise" className="h-[72px] w-[72px] object-cover" />
                               <div className="absolute bottom-0 inset-x-0 bg-black/60 py-0.5">
                                 <p className="text-[8px] text-white text-center font-black tracking-wide">PRISE</p>
                               </div>
@@ -674,7 +696,7 @@ export default function AdminDeliveryPanel() {
                           {d.dropoffPhotoUrl && (
                             <a href={d.dropoffPhotoUrl} target="_blank" rel="noopener noreferrer"
                               className="relative rounded-xl overflow-hidden border border-border block shrink-0">
-                              <img src={d.dropoffPhotoUrl} alt="Livrezon" className="w-16 h-16 object-cover" />
+                              <img src={d.dropoffPhotoUrl} alt="Livrezon" className="h-[72px] w-[72px] object-cover" />
                               <div className="absolute bottom-0 inset-x-0 bg-black/60 py-0.5">
                                 <p className="text-[8px] text-white text-center font-black tracking-wide">LIVREZON</p>
                               </div>
@@ -682,58 +704,37 @@ export default function AdminDeliveryPanel() {
                           )}
                         </div>
                       )}
-                    </div>
 
-                    {/* Earnings + cancel column */}
-                    <div className="text-right shrink-0 space-y-1.5">
-                      {d.feeUsd != null && d.feeUsd > 0 ? (
-                        <>
-                          <p className="font-black text-base text-primary">${parseFloat(String(d.feeUsd)).toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground">{t("adminDelivery.deliveryFeeLabel")}</p>
-                          <p className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-md">
-                            +${platformFee.toFixed(2)} {t("adminDelivery.platformLabel")}
-                          </p>
-                        </>
-                      ) : d.driverEarnings ? (
-                        <>
-                          <p className="font-black text-base text-primary">${parseFloat(String(d.driverEarnings)).toFixed(2)}</p>
-                          <p className="text-[10px] text-muted-foreground">{t("adminDelivery.driverLabel")}</p>
-                        </>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">—</p>
-                      )}
-
-                      {/* Cancel — only if driver hasn't picked up yet, refunds buyer */}
-                      {(d.status === "waiting" || d.status === "driver_assigned") && (
-                        <button
-                          type="button"
-                          onClick={() => handleCancel(d.id)}
-                          disabled={cancellingId === d.id}
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-red-600 border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 ml-auto"
-                        >
-                          {cancellingId === d.id
-                            ? <><Loader2 className="h-3 w-3 animate-spin" /> {t("adminDelivery.cancellingLabel")}</>
-                            : <><Ban className="h-3 w-3" /> {t("adminDelivery.cancelBtn")}</>}
-                        </button>
-                      )}
-
-                      {/* Force Complete — for stuck deliveries (driver can't finish) */}
-                      {(["picked_up", "on_the_way", "arrived", "buyer_absent"].includes(d.status)) && (
-                        <button
-                          type="button"
-                          onClick={() => handleForceComplete(d.id)}
-                          disabled={forceCompletingId === d.id}
-                          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-emerald-700 border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50 ml-auto"
-                        >
-                          {forceCompletingId === d.id
-                            ? <><Loader2 className="h-3 w-3 animate-spin" /> {t("adminDelivery.forceCompletingLabel")}</>
-                            : <><CheckCheck className="h-3 w-3" /> {t("adminDelivery.forceCompleteBtn")}</>}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        {(d.status === "waiting" || d.status === "driver_assigned") && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancel(d.id)}
+                            disabled={cancellingId === d.id}
+                            className="inline-flex items-center gap-1 min-h-9 px-2.5 rounded-lg text-[11px] font-bold text-red-600 border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
+                          >
+                            {cancellingId === d.id
+                              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("adminDelivery.cancellingLabel")}</>
+                              : <><Ban className="h-3.5 w-3.5" /> {t("adminDelivery.cancelBtn")}</>}
+                          </button>
+                        )}
+                        {(["picked_up", "on_the_way", "arrived", "buyer_absent"].includes(d.status)) && (
+                          <button
+                            type="button"
+                            onClick={() => handleForceComplete(d.id)}
+                            disabled={forceCompletingId === d.id}
+                            className="inline-flex items-center gap-1 min-h-9 px-2.5 rounded-lg text-[11px] font-bold text-emerald-700 border border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                          >
+                            {forceCompletingId === d.id
+                              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("adminDelivery.forceCompletingLabel")}</>
+                              : <><CheckCheck className="h-3.5 w-3.5" /> {t("adminDelivery.forceCompleteBtn")}</>}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>

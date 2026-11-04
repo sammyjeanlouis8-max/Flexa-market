@@ -671,16 +671,16 @@ export default function SearchPage() {
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
               {Array.from({ length: 10 }).map((_, i) => (
-                <Skeleton key={i} className="aspect-[3/4] rounded-xl" />
+                <Skeleton key={i} className="aspect-square rounded-xl" />
               ))}
             </div>
           ) : data?.listings && data.listings.length > 0 ? (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {data.listings.map(l => <ListingCard key={l.id} listing={l} />)}
-              </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
+              {data.listings.map(l => <ListingCard key={l.id} listing={l} />)}
+            </div>
               {data.totalPages > 1 && (
                 <div className="flex justify-center gap-2 mt-6">
                   <Button

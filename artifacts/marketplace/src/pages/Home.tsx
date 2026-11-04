@@ -849,15 +849,15 @@ export default function Home() {
 
         {/* === PROMAX GROUPS — server-owned hourly order, strict/no mixing === */}
         {feedLoading ? (
-          <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
             {[...Array(10)].map((_, i) => (
-              <Skeleton key={i} className="aspect-square md:aspect-[3/4] rounded-xl" />
+              <Skeleton key={i} className="aspect-square rounded-xl" />
             ))}
           </div>
         ) : (
           promaxGroups.some(group => group.listings.length > 0) && (
             <div
-              className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
+              className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3"
               aria-label="Marketplace products"
             >
               {(() => {
@@ -868,7 +868,8 @@ export default function Home() {
                     aboveFoldIndex += 1;
                     return (
                       <div key={listing.id} data-promax-group={key} className="min-w-0">
-                        <ListingCard listing={listing} mosaicLayout priority={priority} />
+                        {/* Single hero image — mosaic collage was too dense on mobile */}
+                        <ListingCard listing={listing} priority={priority} />
                       </div>
                     );
                   }),
@@ -878,7 +879,7 @@ export default function Home() {
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">
-                    <ListingCard listing={listing} mosaicLayout />
+                    <ListingCard listing={listing} />
                   </div>
                 )),
               )}

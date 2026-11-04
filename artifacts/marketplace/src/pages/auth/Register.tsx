@@ -5,44 +5,42 @@ import { Link, useLocation } from "wouter";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useRegister } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS } from "@/lib/countries";
 import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY, COUNTRY_TO_ISO } from "@/lib/phoneCountries";
 import { Gift } from "lucide-react";
-import i18n from "@/i18n";
+import AuthShell, { AuthPrimaryButton } from "@/components/auth/AuthShell";
 
 function buildSchema(t: (key: string) => string) {
-  return z.object({
-    name: z.string().min(2, t("auth.nameMin")),
-    email: z
-      .string()
-      .transform((s) => s.trim().toLowerCase())
-      .pipe(z.string().email(t("auth.emailInvalid"))),
-    password: z
-      .string()
-      .transform((s) => s.trim())
-      .pipe(z.string().min(6, t("auth.passwordMin"))),
-    confirmPassword: z.string().min(1, t("auth.confirmPasswordRequired")),
-    phoneNumber: z
-      .string()
-      .optional()
-      .refine(
-        (v) => !v || /^[0-9]{6,15}$/.test(v),
-        t("auth.phoneDigitsOnly")
-      ),
-    country: z.string().min(1, t("auth.countryRequired")),
-    location: z.string().optional(),
-    eulaAccepted: z.boolean().refine((v) => v === true, "You must accept the EULA and Terms of Service"),
-  }).refine(
-    (data) => data.password.trim() === data.confirmPassword.trim(),
-    { message: t("auth.passwordMismatch"), path: ["confirmPassword"] }
-  );
+  return z
+    .object({
+      name: z.string().min(2, t("auth.nameMin")),
+      email: z
+        .string()
+        .transform((s) => s.trim().toLowerCase())
+        .pipe(z.string().email(t("auth.emailInvalid"))),
+      password: z
+        .string()
+        .transform((s) => s.trim())
+        .pipe(z.string().min(6, t("auth.passwordMin"))),
+      confirmPassword: z.string().min(1, t("auth.confirmPasswordRequired")),
+      phoneNumber: z
+        .string()
+        .optional()
+        .refine((v) => !v || /^[0-9]{6,15}$/.test(v), t("auth.phoneDigitsOnly")),
+      country: z.string().min(1, t("auth.countryRequired")),
+      location: z.string().optional(),
+      eulaAccepted: z.boolean().refine((v) => v === true, t("auth.eulaRequired")),
+    })
+    .refine((data) => data.password.trim() === data.confirmPassword.trim(), {
+      message: t("auth.passwordMismatch"),
+      path: ["confirmPassword"],
+    });
 }
 
 const getDeviceId = (): string => {
@@ -73,15 +71,6 @@ export default function Register() {
   const { toast } = useToast();
   const register = useRegister();
 
-  // Force English on signup page — user can change language after login
-  useEffect(() => {
-    const prev = i18n.language;
-    if (prev !== "en") i18n.changeLanguage("en");
-    return () => {
-      if (prev !== "en") i18n.changeLanguage(prev);
-    };
-  }, []);
-
   const [phoneIso, setPhoneIso] = useState("US");
   const [promoCode, setPromoCode] = useState(() => {
     const referralFromLink = new URLSearchParams(window.location.search).get("ref");
@@ -93,7 +82,16 @@ export default function Register() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", email: "", password: "", confirmPassword: "", phoneNumber: "", country: "", location: "", eulaAccepted: false },
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      phoneNumber: "",
+      country: "",
+      location: "",
+      eulaAccepted: false,
+    },
   });
 
   const selectedPhone = getPhoneCountry(phoneIso)!;
@@ -114,21 +112,23 @@ export default function Register() {
           location: values.location || undefined,
           deviceId,
           ...(promoCode.trim() ? { promoCode: promoCode.trim().toUpperCase() } : {}),
-           eulaAccepted: values.eulaAccepted,
+          eulaAccepted: values.eulaAccepted,
         } as any,
       },
       {
         onSuccess: (res: any) => {
           if (!res.token) {
-            toast({ title: t("auth.registrationFailed"), description: "Login initialization failed", variant: "destructive" });
+            toast({
+              title: t("auth.registrationFailed"),
+              description: "Login initialization failed",
+              variant: "destructive",
+            });
             return;
           }
           setToken(res.token, res.user);
           toast({
             title: t("auth.welcomeToFlexa"),
-            description: promoCode.trim()
-              ? t("auth.referralBonus")
-              : t("auth.accountReady"),
+            description: promoCode.trim() ? t("auth.referralBonus") : t("auth.accountReady"),
           });
           setLocation("/");
         },
@@ -140,7 +140,7 @@ export default function Register() {
             form.setError(field as any, { message: msg });
             setTimeout(() => {
               const el = document.querySelector(
-                `[data-testid="input-${field}"], [data-testid="select-${field}"], [data-testid="select-calling-code"]`
+                `[data-testid="input-${field}"], [data-testid="select-${field}"], [data-testid="select-calling-code"]`,
               );
               el?.scrollIntoView({ behavior: "smooth", block: "center" });
             }, 50);
@@ -148,39 +148,58 @@ export default function Register() {
             toast({ title: t("auth.registrationFailed"), description: msg, variant: "destructive" });
           }
         },
-      }
+      },
     );
   };
 
   return (
-    <div className="min-h-screen h-[100dvh] overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] flex items-start sm:items-center justify-center bg-background px-4 py-6 sm:py-8 relative">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-2" />
-          <h1 className="text-3xl font-extrabold text-foreground mt-4">{t("auth.createAccount")}</h1>
-          <p className="text-muted-foreground mt-1">{t("auth.joinSubtitle")}</p>
-        </div>
+    <AuthShell
+      title={t("auth.createAccount")}
+      subtitle={t("auth.joinSubtitle")}
+      footer={
+        <p>
+          {t("auth.alreadyAccount")}{" "}
+          <Link
+            href="/auth/login"
+            className="font-semibold text-[var(--auth-accent)] hover:underline"
+            data-testid="link-login"
+          >
+            {t("auth.signIn")}
+          </Link>
+        </p>
+      }
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <section className="space-y-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--auth-muted)]">
+              {t("auth.sectionAccount", "Your account")}
+            </p>
 
-        <div className="bg-card border border-border rounded-2xl p-8 shadow-lg">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-
-              <FormField control={form.control} name="name" render={({ field }) => (
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("auth.name")}</FormLabel>
                   <FormControl>
                     <Input
                       placeholder={t("auth.namePlaceholder")}
                       autoComplete="name"
+                      className="h-12"
                       {...field}
                       data-testid="input-name"
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )} />
+              )}
+            />
 
-              <FormField control={form.control} name="email" render={({ field }) => (
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t("auth.email")}</FormLabel>
                   <FormControl>
@@ -192,63 +211,123 @@ export default function Register() {
                       autoCorrect="off"
                       spellCheck={false}
                       placeholder={t("auth.emailPlaceholder")}
+                      className="h-12"
                       {...field}
                       data-testid="input-email"
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )} />
+              )}
+            />
 
-              <FormField control={form.control} name="password" render={({ field }) => (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("auth.password")}</FormLabel>
+                    <FormControl>
+                      <PasswordInput
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        className="h-12"
+                        {...field}
+                        data-testid="input-password"
+                      />
+                    </FormControl>
+                    {!form.formState.errors.password && (
+                      <p className="text-xs text-[var(--auth-muted)]">{t("auth.passwordMin")}</p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t("auth.confirmPassword")}</FormLabel>
+                    <FormControl>
+                      <PasswordInput
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        className="h-12"
+                        {...field}
+                        data-testid="input-confirm-password"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-4 border-t border-[var(--auth-border)] pt-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[var(--auth-muted)]">
+              {t("auth.sectionLocation", "Location & contact")}
+            </p>
+
+            <FormField
+              control={form.control}
+              name="country"
+              render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t("auth.password")}</FormLabel>
+                  <FormLabel>
+                    {t("auth.yourCountry")}
+                    <span className="ml-1 text-xs font-normal text-[var(--auth-muted)]">
+                      {t("auth.countryDesc")}
+                    </span>
+                  </FormLabel>
                   <FormControl>
-                    <PasswordInput
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      {...field}
-                      data-testid="input-password"
-                    />
+                    <select
+                      value={field.value}
+                      onChange={(e) => {
+                        const country = e.target.value;
+                        field.onChange(country);
+                        const iso = COUNTRY_TO_ISO[country];
+                        if (iso) setPhoneIso(iso);
+                      }}
+                      className="h-12 w-full rounded-xl border border-[var(--auth-border)] bg-white px-3 text-base shadow-sm focus:outline-none focus:ring-2 focus:ring-[rgba(249,115,22,0.25)]"
+                      data-testid="select-country"
+                    >
+                      <option value="" disabled>
+                        {t("auth.selectCountry")}
+                      </option>
+                      {SUPPORTED_COUNTRIES.map((c) => (
+                        <option key={c} value={c}>
+                          {COUNTRY_FLAGS[c]} {c}
+                        </option>
+                      ))}
+                    </select>
                   </FormControl>
-                  {!form.formState.errors.password && (
-                    <p className="text-xs text-muted-foreground">{t("auth.passwordMin")}</p>
-                  )}
                   <FormMessage />
                 </FormItem>
-              )} />
+              )}
+            />
 
-              <FormField control={form.control} name="confirmPassword" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t("auth.confirmPassword")}</FormLabel>
-                  <FormControl>
-                    <PasswordInput
-                      placeholder="••••••••"
-                      autoComplete="new-password"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      {...field}
-                      data-testid="input-confirm-password"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-
-              {/* Phone number with country calling code */}
-              <FormField control={form.control} name="phoneNumber" render={({ field }) => (
+            <FormField
+              control={form.control}
+              name="phoneNumber"
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>
                     {t("auth.phone")}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">
-                      (Optional)
+                    <span className="ml-1 text-xs font-normal text-[var(--auth-muted)]">
+                      {t("auth.optional", "(Optional)")}
                     </span>
                   </FormLabel>
-                  <div className="flex gap-2">
+                  <div className="flex min-w-0 gap-2">
                     <select
                       value={phoneIso}
                       onChange={(e) => {
@@ -257,8 +336,7 @@ export default function Register() {
                         const mapped = ISO_TO_COUNTRY[iso];
                         if (mapped) form.setValue("country", mapped, { shouldValidate: true });
                       }}
-                      className="w-[160px] shrink-0 h-9 rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      style={{ fontSize: "16px" }}
+                      className="h-12 w-[min(42%,11.5rem)] shrink-0 rounded-xl border border-[var(--auth-border)] bg-white px-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[rgba(249,115,22,0.25)]"
                       data-testid="select-calling-code"
                     >
                       {PHONE_COUNTRIES.map((c) => (
@@ -275,93 +353,67 @@ export default function Register() {
                         placeholder={selectedPhone.example}
                         {...field}
                         data-testid="input-phone"
-                        className="flex-1"
+                        className="h-12 min-w-0 flex-1"
                       />
                     </FormControl>
                   </div>
                   <FormMessage />
                 </FormItem>
-              )} />
+              )}
+            />
 
-              {/* Country */}
-              <FormField control={form.control} name="country" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {t("auth.yourCountry")}
-                    <span className="text-xs font-normal text-muted-foreground ml-1">
-                      {t("auth.countryDesc")}
-                    </span>
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-sm font-semibold text-[var(--auth-fg)]">
+                <Gift className="h-3.5 w-3.5 text-[var(--auth-accent)]" />
+                {t("auth.promoCode")}{" "}
+                <span className="text-xs font-normal text-[var(--auth-muted)]">
+                  {t("auth.promoCodeOptional")}
+                </span>
+              </label>
+              <Input
+                placeholder={t("auth.promoCodePlaceholder")}
+                value={promoCode}
+                onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                maxLength={16}
+                autoComplete="off"
+                className="h-12 font-mono tracking-widest"
+                data-testid="input-promo-code"
+              />
+              <p className="text-xs text-[var(--auth-muted)]">{t("auth.promoCodeDesc")}</p>
+            </div>
+          </section>
+
+          <FormField
+            control={form.control}
+            name="eulaAccepted"
+            render={({ field }) => (
+              <FormItem className="flex items-start gap-3 space-y-0 rounded-xl border border-[var(--auth-border)] bg-white/70 p-3.5">
+                <FormControl>
+                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+                <div className="min-w-0 space-y-1">
+                  <FormLabel className="text-sm font-normal leading-snug text-[var(--auth-fg)]">
+                    {t("auth.eulaAgreePrefix")}{" "}
+                    <Link href="/eula" className="font-semibold text-[var(--auth-accent)] underline-offset-2 hover:underline">
+                      {t("auth.eula")}
+                    </Link>{" "}
+                    {t("auth.eulaAnd")}{" "}
+                    <Link href="/terms" className="font-semibold text-[var(--auth-accent)] underline-offset-2 hover:underline">
+                      {t("auth.termsOfService")}
+                    </Link>
+                    .
                   </FormLabel>
-                  <FormControl>
-                    <select
-                      value={field.value}
-                      onChange={(e) => {
-                        const country = e.target.value;
-                        field.onChange(country);
-                        const iso = COUNTRY_TO_ISO[country];
-                        if (iso) setPhoneIso(iso);
-                      }}
-                      className="h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                      style={{ fontSize: "16px" }}
-                      data-testid="select-country"
-                    >
-                      <option value="" disabled>{t("auth.selectCountry")}</option>
-                      {SUPPORTED_COUNTRIES.map((c) => (
-                        <option key={c} value={c}>
-                          {COUNTRY_FLAGS[c]} {c}
-                        </option>
-                      ))}
-                    </select>
-                  </FormControl>
                   <FormMessage />
-                </FormItem>
-              )} />
+                </div>
+              </FormItem>
+            )}
+          />
 
-              {/* Optional promo code */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Gift className="h-3.5 w-3.5 text-primary" />
-                  {t("auth.promoCode")} <span className="text-xs font-normal text-muted-foreground">{t("auth.promoCodeOptional")}</span>
-                </label>
-                <Input
-                  placeholder={t("auth.promoCodePlaceholder")}
-                  value={promoCode}
-                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  maxLength={16}
-                  autoComplete="off"
-                  className="font-mono tracking-widest"
-                  data-testid="input-promo-code"
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("auth.promoCodeDesc")}
-                </p>
-              </div>
-
-              <FormField control={form.control} name="eulaAccepted" render={({ field }) => (
-                <FormItem className="flex items-start gap-3 space-y-0 rounded-lg border p-3">
-                  <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                  <div><FormLabel className="text-sm font-normal">I agree to the <Link href="/eula" className="text-primary underline">EULA</Link> and <Link href="/terms" className="text-primary underline">Terms of Service</Link>.</FormLabel><FormMessage /></div>
-                </FormItem>
-              )} />
-              <Button
-                type="submit"
-                className="w-full font-bold bg-[#F97316] hover:bg-[#ea6c10] text-white border-0"
-                disabled={register.isPending}
-                data-testid="button-register"
-              >
-                {register.isPending ? t("auth.creatingAccount") : t("auth.createAccount")}
-              </Button>
-            </form>
-          </Form>
-
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            {t("auth.alreadyAccount")}{" "}
-            <Link href="/auth/login" className="text-primary font-semibold hover:underline" data-testid="link-login">
-              {t("auth.signIn")}
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+          <AuthPrimaryButton type="submit" disabled={register.isPending} data-testid="button-register">
+            {register.isPending ? t("auth.creatingAccount") : t("auth.createAccount")}
+          </AuthPrimaryButton>
+        </form>
+      </Form>
+    </AuthShell>
   );
 }

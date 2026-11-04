@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -946,4 +946,80 @@ main {
 @media (min-width: 768px) {
   body:has(.flexa-music-shell) { background: #100d16 !important; }
   .flexa-music-shell { width: 100%; max-width: none; min-height: 100dvh; border-left:1px solid rgba(255,255,255,.04); border-right:1px solid rgba(255,255,255,.04); }
+}
+
+/* ── Auth shell (Login / Signup / Phone) ───────────────────────────────────── */
+.auth-shell {
+  --auth-bg: #f6f4f1;
+  --auth-panel: #fbfaf8;
+  --auth-fg: #142033;
+  --auth-muted: #5b6578;
+  --auth-border: #e4e0d8;
+  --auth-accent: #f97316;
+  --auth-accent-hover: #ea6c0f;
+  --auth-input-bg: #ffffff;
+  font-family: "Outfit", "DM Sans", system-ui, sans-serif;
+}
+.auth-shell .auth-form-title,
+.auth-shell .auth-brand-title {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  letter-spacing: -0.03em;
+}
+.auth-brand-panel {
+  background:
+    radial-gradient(120% 80% at 10% 0%, rgba(249, 115, 22, 0.28) 0%, transparent 55%),
+    radial-gradient(90% 70% at 90% 100%, rgba(37, 99, 235, 0.22) 0%, transparent 50%),
+    linear-gradient(155deg, #0f172a 0%, #1e293b 48%, #0b1220 100%);
+  color: #fff;
+}
+.auth-brand-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(closest-side at 30% 40%, rgba(249, 115, 22, 0.18), transparent 70%),
+    radial-gradient(closest-side at 70% 70%, rgba(56, 189, 248, 0.12), transparent 65%);
+  animation: auth-glow 14s ease-in-out infinite alternate;
+}
+.auth-brand-grid {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.14;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 90%);
+}
+@keyframes auth-glow {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(2%, -1.5%, 0) scale(1.04); }
+}
+.auth-form-surface input,
+.auth-form-surface select,
+.auth-form-surface textarea {
+  min-height: 48px;
+  border-radius: 12px !important;
+  border-color: var(--auth-border) !important;
+  background: var(--auth-input-bg) !important;
+  font-size: 16px !important; /* prevent iOS zoom */
+  color: var(--auth-fg);
+}
+.auth-form-surface input:focus-visible,
+.auth-form-surface select:focus-visible {
+  border-color: color-mix(in srgb, var(--auth-accent) 55%, var(--auth-border)) !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.18);
+}
+.auth-form-surface [data-slot="checkbox"],
+.auth-form-surface button[role="checkbox"] {
+  margin-top: 2px;
+}
+@media (max-width: 359px) {
+  .auth-shell .auth-brand-title { font-size: 1.45rem; }
+  .auth-shell .auth-form-title { font-size: 1.4rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand-atmosphere { animation: none; }
+  .auth-shell .animate-in { animation: none !important; }
 }

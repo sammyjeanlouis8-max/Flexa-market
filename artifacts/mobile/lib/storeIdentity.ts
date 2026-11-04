@@ -12,7 +12,12 @@
  * - Marketing version line currently used in this repo: 1.0.1
  *
  * Latest known TestFlight build for this app (owner-reported): 100
- * Local ios.buildNumber must stay strictly above that floor before submit.
+ * Next Expo iOS buildNumber is pinned to exactly 101.
+ * EAS production uses appVersionSource=local and autoIncrement=false so EAS
+ * cannot rewrite that number unexpectedly.
+ *
+ * Live App Store Connect verification of the latest build is required before
+ * any EAS build/submit (this environment has no ASC API credentials).
  *
  * The separate TestFlight listing "FlexaMarket (FM)" v1.0.2 build 96 is NOT
  * configured in this Expo package and must not be overwritten by accident.
@@ -25,5 +30,8 @@ export const IOS_MARKETING_VERSION = "1.0.1" as const;
 /** Owner-reported latest TestFlight CFBundleVersion for com.flexamarket.mobile */
 export const LATEST_KNOWN_TESTFLIGHT_BUILD = 100;
 
-/** Next safe local build number floor (must be > latest TestFlight). */
-export const MIN_NEXT_IOS_BUILD_NUMBER = LATEST_KNOWN_TESTFLIGHT_BUILD + 1;
+/** Exact next iOS build number to ship (must remain 101 until that build is used). */
+export const NEXT_IOS_BUILD_NUMBER = 101;
+
+/** @deprecated Use NEXT_IOS_BUILD_NUMBER — kept for older tests/call sites. */
+export const MIN_NEXT_IOS_BUILD_NUMBER = NEXT_IOS_BUILD_NUMBER;

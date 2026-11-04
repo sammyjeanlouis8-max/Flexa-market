@@ -33,13 +33,21 @@ requireCondition(
   "iOS bundle identifier must remain com.flexamarket.mobile.",
 );
 requireCondition(
-  /^\d+$/.test(appConfig.ios?.buildNumber ?? "") &&
-    Number(appConfig.ios.buildNumber) >= 101,
-  "iOS build number must be an integer at least 101 (above TestFlight build 100 for com.flexamarket.mobile).",
+  appConfig.ios?.buildNumber === "101",
+  "iOS buildNumber must be exactly 101 for the next Flexa Market TestFlight upload.",
 );
 requireCondition(
   appConfig.version === "1.0.1",
   "iOS marketing version must remain 1.0.1 for App Store Connect app 6754947270 unless intentionally bumped.",
+);
+requireCondition(
+  easConfig.cli?.appVersionSource === "local",
+  "EAS appVersionSource must be local so app.json buildNumber 101 is authoritative.",
+);
+requireCondition(
+  easConfig.build?.production?.autoIncrement === false &&
+    easConfig.build?.production?.ios?.autoIncrement === false,
+  "EAS production autoIncrement must be false so build 101 is not rewritten.",
 );
 requireCondition(
   appConfig.ios?.entitlements?.["aps-environment"] === "production",
@@ -63,10 +71,6 @@ requireCondition(
 requireCondition(
   easConfig.build?.production?.ios?.credentialsSource === "remote",
   "iOS production signing must use remote Expo credentials.",
-);
-requireCondition(
-  easConfig.build?.production?.autoIncrement === true,
-  "Production build-number auto-increment must remain enabled.",
 );
 requireCondition(
   appConfig.android?.package === "com.flexa.market",

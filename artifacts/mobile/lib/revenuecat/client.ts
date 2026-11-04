@@ -43,7 +43,11 @@ export async function configureRevenueCat(): Promise<void> {
   if (configured) return;
   const key = getRevenueCatApplePublicApiKey();
   assertPublicRevenueCatKey(key);
+  // Public SDK key only. Server secret keys must never be embedded here.
   Purchases.configure({ apiKey: key });
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+  }
   configured = true;
 }
 

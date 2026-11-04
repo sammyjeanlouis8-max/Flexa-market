@@ -70,13 +70,26 @@ test("store identity targets ASC app 6754947270 / com.flexamarket.mobile", async
     IOS_BUNDLE_IDENTIFIER,
     IOS_MARKETING_VERSION,
     LATEST_KNOWN_TESTFLIGHT_BUILD,
-    MIN_NEXT_IOS_BUILD_NUMBER,
+    NEXT_IOS_BUILD_NUMBER,
   } = await import("../lib/storeIdentity.ts");
   assert.equal(IOS_BUNDLE_IDENTIFIER, "com.flexamarket.mobile");
   assert.equal(ASC_APP_ID, "6754947270");
   assert.equal(IOS_MARKETING_VERSION, "1.0.1");
   assert.equal(LATEST_KNOWN_TESTFLIGHT_BUILD, 100);
-  assert.equal(MIN_NEXT_IOS_BUILD_NUMBER, 101);
+  assert.equal(NEXT_IOS_BUILD_NUMBER, 101);
+});
+
+test("EAS keeps buildNumber 101 under local versioning without autoIncrement", () => {
+  const eas = JSON.parse(
+    readFileSync(path.join(mobileDir, "eas.json"), "utf8"),
+  );
+  const app = JSON.parse(
+    readFileSync(path.join(mobileDir, "app.json"), "utf8"),
+  );
+  assert.equal(app.expo.ios.buildNumber, "101");
+  assert.equal(eas.cli.appVersionSource, "local");
+  assert.equal(eas.build.production.autoIncrement, false);
+  assert.equal(eas.build.production.ios.autoIncrement, false);
 });
 
 test("mobile sources never embed RevenueCat secret sk_ keys", () => {

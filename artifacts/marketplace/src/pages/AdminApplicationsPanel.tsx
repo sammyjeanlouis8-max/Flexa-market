@@ -41,7 +41,7 @@ function fmtDateTime(d: string | null | undefined) {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
-type AppStatus = "pending" | "approved" | "rejected" | "suspended" | "needs_changes" | "all";
+type AppStatus = "pending" | "pending_review" | "ai_processing" | "approved" | "rejected" | "suspended" | "needs_changes" | "needs_correction" | "all";
 
 const STATUS_STYLE: Record<string, { emoji: string; pill: string; ring: string; dot: string }> = {
   pending:       { emoji: "⏳", dot: "bg-amber-400",  pill: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",  ring: "ring-amber-400" },
@@ -53,9 +53,12 @@ const STATUS_STYLE: Record<string, { emoji: string; pill: string; ring: string; 
 
 function StatusPill({ status }: { status: string }) {
   const { t } = useTranslation();
-  const style = STATUS_STYLE[status] ?? { emoji: "❓", pill: "bg-secondary text-secondary-foreground", ring: "ring-border", dot: "bg-gray-400" };
-  const labelKey = status === "needs_changes" ? "adminApps.statusNeedsChanges"
-    : status === "pending"  ? "adminApps.statusPending"
+  const normalized = status === "needs_correction" ? "needs_changes"
+    : (status === "pending_review" || status === "ai_processing" || status === "submitted") ? "pending"
+    : status;
+  const style = STATUS_STYLE[normalized] ?? STATUS_STYLE[status] ?? { emoji: "❓", pill: "bg-secondary text-secondary-foreground", ring: "ring-border", dot: "bg-gray-400" };
+  const labelKey = (status === "needs_changes" || status === "needs_correction") ? "adminApps.statusNeedsChanges"
+    : (status === "pending" || status === "pending_review" || status === "ai_processing" || status === "submitted") ? "adminApps.statusPending"
     : status === "approved" ? "adminApps.statusApproved"
     : status === "rejected" ? "adminApps.statusRejected"
     : status === "suspended" ? "adminApps.statusSuspended"
@@ -536,9 +539,41 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
 
             {activeTab === "dokiman" && (
               <div className="space-y-4">
-                <PhotoGrid label="🪪 Lisans & Idantite" photos={[
-                  { url: app.photoLicenseFront, title: "Permis chofè (devan)" },
-                  { url: app.photoLicenseBack,  title: "Permis chofè (dèyè)" },
+                {(() => {
+                  let ai: any = null;
+                  try { ai = app.aiVerificationResult ? JSON.parse(app.aiVerificationResult) : null; } catch { ai = null; }
+                  if (!ai && !app.aiVerificationStatus) return null;
+                  return (
+                    <div className="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/70 dark:bg-violet-950/20 p-3 space-y-2">
+                      <p className="text-[10px] font-black text-violet-700 dark:text-violet-300 uppercase tracking-wider">AI document verification</p>
+                      <p className="text-xs text-violet-900 dark:text-violet-100 font-semibold">
+                        {ai?.summary ?? app.aiVerificationStatus ?? "—"}
+                      </p>
+                      {Array.isArray(ai?.flags) && ai.flags.length > 0 && (
+                        <p className="text-[11px] text-violet-700 dark:text-violet-300">Flags: {ai.flags.join(", ")}</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 text-[11px]">
+                        <div className="rounded-lg bg-white/70 dark:bg-black/20 p-2">
+                          <p className="font-bold">CIN</p>
+                          <p>Name: {ai?.cin?.extractedName || "—"}</p>
+                          <p>Match: {ai?.cin?.matchScore != null ? `${Math.round(ai.cin.matchScore * 100)}%` : "—"}</p>
+                        </div>
+                        <div className="rounded-lg bg-white/70 dark:bg-black/20 p-2">
+                          <p className="font-bold">License</p>
+                          <p>Name: {ai?.license?.extractedName || "—"}</p>
+                          <p>Match: {ai?.license?.matchScore != null ? `${Math.round(ai.license.matchScore * 100)}%` : "—"}</p>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-violet-600 dark:text-violet-400 font-medium">
+                        Final approval requires an authorized administrator. AI never auto-approves or auto-rejects.
+                      </p>
+                    </div>
+                  );
+                })()}
+                <PhotoGrid label="🪪 CIN & Driving license" photos={[
+                  { url: app.photoNationalId ?? app.facePhotoFront, title: "CIN / National ID" },
+                  { url: app.photoLicenseFront, title: "Permis (front)" },
+                  { url: app.photoLicenseBack,  title: "Permis (back)" },
                   { url: app.photoIdSelfie,     title: t("adminApps.photoSelfieId") },
                 ]} />
                 <PhotoGrid label="📋 Kat enskripsyon & Asirans" photos={[
@@ -552,6 +587,26 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
                   { url: app.facePhotoRight,     title: t("adminApps.photoFaceRight") },
                   { url: app.facePhotoHoldingId, title: t("adminApps.photoHoldingId") },
                 ]} />
+                {app.verificationHistory && (
+                  <div className="rounded-xl border border-border p-3 space-y-1.5">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Verification history</p>
+                    {(() => {
+                      try {
+                        const hist = JSON.parse(app.verificationHistory);
+                        if (!Array.isArray(hist)) return <p className="text-xs text-muted-foreground">—</p>;
+                        return hist.slice().reverse().slice(0, 8).map((h: any, i: number) => (
+                          <p key={i} className="text-[11px] text-muted-foreground">
+                            <span className="font-semibold text-foreground">{h.action}</span>
+                            {h.note ? ` — ${h.note}` : ""}
+                            {h.at ? ` · ${new Date(h.at).toLocaleString()}` : ""}
+                          </p>
+                        ));
+                      } catch {
+                        return <p className="text-xs text-muted-foreground">—</p>;
+                      }
+                    })()}
+                  </div>
+                )}
               </div>
             )}
 
@@ -685,7 +740,7 @@ function DriverAppCard({ app, expanded, onToggle, onAction, actioning, scopeLock
 
           {/* ── Action Area ── */}
           <div className="px-4 pb-4 pt-2 border-t border-border space-y-3">
-            {(app.status === "pending" || app.status === "needs_changes") && (
+            {(app.status === "pending" || app.status === "pending_review" || app.status === "ai_processing" || app.status === "submitted" || app.status === "needs_changes" || app.status === "needs_correction") && (
               <>
                 {/* Vehicle type */}
                 <div>
@@ -1022,7 +1077,7 @@ function AgentAppCard({ app, expanded, onToggle, onAction, actioning }: {
 
           {/* Action area */}
           <div className="px-4 pb-4 pt-2 border-t border-border space-y-3">
-            {(app.status === "pending" || app.status === "needs_changes") && (
+            {(app.status === "pending" || app.status === "pending_review" || app.status === "ai_processing" || app.status === "submitted" || app.status === "needs_changes" || app.status === "needs_correction") && (
               <>
                 <div>
                   <p className="text-[10px] font-black text-muted-foreground mb-2 uppercase tracking-wider">{t("adminApps.monthlyLimitLabel")}</p>

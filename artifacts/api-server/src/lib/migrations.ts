@@ -2647,6 +2647,23 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // Enterprise Haiti motorcycle driver identity verification fields
+  migrations.push({ name: "driver_applications.photo_national_id", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS photo_national_id text" });
+  migrations.push({ name: "driver_applications.cin_number", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS cin_number text" });
+  migrations.push({ name: "driver_applications.operating_area", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS operating_area text" });
+  migrations.push({ name: "driver_applications.ai_verification_status", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS ai_verification_status text" });
+  migrations.push({ name: "driver_applications.ai_verification_result", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS ai_verification_result text" });
+  migrations.push({ name: "driver_applications.verification_history", sql: "ALTER TABLE driver_applications ADD COLUMN IF NOT EXISTS verification_history text" });
+  // Backfill CIN photos previously mis-stored in face_photo_front by the web form
+  migrations.push({
+    name: "driver_applications.backfill_photo_national_id_from_face_front",
+    sql: `UPDATE driver_applications
+      SET photo_national_id = face_photo_front
+      WHERE photo_national_id IS NULL
+        AND face_photo_front IS NOT NULL
+        AND country = 'Haiti'`,
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt

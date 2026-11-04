@@ -65,6 +65,13 @@ export const driverApplicationsTable = pgTable("driver_applications", {
   allowEdit: boolean("allow_edit").notNull().default(false),
   reviewedById: integer("reviewed_by_id").references(() => usersTable.id),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  // Enterprise Haiti motorcycle identity verification
+  photoNationalId: text("photo_national_id"),
+  cinNumber: text("cin_number"),
+  operatingArea: text("operating_area"),
+  aiVerificationStatus: text("ai_verification_status"),
+  aiVerificationResult: text("ai_verification_result"),
+  verificationHistory: text("verification_history"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

@@ -163,10 +163,11 @@ type Step = "landing" | "s1" | "s2a" | "s2b" | "s2c" | "selfie" | "s3" | "s4" | 
 interface FormData {
   fullName: string; phone: string; email: string;
   country: string; city: string;
+  dateOfBirth: string; address: string; operatingArea: string; cinNumber: string;
   vehicleType: string; vehicleBrand: string; vehicleModel: string;
   vehicleYear: string; vehicleColor: string; licensePlate: string; insuranceNumber: string;
   photoFront: string; photoSide: string; photoBack: string;
-  photoPermis: string; photoIdCard: string; photoSelfieDoc: string; photoVehicleCard: string;
+  photoPermis: string; photoPermisBack: string; photoIdCard: string; photoSelfieDoc: string; photoVehicleCard: string;
   selfiePhotoUrl: string;
   bankName: string; bankAccountName: string; bankAccountNumber: string; paymentMethod: string;
   workZones: string[]; maxDistance: number; workHours: string[];
@@ -175,10 +176,11 @@ interface FormData {
 
 const INIT: FormData = {
   fullName: "", phone: "", email: "", country: "Haiti", city: "",
+  dateOfBirth: "", address: "", operatingArea: "", cinNumber: "",
   vehicleType: "", vehicleBrand: "", vehicleModel: "", vehicleYear: "",
   vehicleColor: "", licensePlate: "", insuranceNumber: "",
   photoFront: "", photoSide: "", photoBack: "",
-  photoPermis: "", photoIdCard: "", photoSelfieDoc: "", photoVehicleCard: "",
+  photoPermis: "", photoPermisBack: "", photoIdCard: "", photoSelfieDoc: "", photoVehicleCard: "",
   selfiePhotoUrl: "",
   bankName: "", bankAccountName: "", bankAccountNumber: "", paymentMethod: "",
   workZones: [], maxDistance: 10, workHours: [],
@@ -503,66 +505,130 @@ function VehiclePhotoCard({ label, url, onUpload, token, vehicleType }: {
 
 // ─── Doc Upload Row ───────────────────────────────────────────────────────────
 
-function DocUploadRow({ label, url, onUpload, token }: {
+function DocUploadRow({ label, url, onUpload, token, purpose, secure = false, hint }: {
   label: string; url: string; onUpload: (u: string) => void; token: string;
+  purpose?: string; secure?: boolean; hint?: string;
 }) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [fileName, setFileName] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!url) { setPreview(null); return; }
+    if (url.startsWith("didoc:")) {
+      setPreview(`/api/driver/identity-documents/view?ref=${encodeURIComponent(url)}`);
+    } else {
+      setPreview(url);
+    }
+  }, [url]);
+
+  const uploadFile = async (file: File) => {
+    setUploading(true); setProgress(18); setFileName(file.name);
+    try {
+      const fd = new window.FormData();
+      fd.append("file", file);
+      if (purpose) fd.append("purpose", purpose);
+      setProgress(45);
+      const endpoint = secure ? "/api/driver/identity-documents" : "/api/upload";
+      const res = await fetch(endpoint, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+      setProgress(82);
+      const data = await res.json();
+      const next = secure ? data.ref : data.url;
+      if (next) {
+        setProgress(100);
+        onUpload(next);
+      } else {
+        setFileName("");
+        toast({ title: t("driverApply.uploadFailed", "Upload failed"), description: data.error ?? t("driverApply.uploadFailedDesc", "Please try again"), variant: "destructive" });
+      }
+    } catch {
+      setFileName("");
+      toast({ title: t("driverApply.uploadFailed", "Upload failed"), description: t("driverApply.uploadFailedDesc", "Connection failed — retry"), variant: "destructive" });
+    } finally {
+      setUploading(false);
+      setTimeout(() => setProgress(0), 400);
+    }
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setFileName(file.name);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
-      const data = await res.json();
-      if (data.url) {
-        onUpload(data.url);
-      } else {
-        setFileName("");
-        toast({ title: t("driverApply.uploadFailed", "Erè upload"), description: data.error ?? t("driverApply.uploadFailedDesc", "Reasèye ankò"), variant: "destructive" });
-      }
-    } catch {
-      setFileName("");
-      toast({ title: t("driverApply.uploadFailed", "Erè upload"), description: t("driverApply.uploadFailedDesc", "Koneksyon echwe — reasèye"), variant: "destructive" });
-    } finally { setUploading(false); }
+    await uploadFile(file);
+  };
+
+  const clear = () => {
+    onUpload("");
+    setFileName("");
+    setPreview(null);
+    if (cameraRef.current) cameraRef.current.value = "";
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
-    <div className="flex items-center gap-3 p-3.5 bg-gray-50 rounded-2xl border border-gray-100">
-      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors",
-        url ? "bg-green-100" : "bg-white border-2 border-dashed border-gray-200")}>
-        <FileText className={cn("h-5 w-5", url ? "text-green-600" : "text-gray-400")} />
+    <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+          url ? "bg-green-100" : "bg-white border-2 border-dashed border-gray-200")}>
+          <FileText className={cn("h-5 w-5", url ? "text-green-600" : "text-gray-400")} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-800">{label}</p>
+          {hint && <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{hint}</p>}
+          {url && fileName && <p className="text-[11px] text-gray-500 truncate mt-1">{fileName}</p>}
+          {url && (
+            <p className="text-[10px] font-bold text-emerald-700 mt-1">
+              {t("driverApply.docStatusUploaded", "Uploaded — pending verification")}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-gray-800">{label}</p>
-        {url && fileName && <p className="text-[11px] text-gray-500 truncate">{fileName}</p>}
-      </div>
-      {uploading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
-      ) : url ? (
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="flex items-center gap-1 text-[11px] font-bold text-green-600 bg-green-100 px-2.5 py-1 rounded-full">
-            <Check className="h-3 w-3" /> {t("driverApply.newFormPhotoValidated")}
-          </span>
-          <button type="button"
-            onClick={() => { onUpload(""); setFileName(""); if (inputRef.current) inputRef.current.value = ""; inputRef.current?.click(); }}
-            className="text-[11px] text-gray-400 hover:text-gray-600">
-            {t("driverApply.newFormPhotoChange")}
+
+      {preview && (
+        <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-white">
+          <img
+            src={preview}
+            alt=""
+            className="w-full h-36 object-cover"
+            onError={() => setPreview(null)}
+          />
+          <button type="button" onClick={clear}
+            className="absolute top-2 right-2 text-[11px] font-bold bg-black/55 text-white px-2.5 py-1 rounded-full">
+            {t("driverApply.newFormPhotoChange", "Replace")}
           </button>
         </div>
-      ) : (
-        <button type="button" onClick={() => inputRef.current?.click()}
-          className="shrink-0 text-sm font-bold text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-xl border-2 border-blue-200 hover:bg-blue-50 transition-colors">
-          {t("driverApply.newFormPhotoUploadBtn")}
-        </button>
       )}
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+
+      {uploading && (
+        <div className="space-y-1.5">
+          <div className="h-1.5 rounded-full bg-blue-100 overflow-hidden">
+            <div className="h-full bg-blue-500 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="text-[11px] text-blue-600 font-medium flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" /> {t("driverApply.uploading", "Uploading…")} {progress}%
+          </p>
+        </div>
+      )}
+
+      {!uploading && !url && (
+        <div className="flex gap-2">
+          <button type="button" onClick={() => cameraRef.current?.click()}
+            className="flex-1 h-10 rounded-xl border-2 border-blue-200 text-blue-700 text-sm font-bold hover:bg-blue-50">
+            {t("driverApply.captureCamera", "Camera")}
+          </button>
+          <button type="button" onClick={() => fileRef.current?.click()}
+            className="flex-1 h-10 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-100">
+            {t("driverApply.uploadFile", "Upload file")}
+          </button>
+        </div>
+      )}
+
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFile} />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
     </div>
   );
 }
@@ -656,15 +722,25 @@ function Step1({ form, setForm, onNext, onSave }: {
   const cities  = isHaiti ? HAITI_CITIES : isDR ? DR_CITIES : [];
   const flag    = isHaiti ? "🇭🇹" : isDR ? "🇩🇴" : "🌍";
   const prefix  = isHaiti ? "+509" : isDR ? "+1 809" : "";
-  const availableCountries = Array.from(new Set([form.country, "Haiti", "Dominican Republic"].filter(Boolean)));
-  const ok = form.fullName.trim().length >= 2 && form.phone.trim().length >= 6 && !!form.city;
+  // Haiti motorcycle program is the enterprise target — keep Haiti as the default path.
+  const availableCountries = isHaiti
+    ? ["Haiti"]
+    : Array.from(new Set([form.country, "Haiti", "Dominican Republic"].filter(Boolean)));
+  const ok = form.fullName.trim().length >= 2
+    && form.phone.trim().length >= 6
+    && !!form.city
+    && (!isHaiti || (form.dateOfBirth.trim().length >= 8 && form.address.trim().length >= 5));
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-68px)]">
       <div className="flex-1 px-5 py-6 space-y-4 overflow-y-auto">
         <div className="pb-1">
           <h2 className="text-xl font-black text-gray-900">{t("driverApply.step1Title")}</h2>
-          <p className="text-sm text-gray-500 mt-1">{t("driverApply.step1Subtitle")}</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isHaiti
+              ? t("driverApply.haitiMotoSubtitle", "Haiti motorcycle delivery — legal name, verified phone, and operating area.")
+              : t("driverApply.step1Subtitle")}
+          </p>
         </div>
 
         <InputField label={t("driverApply.newFormFullName")} value={form.fullName}
@@ -684,18 +760,36 @@ function Step1({ form, setForm, onNext, onSave }: {
           </div>
         </div>
 
+        {isHaiti && (
+          <>
+            <InputField label={t("driverApply.dateOfBirth", "Date of birth")} value={form.dateOfBirth}
+              onChange={v => setForm({ ...form, dateOfBirth: v })} type="date" />
+            <InputField label={t("driverApply.residentialAddress", "Residential address")} value={form.address}
+              onChange={v => setForm({ ...form, address: v })} placeholder="12 Delmas 33, Port-au-Prince" />
+          </>
+        )}
+
         <InputField label={t("driverApply.newFormEmail")} value={form.email} onChange={v => setForm({ ...form, email: v })}
           placeholder="jeanmarie@gmail.com" type="email" optional optionalLabel={t("driverApply.newFormOptional")} />
 
-        <SelectField label={t("driverApply.newFormCountry")} value={form.country} onChange={v => setForm({ ...form, country: v, city: "" })}
+        <SelectField label={t("driverApply.newFormCountry")} value={form.country} onChange={v => setForm({ ...form, country: v, city: "", vehicleType: v === "Haiti" ? "moto" : form.vehicleType })}
           options={availableCountries.map(c => ({ value: c, label: c }))} choosePlaceholder={t("driverApply.newFormChoose")} />
 
         {(isHaiti || isDR) ? (
-          <SelectField label={t("driverApply.newFormCity")} value={form.city} onChange={v => setForm({ ...form, city: v })}
+          <SelectField label={t("driverApply.newFormCity")} value={form.city} onChange={v => setForm({ ...form, city: v, operatingArea: form.operatingArea || v })}
             options={cities.map(c => ({ value: c, label: c }))} choosePlaceholder={t("driverApply.newFormChoose")} />
         ) : (
           <InputField label={t("driverApply.newFormCity")} value={form.city}
             onChange={v => setForm({ ...form, city: v })} placeholder="e.g. Miami, Paris, London" />
+        )}
+
+        {isHaiti && (
+          <InputField
+            label={t("driverApply.operatingArea", "Operating area in Haiti")}
+            value={form.operatingArea}
+            onChange={v => setForm({ ...form, operatingArea: v })}
+            placeholder={t("driverApply.operatingAreaPlaceholder", "e.g. Delmas, Pétion-Ville, Carrefour")}
+          />
         )}
       </div>
 
@@ -715,12 +809,19 @@ function Step2A({ form, setForm, onNext, onSave }: {
   form: FormData; setForm: (f: FormData) => void; onNext: () => void; onSave: () => void;
 }) {
   const { t } = useTranslation();
+  const isHaiti = form.country === "Haiti";
   const VEHICLE_TYPES_I18N = [
     { id: "moto",   emoji: "🏍️", label: t("driverApply.vehicleMotoLabel"),   backend: "moto" },
     { id: "machin", emoji: "🚗", label: t("driverApply.vehicleMachinLabel"), backend: "machin" },
     { id: "biyik",  emoji: "🚲", label: t("driverApply.vehicleBiyikLabel"),  backend: "biyik" },
     { id: "kamyon", emoji: "🚛", label: t("driverApply.vehicleKamyonLabel"), backend: "kamyon" },
-  ];
+  ].filter(v => !isHaiti || v.id === "moto");
+  useEffect(() => {
+    if (isHaiti && form.vehicleType !== "moto") {
+      setForm({ ...form, vehicleType: "moto" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHaiti]);
   const vt = VEHICLE_TYPES_I18N.find(v => v.id === form.vehicleType);
   const ok = !!form.vehicleType && form.vehicleBrand.trim().length > 0 && form.vehicleModel.trim().length > 0 && form.licensePlate.trim().length > 0;
 
@@ -928,14 +1029,41 @@ function Step2C({ form, setForm, onNext, onSave, token }: {
           </div>
         </div>
 
-        {/* Required documents — same for all vehicles */}
+        {/* Required identity documents — Haiti motorcycle: CIN + permis */}
         <div className="space-y-1">
           <p className="text-[11px] font-black uppercase tracking-wide text-gray-400 px-1 pb-1">{t("driverApply.newFormPersonalDocs")}</p>
           <div className="space-y-3">
-            <DocUploadRow label={t("driverApply.newFormDriverLicense")} url={form.photoPermis}
-              onUpload={u => setForm({ ...form, photoPermis: u })} token={token} />
-            <DocUploadRow label={t("driverApply.newFormIdCard")} url={form.photoIdCard}
-              onUpload={u => setForm({ ...form, photoIdCard: u })} token={token} />
+            <DocUploadRow
+              label={form.country === "Haiti"
+                ? t("driverApply.cinLabel", "Haitian National ID (CIN)")
+                : t("driverApply.newFormIdCard")}
+              hint={form.country === "Haiti"
+                ? t("driverApply.cinHint", "Clear photo of your Carte d'Identification Nationale. Camera or file upload.")
+                : undefined}
+              url={form.photoIdCard}
+              onUpload={u => setForm({ ...form, photoIdCard: u })}
+              token={token}
+              purpose="cin"
+              secure={form.country === "Haiti"}
+            />
+            <DocUploadRow
+              label={t("driverApply.newFormDriverLicense", "Driving license (front)")}
+              hint={t("driverApply.licenseFrontHint", "Front of your valid permis de conduire.")}
+              url={form.photoPermis}
+              onUpload={u => setForm({ ...form, photoPermis: u })}
+              token={token}
+              purpose="license_front"
+              secure={form.country === "Haiti"}
+            />
+            <DocUploadRow
+              label={t("driverApply.licenseBackLabel", "Driving license (back)")}
+              hint={t("driverApply.licenseBackHint", "Back of your permis de conduire.")}
+              url={form.photoPermisBack}
+              onUpload={u => setForm({ ...form, photoPermisBack: u })}
+              token={token}
+              purpose="license_back"
+              secure={form.country === "Haiti"}
+            />
             <DocUploadRow label={t("driverApply.newFormSelfieWithId")} url={form.photoSelfieDoc}
               onUpload={u => setForm({ ...form, photoSelfieDoc: u })} token={token} />
           </div>
@@ -970,7 +1098,12 @@ function Step2C({ form, setForm, onNext, onSave, token }: {
       </div>
 
       <div className="px-5 pb-8 space-y-3 bg-white border-t border-gray-50 pt-4">
-        <BluePrimaryBtn onClick={onNext} disabled={!form.photoPermis || !form.photoIdCard}>{t("driverApply.newFormNext")}</BluePrimaryBtn>
+        <BluePrimaryBtn
+          onClick={onNext}
+          disabled={!form.photoPermis || !form.photoIdCard || (form.country === "Haiti" && !form.photoPermisBack)}
+        >
+          {t("driverApply.newFormNext")}
+        </BluePrimaryBtn>
         <button type="button" onClick={onSave} className="w-full py-2 text-sm text-gray-400 hover:text-gray-600 transition-colors">
           {t("driverApply.newFormSave")}
         </button>
@@ -2118,15 +2251,23 @@ export default function ApplyForDriver() {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          firstName, lastName, city: form.city, address: form.city,
-          dateOfBirth: "", whatsappNumber: phone, callPhone: phone,
-          vehicleType: vBackend, vehicleBrand: form.vehicleBrand,
+          firstName, lastName, city: form.city,
+          address: form.address || form.city,
+          dateOfBirth: form.dateOfBirth,
+          operatingArea: form.operatingArea || form.city,
+          cinNumber: form.cinNumber || undefined,
+          whatsappNumber: phone, callPhone: phone,
+          vehicleType: form.country === "Haiti" ? "moto" : vBackend,
+          vehicleBrand: form.vehicleBrand,
           vehicleModel: form.vehicleModel, vehicleYear: form.vehicleYear,
           vehicleColor: form.vehicleColor, licensePlateNumber: form.licensePlate,
           insuranceNumber: form.insuranceNumber,
           photoVehicleFront: form.photoFront, photoVehicleSide: form.photoSide,
-          photoVehicleBack: form.photoBack, photoLicenseFront: form.photoPermis,
-          facePhotoHoldingId: form.photoSelfieDoc, facePhotoFront: form.photoIdCard,
+          photoVehicleBack: form.photoBack,
+          photoLicenseFront: form.photoPermis,
+          photoLicenseBack: form.photoPermisBack || undefined,
+          photoNationalId: form.photoIdCard,
+          facePhotoHoldingId: form.photoSelfieDoc,
           photoVehicleRegistration: form.photoVehicleCard,
           selfiePhotoUrl: form.selfiePhotoUrl, photoIdSelfie: form.selfiePhotoUrl,
           bankName: form.bankName, bankAccountName: form.bankAccountName,
@@ -2137,7 +2278,7 @@ export default function ApplyForDriver() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erè soumisyon");
+      if (!res.ok) throw new Error(data.error || "Submission error");
       const id = data.applicationId ?? `DRV-${String(data.application?.id ?? "0").padStart(10, "0")}`;
       setApplicationId(id);
       try { localStorage.removeItem("fm_driver_form"); } catch { /* ignore */ }
@@ -2152,9 +2293,14 @@ export default function ApplyForDriver() {
 
   if (applicationId) return <SuccessScreen applicationId={applicationId} />;
   if (existingDriver?.status === "active") return <ApprovedState driver={existingDriver} />;
-  if (existingApp?.status === "pending") return <PendingState app={existingApp} />;
-  if (existingApp?.status === "needs_changes") return <RejectedState app={existingApp} onEdit={() => setExistingApp(null)} />;
+  if (["pending", "pending_review", "submitted", "ai_processing"].includes(existingApp?.status)) {
+    return <PendingState app={existingApp} />;
+  }
+  if (["needs_changes", "needs_correction"].includes(existingApp?.status)) {
+    return <RejectedState app={existingApp} onEdit={() => setExistingApp(null)} />;
+  }
   if (existingApp?.status === "rejected") return <RejectedState app={existingApp} onEdit={() => setExistingApp(null)} />;
+  if (existingApp?.status === "suspended") return <RejectedState app={existingApp} onEdit={() => setExistingApp(null)} />;
 
   if (step === "landing") {
     return (

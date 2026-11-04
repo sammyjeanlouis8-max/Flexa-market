@@ -16,11 +16,17 @@ import QRCode from "qrcode";
 
 const DELIVERY_COUNTRIES = ["Haiti", "Dominican Republic"];
 
-const HAITI_CITIES = [
-  "Port-au-Prince","Delmas","Pétion-Ville","Tabarre","Carrefour",
-  "Cité Soleil","Croix-des-Bouquets","Kenscoff","Jacmel","Cap-Haïtien",
-  "Gonaïves","Saint-Marc","Les Cayes","Miragoâne","Jérémie",
-];
+const HAITI_DEPARTMENT_COMMUNES: Record<string, string[]> = {
+  "Ouest": ["Port-au-Prince", "Pétion-Ville", "Delmas", "Carrefour", "Tabarre", "Croix-des-Bouquets", "Léogâne", "Kenscoff", "Arcahaie", "Thomazeau"],
+  "Nord": ["Cap-Haïtien"],
+  "Artibonite": ["Gonaïves", "Saint-Marc", "Verrettes", "Montrouis"],
+  "Centre": ["Hinche", "Mirebalais"],
+  "Sud": ["Les Cayes"],
+  "Grand'Anse": ["Jérémie"],
+  "Sud-Est": ["Jacmel"],
+  "Nippes": ["Miragoâne"],
+};
+const HAITI_CITIES = Object.values(HAITI_DEPARTMENT_COMMUNES).flat();
 const DR_CITIES = [
   "Santo Domingo","Santiago","La Romana","San Pedro de Macorís",
   "Puerto Plata","La Vega","Higüey","Moca","Bonao",
@@ -28,7 +34,7 @@ const DR_CITIES = [
 
 const WORK_ZONES_HAITI = [
   "Port-au-Prince","Delmas","Pétion-Ville","Carrefour",
-  "Cité Soleil","Tabarre","Croix-des-Bouquets","Kenscoff",
+  "Tabarre","Croix-des-Bouquets","Kenscoff",
 ];
 const WORK_ZONES_DR = [
   "Santo Domingo","Santiago","La Romana","San Pedro de Macorís","Puerto Plata",
@@ -653,7 +659,12 @@ function Step1({ form, setForm, onNext, onSave }: {
   const { t } = useTranslation();
   const isHaiti = form.country === "Haiti";
   const isDR    = form.country === "Dominican Republic";
-  const cities  = isHaiti ? HAITI_CITIES : isDR ? DR_CITIES : [];
+  const haitiDept = Object.entries(HAITI_DEPARTMENT_COMMUNES).find(([, communes]) =>
+    communes.some(c => c.toLowerCase() === form.city.toLowerCase()),
+  )?.[0] ?? "";
+  const [department, setDepartment] = useState(haitiDept);
+  const haitiCommunes = department ? (HAITI_DEPARTMENT_COMMUNES[department] ?? []) : HAITI_CITIES;
+  const cities  = isHaiti ? haitiCommunes : isDR ? DR_CITIES : [];
   const flag    = isHaiti ? "🇭🇹" : isDR ? "🇩🇴" : "🌍";
   const prefix  = isHaiti ? "+509" : isDR ? "+1 809" : "";
   const availableCountries = Array.from(new Set([form.country, "Haiti", "Dominican Republic"].filter(Boolean)));
@@ -687,10 +698,36 @@ function Step1({ form, setForm, onNext, onSave }: {
         <InputField label={t("driverApply.newFormEmail")} value={form.email} onChange={v => setForm({ ...form, email: v })}
           placeholder="jeanmarie@gmail.com" type="email" optional optionalLabel={t("driverApply.newFormOptional")} />
 
-        <SelectField label={t("driverApply.newFormCountry")} value={form.country} onChange={v => setForm({ ...form, country: v, city: "" })}
+        <SelectField label={t("driverApply.newFormCountry")} value={form.country} onChange={v => {
+          setDepartment("");
+          setForm({ ...form, country: v, city: "" });
+        }}
           options={availableCountries.map(c => ({ value: c, label: c }))} choosePlaceholder={t("driverApply.newFormChoose")} />
 
-        {(isHaiti || isDR) ? (
+        {isHaiti ? (
+          <>
+            <SelectField
+              label="Department"
+              value={department}
+              onChange={v => {
+                setDepartment(v);
+                setForm({ ...form, city: "" });
+              }}
+              options={Object.keys(HAITI_DEPARTMENT_COMMUNES).map(d => ({ value: d, label: d }))}
+              choosePlaceholder={t("driverApply.newFormChoose")}
+            />
+            <SelectField
+              label="Primary commune"
+              value={form.city}
+              onChange={v => setForm({ ...form, city: v })}
+              options={cities.map(c => ({ value: c, label: c }))}
+              choosePlaceholder={t("driverApply.newFormChoose")}
+            />
+            <p className="text-[11px] text-gray-500 leading-relaxed">
+              Your primary commune sets your home base. Super Admin assigns authorized service communes — drivers cannot self-authorize restricted zones.
+            </p>
+          </>
+        ) : isDR ? (
           <SelectField label={t("driverApply.newFormCity")} value={form.city} onChange={v => setForm({ ...form, city: v })}
             options={cities.map(c => ({ value: c, label: c }))} choosePlaceholder={t("driverApply.newFormChoose")} />
         ) : (
@@ -1709,6 +1746,11 @@ function Step4({ form, setForm, onNext, onSave }: {
             <MapPin className="h-4 w-4 text-blue-500" />
             <p className="text-sm font-bold text-gray-800">{t("driverApply.workHourZoneLabel")}</p>
           </div>
+          {isHaiti4 && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 leading-relaxed">
+              Preferred zones help scheduling. Final delivery authorization is controlled by Super Admin service zones — selecting a commune here does not grant permission to serve it.
+            </p>
+          )}
           {(isHaiti4 || isDR4) ? (
             <div className="flex flex-wrap gap-2">
               {zones.map(z => (

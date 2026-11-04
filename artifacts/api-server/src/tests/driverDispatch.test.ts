@@ -17,7 +17,7 @@ import {
 
 describe("haitiGeography", () => {
   it("normalizes accents and spacing", () => {
-    expect(normalizeCommuneKey("Pétion-Ville")).toBe("petion-ville");
+    expect(normalizeCommuneKey("Pétion-Ville")).toBe("petionville");
     expect(normalizeCommuneKey("  Delmas  ")).toBe("delmas");
     expect(communesEqual("Cap-Haïtien", "cap haitien")).toBe(true);
   });

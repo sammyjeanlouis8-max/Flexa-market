@@ -9,7 +9,7 @@ import {
   Clock, Phone, RefreshCw, Navigation, TrendingUp,
   Wifi, WifiOff, ChevronRight, Lock, AlertCircle, X,
   Truck, ArrowRight, Zap, Shield, ChevronDown, ChevronUp, Loader2,
-  Copy, Flag, Eye, Camera,
+  Copy, Flag, Eye, Camera, Home, Wallet, History, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -1706,7 +1706,20 @@ export default function AvailableDeliveries() {
         if (statsRes.ok) setDriverStats((await statsRes.json()).driver ?? null);
         setTab("mine");
       } else if (data.code === "DISPATCH_DENIED") {
-        const reasons = Array.isArray(data.reasons) ? data.reasons.filter(Boolean).join(", ") : "";
+        const REASON_LABEL: Record<string, string> = {
+          pickup_unauthorized: "Pickup commune not authorized",
+          destination_unauthorized: "Destination commune not authorized",
+          driver_busy: "You already have an active delivery",
+          driver_not_active: "Driver account is not active",
+          driver_offline: "Go online to accept deliveries",
+          offer_not_waiting: "This offer is no longer available",
+          method_not_motorcycle: "Motorcycle deliveries only",
+          distance_exceeds_limit: "Pickup is beyond your distance limit",
+          missing_pickup_commune: "Pickup commune is missing",
+        };
+        const reasons = Array.isArray(data.reasons)
+          ? data.reasons.map((r: string) => REASON_LABEL[r] ?? r).filter(Boolean).join(" · ")
+          : "";
         toast({
           title: reasons || data.error || "This delivery is not eligible for you",
           variant: "destructive",
@@ -2283,6 +2296,47 @@ export default function AvailableDeliveries() {
           )
         )}
       </div>
+
+      {/* ── Driver bottom navigation ── */}
+      {!isAdminView && driverCta === "approved" && (
+        <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur-md safe-area-pb">
+          <div className="max-w-lg mx-auto grid grid-cols-5 gap-0.5 px-1 py-1.5">
+            {[
+              { key: "home", label: "Home", icon: Home, path: "/driver/dashboard", active: false },
+              { key: "deliveries", label: "Deliveries", icon: Package, path: "/delivery/deliveries", active: true },
+              { key: "earnings", label: "Earnings", icon: Wallet, path: "/driver/dashboard", active: false },
+              { key: "history", label: "History", icon: History, path: "/driver/dashboard", active: false },
+              { key: "profile", label: "Profile", icon: User, path: "/driver/dashboard", active: false },
+            ].map(({ key, label, icon: Icon, path, active }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  if (key === "deliveries") {
+                    setTab("browse");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
+                  if (key === "history") {
+                    setTab("mine");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
+                  navigate(path);
+                }}
+                className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl min-h-[52px] transition-colors ${
+                  active || (key === "history" && tab === "mine")
+                    ? "text-primary bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-bold leading-none">{label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </>
   );
 }

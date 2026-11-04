@@ -38,13 +38,12 @@ export const DEFAULT_SERVICE_ZONE_NEIGHBORS: Record<string, readonly string[]> =
 };
 
 export function normalizeCommuneKey(raw: string | null | undefined): string {
+  // Alphanumeric-only key so "Pétion-Ville", "petion ville", and "petionville" match.
   return String(raw ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[^a-z0-9]/g, "");
 }
 
 const CANONICAL_BY_KEY: Map<string, { commune: string; department: string }> = (() => {

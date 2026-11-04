@@ -24,8 +24,17 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/": () => import("@/pages/Home"),
   "/search": () => import("@/pages/Search"),
   "/sell": () => import("@/pages/Sell"),
-  "/messages": () => import("@/pages/Messages"),
-  "/wallet": () => import("@/pages/Wallet"),
+  "/messages": () =>
+    Promise.all([
+      import("@/pages/Messages"),
+      import("@/pages/messages/MessageThread"),
+    ]),
+  "/wallet": () =>
+    Promise.all([
+      import("@/pages/Wallet"),
+      import("@/pages/wallet/VirtualCardPanel"),
+      import("@/pages/wallet/AgentSelectStep"),
+    ]),
   "/cart": () => import("@/pages/Cart"),
   "/orders": () => import("@/pages/Orders"),
   "/sales": () => import("@/pages/Sales"),

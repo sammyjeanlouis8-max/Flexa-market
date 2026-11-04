@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useMemo } from "react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { PUBLIC_LANGUAGES } from "@/i18n";
+import { appPath, spaNavigate } from "@/lib/spaNavigate";
 
 function buildSchema(t: (k: string) => string) {
   return z.object({
@@ -47,7 +48,7 @@ export default function Login() {
         const params = new URLSearchParams(window.location.search);
         const next = params.get("next");
         if (next && next.startsWith("/") && !next.startsWith("//")) {
-          window.location.href = next;
+          spaNavigate(next, { replace: true });
         } else {
           setLocation("/");
         }
@@ -64,8 +65,7 @@ export default function Login() {
         }
 
         if (status === 403 || (data.error ?? "").toLowerCase().includes("suspend")) {
-          const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-          window.location.replace(`${base}/auth/suspended`);
+          spaNavigate(appPath("/auth/suspended"), { replace: true });
           return;
         }
 

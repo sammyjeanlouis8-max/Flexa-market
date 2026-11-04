@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { PUBLIC_LANGUAGES } from "@/i18n";
 import { useAuth } from "@/contexts/auth";
+import { appPath, spaNavigate } from "@/lib/spaNavigate";
 
 type Step = "identify" | "otp" | "questions" | "reset" | "done";
 
@@ -63,8 +64,7 @@ export default function ForgotPassword() {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 403 && (data.suspended || data.error?.toLowerCase().includes("sispann") || data.error?.toLowerCase().includes("suspend"))) {
-          const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-          window.location.replace(`${base}/auth/suspended`);
+          spaNavigate(appPath("/auth/suspended"), { replace: true });
           return;
         } else {
           toast({ title: data.error ?? t("errors.somethingWrong"), variant: "destructive" });
@@ -205,8 +205,7 @@ export default function ForgotPassword() {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 403 && data.suspended) {
-          const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
-          window.location.replace(`${base}/auth/suspended`);
+          spaNavigate(appPath("/auth/suspended"), { replace: true });
           return;
         }
         toast({ title: data.error ?? t("errors.somethingWrong"), variant: "destructive" });

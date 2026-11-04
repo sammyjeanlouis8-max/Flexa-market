@@ -14,6 +14,7 @@ import { useFavorites } from "@/contexts/favorites";
 import { COUNTRY_FLAGS } from "@/lib/countries";
 import { formatPrice, useExchangeRate, htgToUsd, convertToUsd } from "@/lib/currency";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { listingImageProps } from "@/lib/listingImage";
 
 type Listing = {
   id: number;
@@ -80,12 +81,13 @@ function MosaicImageTile({
     );
   }
 
+  const imgProps = listingImageProps({ variant: "mosaic" });
   return (
     <img
       src={src}
       alt={alt}
       className={className}
-      loading="lazy"
+      {...imgProps}
       onLoad={onLoad}
       onError={() => {
         setFailed(true);
@@ -267,9 +269,7 @@ export default function ListingCard({
               <img
                 src={img!}
                 alt={listing.title}
-                loading={priority ? "eager" : "lazy"}
-                decoding="async"
-                fetchPriority={priority ? "high" : "auto"}
+                {...listingImageProps({ priority, variant: "card" })}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 style={{
                   filter: imgLoaded ? "none" : "blur(6px)",

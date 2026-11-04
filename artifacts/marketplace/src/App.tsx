@@ -20,6 +20,7 @@ import VideoUploadCenter from "@/components/VideoUploadCenter";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { prefetchCriticalRoutes } from "@/lib/prefetchRoutes";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { trackSiteVisit } from "@/lib/siteVisit";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -185,6 +186,9 @@ function RedirectHome() {
 // ── Routed layout (authenticated + public pages) ───────────────────────────────
 function LayoutRoutes() {
   const [, setLocation] = useLocation();
+  useEffect(() => {
+    trackSiteVisit();
+  }, []);
   useEffect(() => {
     prefetchCriticalRoutes();
   }, []);

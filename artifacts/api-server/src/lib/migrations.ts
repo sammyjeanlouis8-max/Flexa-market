@@ -2821,6 +2821,28 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE stripe_checkout_session_id IS NOT NULL;`,
   });
 
+  // ── Site visit analytics (admin dashboard: day / month / year / all-time) ──
+  migrations.push({
+    name: "site_daily_visits.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_daily_visits (
+      date TEXT PRIMARY KEY,
+      visit_count INTEGER NOT NULL DEFAULT 0
+    )`,
+  });
+  migrations.push({
+    name: "site_visit_dedupe.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_visit_dedupe (
+      visitor_key TEXT NOT NULL,
+      date TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (visitor_key, date)
+    )`,
+  });
+  migrations.push({
+    name: "site_visit_dedupe.date_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_visit_dedupe_date_idx ON site_visit_dedupe(date)`,
+  });
+
   let applied = 0;
   let failed = 0;
 

@@ -56,10 +56,13 @@ export default function AdminScreen() {
       />
       <View style={{ gap: 10 }}>
         <NavLink href="/orders" label="Orders overview" detail="Purchases & sales APIs" />
-        <NavLink href="/delivery-tracking" label="Deliveries" detail="Native delivery tracking" />
+        <NavLink href="/deliveries" label="Deliveries" detail="Available & assigned jobs" />
+        <NavLink href="/delivery-tracking" label="Delivery tracking" />
+        <NavLink href="/manager" label="Store manager" />
         <NavLink href="/wallet" label="Wallet monitor entry" detail="Opens native wallet" />
         <NavLink href="/music" label="Music catalog" />
         <NavLink href="/tv" label="TV schedule" />
+        <NavLink href="/chatbot" label="Support chatbot" />
         <NavLink href="/notifications" label="Notifications" />
       </View>
     </NativeScreen>

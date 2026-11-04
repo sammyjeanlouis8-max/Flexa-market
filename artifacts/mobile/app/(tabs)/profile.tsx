@@ -66,9 +66,12 @@ export default function ProfileTab() {
             <NavLink href="/flex-card" label="Flexa Card" />
             <NavLink href="/orders" label="Orders" />
             <NavLink href="/sales" label="Seller dashboard" />
+            <NavLink href="/manager" label="Store manager" />
+            <NavLink href="/deliveries" label="Deliveries" />
             <NavLink href="/subscription" label="Subscriptions (Apple IAP)" />
             <NavLink href="/music" label="Flexa Music" />
             <NavLink href="/tv" label="Flexa TV" />
+            <NavLink href="/chatbot" label="Support chatbot" />
             <NavLink href="/notifications" label="Notifications" />
             <NavLink href="/settings" label="Settings" />
             <NavLink href="/offers" label="Offers" />

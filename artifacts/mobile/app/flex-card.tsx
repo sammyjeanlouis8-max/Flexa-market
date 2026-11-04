@@ -94,10 +94,18 @@ export default function FlexCardScreen() {
               </Text>
             ) : null}
             <Pressable
-              onPress={() => router.push("/wallet")}
+              onPress={() => router.push("/flex-card-repay")}
               style={[styles.cta, { backgroundColor: colors.primary }]}
             >
-              <Text style={styles.ctaText}>Open Wallet</Text>
+              <Text style={styles.ctaText}>Repay card</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/wallet")}
+              style={[styles.ctaSecondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "700" }}>
+                Open Wallet
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -114,6 +122,13 @@ const styles = StyleSheet.create({
   cta: {
     marginTop: 16,
     borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  ctaSecondary: {
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: 1,
     paddingVertical: 12,
     alignItems: "center",
   },

@@ -9,8 +9,12 @@ const mobileDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const PHASE2_NATIVE_SCREENS = [
   "app/wallet.tsx",
   "app/flex-card.tsx",
+  "app/flex-card-repay.tsx",
   "app/music.tsx",
   "app/tv.tsx",
+  "app/deliveries.tsx",
+  "app/manager.tsx",
+  "app/chatbot.tsx",
   "app/orders.tsx",
   "app/orders/[id].tsx",
   "app/chat/[id].tsx",
@@ -106,4 +110,19 @@ test("feature flag module exports loans route constant", () => {
 test("native phase marker advanced to 2", () => {
   const config = readFileSync(path.join(mobileDir, "lib/config.ts"), "utf8");
   assert.match(config, /NATIVE_APP_PHASE\s*=\s*[\"']2[\"']/);
+});
+
+test("inventory follow-up routes close former Expo gaps", () => {
+  const layout = readFileSync(path.join(mobileDir, "app/_layout.tsx"), "utf8");
+  for (const name of [
+    "flex-card-repay",
+    "deliveries",
+    "manager",
+    "chatbot",
+    "music",
+    "tv",
+    "flex-card",
+  ]) {
+    assert.match(layout, new RegExp(`name=\"${name}\"`));
+  }
 });

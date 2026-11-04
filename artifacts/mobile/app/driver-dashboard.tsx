@@ -31,6 +31,7 @@ export default function DriverDashboardScreen() {
         detail="Use delivery tracking for in-progress routes."
         tone="ok"
       />
+      <NavLink href="/deliveries" label="Available & my deliveries" />
       <NavLink href="/delivery-tracking" label="Open delivery tracking" />
       <NavLink href="/driver-apply" label="Driver application" />
     </NativeScreen>

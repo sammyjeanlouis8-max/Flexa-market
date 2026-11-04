@@ -1,4 +1,8 @@
-import * as WebBrowser from "expo-web-browser";
+/**
+ * Native iOS subscription screen — Apple IAP via RevenueCat only.
+ * Stripe / wallet checkout is intentionally unavailable on iOS (App Store rules).
+ */
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,177 +13,245 @@ import {
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import SafeWebView from "@/components/SafeWebView";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const SUBSCRIPTION_URL = "https://flexamarket.com/subscription";
+import { useAuth } from "@/context/AuthContext";
+import { useColors } from "@/hooks/useColors";
+import { useRevenueCat } from "@/hooks/useRevenueCat";
+import {
+  FALLBACK_PRICE_LABEL,
+  type PaidPlanId,
+} from "@/lib/revenuecat/products";
+import { isStripeSubscriptionCheckoutBlockedOnIos } from "@/lib/revenuecat/client";
 
-function IOSSubscriptionInfo() {
-  const insets = useSafeAreaInsets();
-  const [opening, setOpening] = useState(false);
+const PLANS: {
+  id: PaidPlanId;
+  title: string;
+  features: string[];
+}[] = [
+  {
+    id: "standard",
+    title: "Standard",
+    features: [
+      "Jiska 50 lis aktif",
+      "Badge vandè verifye",
+      "Statistik lavant",
+      "Sipò prioritè",
+    ],
+  },
+  {
+    id: "premium",
+    title: "Premium",
+    features: [
+      "Lis ilimite",
+      "Badge Premium",
+      "Upload videyo pou lis",
+      "Sipò VIP",
+    ],
+  },
+];
 
-  async function openSubscriptionBrowser() {
-    setOpening(true);
-    try {
-      await WebBrowser.openBrowserAsync(SUBSCRIPTION_URL, {
-        // SFSafariViewController — stays inside the app, no Dynamic Island back button
-        dismissButtonStyle: "close",
-        controlsColor: "#F97316",
-        // Match the app's dark theme
-        readerMode: false,
-        enableBarCollapsing: true,
-      });
-    } catch {
-      /* ignore */
-    } finally {
-      setOpening(false);
-    }
+export default function SubscriptionScreen() {
+  const colors = useColors();
+  const router = useRouter();
+  const { token } = useAuth();
+  const iap = useRevenueCat();
+  const [message, setMessage] = useState<string | null>(null);
+
+  const stripeBlocked = isStripeSubscriptionCheckoutBlockedOnIos();
+
+  if (Platform.OS !== "ios") {
+    return (
+      <SafeAreaView
+        style={[styles.safe, { backgroundColor: colors.background }]}
+        edges={["top", "left", "right"]}
+      >
+        <View style={styles.body}>
+          <Pressable onPress={() => router.back()}>
+            <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+          </Pressable>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            Abònman
+          </Text>
+          <Text style={{ color: colors.mutedForeground, lineHeight: 22 }}>
+            Achte abònman dijital sou Android ap vini ak Google Play Billing
+            (RevenueCat). Sou iOS, Apple IAP obligatwa.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={[
-        styles.content,
-        { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 },
-      ]}
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={["top", "left", "right"]}
     >
-      <Text style={styles.icon}>👑</Text>
-      <Text style={styles.title}>Flexa Market Premium</Text>
-      <Text style={styles.subtitle}>
-        Chwazi yon plan ki pi bon pou ou
-      </Text>
-
-      {/* Standard Plan */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Standard Plan — $15/mwa</Text>
-        <View style={styles.featureList}>
-          {[
-            "Jiska 50 lis aktif",
-            "Badge vendè verifye",
-            "Statistik lavant",
-            "Sipò prioritè",
-          ].map((f) => (
-            <View key={f} style={styles.featureRow}>
-              <Text style={styles.check}>✓</Text>
-              <Text style={styles.featureText}>{f}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Premium Plan */}
-      <View style={[styles.card, styles.cardPremium]}>
-        <Text style={[styles.cardTitle, styles.cardTitlePremium]}>
-          Premium Plan — $30/mwa
+      <ScrollView contentContainerStyle={styles.body}>
+        <Pressable onPress={() => router.back()}>
+          <Text style={{ color: colors.mutedForeground }}>Retounen</Text>
+        </Pressable>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          Flexa Market Premium
         </Text>
-        <View style={styles.featureList}>
-          {[
-            "Lis ilimite",
-            "Badge Premium doré",
-            "Upload vidéo pou lis",
-            "Analitik avanse",
-            "Priyorite nan rechèch",
-            "Sipò dedye 24/7",
-          ].map((f) => (
-            <View key={f} style={styles.featureRow}>
-              <Text style={[styles.check, styles.checkPremium]}>✓</Text>
-              <Text style={styles.featureText}>{f}</Text>
+        <Text style={{ color: colors.mutedForeground, lineHeight: 22 }}>
+          Abònman atravè Apple In-App Purchase (RevenueCat). Pa gen Stripe sou
+          iOS pou kontni dijital.
+        </Text>
+
+        {stripeBlocked ? (
+          <View style={[styles.banner, { borderColor: colors.border }]}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+              Checkout Stripe / wallet bloke sou iOS — règleman App Store.
+            </Text>
+          </View>
+        ) : null}
+
+        {!token ? (
+          <Pressable
+            onPress={() => router.push("/auth/login")}
+            style={[styles.cta, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.ctaText}>Konekte pou abònman</Text>
+          </Pressable>
+        ) : null}
+
+        {iap.error ? (
+          <Text style={{ color: "#F87171" }}>{iap.error}</Text>
+        ) : null}
+        {message ? (
+          <Text style={{ color: colors.foreground }}>{message}</Text>
+        ) : null}
+
+        {PLANS.map((plan) => {
+          const store = iap.productFor(plan.id);
+          const price =
+            store?.priceString || FALLBACK_PRICE_LABEL[plan.id];
+          const active = iap.activePlans.includes(plan.id);
+          return (
+            <View
+              key={plan.id}
+              style={[styles.card, { borderColor: colors.border }]}
+            >
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                {plan.title} — {price}/mwa
+              </Text>
+              {plan.features.map((f) => (
+                <Text
+                  key={f}
+                  style={{ color: colors.mutedForeground, marginTop: 4 }}
+                >
+                  ✓ {f}
+                </Text>
+              ))}
+              {active ? (
+                <Text style={[styles.active, { color: colors.primary }]}>
+                  Plan aktif
+                </Text>
+              ) : (
+                <Pressable
+                  disabled={!token || !iap.identified || iap.busy || !store}
+                  onPress={async () => {
+                    setMessage(null);
+                    const outcome = await iap.buy(plan.id);
+                    if (outcome.status === "purchased") {
+                      setMessage(
+                        "Acha reyisi. Abònman ap aktive atravè RevenueCat (kèk segonn).",
+                      );
+                    } else if (outcome.status === "cancelled") {
+                      setMessage("Acha anile.");
+                    } else {
+                      setMessage(outcome.message);
+                    }
+                  }}
+                  style={[
+                    styles.cta,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity:
+                        !token || !iap.identified || iap.busy || !store
+                          ? 0.5
+                          : 1,
+                    },
+                  ]}
+                >
+                  {iap.busy ? (
+                    <ActivityIndicator color="#0F172A" />
+                  ) : (
+                    <Text style={styles.ctaText}>
+                      {store
+                        ? `Kòmanse · ${store.priceString}`
+                        : "Pwodui ap chaje…"}
+                    </Text>
+                  )}
+                </Pressable>
+              )}
             </View>
-          ))}
-        </View>
-      </View>
+          );
+        })}
 
-      {/* CTA — opens in-app SFSafariViewController, no Dynamic Island back button */}
-      <Pressable
-        style={[styles.subscribeBtn, opening && styles.subscribeBtnDisabled]}
-        onPress={openSubscriptionBrowser}
-        disabled={opening}
-      >
-        {opening ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Text style={styles.subscribeBtnText}>💳 Abòne kounye a</Text>
-        )}
-      </Pressable>
+        <Pressable
+          disabled={!token || !iap.identified || iap.busy}
+          onPress={async () => {
+            setMessage(null);
+            try {
+              await iap.restore();
+              setMessage("Restore fini. Verifye plan aktif ou.");
+            } catch (err) {
+              setMessage(
+                err instanceof Error ? err.message : "Restore echwe.",
+              );
+            }
+          }}
+          style={[styles.secondary, { borderColor: colors.border }]}
+        >
+          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+            Restore purchases
+          </Text>
+        </Pressable>
 
-      <Text style={styles.note}>
-        Peman sekirize pa Stripe · Kont ou ap mete ajou otomatikman
-      </Text>
-    </ScrollView>
+        <Pressable
+          onPress={() => void iap.openManageSubscriptions()}
+          style={[styles.secondary, { borderColor: colors.border }]}
+        >
+          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+            Jere abònman Apple
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-export default function SubscriptionScreen() {
-  if (Platform.OS === "ios") {
-    return <IOSSubscriptionInfo />;
-  }
-  return <SafeWebView uri={SUBSCRIPTION_URL} />;
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F172A" },
-  content: { paddingHorizontal: 20, alignItems: "center" },
-  icon: { fontSize: 56, marginBottom: 12 },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#fff",
-    textAlign: "center",
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#94A3B8",
-    textAlign: "center",
-    marginBottom: 28,
+  safe: { flex: 1 },
+  body: { padding: 20, gap: 12, paddingBottom: 40 },
+  title: { fontSize: 28, fontWeight: "700", marginTop: 8 },
+  banner: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
   },
   card: {
-    width: "100%",
-    backgroundColor: "#1E293B",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderRadius: 14,
+    padding: 16,
+    backgroundColor: "#1E293B",
+    gap: 4,
   },
-  cardPremium: { borderColor: "#F97316", borderWidth: 2 },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#fff",
-    marginBottom: 14,
-  },
-  cardTitlePremium: { color: "#F97316" },
-  featureList: { gap: 10 },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  check: { color: "#22C55E", fontSize: 14, fontWeight: "700", width: 16 },
-  checkPremium: { color: "#F97316" },
-  featureText: { color: "#CBD5E1", fontSize: 14, flex: 1 },
-
-  // CTA button
-  subscribeBtn: {
-    width: "100%",
-    backgroundColor: "#F97316",
-    borderRadius: 16,
-    paddingVertical: 18,
+  cardTitle: { fontSize: 18, fontWeight: "700", marginBottom: 4 },
+  active: { marginTop: 12, fontWeight: "700" },
+  cta: {
+    marginTop: 14,
+    borderRadius: 12,
+    paddingVertical: 14,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-    shadowColor: "#F97316",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
-    minHeight: 56,
   },
-  subscribeBtnDisabled: { opacity: 0.65 },
-  subscribeBtnText: { color: "#fff", fontSize: 17, fontWeight: "800" },
-
-  note: {
-    color: "#64748B",
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 18,
+  ctaText: { color: "#0F172A", fontWeight: "700" },
+  secondary: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
   },
 });

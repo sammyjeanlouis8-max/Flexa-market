@@ -67,6 +67,14 @@ export default function ProfileTab() {
               </Text>
             </Pressable>
             <Pressable
+              onPress={() => router.push("/subscription")}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                Abònman (Apple IAP)
+              </Text>
+            </Pressable>
+            <Pressable
               onPress={() => router.push("/orders")}
               style={[styles.secondary, { borderColor: colors.border }]}
             >

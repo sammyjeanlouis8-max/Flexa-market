@@ -129,6 +129,21 @@ requireCondition(
     ),
   "expo-router must be listed in app.json plugins.",
 );
+requireCondition(
+  typeof easConfig.build?.production?.env?.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY ===
+    "string" &&
+    easConfig.build.production.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY.startsWith(
+      "appl_",
+    ) &&
+    !easConfig.build.production.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY.startsWith(
+      "sk_",
+    ),
+  "Production EAS env must ship the public RevenueCat appl_ key (never sk_).",
+);
+requireCondition(
+  Boolean(mobilePackage.dependencies?.["react-native-purchases"]),
+  "react-native-purchases must be a mobile dependency for Apple IAP.",
+);
 
 if (failures.length > 0) {
   console.error("Mobile release preflight failed:");

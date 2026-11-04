@@ -15,7 +15,8 @@
       },
       "env": {
         "NODE_ENV": "production",
-        "EXPO_PUBLIC_DOMAIN": "flexamarket.com"
+        "EXPO_PUBLIC_DOMAIN": "flexamarket.com",
+        "EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_uwCdAGjnZnpJgnwhOKCFHRYMewP"
       }
     },
     "production": {
@@ -30,7 +31,8 @@
       },
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "flexamarket.com"
+        "EXPO_PUBLIC_DOMAIN": "flexamarket.com",
+        "EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_uwCdAGjnZnpJgnwhOKCFHRYMewP"
       }
     }
   },

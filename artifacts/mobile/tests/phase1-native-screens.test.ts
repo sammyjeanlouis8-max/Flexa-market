@@ -20,6 +20,7 @@ const PRIMARY_SCREENS = [
   "app/cart.tsx",
   "app/orders.tsx",
   "app/chat/[id].tsx",
+  "app/subscription.tsx",
 ];
 
 for (const relativePath of PRIMARY_SCREENS) {

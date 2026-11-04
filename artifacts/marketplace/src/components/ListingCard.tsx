@@ -1,10 +1,12 @@
 import { Link, useLocation } from "wouter";
-import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon } from "lucide-react";
+import { Heart, MapPin, Zap, BadgeCheck, Crown, Play, Eye, ImageIcon, ShoppingCart, Star } from "lucide-react";
 import { formatViewCount } from "@/hooks/useViewTracker";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth";
+import { useCart } from "@/contexts/cart";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useAddFavorite, useRemoveFavorite, getGetFavoritesQueryKey } from "@workspace/api-client-react";
@@ -111,6 +113,7 @@ export default function ListingCard({
   mosaicLayout = false,
   previewFallbackImage,
   priority = false,
+  showAddToCart = false,
 }: {
   listing: Listing;
   compact?: boolean;
@@ -122,10 +125,14 @@ export default function ListingCard({
   previewFallbackImage?: string;
   /** Prefer early load for above-the-fold / LCP cards on desktop Home. */
   priority?: boolean;
+  /** Marketplace-style Add to Cart CTA (real cart only; no fake discounts). */
+  showAddToCart?: boolean;
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const { addItem, isInCart } = useCart();
   const queryClient = useQueryClient();
   const { isFavorited, markFavorited, markUnfavorited } = useFavorites();
   const validImages = listing.images?.filter((img) => img && img.trim().length > 0) || [];
@@ -328,7 +335,10 @@ export default function ListingCard({
 
           {/* Country flag — stronger backdrop for readability */}
           {flag && (
-            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm rounded-full px-1.5 py-0.5 text-sm leading-none">
+            <div className={cn(
+              "absolute top-2 bg-black/60 backdrop-blur-sm rounded-full px-1.5 py-0.5 text-sm leading-none",
+              showAddToCart ? "left-2" : "right-2",
+            )}>
               {flag}
             </div>
           )}
@@ -366,14 +376,15 @@ export default function ListingCard({
             </div>
           )}
 
-          {/* Favorite/Like button — 40px min touch target */}
+          {/* Favorite/Like button — top-right for marketplace cards */}
           {!preview && !isOwner && (
             <button
               type="button"
               onClick={handleLike}
               className={cn(
-                "absolute bottom-2 right-2 rounded-full shadow-md transition-all duration-200 active:scale-90",
+                "absolute rounded-full shadow-md transition-all duration-200 active:scale-90",
                 "flex items-center justify-center gap-1 min-h-9 min-w-9 px-2",
+                showAddToCart ? "top-2 right-2" : "bottom-2 right-2",
                 liked
                   ? "bg-red-500 text-white"
                   : "bg-black/60 backdrop-blur-sm text-white hover:bg-red-500"
@@ -382,7 +393,7 @@ export default function ListingCard({
               aria-label={liked ? "Unlike" : "Like"}
             >
               <Heart className={cn("h-3.5 w-3.5 transition-transform", liked && "fill-white scale-110")} />
-              {likeCount > 0 && (
+              {!showAddToCart && likeCount > 0 && (
                 <span className="text-[11px] font-bold leading-none">{likeCount}</span>
               )}
             </button>
@@ -390,8 +401,18 @@ export default function ListingCard({
         </div>
 
         {/* === INFO === */}
-        <div className={cn("listing-card-info p-2", compact && "p-1.5")}>
-          <p className={cn("font-bold text-foreground tabular-nums leading-none", compact ? "text-[13px]" : "text-sm")}>
+        <div className={cn("listing-card-info p-2.5", compact && "p-1.5")}>
+          <p className={cn("listing-card-title text-foreground font-semibold line-clamp-2 leading-snug", compact ? "text-[11px]" : "text-xs sm:text-[13px]")}>
+            {listing.title}
+          </p>
+          {/* Real seller rating only — never invent review counts */}
+          {listing.sellerRating > 0 && (
+            <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+              <Star className="h-3 w-3 fill-current" />
+              <span className="font-semibold tabular-nums">{listing.sellerRating.toFixed(1)}</span>
+            </div>
+          )}
+          <p className={cn("font-bold text-foreground tabular-nums leading-none mt-1.5", compact ? "text-[13px]" : "text-sm")}>
             {formatPrice(listing.price, listing.country, listing.currency)}
           </p>
           {usdEquivalent !== null && (
@@ -399,9 +420,6 @@ export default function ListingCard({
               ≈ ${usdEquivalent!.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
             </p>
           )}
-          <p className={cn("listing-card-title text-foreground font-semibold mt-1 line-clamp-2 leading-snug", compact ? "text-[11px]" : "text-xs sm:text-[13px]")}>
-            {listing.title}
-          </p>
           <div className="flex items-center gap-1 mt-1 text-muted-foreground min-w-0">
             <MapPin className="h-3 w-3 flex-shrink-0" />
             <span className="text-[11px] font-medium truncate">{displayLocation}</span>
@@ -489,6 +507,41 @@ export default function ListingCard({
             >
               <Zap className={cn("h-3 w-3", listing.isBoosted ? "fill-green-500" : "fill-amber-400")} />
               <span className="min-w-0">{listing.isBoosted ? t("buttons.boosted", { defaultValue: "Boosted ✓" }) : t("buttons.boost", { defaultValue: "Boost listing" })}</span>
+            </Button>
+          )}
+
+          {/* Marketplace Add to Cart — uses real cart; disabled when sold/owner */}
+          {showAddToCart && !preview && !isOwner && listing.status !== "sold" && (
+            <Button
+              size="sm"
+              className="w-full mt-2.5 h-9 text-xs font-bold rounded-lg bg-[#F5A623] hover:bg-[#e09410] text-slate-900 gap-1.5 shadow-sm"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!user) { setLocation("/auth/login"); return; }
+                if (!listing.sellerId) return;
+                if (isInCart(listing.id)) {
+                  toast({ title: t("cart.alreadyInCart", { defaultValue: "Already in cart" }) });
+                  return;
+                }
+                addItem({
+                  listingId: listing.id,
+                  title: listing.title,
+                  price: listing.price,
+                  currency: listing.currency ?? null,
+                  image: listing.images?.[0] ?? null,
+                  country: listing.country ?? null,
+                  sellerId: listing.sellerId,
+                  quantity: 1,
+                });
+                toast({ title: t("cart.added", { defaultValue: "Added to cart" }) });
+              }}
+              data-testid={`button-add-cart-${listing.id}`}
+            >
+              <ShoppingCart className="h-3.5 w-3.5" />
+              {isInCart(listing.id)
+                ? t("cart.inCart", { defaultValue: "In cart" })
+                : t("cart.addToCart", { defaultValue: "Add to Cart" })}
             </Button>
           )}
         </div>

@@ -38,6 +38,11 @@ import {
 type Scope = "nearby" | "city" | "country";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor } from "@/lib/countries";
+import { formatPrice } from "@/lib/currency";
+
+function formatPriceHome(listing: { price: number; country?: string | null; currency?: string | null }) {
+  return formatPrice(listing.price, listing.country, listing.currency);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -338,6 +343,13 @@ export default function Home() {
     }));
   }, [allListings, activeCategory]);
 
+  // Real boosted listings only — used for hero / deals (never invent promotions)
+  const boostedListings = useMemo(
+    () => allListings.filter((l) => l.isBoosted && (!activeCategory || l.categorySlug === activeCategory)),
+    [allListings, activeCategory],
+  );
+  const heroListing = boostedListings[0] ?? allListings[0] ?? null;
+
   const recordedBoostImpressionsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     // Impression accounting is tied to a paid booster card entering the
@@ -532,8 +544,48 @@ export default function Home() {
   const displayCity = detectedCity ?? user?.location ?? null;
 
   return (
-    <div className="w-full">
-      {/* === TOP SEARCH BAR === */}
+    <div className="w-full fm-home-amazon">
+      {/* === MOBILE: Amazon-style green search + deliver strip === */}
+      <div className="md:hidden bg-[hsl(152,65%,18%)] text-white px-3 pb-2.5 pt-1 space-y-2">
+        <form onSubmit={handleSearch} className="flex gap-2 items-stretch">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder={t("home.searchPlaceholder")}
+              className="pl-9 pr-3 h-11 rounded-lg bg-white border-0 text-sm text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-[#F97316]"
+              data-testid="input-search-hero-mobile"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 rounded-lg bg-[#F97316] hover:bg-[#ea6a0c] text-white shrink-0"
+            data-testid="button-search-hero-mobile"
+            aria-label={t("buttons.search")}
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+        </form>
+        {(displayCity || userCountry) && (
+          <button
+            type="button"
+            onClick={() => user && !isAdmin && setShowCityPicker(true)}
+            className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
+            data-testid="button-deliver-to"
+          >
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+              <strong>{displayCity ?? userCountry}</strong>
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
+          </button>
+        )}
+      </div>
+
+      {/* === DESKTOP SEARCH BAR === */}
       <div className="hidden md:block sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
         <form onSubmit={handleSearch} className="flex gap-2">
           <div className="relative flex-1">
@@ -552,7 +604,7 @@ export default function Home() {
         </form>
       </div>
 
-      <div className="px-4 py-2 space-y-3 md:py-4 md:space-y-6">
+      <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
 
         {/* === ADMIN VIEW BANNER + COUNTRY PICKER === */}
         {/* Super admin: full dropdown with "All Countries" option */}
@@ -808,20 +860,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* === CATEGORY CHIPS === */}
+        {/* === HORIZONTAL CATEGORY NAV (Amazon-style underline) === */}
         {categories && categories.length > 0 && (
-          <div>
+          <div className="-mx-3 md:-mx-4 border-b border-border bg-background">
             <div
-              className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4"
+              className="flex gap-1 overflow-x-auto px-3 md:px-4 scrollbar-none"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               <button
                 onClick={() => setActiveCategory(null)}
                 className={cn(
-                  "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all",
+                  "flex-shrink-0 px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors",
                   activeCategory === null
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-foreground border-border hover:border-primary/50"
+                    ? "border-[#F97316] text-[hsl(152,65%,22%)]"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
                 data-testid="button-category-all"
               >
@@ -832,14 +884,14 @@ export default function Home() {
                   key={cat.id}
                   onClick={() => handleCategoryClick(cat.slug)}
                   className={cn(
-                    "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all whitespace-nowrap",
+                    "flex-shrink-0 px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
                     activeCategory === cat.slug
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card text-foreground border-border hover:border-primary/50"
+                      ? "border-[#F97316] text-[hsl(152,65%,22%)]"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                   data-testid={`button-category-${cat.slug}`}
                 >
-                  <span className="text-base leading-none">{cat.icon}</span>
+                  <span className="mr-1">{cat.icon}</span>
                   {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
                 </button>
               ))}
@@ -847,9 +899,111 @@ export default function Home() {
           </div>
         )}
 
+        {/* === HERO — real listing only (boosted preferred) === */}
+        {heroListing && (
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(152,65%,18%)] to-[hsl(152,50%,28%)] text-white shadow-md">
+            <div className="flex items-stretch min-h-[148px]">
+              <div className="flex-1 p-4 flex flex-col justify-center gap-2 min-w-0">
+                {heroListing.isBoosted && (
+                  <span className="inline-flex w-fit text-[10px] font-bold uppercase tracking-wide bg-[#F97316] text-white px-2 py-0.5 rounded-full">
+                    {t("home.boostedBadge", { defaultValue: "Boosted" })}
+                  </span>
+                )}
+                <h2 className="text-lg sm:text-xl font-bold leading-tight line-clamp-2">
+                  {heroListing.title}
+                </h2>
+                <p className="text-sm text-white/85 font-semibold tabular-nums">
+                  {formatPriceHome(heroListing)}
+                </p>
+                <Button
+                  size="sm"
+                  className="w-fit mt-1 rounded-full bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold"
+                  onClick={() => setLocation(`/listings/${heroListing.id}`)}
+                >
+                  {t("home.shopNow", { defaultValue: "Shop Now" })}
+                  <ChevronRight className="h-4 w-4 ml-0.5" />
+                </Button>
+              </div>
+              {heroListing.images?.[0] && (
+                <div className="w-[42%] max-w-[180px] relative bg-white/10">
+                  <img
+                    src={heroListing.images[0]}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* === SHOP BY CATEGORY === */}
+        {categories && categories.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-base font-bold text-foreground">
+                {t("home.shopByCategory", { defaultValue: "Shop by Category" })}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setLocation("/search")}
+                className="text-xs font-semibold text-[hsl(152,65%,28%)] flex items-center gap-0.5"
+              >
+                {t("buttons.seeAll")} <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {categories.slice(0, 8).map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleCategoryClick(cat.slug)}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl bg-muted/60 border border-border p-2.5 active:scale-[0.98] transition",
+                    activeCategory === cat.slug && "border-[#F97316] bg-orange-50 dark:bg-orange-950/20",
+                  )}
+                >
+                  <span className="text-2xl leading-none">{cat.icon}</span>
+                  <span className="text-[10px] font-semibold text-foreground text-center line-clamp-2 leading-tight">
+                    {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* === TODAY'S DEALS — real boosted listings only === */}
+        {boostedListings.length > 0 && (
+          <section className="rounded-2xl border border-orange-200/80 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10 dark:border-orange-900/40 p-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-base font-bold text-foreground">
+                {t("home.todaysDeals", { defaultValue: "Today's Deals" })}
+              </h2>
+              <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-300">
+                {t("home.boostedListings", { defaultValue: "Boosted listings" })}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {boostedListings.slice(0, 4).map((listing) => (
+                <div key={`deal-${listing.id}`} className="min-w-0">
+                  <ListingCard listing={listing} showAddToCart />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* === FEATURED PRODUCTS (2-col mobile) === */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-foreground">
+            {t("home.featuredProducts", { defaultValue: "Featured Products" })}
+          </h2>
+        </div>
+
         {/* === PROMAX GROUPS — server-owned hourly order, strict/no mixing === */}
         {feedLoading ? (
-          <div className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3">
+          <div className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3">
             {[...Array(10)].map((_, i) => (
               <Skeleton key={i} className="aspect-square rounded-xl" />
             ))}
@@ -857,7 +1011,7 @@ export default function Home() {
         ) : (
           promaxGroups.some(group => group.listings.length > 0) && (
             <div
-              className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3"
+              className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3"
               aria-label="Marketplace products"
             >
               {(() => {
@@ -868,8 +1022,7 @@ export default function Home() {
                     aboveFoldIndex += 1;
                     return (
                       <div key={listing.id} data-promax-group={key} className="min-w-0">
-                        {/* Single hero image — mosaic collage was too dense on mobile */}
-                        <ListingCard listing={listing} priority={priority} />
+                        <ListingCard listing={listing} priority={priority} showAddToCart />
                       </div>
                     );
                   }),
@@ -879,7 +1032,7 @@ export default function Home() {
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">
-                    <ListingCard listing={listing} />
+                    <ListingCard listing={listing} showAddToCart />
                   </div>
                 )),
               )}

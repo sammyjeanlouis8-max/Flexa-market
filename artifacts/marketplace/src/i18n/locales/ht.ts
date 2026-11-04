@@ -559,6 +559,14 @@ export default {
     saving: "Ap sovgade…",
   },
   home: {
+
+    deliverTo: "Livre nan",
+    shopByCategory: "Achte pa kategori",
+    todaysDeals: "Ofri jodi a",
+    boostedListings: "Anons boosté",
+    featuredProducts: "Pwodwi an vedèt",
+    shopNow: "Achte kounye a",
+    boostedBadge: "Boosté",
     featured: "An Vedèt",
     justListed: "Fèk Ajoute",
     trending: "Trending",

@@ -123,3 +123,5 @@ jobs:
 # Trigger redeploy after DO_API_TOKEN rotation (no logic change).
 
 # Redeploy trigger after DO_API_TOKEN update (no logic change).
+
+# Redeploy after owner asked to retry DO token (no logic change).

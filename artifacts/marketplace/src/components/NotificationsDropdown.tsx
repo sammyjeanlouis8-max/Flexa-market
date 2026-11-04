@@ -7,6 +7,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { orderNotificationDestination } from "@/lib/order-notification-destination";
+import { cn } from "@/lib/utils";
 
 interface Notification {
   id: number;
@@ -30,7 +31,7 @@ function timeAgo(dateStr: string, justNow: string): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
-export default function NotificationsDropdown() {
+export default function NotificationsDropdown({ light = false }: { light?: boolean }) {
   const { user, token } = useAuth();
   const { t } = useTranslation();
   const [, navigate] = useLocation();
@@ -273,7 +274,12 @@ export default function NotificationsDropdown() {
   return (
     <Popover open={open} onOpenChange={handleOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative" data-testid="button-notifications">
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("relative", light && "text-white hover:bg-white/10 hover:text-white")}
+          data-testid="button-notifications"
+        >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">

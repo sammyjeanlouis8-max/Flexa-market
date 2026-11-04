@@ -314,9 +314,9 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { icon: Film,   label: `🔥 ${t("nav.videos")}`,    href: "/videos" },
-        { icon: Tv,     label: "📺 Flexa TV",              href: "/tv" },
-        { icon: Music2, label: "🎵 Flexa Music",           href: "/music" },
+        { icon: Film,   label: t("nav.videos"),    href: "/videos" },
+        { icon: Tv,     label: "Flexa TV",         href: "/tv" },
+        { icon: Music2, label: "Flexa Music",      href: "/music" },
         ...(user ? [
           { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem,
           { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: walletBal.promo, realBalance: walletBal.real },
@@ -378,7 +378,7 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
       },
     ]),
     ...(canSeeLoan ? [{
-      heading: "💼 Sipò Finansye",
+      heading: t("nav.financialSupport", { defaultValue: "Financial support" }),
       items: [
         { icon: TrendingUp, label: t("nav.creditScore"), href: "/credit-score" },
         { kind: "loan" as const, icon: Landmark, label: t("nav.loanApply"), subtitle: t("nav.loanSubtitle"), href: "/loans" },
@@ -445,14 +445,11 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
           }}
         >
           {sections.map(section => (
-            <div
-              key={section.heading}
-              className={`min-w-0 max-w-full ${section.highlight ? "rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent ring-1 ring-primary/20 p-2" : ""}`}
-            >
-              <p className={`text-xs font-bold uppercase tracking-wider px-2 mb-1 ${section.highlight ? "text-primary" : "text-muted-foreground font-semibold"}`}>
-                {section.heading}
+            <div key={section.heading} className="min-w-0 max-w-full">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground px-1 mb-1.5">
+                {section.heading.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "")}
               </p>
-              <div className="grid min-w-0 w-full grid-cols-[repeat(2,minmax(0,1fr))] gap-1">
+              <div className={`grid min-w-0 w-full gap-1.5 ${section.highlight ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-1"}`}>
                 {section.items.map((item, idx) => {
                   if (item.kind === "promo") {
                     const totalBal = (item.balance ?? 0) + (item.realBalance ?? 0);
@@ -461,32 +458,27 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                         key="promo-account"
                         type="button"
                         onClick={() => go(item.href)}
-                        className="col-span-2 w-full text-left rounded-xl overflow-hidden relative active:scale-[0.98] transition-transform"
-                        style={{
-                          background: "linear-gradient(120deg, #ca8a04 0%, #d97706 28%, #f59e0b 55%, #fbbf24 78%, #fde68a 100%)",
-                          boxShadow: "0 4px 18px 0 rgba(202,138,4,0.60), inset 0 1px 0 rgba(255,255,255,0.45)",
-                        }}
+                        className="col-span-2 w-full text-left rounded-xl border border-border bg-muted/40 hover:bg-muted/70 active:scale-[0.99] transition-all"
                       >
-                        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(110deg, rgba(255,255,255,0.38) 0%, transparent 52%)" }} />
-                        <div className="flex items-center gap-2.5 px-3 py-2 relative z-10">
-                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg" style={{ background: "rgba(0,0,0,0.22)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25)" }}>
-                            <Gift className="h-4 w-4 text-yellow-100" />
+                        <div className="flex items-center gap-3 px-3 py-2.5">
+                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 text-primary">
+                            <Gift className="h-4 w-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <span className="block text-sm font-bold text-white leading-tight" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.40)" }}>
+                            <span className="block text-sm font-semibold text-foreground leading-tight">
                               {item.label}
                             </span>
-                            <span className="block text-[10px] font-medium leading-tight" style={{ color: "#fde68a" }}>
+                            <span className="block text-[11px] text-muted-foreground leading-tight mt-0.5">
                               {item.realBalance > 0
-                                ? `💵 $${item.realBalance.toFixed(2)} · 🎁 $${item.balance.toFixed(2)}`
-                                : `💰 ${t("nav.promoBalanceAvail", { defaultValue: "Balans disponib" })}`}
+                                ? `$${item.realBalance.toFixed(2)} · promo $${item.balance.toFixed(2)}`
+                                : t("nav.promoBalanceAvail", { defaultValue: "Available balance" })}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-lg font-black text-white" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.50)" }}>
+                            <span className="text-sm font-semibold tabular-nums text-foreground">
                               ${totalBal.toFixed(2)}
                             </span>
-                            <ChevronRight className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.75)" }} />
+                            <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
                           </div>
                         </div>
                       </button>
@@ -498,33 +490,22 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                         key="loan-apply"
                         type="button"
                         onClick={() => go(item.href)}
-                        className="col-span-2 w-full text-left rounded-2xl overflow-hidden relative group"
-                        style={{
-                          background: "linear-gradient(135deg, #7c3aed22 0%, #6d28d922 40%, #4f46e522 100%)",
-                          border: "1px solid #7c3aed44",
-                          boxShadow: "0 0 16px 0 #7c3aed18",
-                        }}
+                        className="col-span-2 w-full text-left rounded-xl border border-border bg-card hover:bg-accent/50 active:scale-[0.99] transition-all"
                       >
-                        <div className="flex items-center gap-3 px-3 py-3">
-                          <div
-                            className="shrink-0 flex items-center justify-center h-9 w-9 rounded-xl"
-                            style={{ background: "linear-gradient(135deg, #7c3aed, #4f46e5)" }}
-                          >
-                            <item.icon className="h-5 w-5 text-white" />
+                        <div className="flex items-center gap-3 px-3 py-2.5">
+                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 text-primary">
+                            <item.icon className="h-[18px] w-[18px]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold" style={{ color: "#a78bfa" }}>{item.label}</span>
-                              <span
-                                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse"
-                                style={{ background: "linear-gradient(90deg,#7c3aed,#4f46e5)", color: "#fff" }}
-                              >
+                              <span className="text-sm font-semibold text-foreground">{item.label}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
                                 NEW
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground truncate mt-0.5">{item.subtitle}</p>
                           </div>
-                          <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "#a78bfa" }} />
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                         </div>
                       </button>
                     );
@@ -536,21 +517,17 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative w-full min-w-0 overflow-hidden rounded-xl px-2 py-2.5 text-left text-white shadow-md active:scale-[0.98] transition-transform ${
-                          isAvailable
-                            ? "bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-500 shadow-emerald-500/30"
-                            : "bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 shadow-orange-500/30"
-                        }`}
+                        className="w-full min-w-0 rounded-xl border border-border bg-card px-3 py-2.5 text-left hover:bg-accent/50 active:scale-[0.99] transition-all"
                         data-testid={isAvailable ? "drawer-deliveries-available" : "drawer-driver-application"}
                       >
-                        <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
-                        <div className="relative z-10 flex min-w-0 items-center gap-2">
-                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-black/15 ring-1 ring-white/30">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                            isAvailable ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-primary/10 text-primary"
+                          }`}>
                             <item.icon className="h-4 w-4" />
-                            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-white ring-2 ring-white/40 motion-safe:animate-ping" />
                           </div>
-                          <span className="min-w-0 flex-1 truncate text-xs font-black">{item.label}</span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/80" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.label}</span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                         </div>
                       </button>
                     );
@@ -562,20 +539,15 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                         key={item.href}
                         type="button"
                         onClick={() => go(item.href)}
-                        className={`relative h-8 w-full min-w-0 overflow-hidden rounded-lg px-2 py-0 text-left text-white shadow-sm active:scale-[0.98] transition-transform ${
-                          isOrders
-                            ? "bg-gradient-to-r from-blue-600 via-indigo-500 to-violet-500 shadow-blue-500/30"
-                            : "bg-gradient-to-r from-fuchsia-600 via-pink-500 to-rose-500 shadow-pink-500/30"
-                        }`}
+                        className="w-full min-w-0 rounded-xl border border-border bg-card px-3 py-2.5 text-left hover:bg-accent/50 active:scale-[0.99] transition-all"
                         data-testid={isOrders ? "drawer-orders" : "drawer-sales"}
                       >
-                        <div className="absolute inset-0 bg-white/10 motion-safe:animate-pulse pointer-events-none" />
-                        <div className="relative z-10 flex items-center gap-2">
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-black/15 ring-1 ring-white/30">
-                            <item.icon className="h-3.5 w-3.5" />
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <item.icon className="h-4 w-4" />
                           </div>
-                          <span className="flex-1 text-xs font-black leading-none">{item.label}</span>
-                          <ChevronRight className="h-3 w-3 text-white/80" />
+                          <span className="flex-1 text-sm font-medium text-foreground">{item.label}</span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
                         </div>
                       </button>
                     );
@@ -583,14 +555,15 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                   if (item.kind === "lang") {
                     return (
                       <div key="lang-item" className="col-span-2">
-                        {/* Language toggle row */}
                         <button
                           type="button"
                           onClick={() => setShowLangPicker(p => !p)}
-                          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-accent transition-colors text-left"
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent hover:bg-accent transition-colors text-left"
                           data-testid="drawer-lang-toggle"
                         >
-                          <item.icon className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                            <item.icon className="h-4 w-4" />
+                          </div>
                           <span className="flex-1 text-sm font-medium">{item.label}</span>
                           <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
                             <span>{currentLang?.flag}</span>
@@ -599,9 +572,8 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                           <ChevronRight className={`h-4 w-4 text-muted-foreground/50 transition-transform duration-200 ${showLangPicker ? "rotate-90" : ""}`} />
                         </button>
 
-                        {/* Inline language list */}
                         {showLangPicker && (
-                          <div className="mt-1 ml-3 border-l-2 border-primary/20 pl-3 space-y-0.5">
+                          <div className="mt-1 ml-3 border-l-2 border-border pl-3 space-y-0.5">
                             {SUPPORTED_LANGUAGES.map(lang => (
                               <button
                                 key={lang.code}
@@ -609,7 +581,7 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                                 onClick={() => { setLanguage(lang.code as SupportedLanguage); apiPatch("/auth/language", { language: lang.code }).catch(() => {}); setShowLangPicker(false); onClose(); }}
                                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
                                   i18n.language === lang.code
-                                    ? "bg-primary/10 text-primary font-bold"
+                                    ? "bg-primary/10 text-primary font-semibold"
                                     : "hover:bg-accent text-foreground"
                                 }`}
                                 data-testid={`drawer-lang-${lang.code}`}
@@ -632,16 +604,20 @@ function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: b
                       key={item.href ?? idx}
                       type="button"
                       onClick={() => go(item.href!)}
-                      className={`w-full min-w-0 flex items-center gap-2 px-2 py-2.5 rounded-xl transition-colors text-left ${
+                      className={`w-full min-w-0 flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors text-left active:scale-[0.99] ${
                         isHighlightItem
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                          ? "border border-border bg-card hover:bg-accent/50"
                           : "hover:bg-accent"
                       }`}
                       data-testid={item.href === "/videos" ? "drawer-promo-videos" : undefined}
                     >
-                      <item.icon className={`h-5 w-5 shrink-0 ${isHighlightItem ? "" : "text-muted-foreground"}`} />
-                      <span className={`min-w-0 flex-1 truncate text-xs ${isHighlightItem ? "font-bold" : "font-medium"}`}>{item.label}</span>
-                      <ChevronRight className={`h-4 w-4 ${isHighlightItem ? "text-primary-foreground/70" : "text-muted-foreground/50"}`} />
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                        isHighlightItem ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      }`}>
+                        <item.icon className="h-4 w-4" />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.label}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
                     </button>
                   );
                 })}
@@ -832,9 +808,9 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       heading: t("nav.videosSection"),
       highlight: true,
       items: [
-        { href: "/videos", icon: Film,   label: `🔥 ${t("nav.videos")}`,   key: "videos"      },
-        { href: "/tv",     icon: Tv,     label: "📺 Flexa TV",              key: "flexa-tv"    },
-        { href: "/music",  icon: Music2, label: "🎵 Flexa Music",           key: "flexa-music" },
+        { href: "/videos", icon: Film,   label: t("nav.videos"), key: "videos"      },
+        { href: "/tv",     icon: Tv,     label: "Flexa TV",      key: "flexa-tv"    },
+        { href: "/music",  icon: Music2, label: "Flexa Music",   key: "flexa-music" },
         ...(user ? [
           { href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" },
           { href: "/wallet",    icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
@@ -870,7 +846,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       ],
     }] : []),
     ...(canSeeLoan ? [{
-      heading: "💼 Sipò Finansye",
+      heading: t("nav.financialSupport", { defaultValue: "Financial support" }),
       items: [
         { href: "/credit-score", icon: TrendingUp, label: t("nav.creditScore"), key: "credit-score" } as any,
         { href: "/loans",        icon: Landmark,   label: t("nav.loanApply"),   key: "loans" } as any,
@@ -1188,8 +1164,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         {desktopSections.map((section, si) => (
           <div key={si} className={si > 0 ? "mt-3" : ""}>
             {section.heading && (
-              <p className={`px-3 pb-1 text-[10px] font-bold uppercase tracking-wider ${section.highlight ? "text-primary" : "text-muted-foreground/60"}`}>
-                {section.heading}
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+                {section.heading.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "")}
               </p>
             )}
             <div className="space-y-0.5">
@@ -1210,17 +1186,17 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                           ? "bg-primary text-white hover:opacity-90"
                           : adminHighlight
                           ? active
-                            ? "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 font-semibold"
-                            : "bg-purple-50 text-purple-600 dark:bg-purple-950/30 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-200 dark:border-purple-800"
+                            ? "bg-primary/10 text-primary font-semibold"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground border border-border/70"
                           : active
                           ? "bg-primary/10 text-primary font-semibold"
                           : "text-muted-foreground hover:bg-accent hover:text-foreground"
                       }`}
                     >
-                      <Icon className={`h-4 w-4 shrink-0 ${adminHighlight ? "text-purple-500" : ""}`} />
+                      <Icon className="h-4 w-4 shrink-0" />
                       <span className="flex-1 text-left truncate">{label}</span>
                       {adminHighlight && !active && (
-                        <span className="text-[10px] font-bold bg-purple-500 text-white rounded-full px-1.5 py-0.5 leading-none shrink-0">
+                        <span className="text-[10px] font-semibold bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 leading-none shrink-0">
                           ADMIN
                         </span>
                       )}

@@ -924,6 +924,17 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
+  // Seller Center (Add Product) — full-bleed chrome lives inside Sell.tsx
+  if (isSellPage) {
+    return (
+      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
+        <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-x-hidden bg-[#F3F4F6] flex flex-col min-h-dvh">
+          {children}
+        </div>
+      </DeliveryMenuCountryContext.Provider>
+    );
+  }
+
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"}`}>

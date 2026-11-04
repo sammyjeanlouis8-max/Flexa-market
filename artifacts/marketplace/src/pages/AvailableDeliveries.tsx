@@ -210,6 +210,20 @@ function copyText(text: string) {
 
 // ── Delivery Card (browse view) ───────────────────────────────────────────────
 
+function formatBrowseDistance(delivery: BrowseDelivery, t: (key: string) => string): string {
+  if (delivery.distanceKm != null && delivery.distanceKm > 0) {
+    return `${delivery.distanceKm.toFixed(1)} km`;
+  }
+  if (delivery.distanceFromDriverKm != null && delivery.distanceFromDriverKm > 0) {
+    return `${delivery.distanceFromDriverKm.toFixed(1)} km`;
+  }
+  if (delivery.pickupCity && delivery.deliveryCity && delivery.pickupCity !== delivery.deliveryCity) {
+    const route = `${delivery.pickupCity} → ${delivery.deliveryCity}`;
+    return route.length > 16 ? t("availableDeliveries.cardTrip") : route;
+  }
+  return t("availableDeliveries.cardLocal");
+}
+
 function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driverRating, isAccepting, onNavigate }: {
   delivery: BrowseDelivery;
   driverCta: DriverCta;
@@ -221,6 +235,7 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const acceptLockRef = useRef(false);
 
   const isMoto = delivery.deliveryMethod === "motorcycle";
   const earnings = delivery.driverEarnings ?? (delivery.feeUsd != null ? Math.round(delivery.feeUsd * 0.80 * 100) / 100 : 0);
@@ -234,192 +249,193 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
     : null;
   const speedCfg = getSpeedConfig(delivery.speedTier);
   const isApproved = driverCta === "approved";
+  const distanceLabel = formatBrowseDistance(delivery, t);
+  const hasNumericDistance =
+    (delivery.distanceKm != null && delivery.distanceKm > 0) ||
+    (delivery.distanceFromDriverKm != null && delivery.distanceFromDriverKm > 0);
 
   const productName = delivery.listingTitle?.trim() || t("availableDeliveries.cardGenericItem");
 
-  return (
-    <div className={`bg-card border rounded-3xl overflow-hidden shadow-sm transition-all duration-200 ${
-      hasTip
-        ? "border-emerald-400 dark:border-emerald-700 shadow-emerald-100 dark:shadow-emerald-900/20"
-        : "border-border"
-    }`}>
+  const handleAccept = () => {
+    if (isAccepting || acceptLockRef.current) return;
+    acceptLockRef.current = true;
+    onAcceptClick(delivery);
+    // Unlock if parent clears accepting without navigation (error path)
+    window.setTimeout(() => { acceptLockRef.current = false; }, 2500);
+  };
 
-      {/* ── Priority tip banner ── */}
+  return (
+    <article
+      className={`bg-card border rounded-2xl overflow-hidden shadow-sm transition-all duration-200 ${
+        hasTip
+          ? "border-emerald-400 dark:border-emerald-700 shadow-emerald-100 dark:shadow-emerald-900/20"
+          : "border-border"
+      }`}
+    >
+      {/* ── Priority tip strip ── */}
       {hasTip && (
-        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-1.5 flex items-center gap-2">
-          <Zap className="h-3 w-3 text-white" />
-          <span className="text-white text-[11px] font-black uppercase tracking-wide">{t("availableDeliveries.cardPriority")}</span>
-          <span className="ml-auto text-white/90 text-[11px] font-bold">+${delivery.tipUsd!.toFixed(2)} tip</span>
+        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 flex items-center gap-1.5">
+          <Zap className="h-3 w-3 text-white shrink-0" />
+          <span className="text-white text-[10px] font-black uppercase tracking-wide">{t("availableDeliveries.cardPriority")}</span>
+          <span className="ml-auto text-white/90 text-[10px] font-bold">+${delivery.tipUsd!.toFixed(2)} tip</span>
         </div>
       )}
 
-      {/* ── Hero: photo of the item the driver will pick up ── */}
-      <div className="relative">
-        {delivery.listingImage ? (
-          <img
-            src={delivery.listingImage}
-            alt={productName}
-            className="w-full h-48 object-cover"
-          />
-        ) : (
-          <div className="w-full h-48 bg-gradient-to-br from-muted to-muted/40 flex items-center justify-center">
-            <Package className="h-12 w-12 text-muted-foreground/60" />
-          </div>
-        )}
-
-        {/* legibility gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/5" />
-
-        {/* vehicle + speed chip */}
-        <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-white/95 dark:bg-card/95 backdrop-blur rounded-full pl-1.5 pr-2.5 py-1 shadow-sm">
-          <span className={`w-6 h-6 rounded-full flex items-center justify-center ${isMoto ? "bg-orange-100 dark:bg-orange-900/40" : "bg-blue-100 dark:bg-blue-900/40"}`}>
-            {isMoto ? <Bike className="h-3.5 w-3.5 text-orange-600" /> : <Car className="h-3.5 w-3.5 text-blue-600" />}
-          </span>
-          <span className="text-[11px] font-bold text-foreground">
-            {isMoto ? t("availableDeliveries.motoLabel") : t("availableDeliveries.carLabel")}
-          </span>
-        </div>
-
-        {/* earnings badge */}
-        <div className={`absolute top-3 right-3 rounded-2xl px-3 py-1.5 text-center shadow-lg ${
-          displayEarnings > 0
-            ? "bg-gradient-to-br from-emerald-500 to-teal-600 text-white"
-            : "bg-white/95 dark:bg-card/95 text-foreground"
-        }`}>
-          <p className={`text-[8px] font-black uppercase tracking-wider leading-none ${displayEarnings > 0 ? "text-emerald-100" : "text-muted-foreground"}`}>
-            💰 {t("availableDeliveries.cardYouEarn")}
-          </p>
-          <p className="text-xl font-black leading-tight mt-0.5">
-            {displayEarnings > 0 ? `$${displayEarnings.toFixed(2)}` : "..."}
-          </p>
-          {localEarnings != null && localEarnings > 0 && localCurrency && (
-            <p className={`text-[9px] font-bold leading-none ${displayEarnings > 0 ? "text-emerald-100" : "text-muted-foreground"}`}>
-              ≈ {localEarnings.toLocaleString()} {localCurrency}
-            </p>
-          )}
-          {hasTip && (
-            <p className="text-[8px] bg-white/25 rounded-full px-1.5 py-0.5 mt-1 font-bold">
-              +${delivery.tipUsd!.toFixed(2)} tip ⚡
-            </p>
-          )}
-        </div>
-
-        {/* product name overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-3">
-          <p className="text-[9px] font-black uppercase tracking-widest text-white/70 mb-0.5">
-            📦 {t("availableDeliveries.cardItemToPickup")}
-          </p>
-          <p className="text-lg font-black text-white leading-tight line-clamp-2 drop-shadow">{productName}</p>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-4">
-
-        {/* ── Meta row: speed tier + posted time ── */}
-        <div className="flex items-center justify-between gap-2">
-          <span className={`text-[11px] font-bold px-2 py-1 rounded-lg ${speedCfg.bg} ${speedCfg.color}`}>
-            ⚡ {speedCfg.label} · {speedCfg.time}
-          </span>
-          {delivery.createdAt && (
-            <span className="text-[11px] text-muted-foreground">
-              {timeAgo(delivery.createdAt, t("availableDeliveries.timeNow"))}
+      <div className="p-3 space-y-2.5">
+        {/* ── Earnings (primary signal) + vehicle / age ── */}
+        <div className="flex items-start justify-between gap-2">
+          <div className={`inline-flex items-baseline gap-1.5 rounded-xl px-2.5 py-1.5 ${
+            displayEarnings > 0
+              ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+              : "bg-muted text-muted-foreground"
+          }`}>
+            <span className="text-[9px] font-black uppercase tracking-wider opacity-80">
+              {t("availableDeliveries.cardYouEarn")}
             </span>
+            <span className="text-lg font-black leading-none tabular-nums">
+              {displayEarnings > 0 ? `$${displayEarnings.toFixed(2)}` : "…"}
+            </span>
+            {localEarnings != null && localEarnings > 0 && localCurrency && (
+              <span className="text-[10px] font-semibold opacity-70">
+                ≈ {localEarnings.toLocaleString()} {localCurrency}
+              </span>
+            )}
+            {hasTip && (
+              <span className="text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 rounded-md px-1.5 py-0.5">
+                +${delivery.tipUsd!.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+            <span className={`inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-bold ${
+              isMoto
+                ? "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
+                : "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+            }`}>
+              {isMoto ? <Bike className="h-3 w-3" /> : <Car className="h-3 w-3" />}
+              {isMoto ? t("availableDeliveries.motoLabel") : t("availableDeliveries.carLabel")}
+            </span>
+            {delivery.createdAt && (
+              <span className="text-[10px] text-muted-foreground tabular-nums">
+                {timeAgo(delivery.createdAt, t("availableDeliveries.timeNow"))}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ── Product: compact thumbnail + title (no text overlay on image) ── */}
+        <div className="flex items-start gap-2.5">
+          {delivery.listingImage ? (
+            <img
+              src={delivery.listingImage}
+              alt={productName}
+              width={88}
+              height={88}
+              loading="lazy"
+              decoding="async"
+              className="h-[88px] w-[88px] rounded-xl object-cover shrink-0 border border-border bg-muted"
+            />
+          ) : (
+            <div className="h-[88px] w-[88px] rounded-xl bg-muted/70 border border-border flex items-center justify-center shrink-0">
+              <Package className="h-7 w-7 text-muted-foreground/55" />
+            </div>
           )}
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">
+                {t("availableDeliveries.cardItemToPickup")}
+              </p>
+              <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{productName}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${speedCfg.bg} ${speedCfg.color}`}>
+                {speedCfg.label} · {speedCfg.time}
+              </span>
+              <span className="text-[10px] font-semibold text-muted-foreground bg-muted/60 rounded-md px-1.5 py-0.5">
+                {t("availableDeliveries.cardOneItem")}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* ── Route: pickup → drop-off (the seller's entered address) ── */}
-        <div className="flex items-stretch gap-3 bg-muted/40 rounded-2xl p-3">
+        {/* ── Route: pickup → drop-off ── */}
+        <div className="flex items-stretch gap-2.5 rounded-xl bg-muted/35 px-2.5 py-2">
           <div className="flex flex-col items-center shrink-0 pt-1">
-            <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white dark:border-card shadow" />
-            <div className="w-px flex-1 bg-border my-1 min-h-[28px]" />
-            <MapPin className="h-4 w-4 text-emerald-500" />
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white dark:border-card shadow-sm" />
+            <div className="w-px flex-1 bg-border my-0.5 min-h-[16px]" />
+            <MapPin className="h-3.5 w-3.5 text-emerald-500" />
           </div>
-          <div className="flex-1 space-y-3 min-w-0">
+          <div className="flex-1 space-y-1.5 min-w-0">
             <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">📍 {t("availableDeliveries.cardPickupPoint")}</p>
-              <p className="text-sm font-bold text-foreground truncate">{delivery.pickupCity ?? "—"}</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">
+                {t("availableDeliveries.cardPickupPoint")}
+              </p>
+              <p className="text-[13px] font-bold text-foreground truncate leading-tight">{delivery.pickupCity ?? "—"}</p>
               {isApproved && delivery.pickupAddress && (
-                <p className="text-xs text-muted-foreground truncate">{delivery.pickupAddress}</p>
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">{delivery.pickupAddress}</p>
               )}
             </div>
             <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">🏁 {t("availableDeliveries.cardDropoffPoint")}</p>
-              <p className="text-sm font-bold text-foreground truncate">{delivery.deliveryCity ?? "—"}</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                {t("availableDeliveries.cardDropoffPoint")}
+              </p>
+              <p className="text-[13px] font-bold text-foreground truncate leading-tight">{delivery.deliveryCity ?? "—"}</p>
               {isApproved && delivery.deliveryAddress && (
-                <p className="text-xs text-muted-foreground truncate">{delivery.deliveryAddress}</p>
+                <p className="text-[11px] text-muted-foreground truncate leading-tight">{delivery.deliveryAddress}</p>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── Stats row ── */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            {
-              icon: "📍",
-              label: t("availableDeliveries.cardStatDistance"),
-              value: delivery.distanceKm != null && delivery.distanceKm > 0
-                ? `${delivery.distanceKm.toFixed(1)} km`
-                : (delivery.pickupCity && delivery.deliveryCity && delivery.pickupCity !== delivery.deliveryCity)
-                  ? `${delivery.pickupCity} → ${delivery.deliveryCity}`.length > 16
-                    ? t("availableDeliveries.cardTrip")
-                    : `${delivery.pickupCity} → ${delivery.deliveryCity}`
-                  : t("availableDeliveries.cardLocal"),
-            },
-            {
-              icon: "⭐",
-              label: t("availableDeliveries.cardStatRating"),
-              value: driverRating > 0 ? `${driverRating.toFixed(1)} / 5` : t("availableDeliveries.cardRatingNew"),
-            },
-            {
-              icon: "🛍️",
-              label: t("availableDeliveries.cardStatItems"),
-              value: t("availableDeliveries.cardOneItem"),
-            },
-          ].map(({ icon, label, value }) => (
-            <div key={label} className="bg-muted/40 rounded-xl py-2 px-2 text-center">
-              <p className="text-base">{icon}</p>
-              <p className="text-xs font-bold text-foreground leading-tight">{value}</p>
-              <p className="text-[9px] text-muted-foreground mt-0.5">{label}</p>
-            </div>
-          ))}
+        {/* ── Compact meta: distance (emphasized when numeric) + rating ── */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium">
+            <MapPin className="h-3 w-3 shrink-0" />
+            <span className={hasNumericDistance ? "font-bold text-foreground tabular-nums" : ""}>
+              {hasNumericDistance
+                ? `${distanceLabel} · ${t("availableDeliveries.cardStatDistance")}`
+                : distanceLabel}
+            </span>
+          </span>
+          <span className="text-border" aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1 font-medium">
+            <span aria-hidden>★</span>
+            {driverRating > 0
+              ? `${driverRating.toFixed(1)} / 5 · ${t("availableDeliveries.cardStatRating")}`
+              : t("availableDeliveries.cardRatingNew")}
+          </span>
         </div>
 
-        {/* ── Buyer / seller note ── */}
+        {/* ── Customer note ── */}
         {delivery.sellerNote && (
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2.5 flex items-start gap-2">
-            <span className="text-base shrink-0">💬</span>
-            <p className="text-xs text-amber-800 dark:text-amber-300 font-medium leading-relaxed">{delivery.sellerNote}</p>
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 rounded-xl px-2.5 py-1.5 flex items-start gap-2">
+            <span className="text-sm shrink-0 leading-none mt-0.5" aria-hidden>💬</span>
+            <p className="text-[12px] text-amber-800 dark:text-amber-300 font-medium leading-snug line-clamp-3">{delivery.sellerNote}</p>
           </div>
         )}
 
         {/* ── Non-approved lock notice ── */}
         {!isApproved && (
-          <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2.5">
+          <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-2.5 py-2">
             <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <p className="text-xs text-muted-foreground">{t("availableDeliveries.hiddenDetails")}</p>
+            <p className="text-[11px] text-muted-foreground leading-snug">{t("availableDeliveries.hiddenDetails")}</p>
           </div>
         )}
 
         {/* ── Expandable details (approved drivers only) ── */}
         {isApproved && (
-          <div className="rounded-xl overflow-hidden border border-emerald-200 dark:border-emerald-800">
+          <div className="rounded-xl overflow-hidden border border-emerald-200/80 dark:border-emerald-800/70">
             <button
               type="button"
               onClick={() => setExpanded(e => !e)}
-              className="w-full flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-left hover:bg-emerald-100 dark:hover:bg-emerald-950/50 transition-colors"
+              className="w-full flex items-center gap-2 bg-emerald-50/80 dark:bg-emerald-950/25 px-2.5 py-2 text-left hover:bg-emerald-100/80 dark:hover:bg-emerald-950/40 transition-colors min-h-10"
             >
-              <Eye className="h-4 w-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-                  {expanded ? t("availableDeliveries.cardExpandClose") : t("availableDeliveries.cardExpandOpen")}
-                </p>
-                {!expanded && (
-                  <p className="text-[10px] text-emerald-700/70 dark:text-emerald-400/70">
-                    {t("availableDeliveries.cardExpandSub")}
-                  </p>
-                )}
-              </div>
+              <Eye className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+              <p className="flex-1 min-w-0 text-[11px] font-bold text-emerald-800 dark:text-emerald-300 truncate">
+                {expanded
+                  ? t("availableDeliveries.cardExpandClose")
+                  : `${t("availableDeliveries.cardExpandOpen")} · ${t("availableDeliveries.cardExpandSub")}`}
+              </p>
               {expanded ? (
                 <ChevronUp className="h-4 w-4 text-emerald-700 dark:text-emerald-400 shrink-0" />
               ) : (
@@ -428,31 +444,30 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
             </button>
 
             {expanded && (
-              <div className="bg-card px-4 py-3 space-y-3">
-                {/* Phone */}
+              <div className="bg-card px-2.5 py-2.5 space-y-2.5 border-t border-emerald-200/60 dark:border-emerald-800/50">
                 {delivery.buyerPhone && (
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">📱 {t("availableDeliveries.cardPhone")}</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{t("availableDeliveries.cardPhone")}</p>
                       <p className="text-sm font-bold text-foreground">{delivery.buyerPhone}</p>
                     </div>
                     <a
                       href={`tel:${delivery.buyerPhone}`}
                       className="shrink-0 w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center hover:bg-green-200 transition-colors"
+                      aria-label={t("availableDeliveries.cardPhone")}
                     >
                       <Phone className="h-4 w-4 text-green-700" />
                     </a>
                   </div>
                 )}
 
-                <div className="h-px bg-border" />
+                {delivery.buyerPhone && <div className="h-px bg-border" />}
 
-                {/* IDs grid */}
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {([
-                    { label: `🏷️ ${t("availableDeliveries.cardIdDelivery")}`,    value: `FM-${delivery.id}` },
-                    { label: `📦 ${t("availableDeliveries.cardIdOrder")}`,       value: delivery.transactionIdNum != null ? `ORD-${delivery.transactionIdNum}` : null },
-                    { label: `💳 ${t("availableDeliveries.cardIdTransaction")}`, value: delivery.transactionIdNum != null ? `TRX-${delivery.transactionIdNum}` : null },
+                    { label: t("availableDeliveries.cardIdDelivery"),    value: `FM-${delivery.id}` },
+                    { label: t("availableDeliveries.cardIdOrder"),       value: delivery.transactionIdNum != null ? `ORD-${delivery.transactionIdNum}` : null },
+                    { label: t("availableDeliveries.cardIdTransaction"), value: delivery.transactionIdNum != null ? `TRX-${delivery.transactionIdNum}` : null },
                   ] as { label: string; value: string | null }[]).map(({ label, value }) => value && (
                     <div key={label} className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
@@ -462,7 +477,8 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
                       <button
                         type="button"
                         onClick={() => copyText(value)}
-                        className="shrink-0 w-8 h-8 rounded-lg bg-muted flex items-center justify-center hover:bg-accent transition-colors"
+                        className="shrink-0 w-9 h-9 rounded-lg bg-muted flex items-center justify-center hover:bg-accent transition-colors"
+                        aria-label={`Copy ${label}`}
                       >
                         <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                       </button>
@@ -474,21 +490,22 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
           </div>
         )}
 
-        {/* ── Actions ── */}
+        {/* ── Actions: compact, accessible touch targets ── */}
         {isApproved ? (
-          <div className="space-y-2 pt-1">
+          <div className="space-y-1.5 pt-0.5">
             <Button
-              className="w-full rounded-2xl py-5 font-bold text-sm bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 shadow-md shadow-blue-500/20"
-              onClick={() => onAcceptClick(delivery)}
+              className="w-full h-11 rounded-xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+              onClick={handleAccept}
               disabled={isAccepting}
+              aria-busy={isAccepting}
             >
               {isAccepting
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><CheckCircle className="h-4 w-4 mr-2" /> {t("availableDeliveries.cardAccept")}</>
+                : <><CheckCircle className="h-4 w-4 mr-1.5" /> {t("availableDeliveries.cardAccept")}</>
               }
             </Button>
             <Button
-              className="w-full rounded-2xl py-4 font-bold text-sm"
+              className="w-full h-10 rounded-xl font-semibold text-sm"
               variant="outline"
               onClick={() => onSkip(delivery.id)}
               disabled={isAccepting}
@@ -497,31 +514,32 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
             </Button>
             <button
               type="button"
-              className="w-full text-center text-sm font-semibold text-red-600 dark:text-red-400 py-2 hover:underline flex items-center justify-center gap-1.5"
+              className="w-full min-h-9 py-1.5 text-[12px] font-semibold text-red-600 dark:text-red-400 hover:underline inline-flex items-center justify-center gap-1.5"
               onClick={() => onNavigate("/help")}
             >
-              <Flag className="h-3.5 w-3.5" /> {t("availableDeliveries.cardReport")}
+              <Flag className="h-3.5 w-3.5 shrink-0" />
+              {t("availableDeliveries.cardReport")}
             </button>
           </div>
         ) : driverCta === "pending" ? (
           <Button
-            className="w-full rounded-2xl py-5 font-bold text-sm bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-200"
+            className="w-full h-11 rounded-xl font-bold text-sm bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-200"
             variant="ghost"
-            onClick={() => onAcceptClick(delivery)}
+            onClick={handleAccept}
           >
-            <Clock className="h-4 w-4 mr-2" /> {t("availableDeliveries.btnPendingAccept")}
+            <Clock className="h-4 w-4 mr-1.5" /> {t("availableDeliveries.btnPendingAccept")}
           </Button>
         ) : (
           <Button
-            className="w-full rounded-2xl py-5 font-bold text-sm"
+            className="w-full h-11 rounded-xl font-bold text-sm"
             variant="outline"
-            onClick={() => onAcceptClick(delivery)}
+            onClick={handleAccept}
           >
-            <Lock className="h-4 w-4 mr-2" /> {t("availableDeliveries.btnAccept")}
+            <Lock className="h-4 w-4 mr-1.5" /> {t("availableDeliveries.btnAccept")}
           </Button>
         )}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1449,12 +1467,20 @@ function Skeleton() {
   return (
     <div className="space-y-3">
       {[1, 2, 3].map(i => (
-        <div key={i} className="bg-card border border-border rounded-3xl overflow-hidden">
-          <div className="h-14 bg-muted animate-pulse" />
-          <div className="p-4 space-y-2">
-            <div className="h-4 bg-muted rounded-full w-3/4 animate-pulse" />
-            <div className="h-4 bg-muted rounded-full w-1/2 animate-pulse" />
-            <div className="h-10 bg-muted rounded-2xl mt-3 animate-pulse" />
+        <div key={i} className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="p-3 space-y-2.5">
+            <div className="h-7 w-28 bg-muted rounded-xl animate-pulse" />
+            <div className="flex gap-2.5">
+              <div className="h-[88px] w-[88px] rounded-xl bg-muted animate-pulse shrink-0" />
+              <div className="flex-1 space-y-2 pt-1">
+                <div className="h-3 w-24 bg-muted rounded-full animate-pulse" />
+                <div className="h-4 w-full bg-muted rounded-full animate-pulse" />
+                <div className="h-4 w-2/3 bg-muted rounded-full animate-pulse" />
+                <div className="h-5 w-32 bg-muted rounded-md animate-pulse" />
+              </div>
+            </div>
+            <div className="h-16 bg-muted/70 rounded-xl animate-pulse" />
+            <div className="h-11 bg-muted rounded-xl animate-pulse" />
           </div>
         </div>
       ))}

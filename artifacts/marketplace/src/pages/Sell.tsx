@@ -1912,8 +1912,7 @@ export default function Sell() {
             </p>
           )}
           <Button
-            type="submit"
-            form={undefined}
+            type="button"
             className="w-full font-semibold h-11"
             disabled={isPublishBusy}
             aria-busy={isPublishBusy}

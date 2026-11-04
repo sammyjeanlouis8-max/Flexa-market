@@ -294,8 +294,9 @@ export default function Messages({ embedded = false, onClose, initialConversatio
     query: {
       enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
-      refetchInterval: 5000,
-      refetchIntervalInBackground: true,
+      // Socket invalidation is primary; HTTP poll is a safety net only.
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
       refetchOnMount: true,
       refetchOnWindowFocus: true,
       retry: 0,

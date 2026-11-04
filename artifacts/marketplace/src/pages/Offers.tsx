@@ -269,7 +269,7 @@ export default function Offers() {
       enabled: !!user,
       queryKey: getGetMyOffersQueryKey(),
       // Fallback polling: refetch every 15s to catch any SSE gaps
-      refetchInterval: 15_000,
+      refetchInterval: 45_000,
       refetchIntervalInBackground: false,
     },
   });

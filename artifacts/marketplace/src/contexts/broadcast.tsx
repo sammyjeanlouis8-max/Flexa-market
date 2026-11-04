@@ -1,7 +1,7 @@
 /**
  * Global Broadcast Context
- * - Polls /api/tv/broadcast every 5s (shared across the entire app)
- * - Sends viewer heartbeat every 15s
+ * - Polls /api/tv/broadcast: 10s while playing, 30s when idle
+ * - Sends viewer heartbeat every 30s only while a program is active
  * - Exposes `dismissed` / `setDismissed` so FlexaTV's on/off button and
  *   GlobalBroadcastPlayer share the same toggle state.
  */
@@ -84,20 +84,38 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
     setDismissedRaw(v);
   }, [bs.programId]);
 
-  // Poll every 5s
+  // Poll broadcast status — 30s when idle, 10s while a live program is active.
   useEffect(() => {
-    const poll = () =>
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedule = (ms: number) => {
+      if (cancelled) return;
+      timer = setTimeout(run, ms);
+    };
+
+    const run = () => {
       fetch("/api/tv/broadcast")
         .then(r => r.json())
-        .then(d => { if (d.broadcast) setBs(d.broadcast); })
-        .catch(() => {});
-    poll();
-    const t = setInterval(poll, 5_000);
-    return () => clearInterval(t);
+        .then(d => {
+          if (cancelled) return;
+          if (d.broadcast) setBs(d.broadcast);
+          const active = d.broadcast?.state === "playing" && !!d.broadcast?.programId;
+          schedule(active ? 10_000 : 30_000);
+        })
+        .catch(() => { if (!cancelled) schedule(30_000); });
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
-  // Heartbeat every 15s
+  // Heartbeat only while a broadcast program is active (cuts idle API load).
   useEffect(() => {
+    if (!bs.programId) return;
     const viewerId = getViewerId();
     const hb = () =>
       fetch("/api/tv/broadcast/heartbeat", {
@@ -106,9 +124,9 @@ export function BroadcastProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ viewerId }),
       }).catch(() => {});
     hb();
-    const t = setInterval(hb, 15_000);
+    const t = setInterval(hb, 30_000);
     return () => clearInterval(t);
-  }, []);
+  }, [bs.programId]);
 
   return (
     <BroadcastContext.Provider value={{ ...bs, dismissed, setDismissed, filmPlayer, setFilmPlayer }}>

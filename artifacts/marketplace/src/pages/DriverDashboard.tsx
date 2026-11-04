@@ -795,6 +795,7 @@ function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
   const [expanded, setExpanded] = useState(false);
   const MethodIcon = d.deliveryMethod === "car" ? Car : Bike;
   const platformFee = d.feeUsd ? d.feeUsd * 0.20 : null;
+  const isMoto = d.deliveryMethod !== "car";
 
   const timeline = [
     { key: "accepted",  label: "Aksepte",  icon: CircleDot,    ts: d.acceptedAt,  loc: null },
@@ -803,79 +804,81 @@ function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
   ].filter(t => t.ts);
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-      <div className={`h-1 w-full ${
+    <article className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+      <div className={`h-0.5 w-full ${
         d.status === "delivered" ? "bg-emerald-500" :
         d.status === "cancelled" ? "bg-red-500" :
         d.status === "on_the_way" ? "bg-orange-500" :
         d.status === "waiting"   ? "bg-amber-400" : "bg-blue-500"
       }`} />
 
-      {/* Header row */}
-      <div className="p-3.5 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0 border border-border">
-          <MethodIcon className="h-4.5 w-4.5 text-muted-foreground" />
+      <div className="p-3 flex items-start gap-2.5">
+        <div className={`h-[72px] w-[72px] rounded-xl flex items-center justify-center shrink-0 border border-border ${
+          isMoto
+            ? "bg-orange-50 dark:bg-orange-950/30"
+            : "bg-blue-50 dark:bg-blue-950/30"
+        }`}>
+          <MethodIcon className={`h-7 w-7 ${isMoto ? "text-orange-600" : "text-blue-600"}`} />
         </div>
 
-        <div className="flex-1 min-w-0 space-y-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-black text-sm text-foreground">FL-{d.id}</span>
-            <Badge className={`text-[10px] px-1.5 py-0 ${STATUS_COLOR[d.status] ?? ""}`}>
-              {STATUS_LABEL[d.status] ?? d.status}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3 text-blue-500 shrink-0" />
-            <span className="font-medium text-foreground truncate">{d.pickupCity ?? "?"}</span>
-            <ChevronRight className="h-3 w-3 shrink-0" />
-            <Flag className="h-3 w-3 text-red-500 shrink-0" />
-            <span className="font-medium text-foreground truncate">{d.deliveryCity ?? "?"}</span>
-            {d.distanceKm != null && (
-              <span className="font-bold text-primary bg-primary/10 px-1.5 py-0 rounded-md shrink-0">
-                {d.distanceKm.toFixed(1)} km
-              </span>
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-black text-[13px] text-foreground tabular-nums">FL-{d.id}</span>
+                <Badge className={`text-[10px] px-1.5 py-0 ${STATUS_COLOR[d.status] ?? ""}`}>
+                  {STATUS_LABEL[d.status] ?? d.status}
+                </Badge>
+              </div>
+              {d.driverEarnings != null && d.driverEarnings > 0 ? (
+                <p className="font-black text-base text-emerald-600 tabular-nums leading-tight mt-0.5">
+                  +${d.driverEarnings.toFixed(2)}
+                  <span className="text-[10px] font-semibold text-muted-foreground ml-1">USD</span>
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-0.5">—</p>
+              )}
+            </div>
+            {timeline.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="min-h-9 px-2 text-[11px] font-semibold text-primary hover:underline shrink-0"
+              >
+                {expanded ? "Kache" : "Detay"}
+              </button>
             )}
           </div>
 
-          <p className="text-[10px] text-muted-foreground">
-            Kreye: {fmtDt(d.createdAt)}
-          </p>
-        </div>
+          <div className="flex items-center gap-1.5 text-[12px] min-w-0">
+            <MapPin className="h-3 w-3 text-blue-500 shrink-0" />
+            <span className="font-semibold text-foreground truncate">{d.pickupCity ?? "?"}</span>
+            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+            <Flag className="h-3 w-3 text-emerald-500 shrink-0" />
+            <span className="font-semibold text-foreground truncate">{d.deliveryCity ?? "?"}</span>
+          </div>
 
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          {d.driverEarnings != null && d.driverEarnings > 0 ? (
-            <>
-              <p className="font-black text-base text-emerald-600">+${d.driverEarnings.toFixed(2)}</p>
-              <p className="text-[10px] text-muted-foreground">ou (80%)</p>
-              {platformFee != null && (
-                <p className="text-[10px] text-orange-500">-${platformFee.toFixed(2)} platfòm</p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-muted-foreground">—</p>
-          )}
-          {timeline.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setExpanded(v => !v)}
-              className="text-[10px] text-primary underline mt-1"
-            >
-              {expanded ? "Kache" : "Istwa"}
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+            {d.distanceKm != null && (
+              <span className="font-bold text-foreground bg-muted/60 px-1.5 py-0.5 rounded-md tabular-nums">
+                {d.distanceKm.toFixed(1)} km
+              </span>
+            )}
+            {platformFee != null && platformFee > 0 && (
+              <span className="text-orange-600">-${platformFee.toFixed(2)} platfòm</span>
+            )}
+            <span>{fmtDt(d.createdAt)}</span>
+          </div>
         </div>
       </div>
 
-      {/* Timeline */}
       {expanded && timeline.length > 0 && (
-        <div className="px-3.5 pb-3.5 border-t border-border/50 pt-3 space-y-0">
+        <div className="px-3 pb-3 border-t border-border/50 pt-2.5 space-y-0">
           {timeline.map((step, i) => {
             const Icon = step.icon;
             const isLast = i === timeline.length - 1;
             return (
-              <div key={step.key} className="flex gap-3">
-                {/* Vertical line */}
+              <div key={step.key} className="flex gap-2.5">
                 <div className="flex flex-col items-center">
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                     step.key === "delivered" ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40" :
@@ -886,13 +889,13 @@ function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
                   </div>
                   {!isLast && <div className="w-px flex-1 bg-border my-0.5" />}
                 </div>
-                <div className={`min-w-0 ${isLast ? "pb-0" : "pb-2.5"}`}>
-                  <p className="text-xs font-bold text-foreground">{step.label}</p>
+                <div className={`min-w-0 ${isLast ? "pb-0" : "pb-2"}`}>
+                  <p className="text-[12px] font-bold text-foreground">{step.label}</p>
                   <p className="text-[10px] text-muted-foreground">{fmtDt(step.ts)}</p>
                   {step.loc && (
-                    <p className="text-[10px] text-primary mt-0.5 flex items-center gap-1">
-                      <MapPin className="h-2.5 w-2.5 shrink-0" />
-                      {step.loc}
+                    <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1 truncate">
+                      <MapPin className="h-2.5 w-2.5 shrink-0 text-primary" />
+                      <span className="truncate">{step.loc}</span>
                     </p>
                   )}
                 </div>
@@ -901,6 +904,6 @@ function DeliveryCard({ delivery: d }: { delivery: DeliveryHistoryItem }) {
           })}
         </div>
       )}
-    </div>
+    </article>
   );
 }

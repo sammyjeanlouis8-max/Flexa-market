@@ -64,7 +64,7 @@ export default {
     settings: "Ajustes",
     videos: "Videos",
     videosSection: "Videos promocionales",
-    myBoosts: "⚡ Mis promociones activas",
+    myBoosts: "Mis promociones activas",
     promoAccount: "Cuenta promocional",
     promoBalanceAvail: "Saldo promocional disponible",
     loanApply: "Solicitar préstamo",

@@ -1859,17 +1859,29 @@ export default function Admin() {
 
   const handleBan = (id: number) => {
     if (!confirm(t("admin.confirmBan"))) return;
+    const reason = window.prompt("Ban reason (required for audit):", "");
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      toast({ title: "Ban reason required (min 3 characters)", variant: "destructive" });
+      return;
+    }
     act(`ban-${id}`, async () => {
-      await adminFetch(`/api/admin/users/${id}/ban`);
-      toast({ title: "🚫 Itilizatè a sipande avèk siksè." });
+      await adminFetch(`/api/admin/users/${id}/ban`, "POST", { reason: reason.trim() });
+      toast({ title: "User suspended successfully." });
     });
   };
 
   const handleUnban = (id: number) => {
     if (!confirm(t("admin.confirmUnban"))) return;
+    const reason = window.prompt("Unban reason (required for audit):", "");
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      toast({ title: "Unban reason required (min 3 characters)", variant: "destructive" });
+      return;
+    }
     act(`unban-${id}`, async () => {
-      await adminFetch(`/api/admin/users/${id}/unban`);
-      toast({ title: "✅ Kont itilizatè a debloke avèk siksè." });
+      await adminFetch(`/api/admin/users/${id}/unban`, "POST", { reason: reason.trim() });
+      toast({ title: "User account reactivated successfully." });
     });
   };
 
@@ -2447,11 +2459,18 @@ export default function Admin() {
   const handleRefund = async () => {
     if (!refundTarget) return;
     const id = refundTarget.id;
-    const reason = refundReason;
+    const reason = refundReason.trim();
+    if (reason.length < 3) {
+      toast({ title: "Refund reason required (min 3 characters)", variant: "destructive" });
+      return;
+    }
     setRefundTarget(null); setRefundReason("");
     await act(`refund-${id}`, async () => {
-      await adminFetch(`/api/admin/payments/${id}/refund`, "POST", { reason });
-      toast({ title: "Refund issued" });
+      const result = await adminFetch(`/api/admin/payments/${id}/refund`, "POST", { reason });
+      toast({
+        title: result?.mode === "ledger_mark_only" ? "Ledger marked refunded" : "Refund recorded",
+        description: result?.warning ?? "Confirm the external payment-provider refund separately when required.",
+      });
       await loadPayments();
     });
   };
@@ -2589,17 +2608,25 @@ export default function Admin() {
       {/* Stats Grid */}
       {s && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
-          <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
-          <StatCard icon={Wifi} label="Online Kounye a" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
-          <StatCard icon={Package} label="Anons Aktif" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
-          {!isModerator && <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />}
-          {!isModerator && <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />}
+          <StatCard icon={Users} label="Registered users" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
+          <StatCard icon={Wifi} label="Online now" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
+          <StatCard icon={Package} label="Active products" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
+          <StatCard icon={ShieldAlert} label="Pending approvals" value={s.pendingProductApprovals ?? 0} color="bg-amber-600 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" alert onClick={() => { loadModerationQueue(); setAdminTab("moderation"); }} />
+          {!isModerator && <StatCard icon={Package} label="Total orders" value={s.totalOrders ?? 0} color="bg-blue-700 text-white" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => setAdminTab("orders")} />}
+          {!isModerator && <StatCard icon={Package} label="Pending orders" value={s.pendingOrders ?? 0} color="bg-orange-600 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setAdminTab("orders")} />}
+          {!isModerator && <StatCard icon={CheckCircle2} label="Completed orders" value={s.completedOrders ?? 0} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("orders")} />}
+          {!isModerator && can("finance") && <StatCard icon={DollarSign} label="Gross sales" value={Number(s.grossMarketplaceSales ?? 0).toFixed(0)} color="bg-slate-700 text-white" bg="bg-slate-50/60 dark:bg-slate-950/20" />}
+          {!isModerator && can("finance") && <StatCard icon={TrendingUp} label="Platform revenue" value={Number(s.platformRevenue ?? 0).toFixed(0)} color="bg-emerald-800 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => isSuperAdmin && (loadPlatformRevenue(), setAdminTab("revenue"))} />}
+          {!isModerator && <StatCard icon={RotateCcw} label="Refunded txs" value={s.refundedTransactions ?? 0} color="bg-rose-600 text-white" bg="bg-rose-50/60 dark:bg-rose-950/20" alert onClick={() => can("payments") && (loadPayments(), setAdminTab("payments"))} />}
+          {!isModerator && <StatCard icon={AlertTriangle} label="Active disputes" value={s.activeDisputes ?? 0} color="bg-red-700 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("returns")} />}
+          {!isModerator && <StatCard icon={Truck} label="Active deliveries" value={s.activeDeliveries ?? 0} color="bg-cyan-700 text-white" bg="bg-cyan-50/60 dark:bg-cyan-950/20" onClick={() => setAdminTab("deliveries")} />}
+          {!isModerator && <StatCard icon={Zap} label="Boosted" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />}
           <StatCard icon={AlertTriangle} label="Flagged" value={s.flaggedUsers ?? 0} color="bg-orange-600 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setAdminTab("flagged")} />
-          <StatCard icon={Flag} label="Rapò" value={s.pendingReports} color="bg-red-600 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("reports")} />
-          {!isModerator && <StatCard icon={Truck} label="Chofe Atant" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />}
-          {!isModerator && <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />}
-          {!isModerator && <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />}
-          {!isModerator && <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
+          <StatCard icon={Flag} label="Reports" value={s.pendingReports} color="bg-red-600 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("reports")} />
+          {!isModerator && <StatCard icon={Truck} label="Driver apps" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />}
+          {!isModerator && <StatCard icon={ShieldCheck} label="Agent apps" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />}
+          {can("loans") && <StatCard icon={Landmark} label="Pending loans" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />}
+          {!isModerator && <StatCard icon={Briefcase} label="Employer apps" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
           {!isModerator && <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
         </div>
       )}
@@ -3350,12 +3377,14 @@ export default function Admin() {
                 <span className="ml-1 bg-orange-500 text-white text-[9px] font-black rounded-full px-1 leading-none">{driverApps.filter((a: any) => a.status === "pending").length}</span>
               )}
             </TabsTrigger>
+            {can("loans") && (
             <TabsTrigger value="loans" className="text-xs relative" data-testid="tab-loans">
               <Landmark className="h-3 w-3 mr-1" />{t("adminBanner.tabLoanApps")}
               {loanAdminPending > 0 && (
                 <span className="ml-1 bg-emerald-600 text-white text-[9px] font-black rounded-full px-1 leading-none animate-pulse">{loanAdminPending}</span>
               )}
             </TabsTrigger>
+            )}
             <TabsTrigger value="employer-apps" className="text-xs relative" onClick={() => loadEmployerApps()} data-testid="tab-employer-apps">
               <Briefcase className="h-3 w-3 mr-1" />Anplwayè
               {employerApps.filter((a: any) => a.status === "pending").length > 0 && (
@@ -3379,9 +3408,9 @@ export default function Admin() {
             {isSuperAdmin && <TabsTrigger value="fees" className="text-xs font-bold text-blue-700 dark:text-blue-400" onClick={loadPlatformFees} data-testid="tab-fees"><DollarSign className="h-3 w-3 mr-1" />Taux & Frè</TabsTrigger>}
             {isSuperAdmin && <TabsTrigger value="views" className="text-xs" onClick={loadViewAnalytics} data-testid="tab-views"><Eye className="h-3 w-3 mr-1" />Vues</TabsTrigger>}
             <TabsTrigger value="logs" className="text-xs" onClick={() => loadLogs(buildLogsParams(logsDateRange, logsDateFrom, logsDateTo))}><Activity className="h-3 w-3 mr-1" />Log</TabsTrigger>
-            {isSuperAdmin && <TabsTrigger value="audit" className="text-xs font-bold text-red-600 dark:text-red-400" data-testid="tab-audit"><ShieldAlert className="h-3 w-3 mr-1" />Audit Trail</TabsTrigger>}
-            <TabsTrigger value="translation" className="text-xs" data-testid="tab-translation"><Globe className="h-3 w-3 mr-1" />Tradiksyon</TabsTrigger>
-            {isSuperAdmin && (
+            {can("audit") && <TabsTrigger value="audit" className="text-xs font-bold text-red-600 dark:text-red-400" data-testid="tab-audit"><ShieldAlert className="h-3 w-3 mr-1" />Audit Trail</TabsTrigger>}
+            {can("translation") && <TabsTrigger value="translation" className="text-xs" data-testid="tab-translation"><Globe className="h-3 w-3 mr-1" />Tradiksyon</TabsTrigger>}
+            {can("rechargeCards") && (
               <TabsTrigger value="recharge-cards" className="text-xs" onClick={loadRechargeCards} data-testid="tab-recharge-cards"><CreditCard className="h-3 w-3 mr-1" />Kart Rechaj</TabsTrigger>
             )}
             <TabsTrigger value="bnpl" className="text-xs" onClick={loadBnplAdmin} data-testid="tab-bnpl"><Banknote className="h-3 w-3 mr-1" />BNPL</TabsTrigger>
@@ -3596,13 +3625,13 @@ export default function Admin() {
                         {!u.isAdmin && !u.isSuperAdmin && u.isRestricted && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-emerald-600 border-emerald-300" onClick={() => handleUnrestrict(u.id, u.name)} disabled={actioning === `unrestrict-${u.id}`} title="Lift restriction"><RotateCcw className="h-3 w-3" /></Button>
                         )}
-                        {!isModerator && !u.isAdmin && !u.isSuperAdmin && !u.isBanned && (
+                        {can("bans") && !u.isAdmin && !u.isSuperAdmin && !u.isBanned && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-destructive border-destructive/30" onClick={() => handleBan(u.id)} disabled={actioning === `ban-${u.id}`} data-testid={`button-ban-user-${u.id}`} title="Ban user"><Ban className="h-3 w-3" /></Button>
                         )}
-                        {!isModerator && u.isBanned && (
+                        {can("bans") && u.isBanned && (
                           <Button variant="outline" size="sm" className="h-7 px-2 text-xs text-emerald-600 border-emerald-300 dark:border-emerald-700" onClick={() => handleUnban(u.id)} disabled={actioning === `unban-${u.id}`} data-testid={`button-unban-inline-${u.id}`} title="Unban user"><RotateCcw className="h-3 w-3" /></Button>
                         )}
-                        {!isModerator && !u.isSuperAdmin && (
+                        {can("bans") && !u.isSuperAdmin && (
                           <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} disabled={actioning === `del-${u.id}`} data-testid={`button-delete-user-${u.id}`}><Trash2 className="h-3 w-3" /></Button>
                         )}
                       </div>
@@ -3657,7 +3686,7 @@ export default function Admin() {
                     </div>
                     <div className="flex flex-col gap-1.5 flex-shrink-0">
                       {!isModerator && <Button size="sm" variant="outline" className="h-7 text-xs border-blue-300 text-blue-700" onClick={() => loadSecurity(u)} data-testid={`button-security-flagged-${u.id}`}><ShieldAlert className="h-3 w-3 mr-1" />Security</Button>}
-                      {!isModerator && <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleBan(u.id)} disabled={!!actioning} data-testid={`button-ban-flagged-${u.id}`}><Ban className="h-3 w-3 mr-1" />Ban</Button>}
+                      {can("bans") && <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => handleBan(u.id)} disabled={!!actioning} data-testid={`button-ban-flagged-${u.id}`}><Ban className="h-3 w-3 mr-1" />Ban</Button>}
                       {isModerator && !u.isRestricted && <Button size="sm" variant="outline" className="h-7 text-xs border-amber-400 text-amber-700" onClick={() => setRestrictTarget({ id: u.id, name: u.name })} disabled={!!actioning}><ShieldAlert className="h-3 w-3 mr-1" />Restrenn</Button>}
                       <Button size="sm" variant="outline" className="h-7 text-xs border-green-400 text-green-700 hover:bg-green-50" onClick={() => handleUnflag(u.id)} disabled={!!actioning} data-testid={`button-clear-flagged-${u.id}`}><CheckCircle2 className="h-3 w-3 mr-1" />Clear</Button>
                       {!isModerator && <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} disabled={!!actioning} data-testid={`button-delete-flagged-${u.id}`}><Trash2 className="h-3 w-3 mr-1" />Delete</Button>}
@@ -3698,8 +3727,8 @@ export default function Admin() {
                       <td className="px-4 py-2.5 hidden md:table-cell"><p className="text-xs text-muted-foreground">{u.email}</p><p className="text-xs font-mono text-muted-foreground">{u.phone ?? "—"}</p></td>
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-300 dark:border-emerald-700" onClick={() => handleUnban(u.id)} disabled={actioning === `unban-${u.id}`} data-testid={`button-unban-${u.id}`} title="Deblokel kont lan"><RotateCcw className="h-3 w-3 mr-1" />Deblokel</Button>
-                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} data-testid={`button-delete-banned-${u.id}`}><Trash2 className="h-3 w-3" /></Button>
+                          {can("bans") && <Button size="sm" variant="outline" className="h-7 text-xs text-emerald-600 border-emerald-300 dark:border-emerald-700" onClick={() => handleUnban(u.id)} disabled={actioning === `unban-${u.id}`} data-testid={`button-unban-${u.id}`} title="Reactivate account"><RotateCcw className="h-3 w-3 mr-1" />Reactivate</Button>}
+                          {can("bans") && <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setDeleteTarget({ id: u.id, name: u.name, type: "user" })} data-testid={`button-delete-banned-${u.id}`}><Trash2 className="h-3 w-3" /></Button>}
                         </div>
                       </td>
                     </tr>
@@ -8127,9 +8156,11 @@ export default function Admin() {
             ── Demand Anje Otorizé (Authorized Agent Applications) ──
         ══════════════════════════════════════════════════════════════ */}
         {/* ── Employer Verification Applications ── */}
+        {can("loans") && (
         <TabsContent value="loans">
           <AdminLoanPanel />
         </TabsContent>
+        )}
 
         <TabsContent value="flex-card">
           <AdminFlexCardPanel />
@@ -8378,18 +8409,21 @@ export default function Admin() {
         </TabsContent>
 
         {/* ── Enterprise Audit Trail ── */}
-        {isSuperAdmin && (
+        {can("audit") && (
           <TabsContent value="audit">
             <AdminAuditPanel />
           </TabsContent>
         )}
 
         {/* ── AI Translation Management ── */}
+        {can("translation") && (
         <TabsContent value="translation">
           <AdminTranslationPanel />
         </TabsContent>
+        )}
 
         {/* ── Kart Rechaj (Recharge Cards) ── */}
+        {can("rechargeCards") && (
         <TabsContent value="recharge-cards">
           <div className="space-y-6">
             {/* Generate Form */}
@@ -8482,6 +8516,7 @@ export default function Admin() {
             </div>
           </div>
         </TabsContent>
+        )}
 
         {/* ── BNPL Admin Panel ── */}
         <TabsContent value="bnpl">
@@ -9162,13 +9197,14 @@ export default function Admin() {
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5 text-blue-600" />Issue Refund</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Refund <strong className="text-foreground">{refundTarget?.currency} {refundTarget && Number(refundTarget.amount).toFixed(2)}</strong> to <strong className="text-foreground">{refundTarget?.user?.name ?? "user"}</strong>?
-            {refundTarget?.type === "boost" && refundTarget?.listingId && <span className="block mt-1 text-xs">The associated boost will be deactivated.</span>}
+            Mark <strong className="text-foreground">{refundTarget?.currency} {refundTarget && Number(refundTarget.amount).toFixed(2)}</strong> as refunded for <strong className="text-foreground">{refundTarget?.user?.name ?? "user"}</strong>?
+            <span className="block mt-1 text-xs text-amber-700 dark:text-amber-400">This updates the ledger only. It does not move money at Stripe/MonCash. Confirm the provider refund separately.</span>
+            {refundTarget?.type === "boost" && refundTarget?.listingId && <span className="block mt-1 text-xs">The associated boost will be deactivated if no other active boost remains.</span>}
           </p>
-          <Textarea placeholder="Reason (optional, included in audit log)" value={refundReason} onChange={e => setRefundReason(e.target.value)} className="text-sm mt-2" rows={3} data-testid="input-refund-reason" />
+          <Textarea placeholder="Reason required (audit log)" value={refundReason} onChange={e => setRefundReason(e.target.value)} className="text-sm mt-2" rows={3} data-testid="input-refund-reason" />
           <DialogFooter className="gap-2 mt-2">
             <Button variant="outline" onClick={() => setRefundTarget(null)}>Cancel</Button>
-            <Button onClick={handleRefund} disabled={!!actioning} data-testid="button-confirm-refund"><RotateCcw className="h-4 w-4 mr-1" />Refund</Button>
+            <Button onClick={handleRefund} disabled={!!actioning || refundReason.trim().length < 3} data-testid="button-confirm-refund"><RotateCcw className="h-4 w-4 mr-1" />Mark refunded</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

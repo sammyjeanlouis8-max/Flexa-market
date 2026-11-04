@@ -1,6 +1,6 @@
 import { Router } from "express";
 import Anthropic from "@anthropic-ai/sdk";
-import { requireAuth } from "../middlewares/auth";
+import { requireAuth, requirePermission } from "../middlewares/auth";
 import { db, messagesTable, usersTable, platformSettingsTable, conversationsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 
@@ -150,8 +150,7 @@ router.patch("/auth/translate-preference", requireAuth, async (req, res): Promis
 });
 
 /** GET /api/admin/translation-settings — enabled flag + usage stats */
-router.get("/admin/translation-settings", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Admin required" }); return; }
+router.get("/admin/translation-settings", requirePermission("translation"), async (req, res): Promise<void> => {
   const enabled = await isTranslationEnabled();
   const stats = await db.execute(sql`
     SELECT
@@ -165,8 +164,7 @@ router.get("/admin/translation-settings", requireAuth, async (req, res): Promise
 });
 
 /** PATCH /api/admin/translation-settings — enable or disable translation globally */
-router.patch("/admin/translation-settings", requireAuth, async (req, res): Promise<void> => {
-  if (!req.user?.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Admin required" }); return; }
+router.patch("/admin/translation-settings", requirePermission("translation"), async (req, res): Promise<void> => {
   const enabled = !!req.body?.enabled;
   await db.execute(sql`
     INSERT INTO platform_settings (key, value, updated_at)

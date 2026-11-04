@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { db, adminAuditLogsTable, usersTable } from "@workspace/db";
 import { eq, and, or, desc, like, gte, lte, ilike, sql } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requirePermission } from "../middlewares/auth";
 
 const router = Router();
 
 // ── GET /api/admin/audit-logs — paginated, filterable audit log ──────────────
-router.get("/admin/audit-logs", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/audit-logs", requirePermission("audit"), async (req, res): Promise<void> => {
   const page      = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit     = Math.min(100, parseInt(req.query.limit as string) || 50);
   const offset    = (page - 1) * limit;
@@ -60,7 +60,7 @@ router.get("/admin/audit-logs", requireAuth, requireAdmin, async (req, res): Pro
 });
 
 // ── GET /api/admin/audit-logs/:auditId — single audit entry detail ───────────
-router.get("/admin/audit-logs/:auditId", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/audit-logs/:auditId", requirePermission("audit"), async (req, res): Promise<void> => {
   const auditId = String(req.params.auditId);
   const [log] = await db.select().from(adminAuditLogsTable)
     .where(or(
@@ -101,7 +101,7 @@ router.get("/admin/audit-logs/:auditId", requireAuth, requireAdmin, async (req, 
 });
 
 // ── PATCH /api/admin/audit-logs/:id/flag — flag a suspicious entry ───────────
-router.patch("/admin/audit-logs/:id/flag", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.patch("/admin/audit-logs/:id/flag", requirePermission("audit"), async (req, res): Promise<void> => {
   const id = parseInt(String(req.params.id), 10);
   const { flagReason } = req.body;
 
@@ -114,7 +114,7 @@ router.patch("/admin/audit-logs/:id/flag", requireAuth, requireAdmin, async (req
 });
 
 // ── GET /api/admin/audit-stats — quick stats for the dashboard ───────────────
-router.get("/admin/audit-stats", requireAuth, requireAdmin, async (req, res): Promise<void> => {
+router.get("/admin/audit-stats", requirePermission("audit"), async (req, res): Promise<void> => {
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const [total, flagged, highRisk, last24h] = await Promise.all([

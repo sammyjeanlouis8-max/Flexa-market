@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
+import { requireAdmin, requireSuperAdmin, requireRole, requirePermission, getRole, getOnlineUserCount } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendEmailBatch, sendEmail } from "../lib/email";
@@ -11,6 +11,7 @@ import { accountRestrictedEmail, broadcastEmail } from "../lib/emailTemplates";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
 import { SCOPE_OPTIONS, userInAdminScope } from "../lib/adminScope";
 import { hasUsableListingImage } from "../lib/listingMedia";
+import { permissionMapForRole } from "../lib/adminPermissions";
 
 const router = Router();
 
@@ -217,6 +218,7 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     [pendingReports], [flaggedUsers], [bannedUsers], [adminUsers],
     revenueResult,
     [activeSubscriptions], [graceSubscriptions],
+    [pendingProductApprovals],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable).where(userWhere()),
     db.select({ count: count() }).from(listingsTable).where(listingWhere()),
@@ -234,12 +236,14 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     db.select({ total: sql<number>`COALESCE(SUM(price), 0)` }).from(boostsTable),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "active")),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "grace_period")),
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(eq(listingsTable.moderationStatus, "pending"))),
   ]);
 
   const safeStats = {
     totalUsers: Number(totalUsers.count),
     totalListings: Number(totalListings.count),
     activeListings: Number(activeListings.count),
+    pendingProductApprovals: Number(pendingProductApprovals.count),
     pendingReports: Number(pendingReports.count),
     flaggedUsers: Number(flaggedUsers.count),
     bannedUsers: Number(bannedUsers.count),
@@ -253,6 +257,27 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     res.json(safeStats);
     return;
   }
+
+  // Operational order / refund metrics — real aggregates only (never invent figures).
+  const orderAgg = await db.execute(sql`
+    SELECT
+      COUNT(*) FILTER (WHERE type = 'purchase')::int AS total_orders,
+      COUNT(*) FILTER (WHERE type = 'purchase' AND order_status IN ('pending', 'ready_to_ship', 'waiting'))::int AS pending_orders,
+      COUNT(*) FILTER (WHERE type = 'purchase' AND order_status IN ('completed', 'delivered'))::int AS completed_orders,
+      COUNT(*) FILTER (WHERE type = 'purchase' AND order_status = 'cancelled')::int AS cancelled_orders,
+      COALESCE(SUM(amount) FILTER (WHERE type = 'purchase' AND payment_status = 'completed'), 0)::float AS gross_sales,
+      COALESCE(SUM(commission_amount) FILTER (WHERE type = 'purchase' AND payment_status = 'completed'), 0)::float AS platform_revenue,
+      COUNT(*) FILTER (WHERE payment_status = 'refunded')::int AS refunded_count,
+      COUNT(*) FILTER (WHERE type = 'purchase' AND order_status IN ('disputed', 'return_requested'))::int AS active_disputes
+    FROM transactions
+  `);
+  const orderRow = ((orderAgg as any).rows?.[0] ?? {}) as Record<string, number>;
+
+  const [activeDeliveries] = await db
+    .select({ count: count() })
+    .from(deliveriesTable)
+    .where(sql`${deliveriesTable.status} NOT IN ('delivered', 'cancelled', 'failed')`);
+
   res.json({
     ...safeStats,
     onlineUsers: getOnlineUserCount(),
@@ -263,6 +288,15 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     totalRevenue: Number(revenueResult[0]?.total ?? 0),
     activeSubscriptions: Number(activeSubscriptions.count),
     graceSubscriptions: Number(graceSubscriptions.count),
+    totalOrders: Number(orderRow.total_orders ?? 0),
+    pendingOrders: Number(orderRow.pending_orders ?? 0),
+    completedOrders: Number(orderRow.completed_orders ?? 0),
+    cancelledOrders: Number(orderRow.cancelled_orders ?? 0),
+    grossMarketplaceSales: Number(orderRow.gross_sales ?? 0),
+    platformRevenue: Number(orderRow.platform_revenue ?? 0),
+    refundedTransactions: Number(orderRow.refunded_count ?? 0),
+    activeDisputes: Number(orderRow.active_disputes ?? 0),
+    activeDeliveries: Number(activeDeliveries.count),
   });
 });
 
@@ -859,30 +893,60 @@ router.post("/admin/users/:id/untrust", requireAdmin, async (req, res): Promise<
   res.json({ message: "Trusted status removed" });
 });
 
-router.post("/admin/users/:id/ban", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/ban", requirePermission("bans"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const reasonText = String((req.body as { reason?: string })?.reason ?? "").trim();
+  if (reasonText.length < 3) {
+    res.status(400).json({ error: "A ban reason is required (min 3 characters)" }); return;
+  }
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
-  if (target.isSuperAdmin) { res.status(403).json({ error: "Cannot ban a Super Admin" }); return; }
-  if (target.isAdmin && !req.user?.isSuperAdmin) { res.status(403).json({ error: "Only Super Admins can ban admins" }); return; }
+  if (getRole(target) === "superadmin" || target.isSuperAdmin) {
+    res.status(403).json({ error: "Cannot ban a Super Admin" }); return;
+  }
+  if ((target.isAdmin || getRole(target) === "admin") && getRole(req.user) !== "superadmin") {
+    res.status(403).json({ error: "Only Super Admins can ban admins" }); return;
+  }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
   await db.update(usersTable).set({ isBanned: true, isFlagged: false }).where(eq(usersTable.id, id));
   await db.update(listingsTable).set({ status: "removed" }).where(and(eq(listingsTable.sellerId, id), eq(listingsTable.status, "available")));
-  await log(req.userId!, "ban_user", "user", id, `Banned user: ${target.name} (${target.email})`);
-  await logAdminAction(req, { actionType: "user_ban", actionCategory: "user", description: `Bann itilizatè: ${target.name} (${target.email})`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "critical" });
+  await log(req.userId!, "ban_user", "user", id, `Banned user: ${target.name} (${target.email}) — ${reasonText}`);
+  await logAdminAction(req, {
+    actionType: "user_ban",
+    actionCategory: "user",
+    description: `Banned user: ${target.name} (${target.email}) — ${reasonText}`,
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    afterState: { isBanned: true, reason: reasonText },
+    riskLevel: "critical",
+  });
   res.json({ message: "User banned" });
 });
 
-router.post("/admin/users/:id/unban", requireAdmin, async (req, res): Promise<void> => {
+router.post("/admin/users/:id/unban", requirePermission("bans"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
+  const reasonText = String((req.body as { reason?: string })?.reason ?? "").trim();
+  if (reasonText.length < 3) {
+    res.status(400).json({ error: "An unban reason is required (min 3 characters)" }); return;
+  }
   const [target] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!target) { res.status(404).json({ error: "User not found" }); return; }
   const scopeErr = assertUserInScope(req.user!, target);
   if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
   await db.update(usersTable).set({ isBanned: false }).where(eq(usersTable.id, id));
-  await log(req.userId!, "unban_user", "user", id, `Unbanned user: ${target.name}`);
-  await logAdminAction(req, { actionType: "user_unban", actionCategory: "user", description: `Leve bann sou itilizatè: ${target.name}`, targetType: "user", targetId: id, targetName: target.name, riskLevel: "high" });
+  await log(req.userId!, "unban_user", "user", id, `Unbanned user: ${target.name} — ${reasonText}`);
+  await logAdminAction(req, {
+    actionType: "user_unban",
+    actionCategory: "user",
+    description: `Unbanned user: ${target.name} — ${reasonText}`,
+    targetType: "user",
+    targetId: id,
+    targetName: target.name,
+    afterState: { isBanned: false, reason: reasonText },
+    riskLevel: "high",
+  });
   res.json({ message: "User unbanned" });
 });
 
@@ -2142,16 +2206,36 @@ router.post("/admin/payments/:id/mark-verified", requireRole("admin"), async (re
   res.json({ ok: true });
 });
 
-router.post("/admin/payments/:id/refund", requireSuperAdmin, async (req, res): Promise<void> => {
+/**
+ * Manual ledger mark-refunded — does NOT move money at a payment provider.
+ * For Stripe money movement use /api/admin/stripe-transactions refund flows.
+ * Requires a non-empty reason for audit.
+ */
+router.post("/admin/payments/:id/refund", requirePermission("refunds"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const { reason } = (req.body ?? {}) as { reason?: string };
+  const { reason, paymentReference, evidenceUrl } = (req.body ?? {}) as {
+    reason?: string; paymentReference?: string; evidenceUrl?: string;
+  };
+  const reasonText = String(reason ?? "").trim();
+  if (reasonText.length < 3) {
+    res.status(400).json({ error: "A refund reason is required (min 3 characters)" }); return;
+  }
   const [tx] = await db.select().from(transactionsTable).where(eq(transactionsTable.id, id));
   if (!tx) { res.status(404).json({ error: "Transaction not found" }); return; }
   if (tx.paymentStatus === "refunded") { res.status(400).json({ error: "Already refunded" }); return; }
 
+  // Stripe-paid orders must use the Stripe refund ledger — never silent ledger marks.
+  if (tx.paymentMethod === "stripe" || tx.stripeCheckoutSessionId || tx.stripePaymentIntentId) {
+    res.status(400).json({
+      code: "USE_STRIPE_REFUND_FLOW",
+      error: "This payment was processed by Stripe. Use the Stripe refund center to return funds.",
+    });
+    return;
+  }
+
   await db.update(transactionsTable).set({
     paymentStatus: "refunded",
-    description: `${tx.description ?? ""} | REFUND: ${reason ?? "no reason provided"}`.trim(),
+    description: `${tx.description ?? ""} | MANUAL_REFUND_MARK: ${reasonText}${paymentReference ? ` | REF:${paymentReference}` : ""}${evidenceUrl ? ` | EVIDENCE:${evidenceUrl}` : ""}`.trim(),
   }).where(eq(transactionsTable.id, id));
 
   // If this transaction was for a boost, only deactivate the listing's boost flag if
@@ -2175,8 +2259,21 @@ router.post("/admin/payments/:id/refund", requireSuperAdmin, async (req, res): P
     userId: tx.userId, actorId: req.userId!, type: "payment_refunded",
     listingId: tx.listingId ?? null,
   });
-  await log(req.userId!, "refund_payment", "transaction", id, `Refunded tx #${id} (${tx.currency} ${tx.amount})${reason ? ` — ${reason}` : ""}`);
-  res.json({ ok: true });
+  await logAdminAction(req, {
+    actionType: "manual_refund_mark",
+    actionCategory: "fintech",
+    description: `Marked tx #${id} refunded in ledger only (${tx.currency} ${tx.amount}) — ${reasonText}`,
+    targetType: "transaction",
+    targetId: id,
+    afterState: { paymentStatus: "refunded", paymentReference: paymentReference ?? null, evidenceUrl: evidenceUrl ?? null },
+    riskLevel: "critical",
+  }).catch(() => {});
+  await log(req.userId!, "refund_payment", "transaction", id, `Ledger-marked refunded tx #${id} (${tx.currency} ${tx.amount}) — ${reasonText}`);
+  res.json({
+    ok: true,
+    mode: "ledger_mark_only",
+    warning: "No payment-provider refund was executed. Confirm the external refund separately.",
+  });
 });
 
 // ─── Admin Audit Trail (super-admin only) ────────────────────────────────────
@@ -2338,20 +2435,8 @@ router.get("/admin/me", requireRole("support"), async (req, res): Promise<void> 
     scopeCountries: parsedCountries.length > 0 ? parsedCountries : null,
     scopeDepartment: admin.adminScopeDepartment ?? null,
     scopeCity: admin.adminScopeCity ?? null,
-    permissions: {
-      users: role !== "user",
-      bans: role === "moderator" || role === "admin" || role === "superadmin",
-      moderation: role === "moderator" || role === "admin" || role === "superadmin",
-      listings: role === "moderator" || role === "admin" || role === "superadmin",
-      payments: role === "admin" || role === "superadmin",
-      refunds: role === "superadmin",
-      boosts: role === "admin" || role === "superadmin",
-      adminTeam: role === "superadmin",
-      resetPasswords: role === "superadmin",
-      logs: role === "admin" || role === "superadmin",
-      reports: role !== "user",
-      setScope: role === "superadmin",
-    },
+    // Source of truth: artifacts/api-server/src/lib/adminPermissions.ts
+    permissions: permissionMapForRole(role),
   });
 });
 

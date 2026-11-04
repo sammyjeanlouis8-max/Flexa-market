@@ -1137,12 +1137,14 @@ export default function ListingDetail() {
   };
 
   const handleConfirmUsdt = () => {
-    const hash = usdtTxHash.trim();
-    if (hash.length < 10) {
-      toast({ title: "Enter a valid USDT transaction hash" });
-      return;
-    }
-    submitPurchase("usdt", hash);
+    // Honor-system USDT completion is disabled — payment must be verified server-side.
+    toast({
+      title: t("payment.usdtUnavailableTitle", { defaultValue: "USDT checkout unavailable" }),
+      description: t("payment.usdtUnavailableDesc", {
+        defaultValue: "Use Flexa wallet or Stripe card checkout. Manual USDT confirmation is disabled for security.",
+      }),
+      variant: "destructive",
+    });
   };
 
   const handleWalletPayment = async () => {
@@ -1162,15 +1164,16 @@ export default function ListingDetail() {
     setWalletPayLoading(false);
   };
 
-  // MonCash / NatCash buyers send the funds outside the app and confirm
-  // here. We accept an optional transaction id; when blank we synthesise
-  // a server-side reference so the seller still has something to track.
-  const handleConfirmMobileMoney = (method: "moncash" | "natcash") => {
-    const trimmed = mobileMoneyTxId.trim();
-    const ref = trimmed.length > 0
-      ? `${method.toUpperCase()}-${trimmed}`
-      : `${method.toUpperCase()}-${Date.now()}`;
-    submitPurchase(method, ref);
+  // MonCash / NatCash product buys via honor-system confirmation are disabled.
+  // Wallet top-up MonCash remains on the wallet rails; listing purchase must be verified.
+  const handleConfirmMobileMoney = (_method: "moncash" | "natcash") => {
+    toast({
+      title: t("payment.mobileMoneyUnavailableTitle", { defaultValue: "Mobile money checkout unavailable" }),
+      description: t("payment.mobileMoneyUnavailableDesc", {
+        defaultValue: "Use Flexa wallet (after topping up) or Stripe card checkout.",
+      }),
+      variant: "destructive",
+    });
   };
 
   const isFav = (listing as any).isFavorited;
@@ -1440,26 +1443,23 @@ export default function ListingDetail() {
         <div className="px-4 py-4 space-y-2.5">
           <h1 className="text-base font-bold text-foreground leading-snug">{listing.title}</h1>
 
-          {/* Price row: strikethrough → DERNIER JOUR badge → current price */}
+          {/* Price — real listing price only (no fake strikethrough / invented discounts) */}
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-sm line-through text-muted-foreground">${(effectiveListingPriceUsd * 1.74).toFixed(2)}</span>
             {listing.isBoosted && (
-              <span className="text-[10px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded leading-none">{t("listing.lastDay")}</span>
+              <span className="text-[10px] font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded leading-none">{t("listing.boosted", { defaultValue: "Boosted" })}</span>
             )}
-            <span className="text-3xl font-black text-red-600">{formatPrice(listing.price, country, (listing as any).currency)}</span>
+            <span className="text-3xl font-bold text-foreground tabular-nums">{formatPrice(listing.price, country, (listing as any).currency)}</span>
           </div>
 
-          {/* Discount + stock badges */}
           <div className="flex gap-2 flex-wrap">
-            <span className="text-xs font-black bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-300 dark:border-orange-700 px-2 py-1 rounded">
-              74% {t("checkout.discount")}
-            </span>
-            {(listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 && (
-              <span className="text-xs font-black bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-800 px-2 py-1 rounded flex items-center gap-1">
+            {(listing as any).stockQuantity != null && (listing as any).stockQuantity <= 5 && (listing as any).stockQuantity > 0 && (
+              <span className="text-xs font-semibold bg-muted text-muted-foreground border border-border px-2 py-1 rounded flex items-center gap-1">
                 {t("checkout.almostGoneWithCount", { count: (listing as any).stockQuantity })}
               </span>
             )}
-            {listing.status === "sold" && <Badge variant="destructive" className="text-xs font-black">{t("checkout.soldBadge")}</Badge>}
+            {((listing as any).stockQuantity === 0 || listing.status === "sold") && (
+              <Badge variant="destructive" className="text-xs font-semibold">{t("checkout.soldBadge")}</Badge>
+            )}
           </div>
 
           {/* BNPL teaser */}
@@ -1834,14 +1834,14 @@ export default function ListingDetail() {
         {/* spacer so content clears the sticky buy bar — always rendered
             when the buy bar could appear so the layout never shifts when the
             buy dialog opens / closes (removing it caused the page to jump) */}
-        {!isOwner && listing.status === "available" && (
+        {!isOwner && listing.status === "available" && (listing as any).stockQuantity !== 0 && (
           <div className="h-[calc(6rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
         )}
 
       </div>
 
       {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
-      {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
+      {!isOwner && listing.status === "available" && (listing as any).stockQuantity !== 0 && !buyNowOpen && createPortal(
         <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-background border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.10)] flex items-center gap-2.5 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
 
           {/* Add to Cart */}

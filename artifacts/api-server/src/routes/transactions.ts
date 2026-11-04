@@ -33,6 +33,7 @@ import {
 
 import { dominicanOrderMode } from "../lib/dominicanFulfillment";
 import { cardPayment, requestCardCancellation } from "../lib/cardCancellation";
+import { deductWalletHybrid } from "./wallet";
 import { randomInt } from "node:crypto";
 import rateLimit from "express-rate-limit";
 
@@ -2751,37 +2752,84 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
   }
   const grandTotalFinal = Math.round((grandTotalWithDelivery + cartReferralFee) * 100) / 100;
 
-  // Check wallet — must cover product total + delivery fees + referral surcharge
-  const [wallet] = await db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
-    .from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
-  const available = Math.round(((wallet?.balanceUsd ?? 0) + (wallet?.promoBalance ?? 0)) * 100) / 100;
-  if (available < grandTotalFinal) {
+  // Validate quantities against stock before charging
+  for (const item of rawItems) {
+    const listing = listings.find(x => x.id === Number(item.listingId))!;
+    const qty = Math.max(1, Math.min(30, Math.floor(Number(item.quantity) || 1)));
+    const stock = listing.stockQuantity;
+    if (stock === null || stock === undefined) {
+      if (qty !== 1) {
+        res.status(400).json({ error: `"${listing.title}" only supports quantity 1` }); return;
+      }
+    } else if (qty > stock) {
+      res.status(409).json({ error: `"${listing.title}" only has ${stock} in stock` }); return;
+    }
+  }
+
+  // Idempotency — replay safe cart checkouts
+  const rawIdem =
+    (typeof req.headers["idempotency-key"] === "string" ? req.headers["idempotency-key"] : "") ||
+    (typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey : "");
+  const idemKey = rawIdem.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  if (idemKey) {
+    const existing = await db
+      .select({
+        id: transactionsTable.id,
+        sellerUserId: transactionsTable.sellerUserId,
+        amount: transactionsTable.amount,
+        deliveryFeeUsd: transactionsTable.deliveryFeeUsd,
+        listingId: transactionsTable.listingId,
+      })
+      .from(transactionsTable)
+      .where(and(
+        eq(transactionsTable.userId, userId),
+        sql`${transactionsTable.paymentRef} LIKE ${`CART-IDEM-${idemKey}-%`}`,
+      ));
+    if (existing.length > 0) {
+      const titleByListing = new Map(listings.map((l) => [l.id, l.title]));
+      res.json({
+        ok: true,
+        idempotent: true,
+        orders: existing.map((o) => ({
+          txId: o.id,
+          sellerId: o.sellerUserId,
+          amount: o.amount,
+          deliveryFee: o.deliveryFeeUsd ?? 0,
+          title: titleByListing.get(o.listingId!) ?? "",
+        })),
+        total: existing.reduce((s, o) => s + Number(o.amount ?? 0), 0),
+        deliveryTotal: existing.reduce((s, o) => s + Number(o.deliveryFeeUsd ?? 0), 0),
+        grandTotal: existing.reduce((s, o) => s + Number(o.amount ?? 0) + Number(o.deliveryFeeUsd ?? 0), 0),
+        refundedCount: 0,
+      });
+      return;
+    }
+  }
+
+  // Hybrid wallet debit (promo then real) with balance CAS — never go negative
+  const debit = await deductWalletHybrid(
+    userId,
+    grandTotalFinal,
+    `Cart — ${rawItems.length} item(s) — products $${grandTotal.toFixed(2)} + delivery $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + referral $${cartReferralFee.toFixed(2)}` : ""}`,
+    "purchase_debit",
+    userId,
+  );
+  if (!debit.ok) {
     res.status(402).json({
-      error: `Balans ensifizan. Ou bezwen $${grandTotalFinal.toFixed(2)} (atik $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}), ou gen $${available.toFixed(2)}`,
-    }); return;
+      error: `Insufficient balance. Need $${grandTotalFinal.toFixed(2)} (products $${grandTotal.toFixed(2)} + delivery $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + referral $${cartReferralFee.toFixed(2)}` : ""}). ${debit.error}`,
+      promoBalance: debit.promoBalance,
+      realBalance: debit.realBalance,
+    });
+    return;
   }
 
-  // Deduct wallet upfront — products + delivery + referral surcharge
   const now = new Date();
-  if (wallet) {
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${grandTotalFinal}`, updatedAt: now })
-      .where(eq(promoWalletTable.userId, userId));
-  } else {
-    await db.insert(promoWalletTable).values({ userId, balanceUsd: -grandTotalFinal });
-  }
-  await db.insert(walletTransactionsTable).values({
-    userId, type: "purchase", amountUsd: -grandTotalFinal,
-    paymentRef: `CART-${Date.now()}`,
-    note: `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`,
-  }).catch(() => {});
-
   const orders: { txId: number; sellerId: number; amount: number; deliveryFee: number; title: string }[] = [];
   let refundTotal = 0;
 
   for (const item of rawItems) {
     const listing = listings.find(x => x.id === Number(item.listingId))!;
-    const qty = Number(item.quantity) || 1;
+    const qty = Math.max(1, Math.min(30, Math.floor(Number(item.quantity) || 1)));
     const itemCurrency = (listing as any).currency ?? "USD";
     let itemPriceUsd = listing.price;
     if (itemCurrency === "HTG") itemPriceUsd = parseFloat((itemPriceUsd / cartDisplayRate).toFixed(2));
@@ -2789,24 +2837,47 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     const itemTotal = Math.round(itemPriceUsd * qty * 100) / 100;
     const listingCountry = listing.country ?? "Haiti";
     const autoReleaseDays = listingCountry === "Haiti" ? AUTO_RELEASE_DAYS_HAITI : AUTO_RELEASE_DAYS_OTHER;
+    const deliveryFeeEntry = itemDeliveryFees.find(d => d.listingId === listing.id);
+    const itemDeliveryFeeUsd = deliveryFeeEntry?.feeUsd ?? 0;
+    const hasStock = listing.stockQuantity !== null && listing.stockQuantity !== undefined;
 
-    // Mark listing sold (skip if already gone)
-    const [updated] = await db.update(listingsTable)
-      .set({ status: "sold" } as any)
-      .where(and(eq(listingsTable.id, listing.id), eq(listingsTable.status, "available")))
-      .returning({ id: listingsTable.id });
+    // Stock-aware conditional update (mirrors single-item purchase)
+    let updated: { id: number } | undefined;
+    if (!hasStock) {
+      const [row] = await db.update(listingsTable)
+        .set({ status: "sold" } as any)
+        .where(and(eq(listingsTable.id, listing.id), eq(listingsTable.status, "available")))
+        .returning({ id: listingsTable.id });
+      updated = row;
+    } else {
+      const [row] = await db.update(listingsTable)
+        .set({
+          stockQuantity: sql`GREATEST(0, ${listingsTable.stockQuantity} - ${qty})`,
+          status: sql`CASE WHEN ${listingsTable.stockQuantity} <= ${qty} THEN 'sold' ELSE 'available' END`,
+        } as any)
+        .where(and(
+          eq(listingsTable.id, listing.id),
+          eq(listingsTable.status, "available"),
+          sql`${listingsTable.stockQuantity} >= ${qty}`,
+        ))
+        .returning({ id: listingsTable.id });
+      updated = row;
+    }
 
     if (!updated) {
-      // Already sold — refund this item
-      refundTotal += itemTotal;
+      // Already sold / insufficient stock — refund product + this item's delivery fee
+      refundTotal += itemTotal + itemDeliveryFeeUsd;
       continue;
     }
 
     const commission = await quoteForListing(
       { sellerId: listing.sellerId, categoryId: listing.categoryId, price: itemTotal },
-      "wallet", null,
+      "wallet",
+      itemDeliveryFeeUsd || null,
     );
-    const paymentRef = `CART-${Date.now()}-${listing.id}`;
+    const paymentRef = idemKey
+      ? `CART-IDEM-${idemKey}-${listing.id}`
+      : `CART-${Date.now()}-${listing.id}`;
 
     const [txRow] = await db.insert(transactionsTable).values({
       userId,
@@ -2819,7 +2890,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       paymentMethod: "wallet",
       paymentStatus: "completed",
       paymentRef,
-      description: `Purchase of "${listing.title}" (panye)`,
+      description: `Purchase of "${listing.title}" (cart)${qty > 1 ? ` ×${qty}` : ""}`,
       shippingName: shippingName.trim(),
       shippingPhone: shippingPhone.trim(),
       shippingEmail: shippingEmail?.trim() ?? null,
@@ -2831,21 +2902,19 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       sellerEarnings: commission.sellerEarnings,
       buyerFeeRate: 0,
       buyerFeeAmount: 0,
-      buyerTotal: itemTotal,
+      buyerTotal: commission.buyerTotal,
       listingCurrency: listing.currency ?? "USD",
       listingPriceOriginal: listing.price,
+      deliveryFeeUsd: itemDeliveryFeeUsd > 0 ? itemDeliveryFeeUsd : null,
       deliveryMethod,
       deliveryType: "delivery",
       autoReleaseAt: new Date(now.getTime() + autoReleaseDays * 86400000),
       listingCountry,
     } as any).returning({ id: transactionsTable.id });
 
-    // Create delivery record for each item (one driver per item/seller city)
-    const deliveryFeeEntry = itemDeliveryFees.find(d => d.listingId === listing.id);
-    const itemDeliveryFeeUsd = deliveryFeeEntry?.feeUsd ?? 0;
     const [sellerUser] = await db.select({ location: usersTable.location, name: usersTable.name })
       .from(usersTable).where(eq(usersTable.id, listing.sellerId)).limit(1);
-    const pickupCity = deliveryFeeEntry?.pickupCity ?? sellerUser?.location ?? (listing as any).city ?? null;
+    const pickupCity = deliveryFeeEntry?.pickupCity ?? (listing as any).city ?? sellerUser?.location ?? null;
     await db.insert(deliveriesTable).values({
       transactionId: txRow.id,
       listingId: listing.id,
@@ -2858,13 +2927,12 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       deliveryAddress: [shippingStreet, shippingCity, shippingRegion].filter(Boolean).join(", ") || shippingCity.trim(),
       country: listingCountry,
       status: "waiting",
-      sellerNote: `Panye — ${listing.title}`,
+      sellerNote: `Cart — ${listing.title}`,
       currency: "USD",
       feeUsd: itemDeliveryFeeUsd,
       feeLocal: Math.round(itemDeliveryFeeUsd * cartDisplayRate),
     } as any).catch(() => {});
 
-    // Notify seller — DB record + urgent mobile push
     await db.insert(notificationsTable).values({
       userId: listing.sellerId,
       type: "new_order",
@@ -2874,13 +2942,13 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
       message: `You received a new cart order for "${listing.title}" — $${itemTotal.toFixed(2)} + delivery $${itemDeliveryFeeUsd.toFixed(2)}. Payment held in escrow.`,
     } as any).catch(() => {});
     void sendPushToUser(listing.sellerId, {
-      title: "🛍️ New Order Received!",
+      title: "New Order Received!",
       body: `Cart order for "${listing.title}" — $${itemTotal.toFixed(2)}. Get the package ready!`,
       url: `/orders/${txRow.id}`,
       tag: `new-order-cart-${txRow.id}`,
     });
     void sendNewOrderAlertsForSeller(listing.sellerId, {
-      title: "🛍️ New Order Received!",
+      title: "New Order Received!",
       body: `Cart order for "${listing.title}" — $${itemTotal.toFixed(2)}. Get the package ready!`,
       data: { url: `/orders/${txRow.id}` },
       sound: "default",
@@ -2892,7 +2960,7 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     orders.push({ txId: txRow.id, sellerId: listing.sellerId, amount: itemTotal, deliveryFee: itemDeliveryFeeUsd, title: listing.title });
   }
 
-  // Refund items that were already sold
+  // Refund items that raced to sold (product + delivery share)
   if (refundTotal > 0) {
     await db.update(promoWalletTable)
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundTotal}`, updatedAt: now })
@@ -2900,12 +2968,28 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     await db.insert(walletTransactionsTable).values({
       userId, type: "refund", amountUsd: refundTotal,
       paymentRef: `CART-REFUND-${Date.now()}`,
-      note: `Ranbousman — atik ki deja vann nan panye a`,
+      note: `Cart refund — items already sold / out of stock`,
+      status: "completed",
     }).catch(() => {});
   }
 
+  // If every item failed after debit, also refund referral surcharge
+  if (orders.length === 0 && cartReferralFee > 0) {
+    await db.update(promoWalletTable)
+      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${cartReferralFee}`, updatedAt: now })
+      .where(eq(promoWalletTable.userId, userId));
+    refundTotal += cartReferralFee;
+  }
+
   req.log.info({ userId, orders: orders.length, grandTotal, totalDeliveryFees, refundTotal }, "Cart checkout completed");
-  res.json({ ok: true, orders, total: grandTotal - refundTotal, deliveryTotal: totalDeliveryFees, grandTotal: grandTotalWithDelivery - refundTotal, refundedCount: refundTotal > 0 ? 1 : 0 });
+  res.json({
+    ok: true,
+    orders,
+    total: Math.max(0, grandTotal - Math.max(0, refundTotal - totalDeliveryFees)),
+    deliveryTotal: totalDeliveryFees,
+    grandTotal: Math.max(0, grandTotalFinal - refundTotal),
+    refundedCount: refundTotal > 0 ? 1 : 0,
+  });
 });
 
 export default router;

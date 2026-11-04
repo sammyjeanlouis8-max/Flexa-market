@@ -14,21 +14,6 @@ import { formatPrice } from "@/lib/currency";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
 /* ── Helpers ── */
-const fakeDiscount = (price: number) => {
-  const pct = [10, 15, 20, 25, 30, 35, 40, 45, 50, 52, 55][Math.abs(Math.floor(price)) % 11];
-  return { pct, original: parseFloat((price / (1 - pct / 100)).toFixed(2)) };
-};
-
-const PROMO_BADGES: Record<number, { label: string; color: string }> = {};
-const getBadge = (id: number) => {
-  const badges = [
-    { label: "VANT FLASH ⚡", color: "#f59e0b" },
-    { label: "GWO PROMO 🔥", color: "#ef4444" },
-    { label: "SÈLEKSYON MOMAN 🌟", color: "#8b5cf6" },
-  ];
-  if (!PROMO_BADGES[id]) PROMO_BADGES[id] = badges[id % badges.length];
-  return PROMO_BADGES[id];
-};
 
 /* ── Group cart items by seller ── */
 function groupBySeller(items: CartItem[]): { sellerId: number; items: CartItem[] }[] {
@@ -119,9 +104,17 @@ function CheckoutModal({
     setLoading(true);
     setError("");
     try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID().replace(/-/g, "")
+          : `c${Date.now()}${Math.random().toString(36).slice(2, 10)}`;
       const res = await fetch("/api/cart/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idempotencyKey,
+        },
         body: JSON.stringify({
           items: selectedItems.map(i => ({ listingId: i.listingId, quantity: i.quantity ?? 1 })),
           shippingName: name.trim(),
@@ -131,6 +124,7 @@ function CheckoutModal({
           shippingRegion: region.trim() || null,
           paymentMethod: "wallet",
           deliveryMethod: "motorcycle",
+          idempotencyKey,
         }),
       });
       const data = await res.json();
@@ -597,10 +591,8 @@ export default function Cart() {
 
                 {groupItems.map(item => {
                   const qty = item.quantity ?? 1;
-                  const img = item.image ?? `https://placehold.co/100x100/8b5cf6/white?text=${encodeURIComponent(item.title.slice(0, 2))}`;
+                  const img = item.image ?? `https://placehold.co/100x100/e2e8f0/64748b?text=${encodeURIComponent(item.title.slice(0, 2))}`;
                   const isSel = selected.has(item.listingId);
-                  const { pct, original } = fakeDiscount(item.price);
-                  const badge = getBadge(item.listingId);
 
                   return (
                     <div
@@ -639,30 +631,9 @@ export default function Cart() {
                           <p className="text-sm font-bold leading-tight line-clamp-2 pr-9" style={{ color: "#0f172a" }}>
                             {item.title}
                           </p>
-                          <div className="flex items-center gap-1 mt-1">
-                            <span className="text-[10px]" style={{ color: muted }}>{t("cart.variant")}</span>
-                            <ChevronDown className="h-2.5 w-2.5" style={{ color: muted }} />
-                          </div>
-                          <div className="mt-1.5">
-                            <span
-                              className="text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wide"
-                              style={{ background: `${badge.color}22`, color: badge.color, border: `1px solid ${badge.color}44` }}
-                            >
-                              {badge.label}
-                            </span>
-                          </div>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <span className="text-base font-black" style={{ color: purple }}>
+                            <span className="text-base font-bold tabular-nums" style={{ color: "#0f172a" }}>
                               {formatPrice(item.price, item.country, item.currency)}
-                            </span>
-                            <span className="text-xs line-through" style={{ color: muted }}>
-                              ${original.toFixed(2)}
-                            </span>
-                            <span
-                              className="text-[10px] font-black px-1.5 py-0.5 rounded-md"
-                              style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}
-                            >
-                              -{pct}%
                             </span>
                           </div>
                           <div className="flex items-center justify-between mt-2.5">

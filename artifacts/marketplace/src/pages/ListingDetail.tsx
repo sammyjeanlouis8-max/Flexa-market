@@ -1380,16 +1380,22 @@ export default function ListingDetail() {
           </>
         )}
         <span className="mx-1.5 text-muted-foreground">›</span>
-        <span className="text-foreground/80 truncate inline-block max-w-[40vw] align-bottom">{listing.title}</span>
+        <span className="text-foreground/80 truncate inline-block max-w-[40vw] lg:max-w-none align-bottom">{listing.title}</span>
       </nav>
 
+      {/* Desktop three-column product stage */}
+      <div
+        className="lg:max-w-7xl lg:mx-auto lg:px-4 lg:pt-5 lg:pb-2 lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(300px,1.15fr)_minmax(260px,320px)] lg:gap-6 lg:items-start"
+        data-testid="pdp-desktop-stage"
+      >
+
       {/* ══════════ HERO GALLERY — vertical thumbs + main stage ══════════ */}
-      <div className="relative bg-white" data-testid="pdp-gallery">
-        <div className="flex gap-2 px-2 pt-3 pb-1 md:px-4 md:pt-4">
+      <div className="relative bg-white lg:sticky lg:top-20 lg:self-start" data-testid="pdp-gallery">
+        <div className="flex gap-2 px-2 pt-3 pb-1 md:px-4 md:pt-4 lg:px-0 lg:pt-0">
           {/* Vertical thumbnail rail */}
           {totalMedia > 1 && (
             <div
-              className="flex flex-col gap-1.5 overflow-y-auto max-h-[min(52vh,380px)] md:max-h-[420px] pr-0.5 scrollbar-none shrink-0"
+              className="flex flex-col gap-1.5 overflow-y-auto max-h-[min(52vh,380px)] md:max-h-[420px] lg:max-h-[480px] pr-0.5 scrollbar-none shrink-0"
               aria-label="Image thumbnails"
             >
               {mediaItems.map((item, i) => renderThumb(item, i, "w-11 h-11 md:w-14 md:h-14"))}
@@ -1399,7 +1405,7 @@ export default function ListingDetail() {
           {/* Main media stage */}
           <div
             ref={heroRef}
-            className="relative flex-1 min-w-0 bg-muted/20 overflow-hidden aspect-square sm:aspect-[5/4] md:aspect-[4/3] max-h-[min(52vh,380px)] md:max-h-[420px] rounded-sm"
+            className="relative flex-1 min-w-0 bg-muted/20 overflow-hidden aspect-square sm:aspect-[5/4] md:aspect-[4/3] lg:aspect-square max-h-[min(52vh,380px)] md:max-h-[420px] lg:max-h-[480px] rounded-sm"
             style={{ touchAction: zoom > 1 ? "none" : "pan-y" }}
             onTouchStart={onHeroTouchStart}
             onTouchMove={onHeroTouchMove}
@@ -1542,64 +1548,12 @@ export default function ListingDetail() {
         )}
       </div>
 
-      {/* Safety actions — kept available, out of the hero overlay */}
-      {user && user.id !== listing.sellerId && (
-        <div className="flex items-center justify-end gap-3 px-4 py-1.5 text-[11px] border-b border-border/50 bg-muted/20">
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-destructive transition-colors"
-            disabled={blockLoading}
-            onClick={async () => {
-              setBlockLoading(true);
-              try {
-                const r = await fetch(`/api/users/${listing.sellerId}/block`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-                if (!r.ok) throw new Error();
-                queryClient.getQueryCache().getAll().forEach((q) => queryClient.setQueryData(q.queryKey, (d: any) => {
-                  if (Array.isArray(d)) return d.filter((x: any) => x?.sellerId !== listing.sellerId);
-                  if (d?.listings && Array.isArray(d.listings)) return { ...d, listings: d.listings.filter((x: any) => x?.sellerId !== listing.sellerId) };
-                  return d;
-                }));
-                setLocation("/");
-                await queryClient.invalidateQueries({ predicate: (q) => q.queryKey.some((x) => typeof x === "string" && x.toLowerCase().includes("listing")) });
-              } finally { setBlockLoading(false); }
-            }}
-          >
-            {blockLoading ? "Blocking…" : "Block user"}
-          </button>
-          <span className="text-border" aria-hidden>·</span>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-destructive transition-colors"
-            onClick={() => fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ targetType: "listing", targetId: listing.id, reason: "Inappropriate or abusive content" }) })}
-          >
-            Report listing
-          </button>
-        </div>
-      )}
-
-      {/* Listing video (non-boost) */}
-      {listingVideoUrl && (
-        <div className="mx-4 mt-2 rounded-xl overflow-hidden border border-border bg-black relative" data-testid="listing-video">
-          <video src={listingVideoUrl} controls playsInline className="w-full max-h-56 object-contain" preload="metadata" />
-          {isOwner && (
-            <button
-              onClick={() => setRemoveVideoConfirmOpen(true)}
-              className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors"
-              title={t("listing.removeVideo", { defaultValue: "Remove Video" })}
-              data-testid="button-remove-video"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ══════════ MAIN PRODUCT INFO ══════════ */}
-      <div className="pb-8">
+      {/* ══════════ CENTER: PRODUCT INFO ══════════ */}
+      <div className="min-w-0">
 
         {/* ── TITLE + RATING + PRICE ── */}
-        <div className="px-4 py-3 space-y-2.5 border-b border-border/60">
-          <h1 className="text-[17px] md:text-[20px] font-bold text-foreground leading-snug tracking-tight" data-testid="pdp-title">
+        <div className="px-4 py-3 space-y-2.5 border-b border-border/60 lg:border-0 lg:px-0 lg:pt-0">
+          <h1 className="text-[17px] md:text-[22px] lg:text-[24px] font-bold text-foreground leading-snug tracking-tight" data-testid="pdp-title">
             {listing.title}
           </h1>
 
@@ -1737,9 +1691,9 @@ export default function ListingDetail() {
           {promoError && <p className="text-xs text-red-500">{promoError}</p>}
         </div>
 
-        {/* ── QUANTITY + PRIMARY CTAs ── */}
+        {/* ── QUANTITY + PRIMARY CTAs (mobile / tablet) ── */}
         {!isOwner && listing.status === "available" && (
-          <div className="px-4 py-3 space-y-3 border-b border-border/60">
+          <div className="px-4 py-3 space-y-3 border-b border-border/60 lg:hidden">
             <label className="block">
               <span className="sr-only">{t("listing.quantity", { defaultValue: "Quantity" })}</span>
               <div className="relative">
@@ -1794,6 +1748,200 @@ export default function ListingDetail() {
             </div>
           </div>
         )}
+      </div>{/* end center column */}
+
+      {/* ══════════ RIGHT: DESKTOP PURCHASE PANEL ══════════ */}
+      <aside
+        className="hidden lg:block sticky top-20 self-start"
+        data-testid="pdp-purchase-panel"
+      >
+        <div className="rounded-xl border border-border bg-white shadow-sm p-4 space-y-3">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-[26px] font-bold tabular-nums">
+              {promoValidation?.valid
+                ? `$${promoValidation.finalPrice.toFixed(2)}`
+                : formatPrice(listing.price, country, (listing as any).currency)}
+            </span>
+            {promoValidation?.valid && promoValidation.discountAmount > 0 && (
+              <span className="text-sm line-through text-muted-foreground tabular-nums">
+                ${effectiveListingPriceUsd.toFixed(2)}
+              </span>
+            )}
+          </div>
+
+          {inStock ? (
+            <p className="text-[14px] font-bold text-[hsl(152,65%,28%)]">
+              {t("listing.inStock", { defaultValue: "In Stock" })}
+            </p>
+          ) : (
+            <p className="text-[14px] font-bold text-red-600">{t("checkout.soldBadge")}</p>
+          )}
+
+          <div className="flex items-start gap-2 text-[13px]">
+            <Truck className="h-4 w-4 mt-0.5 shrink-0" />
+            <p
+              className="leading-snug"
+              dangerouslySetInnerHTML={{
+                __html: t("listing.standardFreeShipping")
+                  .replace("FREE", `<strong class="text-[hsl(152,65%,28%)]">FREE</strong>`)
+                  .replace("GRATUIT", `<strong class="text-[hsl(152,65%,28%)]">GRATUIT</strong>`)
+                  .replace("GRATIS", `<strong class="text-[hsl(152,65%,28%)]">GRATIS</strong>`),
+              }}
+            />
+          </div>
+
+          {!isOwner && listing.status === "available" && (
+            <>
+              <label className="block">
+                <span className="text-[12px] font-semibold text-muted-foreground mb-1 block">
+                  {t("listing.quantity", { defaultValue: "Quantity" })}
+                </span>
+                <select
+                  value={buyQty}
+                  onChange={(e) => setBuyQty(Number(e.target.value))}
+                  disabled={!canPurchaseQty}
+                  className="w-full appearance-none h-10 rounded-lg bg-muted/60 border border-border px-3 text-[14px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#F97316]/40"
+                  data-testid="pdp-quantity-select-desktop"
+                >
+                  {Array.from({ length: Math.max(1, maxBuyQty) }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                onClick={handleAddToCartClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-add-to-cart-desktop"
+                className={cn(
+                  "w-full h-11 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 transition-all disabled:opacity-50",
+                  isInCart(id)
+                    ? "bg-[hsl(152,65%,22%)] text-white"
+                    : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground",
+                )}
+              >
+                <ShoppingCart className="h-4 w-4" />
+                {isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}
+              </button>
+              <button
+                type="button"
+                onClick={handleBuyNowClick}
+                disabled={!canPurchaseQty}
+                data-testid="button-buy-now-desktop"
+                className="w-full h-11 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] flex items-center justify-center transition-all disabled:opacity-50"
+              >
+                {t("buttons.buyNow")}
+              </button>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={handleFav}
+            className="w-full h-10 rounded-lg border border-border text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-muted/40 transition-colors"
+            data-testid="button-favorite-desktop"
+          >
+            <Heart className={cn("h-4 w-4", isFav && "fill-red-500 text-red-500")} />
+            {isFav ? t("listing.inWishlist", { defaultValue: "Saved" }) : t("listing.addToWishlist", { defaultValue: "Add to Wishlist" })}
+          </button>
+
+          {!isOwner && (
+            <Button
+              variant="outline"
+              className="w-full h-10"
+              onClick={handleChat}
+              disabled={createConv.isPending}
+              data-testid="button-chat-seller-desktop"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              {createConv.isPending ? t("buttons.openingChat") : t("buttons.messageSeller")}
+            </Button>
+          )}
+
+          <div className="pt-2 border-t border-border space-y-2">
+            <button
+              type="button"
+              onClick={() => setLocation(`/profile/${listing.sellerId}`)}
+              className="flex items-center gap-2 w-full text-left"
+            >
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={listing.sellerAvatar ?? undefined} />
+                <AvatarFallback className="bg-[hsl(152,65%,22%)] text-white text-sm font-bold">{listing.sellerName[0]}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold truncate">{listing.sellerName}</p>
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                  {listing.sellerRating.toFixed(1)}
+                </p>
+              </div>
+            </button>
+            {country && (
+              <p className="text-[12px] text-muted-foreground leading-snug">
+                {t("tr.returnDays", { count: getReturnDays(country) })} · {t("tr.escrow")}
+              </p>
+            )}
+          </div>
+        </div>
+      </aside>
+
+      </div>{/* end desktop three-column stage */}
+
+      {/* Safety actions */}
+      {user && user.id !== listing.sellerId && (
+        <div className="flex items-center justify-end gap-3 px-4 py-1.5 text-[11px] border-b border-border/50 bg-muted/20 lg:max-w-7xl lg:mx-auto">
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-destructive transition-colors"
+            disabled={blockLoading}
+            onClick={async () => {
+              setBlockLoading(true);
+              try {
+                const r = await fetch(`/api/users/${listing.sellerId}/block`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+                if (!r.ok) throw new Error();
+                queryClient.getQueryCache().getAll().forEach((q) => queryClient.setQueryData(q.queryKey, (d: any) => {
+                  if (Array.isArray(d)) return d.filter((x: any) => x?.sellerId !== listing.sellerId);
+                  if (d?.listings && Array.isArray(d.listings)) return { ...d, listings: d.listings.filter((x: any) => x?.sellerId !== listing.sellerId) };
+                  return d;
+                }));
+                setLocation("/");
+                await queryClient.invalidateQueries({ predicate: (q) => q.queryKey.some((x) => typeof x === "string" && x.toLowerCase().includes("listing")) });
+              } finally { setBlockLoading(false); }
+            }}
+          >
+            {blockLoading ? "Blocking…" : "Block user"}
+          </button>
+          <span className="text-border" aria-hidden>·</span>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-destructive transition-colors"
+            onClick={() => fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ targetType: "listing", targetId: listing.id, reason: "Inappropriate or abusive content" }) })}
+          >
+            Report listing
+          </button>
+        </div>
+      )}
+
+      {/* Listing video (non-boost) */}
+      {listingVideoUrl && (
+        <div className="mx-4 mt-2 lg:max-w-7xl lg:mx-auto lg:px-4 rounded-xl overflow-hidden border border-border bg-black relative" data-testid="listing-video">
+          <video src={listingVideoUrl} controls playsInline className="w-full max-h-56 lg:max-h-80 object-contain" preload="metadata" />
+          {isOwner && (
+            <button
+              onClick={() => setRemoveVideoConfirmOpen(true)}
+              className="absolute top-2 right-2 bg-black/70 hover:bg-red-600 text-white rounded-full p-1.5 transition-colors"
+              title={t("listing.removeVideo", { defaultValue: "Remove Video" })}
+              data-testid="button-remove-video"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ══════════ BELOW-FOLD SECTIONS ══════════ */}
+      <div className="pb-8 lg:max-w-7xl lg:mx-auto lg:px-4">
 
         {/* ── PDP TABS ── */}
         <div className="sticky top-14 md:top-16 z-30 bg-white border-b border-border" data-testid="pdp-tabs">
@@ -2149,14 +2297,14 @@ export default function ListingDetail() {
             when the buy bar could appear so the layout never shifts when the
             buy dialog opens / closes (removing it caused the page to jump) */}
         {!isOwner && listing.status === "available" && (
-          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))]" aria-hidden="true" />
+          <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
       {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
       {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
-        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))]">
+        <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
 
           {/* Add to Cart — Amazon yellow */}
           <button

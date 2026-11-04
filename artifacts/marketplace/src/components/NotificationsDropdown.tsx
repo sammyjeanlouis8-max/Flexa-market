@@ -277,7 +277,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
         <Button
           variant="ghost"
           size="icon"
-          className={cn("relative", light && "text-white hover:bg-white/10 hover:text-white md:text-foreground md:hover:bg-accent md:hover:text-foreground")}
+          className={cn("relative", light && "text-white hover:bg-white/10 hover:text-white")}
           data-testid="button-notifications"
         >
           <Bell className="h-5 w-5" />

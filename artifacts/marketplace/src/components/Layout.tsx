@@ -90,7 +90,7 @@ function CartIconButton({ light = false }: { light?: boolean }) {
         )}
         data-testid="cart-icon-button"
       >
-        <ShoppingCart className={cn("h-5 w-5", light ? "text-white md:text-foreground" : "text-foreground")} />
+        <ShoppingCart className={cn("h-5 w-5", light ? "text-white" : "text-foreground")} />
         {count > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#F97316] text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 leading-none">
             {count > 9 ? "9+" : count}
@@ -187,7 +187,7 @@ function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => v
 }
 
 // ─── Top search bar ───────────────────────────────────────────────────────────
-function HeaderSearch() {
+function HeaderSearch({ marketStyle = false }: { marketStyle?: boolean }) {
   const [, navigate] = useLocation();
   const { t } = useTranslation();
   const [q, setQ] = useState("");
@@ -196,6 +196,33 @@ function HeaderSearch() {
     e.preventDefault();
     navigate(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : "/search");
   };
+
+  if (marketStyle) {
+    return (
+      <form onSubmit={submit} className="flex-1 max-w-2xl flex gap-0 items-stretch">
+        <label className="sr-only">{t("nav.search")}</label>
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="search"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder={t("home.searchPlaceholder", { defaultValue: "Search for products, brands, and more..." })}
+            className="w-full h-10 bg-white text-foreground rounded-l-md rounded-r-none pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-[#F97316]/50"
+            data-testid="input-header-search"
+          />
+        </div>
+        <button
+          type="submit"
+          className="h-10 w-11 rounded-r-md bg-[#F97316] hover:bg-[#ea6a0c] text-white flex items-center justify-center shrink-0"
+          aria-label={t("buttons.search")}
+          data-testid="button-header-search"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="flex-1 max-w-xl">
@@ -949,7 +976,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
           className={cn(
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
             isMarketGreenHeader
-              ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white md:bg-card md:border-border md:text-foreground"
+              ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white"
               : "bg-card border-border",
           )}
         >
@@ -1003,25 +1030,25 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0 flex-1 md:flex-none">
                   <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-9 w-auto md:h-11" width="44" height="44" />
                   <div className="min-w-0">
-                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isMarketGreenHeader ? "text-white md:text-foreground" : "text-foreground")}>
+                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isMarketGreenHeader ? "text-white" : "text-foreground")}>
                       Flexa Market
                     </span>
-                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isMarketGreenHeader ? "text-white/80 md:text-muted-foreground" : "text-muted-foreground")}>
+                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isMarketGreenHeader ? "text-white/80" : "text-muted-foreground")}>
                       Buy · Sell · Delivery
                     </span>
                   </div>
                 </Link>
-                <div className="hidden md:block flex-1">
-                  <HeaderSearch />
+                <div className="hidden md:block flex-1 px-4">
+                  <HeaderSearch marketStyle={isMarketGreenHeader} />
                 </div>
               </>
             )}
 
-            {/* Account icon — mobile Amazon-style chrome */}
+            {/* Account icon */}
             <Link
               href={profileHref}
               className={cn(
-                "md:hidden shrink-0 p-2 rounded-xl transition-colors",
+                "shrink-0 p-2 rounded-xl transition-colors",
                 isMarketGreenHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-muted",
               )}
               aria-label={t("nav.account", { defaultValue: "Account" })}
@@ -1032,8 +1059,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             {user && <NotificationsDropdown light={isMarketGreenHeader} />}
             <CartIconButton light={isMarketGreenHeader} />
             <CommandPalette />
-            <LanguageSwitcher className="header-language-switcher shrink-0 hidden md:inline-flex" />
-            <div className="hidden md:block">
+            <LanguageSwitcher className={cn("header-language-switcher shrink-0 hidden md:inline-flex", isMarketGreenHeader && "text-white")} />
+            <div className={cn("hidden md:block", isMarketGreenHeader && "[&_button]:text-white [&_button:hover]:bg-white/10")}>
               {user ? <UserMenu onNavigate={handleMobileTab} /> : <GuestMenu />}
             </div>
           </div>

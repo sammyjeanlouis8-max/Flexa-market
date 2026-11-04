@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable } from "@workspace/db";
-import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable, siteDailyVisitsTable } from "@workspace/db";
+import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, like } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
@@ -211,12 +211,17 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     .from(usersTable)
     .where(userWhere());
 
+  const today = new Date().toISOString().slice(0, 10);
+  const monthPrefix = today.slice(0, 7); // YYYY-MM
+  const yearPrefix = today.slice(0, 4);  // YYYY
+
   const [
     [totalUsers], [totalListings], [activeListings],
     [boostedListings], [featuredListings], [totalBoosts],
     [pendingReports], [flaggedUsers], [bannedUsers], [adminUsers],
     revenueResult,
     [activeSubscriptions], [graceSubscriptions],
+    [visitsToday], [visitsMonth], [visitsYear],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable).where(userWhere()),
     db.select({ count: count() }).from(listingsTable).where(listingWhere()),
@@ -234,7 +239,22 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     db.select({ total: sql<number>`COALESCE(SUM(price), 0)` }).from(boostsTable),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "active")),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "grace_period")),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(eq(siteDailyVisitsTable.date, today)),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(like(siteDailyVisitsTable.date, `${monthPrefix}%`)),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(like(siteDailyVisitsTable.date, `${yearPrefix}%`)),
   ]);
+
+  const visitStats = {
+    visitsToday: Number(visitsToday?.total ?? 0),
+    visitsMonth: Number(visitsMonth?.total ?? 0),
+    visitsYear: Number(visitsYear?.total ?? 0),
+  };
 
   const safeStats = {
     totalUsers: Number(totalUsers.count),
@@ -255,6 +275,7 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
   }
   res.json({
     ...safeStats,
+    ...visitStats,
     onlineUsers: getOnlineUserCount(),
     boostedListings: Number(boostedListings.count),
     featuredListings: Number(featuredListings.count),

@@ -35,4 +35,4 @@ export function getWebsiteOrigin(): string {
 
 export const AUTH_TOKEN_STORAGE_KEY = "flexamarket_token";
 
-export const NATIVE_APP_PHASE = "0" as const;
+export const NATIVE_APP_PHASE = "1" as const;

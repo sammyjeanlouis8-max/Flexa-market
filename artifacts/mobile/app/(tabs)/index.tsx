@@ -1,152 +1,149 @@
 /**
- * Home — Phase 0 native foundation screen.
- * Verifies API connectivity; full marketplace feed arrives in Phase 1.
+ * Home — Phase 1 native marketplace feed (existing /api/listings).
  */
+import { useGetListings } from "@workspace/api-client-react";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { NativeScreen } from "@/components/NativeScreen";
-import { StatusCard } from "@/components/StatusCard";
+import { ListingCard } from "@/components/ListingCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import {
-  checkApiHealth,
-  isApiClientConfigured,
-  type ApiHealthResult,
-} from "@/lib/api-client";
-import {
-  getApiBaseUrl,
-  getApiOrigin,
-  NATIVE_APP_PHASE,
-} from "@/lib/config";
+import { NATIVE_APP_PHASE } from "@/lib/config";
 
 export default function HomeTab() {
   const colors = useColors();
-  const { user, token, isLoading: authLoading } = useAuth();
   const router = useRouter();
-  const [health, setHealth] = useState<ApiHealthResult | null>(null);
-  const [checking, setChecking] = useState(true);
+  const { user, token } = useAuth();
+  const { data, isLoading, isFetching, isError, error, refetch } = useGetListings(
+    { page: 1, limit: 40 },
+  );
 
-  const runHealthCheck = useCallback(async () => {
-    setChecking(true);
-    const result = await checkApiHealth();
-    setHealth(result);
-    setChecking(false);
-  }, []);
+  const listings = data?.listings ?? [];
 
-  useEffect(() => {
-    void runHealthCheck();
-  }, [runHealthCheck]);
-
-  const sessionValue = authLoading
-    ? "Ap chaje…"
-    : token
-      ? user?.name
-        ? `Konekte — ${user.name}`
-        : "Konekte (jeton aktif)"
-      : "Pa konekte";
+  const onRefresh = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
   return (
-    <NativeScreen
-      title="Flexa Market"
-      subtitle="Faz 0 — estrikti natif natal, navigasyon, ak koneksyon API."
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={["top", "left", "right"]}
     >
-      <StatusCard
-        label="Faz"
-        value={`Faz ${NATIVE_APP_PHASE}`}
-        detail="Expo Router aktif. WebView pa se UI prensipal ankò."
-        tone="ok"
-      />
-      <StatusCard
-        label="API client"
-        value={isApiClientConfigured() ? "Konfigire" : "Pokò"}
-        detail={`Origin: ${getApiOrigin()}`}
-        tone={isApiClientConfigured() ? "ok" : "warn"}
-      />
-      <StatusCard
-        label="Sèsyon"
-        value={sessionValue}
-        detail="JWT lokal (SecureStore). Pa gen chanjman auth backend."
-        tone={token ? "ok" : "neutral"}
-      />
-      <StatusCard
-        label="Sante API"
-        value={
-          checking
-            ? "Ap verifye…"
-            : health?.ok
-              ? `OK (${health.latencyMs} ms)`
-              : `Echèk${health?.status ? ` · HTTP ${health.status}` : ""}`
-        }
-        detail={
-          checking
-            ? `GET ${getApiBaseUrl()}/healthz`
-            : health?.ok
-              ? `GET ${getApiBaseUrl()}/healthz`
-              : health && !health.ok
-                ? health.error
-                : undefined
-        }
-        tone={checking ? "neutral" : health?.ok ? "ok" : "bad"}
-      />
-
-      <View style={styles.actions}>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.brand, { color: colors.foreground }]}>
+            Flexa Market
+          </Text>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
+            Faz {NATIVE_APP_PHASE} ·{" "}
+            {token
+              ? `Byenveni${user?.name ? `, ${user.name}` : ""}`
+              : "Envite"}
+          </Text>
+        </View>
         <Pressable
-          onPress={() => void runHealthCheck()}
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          disabled={checking}
+          onPress={() => router.push("/cart")}
+          style={[styles.iconBtn, { borderColor: colors.border }]}
         >
-          {checking ? (
-            <ActivityIndicator color="#0F172A" />
-          ) : (
-            <Text style={styles.buttonText}>Verifye API ankò</Text>
-          )}
-        </Pressable>
-
-        <Pressable
-          onPress={() =>
-            router.push({
-              pathname: "/website",
-              params: { url: getApiOrigin() },
-            })
-          }
-          style={[styles.buttonSecondary, { borderColor: colors.border }]}
-        >
-          <Text style={[styles.buttonSecondaryText, { color: colors.foreground }]}>
-            Louvri sit (konpatibilite tanporè)
+          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+            Panier
           </Text>
         </Pressable>
       </View>
 
-      <Text style={[styles.note, { color: colors.mutedForeground }]}>
-        Faz 1 ap ajoute ekran natif pou home feed, rechèch, ak listing. Sit web
-        pwodiksyon, main, ak DB pa modifye nan faz sa a.
-      </Text>
-    </NativeScreen>
+      {isLoading && listings.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={{ color: colors.mutedForeground, marginTop: 12 }}>
+            Ap chaje anons yo…
+          </Text>
+        </View>
+      ) : isError && listings.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+            Pa ka chaje anons yo
+          </Text>
+          <Text style={{ color: colors.mutedForeground, marginTop: 6 }}>
+            {error instanceof Error ? error.message : "Erè rezo"}
+          </Text>
+          <Pressable
+            onPress={() => void refetch()}
+            style={[styles.retry, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.retryText}>Eseye ankò</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <FlatList
+          data={listings}
+          keyExtractor={(item) => String(item.id)}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={isFetching && !isLoading}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <Text style={{ color: colors.mutedForeground, textAlign: "center" }}>
+              Pa gen anons pou kounye a.
+            </Text>
+          }
+          ListFooterComponent={
+            <View style={styles.footer}>
+              <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                {listings.length} / {data?.total ?? listings.length} anons
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => <ListingCard item={item} />}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  actions: { gap: 10, marginTop: 8 },
-  button: {
-    borderRadius: 12,
-    paddingVertical: 14,
+  safe: { flex: 1 },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    flexDirection: "row",
     alignItems: "center",
+    gap: 12,
   },
-  buttonText: { color: "#0F172A", fontWeight: "700", fontSize: 15 },
-  buttonSecondary: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
+  brand: { fontSize: 24, fontWeight: "700", letterSpacing: -0.3 },
+  iconBtn: {
     borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  buttonSecondaryText: { fontWeight: "600", fontSize: 14 },
-  note: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+  list: { paddingHorizontal: 12, paddingBottom: 24 },
+  row: { justifyContent: "space-between" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  retry: {
+    marginTop: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: "center",
+    minWidth: 140,
+  },
+  retryText: { color: "#0F172A", fontWeight: "700" },
+  footer: { alignItems: "center", paddingVertical: 16 },
 });

@@ -6,7 +6,6 @@ import { NativeScreen } from "@/components/NativeScreen";
 import { StatusCard } from "@/components/StatusCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { getWebsiteOrigin } from "@/lib/config";
 
 export default function ProfileTab() {
   const colors = useColors();
@@ -16,7 +15,7 @@ export default function ProfileTab() {
   return (
     <NativeScreen
       title="Pwofil"
-      subtitle="Jesyon sèsyon lokal. Login natif konplè ap vin pita — API auth pa chanje."
+      subtitle="Sèsyon natif natal ak JWT lokal (SecureStore)."
     >
       <StatusCard
         label="Itilizatè"
@@ -26,14 +25,18 @@ export default function ProfileTab() {
             : user?.name || user?.email || (token ? "Konekte" : "Envite")
         }
         detail={
-          user?.role
-            ? `Wòl: ${user.role}`
+          user?.email
+            ? user.email
             : token
-              ? "Jeton JWT aktif sou aparèy la"
-              : "Pa gen jeton lokal"
+              ? "Jeton JWT aktif"
+              : "Konekte pou jere anons, lòd, ak mesaj"
         }
         tone={token ? "ok" : "neutral"}
       />
+
+      {user?.role ? (
+        <StatusCard label="Wòl" value={user.role} tone="ok" />
+      ) : null}
 
       <View style={styles.actions}>
         {!token ? (
@@ -44,29 +47,33 @@ export default function ProfileTab() {
             <Text style={styles.primaryText}>Konekte</Text>
           </Pressable>
         ) : (
-          <Pressable
-            onPress={() => void logout()}
-            style={[styles.secondary, { borderColor: colors.border }]}
-          >
-            <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-              Dekonekte (lokal)
-            </Text>
-          </Pressable>
+          <>
+            <Pressable
+              onPress={() => router.push("/orders")}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                Lòd mwen
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/favorites")}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                Favori
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void logout()}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                Dekonekte
+              </Text>
+            </Pressable>
+          </>
         )}
-
-        <Pressable
-          onPress={() =>
-            router.push({
-              pathname: "/website",
-              params: { url: `${getWebsiteOrigin()}/profile/edit` },
-            })
-          }
-          style={[styles.secondary, { borderColor: colors.border }]}
-        >
-          <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-            Edit pwofil (konpatibilite tanporè)
-          </Text>
-        </Pressable>
       </View>
     </NativeScreen>
   );

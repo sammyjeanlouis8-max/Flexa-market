@@ -1,50 +1,104 @@
-import { useRouter } from "expo-router";
-import React from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { useGetListings } from "@workspace/api-client-react";
+import React, { useDeferredValue, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { NativeScreen } from "@/components/NativeScreen";
-import { StatusCard } from "@/components/StatusCard";
+import { ListingCard } from "@/components/ListingCard";
 import { useColors } from "@/hooks/useColors";
-import { getWebsiteOrigin } from "@/lib/config";
 
 export default function SearchTab() {
   const colors = useColors();
-  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query.trim());
+
+  const { data, isLoading, isFetching, isError } = useGetListings(
+    deferredQuery
+      ? { q: deferredQuery, page: 1, limit: 40 }
+      : { page: 1, limit: 20, boosted: true },
+  );
+
+  const listings = data?.listings ?? [];
 
   return (
-    <NativeScreen
-      title="Rechèch"
-      subtitle="Ekran natif natal pou rechèch marketplace. Rezilta konplè ap vini nan Faz 1."
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={["top", "left", "right"]}
     >
-      <StatusCard
-        label="Estati"
-        value="Estrikti pare"
-        detail="API listings/search deja disponib sou backend — UI natif ap suiv."
-        tone="ok"
-      />
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: "/website",
-            params: { url: `${getWebsiteOrigin()}/search` },
-          })
-        }
-        style={[styles.button, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          Louvri rechèch (konpatibilite tanporè)
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.foreground }]}>Rechèch</Text>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Chèche pwodui, vil, kategori…"
+          placeholderTextColor={colors.mutedForeground}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={[
+            styles.input,
+            {
+              color: colors.foreground,
+              borderColor: colors.border,
+              backgroundColor: "#1E293B",
+            },
+          ]}
+        />
+        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+          {deferredQuery
+            ? `Rezilta pou “${deferredQuery}”`
+            : "Anons boost / rekòmande"}
+          {isFetching ? " · ap chaje…" : ""}
         </Text>
-      </Pressable>
-    </NativeScreen>
+      </View>
+
+      {isLoading && listings.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : isError ? (
+        <View style={styles.center}>
+          <Text style={{ color: colors.foreground }}>Erè rechèch</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={listings}
+          keyExtractor={(item) => String(item.id)}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <Text
+              style={{ color: colors.mutedForeground, textAlign: "center" }}
+            >
+              Pa gen rezilta.
+            </Text>
+          }
+          renderItem={({ item }) => <ListingCard item={item} />}
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    marginTop: 8,
+  safe: { flex: 1 },
+  header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, gap: 10 },
+  title: { fontSize: 28, fontWeight: "700" },
+  input: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
   },
+  list: { paddingHorizontal: 12, paddingBottom: 24 },
+  row: { justifyContent: "space-between" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

@@ -8,8 +8,8 @@ import {
   NATIVE_APP_PHASE,
 } from "../lib/config.ts";
 
-test("native phase constant is Phase 0", () => {
-  assert.equal(NATIVE_APP_PHASE, "0");
+test("native phase constant is Phase 1", () => {
+  assert.equal(NATIVE_APP_PHASE, "1");
 });
 
 test("API helpers share the same HTTPS origin", () => {

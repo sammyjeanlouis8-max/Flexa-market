@@ -16,37 +16,44 @@ export default function SellTab() {
   return (
     <NativeScreen
       title="Vann"
-      subtitle="Espas vandè natif natal. Piblikasyon listing konplè ap vin nan Faz 1–2."
+      subtitle="Piblikasyon listing natif natal ap vin nan Faz 2. Ou ka vann atravè konpatibilite web kounye a."
     >
       <StatusCard
         label="Kont"
-        value={token ? "Sèsyon vandè/achte aktif" : "Bezwen koneksyon"}
-        detail="Menm kont customer/seller sou API egzistan."
+        value={token ? "Sèsyon aktif — ou ka pibliye" : "Konekte pou vann"}
+        detail="Menm API /sell sou backend egzistan."
         tone={token ? "ok" : "warn"}
       />
-      <Pressable
-        onPress={() =>
-          router.push({
-            pathname: "/website",
-            params: { url: `${getWebsiteOrigin()}/sell` },
-          })
-        }
-        style={[styles.button, { borderColor: colors.border }]}
-      >
-        <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-          Louvri vann (konpatibilite tanporè)
-        </Text>
-      </Pressable>
+      {!token ? (
+        <Pressable
+          onPress={() => router.push("/auth/login")}
+          style={[styles.primary, { backgroundColor: colors.primary }]}
+        >
+          <Text style={styles.primaryText}>Konekte</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/website",
+              params: { url: `${getWebsiteOrigin()}/sell` },
+            })
+          }
+          style={[styles.primary, { backgroundColor: colors.primary }]}
+        >
+          <Text style={styles.primaryText}>Pibliye anons (tanporè web)</Text>
+        </Pressable>
+      )}
     </NativeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
+  primary: {
     marginTop: 8,
-    borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
   },
+  primaryText: { color: "#0F172A", fontWeight: "700" },
 });

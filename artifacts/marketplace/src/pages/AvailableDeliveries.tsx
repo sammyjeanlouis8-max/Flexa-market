@@ -9,7 +9,7 @@ import {
   Clock, Phone, RefreshCw, Navigation, TrendingUp,
   Wifi, WifiOff, ChevronRight, Lock, AlertCircle, X,
   Truck, ArrowRight, Zap, Shield, ChevronDown, ChevronUp, Loader2,
-  Copy, Flag, Eye, Camera,
+  Copy, Flag, Eye, Camera, Home, Wallet, History, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -43,6 +43,9 @@ interface BrowseDelivery {
   distanceKm: number | null;
   tipUsd?: number | null;
   distanceFromDriverKm: number | null;
+  estimatedMinutes?: number | null;
+  dispatchEligible?: boolean;
+  dispatchBlockReasons?: string[];
   driverEarnings: number | null;
   currency: string;
   sellerNote: string | null;
@@ -101,6 +104,8 @@ interface DriverStats {
   latitude: number | null;
   longitude: number | null;
   commune: string | null;
+  primaryCommune?: string | null;
+  authorizedCommunes?: string[];
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────
@@ -352,7 +357,7 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
           </div>
         </div>
 
-        {/* ── Stats row ── */}
+        {/* ── Stats row: trip · distance from driver · ETA ── */}
         <div className="grid grid-cols-3 gap-2">
           {[
             {
@@ -367,14 +372,21 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
                   : t("availableDeliveries.cardLocal"),
             },
             {
-              icon: "⭐",
-              label: t("availableDeliveries.cardStatRating"),
-              value: driverRating > 0 ? `${driverRating.toFixed(1)} / 5` : t("availableDeliveries.cardRatingNew"),
+              icon: "🧭",
+              label: "From you",
+              value: (() => {
+                const fromDriver = delivery.distanceFromDriverKm ?? null;
+                if (fromDriver != null && fromDriver > 0) return `${fromDriver.toFixed(1)} km`;
+                if (delivery.distanceKm != null && delivery.distanceKm > 0) return `${delivery.distanceKm.toFixed(1)} km`;
+                return "—";
+              })(),
             },
             {
-              icon: "🛍️",
-              label: t("availableDeliveries.cardStatItems"),
-              value: t("availableDeliveries.cardOneItem"),
+              icon: "⏱",
+              label: "ETA",
+              value: delivery.estimatedMinutes != null && delivery.estimatedMinutes > 0
+                ? `~${Math.round(delivery.estimatedMinutes)}m`
+                : "—",
             },
           ].map(({ icon, label, value }) => (
             <div key={label} className="bg-muted/40 rounded-xl py-2 px-2 text-center">
@@ -1369,6 +1381,10 @@ function DriverStatsBar({ stats, onToggle, toggling }: {
   toggling: boolean;
 }) {
   const { t } = useTranslation();
+  const zoneLabel = stats.primaryCommune
+    ?? stats.commune
+    ?? "Haiti";
+  const authCount = stats.authorizedCommunes?.length ?? 0;
 
   return (
     <div className="bg-gradient-to-r from-card to-card border border-border rounded-3xl p-4 mb-4 shadow-sm">
@@ -1382,7 +1398,10 @@ function DriverStatsBar({ stats, onToggle, toggling }: {
           </div>
           <div>
             <p className="font-bold text-sm">{t("availableDeliveries.activeDriver")}</p>
-            <p className="text-xs text-muted-foreground">{stats.commune ?? "Haiti"}</p>
+            <p className="text-xs text-muted-foreground">
+              {zoneLabel}
+              {authCount > 0 ? ` · ${authCount} zone${authCount === 1 ? "" : "s"}` : ""}
+            </p>
           </div>
         </div>
         <button
@@ -1495,13 +1514,68 @@ export default function AvailableDeliveries() {
   const watchIdRef = useRef<number | null>(null);
   const lastSentRef = useRef<number>(0);
   const [driverCommune, setDriverCommune] = useState<string | null>(null);
+  const [authorizedCommunes, setAuthorizedCommunes] = useState<string[]>([]);
+  const [countsByCommune, setCountsByCommune] = useState<Record<string, number>>({});
+  const [selectedBrowseCommune, setSelectedBrowseCommune] = useState<string | null>(null);
   const [showCommunePicker, setShowCommunePicker] = useState(false);
   const [changingCommune, setChangingCommune] = useState(false);
 
   const [modalDelivery, setModalDelivery] = useState<BrowseDelivery | null>(null);
 
-  const loadAll = async (h: Record<string, string>, setCta = true, country?: string) => {
+  const loadAll = async (
+    h: Record<string, string>,
+    setCta = true,
+    country?: string,
+    browseCommune?: string | null,
+    opts?: { forceAvailable?: boolean },
+  ): Promise<"available" | "browse" | null> => {
     const countryParam = country ?? (isAdminUser ? adminSelectedCountry : undefined);
+    const communeFilter = browseCommune !== undefined ? browseCommune : selectedBrowseCommune;
+    const knownApproved = driverCta === "approved" || !!opts?.forceAvailable;
+
+    // Approved drivers (non-admin): prefer hybrid /available endpoint
+    if (!isAdminUser && !countryParam) {
+      const tryAvailable = knownApproved || setCta;
+      if (tryAvailable) {
+        const qs = communeFilter
+          ? `?commune=${encodeURIComponent(communeFilter)}`
+          : "";
+        const availRes = await fetch(`/api/delivery/available${qs}`, { headers: h });
+        if (availRes.ok) {
+          const d = await availRes.json();
+          setDeliveries(d.deliveries ?? []);
+          setDriverHasGps(!!d.driverHasGps);
+          setDriverCommune(d.driverCommune ?? null);
+          setAuthorizedCommunes(Array.isArray(d.authorizedCommunes) ? d.authorizedCommunes : []);
+          setCountsByCommune(d.countsByCommune && typeof d.countsByCommune === "object" ? d.countsByCommune : {});
+          if (setCta) setDriverCta("approved");
+          setDriverStats(s => s ? {
+            ...s,
+            commune: d.driverCommune ?? s.commune,
+            primaryCommune: d.primaryCommune ?? s.primaryCommune,
+            authorizedCommunes: Array.isArray(d.authorizedCommunes) ? d.authorizedCommunes : s.authorizedCommunes,
+          } : s);
+          return "available";
+        }
+        // Already approved but commune filter unauthorized — clear filter hint
+        if (knownApproved && availRes.status === 403) {
+          const err = await availRes.json().catch(() => ({} as any));
+          if (err.code === "COMMUNE_UNAUTHORIZED") {
+            toast({
+              title: err.error ?? "Commune not in your authorized service zone",
+              variant: "destructive",
+            });
+            if (Array.isArray(err.authorizedCommunes)) {
+              setAuthorizedCommunes(err.authorizedCommunes);
+            }
+          }
+          // Fall through to browse only when discovering CTA; otherwise stop
+          if (!setCta) return null;
+        }
+      }
+    }
+
+    // Admin view / non-approved: browse fallback
     const url = countryParam
       ? `/api/delivery/browse?country=${encodeURIComponent(countryParam)}`
       : "/api/delivery/browse";
@@ -1516,7 +1590,9 @@ export default function AvailableDeliveries() {
       }
       setDriverHasGps(d.driverHasGps ?? false);
       setDriverCommune(d.driverCommune ?? null);
+      return "browse";
     }
+    return null;
   };
 
   // Initial load
@@ -1531,15 +1607,40 @@ export default function AvailableDeliveries() {
           // Admins: just load deliveries, no driver-specific data needed
           await loadAll(h, true, defaultAdminCountry);
         } else {
-          await loadAll(h);
-          const cta = (await fetch("/api/delivery/browse", { headers: h }).then(r => r.json()).catch(() => ({}))).driverCta ?? "none";
-          if (cta === "approved") {
+          const mode = await loadAll(h);
+          if (mode === "available") {
+            setDriverCta("approved");
             const [myRes, statsRes] = await Promise.all([
               fetch("/api/delivery/my", { headers: h }),
               fetch("/api/delivery/driver/stats", { headers: h }),
             ]);
             if (myRes.ok) setMine((await myRes.json()).deliveries ?? []);
-            if (statsRes.ok) setDriverStats((await statsRes.json()).driver ?? null);
+            if (statsRes.ok) {
+              const driver = (await statsRes.json()).driver ?? null;
+              setDriverStats(driver);
+              if (driver?.authorizedCommunes && Array.isArray(driver.authorizedCommunes)) {
+                setAuthorizedCommunes(driver.authorizedCommunes);
+              }
+            }
+          } else {
+            const browseMeta = await fetch("/api/delivery/browse", { headers: h }).then(r => r.json()).catch(() => ({}));
+            const cta: DriverCta = (browseMeta.driverCta as DriverCta) ?? "none";
+            setDriverCta(cta);
+            if (cta === "approved") {
+              const [myRes, statsRes] = await Promise.all([
+                fetch("/api/delivery/my", { headers: h }),
+                fetch("/api/delivery/driver/stats", { headers: h }),
+              ]);
+              if (myRes.ok) setMine((await myRes.json()).deliveries ?? []);
+              if (statsRes.ok) {
+                const driver = (await statsRes.json()).driver ?? null;
+                setDriverStats(driver);
+                if (driver?.authorizedCommunes && Array.isArray(driver.authorizedCommunes)) {
+                  setAuthorizedCommunes(driver.authorizedCommunes);
+                }
+              }
+              await loadAll(h, false, undefined, undefined, { forceAvailable: true });
+            }
           }
         }
       } catch {/* */} finally {
@@ -1592,7 +1693,7 @@ export default function AvailableDeliveries() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
       if (res.ok) {
         toast({ title: t("availableDeliveries.toastAccepted") });
         const h = { Authorization: `Bearer ${token}` };
@@ -1600,10 +1701,29 @@ export default function AvailableDeliveries() {
           fetch("/api/delivery/my", { headers: h }),
           fetch("/api/delivery/driver/stats", { headers: h }),
         ]);
-        await loadAll(h, false);
+        await loadAll(h, false, undefined, undefined, { forceAvailable: true });
         if (myRes.ok) setMine((await myRes.json()).deliveries ?? []);
         if (statsRes.ok) setDriverStats((await statsRes.json()).driver ?? null);
         setTab("mine");
+      } else if (data.code === "DISPATCH_DENIED") {
+        const REASON_LABEL: Record<string, string> = {
+          pickup_unauthorized: "Pickup commune not authorized",
+          destination_unauthorized: "Destination commune not authorized",
+          driver_busy: "You already have an active delivery",
+          driver_not_active: "Driver account is not active",
+          driver_offline: "Go online to accept deliveries",
+          offer_not_waiting: "This offer is no longer available",
+          method_not_motorcycle: "Motorcycle deliveries only",
+          distance_exceeds_limit: "Pickup is beyond your distance limit",
+          missing_pickup_commune: "Pickup commune is missing",
+        };
+        const reasons = Array.isArray(data.reasons)
+          ? data.reasons.map((r: string) => REASON_LABEL[r] ?? r).filter(Boolean).join(" · ")
+          : "";
+        toast({
+          title: reasons || data.error || "This delivery is not eligible for you",
+          variant: "destructive",
+        });
       } else {
         toast({ title: data.error ?? t("availableDeliveries.toastError"), variant: "destructive" });
       }
@@ -1709,7 +1829,7 @@ export default function AvailableDeliveries() {
         await sendGpsUpdate(latitude, longitude);
         setDriverHasGps(true);
         toast({ title: t("availableDeliveries.toastGpsOk") });
-        await loadAll({ Authorization: `Bearer ${token}` }, false);
+        await loadAll({ Authorization: `Bearer ${token}` }, false, undefined, undefined, { forceAvailable: driverCta === "approved" });
         // Start continuous watch (updates every ~30s via sendGpsUpdate throttle)
         if (watchIdRef.current == null) {
           watchIdRef.current = navigator.geolocation.watchPosition(
@@ -1730,19 +1850,36 @@ export default function AvailableDeliveries() {
   // Cleanup watchPosition on unmount
   useEffect(() => () => stopGpsWatch(), []);
 
-  // Change driver's active commune — saves to DB + reloads deliveries
+  // Change working commune (PATCH) + browse filter, then reload available
   const handleChangeCommune = async (commune: string) => {
     setChangingCommune(true);
     setShowCommunePicker(false);
     try {
-      await fetch("/api/delivery/driver/location", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ commune }),
+      if (commune) {
+        const res = await fetch("/api/delivery/driver/location", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ commune }),
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          toast({
+            title: data.error ?? (data.code === "COMMUNE_UNAUTHORIZED"
+              ? "Commune not in your authorized service zone"
+              : t("availableDeliveries.toastError")),
+            variant: "destructive",
+          });
+          return;
+        }
+        setDriverCommune(commune);
+      }
+      setSelectedBrowseCommune(commune || null);
+      await loadAll({ Authorization: `Bearer ${token}` }, false, undefined, commune || null, { forceAvailable: true });
+      toast({
+        title: commune
+          ? `📍 Working commune → ${commune}`
+          : "Showing all authorized communes",
       });
-      setDriverCommune(commune);
-      await loadAll({ Authorization: `Bearer ${token}` }, false);
-      toast({ title: `📍 Komin chanje → ${commune}` });
     } catch {
       toast({ title: t("availableDeliveries.toastError"), variant: "destructive" });
     } finally {
@@ -1750,8 +1887,28 @@ export default function AvailableDeliveries() {
     }
   };
 
+  // Browse filter only (All tab) — keeps working commune, clears list filter
+  const handleSelectBrowseTab = async (commune: string | null) => {
+    setSelectedBrowseCommune(commune);
+    setLoading(true);
+    try {
+      if (commune) {
+        // Also set as working commune when picking a specific zone tab
+        await handleChangeCommune(commune);
+      } else {
+        await loadAll({ Authorization: `Bearer ${token}` }, false, undefined, null, { forceAvailable: true });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const activeCount = mine.filter(d => !["delivered", "cancelled"].includes(d.status)).length;
-  const availableCities = CITIES_BY_COUNTRY[user.country ?? ""] ?? [];
+  // Approved drivers: ONLY authorizedCommunes. Never dump full CITIES_BY_COUNTRY for Haiti.
+  const availableCities = driverCta === "approved"
+    ? authorizedCommunes
+    : (CITIES_BY_COUNTRY[user.country ?? ""] ?? []);
+  const totalAuthorizedCount = authorizedCommunes.reduce((sum, c) => sum + (countsByCommune[c] ?? 0), 0);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1766,8 +1923,8 @@ export default function AvailableDeliveries() {
         />
       )}
 
-      {/* ── Commune Picker Modal ── */}
-      {showCommunePicker && driverCta === "approved" && availableCities.length > 0 && (
+      {/* ── Commune Picker Modal (authorizedCommunes only) ── */}
+      {showCommunePicker && driverCta === "approved" && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCommunePicker(false)} />
           <div className="relative w-full max-w-sm bg-card rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
@@ -1782,18 +1939,32 @@ export default function AvailableDeliveries() {
                   <X className="h-4 w-4 text-muted-foreground" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                {availableCities.map(city => (
-                  <button key={city} type="button"
-                    onClick={() => handleChangeCommune(city)}
-                    className={`text-left px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all active:scale-95 ${driverCommune?.toLowerCase() === city.toLowerCase() ? "bg-primary text-white border-primary" : "border-border bg-background hover:bg-accent text-foreground"}`}>
-                    <MapPin className="h-3 w-3 inline mr-1.5 opacity-60" />{city}
-                  </button>
-                ))}
-              </div>
-              {driverCommune && (
+              {availableCities.length === 0 ? (
+                <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
+                  <AlertCircle className="h-5 w-5 text-amber-600 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">No service zones configured</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                    Super Admin must configure your authorized communes before you can browse jobs.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {availableCities.map(city => (
+                    <button key={city} type="button"
+                      onClick={() => handleChangeCommune(city)}
+                      disabled={changingCommune}
+                      className={`text-left px-3 py-2.5 rounded-xl text-sm font-semibold border transition-all active:scale-95 ${driverCommune?.toLowerCase() === city.toLowerCase() ? "bg-primary text-white border-primary" : "border-border bg-background hover:bg-accent text-foreground"}`}>
+                      <MapPin className="h-3 w-3 inline mr-1.5 opacity-60" />{city}
+                      {(countsByCommune[city] ?? 0) > 0 && (
+                        <span className="ml-1 text-[10px] opacity-80">({countsByCommune[city]})</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedBrowseCommune && availableCities.length > 0 && (
                 <button type="button" className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors py-2"
-                  onClick={() => handleChangeCommune("")}>
+                  onClick={() => handleSelectBrowseTab(null)}>
                   🔄 {t("availableDeliveries.communeClearFilter")}
                 </button>
               )}
@@ -1806,6 +1977,9 @@ export default function AvailableDeliveries() {
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-3">
           <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary/80 mb-0.5">
+              Flexa Market
+            </p>
             <h1 className="text-2xl font-black tracking-tight">{t("availableDeliveries.pageTitle")}</h1>
             <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
@@ -1865,29 +2039,69 @@ export default function AvailableDeliveries() {
           </div>
         )}
 
-        {/* ── Commune switcher banner (approved drivers only, not admins) ── */}
-        {!isAdminView && driverCta === "approved" && availableCities.length > 0 && (
-          <button type="button"
-            onClick={() => setShowCommunePicker(true)}
-            className={`w-full mb-3 flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all active:scale-[0.99] ${driverCommune ? "bg-primary/10 border-primary/30 hover:bg-primary/15" : "bg-muted/60 border-border hover:bg-accent"}`}>
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${driverCommune ? "bg-primary/20" : "bg-muted"}`}>
-              <MapPin className={`h-5 w-5 ${driverCommune ? "text-primary" : "text-muted-foreground"}`} />
-            </div>
-            <div className="flex-1 text-left">
-              {driverCommune ? (
-                <>
-                  <p className="text-xs font-bold text-primary uppercase tracking-wide">{t("availableDeliveries.communeActive")}</p>
-                  <p className="text-sm font-black text-foreground">{driverCommune}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t("availableDeliveries.communeNoFilter")}</p>
-                  <p className="text-sm font-semibold text-muted-foreground">{t("availableDeliveries.communeChooseHint")}</p>
-                </>
-              )}
-            </div>
-            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-          </button>
+        {/* ── Authorized commune tabs (approved drivers only, not admins) ── */}
+        {!isAdminView && driverCta === "approved" && (
+          <div className="mb-3 space-y-2">
+            {authorizedCommunes.length === 0 ? (
+              <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 flex items-start gap-3">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">No service zones configured</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    Super Admin must configure your authorized communes before you can accept jobs.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between px-0.5">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                    {t("availableDeliveries.communeActive")}
+                    {driverCommune ? ` · ${driverCommune}` : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowCommunePicker(true)}
+                    className="text-[10px] font-bold text-primary"
+                    disabled={changingCommune}
+                  >
+                    {t("availableDeliveries.change")}
+                  </button>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectBrowseTab(null)}
+                    disabled={changingCommune}
+                    className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
+                      selectedBrowseCommune == null
+                        ? "bg-primary text-white border-primary"
+                        : "bg-background border-border text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    All
+                    <span className="ml-1 opacity-80">({totalAuthorizedCount})</span>
+                  </button>
+                  {authorizedCommunes.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => handleSelectBrowseTab(c)}
+                      disabled={changingCommune}
+                      className={`shrink-0 px-3 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${
+                        selectedBrowseCommune?.toLowerCase() === c.toLowerCase()
+                          ? "bg-primary text-white border-primary"
+                          : "bg-background border-border text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {c}
+                      <span className="ml-1 opacity-80">({countsByCommune[c] ?? 0})</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* ── Driver banner for approved (not admins) ── */}
@@ -1995,18 +2209,22 @@ export default function AvailableDeliveries() {
               </div>
               <p className="font-bold text-lg mb-1">{t("availableDeliveries.emptyTitle")}</p>
               <p className="text-sm text-muted-foreground">
-                {driverCta === "approved" && driverCommune
+                {driverCta === "approved" && authorizedCommunes.length === 0
+                  ? "Super Admin must configure your service zones first."
+                  : driverCta === "approved" && selectedBrowseCommune
+                  ? t("availableDeliveries.emptyCommune", { commune: selectedBrowseCommune })
+                  : driverCta === "approved" && driverCommune
                   ? t("availableDeliveries.emptyCommune", { commune: driverCommune })
                   : driverCta === "approved" && user.country === "Haiti" && !driverHasGps
                     ? t("availableDeliveries.emptyGpsHint")
                     : t("availableDeliveries.emptyGeneral")}
               </p>
-              {driverCta === "approved" && driverCommune && (
+              {driverCta === "approved" && authorizedCommunes.length > 0 && (
                 <Button className="mt-4 rounded-xl" variant="outline" onClick={() => setShowCommunePicker(true)}>
                   <MapPin className="h-4 w-4 mr-2" /> {t("availableDeliveries.changeCommune")}
                 </Button>
               )}
-              {driverCta === "approved" && !driverCommune && user.country === "Haiti" && !driverHasGps && (
+              {driverCta === "approved" && user.country === "Haiti" && !driverHasGps && (
                 <Button className="mt-4 rounded-xl" onClick={handleShareGps} disabled={sharingGps}>
                   <Navigation className="h-4 w-4 mr-2" /> {t("availableDeliveries.emptyGpsBtn")}
                 </Button>
@@ -2015,20 +2233,22 @@ export default function AvailableDeliveries() {
           ) : (
             <div className="space-y-3">
               {/* Commune / proximity sort indicator */}
-              {driverCta === "approved" && (driverCommune || driverHasGps) && (
+              {driverCta === "approved" && (selectedBrowseCommune || driverCommune || driverHasGps) && (
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-1.5">
-                    {driverCommune
+                    {(selectedBrowseCommune || driverCommune)
                       ? <MapPin className="h-3.5 w-3.5 text-primary shrink-0" />
                       : <Navigation className="h-3.5 w-3.5 text-blue-500 shrink-0" />
                     }
                     <p className="text-xs text-muted-foreground">
-                      {driverCommune
+                      {selectedBrowseCommune
+                        ? t("availableDeliveries.communeSorted", { commune: selectedBrowseCommune })
+                        : driverCommune
                         ? t("availableDeliveries.communeSorted", { commune: driverCommune })
                         : t("availableDeliveries.sortedByProximity")}
                     </p>
                   </div>
-                  {driverCommune && (
+                  {authorizedCommunes.length > 0 && (
                     <button type="button" className="text-[10px] text-primary font-bold" onClick={() => setShowCommunePicker(true)}>
                       {t("availableDeliveries.change")}
                     </button>
@@ -2076,6 +2296,47 @@ export default function AvailableDeliveries() {
           )
         )}
       </div>
+
+      {/* ── Driver bottom navigation ── */}
+      {!isAdminView && driverCta === "approved" && (
+        <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur-md safe-area-pb">
+          <div className="max-w-lg mx-auto grid grid-cols-5 gap-0.5 px-1 py-1.5">
+            {[
+              { key: "home", label: "Home", icon: Home, path: "/driver/dashboard", active: false },
+              { key: "deliveries", label: "Deliveries", icon: Package, path: "/delivery/deliveries", active: true },
+              { key: "earnings", label: "Earnings", icon: Wallet, path: "/driver/dashboard", active: false },
+              { key: "history", label: "History", icon: History, path: "/driver/dashboard", active: false },
+              { key: "profile", label: "Profile", icon: User, path: "/driver/dashboard", active: false },
+            ].map(({ key, label, icon: Icon, path, active }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  if (key === "deliveries") {
+                    setTab("browse");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
+                  if (key === "history") {
+                    setTab("mine");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                  }
+                  navigate(path);
+                }}
+                className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl min-h-[52px] transition-colors ${
+                  active || (key === "history" && tab === "mine")
+                    ? "text-primary bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-bold leading-none">{label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      )}
     </>
   );
 }

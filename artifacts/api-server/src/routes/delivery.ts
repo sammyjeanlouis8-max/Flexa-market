@@ -1,16 +1,28 @@
 import { Router } from "express";
-import { db, driverApplicationsTable, driversTable, deliveriesTable, usersTable, notificationsTable, promoWalletTable, walletTransactionsTable, transactionsTable, listingsTable } from "@workspace/db";
+import { db, driverApplicationsTable, driversTable, deliveriesTable, usersTable, notificationsTable, promoWalletTable, walletTransactionsTable, transactionsTable, listingsTable, haitiServiceZonesTable } from "@workspace/db";
 import { eq, and, desc, or, sql, inArray, isNull, notInArray } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { releaseEscrow } from "./transactions";
 import { emitDriverLocation, emitAdminDriverUpdate, emitDeliveryStatus } from "../lib/socketServer";
 
-import { requireAuth, requireAdmin } from "../middlewares/auth";
+import { requireAuth, requireAdmin, requireSuperAdmin } from "../middlewares/auth";
 import { logAdminAction } from "../lib/auditLogger";
 import { sendSms } from "../lib/twilio";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { calculateDeliveryPrice, getAvailableCities, haversineKm, lookupCity, getOsrmDistanceKm, DRIVER_COMMISSION_PCT } from "../lib/deliveryPricing";
+import {
+  evaluateDispatchOffer,
+  mergeZoneRule,
+  parseAuthorizedCommunesJson,
+  resolveDriverAuthorizedCommunes,
+} from "../lib/driverDispatch";
+import {
+  HAITI_DEPARTMENT_COMMUNES,
+  findDepartmentForCommune,
+  normalizeCommuneKey,
+  resolveHaitiCommune,
+} from "../lib/haitiGeography";
 
 // ── Haiti department → communes map ──────────────────────────────────────────
 // All values lowercase for case-insensitive SQL matching.
@@ -38,6 +50,60 @@ export const HAITI_DEPARTMENT_CITIES: Record<string, string[]> = {
 /** Returns lowercase commune names for the given Haiti department. */
 function getCommunesForDepartment(department: string): string[] {
   return HAITI_DEPARTMENTS[department] ?? [];
+}
+
+async function loadServiceZoneRule(primaryCommune: string | null | undefined) {
+  const resolved = resolveHaitiCommune(primaryCommune);
+  if (!resolved) return null;
+  const rows = await db.select().from(haitiServiceZonesTable).where(eq(haitiServiceZonesTable.isActive, true)).limit(200);
+  const match = rows.find((z) => normalizeCommuneKey(z.primaryCommune) === normalizeCommuneKey(resolved.commune));
+  return match ?? null;
+}
+
+/** Resolve authorized communes — driver override JSON, else admin zone rule, else defaults. */
+async function getDriverAuthorizedCommunes(driver: {
+  authorizedCommunes?: string | null;
+  primaryCommune?: string | null;
+  commune?: string | null;
+  city?: string | null;
+}): Promise<{ authorized: string[]; primary: string | null; maxDistanceKm: number | null }> {
+  const primary = resolveHaitiCommune(driver.primaryCommune || driver.commune || driver.city)?.commune
+    ?? driver.primaryCommune
+    ?? driver.commune
+    ?? driver.city
+    ?? null;
+  const explicit = parseAuthorizedCommunesJson(driver.authorizedCommunes ?? null);
+  if (explicit.length > 0) {
+    return { authorized: resolveDriverAuthorizedCommunes({ authorizedCommunes: explicit, primaryCommune: primary }), primary, maxDistanceKm: null };
+  }
+  const rule = await loadServiceZoneRule(primary);
+  if (rule) {
+    const fromRule = parseAuthorizedCommunesJson(rule.authorizedCommunes);
+    return {
+      authorized: mergeZoneRule(primary ?? rule.primaryCommune, fromRule),
+      primary: primary ?? rule.primaryCommune,
+      maxDistanceKm: rule.maxDistanceKm ?? null,
+    };
+  }
+  return {
+    authorized: resolveDriverAuthorizedCommunes({ primaryCommune: primary, commune: driver.commune, city: driver.city }),
+    primary,
+    maxDistanceKm: null,
+  };
+}
+
+async function driverHasConflictingAssignment(userId: number): Promise<boolean> {
+  const [active] = await db
+    .select({ id: deliveriesTable.id })
+    .from(deliveriesTable)
+    .where(and(
+      eq(deliveriesTable.driverUserId, userId),
+      inArray(deliveriesTable.status, [
+        "driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived",
+      ]),
+    ))
+    .limit(1);
+  return !!active;
 }
 import { getExchangeRate } from "../lib/exchange-rate";
 import { sendEmail } from "../lib/email";
@@ -509,6 +575,13 @@ router.patch("/admin/delivery/applications/:id/approve", requireAdmin, async (re
 
   // Create driver record (copy vehicle fields from application)
   const existing = await db.select({ id: driversTable.id }).from(driversTable).where(eq(driversTable.userId, app.userId)).limit(1);
+  const primary = resolveHaitiCommune(app.city)?.commune ?? app.city ?? null;
+  const zoneSeed = await getDriverAuthorizedCommunes({
+    authorizedCommunes: null,
+    primaryCommune: primary,
+    commune: primary,
+    city: app.city,
+  });
   const vehicleFields = {
     vehicleType: vehicleType ?? app.vehicleType ?? null,
     vehicleBrand: (app as any).vehicleBrand ?? null,
@@ -522,6 +595,10 @@ router.patch("/admin/delivery/applications/:id/approve", requireAdmin, async (re
     facePhotoLeft: (app as any).facePhotoLeft ?? null,
     facePhotoRight: (app as any).facePhotoRight ?? null,
     facePhotoHoldingId: (app as any).facePhotoHoldingId ?? null,
+    primaryCommune: zoneSeed.primary,
+    commune: zoneSeed.primary,
+    department: zoneSeed.primary ? findDepartmentForCommune(zoneSeed.primary) : null,
+    authorizedCommunes: JSON.stringify(zoneSeed.authorized),
   };
   if (existing.length === 0) {
     await db.insert(driversTable).values({
@@ -531,9 +608,9 @@ router.patch("/admin/delivery/applications/:id/approve", requireAdmin, async (re
       country: app.country,
       city: app.city,
       ...vehicleFields,
-    });
+    } as any);
   } else {
-    await db.update(driversTable).set({ status: "active", ...vehicleFields }).where(eq(driversTable.userId, app.userId));
+    await db.update(driversTable).set({ status: "active", ...vehicleFields } as any).where(eq(driversTable.userId, app.userId));
   }
 
   // Notify driver
@@ -937,34 +1014,48 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
 // GET /api/delivery/available
 router.get("/delivery/available", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
+  const selectedCommune = req.query.commune ? String(req.query.commune) : null;
 
   const [driver] = await db.select().from(driversTable).where(and(eq(driversTable.userId, userId), eq(driversTable.status, "active"))).limit(1);
   if (!driver) { res.status(403).json({ error: "Not an approved driver" }); return; }
 
   const driverLat        = driver.latitude;
   const driverLng        = driver.longitude;
-  const driverCommune    = driver.commune;
-  const driverDepartment = (driver as any).department ?? null;
+  const { authorized, primary, maxDistanceKm } = await getDriverAuthorizedCommunes(driver as any);
+  const driverCommune    = driver.commune ?? primary;
 
-  // ── Build WHERE clause ────────────────────────────────────────────────────
-  // Department filter: ALL drivers in the same department see the SAME deliveries.
-  // Falls back to commune match when no department is set; country-wide if neither.
+  // ── Commune authorization is PRIMARY (never whole-department dump) ────────
+  // Optional ?commune= further narrows to a single authorized pickup commune.
+  // Broad SQL prefilter by lower(pickupCity) IN authorized names; exact auth checked in JS.
   let zoneFilter: ReturnType<typeof sql> | undefined;
-  const depCommunes = driverDepartment ? getCommunesForDepartment(driverDepartment) : [];
-  if (depCommunes.length > 0) {
-    zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) = ANY(ARRAY[${sql.join(depCommunes.map(c => sql`${c}::text`), sql`, `)}])`;
+  if (selectedCommune) {
+    const sel = resolveHaitiCommune(selectedCommune)?.commune ?? selectedCommune;
+    if (!authorized.some((c) => normalizeCommuneKey(c) === normalizeCommuneKey(sel))) {
+      res.status(403).json({
+        error: "Commune not in your authorized service zone",
+        code: "COMMUNE_UNAUTHORIZED",
+        authorizedCommunes: authorized,
+      });
+      return;
+    }
+    zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) = LOWER(${sel})`;
+  } else if (authorized.length > 0) {
+    zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) IN (${sql.join(authorized.map((c) => sql`LOWER(${c})`), sql`, `)})`;
   } else if (driverCommune) {
     zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) = LOWER(${driverCommune})`;
   }
 
+  const isHaiti = String(driver.country ?? "").toLowerCase() === "haiti" || String(driver.country ?? "").toLowerCase() === "ht";
   const baseWhere = and(
     eq(deliveriesTable.status, "waiting"),
     notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
     eq(deliveriesTable.country, driver.country),
-    or(
-      eq(deliveriesTable.deliveryMethod, "motorcycle"),
-      eq(deliveriesTable.deliveryMethod, "car"),
-    ),
+    isHaiti
+      ? eq(deliveriesTable.deliveryMethod, "motorcycle")
+      : or(
+          eq(deliveriesTable.deliveryMethod, "motorcycle"),
+          eq(deliveriesTable.deliveryMethod, "car"),
+        ),
     zoneFilter,
   );
 
@@ -1021,27 +1112,80 @@ router.get("/delivery/available", requireAuth, async (req, res): Promise<void> =
   }
 
   const htgRateAvail = await getExchangeRate().catch(() => 130);
-  const result = deliveries.map(({ _distKm, listingImages, ...d }) => {
-    const base = {
-      ...d,
-      listingImage: Array.isArray(listingImages) && listingImages.length > 0 ? listingImages[0] : null,
-      distanceFromDriverKm: _distKm > 0 ? Math.round(_distKm * 10) / 10 : null,
-    };
-    // Auto-calculate fee if missing
-    if (base.feeUsd == null && base.pickupCity && base.deliveryCity && base.country && base.deliveryMethod && base.deliveryMethod !== "self") {
-      const calc = calculateDeliveryPrice(base.pickupCity, base.deliveryCity, base.country, base.deliveryMethod, htgRateAvail);
-      return { ...base, feeUsd: calc.feeUsd, feeLocal: calc.feeLocal, distanceKm: calc.distanceKm, driverEarnings: calc.driverEarningsUsd, currency: calc.currency };
-    }
-    if (base.driverEarnings == null && base.feeUsd != null) {
-      return { ...base, driverEarnings: Math.round(base.feeUsd * DRIVER_COMMISSION_PCT * 100) / 100 };
-    }
-    return base;
-  });
+  const busy = await driverHasConflictingAssignment(userId);
+  const result = deliveries
+    .map(({ _distKm, listingImages, ...d }) => {
+      const pickupCoords = d.pickupCity ? lookupCity(d.pickupCity) : null;
+      let base: any = {
+        ...d,
+        listingImage: Array.isArray(listingImages) && listingImages.length > 0 ? listingImages[0] : null,
+        distanceFromDriverKm: _distKm > 0 && _distKm < 999 ? Math.round(_distKm * 10) / 10 : null,
+      };
+      // Auto-calculate fee if missing
+      if (base.feeUsd == null && base.pickupCity && base.deliveryCity && base.country && base.deliveryMethod && base.deliveryMethod !== "self") {
+        const calc = calculateDeliveryPrice(base.pickupCity, base.deliveryCity, base.country, base.deliveryMethod, htgRateAvail);
+        base = { ...base, feeUsd: calc.feeUsd, feeLocal: calc.feeLocal, distanceKm: calc.distanceKm, driverEarnings: calc.driverEarningsUsd, currency: calc.currency };
+      } else if (base.driverEarnings == null && base.feeUsd != null) {
+        base = { ...base, driverEarnings: Math.round(base.feeUsd * DRIVER_COMMISSION_PCT * 100) / 100 };
+      }
+
+      const decision = evaluateDispatchOffer(
+        {
+          status: driver.status,
+          isOnline: driver.isOnline,
+          country: driver.country,
+          vehicleType: driver.vehicleType,
+          primaryCommune: (driver as any).primaryCommune ?? primary,
+          workingCommune: driver.commune,
+          authorizedCommunes: authorized,
+          latitude: driverLat,
+          longitude: driverLng,
+          hasActiveAssignment: busy,
+        },
+        {
+          pickupCity: base.pickupCity,
+          deliveryCity: base.deliveryCity,
+          country: base.country,
+          deliveryMethod: base.deliveryMethod,
+          status: base.status,
+          distanceKm: base.distanceFromDriverKm ?? base.distanceKm,
+          pickupLat: pickupCoords?.[0] ?? null,
+          pickupLng: pickupCoords?.[1] ?? null,
+        },
+        { maxDistanceKm, requireOnline: false },
+      );
+
+      return {
+        ...base,
+        estimatedMinutes: decision.estimatedMinutes,
+        dispatchEligible: decision.allowed,
+        dispatchBlockReasons: decision.reasons,
+        pickupCommuneCanonical: decision.pickupCanonical,
+        destinationCommuneCanonical: decision.destinationCanonical,
+      };
+    })
+    // Commune auth is primary — drop unauthorized destination / pickup even if SQL matched loosely
+    .filter((d) => d.dispatchEligible || (!d.dispatchBlockReasons.includes("pickup_unauthorized") && !d.dispatchBlockReasons.includes("destination_unauthorized")));
+
+  // Only show fully eligible offers for accept UI (busy/offline still visible but flagged)
+  const visible = result.filter((d) =>
+    !d.dispatchBlockReasons.includes("pickup_unauthorized")
+    && !d.dispatchBlockReasons.includes("destination_unauthorized")
+    && !d.dispatchBlockReasons.includes("method_not_motorcycle")
+    && !d.dispatchBlockReasons.includes("missing_pickup_commune"),
+  );
 
   res.json({
-    deliveries: result,
+    deliveries: visible,
     driverHasGps: driverLat != null,
     driverCommune: driverCommune ?? null,
+    primaryCommune: primary,
+    authorizedCommunes: authorized,
+    selectedCommune: selectedCommune ? (resolveHaitiCommune(selectedCommune)?.commune ?? selectedCommune) : null,
+    countsByCommune: authorized.reduce((acc: Record<string, number>, c) => {
+      acc[c] = visible.filter((d) => normalizeCommuneKey(d.pickupCity) === normalizeCommuneKey(c)).length;
+      return acc;
+    }, {}),
   });
 });
 
@@ -1140,6 +1284,44 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
   if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
   if (delivery.status !== "waiting") { res.status(409).json({ error: "Delivery already taken" }); return; }
 
+  // Backend commune authorization — never trust the client alone.
+  const { authorized, primary, maxDistanceKm } = await getDriverAuthorizedCommunes(driver as any);
+  const busy = await driverHasConflictingAssignment(userId);
+  const pickupCoords = delivery.pickupCity ? lookupCity(delivery.pickupCity) : null;
+  const decision = evaluateDispatchOffer(
+    {
+      status: driver.status,
+      isOnline: driver.isOnline,
+      country: driver.country,
+      vehicleType: driver.vehicleType,
+      primaryCommune: (driver as any).primaryCommune ?? primary,
+      workingCommune: driver.commune,
+      authorizedCommunes: authorized,
+      latitude: driver.latitude,
+      longitude: driver.longitude,
+      hasActiveAssignment: busy,
+    },
+    {
+      pickupCity: delivery.pickupCity,
+      deliveryCity: delivery.deliveryCity,
+      country: delivery.country,
+      deliveryMethod: delivery.deliveryMethod,
+      status: delivery.status,
+      pickupLat: pickupCoords?.[0] ?? null,
+      pickupLng: pickupCoords?.[1] ?? null,
+    },
+    { maxDistanceKm, requireOnline: false },
+  );
+  if (!decision.allowed) {
+    res.status(403).json({
+      error: "Delivery not eligible for this driver",
+      code: "DISPATCH_DENIED",
+      reasons: decision.reasons,
+      authorizedCommunes: authorized,
+    });
+    return;
+  }
+
   const code = genCode();
 
   const [updated] = await db
@@ -1152,7 +1334,11 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
       acceptedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(and(eq(deliveriesTable.id, deliveryId), eq(deliveriesTable.status, "waiting")))
+    .where(and(
+      eq(deliveriesTable.id, deliveryId),
+      eq(deliveriesTable.status, "waiting"),
+      isNull(deliveriesTable.driverUserId),
+    ))
     .returning();
 
   if (!updated) { res.status(409).json({ error: "Delivery already taken" }); return; }
@@ -2842,25 +3028,56 @@ router.post("/admin/deliveries/:id/force-complete", requireAdmin, async (req, re
 
 // ── Driver GPS / Online Status ─────────────────────────────────────────────────
 
-// GET /api/delivery/driver/zones — return department→commune map for the preference UI
-router.get("/delivery/driver/zones", requireAuth, async (_req, res): Promise<void> => {
-  res.json({ departments: HAITI_DEPARTMENT_CITIES });
+// GET /api/delivery/driver/zones — department map + this driver's authorized communes
+router.get("/delivery/driver/zones", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const [driver] = await db.select().from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
+  const zones = driver ? await getDriverAuthorizedCommunes(driver as any) : { authorized: [], primary: null, maxDistanceKm: null };
+  res.json({
+    departments: HAITI_DEPARTMENT_CITIES,
+    geography: HAITI_DEPARTMENT_COMMUNES,
+    authorizedCommunes: zones.authorized,
+    primaryCommune: zones.primary,
+    maxDistanceKm: zones.maxDistanceKm,
+    workingCommune: driver?.commune ?? null,
+    department: (driver as any)?.department ?? (zones.primary ? findDepartmentForCommune(zones.primary) : null),
+  });
 });
 
-// PATCH /api/delivery/driver/location — update GPS + online toggle + zone preference
+// PATCH /api/delivery/driver/location — update GPS + online toggle + working commune
 router.patch("/delivery/driver/location", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
   const { latitude, longitude, commune, zone, isOnline, department } = req.body;
 
-  const [driver] = await db.select({ id: driversTable.id }).from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
+  const [driver] = await db.select().from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
   if (!driver) { res.status(403).json({ error: "Not a driver" }); return; }
 
+  // Drivers may only set working commune within Super-Admin authorized service zones.
+  if (commune != null) {
+    const { authorized } = await getDriverAuthorizedCommunes(driver as any);
+    const resolved = resolveHaitiCommune(String(commune));
+    const name = resolved?.commune ?? String(commune);
+    if (authorized.length > 0 && !authorized.some((c) => normalizeCommuneKey(c) === normalizeCommuneKey(name))) {
+      res.status(403).json({
+        error: "You cannot self-authorize this commune",
+        code: "COMMUNE_UNAUTHORIZED",
+        authorizedCommunes: authorized,
+      });
+      return;
+    }
+  }
+
   const now = new Date();
+  const resolvedCommune = commune != null ? (resolveHaitiCommune(String(commune))?.commune ?? String(commune)) : null;
+  const resolvedDept = department != null
+    ? String(department)
+    : (resolvedCommune ? findDepartmentForCommune(resolvedCommune) : null);
+
   await db.update(driversTable).set({
     ...(latitude != null ? { latitude: Number(latitude) } : {}),
     ...(longitude != null ? { longitude: Number(longitude) } : {}),
-    ...(commune != null ? { commune: String(commune) } : {}),
-    ...(department != null ? { department: String(department) } : {}),
+    ...(resolvedCommune != null ? { commune: resolvedCommune } : {}),
+    ...(resolvedDept != null ? { department: resolvedDept } : {}),
     ...(zone != null ? { zone: String(zone) } : {}),
     ...(isOnline != null ? { isOnline: Boolean(isOnline) } : {}),
     ...(latitude != null ? { lastLocationAt: now } : {}),
@@ -2940,7 +3157,145 @@ router.get("/delivery/driver/stats", requireAuth, async (req, res): Promise<void
   const userId = req.userId!;
   const [driver] = await db.select().from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
   if (!driver) { res.status(404).json({ error: "Not a driver" }); return; }
-  res.json({ driver });
+  const zones = await getDriverAuthorizedCommunes(driver as any);
+  const busy = await driverHasConflictingAssignment(userId);
+  res.json({
+    driver: {
+      ...driver,
+      primaryCommune: zones.primary,
+      authorizedCommunes: zones.authorized,
+      hasActiveAssignment: busy,
+    },
+  });
+});
+
+// ── Super Admin: Haiti service zone configuration ─────────────────────────────
+
+router.get("/admin/haiti-service-zones", requireAdmin, async (_req, res): Promise<void> => {
+  const rows = await db.select().from(haitiServiceZonesTable).orderBy(desc(haitiServiceZonesTable.updatedAt)).limit(300);
+  res.json({
+    zones: rows.map((z) => ({
+      ...z,
+      authorizedCommunes: parseAuthorizedCommunesJson(z.authorizedCommunes),
+    })),
+    geography: HAITI_DEPARTMENT_COMMUNES,
+  });
+});
+
+router.put("/admin/haiti-service-zones/:id", requireSuperAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const { authorizedCommunes, maxDistanceKm, maxTravelMinutes, isActive, notes } = req.body ?? {};
+  const [existing] = await db.select().from(haitiServiceZonesTable).where(eq(haitiServiceZonesTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Zone not found" }); return; }
+
+  const authList = Array.isArray(authorizedCommunes)
+    ? mergeZoneRule(existing.primaryCommune, authorizedCommunes.map(String))
+    : parseAuthorizedCommunesJson(existing.authorizedCommunes);
+
+  const [updated] = await db.update(haitiServiceZonesTable).set({
+    authorizedCommunes: JSON.stringify(authList),
+    maxDistanceKm: maxDistanceKm === null || maxDistanceKm === undefined ? existing.maxDistanceKm : Number(maxDistanceKm),
+    maxTravelMinutes: maxTravelMinutes === null || maxTravelMinutes === undefined ? existing.maxTravelMinutes : Number(maxTravelMinutes),
+    isActive: isActive === undefined ? existing.isActive : Boolean(isActive),
+    notes: notes === undefined ? existing.notes : String(notes).slice(0, 500),
+    updatedById: req.userId!,
+    updatedAt: new Date(),
+  }).where(eq(haitiServiceZonesTable.id, id)).returning();
+
+  await logAdminAction(req, {
+    actionType: "haiti_service_zone_update",
+    actionCategory: "delivery",
+    description: `Updated service zone for ${existing.primaryCommune}`,
+    targetType: "haiti_service_zone",
+    targetId: id,
+    targetName: existing.primaryCommune,
+    beforeState: { authorizedCommunes: existing.authorizedCommunes, isActive: existing.isActive },
+    afterState: { authorizedCommunes: authList, isActive: updated?.isActive },
+    riskLevel: "high",
+  }).catch(() => {});
+
+  res.json({
+    zone: updated
+      ? { ...updated, authorizedCommunes: parseAuthorizedCommunesJson(updated.authorizedCommunes) }
+      : null,
+  });
+});
+
+router.post("/admin/haiti-service-zones", requireSuperAdmin, async (req, res): Promise<void> => {
+  const { primaryCommune, authorizedCommunes, maxDistanceKm, maxTravelMinutes, notes } = req.body ?? {};
+  const resolved = resolveHaitiCommune(String(primaryCommune ?? ""));
+  if (!resolved) {
+    res.status(400).json({ error: "Invalid Haitian commune" });
+    return;
+  }
+  const authList = mergeZoneRule(
+    resolved.commune,
+    Array.isArray(authorizedCommunes) ? authorizedCommunes.map(String) : null,
+  );
+  try {
+    const [created] = await db.insert(haitiServiceZonesTable).values({
+      department: resolved.department,
+      primaryCommune: resolved.commune,
+      authorizedCommunes: JSON.stringify(authList),
+      maxDistanceKm: maxDistanceKm != null ? Number(maxDistanceKm) : null,
+      maxTravelMinutes: maxTravelMinutes != null ? Number(maxTravelMinutes) : null,
+      notes: notes ? String(notes).slice(0, 500) : null,
+      updatedById: req.userId!,
+    }).returning();
+
+    await logAdminAction(req, {
+      actionType: "haiti_service_zone_create",
+      actionCategory: "delivery",
+      description: `Created service zone for ${resolved.commune}`,
+      targetType: "haiti_service_zone",
+      targetId: created.id,
+      targetName: resolved.commune,
+      afterState: { authorizedCommunes: authList },
+      riskLevel: "high",
+    }).catch(() => {});
+
+    res.status(201).json({
+      zone: { ...created, authorizedCommunes: authList },
+    });
+  } catch (err: any) {
+    res.status(409).json({ error: err?.message?.includes("unique") ? "Zone already exists for this commune" : "Could not create zone" });
+  }
+});
+
+/** Assign / refresh a driver's authorized communes (Super Admin only). */
+router.patch("/admin/drivers/:userId/service-zones", requireSuperAdmin, async (req, res): Promise<void> => {
+  const targetUserId = parseInt(String(req.params.userId), 10);
+  const { primaryCommune, authorizedCommunes } = req.body ?? {};
+  const [driver] = await db.select().from(driversTable).where(eq(driversTable.userId, targetUserId)).limit(1);
+  if (!driver) { res.status(404).json({ error: "Driver not found" }); return; }
+
+  const primary = resolveHaitiCommune(String(primaryCommune ?? driver.primaryCommune ?? driver.commune ?? driver.city ?? ""))?.commune;
+  if (!primary) {
+    res.status(400).json({ error: "Valid primary commune required" });
+    return;
+  }
+  const authList = Array.isArray(authorizedCommunes)
+    ? mergeZoneRule(primary, authorizedCommunes.map(String))
+    : (await getDriverAuthorizedCommunes({ primaryCommune: primary, commune: primary, authorizedCommunes: null })).authorized;
+
+  await db.update(driversTable).set({
+    primaryCommune: primary,
+    commune: primary,
+    department: findDepartmentForCommune(primary),
+    authorizedCommunes: JSON.stringify(authList),
+  } as any).where(eq(driversTable.userId, targetUserId));
+
+  await logAdminAction(req, {
+    actionType: "driver_service_zone_assign",
+    actionCategory: "delivery",
+    description: `Assigned service zones for driver user #${targetUserId}: ${authList.join(", ")}`,
+    targetType: "driver",
+    targetId: driver.id,
+    afterState: { primaryCommune: primary, authorizedCommunes: authList },
+    riskLevel: "high",
+  }).catch(() => {});
+
+  res.json({ ok: true, primaryCommune: primary, authorizedCommunes: authList });
 });
 
 // PATCH /api/admin/delivery/applications/:id/request-changes

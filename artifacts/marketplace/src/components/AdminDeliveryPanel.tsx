@@ -34,6 +34,35 @@ const STATUS_ICON: Record<string, typeof Truck> = {
   buyer_absent: Clock, cancelled: XCircle,
 };
 
+/** Fixed Haiti commune list (mirrors backend haitiGeography). */
+const HAITI_DEPARTMENT_COMMUNES: Record<string, readonly string[]> = {
+  Ouest: [
+    "Port-au-Prince", "Pétion-Ville", "Delmas", "Carrefour", "Tabarre",
+    "Croix-des-Bouquets", "Léogâne", "Kenscoff", "Arcahaie", "Thomazeau",
+  ],
+  Nord: ["Cap-Haïtien"],
+  Artibonite: ["Gonaïves", "Saint-Marc", "Verrettes", "Montrouis"],
+  Centre: ["Hinche", "Mirebalais"],
+  Sud: ["Les Cayes"],
+  "Grand'Anse": ["Jérémie"],
+  "Sud-Est": ["Jacmel"],
+  Nippes: ["Miragoâne"],
+};
+
+const ALL_HAITI_COMMUNES = Object.values(HAITI_DEPARTMENT_COMMUNES).flat();
+
+interface ServiceZone {
+  id: number;
+  department: string;
+  primaryCommune: string;
+  authorizedCommunes: string[];
+  maxDistanceKm: number | null;
+  maxTravelMinutes: number | null;
+  isActive: boolean;
+  notes: string | null;
+  updatedAt?: string;
+}
+
 interface DeliveryRow {
   id: number;
   deliveryMethod: string;
@@ -89,20 +118,34 @@ interface TipStats {
 }
 
 export default function AdminDeliveryPanel() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const isSuperAdmin = !!(user as any)?.isSuperAdmin;
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [countryFilter, setCountryFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"deliveries" | "tips" | "ratings">("deliveries");
+  const [activeTab, setActiveTab] = useState<"deliveries" | "tips" | "ratings" | "zones">("deliveries");
   const [tipStats, setTipStats] = useState<TipStats | null>(null);
   const [tipsLoading, setTipsLoading] = useState(false);
   const [ratingsData, setRatingsData] = useState<any | null>(null);
   const [ratingsLoading, setRatingsLoading] = useState(false);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [forceCompletingId, setForceCompletingId] = useState<number | null>(null);
+  const [zones, setZones] = useState<ServiceZone[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [savingZoneId, setSavingZoneId] = useState<number | null>(null);
+  const [creatingZone, setCreatingZone] = useState(false);
+  const [showCreateZone, setShowCreateZone] = useState(false);
+  const [editDrafts, setEditDrafts] = useState<Record<number, Partial<ServiceZone>>>({});
+  const [newZone, setNewZone] = useState({
+    primaryCommune: "Port-au-Prince",
+    authorizedCommunes: ["Port-au-Prince"] as string[],
+    maxDistanceKm: "" as string,
+    maxTravelMinutes: "" as string,
+    notes: "",
+  });
 
   /** Admin force-cancel — refunds buyer automatically */
   const handleCancel = async (id: number) => {
@@ -196,9 +239,135 @@ export default function AdminDeliveryPanel() {
     } finally { setRatingsLoading(false); }
   };
 
+  const loadZones = async () => {
+    setZonesLoading(true);
+    try {
+      const res = await fetch("/api/admin/haiti-service-zones", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list: ServiceZone[] = (data.zones ?? []).map((z: any) => ({
+          ...z,
+          authorizedCommunes: Array.isArray(z.authorizedCommunes) ? z.authorizedCommunes : [],
+        }));
+        setZones(list);
+        setEditDrafts({});
+      } else {
+        toast({ title: t("admin.loadError"), variant: "destructive" });
+      }
+    } catch {
+      toast({ title: t("admin.loadError"), variant: "destructive" });
+    } finally { setZonesLoading(false); }
+  };
+
+  const zoneDraft = (z: ServiceZone): ServiceZone => ({
+    ...z,
+    ...(editDrafts[z.id] ?? {}),
+    authorizedCommunes: editDrafts[z.id]?.authorizedCommunes ?? z.authorizedCommunes,
+  });
+
+  const patchZoneDraft = (id: number, patch: Partial<ServiceZone>) => {
+    setEditDrafts(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  };
+
+  const toggleDraftCommune = (id: number, commune: string, current: string[]) => {
+    const next = current.includes(commune)
+      ? current.filter(c => c !== commune)
+      : [...current, commune];
+    patchZoneDraft(id, { authorizedCommunes: next });
+  };
+
+  const saveZone = async (z: ServiceZone) => {
+    if (!isSuperAdmin) return;
+    const draft = zoneDraft(z);
+    setSavingZoneId(z.id);
+    try {
+      const res = await fetch(`/api/admin/haiti-service-zones/${z.id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          authorizedCommunes: draft.authorizedCommunes,
+          maxDistanceKm: draft.maxDistanceKm,
+          maxTravelMinutes: draft.maxTravelMinutes,
+          isActive: draft.isActive,
+          notes: draft.notes ?? "",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.zone) {
+          setZones(prev => prev.map(row => row.id === z.id ? {
+            ...data.zone,
+            authorizedCommunes: Array.isArray(data.zone.authorizedCommunes) ? data.zone.authorizedCommunes : [],
+          } : row));
+        }
+        setEditDrafts(prev => {
+          const next = { ...prev };
+          delete next[z.id];
+          return next;
+        });
+        toast({ title: "Service zone saved" });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error ?? "Could not save zone", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Could not save zone", variant: "destructive" });
+    } finally {
+      setSavingZoneId(null);
+    }
+  };
+
+  const createZone = async () => {
+    if (!isSuperAdmin) return;
+    setCreatingZone(true);
+    try {
+      const res = await fetch("/api/admin/haiti-service-zones", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          primaryCommune: newZone.primaryCommune,
+          authorizedCommunes: newZone.authorizedCommunes.length
+            ? newZone.authorizedCommunes
+            : [newZone.primaryCommune],
+          maxDistanceKm: newZone.maxDistanceKm === "" ? null : Number(newZone.maxDistanceKm),
+          maxTravelMinutes: newZone.maxTravelMinutes === "" ? null : Number(newZone.maxTravelMinutes),
+          notes: newZone.notes || null,
+        }),
+      });
+      if (res.ok) {
+        setShowCreateZone(false);
+        setNewZone({
+          primaryCommune: "Port-au-Prince",
+          authorizedCommunes: ["Port-au-Prince"],
+          maxDistanceKm: "",
+          maxTravelMinutes: "",
+          notes: "",
+        });
+        toast({ title: "Service zone created" });
+        await loadZones();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error ?? "Could not create zone", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Could not create zone", variant: "destructive" });
+    } finally {
+      setCreatingZone(false);
+    }
+  };
+
   useEffect(() => { load(); }, [statusFilter, countryFilter]);
   useEffect(() => { if (activeTab === "tips") loadTips(); }, [activeTab]);
   useEffect(() => { if (activeTab === "ratings") loadRatings(); }, [activeTab]);
+  useEffect(() => { if (activeTab === "zones") loadZones(); }, [activeTab]);
 
   const total      = deliveries.length;
   const delivered  = deliveries.filter(d => d.status === "delivered").length;
@@ -219,15 +388,20 @@ export default function AdminDeliveryPanel() {
           <p className="text-xs text-muted-foreground mt-0.5">Tout livrezon ak analitik</p>
         </div>
         <Button size="sm" variant="outline" className="h-8 rounded-xl text-xs gap-1.5"
-          onClick={activeTab === "tips" ? loadTips : activeTab === "ratings" ? loadRatings : load}
-          disabled={loading || tipsLoading || ratingsLoading}>
-          <RefreshCw className={`h-3.5 w-3.5 ${(loading || tipsLoading || ratingsLoading) ? "animate-spin" : ""}`} />
+          onClick={
+            activeTab === "tips" ? loadTips
+              : activeTab === "ratings" ? loadRatings
+              : activeTab === "zones" ? loadZones
+              : load
+          }
+          disabled={loading || tipsLoading || ratingsLoading || zonesLoading}>
+          <RefreshCw className={`h-3.5 w-3.5 ${(loading || tipsLoading || ratingsLoading || zonesLoading) ? "animate-spin" : ""}`} />
           Rafraîchi
         </Button>
       </div>
 
       {/* ── Tab switcher ────────────────────────────────────────────────── */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5 flex-wrap">
         <button
           onClick={() => setActiveTab("deliveries")}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
@@ -257,6 +431,16 @@ export default function AdminDeliveryPanel() {
           }`}
         >
           <Star className="h-4 w-4" /> Evalyasyon
+        </button>
+        <button
+          onClick={() => setActiveTab("zones")}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+            activeTab === "zones"
+              ? "bg-teal-600 text-white border-teal-600 shadow-sm"
+              : "border-border hover:bg-accent"
+          }`}
+        >
+          <MapPin className="h-4 w-4" /> Service Zones
         </button>
       </div>
 
@@ -739,6 +923,294 @@ export default function AdminDeliveryPanel() {
         </div>
       )}
 
+        </div>
+      )}
+
+      {/* ── Service Zones tab ───────────────────────────────────────────── */}
+      {activeTab === "zones" && (
+        <div className="space-y-5">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-black flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-teal-600" /> Service Zones
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Haiti motorcycle dispatch zones — primary commune and authorized communes.
+                {!isSuperAdmin && " View only."}
+              </p>
+            </div>
+            {isSuperAdmin && (
+              <Button
+                size="sm"
+                className="h-8 rounded-xl text-xs gap-1.5"
+                onClick={() => setShowCreateZone(v => !v)}
+              >
+                <Navigation className="h-3.5 w-3.5" />
+                {showCreateZone ? "Cancel" : "New zone"}
+              </Button>
+            )}
+          </div>
+
+          {isSuperAdmin && showCreateZone && (
+            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-bold">Create service zone</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Primary commune</span>
+                  <select
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                    value={newZone.primaryCommune}
+                    onChange={e => {
+                      const primary = e.target.value;
+                      setNewZone(prev => ({
+                        ...prev,
+                        primaryCommune: primary,
+                        authorizedCommunes: prev.authorizedCommunes.includes(primary)
+                          ? prev.authorizedCommunes
+                          : [...prev.authorizedCommunes, primary],
+                      }));
+                    }}
+                  >
+                    {Object.entries(HAITI_DEPARTMENT_COMMUNES).map(([dept, communes]) => (
+                      <optgroup key={dept} label={dept}>
+                        {communes.map(c => <option key={c} value={c}>{c}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Max distance (km)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                    value={newZone.maxDistanceKm}
+                    onChange={e => setNewZone(prev => ({ ...prev, maxDistanceKm: e.target.value }))}
+                    placeholder="Optional"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Max travel (minutes)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                    value={newZone.maxTravelMinutes}
+                    onChange={e => setNewZone(prev => ({ ...prev, maxTravelMinutes: e.target.value }))}
+                    placeholder="Optional"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[11px] font-semibold text-muted-foreground">Notes</span>
+                  <input
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                    value={newZone.notes}
+                    onChange={e => setNewZone(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Optional notes"
+                  />
+                </label>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold text-muted-foreground">Authorized communes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_HAITI_COMMUNES.map(c => {
+                    const on = newZone.authorizedCommunes.includes(c);
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewZone(prev => ({
+                          ...prev,
+                          authorizedCommunes: on
+                            ? prev.authorizedCommunes.filter(x => x !== c)
+                            : [...prev.authorizedCommunes, c],
+                        }))}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                          on
+                            ? "bg-teal-600 text-white border-teal-600"
+                            : "border-border text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="h-8 rounded-xl text-xs"
+                onClick={createZone}
+                disabled={creatingZone || !newZone.primaryCommune}
+              >
+                {creatingZone ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                Create zone
+              </Button>
+            </div>
+          )}
+
+          {zonesLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+            </div>
+          ) : zones.length === 0 ? (
+            <div className="text-center py-10 space-y-2">
+              <MapPin className="h-8 w-8 text-muted-foreground/30 mx-auto" />
+              <p className="text-sm text-muted-foreground">No service zones configured yet</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {zones.map(z => {
+                const draft = zoneDraft(z);
+                const dirty = !!editDrafts[z.id];
+                return (
+                  <div key={z.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-black text-sm">{draft.primaryCommune}</p>
+                          <Badge className="text-[10px] px-2 py-0 bg-muted text-foreground">{draft.department}</Badge>
+                          <Badge className={`text-[10px] px-2 py-0 ${
+                            draft.isActive
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+                          }`}>
+                            {draft.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                        </div>
+                        {!isSuperAdmin && draft.notes && (
+                          <p className="text-xs text-muted-foreground mt-1">{draft.notes}</p>
+                        )}
+                      </div>
+                      {isSuperAdmin && (
+                        <label className="flex items-center gap-2 text-xs font-semibold shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={!!draft.isActive}
+                            onChange={e => patchZoneDraft(z.id, { isActive: e.target.checked })}
+                            className="rounded border-border"
+                          />
+                          Active
+                        </label>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] font-semibold text-muted-foreground">Authorized communes</p>
+                      {isSuperAdmin ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {ALL_HAITI_COMMUNES.map(c => {
+                            const on = draft.authorizedCommunes.includes(c);
+                            return (
+                              <button
+                                key={c}
+                                type="button"
+                                onClick={() => toggleDraftCommune(z.id, c, draft.authorizedCommunes)}
+                                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all ${
+                                  on
+                                    ? "bg-teal-600 text-white border-teal-600"
+                                    : "border-border text-muted-foreground hover:bg-accent"
+                                }`}
+                              >
+                                {c}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {draft.authorizedCommunes.map(c => (
+                            <Badge key={c} className="text-[10px] px-2 py-0.5 bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200/60 dark:border-teal-800">
+                              {c}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <label className="space-y-1">
+                        <span className="text-[11px] font-semibold text-muted-foreground">Max distance (km)</span>
+                        {isSuperAdmin ? (
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                            value={draft.maxDistanceKm ?? ""}
+                            onChange={e => patchZoneDraft(z.id, {
+                              maxDistanceKm: e.target.value === "" ? null : Number(e.target.value),
+                            })}
+                          />
+                        ) : (
+                          <p className="text-sm font-bold">{draft.maxDistanceKm ?? "—"}</p>
+                        )}
+                      </label>
+                      <label className="space-y-1">
+                        <span className="text-[11px] font-semibold text-muted-foreground">Max travel (minutes)</span>
+                        {isSuperAdmin ? (
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                            value={draft.maxTravelMinutes ?? ""}
+                            onChange={e => patchZoneDraft(z.id, {
+                              maxTravelMinutes: e.target.value === "" ? null : Number(e.target.value),
+                            })}
+                          />
+                        ) : (
+                          <p className="text-sm font-bold">{draft.maxTravelMinutes ?? "—"}</p>
+                        )}
+                      </label>
+                      <label className="space-y-1 sm:col-span-1">
+                        <span className="text-[11px] font-semibold text-muted-foreground">Notes</span>
+                        {isSuperAdmin ? (
+                          <input
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                            value={draft.notes ?? ""}
+                            onChange={e => patchZoneDraft(z.id, { notes: e.target.value })}
+                            maxLength={500}
+                          />
+                        ) : (
+                          <p className="text-sm">{draft.notes || "—"}</p>
+                        )}
+                      </label>
+                    </div>
+
+                    {isSuperAdmin && (
+                      <div className="flex items-center justify-end gap-2">
+                        {dirty && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 rounded-xl text-xs"
+                            onClick={() => setEditDrafts(prev => {
+                              const next = { ...prev };
+                              delete next[z.id];
+                              return next;
+                            })}
+                          >
+                            Discard
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          className="h-8 rounded-xl text-xs"
+                          disabled={!dirty || savingZoneId === z.id}
+                          onClick={() => saveZone(z)}
+                        >
+                          {savingZoneId === z.id
+                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> Saving…</>
+                            : "Save changes"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

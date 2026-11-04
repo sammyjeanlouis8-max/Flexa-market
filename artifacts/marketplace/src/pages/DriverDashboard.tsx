@@ -5,24 +5,13 @@ import {
   Truck, DollarSign, Star, Package, TrendingUp, Clock, ChevronRight,
   Bike, Car, MapPin, CheckCircle, Loader2, RefreshCw, ArrowLeft,
   ShieldCheck, Wallet, Navigation, Award, Heart, User, AlertCircle,
-  CircleDot, PackageCheck, Flag, Save,
+  CircleDot, PackageCheck, Flag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-
-// ── Haiti departments available for the driver zone-preference selector ───────
-const HAITI_DEPARTMENTS: Record<string, string[]> = {
-  "Ouest":      ["Port-au-Prince", "Pétion-Ville", "Delmas", "Carrefour", "Croix-des-Bouquets", "Léogâne", "Kenscoff", "Arcahaie", "Thomazeau"],
-  "Nord":       ["Cap-Haïtien"],
-  "Artibonite": ["Gonaïves", "Saint-Marc", "Verrettes", "Montrouis"],
-  "Centre":     ["Hinche", "Mirebalais"],
-  "Sud":        ["Les Cayes"],
-  "Grand'Anse": ["Jérémie"],
-  "Sud-Est":    ["Jacmel"],
-};
 
 const apiGet = (url: string) =>
   fetch(url, {
@@ -37,6 +26,8 @@ interface DriverStats {
   city: string | null;
   commune: string | null;
   department: string | null;
+  primaryCommune?: string | null;
+  authorizedCommunes?: string[];
   vehicleType: string | null;
   vehicleBrand: string | null;
   vehicleModel: string | null;
@@ -150,35 +141,41 @@ export default function DriverDashboard() {
   const driver = statsData?.driver;
   const deliveries = historyData?.deliveries ?? [];
 
-  // ── Zone preference state ─────────────────────────────────────────────────
-  const [selDepartment, setSelDepartment] = useState<string>("");
-  const [selCommune,    setSelCommune]    = useState<string>("");
-  const [zoneSaving,    setZoneSaving]    = useState(false);
-  const [zoneSaved,     setZoneSaved]     = useState(false);
+  // ── Working commune (authorizedCommunes only) ─────────────────────────────
+  const [workingCommune, setWorkingCommune] = useState<string>("");
+  const [zoneSaving, setZoneSaving] = useState(false);
+  const [zoneSaved, setZoneSaved] = useState(false);
+  const [zoneError, setZoneError] = useState<string | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialise once driver data arrives
+  const authorizedCommunes = driver?.authorizedCommunes ?? [];
+  const primaryCommune = driver?.primaryCommune ?? driver?.commune ?? null;
+
   useEffect(() => {
     if (driver) {
-      setSelDepartment(driver.department ?? "");
-      setSelCommune(driver.commune ?? "");
+      setWorkingCommune(driver.commune ?? primaryCommune ?? "");
     }
-  }, [driver?.id]);
+  }, [driver?.id, driver?.commune, primaryCommune]);
 
-  const communesForDept = selDepartment ? (HAITI_DEPARTMENTS[selDepartment] ?? []) : [];
-
-  async function saveZone() {
-    if (!selDepartment) return;
+  async function saveWorkingCommune(commune: string) {
+    if (!commune) return;
     setZoneSaving(true);
+    setZoneError(null);
     try {
-      await fetch("/api/delivery/driver/location", {
+      const res = await fetch("/api/delivery/driver/location", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("flexamarket_token")}`,
         },
-        body: JSON.stringify({ department: selDepartment, commune: selCommune || null }),
+        body: JSON.stringify({ commune }),
       });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        setZoneError(data.error ?? "Commune not in your authorized service zone");
+        return;
+      }
+      setWorkingCommune(commune);
       setZoneSaved(true);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setZoneSaved(false), 3000);
@@ -209,7 +206,7 @@ export default function DriverDashboard() {
             Ou pa yon chauffè apwouve. Aplike kounye a pou komanse livrezon yo.
           </p>
         </div>
-        <Button className="w-full" onClick={() => setLocation("/deliveries")}>
+        <Button className="w-full" onClick={() => setLocation("/delivery/deliveries")}>
           Ale nan paj livrezon
         </Button>
       </div>
@@ -231,7 +228,7 @@ export default function DriverDashboard() {
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => setLocation("/deliveries")}
+          onClick={() => setLocation("/delivery/deliveries")}
           className="w-9 h-9 rounded-xl border border-border flex items-center justify-center hover:bg-accent transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -333,72 +330,95 @@ export default function DriverDashboard() {
         </div>
       </div>
 
-      {/* ── Zone Preference Panel (Haiti only) ──────────────────────────── */}
+      {/* ── Service zones (read-only + working commune) ─────────────────── */}
       {driver.country === "Haiti" && (
         <div className="rounded-2xl border border-blue-200/60 dark:border-blue-800/40 bg-gradient-to-br from-blue-50/60 to-cyan-50/40 dark:from-blue-950/20 dark:to-cyan-950/10 p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-black flex items-center gap-2 text-blue-800 dark:text-blue-200">
-              <MapPin className="h-4 w-4 text-blue-500" /> Zòn Travay ou
+              <MapPin className="h-4 w-4 text-blue-500" /> Service Zones
             </h3>
-            {driver.department && (
+            {primaryCommune && (
               <Badge className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-700">
-                {driver.department}{driver.commune ? ` · ${driver.commune}` : ""}
+                Primary · {primaryCommune}
               </Badge>
             )}
           </div>
 
           <p className="text-[11px] text-blue-700/80 dark:text-blue-300/70 leading-relaxed">
-            Chwazi depatman ou pou ou wè tout livrezon ki disponib nan zòn ou. Tout chofe ki nan menm depatman wè menm livrezon yo.
+            Service zones are set by Super Admin. You can only work inside your authorized communes.
           </p>
 
-          {/* Department selector */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-bold text-blue-800 dark:text-blue-200">Depatman</label>
-            <select
-              value={selDepartment}
-              onChange={e => { setSelDepartment(e.target.value); setSelCommune(""); setZoneSaved(false); }}
-              className="w-full rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-slate-900 text-sm px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-              <option value="">— Chwazi depatman —</option>
-              {Object.keys(HAITI_DEPARTMENTS).map(dep => (
-                <option key={dep} value={dep}>{dep}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Commune selector (optional, filtered by department) */}
-          {communesForDept.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-blue-800 dark:text-blue-200">Komin (opsyonèl)</label>
-              <select
-                value={selCommune}
-                onChange={e => { setSelCommune(e.target.value); setZoneSaved(false); }}
-                className="w-full rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-slate-900 text-sm px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
-              >
-                <option value="">— Tout komin depatman an —</option>
-                {communesForDept.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <p className="text-[10px] text-blue-600/70 dark:text-blue-400/60">
-                Kite vid pou wè tout livrezon nan depatman an
+          {authorizedCommunes.length === 0 ? (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/20 px-3 py-2.5">
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">No zones configured</p>
+              <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                Ask Super Admin to assign your authorized communes.
               </p>
             </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-blue-800 dark:text-blue-200">Authorized communes</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {authorizedCommunes.map(c => (
+                    <span
+                      key={c}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${
+                        primaryCommune?.toLowerCase() === c.toLowerCase()
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white/70 dark:bg-slate-900/50 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-700"
+                      }`}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-blue-800 dark:text-blue-200">Working commune</label>
+                <select
+                  value={workingCommune}
+                  onChange={e => {
+                    const next = e.target.value;
+                    setWorkingCommune(next);
+                    setZoneSaved(false);
+                    void saveWorkingCommune(next);
+                  }}
+                  disabled={zoneSaving}
+                  className="w-full rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-slate-900 text-sm px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  <option value="">— Select working commune —</option>
+                  {authorizedCommunes.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {zoneSaving && (
+                  <p className="text-[10px] text-blue-600 flex items-center gap-1">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+                  </p>
+                )}
+                {zoneSaved && !zoneSaving && (
+                  <p className="text-[10px] text-emerald-600 flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" /> Working commune updated
+                  </p>
+                )}
+                {zoneError && (
+                  <p className="text-[10px] text-red-600">{zoneError}</p>
+                )}
+              </div>
+            </>
           )}
 
           <Button
-            onClick={saveZone}
-            disabled={!selDepartment || zoneSaving}
+            variant="outline"
             size="sm"
-            className={`w-full rounded-xl font-bold text-sm ${zoneSaved ? "bg-emerald-500 hover:bg-emerald-500" : "bg-blue-600 hover:bg-blue-700"}`}
+            className="w-full rounded-xl font-bold text-sm border-blue-300 text-blue-800 dark:text-blue-200"
+            onClick={() => setLocation("/delivery/deliveries")}
+            disabled={isSuspended}
           >
-            {zoneSaving ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Ap sove...</>
-            ) : zoneSaved ? (
-              <><CheckCircle className="h-4 w-4 mr-2" /> Zòn ou sove!</>
-            ) : (
-              <><Save className="h-4 w-4 mr-2" /> Sove Zòn</>
-            )}
+            <Truck className="h-4 w-4 mr-2" /> Browse available jobs
+            <ChevronRight className="h-4 w-4 ml-auto" />
           </Button>
         </div>
       )}
@@ -737,7 +757,7 @@ export default function DriverDashboard() {
               <Truck className="h-8 w-8 text-muted-foreground/40" />
             </div>
             <p className="text-sm text-muted-foreground">Pa gen istwa livrezon pou kounye a</p>
-            <Button variant="outline" onClick={() => setLocation("/deliveries")} className="rounded-xl">
+            <Button variant="outline" onClick={() => setLocation("/delivery/deliveries")} className="rounded-xl">
               Chèche livrezon
             </Button>
           </div>
@@ -771,11 +791,11 @@ export default function DriverDashboard() {
       {/* ── Go to Browse ─────────────────────────────────────────────────── */}
       <Button
         className="w-full h-12 font-bold"
-        onClick={() => setLocation("/deliveries")}
+        onClick={() => setLocation("/delivery/deliveries")}
         disabled={isSuspended}
       >
         <Truck className="h-4 w-4 mr-2" />
-        {isActive ? "Chèche Livrezon Disponib" : "Wè Estati Kont Ou"}
+        {isActive ? "Browse available jobs" : "Wè Estati Kont Ou"}
       </Button>
     </div>
   );

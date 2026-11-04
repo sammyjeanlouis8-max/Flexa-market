@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useSearch, Link } from "wouter";
 import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import AdminCardCancellations from "@/components/AdminCardCancellations";
+import AdminAnalyticsDashboard from "@/components/admin/AdminAnalyticsDashboard";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -2572,66 +2573,36 @@ export default function Admin() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-3 py-4">
-      {/* Dense ops header — Amazon Seller Central style */}
-      <div className="flex items-center gap-2.5 mb-3 border border-border bg-background px-3 py-2.5">
-        <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${isSuperAdmin ? "bg-primary" : "bg-foreground"}`}>
-          {isSuperAdmin ? <Crown className="h-4 w-4 text-primary-foreground" /> : <Shield className="h-4 w-4 text-background" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base font-bold text-foreground leading-tight tracking-tight">
+    <div className="mx-auto max-w-[1400px] px-3 py-4 md:px-5">
+      {/* Page title row (shell provides primary nav) */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
             {isModerator ? t("adminDash.modTitle") : t("adminDash.title")}
           </h1>
-          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-            <p className="text-[11px] text-muted-foreground">
-              {isSuperAdmin ? t("adminDash.roleSuper") : isModerator ? t("adminDash.roleMod") : t("adminDash.roleAdmin")}
-            </p>
-            {me?.scopeLevel && !isSuperAdmin && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 border border-border text-muted-foreground">
-                <MapPin className="h-2.5 w-2.5" />
-                {me.scopeCity ?? me.scopeDepartment ?? me.scopeCountry ?? "Global"}
-                {" · "}{me.scopeLevel}
-              </span>
-            )}
-          </div>
+          <p className="text-xs text-muted-foreground">
+            {isSuperAdmin ? t("adminDash.roleSuper") : isModerator ? t("adminDash.roleMod") : t("adminDash.roleAdmin")}
+            {me?.scopeLevel && !isSuperAdmin ? ` · ${me.scopeCity ?? me.scopeDepartment ?? me.scopeCountry ?? "Global"}` : ""}
+          </p>
         </div>
-        {s?.flaggedUsers > 0 && <Badge variant="destructive" className="ml-auto shrink-0">{s.flaggedUsers} {t("adminDash.flagged")}</Badge>}
+        {s?.flaggedUsers > 0 && (
+          <Badge variant="destructive" className="shrink-0">
+            {s.flaggedUsers} {t("adminDash.flagged")}
+          </Badge>
+        )}
       </div>
 
-      {/* Site traffic — unique visitors (admins only) */}
-      {s && !isModerator && (
-        <section className="mb-3 border border-border bg-background overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/30">
-            <div className="flex items-center gap-2 min-w-0">
-              <Eye className="h-4 w-4 text-primary shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-tight">{t("adminDash.visitsTitle")}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{t("adminDash.visitsHint")}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground shrink-0">
-              <Wifi className="h-3 w-3 text-emerald-600" />
-              <span className="tabular-nums font-semibold text-foreground">{Number(s.onlineUsers ?? 0).toLocaleString()}</span>
-              <span>{t("adminDash.onlineNow")}</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-border">
-            <VisitStat label={t("adminDash.visitsToday")} value={Number(s.visitsToday ?? 0)} emphasize />
-            <VisitStat label={t("adminDash.visitsMonth")} value={Number(s.visitsMonth ?? 0)} />
-            <VisitStat label={t("adminDash.visitsYear")} value={Number(s.visitsYear ?? 0)} />
-            <VisitStat label={t("adminDash.visitsAllTime")} value={Number(s.visitsAllTime ?? 0)} />
-          </div>
-        </section>
-      )}
+      {/* Real traffic analytics + charts (admins / super admins) */}
+      {!isModerator && <AdminAnalyticsDashboard rangeDays={30} />}
 
       {/* Operations KPIs */}
       {s && (
         <section className="mb-4">
-          <div className="flex items-center gap-2 px-0.5 mb-1.5">
+          <div className="mb-1.5 flex items-center gap-2 px-0.5">
             <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("adminDash.opsTitle")}</p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 border border-border divide-x divide-y divide-border bg-background">
+          <div className="grid grid-cols-2 divide-x divide-y divide-border border border-border bg-background sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             <StatCard icon={Users} label={t("adminDash.users")} value={s.totalUsers} onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
             {isModerator && <StatCard icon={Wifi} label={t("adminDash.onlineNow")} value={s.onlineUsers ?? 0} />}
             <StatCard icon={Package} label={t("adminDash.activeListings")} value={s.activeListings} onClick={() => setAdminTab("listings")} />

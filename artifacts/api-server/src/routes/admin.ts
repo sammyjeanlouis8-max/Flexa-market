@@ -259,6 +259,8 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     visitsAllTime: Number(visitsAllTime?.total ?? 0),
   };
 
+  // Extended comparisons are available via GET /admin/analytics/traffic.
+
   const safeStats = {
     totalUsers: Number(totalUsers.count),
     totalListings: Number(totalListings.count),
@@ -288,6 +290,110 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     activeSubscriptions: Number(activeSubscriptions.count),
     graceSubscriptions: Number(graceSubscriptions.count),
   });
+});
+
+
+// ─── Site traffic analytics (real aggregates only) ────────────────────────────
+
+function utcDateOffset(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function utcWeekRange(weeksAgo: number): { start: string; end: string } {
+  const endOffset = weeksAgo === 0 ? 0 : -7 * weeksAgo;
+  const end = utcDateOffset(endOffset);
+  const start = utcDateOffset(endOffset - 6);
+  return { start, end };
+}
+
+function utcMonthPrefix(monthsAgo: number): string {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - monthsAgo);
+  return d.toISOString().slice(0, 7);
+}
+
+/**
+ * GET /admin/analytics/traffic?days=30
+ * Unique site visitors from site_daily_visits. Never fabricates traffic beyond empty days in range.
+ */
+router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<void> => {
+  const daysRaw = parseInt(String(req.query.days ?? "30"), 10);
+  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 7), 90) : 30;
+
+  const today = utcDateOffset(0);
+  const yesterday = utcDateOffset(-1);
+  const thisWeek = utcWeekRange(0);
+  const lastWeek = utcWeekRange(1);
+  const thisMonthPrefix = utcMonthPrefix(0);
+  const lastMonthPrefix = utcMonthPrefix(1);
+  const rangeStart = utcDateOffset(-(days - 1));
+
+  try {
+    const [
+      [visitsToday],
+      [visitsYesterday],
+      [visitsThisWeek],
+      [visitsLastWeek],
+      [visitsThisMonth],
+      [visitsLastMonth],
+      [visitsAllTime],
+      seriesRows,
+    ] = await Promise.all([
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable).where(eq(siteDailyVisitsTable.date, today)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable).where(eq(siteDailyVisitsTable.date, yesterday)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, thisWeek.start), lte(siteDailyVisitsTable.date, thisWeek.end))),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, lastWeek.start), lte(siteDailyVisitsTable.date, lastWeek.end))),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(like(siteDailyVisitsTable.date, `${thisMonthPrefix}%`)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(like(siteDailyVisitsTable.date, `${lastMonthPrefix}%`)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable),
+      db.select({
+        date: siteDailyVisitsTable.date,
+        visits: siteDailyVisitsTable.visitCount,
+      })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, rangeStart), lte(siteDailyVisitsTable.date, today)))
+        .orderBy(siteDailyVisitsTable.date),
+    ]);
+
+    const byDate = new Map(seriesRows.map((r) => [r.date, Number(r.visits ?? 0)]));
+    const series: { date: string; visits: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = utcDateOffset(-i);
+      series.push({ date, visits: byDate.get(date) ?? 0 });
+    }
+
+    res.json({
+      summary: {
+        visitsToday: Number(visitsToday?.total ?? 0),
+        visitsYesterday: Number(visitsYesterday?.total ?? 0),
+        visitsThisWeek: Number(visitsThisWeek?.total ?? 0),
+        visitsLastWeek: Number(visitsLastWeek?.total ?? 0),
+        visitsThisMonth: Number(visitsThisMonth?.total ?? 0),
+        visitsLastMonth: Number(visitsLastMonth?.total ?? 0),
+        visitsAllTime: Number(visitsAllTime?.total ?? 0),
+        onlineUsers: getOnlineUserCount(),
+      },
+      series,
+      range: { days, start: rangeStart, end: today },
+      note: "Unique visitors per UTC day. Country/device/source dimensions are not collected yet.",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Failed to load traffic analytics" });
+  }
 });
 
 // ─── Password Hash Stats ──────────────────────────────────────────────────────

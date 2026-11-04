@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, ImagePlus, Video, AlertTriangle, ChevronDown, Lightbulb, Scale } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -44,16 +44,33 @@ function PayoutMethodCards({ stripeFirst, children }: { stripeFirst: boolean; ch
   );
 }
 
-// Small required-field status dot: red when empty, green once filled.
+/** Quiet required-field marker — muted until filled, then primary. */
 function ReqDot({ filled }: { filled: boolean }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-block h-2 w-2 rounded-full ml-1.5 align-middle shrink-0 transition-colors",
-        filled ? "bg-green-500" : "bg-red-500"
+        "inline-block h-1.5 w-1.5 rounded-full ml-1.5 align-middle shrink-0 transition-colors",
+        filled ? "bg-primary" : "bg-muted-foreground/40"
       )}
     />
+  );
+}
+
+function FormSection({
+  title,
+  children,
+  className,
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn("rounded-xl border border-border bg-card p-4 space-y-4", className)}>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+      {children}
+    </section>
   );
 }
 
@@ -162,6 +179,7 @@ export default function Sell() {
   const [pkgWidth,  setPkgWidth]  = useState<string>("");
   const [pkgHeight, setPkgHeight] = useState<string>("");
   const [myListingCount, setMyListingCount] = useState<{ totalCount: number; activeCount: number } | null>(null);
+  const [photoTipsOpen, setPhotoTipsOpen] = useState(false);
 
   const form = useForm({
     resolver: zodResolver(schema),
@@ -362,7 +380,7 @@ export default function Sell() {
     for (let i = 0; i < toUpload.length; i++) {
       const file = toUpload[i];
       const err = validateFile(file);
-      if (err) { toast({ title: "Invalid file", description: err, variant: "destructive" }); continue; }
+      if (err) { toast({ title: t("sell.invalidFile"), description: err, variant: "destructive" }); continue; }
       const slotIndex = currentCount + i;
       setUploadingSlot(slotIndex);
       setUploadingSource("gallery");
@@ -522,11 +540,11 @@ export default function Sell() {
       : null;
     const message = typeof fieldMessage === "string"
       ? fieldMessage
-      : "Ranpli chan obligatwa ki make an wouj yo anvan ou pibliye.";
+      : t("sell.fillRequiredFields");
 
     setSubmitError(message);
     toast({
-      title: "Gen enfòmasyon ki manke",
+      title: t("sell.missingInfoTitle"),
       description: message,
       variant: "destructive",
     });
@@ -682,43 +700,72 @@ export default function Sell() {
   const isPublishBusy =
     isPending || uploadingSlot !== null || videoUploading || savingPayoutMethod;
   const publishBusyLabel = uploadingSlot !== null
-    ? "Foto ap monte…"
+    ? t("sell.busyUploadingPhotos")
     : videoUploading
-      ? "Videyo ap monte…"
+      ? t("sell.busyUploadingVideo")
       : savingPayoutMethod
-        ? "N ap anrejistre peman…"
+        ? t("sell.busySavingPayment")
         : null;
 
+  const watchedTitle = form.watch("title") ?? "";
+  const watchedDescription = form.watch("description") ?? "";
+  const watchedPrice = form.watch("price");
+  const watchedCategoryId = form.watch("categoryId");
+  const watchedCondition = form.watch("condition");
+  const watchedCountry = form.watch("country") ?? "";
+  const watchedCity = form.watch("city") ?? "";
+  const watchedLocation = form.watch("location") ?? "";
+  const requiredChecks = [
+    uploadedImages.length >= requiredPhotoCount,
+    watchedTitle.trim().length >= 3,
+    watchedDescription.trim().length >= 10,
+    Number(watchedPrice) > 0,
+    Number(watchedCategoryId) > 0,
+    !!watchedCondition,
+    watchedCountry.trim().length > 0,
+    watchedCity.trim().length > 0,
+    watchedLocation.trim().length >= 2,
+  ];
+  const requiredFilled = requiredChecks.filter(Boolean).length;
+  const requiredTotal = requiredChecks.length;
+
   return (
-    <div className="max-w-xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-extrabold text-foreground mb-2">
-        {isEditMode ? t("sell.editTitle") : t("sell.pageTitle")}
-      </h1>
-      {isEditMode && !editPrefilled && (
-        <p className="text-sm text-muted-foreground mb-4">{t("sell.loadingEdit")}</p>
-      )}
+    <div className="max-w-xl mx-auto px-4 pt-6 pb-28">
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          {isEditMode ? t("sell.editTitle") : t("sell.pageTitle")}
+        </h1>
+        {!isEditMode && (
+          <p className="text-xs text-muted-foreground mt-1.5 tabular-nums">
+            {t("sell.progressLabel", { filled: requiredFilled, total: requiredTotal })}
+          </p>
+        )}
+        {isEditMode && !editPrefilled && (
+          <p className="text-sm text-muted-foreground mt-1">{t("sell.loadingEdit")}</p>
+        )}
+      </div>
 
       {myListingCount !== null && myListingCount.activeCount >= 3 && myListingCount.activeCount < 4 && !hasActivePlan && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
-          <span className="text-2xl leading-none mt-0.5">⚠️</span>
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{t("sell.lastFreeSlot")}</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t("sell.lastFreeSlotDesc")}</p>
+            <p className="text-sm font-semibold text-foreground">{t("sell.lastFreeSlot")}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("sell.lastFreeSlotDesc")}</p>
           </div>
         </div>
       )}
       {myListingCount !== null && myListingCount.activeCount >= 4 && !hasActivePlan && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-orange-400/40 bg-orange-50 dark:bg-orange-950/40 px-4 py-3">
-          <span className="text-2xl leading-none mt-0.5">🚫</span>
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{t("sell.freeLimit", { count: myListingCount.activeCount, max: 4 })}</p>
-            <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+            <p className="text-sm font-semibold text-foreground">{t("sell.freeLimit", { count: myListingCount.activeCount, max: 4 })}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.freeLimitDesc")}
             </p>
             {!purchasesDisabled && <button
               type="button"
               onClick={() => setLocation("/subscription")}
-              className="mt-2 text-xs font-semibold text-white bg-orange-500 hover:bg-orange-600 rounded-lg px-3 py-1.5"
+              className="mt-2 text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg px-3 py-1.5"
             >
               {t("sell.seePlans")}
             </button>}
@@ -727,25 +774,15 @@ export default function Sell() {
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-5" noValidate>
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-4" noValidate>
 
           {/* ── Draft restored banner ─────────────────────────────────── */}
           {draftRestored && (
-            <div style={{
-              display: "flex", alignItems: "flex-start", gap: 10,
-              padding: "10px 14px", borderRadius: 12,
-              background: currency === "HTG" ? "#FFF7ED" : "#EFF6FF",
-              border: `1px solid ${currency === "HTG" ? "#FED7AA" : "#BFDBFE"}`,
-            }}>
-              <span style={{ fontSize: 18 }}>{currency === "HTG" ? "⚠️" : "📋"}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: currency === "HTG" ? "#C2410C" : "#1D4ED8" }}>
-                  {t("sell.draftRestored")}
-                </p>
-                <p style={{ margin: 0, fontSize: 11, color: currency === "HTG" ? "#EA580C" : "#3B82F6" }}>
-                  {currency === "HTG"
-                    ? "Monè brouyon an: G HTG (Goud). Verifye si se sa w vle."
-                    : t("sell.draftRestoredDesc")}
+            <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/30 px-3.5 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-foreground">{t("sell.draftRestored")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {currency === "HTG" ? t("sell.draftCurrencyHtg") : t("sell.draftRestoredDesc")}
                 </p>
               </div>
               <button
@@ -757,7 +794,7 @@ export default function Sell() {
                   setListingVideoUrl(null);
                   setCurrency("USD");
                 }}
-                style={{ fontSize: 11, color: "#93C5FD", background: "none", border: "none", cursor: "pointer", padding: "4px 8px", borderRadius: 6, whiteSpace: "nowrap" }}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground shrink-0 px-2 py-1 rounded-md"
               >
                 {t("sell.clearDraft")}
               </button>
@@ -765,6 +802,7 @@ export default function Sell() {
           )}
 
           {/* Image upload section */}
+          <FormSection title={t("sell.sectionPhotos")}>
           <div
             ref={photoSectionRef}
             role="group"
@@ -798,7 +836,7 @@ export default function Sell() {
                   <button
                     type="button"
                     onClick={() => removeImage(i)}
-                    aria-label={`Retire foto ${i + 1}`}
+                    aria-label={t("sell.removePhotoAria", { n: i + 1 })}
                     className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                     data-testid={`button-remove-image-${i}`}
                   >
@@ -818,7 +856,7 @@ export default function Sell() {
                   {uploadingSource === "gallery" ? (
                     <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
                       <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
-                      <span className="text-xs text-muted-foreground pointer-events-none">Foto ap monte…</span>
+                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.photosUploadingShort")}</span>
                     </span>
                   ) : (
                     <>
@@ -844,40 +882,51 @@ export default function Sell() {
             {uploadedImages.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
             )}
-            <p id="sell-photo-requirement" className={cn("text-xs mt-1 font-medium", uploadedImages.length < requiredPhotoCount ? "text-red-500" : "text-green-600")}>
+            <p id="sell-photo-requirement" className={cn("text-xs mt-1 font-medium", uploadedImages.length < requiredPhotoCount ? "text-muted-foreground" : "text-primary")}>
               {uploadedImages.length < requiredPhotoCount
                 ? t("sell.photoRequirement", { min: requiredPhotoCount, max: MAX_IMAGES })
                 : t("sell.photosReady", { max: MAX_IMAGES })}
             </p>
             {uploadErrorMessage && (
-              <div id="sell-photo-error" className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+              <div id="sell-photo-error" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive" role="alert">
                 <p className="font-semibold">{t("sell.uploadFailedHeading")}</p>
                 <p>{uploadErrorMessage}</p>
-                <p className="mt-1">{t("sell.uploadRetryHint")}</p>
+                <p className="mt-1 text-muted-foreground">{t("sell.uploadRetryHint")}</p>
               </div>
             )}
 
-            {/* ── Professional photo tips card ── */}
-            <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
-                {t("sell.photoTipsTitle")}
-              </p>
-              <ul className="space-y-1">
-                {([
-                  t("sell.photoTip1"),
-                  t("sell.photoTip2"),
-                  t("sell.photoTip3"),
-                  t("sell.photoTip4"),
-                ] as string[]).map((tip, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-                    <span className="mt-0.5 shrink-0 text-amber-500">✓</span>
-                    {tip}
-                  </li>
-                ))}
-              </ul>
+            {/* Collapsible photo tips — quiet by default */}
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setPhotoTipsOpen(o => !o)}
+                className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted/40 transition-colors"
+                aria-expanded={photoTipsOpen}
+              >
+                <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">{photoTipsOpen ? t("sell.photoTipsHide") : t("sell.photoTipsShow")}</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", photoTipsOpen && "rotate-180")} />
+              </button>
+              {photoTipsOpen && (
+                <ul className="mt-2 space-y-1.5 px-1">
+                  {([
+                    t("sell.photoTip1"),
+                    t("sell.photoTip2"),
+                    t("sell.photoTip3"),
+                    t("sell.photoTip4"),
+                  ] as string[]).map((tip, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Check className="h-3 w-3 mt-0.5 shrink-0 text-primary" />
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
+          </FormSection>
 
+          <FormSection title={t("sell.sectionDetails")}>
           <FormField control={form.control} name="title" render={({ field }) => (
             <FormItem>
               <FormLabel>{t("sell.listingTitle")}<ReqDot filled={(field.value ?? "").trim().length >= 3} /></FormLabel>
@@ -1026,7 +1075,6 @@ export default function Sell() {
                       </>
                     ) : (
                       <>
-                        <span className="text-xl shrink-0">📂</span>
                         <span className="flex-1 text-sm">{t("sell.selectCategory", "Select a category…")}</span>
                         <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                       </>
@@ -1172,9 +1220,9 @@ export default function Sell() {
                   onChange={handleVideoSelected}
                 />
                 {listingVideoUrl ? (
-                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-green-500/40 bg-green-50 dark:bg-green-950/20">
-                    <Video className="h-4 w-4 text-green-600 flex-shrink-0" />
-                    <span className="text-sm font-medium text-green-800 dark:text-green-300 truncate" data-testid="text-video-attached">
+                  <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-muted/30">
+                    <Video className="h-4 w-4 text-primary flex-shrink-0" />
+                    <span className="text-sm font-medium text-foreground truncate" data-testid="text-video-attached">
                       {t("sell.videoAttached")}
                     </span>
                     <button
@@ -1206,11 +1254,11 @@ export default function Sell() {
                 <VideoUploadChooser purpose="listing" onUse={setListingVideoUrl} />
               </>
             ) : (
-              <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-amber-300/60 bg-amber-50 dark:bg-amber-950/20">
-                <Video className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 px-3 py-3 rounded-xl border border-border bg-muted/20">
+                <Video className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  {!purchasesDisabled && <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("sell.videoUpgradeTitle")}</p>}
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  {!purchasesDisabled && <p className="text-sm font-semibold text-foreground">{t("sell.videoUpgradeTitle")}</p>}
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.videoUpgradeMsg")}
                   </p>
                 </div>
@@ -1218,7 +1266,7 @@ export default function Sell() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="flex-shrink-0 border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-600 dark:hover:bg-amber-900/30"
+                  className="flex-shrink-0"
                   onClick={() => setLocation("/subscription")}
                   data-testid="button-video-upgrade"
                 >
@@ -1277,7 +1325,9 @@ export default function Sell() {
               </select>
             </div>
           )}
+          </FormSection>
 
+          <FormSection title={t("sell.sectionLocation")}>
           {/* Country — editable for admins, read-only for regular users */}
           <FormField control={form.control} name="country" render={({ field }) => (
             <FormItem>
@@ -1401,7 +1451,7 @@ export default function Sell() {
                         {cityOptions.map((c) => (
                           <option key={c} value={c} data-testid={`city-option-${c}`}>{c}</option>
                         ))}
-                        <option value={OTHER_CITY} data-testid="city-option-other">Lòt vil…</option>
+                        <option value={OTHER_CITY} data-testid="city-option-other">{t("sell.otherCity")}</option>
                       </select>
                     </FormControl>
                     {useOtherCity && (
@@ -1441,9 +1491,12 @@ export default function Sell() {
 
           {/* ── Package weight & dimensions ───────────────────────────────────── */}
           {selectedCountry && (
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
               <div>
-                <p className="text-sm font-semibold flex items-center gap-1.5">⚖️ {t("sell.packageWeightTitle")}</p>
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <Scale className="h-4 w-4 text-muted-foreground" />
+                  {t("sell.packageWeightTitle")}
+                </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {isLocalDeliveryCountry
                     ? t("sell.packageWeightLocalDescription")
@@ -1466,12 +1519,12 @@ export default function Sell() {
                 </div>
                 <div className="flex items-center justify-center">
                   {weightLbs && Number(weightLbs) > 0 && (
-                    <div className={`rounded-lg px-3 py-2 text-center text-xs font-medium ${Number(weightLbs) <= 5 ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : Number(weightLbs) <= 30 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"}`}>
+                    <div className="rounded-lg border border-border bg-background px-3 py-2 text-center text-xs font-medium text-foreground">
                       {Number(weightLbs) <= 5
-                        ? `📦 ${t("sell.lightPackage")}`
+                        ? t("sell.lightPackage")
                         : Number(weightLbs) <= 30
-                          ? `📦 ${t("sell.mediumPackage")}`
-                          : `🚗 ${t("sell.largePackage")}`}
+                          ? t("sell.mediumPackage")
+                          : t("sell.largePackage")}
                     </div>
                   )}
                 </div>
@@ -1499,7 +1552,7 @@ export default function Sell() {
 
           {/* ── FM delivery methods are Haiti-only ─────────────────────────── */}
           {selectedCountry && isLocalDeliveryCountry && (
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
               <div>
                 <p className="text-sm font-semibold">{t("sell.deliveryMethodTitle")}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{t("sell.deliveryMethodDescription")}</p>
@@ -1509,56 +1562,52 @@ export default function Sell() {
                   type="button"
                   onClick={() => setSellerDeliveryMethod("motorcycle")}
                   className={cn(
-                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
+                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-medium transition-all",
                     sellerDeliveryMethod === "motorcycle"
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-muted-foreground"
+                      : "border-border hover:bg-muted/40"
                   )}
                   data-testid="seller-delivery-motorcycle"
                 >
-                  <span className="text-lg">🏍️</span>
                   <span>{t("sell.deliveryMotorcycle")}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSellerDeliveryMethod("car")}
                   className={cn(
-                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
+                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-medium transition-all",
                     sellerDeliveryMethod === "car"
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-muted-foreground"
+                      : "border-border hover:bg-muted/40"
                   )}
                   data-testid="seller-delivery-car"
                 >
-                  <span className="text-lg">🚗</span>
                   <span>{t("sell.deliveryCar")}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSellerDeliveryMethod("bus")}
                   className={cn(
-                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
+                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-medium transition-all",
                     sellerDeliveryMethod === "bus"
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-muted-foreground"
+                      : "border-border hover:bg-muted/40"
                   )}
                   data-testid="seller-delivery-bus"
                 >
-                  <span className="text-lg">🚌</span>
                   <span>{t("sell.deliveryBus")}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setSellerDeliveryMethod("self_delivery")}
                   className={cn(
-                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
+                    "flex items-center justify-center gap-2 px-3 py-3 rounded-xl border text-sm font-medium transition-all",
                     sellerDeliveryMethod === "self_delivery"
                       ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-muted-foreground"
+                      : "border-border hover:bg-muted/40"
                   )}
                   data-testid="seller-delivery-self"
                 >
-                  <span className="text-lg">🚶</span>
                   <span>{t("sell.deliverySelf")}</span>
                 </button>
               </div>
@@ -1575,7 +1624,7 @@ export default function Sell() {
           )}
 
           {selectedCountry === "Dominican Republic" && (
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
               <p className="text-sm font-semibold">{t("sell.deliveryMethodTitle")}</p>
               <div className="grid grid-cols-2 gap-2">
                 {(["carrier", "self_delivery"] as const).map(choice => (
@@ -1584,8 +1633,8 @@ export default function Sell() {
                     type="button"
                     onClick={() => setDominicanDeliveryChoice(choice)}
                     className={cn(
-                      "px-3 py-3 rounded-xl border-2 text-sm font-medium transition-all",
-                      dominicanDeliveryChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
+                      "px-3 py-3 rounded-xl border text-sm font-medium transition-all",
+                      dominicanDeliveryChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted/40"
                     )}
                     aria-pressed={dominicanDeliveryChoice === choice}
                     data-testid={`dominican-delivery-${choice}`}
@@ -1598,7 +1647,7 @@ export default function Sell() {
           )}
           {/* ── Shipping options for non-Haiti listings ────────────────────── */}
           {selectedCountry && !isLocalDeliveryCountry && (
-            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
               <div>
                 <p className="text-sm font-semibold">{t(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery" ? "sell.deliverySelf" : "sell.shippingOptionsTitle")}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{t(selectedCountry === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery" ? "sell.deliverySelfDescription" : "sell.shippingOptionsDescription")}</p>
@@ -1630,8 +1679,8 @@ export default function Sell() {
                         type="button"
                         onClick={() => setIntlCarriers(prev => active ? prev.filter(c => c !== carrier) : [...prev, carrier])}
                         className={cn(
-                          "px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-all",
-                          active ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
+                          "px-3 py-1.5 rounded-lg border text-sm font-medium transition-all",
+                          active ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted/40"
                         )}
                         data-testid={`carrier-${carrier.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
                       >
@@ -1644,6 +1693,7 @@ export default function Sell() {
               </div>}
             </div>
           )}
+          </FormSection>
 
           {/* ── Live listing preview ─────────────────────────────────────────── */}
           {(() => {
@@ -1652,24 +1702,23 @@ export default function Sell() {
             const selSub = selCat
               ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId)
               : null;
-            const selectedPreviewImages = uploadedImages.map(img => img.previewUrl);
-            const usingSampleListing = selectedPreviewImages.length === 0;
-            const previewImages = !usingSampleListing
-              ? selectedPreviewImages
-              : [sellPreviewCar];
-            const hasContent = vals.title?.trim() || previewImages.length > 0;
-            if (!hasContent) return null;
+            const previewImages = uploadedImages.map(img => img.previewUrl);
+            if (previewImages.length === 0) {
+              return (
+                <div className="rounded-xl border border-dashed border-border bg-muted/10 px-4 py-6 text-center">
+                  <p className="text-xs font-medium text-muted-foreground">{t("sell.previewEmptyHint")}</p>
+                </div>
+              );
+            }
             const previewListing = {
               id: -1,
-              title: usingSampleListing
-                ? t("sell.previewSampleCarTitle")
-                : vals.title?.trim() || t("sell.titlePlaceholder", "Your listing title"),
-              price: Number(vals.price) || 127000,
+              title: vals.title?.trim() || t("sell.previewPlaceholderTitle"),
+              price: Number(vals.price) || 0,
               currency,
               images: previewImages,
-              location: usingSampleListing ? "Miami" : vals.location || vals.city || "",
-              city: usingSampleListing ? "Miami" : vals.city || null,
-              country: usingSampleListing ? "United States" : vals.country || null,
+              location: vals.location || vals.city || "",
+              city: vals.city || null,
+              country: vals.country || null,
               condition: vals.condition || "good",
               isBoosted: false,
               status: "active",
@@ -1684,9 +1733,9 @@ export default function Sell() {
               sellerId: undefined,
             };
             return (
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  {t("sell.preview", "Aperçu — how buyers will see your listing")}
+                  {t("sell.preview")}
                 </p>
                 <div className="max-w-[220px]">
                   <ListingCard listing={previewListing} preview previewFallbackImage={sellPreviewCar} />
@@ -1697,34 +1746,32 @@ export default function Sell() {
 
           {/* ── Draft saved indicator ────────────────────────────────── */}
           {draftSavedAt && !createListing.isPending && !isEditMode && (
-            <p style={{ margin: 0, fontSize: 11, color: "#94A3B8", textAlign: "center" }}>
-              💾 Brouyon sovgade — {draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <p className="text-[11px] text-muted-foreground text-center">
+              {t("sell.draftSaved", {
+                time: draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              })}
             </p>
           )}
 
           {/* ── Submit error with retry ───────────────────────────────── */}
           {submitError && !createListing.isPending && (
-            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#FEF2F2", border: "1px solid #FECACA" }}>
-              <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#DC2626" }}>
-                {submitRestricted ? t("restriction.title") : "Erè piblikasyon"}
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3.5 py-3">
+              <p className="text-sm font-semibold text-destructive">
+                {submitRestricted ? t("restriction.title") : t("sell.publishError")}
               </p>
-              <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B91C1C", lineHeight: 1.4 }}>
+              <p className="text-xs text-destructive/90 mt-1 leading-relaxed">
                 {submitError}
               </p>
-              <button
+              <Button
                 type="button"
-                onClick={() => submitRestricted ? setLocation("/support") : form.handleSubmit(onSubmit, onInvalidSubmit)()}
+                size="sm"
+                variant="destructive"
+                className="mt-2.5"
                 disabled={isPublishBusy}
-                style={{
-                  fontSize: 13, fontWeight: 600, color: "#ffffff",
-                  background: "#DC2626", border: "none", borderRadius: 8,
-                  padding: "7px 16px", cursor: isPublishBusy ? "wait" : "pointer",
-                  opacity: isPublishBusy ? 0.65 : 1,
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                }}
+                onClick={() => submitRestricted ? setLocation("/support") : form.handleSubmit(onSubmit, onInvalidSubmit)()}
               >
-                {submitRestricted ? t("restriction.contactSupport") : "🔄 Try again"}
-              </button>
+                {submitRestricted ? t("restriction.contactSupport") : t("sell.tryAgain")}
+              </Button>
             </div>
           )}
 
@@ -1780,11 +1827,11 @@ export default function Sell() {
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center text-base leading-none shrink-0">
-                      💳
+                    <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center text-xs font-bold text-primary leading-none shrink-0">
+                      FM
                     </div>
                     <div>
-                      <p className="text-sm font-black text-foreground leading-none">Kat FM</p>
+                      <p className="text-sm font-semibold text-foreground leading-none">Kat FM</p>
                       <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
                         {t("sell.fmCardAlwaysAvailable")}
                       </p>
@@ -1815,11 +1862,11 @@ export default function Sell() {
                     </span>
                   )}
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#635BFF]/10 flex items-center justify-center text-base leading-none shrink-0">
-                      💳
+                    <div className="w-8 h-8 rounded-lg bg-[#635BFF]/10 flex items-center justify-center text-xs font-bold text-[#635BFF] leading-none shrink-0">
+                      S
                     </div>
                     <div>
-                      <p className="text-sm font-black text-foreground leading-none">Stripe</p>
+                      <p className="text-sm font-semibold text-foreground leading-none">Stripe</p>
                       <p className={`text-[10px] font-semibold mt-0.5 ${stripeAccountConnected ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                         {stripeAccountConnected
                           ? stripeAccountActive
@@ -1851,12 +1898,26 @@ export default function Sell() {
             </div>
           )}
 
+          {/* Spacer so sticky CTA doesn't cover payout cards */}
+          <div className="h-2" aria-hidden="true" />
+        </form>
+      </Form>
+
+      {/* Sticky publish CTA — bottom nav is hidden on /sell */}
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-border bg-background/95 backdrop-blur-sm pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="max-w-xl mx-auto px-4 pt-3">
+          {!isEditMode && requiredFilled < requiredTotal && (
+            <p className="text-[11px] text-muted-foreground text-center mb-2 tabular-nums">
+              {t("sell.progressLabel", { filled: requiredFilled, total: requiredTotal })}
+            </p>
+          )}
           <Button
-            type="submit"
-            className="w-full font-bold"
+            type="button"
+            className="w-full font-semibold h-11"
             disabled={isPublishBusy}
             aria-busy={isPublishBusy}
             data-testid="button-submit-listing"
+            onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
           >
             {publishBusyLabel
               ? publishBusyLabel
@@ -1864,8 +1925,8 @@ export default function Sell() {
                 ? (isEditMode ? t("sell.savingChanges") : t("sell.publishing"))
                 : (isEditMode ? t("sell.saveChanges") : t("sell.publishListing"))}
           </Button>
-        </form>
-      </Form>
+        </div>
+      </div>
     </div>
   );
 }

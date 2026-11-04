@@ -76,17 +76,12 @@ jobs:
           body="$(printf '%s\n' "$response" | sed '$d')"
           code="$(printf '%s\n' "$response" | tail -n1)"
           echo "DigitalOcean GET /apps/{id} HTTP status: ${code}"
-          if command -v python3 >/dev/null 2>&1; then
-            printf '%s' "$body" | python3 -c 'import sys,json
-try:
-  d=json.load(sys.stdin)
-  app=d.get("app") or {}
-  print("app.id:", app.get("id") or d.get("id") or "n/a")
-  spec=app.get("spec") or {}
-  print("app.name:", spec.get("name") or app.get("default_ingress") or "n/a")
-  if d.get("message"): print("DO message:", d.get("message"))
-except Exception:
-  print("DO response: (non-JSON or truncated)")' || true
+          if command -v jq >/dev/null 2>&1; then
+            printf '%s' "$body" | jq -r '
+              "app.id: " + ((.app.id // .id // "n/a") | tostring),
+              "app.name: " + ((.app.spec.name // .app.default_ingress // "n/a") | tostring),
+              if .message then "DO message: " + (.message | tostring) else empty end
+            ' 2>/dev/null || echo "DO response: (non-JSON or truncated)"
           fi
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "::error::Dry-run auth/app validation failed with HTTP ${code}"
@@ -113,14 +108,11 @@ except Exception:
           code="$(printf '%s\n' "$response" | tail -n1)"
           echo "DigitalOcean HTTP status: ${code}"
           # Log only id/message keys if JSON; never dump unexpected payloads.
-          if command -v python3 >/dev/null 2>&1; then
-            printf '%s' "$body" | python3 -c 'import sys,json
-try:
-  d=json.load(sys.stdin)
-  print("DO response id:", d.get("id") or (d.get("deployment") or {}).get("id") or "n/a")
-  if d.get("message"): print("DO message:", d.get("message"))
-except Exception:
-  print("DO response: (non-JSON or truncated)")' || true
+          if command -v jq >/dev/null 2>&1; then
+            printf '%s' "$body" | jq -r '
+              "DO response id: " + ((.id // .deployment.id // "n/a") | tostring),
+              if .message then "DO message: " + (.message | tostring) else empty end
+            ' 2>/dev/null || echo "DO response: (non-JSON or truncated)"
           fi
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "::error::DigitalOcean deploy request failed with HTTP ${code}"

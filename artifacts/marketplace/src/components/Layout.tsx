@@ -756,8 +756,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     }
   }, [location, showInlineMessages, showInlineSell, inlineRoute]);
 
-  // Back button: show on mobile for every page except home, messages, and auth
-  const showBackButton = location !== "/" && !location.startsWith("/messages") && !location.startsWith("/auth/");
+  // Back button: show on mobile for every page except home, messages, auth, and PDP
+  // PDP uses Amazon-style chrome (hamburger + brand) — no back chevron
+  const showBackButton =
+    location !== "/"
+    && !location.startsWith("/messages")
+    && !location.startsWith("/auth/")
+    && !/^\/listings\/[^/]+/.test(location);
 
   // When leaving the TV page with an active broadcast OR film playing,
   // always use navigate("/") so GlobalBroadcastPlayer keeps its React state
@@ -875,7 +880,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     location.startsWith(p)
   );
   const isHomePage = location === "/";
-
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
   // Video feed also needs full-height, immersive layout
@@ -884,6 +888,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
   const isListingDetail = /^\/listings\/[^/]+/.test(location);
+  // Amazon-style dark green chrome on home + product detail (mobile)
+  const isMarketGreenHeader = isHomePage || isListingDetail;
   const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   // Cover regular navigation and Android's inline posting screen.
   const isSellPage = showInlineSell || /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
@@ -942,7 +948,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         <header
           className={cn(
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
-            isHomePage
+            isMarketGreenHeader
               ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white md:bg-card md:border-border md:text-foreground"
               : "bg-card border-border",
           )}
@@ -955,7 +961,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               onClick={() => setMoreOpen(true)}
               className={cn(
                 "md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                isHomePage ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
+                isMarketGreenHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
               )}
               aria-label={t("nav.menu")}
             >
@@ -967,14 +973,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full hover:bg-accent/20 transition-colors"
+                  className={cn(
+                    "md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors",
+                    isMarketGreenHeader ? "hover:bg-white/10 text-white" : "hover:bg-accent text-foreground",
+                  )}
                   aria-label="Retounen"
                 >
-                  <ArrowLeft className={cn("h-5 w-5", isHomePage && "md:text-foreground")} />
+                  <ArrowLeft className="h-5 w-5" />
                 </button>
-                {pageTitle && (
+                {/* On PDP keep brand visible instead of long page title */}
+                {isListingDetail ? (
+                  <Link href="/" className="md:hidden flex items-center gap-1.5 min-w-0 flex-1">
+                    <img src="/flexa-logo-v2.png" alt="" className="h-8 w-auto" width="32" height="32" />
+                    <span className="font-bold text-[13px] truncate text-white">Flexa Market</span>
+                  </Link>
+                ) : pageTitle ? (
                   <span className="md:hidden flex-1 text-base font-bold truncate">{pageTitle}</span>
-                )}
+                ) : null}
                 <Link href="/" aria-label="FLEXA MARKET home" className="hidden md:flex items-center gap-2 shrink-0">
                   <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-11 w-auto" width="44" height="44" />
                   <span className="font-bold text-[15px] tracking-wide whitespace-nowrap text-foreground">FLEXA MARKET</span>
@@ -985,13 +1000,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               </>
             ) : (
               <>
-                <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0">
+                <Link href="/" aria-label="FLEXA MARKET home" className="shrink-0 flex items-center gap-2 min-w-0 flex-1 md:flex-none">
                   <img src="/flexa-logo-v2.png" alt="FLEXA MARKET logo" className="h-9 w-auto md:h-11" width="44" height="44" />
-                  <div className="min-w-0 hidden xs:block sm:block">
-                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isHomePage ? "text-white md:text-foreground" : "text-foreground")}>
+                  <div className="min-w-0">
+                    <span className={cn("block font-bold text-[14px] tracking-wide truncate leading-tight", isMarketGreenHeader ? "text-white md:text-foreground" : "text-foreground")}>
                       Flexa Market
                     </span>
-                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isHomePage ? "text-white/80 md:text-muted-foreground" : "text-muted-foreground")}>
+                    <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isMarketGreenHeader ? "text-white/80 md:text-muted-foreground" : "text-muted-foreground")}>
                       Buy · Sell · Delivery
                     </span>
                   </div>
@@ -999,12 +1014,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 <div className="hidden md:block flex-1">
                   <HeaderSearch />
                 </div>
-                <div className="flex-1 md:hidden" />
               </>
             )}
 
-            {user && <NotificationsDropdown />}
-            <CartIconButton light={isHomePage} />
+            {/* Account icon — mobile Amazon-style chrome */}
+            <Link
+              href={profileHref}
+              className={cn(
+                "md:hidden shrink-0 p-2 rounded-xl transition-colors",
+                isMarketGreenHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-muted",
+              )}
+              aria-label={t("nav.account", { defaultValue: "Account" })}
+              data-testid="header-account-icon"
+            >
+              <User className="h-5 w-5" />
+            </Link>
+            {user && <NotificationsDropdown light={isMarketGreenHeader} />}
+            <CartIconButton light={isMarketGreenHeader} />
             <CommandPalette />
             <LanguageSwitcher className="header-language-switcher shrink-0 hidden md:inline-flex" />
             <div className="hidden md:block">

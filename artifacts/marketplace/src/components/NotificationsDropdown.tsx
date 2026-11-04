@@ -50,8 +50,19 @@ export default function NotificationsDropdown() {
   useEffect(() => {
     const controller = new AbortController();
     void fetchCount(controller.signal);
-    const interval = setInterval(() => { void fetchCount(controller.signal); }, 30_000);
-    return () => { controller.abort(); clearInterval(interval); };
+    // Desktop UX: slower background poll; refresh on focus/visibility instead.
+    const interval = setInterval(() => { void fetchCount(controller.signal); }, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchCount();
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [fetchCount]);
 
   const fetchNotifications = useCallback(async (signal?: AbortSignal) => {
@@ -70,7 +81,7 @@ export default function NotificationsDropdown() {
     if (!open) return;
     const controller = new AbortController();
     void fetchNotifications(controller.signal);
-    const interval = setInterval(() => { void fetchNotifications(controller.signal); }, 15000);
+    const interval = setInterval(() => { void fetchNotifications(controller.signal); }, 45_000);
     return () => { controller.abort(); clearInterval(interval); };
   }, [open, fetchNotifications]);
 

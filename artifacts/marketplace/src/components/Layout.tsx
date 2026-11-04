@@ -28,13 +28,20 @@ import AndroidInlineRoute from "@/components/AndroidInlineRoute";
 import { OPEN_PUSH_CONVERSATION } from "@/lib/pushNavigation";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { DeliveryMenuCountryContext, canShowFMDeliveryLinks } from "@/contexts/delivery-navigation";
+import { useSocket } from "@/hooks/useSocket";
+import { prefetchRoute } from "@/lib/prefetchRoutes";
+import { CommandPalette } from "@/components/CommandPalette";
 
 const InlineSell = lazy(() => import("@/pages/Sell"));
 const InlineMessages = lazy(() => import("@/pages/Messages"));
 
+/** Desktop badge: socket-driven refresh + slow safety poll (was 5s). */
+const UNREAD_POLL_MS = 60_000;
+
 // ─── Unread message badge ────────────────────────────────────────────────────
 function useUnreadMessageCount(): number {
   const { user } = useAuth();
+  const socket = useSocket();
   const [count, setCount] = useState(0);
   useEffect(() => {
     if (!user) { setCount(0); return; }
@@ -52,17 +59,20 @@ function useUnreadMessageCount(): number {
       } catch { /* non-critical */ }
     };
     fetchCount();
-    const iv = setInterval(fetchCount, 5_000);
+    // Safety net only — realtime updates come from socket below.
+    const iv = setInterval(fetchCount, UNREAD_POLL_MS);
     const onVisible = () => { if (document.visibilityState === "visible") fetchCount(); };
     window.addEventListener("focus", fetchCount);
     document.addEventListener("visibilitychange", onVisible);
+    const unsub = socket.onNewMessage(() => { void fetchCount(); });
     return () => {
       cancelled = true;
       clearInterval(iv);
+      unsub();
       window.removeEventListener("focus", fetchCount);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [user]);
+  }, [user, socket]);
   return count;
 }
 
@@ -971,6 +981,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
           {user && <NotificationsDropdown />}
           {user && <CartIconButton />}
+          <CommandPalette />
           {/* Desktop language switcher; mobile language remains in the profile/guest menu */}
           <LanguageSwitcher className="header-language-switcher shrink-0" />
           {/* Profile menu */}
@@ -1190,7 +1201,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 const active = isActive(href);
                 const showBadge = typeof badge === "number" && badge > 0;
                 return (
-                  <Link key={key} href={href}>
+                  <Link key={key} href={href} onMouseEnter={() => prefetchRoute(href)}>
                     <button
                       type="button"
                       data-testid={`nav-desktop-${key}`}

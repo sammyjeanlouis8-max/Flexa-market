@@ -18,17 +18,70 @@ function whenIdle(run: () => void) {
   window.setTimeout(run, 400);
 }
 
+const warmed = new Set<string>();
+
+const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
+  "/": () => import("@/pages/Home"),
+  "/search": () => import("@/pages/Search"),
+  "/sell": () => import("@/pages/Sell"),
+  "/messages": () => import("@/pages/Messages"),
+  "/wallet": () => import("@/pages/Wallet"),
+  "/cart": () => import("@/pages/Cart"),
+  "/orders": () => import("@/pages/Orders"),
+  "/sales": () => import("@/pages/Sales"),
+  "/saved": () => import("@/pages/Saved"),
+  "/settings": () => import("@/pages/Settings"),
+  "/subscription": () => import("@/pages/Subscription"),
+  "/videos": () => import("@/pages/VideoFeed"),
+  "/tv": () => import("@/pages/FlexaTV"),
+  "/music": () => import("@/pages/FlexaMusic"),
+  "/offers": () => import("@/pages/Offers"),
+  "/chatbot": () => import("@/pages/Chatbot"),
+  "/jobs": () => import("@/pages/Jobs"),
+  "/support": () => import("@/pages/Support"),
+  "/admin": () => import("@/pages/Admin"),
+  "/my-boosts": () => import("@/pages/MyBoosts"),
+};
+
+function normalizePath(href: string): string {
+  const path = href.split("?")[0] || "/";
+  if (path.startsWith("/listings/") && !path.endsWith("/video")) {
+    return "/listings/:id";
+  }
+  if (path.startsWith("/messages/")) return "/messages";
+  if (path.startsWith("/orders/") && path !== "/orders") return "/orders";
+  if (path.startsWith("/admin")) return "/admin";
+  if (path.startsWith("/settings")) return "/settings";
+  if (path.startsWith("/music")) return "/music";
+  if (path.startsWith("/tv")) return "/tv";
+  if (path.startsWith("/wallet")) return "/wallet";
+  return path;
+}
+
+/** Prefetch a single route chunk (idempotent). */
+export function prefetchRoute(href: string) {
+  const key = normalizePath(href);
+  if (warmed.has(key)) return;
+  const run =
+    ROUTE_IMPORTERS[key] ||
+    (key === "/listings/:id" ? () => import("@/pages/ListingDetail") : null);
+  if (!run) return;
+  warmed.add(key);
+  void run().catch(() => {
+    warmed.delete(key);
+  });
+}
+
 /** Prefetch the most-used marketplace page modules. Safe to call multiple times. */
 export function prefetchCriticalRoutes() {
   whenIdle(() => {
-    void import("@/pages/Home");
-    void import("@/pages/Search");
-    void import("@/pages/ListingDetail");
+    prefetchRoute("/");
+    prefetchRoute("/search");
+    prefetchRoute("/listings/:id");
   });
-  // Second wave: account chrome users open from the sidebar.
   whenIdle(() => {
-    void import("@/pages/Messages");
-    void import("@/pages/Wallet");
-    void import("@/pages/Cart");
+    prefetchRoute("/messages");
+    prefetchRoute("/wallet");
+    prefetchRoute("/cart");
   });
 }

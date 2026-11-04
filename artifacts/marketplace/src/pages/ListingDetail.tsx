@@ -27,6 +27,7 @@ import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
+import { listingImageProps } from "@/lib/listingImage";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -1221,6 +1222,7 @@ export default function ListingDetail() {
             className="w-full h-full object-contain"
             draggable={false}
             onError={() => addFailedUrl(currentMedia.url)}
+            {...listingImageProps({ priority: true, variant: "detail" })}
             style={{
               transform: `scale(${zoom}) translate(${panX / zoom}px, ${panY / zoom}px)`,
               transformOrigin: "center center",
@@ -1380,6 +1382,7 @@ export default function ListingDetail() {
                   alt=""
                   className="w-full h-full object-cover"
                   onError={() => addFailedUrl(item.url)}
+                  {...listingImageProps({ variant: "detail" })}
                 />
               )}
             </button>
@@ -1507,6 +1510,7 @@ export default function ListingDetail() {
               src={(listing as any).images?.[0] ?? "https://placehold.co/56x56/f97316/white?text=FM"}
               alt=""
               className="w-14 h-14 rounded-xl object-cover border-2 border-border flex-shrink-0"
+              {...listingImageProps({ variant: "card" })}
             />
             <div className="flex-1">
               <p className="text-xs text-muted-foreground mb-2">

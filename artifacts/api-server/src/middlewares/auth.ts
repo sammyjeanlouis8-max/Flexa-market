@@ -3,6 +3,52 @@ import { extractToken, verifyToken } from "../lib/auth";
 import { db, usersTable, flexCardDebtsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
+// ─── Short-lived auth user cache ─────────────────────────────────────────────
+// Collapses duplicate SELECTs when profileCompletionGuard + requireAuth both
+// authenticate the same request (or rapid sequential requests). TTL is short so
+// ban/tokenInvalidatedAt still take effect quickly. Not a security boundary —
+// JWT + ban/tokenInvalidatedAt checks still run on every request.
+type CachedUser = typeof usersTable.$inferSelect;
+const authUserCache = new Map<number, { user: CachedUser; expiresAt: number }>();
+const AUTH_USER_CACHE_TTL_MS = 8_000;
+const AUTH_USER_CACHE_MAX = 5_000;
+
+function getCachedAuthUser(userId: number): CachedUser | null {
+  const hit = authUserCache.get(userId);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    authUserCache.delete(userId);
+    return null;
+  }
+  return hit.user;
+}
+
+function setCachedAuthUser(user: CachedUser): void {
+  if (authUserCache.size >= AUTH_USER_CACHE_MAX) {
+    // Drop oldest ~10% opportunistically
+    let i = 0;
+    const drop = Math.ceil(AUTH_USER_CACHE_MAX * 0.1);
+    for (const key of authUserCache.keys()) {
+      authUserCache.delete(key);
+      if (++i >= drop) break;
+    }
+  }
+  authUserCache.set(user.id, { user, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
+}
+
+/** Invalidate after ban / password reset / profile mutations that affect auth. */
+export function invalidateAuthUserCache(userId: number): void {
+  authUserCache.delete(userId);
+}
+
+export async function loadAuthUser(userId: number): Promise<CachedUser | undefined> {
+  const cached = getCachedAuthUser(userId);
+  if (cached) return cached;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  if (user) setCachedAuthUser(user);
+  return user;
+}
+
 // ─── Online presence (in-memory) ─────────────────────────────────────────────
 // Any authenticated request marks the user as "online" for the next 5 minutes.
 const lastSeen = new Map<number, number>();
@@ -40,13 +86,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
   const payload = verifyToken(token);
   if (!payload) { res.status(401).json({ error: "Invalid token" }); return; }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId));
+  // Reuse user already loaded by profileCompletionGuard on this request.
+  let user = (req.user && req.userId === payload.userId) ? req.user : undefined;
+  if (!user) user = await loadAuthUser(payload.userId);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
-  if (user.isBanned) { res.status(403).json({ error: "Your account has been suspended. Contact support for help.", suspended: true }); return; }
+  if (user.isBanned) {
+    invalidateAuthUserCache(user.id);
+    res.status(403).json({ error: "Your account has been suspended. Contact support for help.", suspended: true });
+    return;
+  }
   if (user.tokenInvalidatedAt) {
     const invalidatedAtMs = new Date(user.tokenInvalidatedAt).getTime();
     const tokenIssuedAtMs = payload.iat * 1000;
     if (tokenIssuedAtMs < invalidatedAtMs) {
+      invalidateAuthUserCache(user.id);
       res.status(401).json({ error: "Token has been invalidated" });
       return;
     }
@@ -64,7 +117,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId));
+      const user = await loadAuthUser(payload.userId);
       if (user && !user.isBanned) {
         if (!user.tokenInvalidatedAt || payload.iat * 1000 >= new Date(user.tokenInvalidatedAt).getTime()) {
           req.userId = user.id;

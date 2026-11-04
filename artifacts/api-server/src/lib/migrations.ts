@@ -2806,6 +2806,21 @@ export async function runStartupMigrations(): Promise<void> {
       CREATE INDEX IF NOT EXISTS listings_seller_report_idx ON listings (seller_id, id);`,
   });
 
+  migrations.push({
+    name: "transactions.operational_perf_indexes",
+    // Index-only: buyer history, escrow auto-release scan, Stripe session lookup.
+    // Does not alter financial rows or settlement semantics.
+    sql: `CREATE INDEX IF NOT EXISTS transactions_user_id_created_at_idx
+      ON transactions (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS transactions_auto_release_due_idx
+      ON transactions (auto_release_at)
+      WHERE type = 'purchase' AND payment_status = 'completed'
+        AND escrow_released = false AND auto_release_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS transactions_stripe_checkout_session_idx
+      ON transactions (stripe_checkout_session_id)
+      WHERE stripe_checkout_session_id IS NOT NULL;`,
+  });
+
   let applied = 0;
   let failed = 0;
 

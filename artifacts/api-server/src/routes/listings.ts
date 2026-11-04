@@ -13,7 +13,8 @@ import { moderateListing } from "../lib/moderation";
 import { isStripeOnlySale } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { quoteForListing } from "../lib/commission";
-import { getDisplayRate } from "../lib/exchange-rate";
+import { getDisplayRate, getDopRate } from "../lib/exchange-rate";
+import { calculateDeliveryPrice } from "../lib/deliveryPricing";
 import { extractWasabiKey, getWasabiPresignedUrl } from "../lib/s3";
 import { deductWalletHybrid } from "./wallet";
 import { sendPushToUser } from "../lib/push";
@@ -1694,8 +1695,17 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
 
   const paymentMethod = String(req.body?.paymentMethod ?? "").trim();
   const paymentRef = String(req.body?.paymentRef ?? "").trim();
-  const ALLOWED_METHODS = ["card", "usdt", "moncash", "natcash", "sepa", "apple", "wallet"];
-  if (!ALLOWED_METHODS.includes(paymentMethod)) { res.status(400).json({ error: "Invalid payment method" }); return; }
+  // Only wallet is verified on this endpoint. Card/Stripe uses /stripe/checkout.
+  // USDT / MonCash / NatCash / Apple / SEPA must not mark payment completed here
+  // without a verified provider webhook (honor-system buys are disabled).
+  const VERIFIED_METHODS = ["wallet"] as const;
+  if (!(VERIFIED_METHODS as readonly string[]).includes(paymentMethod)) {
+    res.status(400).json({
+      code: "PAYMENT_METHOD_REQUIRES_VERIFIED_RAIL",
+      error: "This payment method is not available for instant purchase. Use Flexa wallet or Stripe checkout.",
+    });
+    return;
+  }
   if (paymentRef.length < 6) { res.status(400).json({ error: "Invalid payment reference" }); return; }
 
   // Enforce the current seller geography for every new purchase, including older
@@ -1721,7 +1731,8 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     const { displayRate } = await getDisplayRate();
     productPrice = parseFloat((productPrice / displayRate).toFixed(2));
   } else if (listingCurrencyForPurchase === "DOP") {
-    productPrice = parseFloat((productPrice / 59).toFixed(2));
+    const dopRate = await getDopRate();
+    productPrice = parseFloat((productPrice / dopRate).toFixed(2));
   }
   if (rawOfferId !== null) {
     const [offerRow] = await db.select()
@@ -1783,11 +1794,10 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     appliedPromoCode = promoRow;
   }
 
-  // Optional delivery fee submitted by the buyer (validated/calculated on the frontend
-  // using the /api/delivery/calculate-price endpoint; server trusts the value with a
-  // reasonable sanity cap).
+  // Delivery fee: Dominican fees are frozen from listing; Haiti/local fees are
+  // recomputed server-side. Client-submitted fees are never trusted as authority.
   const rawDeliveryFee = typeof req.body?.deliveryFeeUsd === "number" ? req.body.deliveryFeeUsd : null;
-  let safeDeliveryFee = rawDeliveryFee !== null && rawDeliveryFee > 0 && rawDeliveryFee < 500 ? rawDeliveryFee : 0;
+  let safeDeliveryFee = 0;
   let deliveryMethodForTx = typeof req.body?.deliveryMethod === "string" ? req.body.deliveryMethod : null;
   try {
     const shipping = resolveDominicanCheckout(listing, deliveryMethodForTx);
@@ -1795,9 +1805,32 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   } catch (error) {
     res.status(400).json({ error: (error as Error).message }); return;
   }
-  const deliveryPickupCityForTx = typeof req.body?.deliveryPickupCity === "string" ? req.body.deliveryPickupCity : null;
+  const deliveryPickupCityForTx = typeof req.body?.deliveryPickupCity === "string" ? req.body.deliveryPickupCity.trim() : null;
   const deliveryTypeForTx = listing.country === "Dominican Republic" ? "delivery" : typeof req.body?.deliveryType === "string" ? req.body.deliveryType : "delivery";
   const buyerProposedFeeForTx = listing.country !== "Dominican Republic" && typeof req.body?.buyerProposedDeliveryFee === "number" && req.body.buyerProposedDeliveryFee > 0 ? req.body.buyerProposedDeliveryFee : null;
+
+  if (!safeDeliveryFee && listing.country !== "Dominican Republic" && deliveryTypeForTx === "delivery") {
+    const pickupCity = deliveryPickupCityForTx || (listing as any).city || null;
+    const destCity = shippingCity || null;
+    const method = deliveryMethodForTx || "motorcycle";
+    if (pickupCity && destCity && method !== "self" && method !== "self_delivery") {
+      const { displayRate } = await getDisplayRate();
+      const priced = calculateDeliveryPrice(
+        pickupCity,
+        destCity,
+        listing.country ?? "Haiti",
+        method,
+        displayRate,
+        undefined,
+        false,
+        productPrice,
+      );
+      safeDeliveryFee = priced.feeUsd;
+    } else if (rawDeliveryFee !== null && rawDeliveryFee > 0) {
+      // Fallback cap only when cities cannot be resolved — never trust unbounded client fees.
+      safeDeliveryFee = Math.min(rawDeliveryFee, 100);
+    }
+  }
 
   // ── Referral surcharge — $0.50 charged to referred buyers on purchases > $14.99 ─
   const REFERRAL_SURCHARGE = 0.50;
@@ -1925,14 +1958,22 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     updated = result.listing;
     insertedTxId = result.txId;
   } catch (e: any) {
-    // Wallet was pre-deducted — refund it since the listing transaction failed.
+    // Wallet was pre-deducted — refund full charge (product + delivery + referral).
+    // Promo/real split is restored to real balance for simplicity on failure.
     if (walletDeducted) {
       const effectivePrice = productPrice - discountAmount;
-      const walletChargeTotal = effectivePrice + safeDeliveryFee;
+      const walletChargeTotal = effectivePrice + safeDeliveryFee + referralFee;
       await db.update(promoWalletTable)
         .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${walletChargeTotal}`, updatedAt: new Date() })
         .where(eq(promoWalletTable.userId, req.userId!))
         .catch(refundErr => req.log.error({ err: refundErr }, "[purchase] wallet refund failed"));
+      await db.insert(walletTransactionsTable).values({
+        userId: req.userId!,
+        type: "refund",
+        amountUsd: walletChargeTotal,
+        status: "completed",
+        note: `Purchase rollback refund for listing #${id}`,
+      }).catch(() => {});
     }
     if (e?.httpStatus) { res.status(e.httpStatus).json(e.body); return; }
     // Postgres unique violation = idempotent replay of the same payment reference.

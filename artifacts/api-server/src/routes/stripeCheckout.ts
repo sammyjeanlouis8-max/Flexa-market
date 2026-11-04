@@ -124,8 +124,9 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     );
     const stripe = await getStripeClient();
 
-    // Sanitise the optional delivery fee passed from the frontend
-    let safeDeliveryFee = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
+    // Delivery fee: Dominican fees are server-frozen. Other countries recompute
+    // via pricing engine when cities are present; otherwise hard-cap client input.
+    let safeDeliveryFee = 0;
     let safeDeliveryMethod = typeof deliveryMethod === "string" ? deliveryMethod : null;
     try {
       const shipping = resolveDominicanCheckout(listing, safeDeliveryMethod);
@@ -133,7 +134,32 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
     } catch (error) {
       res.status(400).json({ error: (error as Error).message }); return;
     }
-    const safePickupCity = typeof deliveryPickupCity === "string" ? deliveryPickupCity : null;
+    const safePickupCity = typeof deliveryPickupCity === "string" ? deliveryPickupCity.trim() : null;
+    if (!safeDeliveryFee && listing.country !== "Dominican Republic") {
+      const destCity = typeof shippingCity === "string" ? shippingCity.trim() : "";
+      const pickup = safePickupCity || (listing as any).city || "";
+      if (pickup && destCity && safeDeliveryMethod && safeDeliveryMethod !== "self" && safeDeliveryMethod !== "self_delivery") {
+        try {
+          const { calculateDeliveryPrice } = await import("../lib/deliveryPricing");
+          const { getDisplayRate } = await import("../lib/exchange-rate");
+          const { displayRate } = await getDisplayRate();
+          let listingPriceUsd = listing.price;
+          const cur = (listing as any).currency ?? "USD";
+          if (cur === "HTG") listingPriceUsd = parseFloat((listingPriceUsd / displayRate).toFixed(2));
+          const priced = calculateDeliveryPrice(
+            pickup, destCity, listing.country ?? "Haiti",
+            safeDeliveryMethod, displayRate, undefined, false, listingPriceUsd,
+          );
+          safeDeliveryFee = priced.feeUsd;
+        } catch {
+          const raw = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
+          safeDeliveryFee = Math.min(raw, 100);
+        }
+      } else {
+        const raw = typeof deliveryFeeUsd === "number" && deliveryFeeUsd > 0 ? deliveryFeeUsd : 0;
+        safeDeliveryFee = Math.min(raw, 100);
+      }
+    }
 
     // Commission + buyer fee breakdown (unified system — delivery fee added on top of product price)
     const quote = await quoteStripeMarketplacePurchase(

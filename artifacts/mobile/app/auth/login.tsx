@@ -19,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { formatApiError } from "@/lib/errors";
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -35,9 +36,7 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       },
       onError: (err) => {
-        const message =
-          err instanceof Error ? err.message : "Koneksyon echwe. Eseye ankò.";
-        setFormError(message);
+        setFormError(formatApiError(err, "Koneksyon echwe. Eseye ankò."));
       },
     },
   });

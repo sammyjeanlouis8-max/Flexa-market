@@ -150,18 +150,17 @@ export default function ListingScreen() {
           </Text>
 
           <Pressable
-            onPress={() =>
-              router.push({
-                pathname: "/website",
-                params: {
-                  url: `https://flexamarket.com/listings/${data.id}`,
-                },
-              })
-            }
+            onPress={() => {
+              if (!data) return;
+              router.push("/(tabs)/inbox");
+            }}
             style={[styles.cta, { backgroundColor: colors.primary, marginTop: 20 }]}
           >
-            <Text style={styles.ctaText}>Achte / mesaj (tanporè web)</Text>
+            <Text style={styles.ctaText}>Ale gade mesaj</Text>
           </Pressable>
+          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            Achte / checkout natif natal = Faz 2. Chat tan-reyèl = Faz 3.
+          </Text>
         </ScrollView>
       )}
     </SafeAreaView>

@@ -6,7 +6,6 @@ import { NativeScreen } from "@/components/NativeScreen";
 import { StatusCard } from "@/components/StatusCard";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
-import { getWebsiteOrigin } from "@/lib/config";
 
 export default function SellTab() {
   const colors = useColors();
@@ -16,13 +15,19 @@ export default function SellTab() {
   return (
     <NativeScreen
       title="Vann"
-      subtitle="Piblikasyon listing natif natal ap vin nan Faz 2. Ou ka vann atravè konpatibilite web kounye a."
+      subtitle="Fòm piblikasyon natif natal ap vini nan Faz 2. Pa gen WebView sou ekran sa a."
     >
       <StatusCard
         label="Kont"
-        value={token ? "Sèsyon aktif — ou ka pibliye" : "Konekte pou vann"}
-        detail="Menm API /sell sou backend egzistan."
+        value={token ? "Sèsyon aktif" : "Bezwen koneksyon"}
+        detail="Menm kont customer/seller. API /listings deja pare sou backend."
         tone={token ? "ok" : "warn"}
+      />
+      <StatusCard
+        label="Faz"
+        value="Faz 2"
+        detail="Kreye anons, foto, ak boost natif natal."
+        tone="warn"
       />
       {!token ? (
         <Pressable
@@ -31,19 +36,7 @@ export default function SellTab() {
         >
           <Text style={styles.primaryText}>Konekte</Text>
         </Pressable>
-      ) : (
-        <Pressable
-          onPress={() =>
-            router.push({
-              pathname: "/website",
-              params: { url: `${getWebsiteOrigin()}/sell` },
-            })
-          }
-          style={[styles.primary, { backgroundColor: colors.primary }]}
-        >
-          <Text style={styles.primaryText}>Pibliye anons (tanporè web)</Text>
-        </Pressable>
-      )}
+      ) : null}
     </NativeScreen>
   );
 }

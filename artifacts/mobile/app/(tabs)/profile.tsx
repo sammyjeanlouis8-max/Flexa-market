@@ -15,7 +15,7 @@ export default function ProfileTab() {
   return (
     <NativeScreen
       title="Pwofil"
-      subtitle="Sèsyon natif natal ak JWT lokal (SecureStore)."
+      subtitle="Sèsyon natif natal ak JWT lokal (SecureStore). Pa gen WebView."
     >
       <StatusCard
         label="Itilizatè"
@@ -29,39 +29,49 @@ export default function ProfileTab() {
             ? user.email
             : token
               ? "Jeton JWT aktif"
-              : "Konekte pou jere anons, lòd, ak mesaj"
+              : "Konekte pou jere favori, lòd, ak mesaj"
         }
         tone={token ? "ok" : "neutral"}
       />
 
       {user?.role ? (
-        <StatusCard label="Wòl" value={user.role} tone="ok" />
+        <StatusCard label="Wòl" value={String(user.role)} tone="ok" />
       ) : null}
 
       <View style={styles.actions}>
         {!token ? (
-          <Pressable
-            onPress={() => router.push("/auth/login")}
-            style={[styles.primary, { backgroundColor: colors.primary }]}
-          >
-            <Text style={styles.primaryText}>Konekte</Text>
-          </Pressable>
-        ) : (
           <>
             <Pressable
-              onPress={() => router.push("/orders")}
+              onPress={() => router.push("/auth/login")}
+              style={[styles.primary, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.primaryText}>Konekte</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/auth/register")}
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
-                Lòd mwen
+                Kreye kont
               </Text>
             </Pressable>
+          </>
+        ) : (
+          <>
             <Pressable
               onPress={() => router.push("/favorites")}
               style={[styles.secondary, { borderColor: colors.border }]}
             >
               <Text style={{ color: colors.foreground, fontWeight: "600" }}>
                 Favori
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/orders")}
+              style={[styles.secondary, { borderColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontWeight: "600" }}>
+                Lòd (Faz 2)
               </Text>
             </Pressable>
             <Pressable

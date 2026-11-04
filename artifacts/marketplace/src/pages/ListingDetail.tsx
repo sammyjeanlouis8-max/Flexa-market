@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useGetListing, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import { useGetListing, useGetListings, useGetCategories, useAddFavorite, useRemoveFavorite, useCreateConversation, useCreateOffer, useDeleteListing, getGetListingQueryKey, getGetFavoritesQueryKey, getGetListingsQueryKey, getGetFeaturedListingsQueryKey, getGetUserListingsQueryKey } from "@workspace/api-client-react";
+import ListingCard from "@/components/ListingCard";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -254,6 +255,14 @@ export default function ListingDetail() {
   const { data: listing, isLoading } = useGetListing(id, {
     query: { enabled: !!id, queryKey: getGetListingQueryKey(id) },
   });
+
+  const { data: categories } = useGetCategories();
+  const relatedCategory = listing?.categorySlug || listing?.category;
+  const { data: relatedData } = useGetListings(
+    { category: relatedCategory || undefined, limit: 8 },
+    { query: { enabled: !!relatedCategory, queryKey: getGetListingsQueryKey({ category: relatedCategory || undefined, limit: 8 }) } },
+  );
+  const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -1383,6 +1392,34 @@ export default function ListingDetail() {
         <span className="text-foreground/80 truncate inline-block max-w-[40vw] lg:max-w-none align-bottom">{listing.title}</span>
       </nav>
 
+      {/* Desktop category strip */}
+      {categories && categories.length > 0 && (
+        <div className="hidden lg:block border-b border-border/50 bg-white">
+          <div className="max-w-7xl mx-auto px-4 flex gap-1 overflow-x-auto scrollbar-none py-2" data-testid="pdp-category-nav">
+            <Link
+              href="/search"
+              className="flex-shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            >
+              {t("nav.all", { defaultValue: "All" })}
+            </Link>
+            {categories.slice(0, 12).map((cat) => (
+              <Link
+                key={cat.id}
+                href={`/search?category=${encodeURIComponent(cat.slug || cat.name)}`}
+                className={cn(
+                  "flex-shrink-0 px-3 py-1.5 text-[13px] font-semibold rounded-md transition-colors",
+                  listing.categorySlug === cat.slug || listing.category === cat.name
+                    ? "text-[#F97316] bg-orange-50"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                )}
+              >
+                {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Desktop three-column product stage */}
       <div
         className="lg:max-w-7xl lg:mx-auto lg:px-4 lg:pt-5 lg:pb-2 lg:grid lg:grid-cols-[minmax(280px,1fr)_minmax(300px,1.15fr)_minmax(260px,320px)] lg:gap-6 lg:items-start"
@@ -2290,6 +2327,20 @@ export default function ListingDetail() {
             <Button variant="ghost" className="w-full h-10" onClick={() => setOfferOpen(true)} data-testid="button-make-offer">
               <Tag className="h-4 w-4 mr-2" /> {t("buttons.makeOffer")}
             </Button>
+          </div>
+        )}
+
+        {/* ── RELATED PRODUCTS (same category, real listings only) ── */}
+        {relatedListings.length > 0 && (
+          <div className="px-4 pt-4 pb-2" data-testid="pdp-related">
+            <h2 className="text-[15px] font-bold mb-3">
+              {t("listing.relatedProducts", { defaultValue: "Related products" })}
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+              {relatedListings.map((item: any) => (
+                <ListingCard key={item.id} listing={item} showAddToCart />
+              ))}
+            </div>
           </div>
         )}
 

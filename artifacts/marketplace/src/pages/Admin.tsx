@@ -17,6 +17,12 @@ import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import AdminCardCancellations from "@/components/AdminCardCancellations";
 import AdminControlCenterDashboard from "@/components/admin/AdminControlCenterDashboard";
 import {
+  adminPathToTab,
+  adminTabToPath,
+  ADMIN_PRIMARY_SECTIONS,
+  adminSectionTitleKey,
+} from "@/components/admin/adminSections";
+import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
   ChevronDown, ChevronUp, Edit3, X, Plus, LogOut, Eye, Globe, Lock, Unlock,
@@ -363,7 +369,7 @@ const MODERATOR_TABS = new Set(["operations", "appeals", "users", "flagged", "re
 export default function Admin() {
   const { user, isLoading } = useAuth();
   const { t } = useTranslation();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const search = useSearch();
   const isAndroidInlineRoute = useContext(AndroidInlineRouteContext);
   const { toast } = useToast();
@@ -534,25 +540,40 @@ export default function Admin() {
   const [logsDateFrom, setLogsDateFrom] = useState(_initParams.get("dateFrom") || "");
   const [logsDateTo, setLogsDateTo] = useState(_initParams.get("dateTo") || "");
 
-  // Tab state is URL-driven so deep links like /admin?tab=support&thread=42
-  // (used by support push notifications) land users in the right place.
-  // We default to "operations" here (a safe value that is always available) and
-  // let an effect promote to "flagged" later once the user list has loaded —
-  // referencing `flaggedUsers` directly here would be a TDZ access since it
-  // is derived from `users` further down in this component.
+  // Section routing: prefer dedicated paths (/admin/operations, …). Legacy
+  // /admin?tab=… deep links still work and redirect to the path when mapped.
   const initialQuery = new URLSearchParams(search);
-  const initialTab = initialQuery.get("tab") || "operations";
+  const pathTab = adminPathToTab(location);
+  const initialTab =
+    (pathTab && pathTab !== "dashboard" ? pathTab : null) ||
+    initialQuery.get("tab") ||
+    (pathTab === "dashboard" ? "dashboard" : "operations");
   const initialDeepThread = initialQuery.get("thread");
   const [adminTab, setAdminTabState] = useState<string>(initialTab);
-  const [tabExplicitlySet, setTabExplicitlySet] = useState<boolean>(initialQuery.has("tab"));
+  const [tabExplicitlySet, setTabExplicitlySet] = useState<boolean>(
+    initialQuery.has("tab") || (!!pathTab && pathTab !== "dashboard"),
+  );
+  const isDashboardView = pathTab === "dashboard";
+  const isSecurityView = pathTab === "security";
+  const isDedicatedSection = !!pathTab && pathTab !== "dashboard";
+
   const setAdminTab = (next: string) => {
     setAdminTabState(next);
     setTabExplicitlySet(true);
-    if (!isAndroidInlineRoute && typeof window !== "undefined") {
+    if (isAndroidInlineRoute) return;
+    const dedicated = adminTabToPath(next);
+    if (dedicated) {
+      const thread = next === "support" ? new URLSearchParams(search).get("thread") : null;
+      setLocation(thread ? `${dedicated}?thread=${thread}` : dedicated);
+      return;
+    }
+    if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.pathname = "/admin";
       url.searchParams.set("tab", next);
       if (next !== "support") url.searchParams.delete("thread");
       window.history.replaceState({}, "", url.toString());
+      setLocation(url.pathname + url.search);
     }
   };
   const goToTab = (next: string, extra?: () => void) => {
@@ -560,6 +581,38 @@ export default function Admin() {
     setAdminTab(next);
     setTimeout(() => tabsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
+
+  // Keep tab state synced when navigating via sidebar dedicated routes.
+  useEffect(() => {
+    const fromPath = adminPathToTab(location);
+    if (!fromPath) return;
+    if (fromPath === "dashboard") {
+      setAdminTabState("dashboard");
+      return;
+    }
+    if (fromPath === "security") {
+      // Security page shows password panel + moderation logs.
+      setAdminTabState("logs");
+      setTabExplicitlySet(true);
+      return;
+    }
+    setAdminTabState(fromPath);
+    setTabExplicitlySet(true);
+  }, [location]);
+
+  // Redirect legacy /admin?tab=operations → /admin/operations (etc.)
+  useEffect(() => {
+    if (isAndroidInlineRoute) return;
+    const q = new URLSearchParams(search);
+    const legacyTab = q.get("tab");
+    if (!legacyTab) return;
+    const pathOnly = location.split("?")[0].replace(/\/$/, "") || "/";
+    if (pathOnly !== "/admin") return;
+    const dedicated = adminTabToPath(legacyTab);
+    if (!dedicated) return;
+    const thread = q.get("thread");
+    setLocation(thread && legacyTab === "support" ? `${dedicated}?thread=${thread}` : dedicated);
+  }, [location, search, isAndroidInlineRoute, setLocation]);
 
   useEffect(() => {
     // Updating the real URL inside Android's in-document menu makes older
@@ -784,7 +837,7 @@ export default function Admin() {
     }, [user, isLoading, hasAdminPanelAccess]);
 
   useEffect(() => {
-    if (isModerator && !MODERATOR_TABS.has(adminTab)) {
+    if (isModerator && adminTab !== "dashboard" && !MODERATOR_TABS.has(adminTab)) {
       setAdminTabState("operations");
     }
   }, [isModerator, adminTab]);
@@ -2575,13 +2628,19 @@ export default function Admin() {
     }
   };
 
+  const sectionHeading = isDashboardView
+    ? (isModerator ? t("adminDash.modTitle") : t("adminControl.title"))
+    : t(adminSectionTitleKey(pathTab || adminTab), {
+        defaultValue: (pathTab || adminTab).replace(/^\w/, (c) => c.toUpperCase()),
+      });
+
   return (
     <div className="mx-auto max-w-[1400px] px-3 py-4 md:px-5">
       {/* Page title row (shell provides primary nav) */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground">
-            {isModerator ? t("adminDash.modTitle") : t("adminControl.title")}
+            {sectionHeading}
           </h1>
           <p className="text-xs text-muted-foreground">
             {isSuperAdmin ? t("adminDash.roleSuper") : isModerator ? t("adminDash.roleMod") : t("adminDash.roleAdmin")}
@@ -2595,11 +2654,35 @@ export default function Admin() {
         )}
       </div>
 
-      {/* Control Center overview — real instrumented metrics only */}
-      {!isModerator && <AdminControlCenterDashboard />}
+      {/* Control Center overview — dashboard route only */}
+      {isDashboardView && !isModerator && <AdminControlCenterDashboard />}
+
+      {/* Primary section launcher on dashboard (replaces mega tab strip) */}
+      {isDashboardView && (
+        <section className="mb-5" data-testid="admin-section-launcher">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("adminNav.groupOverview", { defaultValue: "Overview" })}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {ADMIN_PRIMARY_SECTIONS.filter((s) => s.tab !== "dashboard").filter((s) => {
+              if (s.tab === "admins" && !isSuperAdmin) return false;
+              if (s.tab === "security" && isModerator) return false;
+              return true;
+            }).map((s) => (
+              <Link
+                key={s.path}
+                href={s.path}
+                className="flex items-center gap-2 rounded-xl border bg-card p-3 text-sm font-semibold shadow-sm transition-colors hover:border-[var(--flexa-green)]/40 hover:bg-[var(--flexa-green-soft)]"
+              >
+                <span className="truncate">{t(s.titleKey, { defaultValue: s.tab })}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Moderator-facing ops KPIs (admins use Control Center overview above) */}
-      {s && isModerator && (
+      {isDashboardView && s && isModerator && (
         <section className="mb-4">
           <div className="mb-1.5 flex items-center gap-2 px-0.5">
             <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -2616,7 +2699,7 @@ export default function Admin() {
       )}
 
       {/* Admin attention strip — real pending queues only */}
-      {s && !isModerator && (
+      {isDashboardView && s && !isModerator && (
         <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <StatCard icon={Zap} label={t("adminDash.boosted")} value={s.boostedListings ?? 0} onClick={() => setAdminTab("boosts")} />
           <StatCard icon={Star} label={t("adminDash.featured")} value={s.featuredListings ?? 0} onClick={() => setAdminTab("listings")} />
@@ -2627,7 +2710,7 @@ export default function Admin() {
         </section>
       )}
 
-      {!isModerator && (
+      {isDashboardView && !isModerator && (
       <>
       {/* ── Pending Applications Urgent Banner ── */}
       {(driverApps.filter((a: any) => a.status === "pending").length > 0 || kycAgentApps.filter((a: any) => a.status === "pending").length > 0 || loanAdminPending > 0 || employerApps.filter((a: any) => a.status === "pending").length > 0) && (
@@ -3163,7 +3246,7 @@ export default function Admin() {
       )}
 
       {/* Password upgrade status card */}
-      {!isModerator && pwHashStats !== null && (() => {
+      {(isDashboardView || isSecurityView) && !isModerator && pwHashStats !== null && (() => {
         const isInCooldown = pwHashStats.nudgeCooldownEndsAt != null && new Date(pwHashStats.nudgeCooldownEndsAt) > new Date();
         const cooldownEndsLabel = pwHashStats.nudgeCooldownEndsAt
           ? new Date(pwHashStats.nudgeCooldownEndsAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -3284,7 +3367,11 @@ export default function Admin() {
       })()}
 
       <div ref={tabsSectionRef} />
-      <Tabs value={adminTab} onValueChange={setAdminTab}>
+      {/* Dedicated section pages + legacy ?tab= use Tabs. Dashboard uses launcher above. */}
+      {!isDashboardView && (
+      <Tabs value={adminTab === "dashboard" ? "operations" : adminTab} onValueChange={setAdminTab}>
+        {/* Hide mega tab strip on dedicated routes — sidebar/drawer is primary nav */}
+        {!isDedicatedSection && (
         <div className="overflow-x-auto pb-1 mb-5">
           <TabsList className="flex w-max gap-1 h-auto p-1">
             {isModerator ? (
@@ -3429,6 +3516,7 @@ export default function Admin() {
             )}
           </TabsList>
         </div>
+        )}
 
         {/* ── Operations Queue ── */}
         <TabsContent value="operations" className="mt-4">
@@ -3440,8 +3528,8 @@ export default function Admin() {
               if (ctx?.search && tab === "users") setUserSearch(ctx.search);
 
               if (ctx?.thread && tab === "support") {
-                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
                 setAdminTab("support");
+                setLocation(`/admin/support?thread=${ctx.thread}`);
               } else {
                 setAdminTab(tab);
               }
@@ -3459,8 +3547,8 @@ export default function Admin() {
               if (ctx?.search && tab === "users") setUserSearch(ctx.search);
 
               if (ctx?.thread && tab === "support") {
-                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
                 setAdminTab("support");
+                setLocation(`/admin/support?thread=${ctx.thread}`);
               } else {
                 setAdminTab(tab);
               }
@@ -8919,6 +9007,7 @@ export default function Admin() {
           </TabsContent>
         )}
       </Tabs>
+      )}
 
       {/* ── Security Dialog ── */}
       <Dialog open={!!securityUser} onOpenChange={v => !v && (setSecurityUser(null), setSecurityData(null))}>

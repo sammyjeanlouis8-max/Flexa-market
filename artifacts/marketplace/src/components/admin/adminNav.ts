@@ -23,16 +23,18 @@ import {
   Banknote,
   FileWarning,
   Eye,
+  ShieldCheck,
+  KeyRound,
 } from "lucide-react";
 
 export type AdminNavItem = {
   titleKey: string;
   href: string;
-  icon: LucideIcon;
   /** If set, only show for super admin */
   superAdminOnly?: boolean;
   /** Hide from moderators */
   hideFromModerator?: boolean;
+  icon: LucideIcon;
 };
 
 export type AdminNavGroup = {
@@ -40,13 +42,14 @@ export type AdminNavGroup = {
   items: AdminNavItem[];
 };
 
-/** Enterprise admin IA — maps to existing routes / ?tab= deep links. */
+/** Enterprise admin IA — dedicated routes for primary sections. */
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     labelKey: "adminNav.groupOverview",
     items: [
       { titleKey: "adminNav.dashboard", href: "/admin", icon: LayoutDashboard },
-      { titleKey: "adminNav.operations", href: "/admin?tab=operations", icon: ClipboardList },
+      { titleKey: "adminNav.operations", href: "/admin/operations", icon: ClipboardList },
+      { titleKey: "admin.tabAppeals", href: "/admin/appeals", icon: ShieldCheck },
       { titleKey: "adminNav.activity", href: "/admin/activity", icon: Activity, hideFromModerator: true },
       { titleKey: "adminNav.actions", href: "/admin/actions", icon: Shield, hideFromModerator: true },
     ],
@@ -54,18 +57,19 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     labelKey: "adminNav.groupPeople",
     items: [
-      { titleKey: "adminNav.users", href: "/admin?tab=users", icon: Users },
-      { titleKey: "adminNav.admins", href: "/admin?tab=admins", icon: Crown, hideFromModerator: true },
-      { titleKey: "adminNav.flagged", href: "/admin?tab=flagged", icon: AlertTriangle },
-      { titleKey: "adminNav.support", href: "/admin?tab=support", icon: MessageSquare },
+      { titleKey: "adminNav.users", href: "/admin/users", icon: Users },
+      { titleKey: "adminNav.admins", href: "/admin/team", icon: Crown, hideFromModerator: true },
+      { titleKey: "adminNav.flagged", href: "/admin/flagged", icon: AlertTriangle },
+      { titleKey: "adminNav.support", href: "/admin/support", icon: MessageSquare },
+      { titleKey: "adminNav.security", href: "/admin/security", icon: KeyRound, hideFromModerator: true },
     ],
   },
   {
     labelKey: "adminNav.groupCatalog",
     items: [
-      { titleKey: "adminNav.listings", href: "/admin?tab=listings", icon: Package },
-      { titleKey: "adminNav.moderation", href: "/admin?tab=moderation", icon: Flag },
-      { titleKey: "adminNav.reports", href: "/admin?tab=reports", icon: FileWarning },
+      { titleKey: "adminNav.listings", href: "/admin/listings", icon: Package },
+      { titleKey: "adminNav.moderation", href: "/admin/moderation", icon: Flag },
+      { titleKey: "adminNav.reports", href: "/admin/reports", icon: FileWarning },
       { titleKey: "adminNav.views", href: "/admin?tab=views", icon: Eye, superAdminOnly: true },
     ],
   },
@@ -104,8 +108,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     labelKey: "adminNav.groupSystem",
     items: [
       { titleKey: "adminNav.fraud", href: "/admin/fraud", icon: Shield, hideFromModerator: true },
-      { titleKey: "adminNav.actions", href: "/admin/actions", icon: Shield, hideFromModerator: true },
-      { titleKey: "adminNav.logs", href: "/admin?tab=logs", icon: Activity },
+      { titleKey: "adminNav.logs", href: "/admin/security", icon: Activity },
       { titleKey: "adminNav.settings", href: "/admin?tab=fees", icon: Settings, hideFromModerator: true },
     ],
   },
@@ -113,17 +116,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 
 export function adminNavIsActive(location: string, search: string, href: string): boolean {
   const [path, query = ""] = href.split("?");
-  const locPath = location.split("?")[0];
-  if (path === "/admin" && !query) {
-    // Dashboard active only when no tab (or empty) on /admin
-    if (locPath !== "/admin") return false;
-    const tab = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("tab");
-    return !tab;
+  const locPath = (location.split("?")[0] || "/").replace(/\/$/, "") || "/";
+  const hrefPath = path.replace(/\/$/, "") || "/";
+
+  if (hrefPath === "/admin" && !query) {
+    return locPath === "/admin";
   }
   if (query) {
     const wantTab = new URLSearchParams(query).get("tab");
     const haveTab = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("tab");
-    return locPath === path && wantTab === haveTab;
+    return locPath === hrefPath && wantTab === haveTab;
   }
-  return locPath === path || locPath.startsWith(path + "/");
+  return locPath === hrefPath || locPath.startsWith(hrefPath + "/");
 }

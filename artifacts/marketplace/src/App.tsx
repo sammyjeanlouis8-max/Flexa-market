@@ -231,6 +231,17 @@ function LayoutRoutes() {
           <Route path="/admin/deliveries" component={AdminDeliveriesPage} />
               <Route path="/admin/driver-applications" component={AdminDriverApplicationsPage} />
           <Route path="/admin/agent-applications" component={AdminAgentApplicationsPage} />
+          {/* Flexa Control dedicated section routes (same Admin shell, path-driven panels) */}
+          <Route path="/admin/operations" component={Admin} />
+          <Route path="/admin/appeals" component={Admin} />
+          <Route path="/admin/users" component={Admin} />
+          <Route path="/admin/team" component={Admin} />
+          <Route path="/admin/support" component={Admin} />
+          <Route path="/admin/security" component={Admin} />
+          <Route path="/admin/listings" component={Admin} />
+          <Route path="/admin/reports" component={Admin} />
+          <Route path="/admin/flagged" component={Admin} />
+          <Route path="/admin/moderation" component={Admin} />
           <Route path="/admin" component={Admin} />
           <Route path="/settings" component={Settings} />
           <Route path="/settings/security" component={SettingsSecurity} />

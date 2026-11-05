@@ -120,21 +120,21 @@ function AdminTopBar() {
     setLocation("/admin");
   }, [setLocation]);
 
-  // Match Flexa Market chat / marketplace chrome: dark-green bar under status bar,
-  // white Back control, orange accent on Dashboard.
+  // Compact Flexa Control bar: one safe-area pad (env / --sat fallback) + 56px row.
   const iconBtn =
-    "h-10 w-10 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white";
+    "h-9 w-9 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white";
 
   return (
     <header
-      className="admin-console-header sticky top-0 z-30 flex shrink-0 items-center border-b border-black/20 bg-[hsl(152,65%,18%)] px-2 text-white sm:px-3"
+      className="admin-console-header sticky top-0 z-30 flex shrink-0 flex-col border-b border-black/20 bg-[hsl(152,65%,18%)] text-white"
       style={{
+        // Single inset only — do not also bake safe-area into minHeight (that
+        // visually doubled the green gap under the Dynamic Island).
         paddingTop: "max(env(safe-area-inset-top, 0px), var(--sat, 0px))",
-        minHeight: "calc(3.5rem + max(env(safe-area-inset-top, 0px), var(--sat, 0px)))",
       }}
       data-testid="admin-top-bar"
     >
-      <div className="flex h-14 w-full items-center gap-1">
+      <div className="flex h-14 w-full items-center gap-1 px-2 sm:px-3">
         <Button
           type="button"
           variant="ghost"

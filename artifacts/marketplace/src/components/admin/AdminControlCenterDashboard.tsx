@@ -195,19 +195,19 @@ export default function AdminControlCenterDashboard() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button asChild size="sm" className="bg-white text-[var(--flexa-green-deep)] hover:bg-white/90">
-            <Link href="/admin?tab=operations">
+            <Link href="/admin/operations">
               <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
               {t("adminControl.quickOps")}
             </Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="border-white/35 bg-transparent text-white hover:bg-white/10">
-            <Link href="/admin?tab=support">
+            <Link href="/admin/support">
               <Headphones className="mr-1.5 h-3.5 w-3.5" />
               {t("adminControl.quickSupport")}
             </Link>
           </Button>
           <Button asChild size="sm" variant="outline" className="border-white/35 bg-transparent text-white hover:bg-white/10">
-            <Link href="/admin?tab=moderation">
+            <Link href="/admin/moderation">
               <Flag className="mr-1.5 h-3.5 w-3.5" />
               {t("adminControl.quickModeration")}
             </Link>
@@ -234,30 +234,59 @@ export default function AdminControlCenterDashboard() {
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           <MetricCard
+            label={t("adminControl.totalQueue", { defaultValue: "Total Queue" })}
+            value={fmtInt(
+              Number(s?.pendingReports ?? 0) +
+              Number(s?.flaggedUsers ?? 0) +
+              Number(supportQ.data?.open ?? 0),
+            )}
+            icon={ClipboardList}
+            href="/admin/operations"
+            tone={
+              Number(s?.pendingReports ?? 0) + Number(s?.flaggedUsers ?? 0) + Number(supportQ.data?.open ?? 0) > 0
+                ? "alert"
+                : "default"
+            }
+          />
+          <MetricCard
             label={t("adminDash.users")}
             value={fmtInt(s?.totalUsers as number | undefined)}
             icon={Users}
-            href="/admin?tab=users"
+            href="/admin/users"
           />
           <MetricCard
             label={t("adminDash.activeListings")}
             value={fmtInt(s?.activeListings as number | undefined)}
             icon={Package}
-            href="/admin?tab=listings"
+            href="/admin/listings"
           />
           <MetricCard
             label={t("adminDash.reports")}
             value={fmtInt(s?.pendingReports as number | undefined)}
             icon={Flag}
-            href="/admin?tab=reports"
+            href="/admin/reports"
             tone={Number(s?.pendingReports ?? 0) > 0 ? "alert" : "default"}
           />
           <MetricCard
             label={t("adminDash.flagged")}
             value={fmtInt(s?.flaggedUsers as number | undefined)}
             icon={AlertTriangle}
-            href="/admin?tab=flagged"
+            href="/admin/flagged"
             tone={Number(s?.flaggedUsers ?? 0) > 0 ? "alert" : "default"}
+          />
+          <MetricCard
+            label={t("adminControl.openTickets")}
+            value={fmtInt(supportQ.data?.open)}
+            icon={Headphones}
+            href="/admin/support"
+            tone={Number(supportQ.data?.open ?? 0) > 0 ? "alert" : "default"}
+          />
+          <MetricCard
+            label={t("admin.tabAppeals", { defaultValue: "Appeals" })}
+            value="—"
+            icon={ShieldAlert}
+            href="/admin/appeals"
+            hint={<span className="text-[10px] text-muted-foreground">{t("adminControl.reviewCases", { defaultValue: "Open case review" })}</span>}
           />
           <MetricCard
             label={t("adminDash.onlineNow")}
@@ -288,7 +317,7 @@ export default function AdminControlCenterDashboard() {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold">{t("adminControl.supportHeading")}</h3>
             <Button asChild variant="ghost" size="sm" className="h-7 text-xs">
-              <Link href="/admin?tab=support">{t("adminControl.open")}</Link>
+              <Link href="/admin/support">{t("adminControl.open")}</Link>
             </Button>
           </div>
           {supportQ.isLoading ? (

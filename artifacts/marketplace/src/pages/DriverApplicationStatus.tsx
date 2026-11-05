@@ -85,6 +85,29 @@ export default function DriverApplicationStatus() {
   const app = data?.application;
   const driver = data?.driver;
 
+  if (app?.status === "draft") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center gap-6 px-6">
+        <div className="w-20 h-20 rounded-full bg-emerald-50 flex items-center justify-center">
+          <Clock className="h-10 w-10 text-emerald-700" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-xl font-black text-gray-900 dark:text-white">
+            {t("driverApplyPro.draftTitle", { defaultValue: "Application draft saved" })}
+          </h2>
+          <p className="text-gray-500 text-sm mt-1">
+            {t("driverApplyPro.draftDesc", { defaultValue: "Continue your Flexa Market driver application when you are ready." })}
+          </p>
+        </div>
+        <button onClick={() => navigate("/delivery/apply")}
+          className="w-full max-w-xs h-12 rounded-2xl text-white font-black text-sm transition-all active:scale-[0.98]"
+          style={{ background: "hsl(152,65%,18%)" }}>
+          {t("driverApplyPro.continueDraft", { defaultValue: "Continue application" })}
+        </button>
+      </div>
+    );
+  }
+
   if (!app) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center gap-6 px-6">
@@ -96,7 +119,8 @@ export default function DriverApplicationStatus() {
           <p className="text-gray-500 text-sm mt-1">{t("driverApply.statusNoAppDesc")}</p>
         </div>
         <button onClick={() => navigate("/delivery/apply")}
-          className="w-full max-w-xs h-12 rounded-2xl bg-orange-500 hover:bg-orange-600 text-white font-black text-sm transition-all active:scale-[0.98]">
+          className="w-full max-w-xs h-12 rounded-2xl text-white font-black text-sm transition-all active:scale-[0.98]"
+          style={{ background: "hsl(152,65%,18%)" }}>
           {t("driverApply.landingStart")}
         </button>
         <button onClick={() => navigate("/")}

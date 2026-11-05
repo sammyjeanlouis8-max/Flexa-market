@@ -2647,6 +2647,26 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // ── Flexa AI usage ledger (quotas / cost visibility; no secrets stored) ─────
+  migrations.push({
+    name: "flexa_ai_usage.create",
+    sql: `CREATE TABLE IF NOT EXISTS flexa_ai_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      capability TEXT NOT NULL,
+      day DATE NOT NULL DEFAULT (CURRENT_DATE),
+      model TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexa_ai_usage.user_day_cap_idx",
+    sql: "CREATE INDEX IF NOT EXISTS flexa_ai_usage_user_day_idx ON flexa_ai_usage(user_id, capability, day)",
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt

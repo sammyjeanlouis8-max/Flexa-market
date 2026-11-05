@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -103,8 +103,9 @@ export default function Sell() {
     !!(user as any)?.isSuperAdmin;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const [aiDescLoading, setAiDescLoading] = useState(false);
 
   // ── Edit mode detection ────────────────────────────────────────────────────
   const editId = (() => {
@@ -882,7 +883,62 @@ export default function Sell() {
 
           <FormField control={form.control} name="description" render={({ field }) => (
             <FormItem>
-              <FormLabel>{t("sell.description")}<ReqDot filled={(field.value ?? "").trim().length >= 10} /></FormLabel>
+              <div className="flex items-center justify-between gap-2">
+                <FormLabel className="mb-0">{t("sell.description")}<ReqDot filled={(field.value ?? "").trim().length >= 10} /></FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={aiDescLoading || !token || !(form.getValues("title") || "").trim()}
+                  data-testid="button-ai-description"
+                  onClick={async () => {
+                    const title = (form.getValues("title") || "").trim();
+                    if (!title || !token) {
+                      toast({
+                        title: t("sell.aiDescriptionNeedTitle", { defaultValue: "Add a title first" }),
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setAiDescLoading(true);
+                    try {
+                      const catName = categories?.find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? categories?.flatMap((c: any) => c.children ?? []).find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? "";
+                      const data = await apiFetch<{ content?: string }>("/api/flexa-ai/product-description", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          title,
+                          category: catName,
+                          condition: form.getValues("condition") || undefined,
+                          price: form.getValues("price") || undefined,
+                          language: (i18n.language || "en").slice(0, 2),
+                          details: field.value || undefined,
+                        }),
+                      });
+                      if (!data?.content) {
+                        throw new Error(t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }));
+                      }
+                      form.setValue("description", String(data.content).trim(), { shouldDirty: true, shouldValidate: true });
+                      toast({ title: t("sell.aiDescriptionDone", { defaultValue: "Description drafted with Flexa AI" }) });
+                    } catch (err: any) {
+                      toast({
+                        title: t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }),
+                        description: err?.message,
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setAiDescLoading(false);
+                    }
+                  }}
+                >
+                  {aiDescLoading
+                    ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                  {t("sell.aiDescription", { defaultValue: "Flexa AI" })}
+                </Button>
+              </div>
               <FormControl><Textarea placeholder={t("sell.descriptionPlaceholder")} rows={4} {...field} data-testid="input-description" /></FormControl>
               <FormMessage />
             </FormItem>

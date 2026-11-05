@@ -183,9 +183,13 @@ export default function Login() {
             control={form.control}
             name="eulaAccepted"
             render={({ field }) => (
-              <FormItem className="flex items-start gap-3 space-y-0 rounded-xl border border-[var(--auth-border)] bg-white/70 p-3.5">
+              <FormItem className="flex items-start gap-3 space-y-0">
                 <FormControl>
-                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="mt-0.5 h-5 w-5 rounded-full border-[#d1d5db] shadow-none data-[state=checked]:border-[var(--auth-accent)] data-[state=checked]:bg-[var(--auth-accent)]"
+                  />
                 </FormControl>
                 <div className="min-w-0 space-y-1">
                   <FormLabel className="text-sm font-normal leading-snug text-[var(--auth-fg)]">

@@ -285,11 +285,11 @@ export default function LoginPhone() {
             onKeyDown={(e) => e.key === "Enter" && otp.length === 6 && handleVerifyAndLogin()}
           />
 
-          <label className="flex items-start gap-3 rounded-xl border border-[var(--auth-border)] bg-white/70 p-3.5 text-sm leading-snug">
+          <label className="flex items-start gap-3 text-sm leading-snug">
             <Checkbox
               checked={eulaAccepted}
               onCheckedChange={(v) => setEulaAccepted(v === true)}
-              className="mt-0.5"
+              className="mt-0.5 h-5 w-5 rounded-full border-[#d1d5db] shadow-none data-[state=checked]:border-[var(--auth-accent)] data-[state=checked]:bg-[var(--auth-accent)]"
             />
             <span>
               {t("auth.eulaAgreePrefix")}{" "}

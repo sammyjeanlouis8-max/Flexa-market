@@ -264,7 +264,7 @@ export default {
     noAccount: "Ou pa gen yon kont?",
     signUp: "Enskri",
     createAccount: "Kreye yon kont",
-    joinSubtitle: "Rejwenn pou achte ak vann nan peyi ou",
+    joinSubtitle: "Rejwenn pou achte ak vann nan peyi ou oswa nenpòt kote nan mond lan.",
     name: "Non konplè",
     namePlaceholder: "Non ou konplè",
     alreadyAccount: "Ou deja gen yon kont?",

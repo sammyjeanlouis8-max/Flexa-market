@@ -221,12 +221,12 @@ export default function Register() {
               )}
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
                 name="password"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>{t("auth.password")}</FormLabel>
                     <FormControl>
                       <PasswordInput
@@ -240,9 +240,6 @@ export default function Register() {
                         data-testid="input-password"
                       />
                     </FormControl>
-                    {!form.formState.errors.password && (
-                      <p className="text-xs text-[var(--auth-muted)]">{t("auth.passwordMin")}</p>
-                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -252,7 +249,7 @@ export default function Register() {
                 control={form.control}
                 name="confirmPassword"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="min-w-0">
                     <FormLabel>{t("auth.confirmPassword")}</FormLabel>
                     <FormControl>
                       <PasswordInput
@@ -271,6 +268,9 @@ export default function Register() {
                 )}
               />
             </div>
+            {!form.formState.errors.password && !form.formState.errors.confirmPassword && (
+              <p className="-mt-1 text-xs text-[var(--auth-muted)]">{t("auth.passwordMin")}</p>
+            )}
           </section>
 
           <section className="space-y-4 border-t border-[var(--auth-border)] pt-5">
@@ -387,9 +387,13 @@ export default function Register() {
             control={form.control}
             name="eulaAccepted"
             render={({ field }) => (
-              <FormItem className="flex items-start gap-3 space-y-0 rounded-xl border border-[var(--auth-border)] bg-white/70 p-3.5">
+              <FormItem className="flex items-start gap-3 space-y-0">
                 <FormControl>
-                  <Checkbox checked={field.value} onCheckedChange={field.onChange} />
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className="mt-0.5 h-5 w-5 rounded-full border-[#d1d5db] shadow-none data-[state=checked]:border-[var(--auth-accent)] data-[state=checked]:bg-[var(--auth-accent)]"
+                  />
                 </FormControl>
                 <div className="min-w-0 space-y-1">
                   <FormLabel className="text-sm font-normal leading-snug text-[var(--auth-fg)]">

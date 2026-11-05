@@ -264,7 +264,7 @@ export default {
     noAccount: "Pas encore de compte ?",
     signUp: "S'inscrire",
     createAccount: "Créer un compte",
-    joinSubtitle: "Rejoignez pour acheter et vendre dans votre pays",
+    joinSubtitle: "Rejoignez pour acheter et vendre dans votre pays ou partout dans le monde.",
     name: "Nom complet",
     namePlaceholder: "Votre nom complet",
     alreadyAccount: "Déjà un compte ?",

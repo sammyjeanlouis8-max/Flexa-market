@@ -264,7 +264,7 @@ export default {
     noAccount: "Don't have an account?",
     signUp: "Sign up",
     createAccount: "Create Account",
-    joinSubtitle: "Join to buy and sell in your country",
+    joinSubtitle: "Join to buy and sell in your country or anywhere in the world.",
     name: "Full Name",
     namePlaceholder: "Your full name",
     alreadyAccount: "Already have an account?",

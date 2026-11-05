@@ -2487,6 +2487,8 @@ export default {
     consoleTitle: "Consola de administración",
     roleSuper: "Super Admin",
     roleStaff: "Acceso del personal",
+    back: "Atrás",
+    menu: "Menú admin",
     backToSite: "Volver al sitio",
     signOut: "Cerrar sesión",
     notifications: "Notifications",

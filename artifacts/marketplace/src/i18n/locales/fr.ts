@@ -3292,6 +3292,8 @@ export default {
     consoleTitle: "Console d'administration",
     roleSuper: "Super Admin",
     roleStaff: "Accès personnel",
+    back: "Retour",
+    menu: "Menu admin",
     backToSite: "Retour au site",
     signOut: "Déconnexion",
     notifications: "Notifications",

@@ -3301,6 +3301,8 @@ export default {
     consoleTitle: "Konsòl administrasyon",
     roleSuper: "Super Admin",
     roleStaff: "Aksè anplwaye",
+    back: "Tounen",
+    menu: "Meni admin",
     backToSite: "Tounen sou sit la",
     signOut: "Dekonekte",
     notifications: "Notifikasyon",

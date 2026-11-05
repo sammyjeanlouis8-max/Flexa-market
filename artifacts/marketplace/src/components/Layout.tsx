@@ -988,9 +988,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"}`}>
 
       {/* ── Top header ── */}
-      {/* paddingTop covers the notch / Dynamic Island on iPhone X+.
-          --sat is also used because Safari viewport-fit=auto can report
-          env(safe-area-inset-top) as 0 while the status area is still present. */}
+      {/* Safe-area top inset is applied once via .mobile-app-header CSS
+          (env(safe-area-inset-top), with --sat only as WebView fallback). */}
       {!isVideoFeed && (
         <header
           className={cn(
@@ -1000,7 +999,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               : "bg-card border-border",
           )}
         >
-          <div className="mobile-app-header-row w-full max-w-7xl mx-auto px-3 h-14 md:h-16 flex items-center gap-2">
+          <div className="mobile-app-header-row w-full max-w-7xl mx-auto flex items-center gap-2 md:h-16 md:px-3 md:max-h-none">
             {/* Hamburger — mobile menu (top left). Opens left drawer with all role menus. */}
             <button
               type="button"

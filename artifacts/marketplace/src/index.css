@@ -243,20 +243,26 @@ main {
     min-width: 0;
     overflow: hidden;
     box-sizing: border-box;
-    /* Safari with viewport-fit=auto often reports env(safe-area-inset-top)
-       as 0 even though the page still sits beneath the Dynamic Island/status
-       area. The synchronous --sat bootstrap is the reliable fallback. */
-    padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px) !important;
+    /* Single safe-area source: env() when available, --sat only as WebView
+       fallback (see index.html bootstrap). Never add a third floor (the old
+       8px min stacked with a heuristic --sat and inflated the green header). */
+    padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px)) !important;
   }
 
   .mobile-app-header-row {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    /* Compact e-commerce nav row (~56px), excluding safe-area padding above. */
     height: 56px !important;
+    min-height: 56px !important;
+    max-height: 56px !important;
     gap: 4px !important;
     padding-left: 8px !important;
     padding-right: 8px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    margin: 0 !important;
     box-sizing: border-box;
   }
 

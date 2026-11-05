@@ -15,7 +15,6 @@ import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,

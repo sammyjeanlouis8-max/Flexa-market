@@ -10,6 +10,8 @@ import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-pus
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
+import { notifyBuyerHaitiDeliveryPin } from "../lib/haitiDeliveryPinNotify";
+import { isDomesticHaitiPinDelivery } from "../lib/deliveryConfirmationPolicy";
 import { getStripeClient } from "../lib/stripeClient";
 import { requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
@@ -1287,8 +1289,9 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
       const busCode = Math.floor(100000 + Math.random() * 900000).toString();
       const deliveryAddr = [tx.shippingStreet, tx.shippingCity, tx.shippingRegion].filter(Boolean).join(", ") || "Adres pa disponib";
       const busFeeUsd = typeof tx.deliveryFeeUsd === "number" && tx.deliveryFeeUsd > 0 ? tx.deliveryFeeUsd : null;
+      const busCountry = listingCountry ?? "Haiti";
 
-      await db.insert(deliveriesTable).values({
+      const [busDelivery] = await db.insert(deliveriesTable).values({
         transactionId: orderId,
         listingId: listing.id,
         sellerId: listing.sellerId,
@@ -1299,12 +1302,12 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         pickupCity: listing.city ?? null,
         deliveryCity: tx.shippingCity ?? null,
         deliveryAddress: deliveryAddr,
-        country: listingCountry ?? "Haiti",
+        country: busCountry,
         currency: "USD",
         sellerNote: deliveryDescription.trim(),
         feeUsd: busFeeUsd,
         driverPhone: driverPhone.trim(),
-      } as any).catch(() => {});
+      } as any).returning({ id: deliveriesTable.id }).catch(() => [null]);
 
       const cityLine = busDestCity?.trim() ? ` → ${busDestCity.trim()}` : "";
       const notifNote = busTrackingLink?.trim()
@@ -1316,6 +1319,29 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         isRead: false,
         message: `📦 Kòmand ou nan wout pa bis/transpò${cityLine}. Transpòtè: ${driverName?.trim() || "—"} (${driverPhone.trim()}).${notifNote} Kòd sekrè ou: ${busCode}. Bay machann nan kòd la PA MESAJ sèlman lè ou resevwa atik la — sa ap libere lajan li imedyatman.`,
       } as any).catch(() => {});
+
+      if (busDelivery?.id && isDomesticHaitiPinDelivery({
+        shipToCountry: tx.shippingCountry || busCountry,
+        listingCountry: busCountry,
+        deliveryMethod: "bus",
+        deliveryType: "delivery",
+      })) {
+        await notifyBuyerHaitiDeliveryPin({
+          buyerId: tx.userId,
+          code: busCode,
+          deliveryId: busDelivery.id,
+          orderRef: `#FM-${String(orderId).padStart(6, "0")}`,
+          deliveryCity: tx.shippingCity ?? null,
+          listingTitle: listing.title ?? null,
+          trackingUrl: `https://flexamarket.com/orders/${orderId}`,
+          policy: {
+            shipToCountry: tx.shippingCountry || busCountry,
+            listingCountry: busCountry,
+            deliveryMethod: "bus",
+            deliveryType: "delivery",
+          },
+        }).catch(() => {});
+      }
 
       const noteToStore = [deliveryNote?.trim(), busTrackingLink?.trim()].filter(Boolean).join(" | ") || null;
       updateData = {
@@ -1375,7 +1401,8 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
       const deliveryAddr = [tx.shippingStreet, tx.shippingCity, tx.shippingRegion].filter(Boolean).join(", ") || "Adres pa disponib";
       const personalFeeUsd = typeof tx.deliveryFeeUsd === "number" && tx.deliveryFeeUsd > 0 ? tx.deliveryFeeUsd : null;
       const personalDriverEarnings = personalFeeUsd != null ? Math.round(personalFeeUsd * 0.85 * 100) / 100 : null;
-      await db.insert(deliveriesTable).values({
+      const personalCountry = listingCountry ?? "Haiti";
+      const [personalDelivery] = await db.insert(deliveriesTable).values({
         transactionId: orderId,
         listingId: listing.id,
         sellerId: listing.sellerId,
@@ -1385,12 +1412,12 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         pickupCity: listing.city ?? null,
         deliveryCity: tx.shippingCity ?? null,
         deliveryAddress: deliveryAddr,
-        country: listingCountry ?? "Haiti",
+        country: personalCountry,
         currency: "USD",
         sellerNote: deliveryDescription.trim(),
         feeUsd: personalFeeUsd,
         driverEarnings: personalDriverEarnings,
-      } as any).catch(() => {});
+      } as any).returning({ id: deliveriesTable.id }).catch(() => [null]);
 
       // Notify buyer with the secret code
       await db.insert(notificationsTable).values({
@@ -1399,6 +1426,29 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         isRead: false,
         message: `Chofè ou a ap vini. Kòd sekrè ou: ${personalCode}. Ba li chofè a SÈLMAN lè li rive ba ou kòmand lan. Pa pataje li ak pèsonn.`,
       } as any).catch(() => {});
+
+      if (personalDelivery?.id && isDomesticHaitiPinDelivery({
+        shipToCountry: tx.shippingCountry || personalCountry,
+        listingCountry: personalCountry,
+        deliveryMethod: null,
+        deliveryType: "delivery",
+      })) {
+        await notifyBuyerHaitiDeliveryPin({
+          buyerId: tx.userId,
+          code: personalCode,
+          deliveryId: personalDelivery.id,
+          orderRef: `#FM-${String(orderId).padStart(6, "0")}`,
+          deliveryCity: tx.shippingCity ?? null,
+          listingTitle: listing.title ?? null,
+          trackingUrl: `https://flexamarket.com/orders/${orderId}`,
+          policy: {
+            shipToCountry: tx.shippingCountry || personalCountry,
+            listingCountry: personalCountry,
+            deliveryMethod: null,
+            deliveryType: "delivery",
+          },
+        }).catch(() => {});
+      }
 
       updateData = {
         ...updateData,

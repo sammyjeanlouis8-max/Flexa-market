@@ -115,6 +115,42 @@ export function deliveryCreatedEmail(opts: {
   return { subject, html, text };
 }
 
+// ─── HAITI DELIVERY PIN (domestic PIN confirmation only) ─────────────────────
+
+export function deliveryPinEmail(opts: {
+  buyerName: string;
+  code: string;
+  orderRef: string;
+  deliveryCity: string;
+  listingTitle?: string;
+  trackingUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Your Flexa Market delivery PIN — ${opts.orderRef}`;
+  const html = base(subject, `
+    ${h1("Your delivery PIN", SUCCESS)}
+    ${p(`Hello <strong style="color:${TEXT};">${opts.buyerName}</strong>, your Flexa Market driver is on the way.`)}
+    ${divider()}
+    <div style="background:#ecfdf5;border-radius:16px;padding:28px;text-align:center;margin:20px 0;border:1px solid #a7f3d0;">
+      <p style="margin:0 0 8px;font-size:12px;color:#047857;text-transform:uppercase;letter-spacing:2px;font-weight:700;">Delivery PIN</p>
+      <p style="margin:0;font-size:36px;font-weight:900;color:#065f46;font-family:monospace;letter-spacing:10px;">${opts.code}</p>
+      <p style="margin:12px 0 0;font-size:13px;color:#065f46;line-height:1.5;">
+        Give this code to the Flexa Market driver only when they arrive with your package.
+      </p>
+    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
+      ${orderCard("Order", opts.orderRef)}
+      ${opts.listingTitle ? orderCard("Item", opts.listingTitle) : ""}
+      ${orderCard("Delivery area", opts.deliveryCity)}
+    </table>
+    ${p("Do not share this PIN with anyone except your assigned Flexa Market driver. International carrier shipments do not use this PIN.", MUTED)}
+    ${ctaButton("View order tracking", opts.trackingUrl, SUCCESS)}
+  `);
+  const text =
+    `Your Flexa Market delivery PIN for ${opts.orderRef} is ${opts.code}. ` +
+    `Give it to the driver only when the package arrives. Track: ${opts.trackingUrl}`;
+  return { subject, html, text };
+}
+
 // ─── DELIVERY STATUS UPDATE ────────────────────────────────────────────────────
 
 export function deliveryStatusEmail(opts: {

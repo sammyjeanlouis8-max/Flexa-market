@@ -231,14 +231,14 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
       {/* ── Trigger button ─────────────────────────────────── */}
       <button
         onClick={openModal}
-        className="w-full rounded-2xl bg-[#6C63FF] hover:bg-[#5a52e0] active:scale-[0.98] transition-all p-4 text-white flex items-center justify-between shadow-lg shadow-[#6C63FF]/30"
+        className="w-full rounded-2xl bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] active:scale-[0.98] transition-all p-4 text-white flex items-center justify-between shadow-lg shadow-[hsl(152,65%,18%)]/30"
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-            <Truck className="h-5 w-5 text-white" />
+            <Lock className="h-5 w-5 text-white" />
           </div>
           <div className="text-left">
-            <p className="font-black text-sm tracking-wide">{isBus ? "KÒD POU BAY MACHANN NAN" : "KÒD POU BAY CHOFÉ A"}</p>
+            <p className="font-black text-sm tracking-wide">{isBus ? "KÒD POU BAY MACHANN NAN" : "KÒD PIN LIVREZON"}</p>
             <p className="text-[11px] text-white/70 mt-0.5">Klike pou wè kòd ou a</p>
           </div>
         </div>
@@ -289,8 +289,8 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Code digits */}
                 <div className="flex justify-center gap-2">
                   {code.split("").map((d, i) => (
-                    <div key={i} className="w-11 h-14 rounded-xl bg-gray-50 dark:bg-gray-900 border-2 border-[#6C63FF]/40 flex items-center justify-center shadow-sm">
-                      <span className="text-2xl font-black text-[#6C63FF]">{d}</span>
+                    <div key={i} className="w-11 h-14 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-[hsl(152,65%,18%)]/30 flex items-center justify-center shadow-sm">
+                      <span className="text-2xl font-black text-[hsl(152,65%,18%)] dark:text-emerald-300">{d}</span>
                     </div>
                   ))}
                 </div>
@@ -327,47 +327,47 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Next step button */}
                 <button
                   onClick={() => setStep(2)}
-                  className="w-full bg-[#6C63FF] hover:bg-[#5a52e0] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[#6C63FF]/30"
+                  className="w-full bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[hsl(152,65%,18%)]/30"
                 >
-                  {isBus ? "Wè kòd pou machann nan →" : "Wè kòd pou chofe a →"}
+                  {isBus ? "Wè kòd pou machann nan →" : "Wè kòd PIN livrezon →"}
                 </button>
               </div>
             ) : (
-              /* ── Step 2: KÒD POU BAY CHOFÉ A ────────────── */
+              /* ── Step 2: KÒD PIN LIVREZON ────────────── */
               <div className="px-6 pb-8 pt-4 space-y-5 text-center">
                 {/* Delivery icon */}
                 <div className="flex justify-center">
-                  <div className="w-20 h-20 rounded-full border-2 border-[#6C63FF]/30 bg-[#6C63FF]/10 flex items-center justify-center">
-                    <Truck className="h-10 w-10 text-[#6C63FF]" />
+                  <div className="w-20 h-20 rounded-full border-2 border-[hsl(152,65%,18%)]/30 bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center">
+                    <Lock className="h-10 w-10 text-[hsl(152,65%,18%)]" />
                   </div>
                 </div>
 
                 {/* Title */}
                 <div>
-                  <h2 className="text-lg font-black text-[#6C63FF] tracking-wide uppercase">
-                    {isBus || isSellerDelivery ? "KÒD POU BAY MACHANN NAN" : "KÒD POU BAY CHOFÉ A"}
+                  <h2 className="text-lg font-black text-[hsl(152,65%,18%)] dark:text-emerald-300 tracking-wide uppercase">
+                    {isBus || isSellerDelivery ? "KÒD POU BAY MACHANN NAN" : "KÒD PIN LIVREZON"}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
                     {isSellerDelivery ? t("sell.selfDeliveryCodePrompt") : isBus
                       ? "Bay machann nan kòd sa a pa mesaj lè ou resevwa atik la. Li ap antre l nan app li pou libere lajan li imedyatman."
-                      : "Bay chofè livrezon an kòd sa a pou konfime resepsyon an."}
+                      : "Bay chofè Flexa Market la kòd sa a SÈLMAN lè li rive avèk pakè a."}
                   </p>
                 </div>
 
                 {/* Code digits — large */}
                 <div className="flex justify-center gap-2">
                   {code.split("").map((d, i) => (
-                    <div key={i} className="w-11 h-14 rounded-xl bg-gray-50 dark:bg-gray-900 border-2 border-[#6C63FF]/50 shadow-md flex items-center justify-center">
-                      <span className="text-2xl font-black text-[#6C63FF]">{d}</span>
+                    <div key={i} className="w-11 h-14 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-[hsl(152,65%,18%)]/40 shadow-md flex items-center justify-center">
+                      <span className="text-2xl font-black text-[hsl(152,65%,18%)] dark:text-emerald-300">{d}</span>
                     </div>
                   ))}
                 </div>
 
                 {/* Copy */}
-                <button onClick={copy} className="flex items-center gap-1.5 mx-auto text-xs text-[#6C63FF] font-semibold py-1">
+                <button onClick={copy} className="flex items-center gap-1.5 mx-auto text-xs text-[hsl(152,65%,18%)] font-semibold py-1">
                   {copied
                     ? <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Kòd kopye</>
-                    : <><Copy className="h-4 w-4" /> Kopye kòd la</>}
+                    : <><Copy className="h-4 w-4" /> Kopi kòd la</>}
                 </button>
 
                 {/* Important info */}
@@ -385,6 +385,7 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                       </>
                     ) : (
                       <>
+                        <li>• Bay kòd la bay <span className="font-bold">chofè Flexa Market asiyen an sèlman</span>.</li>
                         <li>• Pa pataje kòd sa a ak lòt moun.</li>
                         <li>• Li valab sèlman pou tranzaksyon sa a.</li>
                       </>
@@ -395,7 +396,7 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Close button */}
                 <button
                   onClick={close}
-                  className="w-full bg-[#6C63FF] hover:bg-[#5a52e0] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[#6C63FF]/30"
+                  className="w-full bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[hsl(152,65%,18%)]/30"
                 >
                   Fèmen
                 </button>

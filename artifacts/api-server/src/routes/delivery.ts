@@ -26,6 +26,8 @@ import {
   parseWorkZonesJson,
   validateWorkZones,
 } from "../lib/haitiGeography";
+import { notifyBuyerHaitiDeliveryPin } from "../lib/haitiDeliveryPinNotify";
+import { isDomesticHaitiPinDelivery } from "../lib/deliveryConfirmationPolicy";
 
 /** @deprecated Prefer haitiZonesApiPayload / HAITI_COMMUNES_BY_DEPARTMENT */
 export const HAITI_DEPARTMENT_CITIES = HAITI_COMMUNES_BY_DEPARTMENT;
@@ -1372,12 +1374,36 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
     }
   }
 
+  // Haiti domestic only: same PIN → Order Details (API) + System Notifications + email
+  if (delivery.buyerId && isDomesticHaitiPinDelivery({
+    shipToCountry: delivery.country,
+    listingCountry: delivery.country,
+    deliveryMethod: delivery.deliveryMethod,
+    deliveryType: "delivery",
+  })) {
+    await notifyBuyerHaitiDeliveryPin({
+      buyerId: delivery.buyerId,
+      code,
+      deliveryId,
+      orderRef: delivery.transactionId ? `#FM-${String(delivery.transactionId).padStart(6, "0")}` : delivery.trackingNumber,
+      deliveryCity: delivery.deliveryCity,
+      trackingNumber: delivery.trackingNumber,
+      trackingUrl: `https://flexamarket.com/delivery/tracking/${deliveryId}`,
+      policy: {
+        shipToCountry: delivery.country,
+        listingCountry: delivery.country,
+        deliveryMethod: delivery.deliveryMethod,
+        deliveryType: "delivery",
+      },
+    }).catch(() => {});
+  }
+
   // Never broadcast the buyer's secret code to a delivery-wide room. The
   // authenticated buyer retrieves it through the ownership-filtered tracking API.
   emitDeliveryStatus(deliveryId, { status: "driver_assigned" });
 
   // Push the buyer (web + mobile). NEVER include the secret code here —
-  // it was delivered securely via SMS + the in-app socket above.
+  // it was delivered securely via SMS + the in-app channels above.
   await pushBoth(
     delivery.buyerId,
     "Flexa Market 🏍️",
@@ -1498,6 +1524,29 @@ router.post("/delivery/:id/seller-accept", requireAuth, async (req, res): Promis
     if (buyer?.phone) {
       await sendSms(buyer.phone, `FLEXA MARKET — Machann nan ap livrezon li menm! Kòd sekrè: ${code}. Montre kòd sa SÈLMAN lè machann rive. Pa pataje.`).catch(() => {});
     }
+  }
+
+  if (delivery.buyerId && isDomesticHaitiPinDelivery({
+    shipToCountry: delivery.country,
+    listingCountry: delivery.country,
+    deliveryMethod: delivery.deliveryMethod || "self_delivery",
+    deliveryType: "delivery",
+  })) {
+    await notifyBuyerHaitiDeliveryPin({
+      buyerId: delivery.buyerId,
+      code,
+      deliveryId,
+      orderRef: delivery.transactionId ? `#FM-${String(delivery.transactionId).padStart(6, "0")}` : delivery.trackingNumber,
+      deliveryCity: delivery.deliveryCity,
+      trackingNumber: delivery.trackingNumber,
+      trackingUrl: `https://flexamarket.com/delivery/tracking/${deliveryId}`,
+      policy: {
+        shipToCountry: delivery.country,
+        listingCountry: delivery.country,
+        deliveryMethod: delivery.deliveryMethod || "self_delivery",
+        deliveryType: "delivery",
+      },
+    }).catch(() => {});
   }
 
   // The confirmation code is buyer-only. Never return or broadcast it to the
@@ -2233,6 +2282,30 @@ router.post("/delivery/:id/reschedule", requireAuth, async (req, res): Promise<v
       buyer.phone,
       `FLEXA MARKET — Reskèd konfime! Chofè a ap retounen ba ou. Nouvo kòd sekrè ou: ${newCode}. Ba li sèlman lè li rive.`,
     ).catch(() => {});
+  }
+
+  // Haiti domestic: fan-out the rotated PIN (same code string — never a second parallel PIN)
+  if (isDomesticHaitiPinDelivery({
+    shipToCountry: delivery.country,
+    listingCountry: delivery.country,
+    deliveryMethod: delivery.deliveryMethod,
+    deliveryType: "delivery",
+  })) {
+    await notifyBuyerHaitiDeliveryPin({
+      buyerId: userId,
+      code: newCode,
+      deliveryId,
+      orderRef: delivery.transactionId ? `#FM-${String(delivery.transactionId).padStart(6, "0")}` : delivery.trackingNumber,
+      deliveryCity: delivery.deliveryCity,
+      trackingNumber: delivery.trackingNumber,
+      trackingUrl: `https://flexamarket.com/delivery/tracking/${deliveryId}`,
+      policy: {
+        shipToCountry: delivery.country,
+        listingCountry: delivery.country,
+        deliveryMethod: delivery.deliveryMethod,
+        deliveryType: "delivery",
+      },
+    }).catch(() => {});
   }
 
   req.log.info({ deliveryId, buyerId: userId, newCode }, "Delivery rescheduled by buyer");

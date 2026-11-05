@@ -20,8 +20,9 @@ describe("mobile bottom nav safe-area", () => {
     expect(layout).not.toMatch(
       /height:\s*["']calc\(64px \+ max\(env\(safe-area-inset-bottom/,
     );
-    expect(layout).not.toMatch(
-      /paddingBottom:\s*["']max\(env\(safe-area-inset-bottom/,
+    // The mobile-bottom-nav-row must be a plain className (no inline height/paddingBottom).
+    expect(layout).toMatch(
+      /className="mobile-bottom-nav-row w-full grid grid-cols-5"\s*>/,
     );
   });
 

@@ -37,22 +37,41 @@ export function formatChatDay(value: ChatDate, language: string, t: Translate, n
   }).format(date);
 }
 
-type SentMessage = { id: number; senderId: number; createdAt: string };
+type SentMessage = {
+  id: number;
+  senderId: number;
+  createdAt: string;
+  /** Present when the client provided an idempotency key on send */
+  clientMessageId?: string | null;
+};
 type QueuedMessage = { id: string; createdAt: number };
 
 export type ChatTimelineEntry<M extends SentMessage, P extends QueuedMessage> =
   | { kind: "message"; key: string; item: M; createdAt: string; day: number | null }
   | { kind: "pending"; key: string; item: P; createdAt: number; day: number | null };
 
+/**
+ * Merge server messages with the local outbox.
+ * Drop any pending row whose `id` already appears as a confirmed
+ * `clientMessageId` — otherwise the UI shows a duplicate "Sending…"
+ * bubble next to the delivered message.
+ */
 export function buildChatTimeline<M extends SentMessage, P extends QueuedMessage>(
   messages: readonly M[], pending: readonly P[],
 ): ChatTimelineEntry<M, P>[] {
+  const confirmedClientIds = new Set(
+    messages
+      .map(m => m.clientMessageId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+  const visiblePending = pending.filter(item => !confirmedClientIds.has(item.id));
+
   const entries: ChatTimelineEntry<M, P>[] = [
     ...messages.map(item => ({
       kind: "message" as const, key: `message-${item.id}`, item,
       createdAt: item.createdAt, day: chatDayKey(item.createdAt),
     })),
-    ...pending.map(item => ({
+    ...visiblePending.map(item => ({
       kind: "pending" as const, key: item.id, item,
       createdAt: item.createdAt, day: chatDayKey(item.createdAt),
     })),

@@ -1084,7 +1084,20 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   });
   const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
   const isSystemNotifications = conv?.conversationType === "system_notifications";
-  const sendMsg = useSendMessage();
+  // Abort hung POSTs so outbox rows can flip to "failed" instead of eternal Sending…
+  const sendMsg = useSendMessage({ request: { timeoutMs: 20_000 } });
+  const flushLockRef = useRef(false);
+  const inFlightSendIdsRef = useRef(new Set<string>());
+
+  const clearPendingByClientId = useCallback((clientMessageId: string | null | undefined) => {
+    if (!clientMessageId) return;
+    void removePendingMessage(clientMessageId);
+    setPendingTexts(cur => {
+      if (!cur.some(p => p.id === clientMessageId)) return cur;
+      return cur.filter(p => p.id !== clientMessageId);
+    });
+    inFlightSendIdsRef.current.delete(clientMessageId);
+  }, []);
 
   useEffect(() => {
     socket.joinConv(convId);
@@ -1095,6 +1108,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         if (list.find((m: any) => m.id === msg.id)) return list;
         return [...list, msg];
       });
+      // Socket proof of delivery — clear outbox even if HTTP onSuccess never fired.
+      clearPendingByClientId(msg.clientMessageId);
       queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
       setTimeout(() => scrollToBottom(true), 60);
     });
@@ -1115,7 +1130,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     const unsubTyping = socket.onTyping(({ convId: cid }) => { if (cid === convId) setTypingOther(true); });
     const unsubStop = socket.onStopTyping(({ convId: cid }) => { if (cid === convId) setTypingOther(false); });
     return () => { socket.leaveConv(convId); unsub(); unsubListened(); unsubDeleted(); unsubTyping(); unsubStop(); };
-  }, [convId, queryClient, socket]);
+  }, [clearPendingByClientId, convId, queryClient, socket]);
 
   useEffect(() => {
     const refreshWhenAvailable = () => {
@@ -1235,44 +1250,74 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
   const flushPendingTexts = useCallback(async () => {
     if (!navigator.onLine) return;
-    const items = await listPendingMessages(convId).catch(() => [] as PendingChatMessage[]);
-    setPendingTexts(items);
-    for (const item of items) {
-      if (item.messageType !== "text") continue;
-      try {
-        await updatePendingMessage(item.id, { status: "sending", attempts: item.attempts + 1 });
-        await new Promise<void>((resolve, reject) => {
-          sendMsg.mutate(
-            {
-              id: convId,
-              data: {
-                content: item.content,
-                messageType: "text",
-                clientMessageId: item.id,
-              } as any,
-            },
-            {
-              onSuccess: () => resolve(),
-              onError: (e: any) => reject(e),
-            },
+    if (flushLockRef.current) return;
+    flushLockRef.current = true;
+    try {
+      const items = await listPendingMessages(convId).catch(() => [] as PendingChatMessage[]);
+      setPendingTexts(items);
+      for (const item of items) {
+        if (item.messageType !== "text") continue;
+        if (inFlightSendIdsRef.current.has(item.id)) continue;
+        inFlightSendIdsRef.current.add(item.id);
+        try {
+          await updatePendingMessage(item.id, { status: "sending", attempts: item.attempts + 1 });
+          setPendingTexts((cur) =>
+            cur.map((p) => (p.id === item.id ? { ...p, status: "sending", attempts: item.attempts + 1 } : p)),
           );
-        });
-        await removePendingMessage(item.id);
-        setPendingTexts((cur) => cur.filter((p) => p.id !== item.id));
-        queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
-      } catch (e: any) {
-        await updatePendingMessage(item.id, {
-          status: "failed",
-          lastError: e?.message ?? "Waiting for connection",
-        });
-        setPendingTexts((cur) =>
-          cur.map((p) =>
-            p.id === item.id
-              ? { ...p, status: "failed", lastError: e?.message ?? "Waiting for connection" }
-              : p,
-          ),
-        );
+          await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            const timer = window.setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              reject(new Error("Send timed out"));
+            }, 20_000);
+            sendMsg.mutate(
+              {
+                id: convId,
+                data: {
+                  content: item.content,
+                  messageType: "text",
+                  clientMessageId: item.id,
+                } as any,
+              },
+              {
+                onSuccess: () => {
+                  if (settled) return;
+                  settled = true;
+                  window.clearTimeout(timer);
+                  resolve();
+                },
+                onError: (e: any) => {
+                  if (settled) return;
+                  settled = true;
+                  window.clearTimeout(timer);
+                  reject(e);
+                },
+              },
+            );
+          });
+          await removePendingMessage(item.id);
+          setPendingTexts((cur) => cur.filter((p) => p.id !== item.id));
+          queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+        } catch (e: any) {
+          const errMsg = e?.message ?? "Waiting for connection";
+          await updatePendingMessage(item.id, {
+            status: "failed",
+            lastError: errMsg,
+          });
+          setPendingTexts((cur) =>
+            cur.map((p) =>
+              p.id === item.id
+                ? { ...p, status: "failed", lastError: errMsg }
+                : p,
+            ),
+          );
+        } finally {
+          inFlightSendIdsRef.current.delete(item.id);
+        }
       }
+    } finally {
+      flushLockRef.current = false;
     }
   }, [convId, queryClient, sendMsg]);
 
@@ -1313,14 +1358,20 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
     if (!navigator.onLine) return;
 
+    inFlightSendIdsRef.current.add(clientMessageId);
+    void updatePendingMessage(clientMessageId, { status: "sending" });
+    setPendingTexts((cur) =>
+      cur.map((p) => (p.id === clientMessageId ? { ...p, status: "sending" } : p)),
+    );
+
     doSend(
       { content, messageType: "text", clientMessageId },
       {
         onSuccess: () => {
-          void removePendingMessage(clientMessageId);
-          setPendingTexts((cur) => cur.filter((p) => p.id !== clientMessageId));
+          clearPendingByClientId(clientMessageId);
         },
         onFail: (err) => {
+          inFlightSendIdsRef.current.delete(clientMessageId);
           void updatePendingMessage(clientMessageId, { status: "failed", lastError: err });
           setPendingTexts((cur) =>
             cur.map((p) => (p.id === clientMessageId ? { ...p, status: "failed", lastError: err } : p)),
@@ -1702,6 +1753,28 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       break;
     }
   }
+
+  // Reconcile outbox against confirmed server rows (refetch / socket cache).
+  // Clears orphaned "Sending…" bubbles when HTTP success never ran.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!msgList.length) return;
+    const confirmed = new Set(
+      msgList
+        .map(m => m.clientMessageId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
+    if (!confirmed.size) return;
+    setPendingTexts(cur => {
+      const stuck = cur.filter(p => confirmed.has(p.id));
+      if (!stuck.length) return cur;
+      for (const p of stuck) {
+        void removePendingMessage(p.id);
+        inFlightSendIdsRef.current.delete(p.id);
+      }
+      return cur.filter(p => !confirmed.has(p.id));
+    });
+  }, [msgList]);
 
   // Auto-translate all incoming text messages to match the user's app language
   // eslint-disable-next-line react-hooks/rules-of-hooks

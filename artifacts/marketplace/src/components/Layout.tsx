@@ -1156,7 +1156,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {!isVideoFeed && <OfflineBar />}
 
       {/* ── Main content ── */}
-      {/* pb-safe-nav = calc(64px + env(safe-area-inset-bottom)) so content
+      {/* pb-safe-nav = calc(56px + env(safe-area-inset-bottom)) so content
           never hides under the fixed bottom nav on any iPhone model. */}
       <main className={
         isMessages || isVideoFeed
@@ -1181,7 +1181,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
               hover:from-orange-600 hover:to-amber-500
               active:scale-95 transition-all duration-150
               right-3 md:right-5
-              bottom-[calc(64px+max(env(safe-area-inset-bottom,0px),var(--flexa-android-bottom,0px))+12px)]
+              bottom-[calc(56px+max(env(safe-area-inset-bottom,0px),var(--flexa-android-bottom,0px))+12px)]
               md:bottom-5
             `}
           >
@@ -1194,18 +1194,11 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       <nav
         className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isSellPage ? "hidden" : ""}`}
         aria-label="Main navigation"
+        data-testid="mobile-bottom-nav"
       >
-        {/* Nav expands to include the home-indicator safe area — icons stay
-            in the upper 64 px, extra space is padding below them. */}
-        <div
-          className="mobile-bottom-nav-row w-full grid grid-cols-5"
-          style={{
-            height: "calc(64px + max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px)))",
-            paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))",
-            alignItems: "flex-start",
-            paddingTop: "0",
-          }}
-        >
+        {/* Content row is a fixed ~56px strip. Safe-area padding is applied
+            once on .mobile-bottom-nav (CSS) — never also in height here. */}
+        <div className="mobile-bottom-nav-row w-full grid grid-cols-5">
           {tabs.map((tab) => {
             if ("isMore" in tab && tab.isMore) {
               return (
@@ -1214,7 +1207,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                   type="button"
                   data-testid="nav-more"
                   onClick={() => setMoreOpen(true)}
-                  className="min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
+                  className="min-w-0 h-full flex flex-col items-center justify-center gap-0.5"
                 >
                   <MoreHorizontal
                     className={`h-5 w-5 transition-colors ${
@@ -1243,7 +1236,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                 data-testid={`nav-${t2.key}`}
                 aria-label={t2.label}
                 onClick={() => handleMobileTab(t2.href)}
-                className="w-full min-w-0 h-16 flex flex-col items-center justify-center gap-0.5"
+                className="w-full min-w-0 h-full flex flex-col items-center justify-center gap-0.5"
               >
                   {t2.highlight ? (
                     <div className="bg-[#F97316] rounded-full p-3 -mt-6 shadow-lg border-[3px] border-background">

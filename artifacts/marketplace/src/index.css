@@ -236,6 +236,18 @@ main {
     overscroll-behavior-y: contain;
   }
 
+  /* Messages inbox density — hide horizontal scrollbar on filter chips */
+  .messages-inbox-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 768px) {
+    /* Desktop has no fixed bottom nav — don't reserve mobile nav padding */
+    .messages-inbox-list {
+      padding-bottom: 8px !important;
+    }
+  }
+
   .mobile-app-header {
     flex: 0 0 auto;
     width: 100%;

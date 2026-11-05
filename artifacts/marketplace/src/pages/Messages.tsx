@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   MessageCircle, ArrowLeft, Sun, Moon, Search, SlidersHorizontal,
-  PenSquare, ChevronRight, Mic, ShoppingBag,
+  PenSquare, Mic, ShoppingBag,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -194,20 +194,18 @@ function ConvList({
 
   return (
     <div
-      className="conversation-list-scroll"
+      className="conversation-list-scroll messages-inbox-list"
       style={{
         overflowY: "auto",
         overflowX: "hidden",
         flex: "1 1 0%",
         minHeight: 0,
-        background: c.pageBg,
+        background: c.listBg,
         WebkitOverflowScrolling: "touch",
         touchAction: "pan-y",
         overscrollBehaviorY: "contain",
-        padding: "8px 12px 16px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
+        /* Clear fixed mobile bottom nav without wasting space on desktop */
+        paddingBottom: "max(8px, calc(64px + env(safe-area-inset-bottom, 0px)))",
       }}
     >
       {convs.map(conv => {
@@ -215,6 +213,7 @@ function ConvList({
         const online = !!onlineMap[conv.otherUserId];
         const preview = localizeConversationPreview(conv.lastMessage, conv.listingTitle, t);
         const voice = isVoicePreview(conv.lastMessage);
+        const hasProduct = !!conv.listingId && !!conv.listingTitle;
         return (
           <div
             key={conv.id}
@@ -229,21 +228,23 @@ function ConvList({
             }}
             onPointerDown={() => prefetchMessages(conv.id)}
             onMouseEnter={() => prefetchMessages(conv.id)}
+            className="messages-inbox-row"
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
-              padding: "12px 14px",
-              borderRadius: 16,
-              border: `1px solid ${unread ? "rgba(4,77,44,0.18)" : c.listBorder}`,
+              gap: 10,
+              /* Compact row: ~76px without product, ~92px with product */
+              minHeight: hasProduct ? 88 : 76,
+              maxHeight: hasProduct ? 100 : 88,
+              padding: "8px 12px",
+              borderBottom: `1px solid ${c.listBorder}`,
               background: activeId === conv.id
                 ? c.listItemActive
                 : unread
-                  ? "rgba(4, 77, 44, 0.05)"
+                  ? "rgba(4, 77, 44, 0.04)"
                   : c.listBg,
               cursor: "pointer",
-              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-              transition: "background 80ms, border-color 80ms",
+              transition: "background 80ms",
             }}
           >
             <div
@@ -254,50 +255,50 @@ function ConvList({
                 setLocation(`/profile/${conv.otherUserId}`);
               }}
             >
-              <Avatar className="h-12 w-12" style={{ cursor: "pointer" }}>
+              <Avatar className="h-10 w-10" style={{ cursor: "pointer" }}>
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
                 <AvatarFallback style={{
                   background: avatarHue(conv.otherUserName || "?"),
                   color: "#fff",
                   fontWeight: 700,
-                  fontSize: 16,
+                  fontSize: 14,
                 }}>
                   {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
               {online && (
                 <span style={{
-                  position: "absolute", right: 0, bottom: 0,
-                  width: 12, height: 12, borderRadius: "50%",
+                  position: "absolute", right: -1, bottom: -1,
+                  width: 10, height: 10, borderRadius: "50%",
                   background: "#22C55E",
                   border: `2px solid ${c.listBg}`,
                 }} />
               )}
             </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{
-                  fontSize: 15, color: c.listName, fontWeight: unread ? 700 : 600,
+                  fontSize: 14, color: c.listName, fontWeight: unread ? 700 : 600,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  display: "inline-flex", alignItems: "center", gap: 4,
+                  display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0,
                 }}>
-                  {conv.otherUserName}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{conv.otherUserName}</span>
                   {conv.otherUserIsVerified && (
                     <span
                       title={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
                       style={{
-                        width: 14, height: 14, borderRadius: "50%",
+                        width: 13, height: 13, borderRadius: "50%",
                         background: "#16A34A", color: "#fff",
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 9, fontWeight: 800, flexShrink: 0,
+                        fontSize: 8, fontWeight: 800, flexShrink: 0,
                       }}
                     >
                       ✓
                     </span>
                   )}
                 </span>
-                <span style={{ fontSize: 11, color: c.listTime, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, color: c.listTime, flexShrink: 0, lineHeight: 1.2 }}>
                   {conv.lastMessageAt ? conversationTime(conv.lastMessageAt, i18n.language, t) : ""}
                 </span>
               </div>
@@ -305,6 +306,7 @@ function ConvList({
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <p style={{
                   fontSize: 13,
+                  lineHeight: 1.25,
                   color: unread ? c.listName : c.listSub,
                   fontWeight: unread ? 600 : 400,
                   margin: 0,
@@ -316,30 +318,29 @@ function ConvList({
                   gap: 4,
                   minWidth: 0,
                 }}>
-                  {voice && <Mic style={{ width: 13, height: 13, flexShrink: 0, color: FLEXA.orange }} />}
+                  {voice && <Mic style={{ width: 12, height: 12, flexShrink: 0, color: FLEXA.orange }} />}
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{preview}</span>
                 </p>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  {unread && (
-                    <span style={{
-                      minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999,
-                      background: "#EF4444", color: "#fff",
-                      fontSize: 11, fontWeight: 700,
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
-                    </span>
-                  )}
-                  <ChevronRight style={{ width: 16, height: 16, color: "#CBD5E1" }} />
-                </div>
+                {unread && (
+                  <span style={{
+                    minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999,
+                    background: "#EF4444", color: "#fff",
+                    fontSize: 10, fontWeight: 700,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                  }}>
+                    {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
+                  </span>
+                )}
               </div>
 
-              {!!conv.listingId && !!conv.listingTitle && (
+              {hasProduct && (
                 <div style={{
-                  marginTop: 6, display: "inline-flex", alignItems: "center", gap: 4,
-                  maxWidth: "100%", fontSize: 11, color: FLEXA.greenMid, fontWeight: 600,
+                  display: "inline-flex", alignItems: "center", gap: 3,
+                  maxWidth: "100%", fontSize: 11, lineHeight: 1.2,
+                  color: FLEXA.greenMid, fontWeight: 600,
                 }}>
-                  <ShoppingBag style={{ width: 11, height: 11, flexShrink: 0 }} />
+                  <ShoppingBag style={{ width: 10, height: 10, flexShrink: 0 }} />
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {conv.listingTitle}
                   </span>
@@ -511,93 +512,101 @@ export default function Messages({ embedded = false, onClose, initialConversatio
   ];
 
   return (
-    <div style={{ display: "flex", height: "100%", background: c.pageBg }} className="md:max-w-5xl md:mx-auto md:border-x md:border-border">
+    <div
+      style={{ display: "flex", height: "100%", minHeight: 0, background: c.pageBg }}
+      className="messages-inbox-root md:max-w-5xl md:mx-auto md:border-x md:border-border"
+    >
 
       {/* Conversation list */}
       <div
         style={{
           borderRight: `1px solid ${c.listBorder}`,
           flexDirection: "column", minHeight: 0, background: c.listBg,
+          flex: "1 1 auto",
         }}
         className={`w-full md:w-[360px] lg:w-[380px] ${convId ? "hidden md:flex" : "flex"}`}
       >
-        {/* Title row */}
-        <div style={{
-          padding: "12px 14px 8px",
-          background: c.listBg,
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 10,
-        }}>
+        {/* Compact toolbar — single 48px row, no subtitle */}
+        <div
+          className="messages-inbox-toolbar"
+          style={{
+            height: 48,
+            padding: "0 10px",
+            background: c.listBg,
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            borderBottom: `1px solid ${c.listBorder}`,
+          }}
+        >
           <button
             type="button"
             onClick={() => embedded ? onClose?.() : setLocation("/")}
             aria-label={t("messages.back")}
             style={{
-              width: 40, height: 40, borderRadius: 12, background: "none",
+              width: 36, height: 36, borderRadius: 10, background: "none",
               border: `1px solid ${c.listBorder}`, display: "flex", alignItems: "center", justifyContent: "center",
-              color: FLEXA.green, cursor: "pointer", flexShrink: 0, marginTop: 2,
+              color: FLEXA.green, cursor: "pointer", flexShrink: 0,
               touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
             } as React.CSSProperties}
           >
-            <ArrowLeft style={{ width: 18, height: 18 }} />
+            <ArrowLeft style={{ width: 17, height: 17 }} />
           </button>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <MessageCircle style={{ width: 22, height: 22, color: FLEXA.green, flexShrink: 0 }} />
-              <h1 style={{ fontWeight: 800, color: c.listName, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
-                {t("messages.title")}
-              </h1>
-            </div>
-            <p style={{ margin: "2px 0 0", fontSize: 13, color: c.listSub }}>
-              {t("messages.subtitle", { defaultValue: "Your conversations and requests" })}
-            </p>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+            <MessageCircle style={{ width: 18, height: 18, color: FLEXA.green, flexShrink: 0 }} />
+            <h1 style={{
+              fontWeight: 800, color: c.listName, fontSize: 17, margin: 0,
+              letterSpacing: "-0.02em", lineHeight: 1.2,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {t("messages.title")}
+            </h1>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
             <button
               type="button"
               onClick={toggleTheme}
               aria-label={chatTheme === "night" ? t("messages.sunlightMode") : t("messages.nightMode")}
               style={{
-                width: 40, height: 40, borderRadius: 12,
+                width: 36, height: 36, borderRadius: 10,
                 background: c.listBg, border: `1px solid ${c.listBorder}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer",
               }}
             >
               {chatTheme === "night"
-                ? <Sun style={{ width: 16, height: 16, color: "#FCD34D" }} />
-                : <Moon style={{ width: 16, height: 16, color: FLEXA.green }} />}
+                ? <Sun style={{ width: 15, height: 15, color: "#FCD34D" }} />
+                : <Moon style={{ width: 15, height: 15, color: FLEXA.green }} />}
             </button>
             <button
               type="button"
               onClick={startNewMessage}
               aria-label={t("messages.newMessage", { defaultValue: "New message" })}
               style={{
-                width: 40, height: 40, borderRadius: 12,
+                width: 36, height: 36, borderRadius: 10,
                 background: FLEXA.green, border: "none",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: "#fff",
               }}
             >
-              <PenSquare style={{ width: 17, height: 17 }} />
+              <PenSquare style={{ width: 15, height: 15 }} />
             </button>
           </div>
         </div>
 
-        {/* Search + filter */}
-        <div style={{ padding: "4px 14px 10px", flexShrink: 0, position: "relative" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {/* Compact search + sort */}
+        <div style={{ padding: "6px 10px 4px", flexShrink: 0, position: "relative" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <div style={{
-              flex: 1, display: "flex", alignItems: "center", gap: 8,
-              minHeight: 44, padding: "0 12px",
-              borderRadius: 12, border: `1px solid ${c.listBorder}`,
+              flex: 1, display: "flex", alignItems: "center", gap: 6,
+              height: 36, padding: "0 10px",
+              borderRadius: 10, border: `1px solid ${c.listBorder}`,
               background: c.pageBg,
             }}>
-              <Search style={{ width: 16, height: 16, color: c.listTime, flexShrink: 0 }} />
+              <Search style={{ width: 14, height: 14, color: c.listTime, flexShrink: 0 }} />
               <input
                 type="search"
                 value={searchQuery}
@@ -605,8 +614,8 @@ export default function Messages({ embedded = false, onClose, initialConversatio
                 placeholder={t("messages.searchPlaceholder", { defaultValue: "Search a conversation..." })}
                 style={{
                   flex: 1, minWidth: 0, border: "none", outline: "none",
-                  background: "transparent", fontSize: 14, color: c.listName,
-                  height: 42,
+                  background: "transparent", fontSize: 13, color: c.listName,
+                  height: 34,
                 }}
               />
             </div>
@@ -616,14 +625,14 @@ export default function Messages({ embedded = false, onClose, initialConversatio
               aria-expanded={showFilter}
               aria-label={t("messages.filter", { defaultValue: "Filter" })}
               style={{
-                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                width: 36, height: 36, borderRadius: 10, flexShrink: 0,
                 border: `1px solid ${showFilter ? FLEXA.green : c.listBorder}`,
                 background: showFilter ? "rgba(4,77,44,0.08)" : c.listBg,
                 color: FLEXA.green, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}
             >
-              <SlidersHorizontal style={{ width: 17, height: 17 }} />
+              <SlidersHorizontal style={{ width: 15, height: 15 }} />
             </button>
           </div>
 
@@ -631,11 +640,11 @@ export default function Messages({ embedded = false, onClose, initialConversatio
             <div
               role="menu"
               style={{
-                position: "absolute", right: 14, top: 52, zIndex: 20,
-                width: 220, borderRadius: 14,
+                position: "absolute", right: 10, top: 44, zIndex: 20,
+                width: 220, borderRadius: 12,
                 border: `1px solid ${c.listBorder}`, background: c.listBg,
                 boxShadow: "0 10px 30px rgba(15,23,42,0.12)",
-                padding: 8,
+                padding: 6,
               }}
             >
               {([
@@ -648,8 +657,8 @@ export default function Messages({ embedded = false, onClose, initialConversatio
                   role="menuitem"
                   onClick={() => { setSortMode(mode); setShowFilter(false); }}
                   style={{
-                    width: "100%", textAlign: "left", padding: "10px 12px",
-                    borderRadius: 10, border: "none", cursor: "pointer",
+                    width: "100%", textAlign: "left", padding: "9px 11px",
+                    borderRadius: 8, border: "none", cursor: "pointer",
                     background: sortMode === mode ? "rgba(4,77,44,0.08)" : "transparent",
                     color: c.listName, fontWeight: sortMode === mode ? 700 : 500, fontSize: 13,
                   }}
@@ -661,11 +670,20 @@ export default function Messages({ embedded = false, onClose, initialConversatio
           )}
         </div>
 
-        {/* Tabs */}
+        {/* Filters — single non-wrapping horizontal scroll row */}
         <div
+          className="messages-inbox-tabs"
           style={{
-            display: "flex", gap: 8, padding: "0 14px 12px",
-            overflowX: "auto", flexShrink: 0, WebkitOverflowScrolling: "touch",
+            display: "flex",
+            flexWrap: "nowrap",
+            gap: 6,
+            padding: "4px 10px 8px",
+            overflowX: "auto",
+            overflowY: "hidden",
+            flexShrink: 0,
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
           {tabs.map(tab => {
@@ -679,17 +697,17 @@ export default function Messages({ embedded = false, onClose, initialConversatio
                   flexShrink: 0,
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
-                  minHeight: 36,
-                  padding: "0 14px",
+                  gap: 4,
+                  height: 30,
+                  padding: "0 11px",
                   borderRadius: 999,
                   border: active ? "none" : `1px solid ${c.listBorder}`,
                   background: active ? FLEXA.green : c.listBg,
                   color: active ? "#fff" : c.listName,
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: 12,
                   cursor: "pointer",
-                  position: "relative",
+                  whiteSpace: "nowrap",
                 }}
               >
                 <span>{tab.label}</span>
@@ -700,7 +718,7 @@ export default function Messages({ embedded = false, onClose, initialConversatio
                 )}
                 {tab.id === "unread" && tab.badge && (
                   <span style={{
-                    minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999,
+                    minWidth: 16, height: 16, padding: "0 4px", borderRadius: 999,
                     background: "#EF4444", color: "#fff",
                     fontSize: 10, fontWeight: 800,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",

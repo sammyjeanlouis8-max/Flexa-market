@@ -453,6 +453,12 @@ export default {
     saving: "Guardando…",
   },
   home: {
+    todaysDeals: "Ofertas de hoy",
+    dealInfoFallback: "Abre la página del producto para ver todos los detalles del vendedor.",
+    dealVideoUnavailable: "Video no disponible",
+    featuredBadge: "Destacado",
+    boostedListings: "Anuncios impulsados",
+    featuredProducts: "Productos destacados",
     featured: "Destacados",
     justListed: "Recién publicados",
     trending: "Tendencias",

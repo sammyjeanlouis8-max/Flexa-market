@@ -214,11 +214,13 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       <Sidebar collapsible="icon" variant="sidebar" className="border-r border-sidebar-border">
         <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
           <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-1 py-1 hover:bg-sidebar-accent">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--flexa-green)] text-white shadow-sm">
               <ShieldMark />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-bold leading-tight">Flexa Admin</p>
+              <p className="truncate text-sm font-bold leading-tight tracking-tight">
+                {t("adminControl.shellBrand")}
+              </p>
               <p className="truncate text-[10px] text-muted-foreground">
                 {isSuperAdmin ? t("adminNav.roleSuper") : t("adminNav.roleStaff")}
               </p>

@@ -2892,6 +2892,50 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE client_message_id IS NOT NULL`,
   });
 
+  // ── Official communications (communiqués) ──
+  migrations.push({
+    name: "announcements.create_table",
+    sql: `CREATE TABLE IF NOT EXISTS announcements (
+      id serial PRIMARY KEY,
+      title text NOT NULL,
+      preview text NOT NULL,
+      body_html text NOT NULL,
+      banner_url text,
+      category text NOT NULL DEFAULT 'update',
+      audience_type text NOT NULL DEFAULT 'all',
+      audience_countries jsonb DEFAULT '[]'::jsonb,
+      audience_user_id integer REFERENCES users(id),
+      highlight_title text,
+      highlight_items jsonb DEFAULT '[]'::jsonb,
+      action_label text,
+      action_url text,
+      status text NOT NULL DEFAULT 'draft',
+      published_at timestamptz,
+      created_by integer NOT NULL REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      archived_at timestamptz
+    )`,
+  });
+  migrations.push({
+    name: "announcements.status_idx",
+    sql: `CREATE INDEX IF NOT EXISTS announcements_status_idx ON announcements (status)`,
+  });
+  migrations.push({
+    name: "announcements.published_at_idx",
+    sql: `CREATE INDEX IF NOT EXISTS announcements_published_at_idx ON announcements (published_at)`,
+  });
+  migrations.push({
+    name: "notifications.title",
+    sql: `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title text`,
+  });
+  migrations.push({
+    name: "notifications.official_comm_dedupe",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS notifications_official_comm_dedupe_idx
+      ON notifications (user_id, type, reference_id)
+      WHERE type = 'official_communication' AND reference_id IS NOT NULL`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

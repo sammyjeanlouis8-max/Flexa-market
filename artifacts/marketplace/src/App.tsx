@@ -61,6 +61,8 @@ const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
 const AdminBroadcastPage          = lazy(() => import("@/pages/AdminBroadcastPage"));
 const AdminSmsBroadcastPage       = lazy(() => import("@/pages/AdminSmsBroadcastPage"));
 const AdminPushNotificationsPage  = lazy(() => import("@/pages/AdminPushNotificationsPage"));
+const AnnouncementDetail          = lazy(() => import("@/pages/AnnouncementDetail"));
+const Communications              = lazy(() => import("@/pages/Communications"));
 const CommissionPromo       = lazy(() => import("@/pages/CommissionPromo"));
 const Chatbot            = lazy(() => import("@/pages/Chatbot"));
 const CalculatorPage     = lazy(() => import("@/pages/Calculator"));
@@ -248,6 +250,8 @@ function LayoutRoutes() {
           <Route path="/settings" component={Settings} />
           <Route path="/settings/security" component={SettingsSecurity} />
           <Route path="/settings/notifications" component={SettingsNotifications} />
+          <Route path="/communications/:id" component={AnnouncementDetail} />
+          <Route path="/communications" component={Communications} />
           <Route path="/settings/preferences" component={SettingsPreferences} />
           <Route path="/settings/help" component={SettingsHelp} />
           <Route path="/support" component={Support} />

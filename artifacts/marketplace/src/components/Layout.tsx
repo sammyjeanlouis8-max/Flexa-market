@@ -913,6 +913,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isMessages = location.startsWith("/messages");
   // Video feed also needs full-height, immersive layout
   const isVideoFeed = location === "/videos";
+  // Official communications use their own compact green header
+  const isCommunications = /^\/communications(?:\/|$)/.test(location);
   // Inside a specific conversation: hide the mobile bottom nav (WhatsApp style)
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
@@ -931,6 +933,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   // Pages where the footer should NOT render (full-screen / chat-like UIs)
   const noFooter = isSellPage || isAdminConsole || [
     /^\/messages/,
+    /^\/communications(?:\/|$)/,
     /^\/auth\//,
     /^\/cart\/?$/,
     /^\/checkout/,
@@ -990,7 +993,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       {/* ── Top header ── */}
       {/* Safe-area top inset is applied once via .mobile-app-header CSS
           (env(safe-area-inset-top), with --sat only as WebView fallback). */}
-      {!isVideoFeed && (
+      {!isVideoFeed && !isCommunications && (
         <header
           className={cn(
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
@@ -1156,7 +1159,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       <main className={
         isMessages || isVideoFeed
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
-          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
+          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isSellPage || isCommunications ? "" : "pb-safe-nav"}${isCommunications ? "" : " md:pl-56"}`
       }
         style={isSellPage ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))" } : undefined}
       >
@@ -1187,7 +1190,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isSellPage ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isCommunications || isListingDetail || isPaymentOperations || isSubscriptionPage || isSellPage ? "hidden" : ""}`}
         aria-label="Main navigation"
       >
         {/* Nav expands to include the home-indicator safe area — icons stay
@@ -1330,7 +1333,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Desktop sidebar ── */}
       <nav
-        className={`${isVideoFeed ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-card border-r border-border flex-col py-4 px-3 gap-0 z-40 overflow-y-auto`}
+        className={`${isVideoFeed || isCommunications ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-card border-r border-border flex-col py-4 px-3 gap-0 z-40 overflow-y-auto`}
         aria-label="Sidebar navigation"
       >
         {desktopSections.map((section, si) => (

@@ -343,7 +343,8 @@ router.post("/push/manual-send", requireRole("superadmin"), async (req, res): Pr
         userId,
         actorId: req.userId!,
         type: "admin_broadcast",
-        message: `${title}: ${message}`,
+        title,
+        message,
       })));
       inAppStored += batch.length;
     } catch {

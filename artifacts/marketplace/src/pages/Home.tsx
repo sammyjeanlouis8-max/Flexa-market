@@ -714,6 +714,11 @@ export default function Home() {
                         });
                       } catch {}
                       await refreshUser?.();
+                      queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
+                      queryClient.invalidateQueries({ predicate: (q) => {
+                        const key = String(q.queryKey?.[0] ?? "");
+                        return key.includes("/api/listings") || key.includes("/api/videos");
+                      }});
                     }}
                   >
                     <span className="text-2xl">{COUNTRY_FLAGS[c]}</span>

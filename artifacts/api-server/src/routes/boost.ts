@@ -425,7 +425,14 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     // Regular users must match their country; unauthenticated → sql`false` (no match).
     ...(skipCountryFilter ? [] : [
       viewerCountry
-        ? sql`(lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) = ${viewerCountry.toLowerCase()} OR ${listingsTable.boostAudienceCountry} = 'ALL')`
+        ? sql`(
+            lower(${listingsTable.country}) = ${viewerCountry.toLowerCase()}
+            AND (
+              ${listingsTable.boostAudienceCountry} IS NULL
+              OR ${listingsTable.boostAudienceCountry} = 'ALL'
+              OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) = ${viewerCountry.toLowerCase()}
+            )
+          )`
         : sql`false`,
     ]),
     // State isolation: only exclude when viewer has a known state AND boost targets

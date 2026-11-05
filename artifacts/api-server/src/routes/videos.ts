@@ -48,6 +48,8 @@ export function resolveViewerScope(req: Parameters<typeof optionalAuth>[0], requ
     GF: "French Guiana", CU: "Cuba", JM: "Jamaica", PR: "Puerto Rico",
     TT: "Trinidad and Tobago",
   };
+  // CF-IPCountry is a last-resort fallback ONLY when the viewer has no selected
+  // marketplace country. It must never override users.country.
   const fallbackCountry = cfCountry[String(req.headers["cf-ipcountry"] ?? "").trim().toUpperCase()] ?? "Haiti";
   const assignedCountries = isAdmin
     ? canonicalCountries([

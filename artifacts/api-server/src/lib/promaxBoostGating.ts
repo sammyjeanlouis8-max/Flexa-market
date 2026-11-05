@@ -1,3 +1,8 @@
+import {
+  isBoostAudienceCountryCompatible,
+  isListingEligibleForMarketplaceCountry,
+} from "./marketplaceCountryEligibility";
+
 export const BOOST_IMPRESSIONS_PER_USD = 200;
 
 export type PromaxViewer = {
@@ -31,9 +36,16 @@ export function matchesPromaxAudience(
   viewer: PromaxViewer | null | undefined,
 ): boolean {
   if (!viewer) return true;
-  const targetCountry = boost.audienceCountry || boost.listingCountry;
-  if (targetCountry && targetCountry !== "ALL" &&
-      viewer.country && targetCountry.toLowerCase() !== viewer.country.toLowerCase()) {
+  // Country eligibility ALWAYS comes first. Paid boost / audience ALL cannot
+  // surface a listing from another marketplace country.
+  if (viewer.country && !isListingEligibleForMarketplaceCountry({
+    listingCountry: boost.listingCountry,
+    boostAudienceCountry: boost.audienceCountry,
+    viewerCountry: viewer.country,
+  })) {
+    return false;
+  }
+  if (viewer.country && !isBoostAudienceCountryCompatible(boost.audienceCountry, viewer.country)) {
     return false;
   }
 

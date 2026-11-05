@@ -350,33 +350,19 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
-    // A country bypass is allowed only for a currently active paid boost.
-    // Viewer audience/budget filtering below is applied to the same row set
-    // before every fallback and total, so stale audience fields cannot leak.
-    const activePaidBoostForCountry = sql`(
-      ${listingsTable.isBoosted} = true
-      AND ${listingsTable.boostExpiresAt} > ${promaxNow}
-      AND EXISTS (
-        SELECT 1 FROM boosts b
-        WHERE b.listing_id = ${listingsTable.id}
-          AND b.payment_status = 'paid'
-          AND b.expires_at > ${promaxNow}
-      )
-    )`;
-    baseConditions.push(or(
-      eq(listingsTable.country!, req.user.country),
-      and(
-        activePaidBoostForCountry,
-        or(
-          eq(listingsTable.boostAudienceCountry, "ALL"),
-          eq(listingsTable.boostAudienceCountry, req.user.country),
-        ),
-      ),
-    ) as any);
+    // STRICT country gate FIRST — paid boosts, audience ALL, 72h exposure, and
+    // trending scores never admit a listing from another marketplace country.
+    baseConditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(baseConditions, req.user, country || undefined);
   } else if (!req.userId && country) {
     baseConditions.push(eq(listingsTable.country!, country));
+  } else if (!req.userId && !country) {
+    // Guests must declare a marketplace country — fail closed (no global dump).
+    baseConditions.push(sql`false` as any);
+  } else if (req.userId && !req.user?.country && !isAdmin) {
+    // Authenticated shoppers without a selected country see nothing until they pick one.
+    baseConditions.push(sql`false` as any);
   }
 
   const geoUser: GeoUser | null = req.user
@@ -402,9 +388,8 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     res.status(410).json({ error: "PROMAX page token has expired. Restart pagination.", code: "PROMAX_SNAPSHOT_EXPIRED" });
     return;
   }
-  // A missing snapshot (including a client-requested legacy fallback) must
-  // never widen the authenticated viewer's country scope. Paid audience
-  // bypasses are only evaluated by the verified PROMAX path below.
+  // Country eligibility is already hard-gated above. Keep this redundant pin so
+  // a missing PROMAX snapshot can never widen customer country scope.
   if (!promaxSnapshot && req.userId && req.user?.country && !isAdmin) {
     baseConditions.push(eq(listingsTable.country!, req.user.country));
   }
@@ -489,15 +474,12 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       // Admin country access was already enforced in the SQL conditions.
       // Shopper audience rules must never hide products from an admin view.
       if (isAdmin) return true;
-      // A same-country listing remains eligible organically when its paid
-      // placement is gated. Cross-country rows still need a valid paid
-      // audience match to bypass the viewer's country scope.
-      if (!promaxViewer?.country || row.listings.country === promaxViewer.country) return true;
-      if (!isActiveBoost(row.listings, promaxNow) || !paidBoostByListing.has(row.listings.id)) return false;
-      if (hasPinnedDemotions) return !requestedDemotions.has(row.listings.id);
-      const eligible = isPromaxPlacementEligible(row.listings);
-      if (!eligible) sequenceDemotions.add(row.listings.id);
-      return eligible;
+      // Country eligibility is absolute — paid boost / ALL audience cannot keep
+      // a foreign listing in the customer feed after ranking.
+      if (promaxViewer?.country && row.listings.country !== promaxViewer.country) {
+        return false;
+      }
+      return true;
     });
   // Subscription tier boost: VIP=3, Premium=2, Standard=1, Basic=0
   const subTierSql = sql<number>`(CASE ${usersTable.subscriptionPlan}
@@ -709,10 +691,15 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`, listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserT: GeoUser | null = req.user
@@ -759,11 +746,16 @@ router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => 
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
   const userCountry = req.user?.country ?? null;
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
 
   if (req.userId && userCountry && !isAdmin) {
     conditions.push(eq(listingsTable.country!, userCountry));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserF: GeoUser | null = req.user
@@ -824,10 +816,15 @@ router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> =
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserFeat: GeoUser | null = req.user
@@ -889,13 +886,18 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
   excludeBlockedSellers(conditions, req.userId);
 
   if (userCountry) {
-    // Strict country isolation: use COALESCE so that boosts with NULL audienceCountry
-    // fall back to the listing's own country. The IS NULL loophole is closed.
-    // Exception: super-admin-created boosts with audienceCountry = 'ALL' are shown
-    // globally to every authenticated viewer regardless of country.
+    // STRICT: listing.country must match the viewer. Audience ALL only means
+    // unrestricted cities within that same listing country — never cross-border.
+    conditions.push(eq(listingsTable.country!, userCountry) as any);
     conditions.push(
-      sql`(lower(COALESCE(${listingsTable.boostAudienceCountry}, ${listingsTable.country})) = ${userCountry.toLowerCase()} OR ${listingsTable.boostAudienceCountry} = 'ALL')` as any
+      sql`(
+        ${listingsTable.boostAudienceCountry} IS NULL
+        OR ${listingsTable.boostAudienceCountry} = 'ALL'
+        OR lower(${listingsTable.boostAudienceCountry}) = ${userCountry.toLowerCase()}
+      )` as any
     );
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   if (userLoc) {
@@ -2530,11 +2532,13 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     ];
     excludeBlockedSellers(baseConditions, req.userId);
 
-    // 3. Scope to the user's country (same rule as the main feed)
+    // 3. Country eligibility FIRST (before boost / distance / relevance ranking)
     const userCountry = req.user?.country ?? null;
     const isAdmin = hasRole(req.user, "admin");
     if (userCountry && !isAdmin) {
       baseConditions.push(eq(listingsTable.country!, userCountry));
+    } else if (!isAdmin) {
+      baseConditions.push(sql`false` as any);
     }
 
     const geoUserP: GeoUser | null = req.user

@@ -210,6 +210,9 @@ export function SellAccordionSection({
   onToggle,
   children,
   complete,
+  errorCount = 0,
+  missingLabel,
+  completedLabel = "Completed",
 }: {
   id: string;
   title: string;
@@ -217,35 +220,89 @@ export function SellAccordionSection({
   open: boolean;
   onToggle: () => void;
   children: ReactNode;
+  /** True only when all required fields in this section are valid. */
   complete?: boolean;
+  /** Number of invalid required fields after a publish attempt. */
+  errorCount?: number;
+  /** e.g. "2 fields missing" — shown when errorCount > 0 */
+  missingLabel?: string;
+  completedLabel?: string;
 }) {
+  const hasErrors = errorCount > 0;
+  const status = hasErrors ? "error" : complete ? "complete" : "neutral";
+
   return (
     <div
-      className="rounded-xl border border-border bg-white overflow-hidden shadow-sm"
+      className={cn(
+        "rounded-xl border overflow-hidden shadow-sm transition-colors",
+        hasErrors
+          ? "border-red-400 bg-red-50/70"
+          : complete
+            ? "border-border bg-white"
+            : "border-border bg-white",
+      )}
       data-testid={`sell-section-${id}`}
+      data-section-status={status}
+      data-error-count={errorCount}
     >
       <button
         type="button"
         onClick={onToggle}
         className={cn(
           "w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors",
-          open ? "bg-[hsl(152,40%,94%)]" : "bg-white hover:bg-muted/30",
+          hasErrors
+            ? "bg-red-50/80"
+            : open
+              ? "bg-[hsl(152,40%,94%)]"
+              : "bg-white hover:bg-muted/30",
         )}
         aria-expanded={open}
       >
-        <span className={cn(
-          "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-          open ? "bg-[hsl(152,65%,22%)] text-white" : "bg-[hsl(152,40%,92%)] text-[hsl(152,65%,22%)]",
-        )}>
+        <span
+          className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
+            hasErrors
+              ? "bg-red-100 text-red-600"
+              : complete
+                ? "bg-emerald-100 text-emerald-700"
+                : open
+                  ? "bg-[hsl(152,65%,22%)] text-white"
+                  : "bg-[hsl(152,40%,92%)] text-[hsl(152,65%,22%)]",
+          )}
+        >
           <Icon className="h-4 w-4" />
         </span>
-        <span className="flex-1 font-bold text-[14px] text-foreground">{title}</span>
-        {complete && (
-          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">OK</span>
+        <span className="flex-1 font-bold text-[14px] text-foreground min-w-0 truncate">{title}</span>
+        {hasErrors && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full shrink-0"
+            data-testid={`sell-section-${id}-errors`}
+          >
+            <span aria-hidden>!</span>
+            {missingLabel || `${errorCount} fields missing`}
+          </span>
+        )}
+        {!hasErrors && complete && (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0"
+            data-testid={`sell-section-${id}-complete`}
+          >
+            <span aria-hidden>✓</span>
+            {completedLabel}
+          </span>
         )}
         <ChevronIcon open={open} />
       </button>
-      {open && <div className="px-4 pb-4 pt-1 space-y-4 border-t border-border/50">{children}</div>}
+      {open && (
+        <div
+          className={cn(
+            "px-4 pb-4 pt-1 space-y-4 border-t",
+            hasErrors ? "border-red-200/80 bg-red-50/40" : "border-border/50 bg-white",
+          )}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

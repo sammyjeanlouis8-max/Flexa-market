@@ -159,8 +159,11 @@ export default function ListingDetail() {
   const [pdpTab, setPdpTab] = useState<"details" | "specs" | "reviews" | "qa">("details");
   const [pdpSearchQ, setPdpSearchQ] = useState("");
   const [galleryFullscreen, setGalleryFullscreen] = useState(false);
+  /** Fixed bottom purchase bar — only when inline Add/Buy CTAs are off-screen. */
+  const [showFixedPurchaseBar, setShowFixedPurchaseBar] = useState(false);
   const pdpTabsRef = useRef<HTMLDivElement>(null);
   const pdpTabPanelRef = useRef<HTMLDivElement>(null);
+  const inlinePurchaseRef = useRef<HTMLDivElement>(null);
 
   /** Switch PDP tab and bring the panel into view under the sticky tab bar. */
   const handlePdpTabClick = (tabId: "details" | "specs" | "reviews" | "qa") => {
@@ -172,20 +175,42 @@ export default function ListingDetail() {
       if (!tabsEl) return;
       const isDesktop = window.matchMedia("(min-width: 768px)").matches;
       const scrollParent = tabsEl.closest(".app-main-scroll") as HTMLElement | null;
-      // Mobile: only .app-main-scroll scrolls (header is outside → sticky top-0).
-      // Desktop: document scrolls with sticky header → offset by header height.
+      const stickyTop =
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--pdp-tabs-sticky-top")) || 0;
+      // Mobile: only .app-main-scroll scrolls (header is outside → sticky top ≈ 0).
+      // Desktop: document scrolls with sticky header → offset by measured header height.
       if (scrollParent && !isDesktop) {
         const parentTop = scrollParent.getBoundingClientRect().top;
         const tabsTop = tabsEl.getBoundingClientRect().top;
-        const nextTop = scrollParent.scrollTop + (tabsTop - parentTop);
+        const nextTop = scrollParent.scrollTop + (tabsTop - parentTop) - stickyTop;
         scrollParent.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
         return;
       }
-      const stickyOffset = isDesktop ? 64 : 0;
-      const nextTop = window.scrollY + tabsEl.getBoundingClientRect().top - stickyOffset;
+      const nextTop = window.scrollY + tabsEl.getBoundingClientRect().top - stickyTop;
       window.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
     });
   };
+
+  // Measure green header height for sticky tab offset (desktop / window scroll).
+  // On mobile, content scrolls inside .app-main-scroll below the header → top 0.
+  useEffect(() => {
+    const updateStickyTop = () => {
+      const header = document.querySelector("header.mobile-app-header") as HTMLElement | null;
+      const mobileScroll = window.matchMedia("(max-width: 767px)").matches;
+      const topPx = mobileScroll ? 0 : Math.round(header?.getBoundingClientRect().height ?? 64);
+      document.documentElement.style.setProperty("--pdp-tabs-sticky-top", `${topPx}px`);
+    };
+    updateStickyTop();
+    window.addEventListener("resize", updateStickyTop);
+    const header = document.querySelector("header.mobile-app-header");
+    const ro = header ? new ResizeObserver(updateStickyTop) : null;
+    if (header && ro) ro.observe(header);
+    return () => {
+      window.removeEventListener("resize", updateStickyTop);
+      ro?.disconnect();
+      document.documentElement.style.removeProperty("--pdp-tabs-sticky-top");
+    };
+  }, []);
 
   // Reset mute state whenever the user swipes to a different media item.
   // Guarantees every boost video starts muted (browsers require muted for autoplay).
@@ -290,6 +315,64 @@ export default function ListingDetail() {
     { query: { enabled: !!relatedCategory, queryKey: getGetListingsQueryKey({ category: relatedCategory || undefined, limit: 8 }) } },
   );
   const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
+
+  // Show fixed bottom purchase bar only when the inline Add/Buy row has scrolled away.
+  useEffect(() => {
+    const el = inlinePurchaseRef.current;
+    const canPurchase =
+      !!listing &&
+      listing.status === "available" &&
+      !(listing as { isOwner?: boolean }).isOwner;
+    if (!el || !canPurchase || isLoading) {
+      setShowFixedPurchaseBar(false);
+      return;
+    }
+
+    const isLgUp = () => window.matchMedia("(min-width: 1024px)").matches;
+    const scroller = document.querySelector(".app-main-scroll") as HTMLElement | null;
+    const useScrollerRoot =
+      !!scroller &&
+      window.matchMedia("(max-width: 767px)").matches &&
+      (getComputedStyle(scroller).overflowY === "auto" ||
+        getComputedStyle(scroller).overflowY === "scroll");
+
+    const apply = (inlineVisible: boolean) => {
+      if (isLgUp()) {
+        setShowFixedPurchaseBar(false);
+        return;
+      }
+      setShowFixedPurchaseBar(!inlineVisible);
+    };
+
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        // Show the fixed bar only once the inline CTAs leave the scrollport
+        // entirely — avoids duplicate Add/Buy while they are still on screen.
+        apply(entry.isIntersecting);
+      },
+      {
+        root: useScrollerRoot ? scroller : null,
+        threshold: [0, 0.01, 0.25, 1],
+      },
+    );
+    io.observe(el);
+
+    const onViewportChange = () => {
+      if (isLgUp()) setShowFixedPurchaseBar(false);
+    };
+    const mq = window.matchMedia("(min-width: 1024px)");
+    mq.addEventListener("change", onViewportChange);
+
+    return () => {
+      io.disconnect();
+      mq.removeEventListener("change", onViewportChange);
+    };
+  }, [
+    listing?.id,
+    listing?.status,
+    (listing as { isOwner?: boolean } | undefined)?.isOwner,
+    isLoading,
+  ]);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -1831,7 +1914,11 @@ export default function ListingDetail() {
               </p>
             )}
 
-            <div className="flex gap-2.5 pt-1">
+            <div
+              ref={inlinePurchaseRef}
+              className="flex gap-2.5 pt-1"
+              data-testid="pdp-inline-purchase"
+            >
               <button
                 type="button"
                 onClick={handleAddToCartClick}
@@ -2087,11 +2174,12 @@ export default function ListingDetail() {
         <div data-testid="pdp-details-sticky-scope">
 
         {/* ── PDP TABS ──
-            Mobile scrolls inside .app-main-scroll (header is outside) → top-0.
-            Desktop (md+) uses document scroll with a sticky header → top-16. */}
+            Sticky under the green header while inside Product Details.
+            --pdp-tabs-sticky-top is measured (0 on mobile scroller; header height on desktop). */}
         <div
           ref={pdpTabsRef}
-          className="sticky top-0 md:top-16 z-30 bg-white border-b border-border scroll-mt-0 md:scroll-mt-16"
+          className="sticky z-30 bg-white border-b border-border"
+          style={{ top: "var(--pdp-tabs-sticky-top, 0px)" }}
           data-testid="pdp-tabs"
         >
           <div className="flex overflow-x-auto scrollbar-none" role="tablist">
@@ -2468,17 +2556,16 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {/* spacer so content clears the sticky buy bar — always rendered
-            when the buy bar could appear so the layout never shifts when the
-            buy dialog opens / closes (removing it caused the page to jump) */}
-        {!isOwner && listing.status === "available" && (
+        {/* Spacer only while the fixed purchase bar is visible so content is not covered. */}
+        {!isOwner && listing.status === "available" && showFixedPurchaseBar && (
           <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
-      {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed. */}
-      {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
+      {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed.
+          Hidden while the inline Add/Buy CTAs are still on screen (no duplicates). */}
+      {!isOwner && listing.status === "available" && !buyNowOpen && showFixedPurchaseBar && createPortal(
         <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
 
           {/* Add to Cart — Amazon yellow */}

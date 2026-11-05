@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles, FileText, Send, CircleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -29,8 +29,19 @@ import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import SellerCenterShell, { SellAccordionSection, SELL_STEPS } from "@/components/seller/SellerCenterShell";
+import {
+  SELL_VALIDATION_EN,
+  collectExtraPublishErrors,
+  countErrorsBySection,
+  defaultSellValidationMessages,
+  firstSectionWithErrors,
+  formatSectionMissingLabel,
+  sectionForField,
+  type SellSectionId,
+} from "@/lib/sellValidation";
 
 const MAX_IMAGES = 5;
+/** Existing business rule: new listings require at least 2 photos (1 when editing). */
 const MIN_IMAGES = 2;
 const OTHER_CITY = "__other__";
 const DRAFT_KEY = "flexa_sell_draft_v2";
@@ -45,32 +56,74 @@ function PayoutMethodCards({ stripeFirst, children }: { stripeFirst: boolean; ch
   );
 }
 
-// Small required-field status dot: red when empty, green once filled.
+// Small required-field status: red asterisk when empty, green check once filled.
 function ReqDot({ filled }: { filled: boolean }) {
   return (
     <span
       aria-hidden="true"
       className={cn(
         "inline-block h-2 w-2 rounded-full ml-1.5 align-middle shrink-0 transition-colors",
-        filled ? "bg-green-500" : "bg-red-500"
+        filled ? "bg-emerald-500" : "bg-red-500",
       )}
     />
   );
 }
 
-const schema = z.object({
-  title: z.string().min(3, "Title must be at least 3 characters"),
-  description: z.string().min(10, "Description too short"),
-  price: z.coerce.number().min(0, "Price must be 0 or more"),
-  categoryId: z.coerce.number().positive("Select a category"),
-  subcategoryId: z.coerce.number().optional().nullable(),
-  condition: z.enum(["new", "like_new", "good", "fair", "poor"]),
-  country: z.string().min(1, "Select a country"),
-  city: z.string().min(1, "Enter a city"),
-  state: z.string().optional(),
-  location: z.string().min(2, "Enter a location"),
-  stockQuantity: z.coerce.number().int().positive().optional().nullable(),
-});
+function FieldErrorIcon({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <CircleAlert
+      className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-red-500 pointer-events-none"
+      aria-hidden
+      data-testid="field-error-icon"
+    />
+  );
+}
+
+function buildSellSchema(messages: typeof SELL_VALIDATION_EN) {
+  return z.object({
+    title: z
+      .string()
+      .trim()
+      .min(1, messages.titleRequired)
+      .min(3, messages.titleTooShort),
+    description: z
+      .string()
+      .trim()
+      .min(1, messages.descriptionRequired)
+      .min(10, messages.descriptionRequired),
+    price: z.preprocess(
+      (val) => {
+        if (val === "" || val === null || val === undefined) return undefined;
+        const n = typeof val === "number" ? val : Number(val);
+        return Number.isFinite(n) ? n : undefined;
+      },
+      z
+        .number({
+          required_error: messages.priceInvalid,
+          invalid_type_error: messages.priceInvalid,
+        })
+        .positive(messages.pricePositive),
+    ),
+    categoryId: z.coerce.number().positive(messages.categoryRequired),
+    subcategoryId: z.coerce.number().optional().nullable(),
+    condition: z.enum(["new", "like_new", "good", "fair", "poor"]),
+    country: z.string().min(1, messages.countryRequired),
+    city: z.string().min(1, messages.cityRequired),
+    state: z.string().optional(),
+    location: z.string().trim().min(2, messages.locationRequired),
+    stockQuantity: z.preprocess(
+      (val) => {
+        if (val === "" || val === null || val === undefined) return null;
+        const n = typeof val === "number" ? val : Number(val);
+        return Number.isFinite(n) ? n : undefined;
+      },
+      z.number().int(messages.quantityInvalid).positive(messages.quantityInvalid).optional().nullable(),
+    ),
+  });
+}
+
+type SellFormValues = z.infer<ReturnType<typeof buildSellSchema>>;
 
 interface UploadedImage {
   objectPath: string;
@@ -164,13 +217,28 @@ export default function Sell() {
   const [pkgWidth,  setPkgWidth]  = useState<string>("");
   const [pkgHeight, setPkgHeight] = useState<string>("");
   const [myListingCount, setMyListingCount] = useState<{ totalCount: number; activeCount: number } | null>(null);
+  const [showValidationBanner, setShowValidationBanner] = useState(false);
+  const [sectionErrorCounts, setSectionErrorCounts] = useState<Record<SellSectionId, number>>({
+    info: 0,
+    media: 0,
+    pricing: 0,
+    delivery: 0,
+    review: 0,
+  });
+  const validationBannerRef = useRef<HTMLDivElement | null>(null);
 
-  const form = useForm({
-    resolver: zodResolver(schema),
+  const validationMessages = useMemo(
+    () => defaultSellValidationMessages((key, opts) => t(key, opts as any)),
+    [t, i18n.language],
+  );
+  const sellSchema = useMemo(() => buildSellSchema(validationMessages), [validationMessages]);
+
+  const form = useForm<SellFormValues>({
+    resolver: zodResolver(sellSchema) as any,
     defaultValues: {
       title: "",
       description: "",
-      price: 0,
+      price: undefined as unknown as number,
       categoryId: 0,
       subcategoryId: null as number | null,
       condition: "good" as const,
@@ -180,6 +248,8 @@ export default function Sell() {
       location: user?.location ?? "",
       stockQuantity: null as number | null,
     },
+    mode: "onSubmit",
+    reValidateMode: "onChange",
   });
 
   const selectedCountry = form.watch("country") ?? "";
@@ -349,7 +419,7 @@ export default function Sell() {
   }, []);
 
   const validateFile = (file: File): string | null => {
-    if (!file.type.startsWith("image/")) return "Please select image files only.";
+    if (!file.type.startsWith("image/")) return validationMessages.photoUnsupported;
     if (file.size > 10 * 1024 * 1024) return "Each image must be under 10MB.";
     return null;
   };
@@ -400,7 +470,7 @@ export default function Sell() {
     setUploadedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const onSubmit = (values: z.infer<typeof schema>) => {
+  const onSubmit = (values: SellFormValues) => {
     // Kat FM eligibility grants a publication-only exception, not an account unlock.
     if (isRestricted && (isEditMode || isStripeOnlySeller)) {
       setSubmitRestricted(true);
@@ -421,27 +491,29 @@ export default function Sell() {
       return;
     }
     const minPhotos = isEditMode ? 1 : MIN_IMAGES;
-    if (uploadedImages.length < minPhotos) {
-      const msg = isEditMode
-        ? t("tr.minOnePhoto")
-        : t("tr.minPhotos", { count: MIN_IMAGES });
-      setSubmitError(msg);
-      toast({ title: t("tr.photoRequired"), description: msg, variant: "destructive" });
-      photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
-    // Payment setup is informational here, not a prerequisite for publishing.
-    const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(values.country ?? "");
     const isDominicanSelfDelivery = values.country === "Dominican Republic" && dominicanDeliveryChoice === "self_delivery";
     const shippingCarriers = values.country === "Dominican Republic"
       ? intlCarriers.filter(carrier => listingCarriersForCountry(values.country).includes(carrier))
       : intlCarriers;
-    if (values.country === "Dominican Republic" && !isDominicanSelfDelivery &&
-        shippingCarriers.length === 0) {
-      setSubmitError(t("sell.selectDeliveryCompany"));
+    const extraErrors = collectExtraPublishErrors(
+      {
+        photoCount: uploadedImages.length,
+        minPhotos,
+        country: values.country ?? "",
+        dominicanDeliveryChoice: values.country === "Dominican Republic" ? dominicanDeliveryChoice : null,
+        intlCarriers: shippingCarriers,
+        sellerDeliveryMethod,
+        isLocalDeliveryCountry: isLocalDelivery,
+      },
+      validationMessages,
+    );
+    if (Object.keys(extraErrors).length > 0) {
+      applyPublishErrors(extraErrors);
       return;
     }
+    // Payment setup is informational here, not a prerequisite for publishing.
+    const imageUrls = uploadedImages.map(img => getStorageUrl(img.objectPath));
     const payload = { ...values, currency, images: imageUrls, subcategoryId: values.subcategoryId ?? undefined, stockQuantity: values.stockQuantity ?? undefined, itemSize: itemSize || undefined, listingVideoUrl: listingVideoUrl ?? undefined, shippingCost: !isLocalDelivery ? Number(intlShippingCost || 0) : null, shippingCarriers: !isLocalDelivery && !isDominicanSelfDelivery ? shippingCarriers : [], deliveryMethod: isLocalDelivery ? sellerDeliveryMethod : isDominicanSelfDelivery ? "self_delivery" : null, weightLbs: weightLbs ? Number(weightLbs) : undefined, packageLengthIn: pkgLength ? Number(pkgLength) : undefined, packageWidthIn: pkgWidth ? Number(pkgWidth) : undefined, packageHeightIn: pkgHeight ? Number(pkgHeight) : undefined };
 
     const handleSuccess = (_listing: any) => {
@@ -488,11 +560,22 @@ export default function Sell() {
       const isRawJson =
         typeof raw === "string" &&
         (raw.trimStart().startsWith("[") || raw.trimStart().startsWith("{\"code\""));
-      const description = !raw || isRawJson
-        ? t("sell.createError", "Something went wrong. Please check all fields and try again.")
-        : String(raw);
+      const isNetwork =
+        e?.message === "Failed to fetch" ||
+        e?.name === "TypeError" ||
+        e?.status === 0 ||
+        typeof navigator !== "undefined" && !navigator.onLine;
+      const description = isNetwork
+        ? validationMessages.networkError
+        : !raw || isRawJson
+          ? validationMessages.serverError
+          : String(raw);
       setSubmitError(description);
-      toast({ title: t("errors.submitFailed", "Submission failed"), description, variant: "destructive" });
+      toast({
+        title: t("errors.submitFailed", { defaultValue: "Submission failed" }),
+        description,
+        variant: "destructive",
+      });
     };
 
     if (isEditMode && editId && isAdmin) {
@@ -517,31 +600,80 @@ export default function Sell() {
     }
   };
 
-  const onInvalidSubmit = (errors: FieldErrors<z.infer<typeof schema>>) => {
-    const firstInvalidField = Object.keys(errors)[0];
-    const fieldMessage = firstInvalidField
-      ? errors[firstInvalidField as keyof typeof errors]?.message
-      : null;
-    const message = typeof fieldMessage === "string"
-      ? fieldMessage
-      : "Ranpli chan obligatwa ki make an wouj yo anvan ou pibliye.";
+  const applyPublishErrors = useCallback((
+    fieldErrors: Record<string, string>,
+    rhfErrors?: FieldErrors<SellFormValues>,
+  ) => {
+    const merged: Record<string, string> = { ...fieldErrors };
+    if (rhfErrors) {
+      for (const [key, err] of Object.entries(rhfErrors)) {
+        const msg = (err as { message?: string } | undefined)?.message;
+        if (typeof msg === "string" && msg) merged[key] = msg;
+      }
+    }
 
-    setSubmitError(message);
-    toast({
-      title: "Gen enfòmasyon ki manke",
-      description: message,
-      variant: "destructive",
-    });
+    for (const [key, message] of Object.entries(fieldErrors)) {
+      if (key === "photos" || key === "deliveryMethod" || key === "shippingCarriers") continue;
+      form.setError(key as keyof SellFormValues, { type: "manual", message });
+    }
 
-    if (firstInvalidField) {
-      window.requestAnimationFrame(() => {
+    const counts = countErrorsBySection(Object.keys(merged));
+    setSectionErrorCounts(counts);
+    setShowValidationBanner(true);
+    setSubmitError(validationMessages.bannerTitle);
+
+    const firstSection = firstSectionWithErrors(counts);
+    if (firstSection) {
+      const stepIndex = SELL_STEPS.findIndex((s) => s.id === firstSection);
+      setOpenSection(firstSection);
+      setSellerStep(stepIndex >= 0 ? stepIndex : 0);
+    }
+
+    const firstField = Object.keys(merged)[0];
+    window.requestAnimationFrame(() => {
+      validationBannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(() => {
+        if (!firstField || firstField === "photos") {
+          photoSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
         const field =
-          document.querySelector<HTMLElement>(`[name="${firstInvalidField}"]`) ??
-          document.querySelector<HTMLElement>(`[data-form-field="${firstInvalidField}"]`);
+          document.querySelector<HTMLElement>(`[name="${firstField}"]`) ??
+          document.querySelector<HTMLElement>(`[data-form-field="${firstField}"]`) ??
+          document.querySelector<HTMLElement>(`[data-testid="input-${firstField}"]`) ??
+          document.querySelector<HTMLElement>(`[data-testid="select-${firstField.replace("Id", "")}"]`);
         field?.scrollIntoView({ behavior: "smooth", block: "center" });
         field?.focus({ preventScroll: true });
-      });
-    }
+      }, 80);
+    });
+  }, [form, validationMessages.bannerTitle]);
+
+  const onInvalidSubmit = (errors: FieldErrors<SellFormValues>) => {
+    const minPhotos = isEditMode ? 1 : MIN_IMAGES;
+    const country = form.getValues("country") ?? "";
+    const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(country);
+    const shippingCarriers = country === "Dominican Republic"
+      ? intlCarriers.filter((carrier) => listingCarriersForCountry(country).includes(carrier))
+      : intlCarriers;
+    const extras = collectExtraPublishErrors(
+      {
+        photoCount: uploadedImages.length,
+        minPhotos,
+        country,
+        dominicanDeliveryChoice: country === "Dominican Republic" ? dominicanDeliveryChoice : null,
+        intlCarriers: shippingCarriers,
+        sellerDeliveryMethod,
+        isLocalDeliveryCountry: isLocalDelivery,
+      },
+      validationMessages,
+    );
+    applyPublishErrors(extras, errors);
+  };
+
+  const handlePublishClick = () => {
+    setShowValidationBanner(false);
+    setSectionErrorCounts({ info: 0, media: 0, pricing: 0, delivery: 0, review: 0 });
+    void form.handleSubmit(onSubmit, onInvalidSubmit)();
   };
 
   // Country is watched from the form so it reacts to user selection
@@ -584,6 +716,47 @@ export default function Sell() {
     setOpenSection(id);
     setSellerStep(step);
   };
+
+  // Keep accordion error badges in sync after the user corrects fields.
+  useEffect(() => {
+    if (!showValidationBanner) return;
+    const rhfKeys = Object.keys(form.formState.errors);
+    const minPhotos = isEditMode ? 1 : MIN_IMAGES;
+    const country = form.getValues("country") ?? "";
+    const isLocalDelivery = LOCAL_DELIVERY_COUNTRIES.has(country);
+    const shippingCarriers = country === "Dominican Republic"
+      ? intlCarriers.filter((carrier) => listingCarriersForCountry(country).includes(carrier))
+      : intlCarriers;
+    const extras = collectExtraPublishErrors(
+      {
+        photoCount: uploadedImages.length,
+        minPhotos,
+        country,
+        dominicanDeliveryChoice: country === "Dominican Republic" ? dominicanDeliveryChoice : null,
+        intlCarriers: shippingCarriers,
+        sellerDeliveryMethod,
+        isLocalDeliveryCountry: isLocalDelivery,
+      },
+      validationMessages,
+    );
+    const allKeys = new Set([...rhfKeys, ...Object.keys(extras)]);
+    const counts = countErrorsBySection(allKeys);
+    setSectionErrorCounts(counts);
+    if (allKeys.size === 0) {
+      setShowValidationBanner(false);
+      setSubmitError(null);
+    }
+  }, [
+    showValidationBanner,
+    form.formState.errors,
+    uploadedImages.length,
+    isEditMode,
+    intlCarriers,
+    dominicanDeliveryChoice,
+    sellerDeliveryMethod,
+    validationMessages,
+    form,
+  ]);
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
   const MAX_VIDEO_SECONDS = 300;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024; // 300 MB — matches server cap
@@ -606,12 +779,12 @@ export default function Sell() {
     setVideoUploading(true);
     try {
       if (!user) {
-        toast({ title: t("sell.videoUploadFailed"), variant: "destructive" });
+        toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
         return;
       }
       const seconds = await probeVideoDuration(file);
       if (Number.isFinite(seconds) && seconds > MAX_VIDEO_SECONDS + 0.5) {
-        toast({ title: t("sell.videoTooLong"), variant: "destructive" });
+        toast({ title: validationMessages.videoTooLong, variant: "destructive" });
         return;
       }
       const uploadedUrl = await startVideoUpload(file, token, {
@@ -620,7 +793,7 @@ export default function Sell() {
       });
       setListingVideoUrl(uploadedUrl);
     } catch {
-      toast({ title: t("sell.videoUploadFailed"), variant: "destructive" });
+      toast({ title: validationMessages.videoUploadFailed, variant: "destructive" });
     } finally {
       setVideoUploading(false);
     }
@@ -691,11 +864,11 @@ export default function Sell() {
   const isPublishBusy =
     isPending || uploadingSlot !== null || videoUploading || savingPayoutMethod;
   const publishBusyLabel = uploadingSlot !== null
-    ? "Foto ap monte…"
+    ? t("sell.photosUploading", { defaultValue: "Photos are uploading" })
     : videoUploading
-      ? "Videyo ap monte…"
+      ? t("sell.videoUploading", { defaultValue: "Uploading video…" })
       : savingPayoutMethod
-        ? "N ap anrejistre peman…"
+        ? t("sell.waitForPaymentSave", { defaultValue: "Wait for the payment method to finish saving before publishing." })
         : null;
 
   const watchedVals = form.watch();
@@ -722,9 +895,9 @@ export default function Sell() {
     <SellerCenterShell>
       <div className="px-3 md:px-6 py-4 md:py-6 pb-28 md:pb-8">
         {/* Page header + actions */}
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
-          <div>
-            <h1 className="text-[22px] md:text-[26px] font-extrabold text-foreground tracking-tight">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1 className="text-[22px] md:text-[26px] font-extrabold text-slate-900 tracking-tight">
               {isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
             </h1>
             <p className="text-[13px] text-muted-foreground mt-0.5">
@@ -734,69 +907,97 @@ export default function Sell() {
               <p className="text-sm text-muted-foreground mt-1">{t("sell.loadingEdit")}</p>
             )}
           </div>
-          <div className="hidden md:flex items-center gap-2 shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleSaveDraftClick}
-              className="h-10 px-4 border-[hsl(152,65%,22%)] text-[hsl(152,65%,22%)] font-bold rounded-lg"
-              data-testid="button-save-draft"
-            >
-              {t("sell.saveDraft", { defaultValue: "Save Draft" })}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
-              disabled={isPublishBusy}
-              className="h-10 px-5 bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold rounded-lg"
-              data-testid="button-publish-header"
-            >
-              {isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" })}
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleSaveDraftClick}
+            className="h-10 px-4 border-slate-300 text-slate-800 font-semibold rounded-full shrink-0 self-start bg-white hover:bg-slate-50 gap-1.5"
+            data-testid="button-save-draft"
+          >
+            <FileText className="h-4 w-4" />
+            {t("sell.saveAsDraft", { defaultValue: "Save as Draft" })}
+          </Button>
         </div>
 
-        {/* Progress stepper */}
-        <div className="mb-5 overflow-x-auto scrollbar-none" data-testid="sell-stepper">
+        {/* Progress stepper — green = complete, red = errors, grey = pending */}
+        <div className="mb-4 overflow-x-auto scrollbar-none" data-testid="sell-stepper">
           <div className="flex items-center gap-0 min-w-[520px] md:min-w-0">
             {SELL_STEPS.map((step, i) => {
-              const active = sellerStep === i;
-              const done = sellerStep > i;
+              const sectionId = step.id as SellSectionId;
+              const errors = sectionErrorCounts[sectionId] ?? 0;
+              const sectionComplete =
+                (sectionId === "info" && checklist.title && checklist.category && checklist.description) ||
+                (sectionId === "media" && checklist.photos) ||
+                (sectionId === "pricing" && checklist.price) ||
+                (sectionId === "delivery" && checklist.delivery) ||
+                (sectionId === "review" && sellerStep >= 4 && Object.values(sectionErrorCounts).every((n) => n === 0) && checklist.title && checklist.photos && checklist.price && checklist.delivery);
+              const active = sellerStep === i || openSection === sectionId;
+              const isError = errors > 0;
+              const isDone = !isError && sectionComplete;
               return (
                 <button
                   key={step.id}
                   type="button"
-                  onClick={() => goSection(step.id as typeof openSection, i)}
+                  onClick={() => goSection(sectionId, i)}
                   className="flex items-center flex-1 min-w-0"
                 >
                   <div className="flex flex-col items-center gap-1 min-w-0 flex-1">
                     <span
                       className={cn(
                         "w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold border-2",
-                        active || done
-                          ? "bg-[#F97316] border-[#F97316] text-white"
-                          : "bg-white border-border text-muted-foreground",
+                        isError
+                          ? "bg-red-500 border-red-500 text-white"
+                          : isDone
+                            ? "bg-emerald-500 border-emerald-500 text-white"
+                            : active
+                              ? "bg-[hsl(152,65%,22%)] border-[hsl(152,65%,22%)] text-white"
+                              : "bg-slate-200 border-slate-200 text-slate-500",
                       )}
                     >
-                      {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                      {isDone ? <Check className="h-3.5 w-3.5" /> : i + 1}
                     </span>
                     <span
                       className={cn(
                         "text-[10px] md:text-[11px] font-semibold text-center leading-tight px-0.5 truncate w-full",
-                        active ? "text-[#F97316]" : "text-muted-foreground",
+                        isError ? "text-red-600" : isDone ? "text-emerald-700" : active ? "text-slate-800" : "text-muted-foreground",
                       )}
                     >
                       {t(step.labelKey, { defaultValue: step.defaultLabel })}
                     </span>
                   </div>
                   {i < SELL_STEPS.length - 1 && (
-                    <div className={cn("h-0.5 w-4 md:w-8 shrink-0 mb-4", done || active ? "bg-[#F97316]" : "bg-border")} />
+                    <div
+                      className={cn(
+                        "h-0.5 w-4 md:w-8 shrink-0 mb-4",
+                        isDone || (sectionErrorCounts[SELL_STEPS[i + 1].id as SellSectionId] === 0 && sellerStep > i)
+                          ? "bg-emerald-400"
+                          : "bg-slate-200",
+                      )}
+                    />
                   )}
                 </button>
               );
             })}
           </div>
         </div>
+
+        {showValidationBanner && (
+          <div
+            ref={validationBannerRef}
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 rounded-xl bg-gradient-to-r from-red-600 to-red-500 text-white px-4 py-3.5 flex items-start gap-3 shadow-sm"
+            data-testid="sell-validation-banner"
+          >
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[14px] font-bold leading-snug">{validationMessages.bannerTitle}</p>
+              <p className="text-[12px] text-white/90 mt-0.5 leading-snug">{validationMessages.bannerSubtitle}</p>
+            </div>
+          </div>
+        )}
 
       {myListingCount !== null && myListingCount.activeCount >= 3 && myListingCount.activeCount < 4 && !hasActivePlan && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-50 px-4 py-3">
@@ -845,7 +1046,7 @@ export default function Sell() {
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: currency === "HTG" ? "#EA580C" : "#3B82F6" }}>
                   {currency === "HTG"
-                    ? "Monè brouyon an: G HTG (Goud). Verifye si se sa w vle."
+                    ? t("sell.draftRestoredHtg", { defaultValue: "Draft currency: G HTG (Gourde). Confirm this is what you want." })
                     : t("sell.draftRestoredDesc")}
                 </p>
               </div>
@@ -871,270 +1072,32 @@ export default function Sell() {
             icon={Package}
             open={openSection === "info"}
             onToggle={() => goSection("info", 0)}
-            complete={checklist.title && checklist.category && checklist.description}
+            complete={checklist.title && checklist.category && checklist.description && sectionErrorCounts.info === 0}
+            errorCount={sectionErrorCounts.info}
+            missingLabel={formatSectionMissingLabel(sectionErrorCounts.info, validationMessages)}
+            completedLabel={validationMessages.completed}
           >
-          <FormField control={form.control} name="title" render={({ field }) => (
+          <FormField control={form.control} name="title" render={({ field, fieldState }) => (
             <FormItem>
-              <FormLabel>{t("sell.listingTitle")}<ReqDot filled={(field.value ?? "").trim().length >= 3} /></FormLabel>
-              <FormControl><Input placeholder={t("sell.titlePlaceholder")} {...field} data-testid="input-title" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
-          <FormField control={form.control} name="description" render={({ field }) => (
-            <FormItem>
-              <div className="flex items-center justify-between gap-2">
-                <FormLabel className="mb-0">{t("sell.description")}<ReqDot filled={(field.value ?? "").trim().length >= 10} /></FormLabel>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={aiDescLoading || !token || !(form.getValues("title") || "").trim()}
-                  data-testid="button-ai-description"
-                  onClick={async () => {
-                    const title = (form.getValues("title") || "").trim();
-                    if (!title || !token) {
-                      toast({
-                        title: t("sell.aiDescriptionNeedTitle", { defaultValue: "Add a title first" }),
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-                    setAiDescLoading(true);
-                    try {
-                      const catName = categories?.find((c: any) => c.id === selectedCategoryId)?.name
-                        ?? categories?.flatMap((c: any) => c.children ?? []).find((c: any) => c.id === selectedCategoryId)?.name
-                        ?? "";
-                      const data = await apiFetch<{ content?: string }>("/api/flexa-ai/product-description", {
-                        method: "POST",
-                        body: JSON.stringify({
-                          title,
-                          category: catName,
-                          condition: form.getValues("condition") || undefined,
-                          price: form.getValues("price") || undefined,
-                          language: (i18n.language || "en").slice(0, 2),
-                          details: field.value || undefined,
-                        }),
-                      });
-                      if (!data?.content) {
-                        throw new Error(t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }));
-                      }
-                      form.setValue("description", String(data.content).trim(), { shouldDirty: true, shouldValidate: true });
-                      toast({ title: t("sell.aiDescriptionDone", { defaultValue: "Description drafted with Flexa AI" }) });
-                    } catch (err: any) {
-                      toast({
-                        title: t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }),
-                        description: err?.message,
-                        variant: "destructive",
-                      });
-                    } finally {
-                      setAiDescLoading(false);
-                    }
-                  }}
-                >
-                  {aiDescLoading
-                    ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    : <Sparkles className="h-3.5 w-3.5 mr-1" />}
-                  {t("sell.aiDescription", { defaultValue: "Flexa AI" })}
-                </Button>
-              </div>
-              <FormControl><Textarea placeholder={t("sell.descriptionPlaceholder")} rows={4} {...field} data-testid="input-description" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
-          </SellAccordionSection>
-
-          <SellAccordionSection
-            id="media"
-            title={t("sell.photosVideos", { defaultValue: "Photos & Videos" })}
-            icon={Images}
-            open={openSection === "media"}
-            onToggle={() => goSection("media", 1)}
-            complete={checklist.photos}
-          >
-          {/* Image upload section */}
-          <div
-            ref={photoSectionRef}
-            role="group"
-            aria-labelledby="sell-photos-label"
-            aria-describedby={`sell-photo-requirement${uploadErrorMessage ? " sell-photo-error" : ""}`}
-            aria-invalid={uploadedImages.length < requiredPhotoCount}
-            aria-busy={uploadingSlot !== null}
-          >
-            <div id="sell-photos-label" className="text-sm font-medium text-foreground flex items-center mb-2">
-              {t("sell.photos")}
-              <ReqDot filled={uploadedImages.length >= requiredPhotoCount} />
-              <span className="text-muted-foreground font-normal ml-1.5">({uploadedImages.length}/{MAX_IMAGES})</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {uploadedImages.map((img, i) => (
-                <div
-                  key={img.objectPath}
-                  className="relative aspect-square rounded-lg border border-border overflow-hidden bg-muted group"
-                >
-                  <img
-                    src={img.previewUrl}
-                    alt={img.fileName}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E";
-                    }}
-                  />
-                  {i === 0 && (
-                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">{t("sell.coverPhoto")}</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeImage(i)}
-                    aria-label={`Retire foto ${i + 1}`}
-                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                    data-testid={`button-remove-image-${i}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-              {canAddMore && (
-                <label
-                  className={cn(
-                    "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
-                    uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
-                  )}
-                  data-testid="button-add-image"
-                  aria-label={uploadingSource === "gallery" ? t("sell.photosUploading") : t("sell.chooseCameraOrGallery")}
-                >
-                  {uploadingSource === "gallery" ? (
-                    <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
-                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
-                      <span className="text-xs text-muted-foreground pointer-events-none">Foto ap monte…</span>
-                    </span>
-                  ) : (
-                    <>
-                      <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
-                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
-                    data-testid={`input-image-${uploadedImages.length}`}
-                    onChange={e => {
-                      if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                    disabled={uploadingSlot !== null}
-                  />
-                </label>
-              )}
-            </div>
-            {uploadedImages.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
-            )}
-            <p id="sell-photo-requirement" className={cn("text-xs mt-1 font-medium", uploadedImages.length < requiredPhotoCount ? "text-red-500" : "text-green-600")}>
-              {uploadedImages.length < requiredPhotoCount
-                ? t("sell.photoRequirement", { min: requiredPhotoCount, max: MAX_IMAGES })
-                : t("sell.photosReady", { max: MAX_IMAGES })}
-            </p>
-            {uploadErrorMessage && (
-              <div id="sell-photo-error" className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
-                <p className="font-semibold">{t("sell.uploadFailedHeading")}</p>
-                <p>{uploadErrorMessage}</p>
-                <p className="mt-1">{t("sell.uploadRetryHint")}</p>
-              </div>
-            )}
-
-            {/* ── Professional photo tips card ── */}
-            <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
-              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
-                {t("sell.photoTipsTitle")}
-              </p>
-              <ul className="space-y-1">
-                {([
-                  t("sell.photoTip1"),
-                  t("sell.photoTip2"),
-                  t("sell.photoTip3"),
-                  t("sell.photoTip4"),
-                ] as string[]).map((tip, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
-                    <span className="mt-0.5 shrink-0 text-amber-500">✓</span>
-                    {tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          </SellAccordionSection>
-
-          <SellAccordionSection
-            id="pricing"
-            title={t("sell.pricingInventory", { defaultValue: "Pricing & Inventory" })}
-            icon={Tag}
-            open={openSection === "pricing"}
-            onToggle={() => goSection("pricing", 2)}
-            complete={checklist.price}
-          >
-          <FormField control={form.control} name="price" render={({ field }) => (
-            <FormItem>
-              <div className="flex items-center justify-between mb-1.5">
-                <FormLabel className="mb-0">{t("sell.price")}<ReqDot filled={Number(field.value) > 0} /></FormLabel>
-                {/* Country-aware currency selector */}
-                {(() => {
-                  const options = MULTI_CURRENCY_COUNTRIES[selectedCountry] ?? [{ code: "USD", symbol: "$", label: "$ USD" }];
-                  if (options.length <= 1) return null;
-                  return (
-                    <div className="flex items-center gap-0 border border-border rounded-lg overflow-hidden">
-                      {options.map(opt => (
-                        <button
-                          key={opt.code}
-                          type="button"
-                          onClick={() => setCurrency(opt.code as "USD" | "HTG" | "DOP")}
-                          className={cn(
-                            "px-3 py-1 text-xs font-bold transition-colors",
-                            currency === opt.code
-                              ? "bg-primary text-white"
-                              : "bg-background text-muted-foreground hover:bg-muted"
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
+              <FormLabel className={cn(fieldState.error && "text-red-600")}>
+                {t("sell.productTitle", { defaultValue: "Product Title" })} *
+                <ReqDot filled={(field.value ?? "").trim().length >= 3} />
+              </FormLabel>
               <FormControl>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm pointer-events-none">
-                    {getCurrencySymbolByCode(currency).trim()}
-                  </span>
                   <Input
-                    type="number"
-                    min="0"
-                    step={currency === "USD" ? "0.01" : "1"}
-                    placeholder={currency === "USD" ? "0.00" : "0"}
-                    className="pl-7"
+                    placeholder={t("sell.titlePlaceholder", { defaultValue: "Enter a product title" })}
                     {...field}
-                    data-testid="input-price"
+                    aria-invalid={!!fieldState.error}
+                    className={cn(
+                      fieldState.error && "border-red-500 bg-red-50/60 focus-visible:ring-red-500 pr-10",
+                    )}
+                    data-testid="input-title"
                   />
+                  <FieldErrorIcon show={!!fieldState.error} />
                 </div>
               </FormControl>
-              {currency === "HTG" && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Goud Ayisyen (HTG) — Prix la pral afiche kòm G{field.value ? Math.round(Number(field.value)).toLocaleString() : "0"}
-                </p>
-              )}
-              {currency === "DOP" && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Peso Dominikèn (DOP) — Prix la pral afiche kòm{" "}
-                  <strong>RD {field.value ? Math.round(Number(field.value)).toLocaleString() : "0"}</strong>
-                </p>
-              )}
-              <FormMessage />
+              <FormMessage className="text-red-600 font-medium" />
             </FormItem>
           )} />
 
@@ -1177,18 +1140,25 @@ export default function Sell() {
 
             return (
               <FormItem data-form-field="categoryId">
-                <FormLabel>{t("sell.category")}<ReqDot filled={Number(field.value) > 0} /></FormLabel>
+                <FormLabel className={cn(form.formState.errors.categoryId && "text-red-600")}>
+                  {t("sell.category")} *
+                  <ReqDot filled={Number(field.value) > 0} />
+                </FormLabel>
 
                 {/* Trigger row */}
                 <FormControl>
+                  <div className="relative">
                   <button
                     type="button"
                     name="categoryId"
                     onClick={openSheet}
                     data-testid="select-category"
+                    aria-invalid={!!form.formState.errors.categoryId}
                     className={cn(
                       "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-colors",
-                      selectedCat
+                      form.formState.errors.categoryId
+                        ? "border-red-500 bg-red-50/60 text-foreground"
+                        : selectedCat
                         ? "border-primary/40 bg-primary/5 text-foreground"
                         : "border-border bg-background text-muted-foreground hover:bg-muted/50"
                     )}
@@ -1216,9 +1186,11 @@ export default function Sell() {
                       </>
                     )}
                   </button>
+                  <FieldErrorIcon show={!!form.formState.errors.categoryId} />
+                  </div>
                 </FormControl>
 
-                <FormMessage />
+                <FormMessage className="text-red-600 font-medium" />
 
                 {/* Sheet */}
                 <Sheet open={catSheetOpen} onOpenChange={(open) => {
@@ -1318,6 +1290,305 @@ export default function Sell() {
               </FormItem>
             );
           }} />
+
+          <FormField control={form.control} name="description" render={({ field, fieldState }) => (
+            <FormItem>
+              <div className="flex items-center justify-between gap-2">
+                <FormLabel className={cn("mb-0", fieldState.error && "text-red-600")}>
+                  {t("sell.description")} *
+                  <ReqDot filled={(field.value ?? "").trim().length >= 10} />
+                </FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={aiDescLoading || !token || !(form.getValues("title") || "").trim()}
+                  data-testid="button-ai-description"
+                  onClick={async () => {
+                    const title = (form.getValues("title") || "").trim();
+                    if (!title || !token) {
+                      toast({
+                        title: t("sell.aiDescriptionNeedTitle", { defaultValue: "Add a title first" }),
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setAiDescLoading(true);
+                    try {
+                      const catName = categories?.find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? categories?.flatMap((c: any) => c.children ?? []).find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? "";
+                      const data = await apiFetch<{ content?: string }>("/api/flexa-ai/product-description", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          title,
+                          category: catName,
+                          condition: form.getValues("condition") || undefined,
+                          price: form.getValues("price") || undefined,
+                          language: (i18n.language || "en").slice(0, 2),
+                          details: field.value || undefined,
+                        }),
+                      });
+                      if (!data?.content) {
+                        throw new Error(t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }));
+                      }
+                      form.setValue("description", String(data.content).trim(), { shouldDirty: true, shouldValidate: true });
+                      toast({ title: t("sell.aiDescriptionDone", { defaultValue: "Description drafted with Flexa AI" }) });
+                    } catch (err: any) {
+                      toast({
+                        title: t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }),
+                        description: err?.message,
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setAiDescLoading(false);
+                    }
+                  }}
+                >
+                  {aiDescLoading
+                    ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                  {t("sell.aiDescription", { defaultValue: "Flexa AI" })}
+                </Button>
+              </div>
+              <FormControl>
+                <Textarea
+                  placeholder={t("sell.descriptionPlaceholder")}
+                  rows={4}
+                  {...field}
+                  aria-invalid={!!fieldState.error}
+                  className={cn(fieldState.error && "border-red-500 bg-red-50/60 focus-visible:ring-red-500")}
+                  data-testid="input-description"
+                />
+              </FormControl>
+              <FormMessage className="text-red-600 font-medium" />
+            </FormItem>
+          )} />
+
+          </SellAccordionSection>
+
+          <SellAccordionSection
+            id="media"
+            title={t("sell.photosVideos", { defaultValue: "Photos & Videos" })}
+            icon={Images}
+            open={openSection === "media"}
+            onToggle={() => goSection("media", 1)}
+            complete={checklist.photos && sectionErrorCounts.media === 0}
+            errorCount={sectionErrorCounts.media}
+            missingLabel={formatSectionMissingLabel(sectionErrorCounts.media, validationMessages)}
+            completedLabel={validationMessages.completed}
+          >
+          {/* Image upload section */}
+          <div
+            ref={photoSectionRef}
+            role="group"
+            aria-labelledby="sell-photos-label"
+            aria-describedby={`sell-photo-requirement${uploadErrorMessage ? " sell-photo-error" : ""}`}
+            aria-invalid={uploadedImages.length < requiredPhotoCount}
+            aria-busy={uploadingSlot !== null}
+          >
+            <div id="sell-photos-label" className="text-sm font-medium text-foreground flex items-center mb-2">
+              {t("sell.photos")}
+              <ReqDot filled={uploadedImages.length >= requiredPhotoCount} />
+              <span className="text-muted-foreground font-normal ml-1.5">({uploadedImages.length}/{MAX_IMAGES})</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {uploadedImages.map((img, i) => (
+                <div
+                  key={img.objectPath}
+                  className="relative aspect-square rounded-lg border border-border overflow-hidden bg-muted group"
+                >
+                  <img
+                    src={img.previewUrl}
+                    alt={img.fileName}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E";
+                    }}
+                  />
+                  {i === 0 && (
+                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-2 py-0.5 rounded font-medium">{t("sell.coverPhoto")}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    aria-label={`Retire foto ${i + 1}`}
+                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                    data-testid={`button-remove-image-${i}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {canAddMore && (
+                <label
+                  className={cn(
+                    "relative aspect-square rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-muted/30 flex flex-col items-center justify-center gap-1 overflow-hidden",
+                    uploadingSlot !== null ? "cursor-wait opacity-70" : "cursor-pointer",
+                  )}
+                  data-testid="button-add-image"
+                  aria-label={uploadingSource === "gallery" ? t("sell.photosUploading") : t("sell.chooseCameraOrGallery")}
+                >
+                  {uploadingSource === "gallery" ? (
+                    <span role="status" aria-live="polite" className="flex flex-col items-center gap-1">
+                      <Loader2 className="h-6 w-6 text-muted-foreground animate-spin pointer-events-none" />
+                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.photosUploading")}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <ImagePlus className="h-6 w-6 text-muted-foreground pointer-events-none" />
+                      <span className="text-xs text-muted-foreground pointer-events-none">{t("sell.gallery")}</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-wait"
+                    data-testid={`input-image-${uploadedImages.length}`}
+                    onChange={e => {
+                      if (e.target.files && e.target.files.length > 0) void handleFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                    disabled={uploadingSlot !== null}
+                  />
+                </label>
+              )}
+            </div>
+            {uploadedImages.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">{t("sell.addPhotosHint")}</p>
+            )}
+            <p
+              id="sell-photo-requirement"
+              className={cn(
+                "text-xs mt-1 font-medium",
+                uploadedImages.length < requiredPhotoCount || sectionErrorCounts.media > 0
+                  ? "text-red-600"
+                  : "text-emerald-600",
+              )}
+              data-form-field="photos"
+            >
+              {uploadedImages.length < requiredPhotoCount || sectionErrorCounts.media > 0
+                ? validationMessages.photoRequired
+                : t("sell.photosReady", { max: MAX_IMAGES })}
+            </p>
+            {uploadErrorMessage && (
+              <div id="sell-photo-error" className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+                <p className="font-semibold">{validationMessages.photoUploadFailed}</p>
+                <p>{uploadErrorMessage}</p>
+                <p className="mt-1">{t("sell.uploadRetryHint")}</p>
+              </div>
+            )}
+
+            {/* ── Professional photo tips card ── */}
+            <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
+                {t("sell.photoTipsTitle")}
+              </p>
+              <ul className="space-y-1">
+                {([
+                  t("sell.photoTip1"),
+                  t("sell.photoTip2"),
+                  t("sell.photoTip3"),
+                  t("sell.photoTip4"),
+                ] as string[]).map((tip, i) => (
+                  <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                    <span className="mt-0.5 shrink-0 text-amber-500">✓</span>
+                    {tip}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          </SellAccordionSection>
+
+          <SellAccordionSection
+            id="pricing"
+            title={t("sell.pricingInventory", { defaultValue: "Pricing & Inventory" })}
+            icon={Tag}
+            open={openSection === "pricing"}
+            onToggle={() => goSection("pricing", 2)}
+            complete={checklist.price && sectionErrorCounts.pricing === 0}
+            errorCount={sectionErrorCounts.pricing}
+            missingLabel={formatSectionMissingLabel(sectionErrorCounts.pricing, validationMessages)}
+            completedLabel={validationMessages.completed}
+          >
+          <FormField control={form.control} name="price" render={({ field, fieldState }) => (
+            <FormItem>
+              <div className="flex items-center justify-between mb-1.5">
+                <FormLabel className={cn("mb-0", fieldState.error && "text-red-600")}>
+                  {t("sell.price")} *
+                  <ReqDot filled={Number(field.value) > 0} />
+                </FormLabel>
+                {/* Country-aware currency selector */}
+                {(() => {
+                  const options = MULTI_CURRENCY_COUNTRIES[selectedCountry] ?? [{ code: "USD", symbol: "$", label: "$ USD" }];
+                  if (options.length <= 1) return null;
+                  return (
+                    <div className="flex items-center gap-0 border border-border rounded-lg overflow-hidden">
+                      {options.map(opt => (
+                        <button
+                          key={opt.code}
+                          type="button"
+                          onClick={() => setCurrency(opt.code as "USD" | "HTG" | "DOP")}
+                          className={cn(
+                            "px-3 py-1 text-xs font-bold transition-colors",
+                            currency === opt.code
+                              ? "bg-primary text-white"
+                              : "bg-background text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              <FormControl>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold text-sm pointer-events-none">
+                    {getCurrencySymbolByCode(currency).trim()}
+                  </span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step={currency === "USD" ? "0.01" : "1"}
+                    placeholder={currency === "USD" ? "0.00" : "0"}
+                    className={cn(
+                      "pl-7",
+                      fieldState.error && "border-red-500 bg-red-50/60 focus-visible:ring-red-500 pr-10",
+                    )}
+                    aria-invalid={!!fieldState.error}
+                    {...field}
+                    value={field.value ?? ""}
+                    data-testid="input-price"
+                  />
+                  <FieldErrorIcon show={!!fieldState.error} />
+                </div>
+              </FormControl>
+              {currency === "HTG" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t("sell.htgPriceHint", {
+                    defaultValue: "Haitian Gourde (HTG) — displayed as G{{amount}}",
+                    amount: field.value ? Math.round(Number(field.value)).toLocaleString() : "0",
+                  })}
+                </p>
+              )}
+              {currency === "DOP" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t("sell.dopPriceHint", {
+                    defaultValue: "Dominican Peso (DOP) — displayed as RD {{amount}}",
+                    amount: field.value ? Math.round(Number(field.value)).toLocaleString() : "0",
+                  })}
+                </p>
+              )}
+              <FormMessage className="text-red-600 font-medium" />
+            </FormItem>
+          )} />
+
 
           <FormField control={form.control} name="stockQuantity" render={({ field }) => (
             <FormItem data-form-field="country">
@@ -1462,7 +1733,6 @@ export default function Sell() {
             </div>
           )}
 
-          {/* Country — editable for admins, read-only for regular users */}
           </SellAccordionSection>
 
           <SellAccordionSection
@@ -1471,7 +1741,10 @@ export default function Sell() {
             icon={Truck}
             open={openSection === "delivery"}
             onToggle={() => goSection("delivery", 3)}
-            complete={checklist.delivery}
+            complete={checklist.delivery && sectionErrorCounts.delivery === 0}
+            errorCount={sectionErrorCounts.delivery}
+            missingLabel={formatSectionMissingLabel(sectionErrorCounts.delivery, validationMessages)}
+            completedLabel={validationMessages.completed}
           >
           <FormField control={form.control} name="country" render={({ field }) => (
             <FormItem>
@@ -1555,10 +1828,10 @@ export default function Sell() {
           )} />
 
           <div className="grid grid-cols-2 gap-4">
-            <FormField control={form.control} name="city" render={({ field }) => (
+            <FormField control={form.control} name="city" render={({ field, fieldState }) => (
               <FormItem data-form-field="city">
-                <FormLabel>
-                  {t("sell.city")}
+                <FormLabel className={cn(fieldState.error && "text-red-600")}>
+                  {t("sell.city")} *
                   <ReqDot filled={!!(field.value ?? "").trim()} />
                   {countryFlag && (
                     <span className="text-xs text-muted-foreground ml-1 font-normal">
@@ -1569,34 +1842,41 @@ export default function Sell() {
                 {cityOptions.length > 0 ? (
                   <>
                     <FormControl>
-                      <select
-                        name={field.name}
-                        ref={field.ref}
-                        value={useOtherCity ? OTHER_CITY : cityDisplayValue}
-                        onBlur={field.onBlur}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === OTHER_CITY) {
-                            setUseOtherCity(true);
-                            setCityDisplayValue(OTHER_CITY);
-                            field.onChange("");
-                          } else {
-                            setUseOtherCity(false);
-                            setCityDisplayValue(v);
-                            field.onChange(v);
-                            autoFillState(v);
-                          }
-                        }}
-                        data-testid="select-city"
-                        className="h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                        style={{ fontSize: "16px" }}
-                      >
-                        <option value="" disabled>{t("sell.cityPlaceholder")}</option>
-                        {cityOptions.map((c) => (
-                          <option key={c} value={c} data-testid={`city-option-${c}`}>{c}</option>
-                        ))}
-                        <option value={OTHER_CITY} data-testid="city-option-other">Lòt vil…</option>
-                      </select>
+                      <div className="relative">
+                        <select
+                          name={field.name}
+                          ref={field.ref}
+                          value={useOtherCity ? OTHER_CITY : cityDisplayValue}
+                          onBlur={field.onBlur}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === OTHER_CITY) {
+                              setUseOtherCity(true);
+                              setCityDisplayValue(OTHER_CITY);
+                              field.onChange("");
+                            } else {
+                              setUseOtherCity(false);
+                              setCityDisplayValue(v);
+                              field.onChange(v);
+                              autoFillState(v);
+                            }
+                          }}
+                          data-testid="select-city"
+                          aria-invalid={!!fieldState.error}
+                          className={cn(
+                            "h-9 w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring",
+                            fieldState.error ? "border-red-500 bg-red-50/60 focus:ring-red-500" : "border-input",
+                          )}
+                          style={{ fontSize: "16px" }}
+                        >
+                          <option value="" disabled>{t("sell.cityPlaceholder")}</option>
+                          {cityOptions.map((c) => (
+                            <option key={c} value={c} data-testid={`city-option-${c}`}>{c}</option>
+                          ))}
+                          <option value={OTHER_CITY} data-testid="city-option-other">{t("sell.otherCity", { defaultValue: "Other city…" })}</option>
+                        </select>
+                        <FieldErrorIcon show={!!fieldState.error} />
+                      </div>
                     </FormControl>
                     {useOtherCity && (
                       <FormControl>
@@ -1605,30 +1885,49 @@ export default function Sell() {
                           value={field.value}
                           onChange={(e) => field.onChange(e.target.value)}
                           data-testid="input-city-other"
-                          className="mt-2"
+                          className={cn("mt-2", fieldState.error && "border-red-500 bg-red-50/60")}
                         />
                       </FormControl>
                     )}
                   </>
                 ) : (
                   <FormControl>
-                    <Input
-                      placeholder={selectedCountry ? t("sell.cityPlaceholder") : t("sell.selectCountryFirst", "Select a country first")}
-                      {...field}
-                      disabled={!selectedCountry}
-                      data-testid="input-city"
-                    />
+                    <div className="relative">
+                      <Input
+                        placeholder={selectedCountry ? t("sell.cityPlaceholder") : t("sell.selectCountryFirst", { defaultValue: "Select a country first" })}
+                        {...field}
+                        disabled={!selectedCountry}
+                        aria-invalid={!!fieldState.error}
+                        className={cn(fieldState.error && "border-red-500 bg-red-50/60 pr-10")}
+                        data-testid="input-city"
+                      />
+                      <FieldErrorIcon show={!!fieldState.error} />
+                    </div>
                   </FormControl>
                 )}
-                <FormMessage />
+                <FormMessage className="text-red-600 font-medium" />
               </FormItem>
             )} />
 
-            <FormField control={form.control} name="location" render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t("sell.location")}<ReqDot filled={(field.value ?? "").trim().length >= 2} /></FormLabel>
-                <FormControl><Input placeholder={t("sell.locationPlaceholder")} {...field} data-testid="input-location" /></FormControl>
-                <FormMessage />
+            <FormField control={form.control} name="location" render={({ field, fieldState }) => (
+              <FormItem data-form-field="location">
+                <FormLabel className={cn(fieldState.error && "text-red-600")}>
+                  {t("sell.location")} *
+                  <ReqDot filled={(field.value ?? "").trim().length >= 2} />
+                </FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      placeholder={t("sell.locationPlaceholder")}
+                      {...field}
+                      aria-invalid={!!fieldState.error}
+                      className={cn(fieldState.error && "border-red-500 bg-red-50/60 pr-10")}
+                      data-testid="input-location"
+                    />
+                    <FieldErrorIcon show={!!fieldState.error} />
+                  </div>
+                </FormControl>
+                <FormMessage className="text-red-600 font-medium" />
               </FormItem>
             )} />
           </div>
@@ -1847,6 +2146,10 @@ export default function Sell() {
             icon={Eye}
             open={openSection === "review"}
             onToggle={() => goSection("review", 4)}
+            complete={false}
+            errorCount={sectionErrorCounts.review}
+            missingLabel={formatSectionMissingLabel(sectionErrorCounts.review, validationMessages)}
+            completedLabel={validationMessages.completed}
           >
           {/* ── Live listing preview ─────────────────────────────────────────── */}
           {(() => {
@@ -1889,7 +2192,7 @@ export default function Sell() {
             return (
               <div className="space-y-2 pt-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  {t("sell.preview", "Aperçu — how buyers will see your listing")}
+                  {t("sell.preview", { defaultValue: "Preview — how buyers will see your listing" })}
                 </p>
                 <div className="max-w-[220px]">
                   <ListingCard listing={previewListing} preview previewFallbackImage={sellPreviewCar} />
@@ -1900,33 +2203,31 @@ export default function Sell() {
 
           {/* ── Draft saved indicator ────────────────────────────────── */}
           {draftSavedAt && !createListing.isPending && !isEditMode && (
-            <p style={{ margin: 0, fontSize: 11, color: "#94A3B8", textAlign: "center" }}>
-              💾 Brouyon sovgade — {draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <p className="text-[11px] text-slate-400 text-center m-0" data-testid="sell-draft-saved-at">
+              💾 {t("sell.draftSavedAt", { defaultValue: "Draft saved" })} — {draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </p>
           )}
 
           {/* ── Submit error with retry ───────────────────────────────── */}
-          {submitError && !createListing.isPending && (
-            <div style={{ padding: "12px 14px", borderRadius: 12, background: "#FEF2F2", border: "1px solid #FECACA" }}>
-              <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 700, color: "#DC2626" }}>
-                {submitRestricted ? t("restriction.title") : "Erè piblikasyon"}
+          {submitError && !createListing.isPending && !showValidationBanner && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3" role="alert">
+              <p className="m-0 mb-1 text-[13px] font-bold text-red-600">
+                {submitRestricted
+                  ? t("restriction.title")
+                  : t("sell.publishErrorTitle", { defaultValue: "Publication error" })}
               </p>
-              <p style={{ margin: "0 0 10px", fontSize: 12, color: "#B91C1C", lineHeight: 1.4 }}>
+              <p className="m-0 mb-2.5 text-[12px] text-red-700 leading-snug">
                 {submitError}
               </p>
               <button
                 type="button"
-                onClick={() => submitRestricted ? setLocation("/support") : form.handleSubmit(onSubmit, onInvalidSubmit)()}
+                onClick={() => submitRestricted ? setLocation("/support") : handlePublishClick()}
                 disabled={isPublishBusy}
-                style={{
-                  fontSize: 13, fontWeight: 600, color: "#ffffff",
-                  background: "#DC2626", border: "none", borderRadius: 8,
-                  padding: "7px 16px", cursor: isPublishBusy ? "wait" : "pointer",
-                  opacity: isPublishBusy ? 0.65 : 1,
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-1.5 text-[13px] font-semibold text-white disabled:opacity-65"
               >
-                {submitRestricted ? t("restriction.contactSupport") : "🔄 Try again"}
+                {submitRestricted
+                  ? t("restriction.contactSupport")
+                  : t("common.tryAgain", { defaultValue: "Try again" })}
               </button>
             </div>
           )}
@@ -2149,19 +2450,29 @@ export default function Sell() {
           type="button"
           variant="outline"
           onClick={handleSaveDraftClick}
-          className="flex-1 h-11 border-[hsl(152,65%,22%)] text-[hsl(152,65%,22%)] font-bold rounded-full"
+          className="flex-1 h-11 border-[hsl(152,65%,28%)] text-[hsl(152,65%,28%)] font-bold rounded-full gap-1.5"
           data-testid="button-save-draft-mobile"
         >
+          <FileText className="h-4 w-4" />
           {t("sell.saveDraft", { defaultValue: "Save Draft" })}
         </Button>
         <Button
           type="button"
-          onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
+          onClick={handlePublishClick}
           disabled={isPublishBusy}
-          className="flex-1 h-11 bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold rounded-full"
+          className="flex-1 h-11 bg-[#F6A07A] hover:bg-[#ef8f64] text-white font-bold rounded-full gap-1.5 shadow-sm"
           data-testid="button-publish-mobile"
         >
-          {isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" })}
+          {isPublishBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
+          {isPublishBusy
+            ? (publishBusyLabel || t("sell.publishing", { defaultValue: "Publishing..." }))
+            : isEditMode
+              ? t("sell.saveChanges")
+              : t("sell.publishProduct", { defaultValue: "Publish Product" })}
         </Button>
       </div>
       </div>

@@ -6,6 +6,7 @@ import { requireAuth, optionalAuth, requireNotRestricted, requireCardNotBlocked 
 import {
   VALID_PLANS, VALID_PAY_METHODS, PLAN_META, HAITI_DEPARTMENTS, VALID_RADIUS_KM,
   getAllowedMethods, validateAudience, validateBudget, estimateReach,
+  dailyBudgetFromTotal, LARGE_BOOST_BUDGET_USD,
   type Plan, type PayMethod,
 } from "../lib/boostTargeting";
 import { getStripeClient } from "../lib/stripeClient";
@@ -63,10 +64,19 @@ router.post("/boost/estimate", requireAuth, async (req, res): Promise<void> => {
   if (!audienceCheck.ok) { res.status(400).json({ error: audienceCheck.error }); return; }
   const budgetCheck = validateBudget(req.body.budget, plan);
   if (!budgetCheck.ok) { res.status(400).json({ error: budgetCheck.error }); return; }
+  const budget = budgetCheck.budget;
+  const durationDays = PLAN_META[plan].days;
+  const dailyBudget = dailyBudgetFromTotal(budget, plan);
   res.json({
-    estimatedReach: estimateReach(budgetCheck.budget, plan, audienceCheck.audience),
-    durationDays: PLAN_META[plan].days,
-    budget: budgetCheck.budget,
+    estimatedReach: estimateReach(budget, plan, audienceCheck.audience),
+    durationDays,
+    budget,
+    dailyBudget,
+    platformFeeUsd: 0,
+    amountPayable: budget,
+    largeBudget: budgetCheck.largeBudget,
+    // Reach is an estimate only — never a guarantee of views, clicks, or sales.
+    estimateDisclaimer: "Estimated reach only. Views, clicks, and sales are not guaranteed.",
   });
 });
 
@@ -152,8 +162,15 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   const audience = audienceCheck.audience;
   const budget = budgetCheck.budget;
   const planMeta = PLAN_META[plan];
+  const dailyBudget = dailyBudgetFromTotal(budget, plan);
   const expiresAt = new Date(Date.now() + planMeta.days * 24 * 60 * 60 * 1000);
   const reach = estimateReach(budget, plan, audience);
+  if (budgetCheck.largeBudget) {
+    logger.warn(
+      { userId: req.userId, listingId, budget, threshold: LARGE_BOOST_BUDGET_USD },
+      "Large booster budget submitted",
+    );
+  }
 
   // Optional promo video normalized by the authenticated Boost upload pipeline.
   // Stored immediately so value survives an abandoned payment.
@@ -187,6 +204,8 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     plan,
     price: budget,
     budget,
+    dailyBudget,
+    durationDays: planMeta.days,
     estimatedReach: reach,
     audienceType: audience.audienceType ?? "advantage_plus",
     audienceName: audience.audienceName ?? null,
@@ -205,7 +224,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     expiresAt,
   }).returning();
 
-  // Sync audience to listing for feed targeting
+  // Sync audience + daily spend cap to listing for feed targeting / pacing
   await db.update(listingsTable).set({
     boostAudienceCountry: audience.country,
     boostAudienceCities: audience.cities ?? null,
@@ -215,6 +234,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     boostAudienceGender: audience.gender ?? "all",
     boostAudienceObjective: audience.objective ?? "auto",
     boostAudienceType: audience.audienceType ?? "advantage_plus",
+    boostDailyBudget: dailyBudget,
   }).where(eq(listingsTable.id, listingId));
 
   // ── Wallet instant pay (promo-first, then real balance) ──────────────────
@@ -264,6 +284,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
       boostAudienceGender: audience.gender ?? "all",
       boostAudienceObjective: audience.objective ?? "auto",
       boostAudienceType: audience.audienceType ?? "advantage_plus",
+      boostDailyBudget: dailyBudget,
     }).where(eq(listingsTable.id, listingId));
 
     await db.insert(notificationsTable).values({
@@ -276,7 +297,12 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
       plan: boost.plan,
       price: boost.price,
       budget,
+      dailyBudget,
+      durationDays: planMeta.days,
+      platformFeeUsd: 0,
+      amountPayable: budget,
       estimatedReach: reach,
+      largeBudget: budgetCheck.largeBudget,
       audience,
       paymentMethod: "wallet",
       paymentRef,
@@ -299,6 +325,11 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     plan: boost.plan,
     price: boost.price,
     budget: boost.budget,
+    dailyBudget,
+    durationDays: planMeta.days,
+    platformFeeUsd: 0,
+    amountPayable: budget,
+    largeBudget: budgetCheck.largeBudget,
     estimatedReach: boost.estimatedReach,
     audience,
     paymentMethod: boost.paymentMethod,
@@ -552,10 +583,14 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   const rawBudget = req.body.budget;
   const budgetCheck = validateBudget(rawBudget ?? planMeta.basePrice, plan);
   const budget = budgetCheck.ok ? budgetCheck.budget : planMeta.basePrice;
+  const dailyBudget = dailyBudgetFromTotal(budget, plan);
   const expiresAt = new Date(Date.now() + planMeta.days * 24 * 60 * 60 * 1000);
   const reach = estimateReach(budget, plan, {
     country, state, city, audienceType: "advantage_plus", ageMin, ageMax, gender, objective: "auto",
   });
+  if (budgetCheck.ok && budgetCheck.largeBudget) {
+    logger.warn({ userId: req.userId, budget, threshold: LARGE_BOOST_BUDGET_USD }, "Large video-only booster budget");
+  }
 
   // Create ghost listing (status=hidden so it won't appear in browse).
   // Ghost listing must have a real country (not "ALL") for DB constraints.
@@ -585,6 +620,8 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     plan,
     price: budget,
     budget,
+    dailyBudget,
+    durationDays: planMeta.days,
     estimatedReach: reach,
     audienceType: "advantage_plus",
     audienceName: null,
@@ -637,6 +674,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     boostAudienceGender: gender,
     boostAudienceObjective: "auto",
     boostAudienceType: "advantage_plus",
+    boostDailyBudget: dailyBudget,
   }).where(eq(listingsTable.id, listing.id));
 
   await db.insert(notificationsTable).values({
@@ -758,6 +796,8 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
       boostId: boostsTable.id,
       plan: boostsTable.plan,
       budget: boostsTable.budget,
+      dailyBudget: boostsTable.dailyBudget,
+      durationDays: boostsTable.durationDays,
     })
     .from(boostsTable)
     .innerJoin(
@@ -782,23 +822,38 @@ router.get("/boost/my-active", requireAuth, async (req, res): Promise<void> => {
     return true;
   });
 
+  // Delivery pacing uses ~200 impressions per $1 of budget.
+  const IMPRESSIONS_PER_USD = 200;
   const boostVideoUrls = await Promise.all(ownerRows.map(r => resolveBoostVideoUrl(r.boostVideoUrl)));
-  const boosts = ownerRows.map((r, i) => ({
-    listingId: r.listingId,
-    title: r.title,
-    price: r.price,
-    thumbnail: r.images?.[0] ?? null,
-    boostVideoUrl: boostVideoUrls[i],
-    boostStartAt: r.boostStartAt?.toISOString() ?? null,
-    boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
-    viewCount: r.viewCount,
-    impressions: r.impressions ?? 0,
-    clicks: r.clicks ?? 0,
-    boostId: r.boostId,
-    plan: r.plan,
-    budget: r.budget,
-    isExpired: !r.boostExpiresAt || r.boostExpiresAt <= now,
-  }));
+  const boosts = ownerRows.map((r, i) => {
+    const budget = Number(r.budget ?? 0);
+    const impressions = r.impressions ?? 0;
+    const estimatedSpentUsd = Math.min(
+      budget,
+      Math.round((impressions / IMPRESSIONS_PER_USD) * 100) / 100,
+    );
+    const remainingBudgetUsd = Math.max(0, Math.round((budget - estimatedSpentUsd) * 100) / 100);
+    return {
+      listingId: r.listingId,
+      title: r.title,
+      price: r.price,
+      thumbnail: r.images?.[0] ?? null,
+      boostVideoUrl: boostVideoUrls[i],
+      boostStartAt: r.boostStartAt?.toISOString() ?? null,
+      boostExpiresAt: r.boostExpiresAt?.toISOString() ?? null,
+      viewCount: r.viewCount,
+      impressions,
+      clicks: r.clicks ?? 0,
+      boostId: r.boostId,
+      plan: r.plan,
+      budget,
+      dailyBudget: r.dailyBudget ?? null,
+      durationDays: r.durationDays ?? null,
+      estimatedSpentUsd,
+      remainingBudgetUsd,
+      isExpired: !r.boostExpiresAt || r.boostExpiresAt <= now,
+    };
+  });
   res.json({ boosts });
 });
 

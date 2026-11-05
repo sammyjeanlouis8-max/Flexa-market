@@ -28,12 +28,15 @@ import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 
+const MIN_CAMPAIGN_BUDGET = 2;
+const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;
+
 const PLANS = [
   {
     id: "1day",
-    price: 2.50,
+    price: 2.00,
     badge: null as "popular" | "bestValue" | null,
-    perks: ["featuredSection", "prioritySearch", "views10k"],
+    perks: ["featuredSection", "prioritySearch"],
     color: "border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800",
     selectedColor: "border-blue-500 bg-blue-50 dark:bg-blue-950/20",
     badgeColor: "",
@@ -42,16 +45,16 @@ const PLANS = [
     id: "3day",
     price: 5.00,
     badge: "popular" as const,
-    perks: ["everything1day", "views50k", "highlightedBadge"],
+    perks: ["everything1day", "highlightedBadge"],
     color: "border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800",
     selectedColor: "border-primary bg-orange-50 dark:bg-orange-950/20",
     badgeColor: "bg-primary text-white",
   },
   {
     id: "7day",
-    price: 12.99,
+    price: 10.00,
     badge: "bestValue" as const,
-    perks: ["everything3day", "topWeek", "views400k"],
+    perks: ["everything3day", "topWeek"],
     color: "border-purple-200 bg-purple-50 dark:bg-purple-950/20 dark:border-purple-800",
     selectedColor: "border-purple-500 bg-purple-50 dark:bg-purple-950/20",
     badgeColor: "bg-purple-600 text-white",
@@ -60,14 +63,11 @@ const PLANS = [
 
 const PERK_KEYS: Record<string, string> = {
   featuredSection:  "Appears in Featured section",
-  prioritySearch:   "Priority search results",
-  views10k:         "2,000+ views",
+  prioritySearch:   "Priority in relevant search results",
   everything1day:   "Everything in 1 Day",
-  views50k:         "10,000+ views",
-  highlightedBadge: "Highlighted listing badge",
+  highlightedBadge: "Sponsored listing badge",
   everything3day:   "Everything in 3 Days",
-  topWeek:          "Top of search results all week",
-  views400k:        "60,000+ views",
+  topWeek:          "Extended sponsored placement",
 };
 
 type Plan = (typeof PLANS)[number]["id"];
@@ -236,7 +236,9 @@ export default function BoostPage() {
     }
   };
 
-  const [budget, setBudget]             = useState<number>(5.00);
+  const [budget, setBudget]             = useState<number>(MIN_CAMPAIGN_BUDGET);
+  const [customBudgetMode, setCustomBudgetMode] = useState(false);
+  const [customBudgetInput, setCustomBudgetInput] = useState(String(MIN_CAMPAIGN_BUDGET));
   const [estimatedReach, setEstimatedReach] = useState<number | null>(null);
 
   // Optional ≤5 minute promo video. Stored as the publicly-fetchable URL we'll
@@ -301,8 +303,29 @@ export default function BoostPage() {
   };
 
   useEffect(() => {
-    setBudget(PLANS.find(p => p.id === plan)?.price ?? 6.99);
+    const suggested = PLANS.find(p => p.id === plan)?.price ?? MIN_CAMPAIGN_BUDGET;
+    setBudget(suggested);
+    setCustomBudgetMode(false);
+    setCustomBudgetInput(suggested.toFixed(2));
   }, [plan]);
+
+  const planDays = plan === "1day" ? 1 : plan === "3day" ? 3 : 7;
+  const estimatedDailyBudget = budget > 0 ? Math.round((budget / planDays) * 100) / 100 : 0;
+  const platformFeeUsd = 0;
+  const amountPayable = Math.round((budget + platformFeeUsd) * 100) / 100;
+
+  const applyBudgetPreset = (amount: number) => {
+    setCustomBudgetMode(false);
+    setBudget(amount);
+    setCustomBudgetInput(amount.toFixed(2));
+  };
+
+  const applyCustomBudget = (raw: string) => {
+    setCustomBudgetMode(true);
+    setCustomBudgetInput(raw);
+    const parsed = parseFloat(raw);
+    if (Number.isFinite(parsed)) setBudget(Math.round(parsed * 100) / 100);
+  };
 
   const [showReturnApp, setShowReturnApp] = useState(false);
 
@@ -498,8 +521,12 @@ export default function BoostPage() {
       toast({ title: t("boost.videoStillUploading", { defaultValue: "Videyo a ap telechaje toujou. Tann li fini avant ou kontinye." }), variant: "destructive" });
       return;
     }
-    if (budget < (PLANS.find(p => p.id === plan)?.price ?? 0)) {
-      toast({ title: t("boost.budgetTooLow"), variant: "destructive" });
+    if (!(budget >= MIN_CAMPAIGN_BUDGET)) {
+      toast({
+        title: t("boost.budgetTooLow"),
+        description: t("boost.budgetMinHint", { amount: MIN_CAMPAIGN_BUDGET.toFixed(2) }),
+        variant: "destructive",
+      });
       return;
     }
     setLoading(true);
@@ -1990,44 +2017,101 @@ export default function BoostPage() {
             {/* Budget — hidden for free admin mode */}
             {(!isAdmin || adminMode !== "free") && <div className="py-5">
               <div className="flex items-center gap-2 mb-3">
-                <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shrink-0">
+                <div className="h-6 w-6 rounded-lg bg-[hsl(152,65%,18%)] flex items-center justify-center shrink-0">
                   <span className="text-white text-xs font-black">$</span>
                 </div>
                 <p className="text-sm font-bold text-foreground">
-                  {t("boost.yourBudget", { defaultValue: "Bidjè Total" })}
+                  {t("boost.yourBudget")}
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-muted/50 to-card border border-border rounded-2xl p-5">
-                <div className="flex items-baseline gap-1 mb-4 justify-center">
+
+              <div className="flex flex-wrap gap-2 mb-3" role="group" aria-label={t("boost.budgetPresets")}>
+                {BUDGET_PRESETS.map((amount) => {
+                  const selected = !customBudgetMode && Math.abs(budget - amount) < 0.001;
+                  return (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => applyBudgetPreset(amount)}
+                      data-testid={`button-budget-preset-${amount}`}
+                      className={cn(
+                        "min-h-11 px-3.5 rounded-full text-sm font-semibold border transition-colors",
+                        selected
+                          ? "bg-[hsl(152,65%,18%)] text-white border-transparent"
+                          : "bg-card text-foreground border-border hover:bg-accent",
+                      )}
+                    >
+                      ${amount}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomBudgetMode(true);
+                    setCustomBudgetInput(budget >= MIN_CAMPAIGN_BUDGET ? budget.toFixed(2) : String(MIN_CAMPAIGN_BUDGET));
+                  }}
+                  data-testid="button-budget-custom"
+                  className={cn(
+                    "min-h-11 px-3.5 rounded-full text-sm font-semibold border transition-colors",
+                    customBudgetMode
+                      ? "bg-[hsl(152,65%,18%)] text-white border-transparent"
+                      : "bg-card text-foreground border-border hover:bg-accent",
+                  )}
+                >
+                  {t("boost.customAmount")}
+                </button>
+              </div>
+
+              <div className="bg-gradient-to-br from-muted/50 to-card border border-border rounded-2xl p-5 space-y-3">
+                <div className="flex items-baseline gap-1 justify-center">
                   <span className="text-3xl font-black text-muted-foreground/60">$</span>
                   <Input
                     type="number"
+                    inputMode="decimal"
                     step="0.01"
-                    min={selectedPlan.price}
-                    max={500}
-                    value={budget}
-                    onChange={e => setBudget(parseFloat(e.target.value) || 0)}
+                    min={MIN_CAMPAIGN_BUDGET}
+                    value={customBudgetMode ? customBudgetInput : budget}
+                    onChange={(e) => applyCustomBudget(e.target.value)}
+                    onFocus={() => setCustomBudgetMode(true)}
                     className="text-5xl font-black h-16 border-0 shadow-none focus-visible:ring-0 px-0 w-full text-center bg-transparent"
                     data-testid="input-budget"
+                    aria-label={t("boost.yourBudget")}
                   />
                   <span className="text-sm font-bold text-muted-foreground/60 self-center">USD</span>
                 </div>
-                <input
-                  type="range"
-                  min={selectedPlan.price}
-                  max={100}
-                  step={0.5}
-                  value={Math.min(budget, 100)}
-                  onChange={e => setBudget(parseFloat(e.target.value))}
-                  className="w-full accent-primary h-2 rounded-full"
-                  data-testid="slider-budget"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  <span className="font-medium">{t("boost.min")}: ${selectedPlan.price.toFixed(2)}</span>
-                  <span className="font-medium">{t("boost.max")}: $100+</span>
+                <p className="text-center text-xs text-muted-foreground">
+                  {t("boost.budgetMinHint", { amount: MIN_CAMPAIGN_BUDGET.toFixed(2) })}
+                </p>
+              </div>
+
+              <div className="mt-3 rounded-2xl border border-border bg-card p-4 space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("boost.totalCampaignBudget")}</span>
+                  <span className="font-semibold tabular-nums">${budget.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("boost.campaignDuration")}</span>
+                  <span className="font-semibold">{getPlanLabel(plan)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("boost.estimatedDailyBudget")}</span>
+                  <span className="font-semibold tabular-nums">${estimatedDailyBudget.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground">{t("boost.platformFees")}</span>
+                  <span className="font-semibold tabular-nums">${platformFeeUsd.toFixed(2)}</span>
+                </div>
+                <div className="h-px bg-border" />
+                <div className="flex justify-between gap-3 items-baseline">
+                  <span className="font-semibold text-foreground">{t("boost.amountPayable")}</span>
+                  <span className="text-xl font-black tabular-nums text-[hsl(152,65%,18%)] dark:text-emerald-400">
+                    ${amountPayable.toFixed(2)}
+                  </span>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">{t("boost.budgetNote")}</p>
+              <p className="text-xs text-muted-foreground mt-1">{t("boost.noGuarantees")}</p>
             </div>}
 
             {/* Payment method — hidden for free admin mode */}
@@ -2165,24 +2249,31 @@ export default function BoostPage() {
                   </div>
                   {(!isAdmin || adminMode !== "free") && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Tari / jou</span>
-                    <span className="font-medium text-foreground">
-                      ${(budget / (plan === "1day" ? 1 : plan === "3day" ? 3 : 7)).toFixed(2)}
+                    <span className="text-muted-foreground">{t("boost.estimatedDailyBudget")}</span>
+                    <span className="font-medium text-foreground tabular-nums">
+                      ${estimatedDailyBudget.toFixed(2)}
                     </span>
+                  </div>
+                  )}
+                  {(!isAdmin || adminMode !== "free") && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{t("boost.platformFees")}</span>
+                    <span className="font-medium text-foreground tabular-nums">${platformFeeUsd.toFixed(2)}</span>
                   </div>
                   )}
                   <div className="h-px bg-border my-1" />
                   <div className="flex justify-between items-baseline">
-                    <span className="text-sm font-semibold text-foreground">{t("boost.totalDue", { defaultValue: "Total" })}</span>
+                    <span className="text-sm font-semibold text-foreground">{t("boost.amountPayable")}</span>
                     {(isAdmin && adminMode === "free") ? (
                       <span className="text-2xl font-black text-green-600 dark:text-green-400">$0.00</span>
                     ) : (
-                      <span className="text-2xl font-black text-foreground">${budget.toFixed(2)}</span>
+                      <span className="text-2xl font-black text-foreground tabular-nums">${amountPayable.toFixed(2)}</span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {t("boost.adRunFor", { defaultValue: "Piblisite ou a ap kouri pou" })} {plan === "1day" ? "1 jou" : plan === "3day" ? "3 jou" : "7 jou"}.
+                    {t("boost.adRunFor")} {getPlanLabel(plan)}.
                   </p>
+                  <p className="text-xs text-muted-foreground">{t("boost.noGuarantees")}</p>
                 </div>
               </div>
 

@@ -31,9 +31,9 @@ interface Props { open: boolean; onClose: () => void; }
 
 const MAX_VIDEO_SECONDS = 300;
 const MAX_VIDEO_BYTES = 300 * 1024 * 1024; // matches Wasabi/server normalization cap
-const MIN_BUDGET = 5;
-const MAX_BUDGET = 500;
-const DEFAULT_BUDGET = 12.99;
+const MIN_BUDGET = 2;
+const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;
+const DEFAULT_BUDGET = 10;
 
 function toStorageUrl(path: string): string {
   if (!path) return "";
@@ -1295,42 +1295,53 @@ export default function BoostWizard({ open, onClose }: Props) {
                 </div>
               )}
 
-              {/* Budget slider */}
-              <div className="rounded-xl border border-border bg-muted/30 px-4 py-3.5 space-y-2.5">
+              {/* Flexible budget presets */}
+              <div className="rounded-xl border border-border bg-muted/30 px-4 py-3.5 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-muted-foreground">{t("boostWizard.confirmBudgetLabel")}</span>
                   <span className="text-sm font-bold text-primary">${budget.toFixed(2)}</span>
                 </div>
-                <input
-                  type="range"
+                <div className="flex flex-wrap gap-2">
+                  {BUDGET_PRESETS.map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => setBudget(amount)}
+                      className={cn(
+                        "min-h-10 px-3 rounded-full text-xs font-semibold border transition-colors",
+                        Math.abs(budget - amount) < 0.001
+                          ? "bg-[hsl(152,65%,18%)] text-white border-transparent"
+                          : "bg-card text-foreground border-border",
+                      )}
+                    >
+                      ${amount}
+                    </button>
+                  ))}
+                </div>
+                <Input
+                  type="number"
+                  inputMode="decimal"
                   min={MIN_BUDGET}
-                  max={MAX_BUDGET}
-                  step={0.5}
+                  step="0.01"
                   value={budget}
-                  onChange={e => setBudget(parseFloat(e.target.value))}
-                  className="w-full h-2 accent-primary cursor-pointer"
+                  onChange={(e) => {
+                    const parsed = parseFloat(e.target.value);
+                    if (Number.isFinite(parsed)) setBudget(Math.round(parsed * 100) / 100);
+                  }}
+                  className="h-11 text-center font-bold"
+                  aria-label={t("boostWizard.confirmBudgetLabel")}
                 />
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>${MIN_BUDGET}</span>
-                  <span className="text-center flex items-center gap-1">
-                    {isEstimating
-                      ? <span className="animate-pulse">{t("boostWizard.confirmViewsLoading")}</span>
-                      : estimatedViews != null
-                        ? <span className="font-semibold text-foreground">~{estimatedViews.toLocaleString()} {t("boostWizard.confirmViewsUnit")}</span>
-                        : null}
-                  </span>
-                  <span>${MAX_BUDGET}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground text-center">{t("boostWizard.confirmBudgetHelp")}</p>
+                <p className="text-[10px] text-muted-foreground text-center">
+                  {t("boostWizard.confirmBudgetHelp")}
+                </p>
+                <p className="text-[10px] text-muted-foreground text-center">
+                  {isEstimating
+                    ? t("boostWizard.confirmViewsLoading")
+                    : estimatedViews != null
+                      ? `~${estimatedViews.toLocaleString()} ${t("boostWizard.confirmViewsUnit")} (${t("boost.noGuarantees")})`
+                      : t("boost.noGuarantees")}
+                </p>
               </div>
-
-              {/* Low-budget warning */}
-              {budget < 15 && (
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
-                  <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-                  <p className="text-xs text-amber-700 dark:text-amber-300">{t("boostWizard.lowBudgetWarning")}</p>
-                </div>
-              )}
 
               <div className="rounded-xl border border-border bg-muted/30 overflow-hidden divide-y divide-border/60">
                 {[
@@ -1350,6 +1361,8 @@ export default function BoostWizard({ open, onClose }: Props) {
                       }]
                     : []),
                   { label: t("boostWizard.confirmDuration"), value: t("boostWizard.confirm7days") },
+                  { label: t("boost.estimatedDailyBudget"), value: `$${(Math.round((budget / 7) * 100) / 100).toFixed(2)}` },
+                  { label: t("boost.platformFees"), value: "$0.00" },
                   { label: t("boostWizard.confirmCountry"), value: audienceCountry || user?.country || "—" },
                   ...(audienceCity && boostType !== "video_only" ? [{ label: t("boostWizard.confirmCity"), value: audienceCity }] : []),
                   ...(boostType === "video_only" ? [
@@ -1357,7 +1370,7 @@ export default function BoostWizard({ open, onClose }: Props) {
                     { label: t("boostWizard.confirmAge"), value: `${audienceAgeMin}–${audienceAgeMax} ans` },
                     ...(audienceCity ? [{ label: t("boostWizard.confirmCity"), value: audienceCity }] : []),
                   ] : []),
-                  { label: t("boostWizard.confirmPrice"), value: `$${budget.toFixed(2)}` },
+                  { label: t("boost.amountPayable"), value: `$${budget.toFixed(2)}` },
                 ].map(row => (
                   <div key={row.label} className="flex items-center justify-between px-3.5 py-2.5">
                     <span className="text-xs text-muted-foreground">{row.label}</span>

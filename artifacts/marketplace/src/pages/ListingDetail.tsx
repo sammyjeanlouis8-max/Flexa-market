@@ -159,11 +159,8 @@ export default function ListingDetail() {
   const [pdpTab, setPdpTab] = useState<"details" | "specs" | "reviews" | "qa">("details");
   const [pdpSearchQ, setPdpSearchQ] = useState("");
   const [galleryFullscreen, setGalleryFullscreen] = useState(false);
-  /** Fixed bottom purchase bar — only when inline Add/Buy CTAs are off-screen. */
-  const [showFixedPurchaseBar, setShowFixedPurchaseBar] = useState(false);
   const pdpTabsRef = useRef<HTMLDivElement>(null);
   const pdpTabPanelRef = useRef<HTMLDivElement>(null);
-  const inlinePurchaseRef = useRef<HTMLDivElement>(null);
 
   /** Switch PDP tab and bring the panel into view under the sticky tab bar. */
   const handlePdpTabClick = (tabId: "details" | "specs" | "reviews" | "qa") => {
@@ -315,64 +312,6 @@ export default function ListingDetail() {
     { query: { enabled: !!relatedCategory, queryKey: getGetListingsQueryKey({ category: relatedCategory || undefined, limit: 8 }) } },
   );
   const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
-
-  // Show fixed bottom purchase bar only when the inline Add/Buy row has scrolled away.
-  useEffect(() => {
-    const el = inlinePurchaseRef.current;
-    const canPurchase =
-      !!listing &&
-      listing.status === "available" &&
-      !(listing as { isOwner?: boolean }).isOwner;
-    if (!el || !canPurchase || isLoading) {
-      setShowFixedPurchaseBar(false);
-      return;
-    }
-
-    const isLgUp = () => window.matchMedia("(min-width: 1024px)").matches;
-    const scroller = document.querySelector(".app-main-scroll") as HTMLElement | null;
-    const useScrollerRoot =
-      !!scroller &&
-      window.matchMedia("(max-width: 767px)").matches &&
-      (getComputedStyle(scroller).overflowY === "auto" ||
-        getComputedStyle(scroller).overflowY === "scroll");
-
-    const apply = (inlineVisible: boolean) => {
-      if (isLgUp()) {
-        setShowFixedPurchaseBar(false);
-        return;
-      }
-      setShowFixedPurchaseBar(!inlineVisible);
-    };
-
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        // Show the fixed bar only once the inline CTAs leave the scrollport
-        // entirely — avoids duplicate Add/Buy while they are still on screen.
-        apply(entry.isIntersecting);
-      },
-      {
-        root: useScrollerRoot ? scroller : null,
-        threshold: [0, 0.01, 0.25, 1],
-      },
-    );
-    io.observe(el);
-
-    const onViewportChange = () => {
-      if (isLgUp()) setShowFixedPurchaseBar(false);
-    };
-    const mq = window.matchMedia("(min-width: 1024px)");
-    mq.addEventListener("change", onViewportChange);
-
-    return () => {
-      io.disconnect();
-      mq.removeEventListener("change", onViewportChange);
-    };
-  }, [
-    listing?.id,
-    listing?.status,
-    (listing as { isOwner?: boolean } | undefined)?.isOwner,
-    isLoading,
-  ]);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -1885,7 +1824,7 @@ export default function ListingDetail() {
           {promoError && <p className="text-xs text-red-500">{promoError}</p>}
         </div>
 
-        {/* ── QUANTITY + PRIMARY CTAs (mobile / tablet) ── */}
+        {/* ── QUANTITY (mobile / tablet) — Add/Buy stay in the fixed bottom bar ── */}
         {!isOwner && listing.status === "available" && (
           <div className="px-4 py-3 space-y-3 border-b border-border/60 lg:hidden">
             <label className="block">
@@ -1913,37 +1852,6 @@ export default function ListingDetail() {
                 {(listing as any).weightLbs != null && <> · {(listing as any).weightLbs} lbs</>}
               </p>
             )}
-
-            <div
-              ref={inlinePurchaseRef}
-              className="flex gap-2.5 pt-1"
-              data-testid="pdp-inline-purchase"
-            >
-              <button
-                type="button"
-                onClick={handleAddToCartClick}
-                disabled={!canPurchaseQty}
-                data-testid="button-add-to-cart-inline"
-                className={cn(
-                  "flex-1 h-12 rounded-full font-bold text-[14px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50",
-                  isInCart(id)
-                    ? "bg-[hsl(152,65%,22%)] text-white"
-                    : "bg-[#FFD814] hover:bg-[#F7CA00] text-foreground shadow-sm",
-                )}
-              >
-                <ShoppingCart className="h-4 w-4 shrink-0" />
-                {isInCart(id) ? t("listing.inCart") : t("listing.addToCart")}
-              </button>
-              <button
-                type="button"
-                onClick={handleBuyNowClick}
-                disabled={!canPurchaseQty}
-                data-testid="button-buy-now-inline"
-                className="flex-1 h-12 rounded-full font-bold text-[14px] text-white bg-[#F97316] hover:bg-[#ea6a0c] shadow-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                {t("buttons.buyNow")}
-              </button>
-            </div>
           </div>
         )}
       </div>{/* end center column */}
@@ -2556,16 +2464,16 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {/* Spacer only while the fixed purchase bar is visible so content is not covered. */}
-        {!isOwner && listing.status === "available" && showFixedPurchaseBar && (
+        {/* Spacer so scroll content clears the always-fixed mobile purchase bar. */}
+        {!isOwner && listing.status === "available" && (
           <div className="h-[calc(4.75rem+env(safe-area-inset-bottom))] lg:hidden" aria-hidden="true" />
         )}
 
       </div>
 
-      {/* Portal escapes app-main-scroll's paint containment so the bar stays viewport-fixed.
-          Hidden while the inline Add/Buy CTAs are still on screen (no duplicates). */}
-      {!isOwner && listing.status === "available" && !buyNowOpen && showFixedPurchaseBar && createPortal(
+      {/* Always-fixed mobile Add to Cart / Buy — stays at bottom while the page scrolls.
+          Portal escapes app-main-scroll paint containment. */}
+      {!isOwner && listing.status === "available" && !buyNowOpen && createPortal(
         <div data-testid="listing-purchase-bar" className="fixed bottom-0 left-0 right-0 z-[60] bg-white/95 backdrop-blur-sm border-t border-border/60 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2 px-3 py-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] lg:hidden">
 
           {/* Add to Cart — Amazon yellow */}

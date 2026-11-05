@@ -47,6 +47,7 @@ const Boost              = lazy(() => import("@/pages/Boost"));
 const Sales              = lazy(() => import("@/pages/Sales"));
 const Orders             = lazy(() => import("@/pages/Orders"));
 const OrderDetail        = lazy(() => import("@/pages/OrderDetail"));
+const OrderDelivered     = lazy(() => import("@/pages/OrderDelivered"));
 const OrderLabel         = lazy(() => import("@/pages/OrderLabel"));
 const Admin              = lazy(() => import("@/pages/Admin"));
 const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
@@ -230,6 +231,7 @@ function LayoutRoutes() {
           <Route path="/sales" component={Sales} />
           <Route path="/orders" component={Orders} />
           <Route path="/orders/:id/label" component={OrderLabel} />
+          <Route path="/orders/:id/delivered" component={OrderDelivered} />
           <Route path="/orders/:id" component={OrderDetail} />
           <Route path="/manager" component={ManagerDashboard} />
           <Route path="/driver/dashboard" component={DriverDashboard} />

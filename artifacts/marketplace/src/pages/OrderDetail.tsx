@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import {
   Printer, ChevronLeft, Truck, CheckCircle2, Package, Clock, MapPin,
-  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil,
+  ExternalLink, ShieldCheck, ChevronDown, ChevronUp, RotateCcw, AlertTriangle, X, Copy, Lock, XCircle, Bus, Footprints, Info, Pencil, Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,9 @@ import CommissionBreakdown from "@/components/CommissionBreakdown";
 import CardCancellationPanel from "@/components/CardCancellationPanel";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import OrderTimeline from "@/components/orders/OrderTimeline";
+import OrderStatusBadge from "@/components/orders/OrderStatusBadge";
+import { FLEXA_BRAND, canShowLiveTrackButton, orderRef } from "@/lib/orderTrackingUi";
 
 type FmDriverInfo = {
   name: string | null;
@@ -405,24 +408,6 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
   );
 }
 
-const STAGE_KEYS = [
-  { key: "ordered",       labelKey: "orderDetail.stageOrdered",  icon: CheckCircle2 },
-  { key: "ready_to_ship", labelKey: "orderDetail.stageReady",    icon: Package },
-  { key: "shipped",       labelKey: "orderDetail.stageShipped",  icon: Truck },
-  { key: "delivered",     labelKey: "orderDetail.stageDelivered",icon: CheckCircle2 },
-  { key: "completed",     labelKey: "orderDetail.stageCompleted",icon: ShieldCheck },
-] as const;
-
-function stageIndex(status: string): number {
-  const map: Record<string, number> = {
-    pending: 0, ordered: 0,
-    ready_to_ship: 1,
-    shipped: 2, en_route: 2,
-    delivered: 3, arrived: 3,
-    completed: 4,
-  };
-  return map[status] ?? 1;
-}
 
 const TRACKING_STATUS_COLOR: Record<string, string> = {
   pending:          "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
@@ -724,7 +709,7 @@ export default function OrderDetail() {
         prev ? { ...prev, escrowReleased: true, orderStatus: "completed" } : prev,
       );
       toast({ title: t("orderDetail.toastDeliveryConfirmed"), description: t("orderDetail.toastFundsReleased") });
-      await load();
+      setLocation(`/orders/${orderId}/delivered`);
     }
   };
 
@@ -892,57 +877,83 @@ export default function OrderDetail() {
     <div className="max-w-2xl mx-auto px-4 py-12 text-center text-muted-foreground">{t("orderDetail.loading")}</div>
   );
 
-  const idx = stageIndex(order.orderStatus);
   const img = order.listing.images?.[0] ?? null;
   const trackStatusKey = trackingData?.shipment ? trackingData.shipment.trackingStatus : null;
   const trackColor = trackStatusKey ? (TRACKING_STATUS_COLOR[trackStatusKey] ?? TRACKING_STATUS_COLOR.pending!) : TRACKING_STATUS_COLOR.pending!;
   const currentShippingStatus = trackingData?.shipment ? trackingData.shipment.trackingStatus : null;
+  const showLiveTrack = canShowLiveTrackButton({
+    orderStatus: order.orderStatus,
+    fmDeliveryId: order.fmDelivery?.id ?? null,
+    shipmentId: null,
+    trackingNumber: order.trackingNumber,
+  });
+  const isDeliveredView =
+    ["delivered", "completed"].includes(order.orderStatus) ||
+    order.fmDelivery?.status === "delivered" ||
+    Boolean(order.deliveredAt || order.buyerConfirmedAt || order.escrowReleased);
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <Button variant="ghost" size="sm" onClick={() => history.back()} className="-ml-2">
-        <ChevronLeft className="h-4 w-4 mr-1" /> {t("orderDetail.back")}
-      </Button>
-
-      {/* ── Header ── */}
-      <div className="rounded-2xl border border-border bg-card p-5 flex items-start gap-4">
-        {img ? (
-          <img
-            src={img} alt=""
-            className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
-            onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='10' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
-          />
-        ) : (
-          <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-muted flex items-center justify-center">
-            <Package className="h-8 w-8 text-muted-foreground/50" />
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-xs text-muted-foreground">{order.orderRef}</span>
-            <Badge variant="secondary" className="capitalize text-xs">{order.paymentMethod}</Badge>
-            {order.isHaiti && order.listingCountry !== "Dominican Republic" && <Badge variant="outline" className="text-xs">Local: HT</Badge>}{order.listingCountry === "Dominican Republic" && <Badge variant="outline" className="text-xs">Local: DR</Badge>}
-          </div>
-          <h1 className="text-lg font-extrabold mt-1 leading-tight">{order.listing.title}</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {order.isBuyer
-              ? t("orderDetail.fromSeller", { name: order.merchant.name })
-              : t("orderDetail.toBuyer", { name: order.shipTo.name ?? order.buyer.name ?? "Buyer" })
-            } · {t("orderDetail.placed", { date: new Date(order.createdAt).toLocaleString() })}
-          </p>
-        </div>
-        <div className="text-right flex-shrink-0">
-          <div className="text-xl font-black text-primary">${order.amount.toFixed(2)}</div>
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">{order.currency}</div>
-        </div>
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4 pb-28" data-testid="order-detail-page">
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" size="sm" onClick={() => history.back()} className="-ml-2">
+          <ChevronLeft className="h-4 w-4 mr-1" /> {t("orderDetail.back")}
+        </Button>
+        <h1 className="text-sm font-bold text-foreground truncate">
+          {t("orderTracking.orderDetails", { defaultValue: "Order details" })}
+        </h1>
+        <span className="w-16" />
       </div>
 
-      {/* Independent state dimensions prevent delivery from being confused
-          with payment or order completion. */}
-      <div className="rounded-2xl border border-border bg-card p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut de la commande</p><p className="font-bold mt-1">{frenchStatus(order.orderStatus, "order")}</p></div>
-        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut du paiement</p><p className="font-bold mt-1">{frenchStatus(order.paymentStatus, "payment")}</p></div>
-        <div><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Statut de l’expédition</p><p className="font-bold mt-1">{frenchStatus(currentShippingStatus, "shipping")}</p></div>
+      {/* ── Header ── */}
+      <div className="rounded-2xl border border-border bg-card p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-sm font-bold text-foreground">{order.orderRef || orderRef(order.orderId)}</span>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(order.orderRef || orderRef(order.orderId));
+                  toast({ title: t("orderTracking.copied", { defaultValue: "Copied" }) });
+                }}
+                aria-label="Copy order number"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {t("orderDetail.placed", { date: new Date(order.createdAt).toLocaleString() })}
+            </p>
+          </div>
+          <OrderStatusBadge
+            orderStatus={order.orderStatus}
+            deliveryStatus={order.fmDelivery?.status}
+            trackingStatus={currentShippingStatus}
+          />
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 p-3">
+          {img ? (
+            <img
+              src={img} alt=""
+              className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
+              onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='10' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-xl flex-shrink-0 bg-muted flex items-center justify-center">
+              <Package className="h-7 w-7 text-muted-foreground/50" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm text-foreground truncate">{order.listing.title}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t("orderTracking.qty", { defaultValue: "Qty" })}: 1
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-base font-black" style={{ color: FLEXA_BRAND.success }}>${order.amount.toFixed(2)}</div>
+          </div>
+        </div>
       </div>
 
       {/* ── Commission breakdown ── */}
@@ -996,46 +1007,89 @@ export default function OrderDetail() {
         </div>
       </div>
 
-      {/* ── Timeline ── */}
+      {/* ── Vertical tracking timeline ── */}
       <div className="rounded-2xl border border-border bg-card p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-4">{t("orderDetail.timeline")}</h2>
-        <div className="relative">
-          <div className="absolute top-5 left-5 right-5 h-0.5 bg-border" />
-          <div
-            className="absolute top-5 left-5 h-0.5 bg-primary transition-all duration-500"
-            style={{ width: `calc(${(idx / (STAGE_KEYS.length - 1)) * 100}% - 0px)` }}
-          />
-          <div className="relative grid grid-cols-5 gap-1">
-            {STAGE_KEYS.map((s, i) => {
-              const done = i <= idx;
-              const Icon = s.icon;
-              const ts = s.key === "ordered" ? order.createdAt
-                : s.key === "shipped" ? order.shippedAt
-                : s.key === "delivered" ? order.deliveredAt
-                : s.key === "completed" ? order.escrowReleasedAt
-                : null;
-              return (
-                <div key={s.key} className="flex flex-col items-center text-center">
-                  <div className={cn(
-                    "w-10 h-10 rounded-full border-2 flex items-center justify-center bg-card relative z-10 transition-all",
-                    done ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
-                  )}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className={cn("text-xs font-semibold mt-2 leading-tight", done ? "text-foreground" : "text-muted-foreground")}>
-                    {t(s.labelKey)}
-                  </div>
-                  {ts && done && (
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(ts).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        <OrderTimeline
+          embedded
+          orderStatus={order.orderStatus}
+          deliveryStatus={order.fmDelivery?.status}
+          trackingStatus={currentShippingStatus}
+          createdAt={order.createdAt}
+          shippedAt={order.shippedAt}
+          deliveredAt={order.deliveredAt}
+          completedAt={order.escrowReleasedAt}
+        />
+      </div>
+
+      {/* Destination / service */}
+      {(order.shipTo?.city || order.shipTo?.country || order.carrier || order.deliveryMethod || order.fmDelivery) && (
+        <div
+          className="rounded-2xl border px-4 py-3 flex items-start gap-3"
+          style={{ borderColor: "hsla(200,70%,70%,0.45)", background: "hsla(200,80%,96%,1)" }}
+        >
+          <MapPin className="h-5 w-5 shrink-0 mt-0.5" style={{ color: FLEXA_BRAND.primary }} />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">
+              {t("orderTracking.deliveryTo", { defaultValue: "Delivery" })}
+              {order.shipTo?.country ? ` (${order.shipTo.country})` : ""}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {[order.shipTo?.city, order.shipTo?.street].filter(Boolean).join(", ") || "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {order.fmDelivery
+                ? t("orderTracking.localFlexa", { defaultValue: "Local delivery — Flexa Market" })
+                : (order.carrier || order.deliveryMethod || t("orderTracking.carrierShipment", { defaultValue: "Carrier shipment" }))}
+            </p>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Live track CTA — only when a real tracking destination exists and not yet delivered */}
+      {showLiveTrack && order.fmDelivery?.id && !isDeliveredView && (
+        <Button
+          className="w-full h-12 text-base font-bold rounded-xl text-white"
+          style={{ background: FLEXA_BRAND.primary }}
+          onClick={() => setLocation(`/delivery/tracking/${order.fmDelivery!.id}`)}
+          data-testid="track-live-delivery"
+        >
+          <MapPin className="h-5 w-5 mr-2" />
+          {t("orderTracking.trackLiveDelivery", { defaultValue: "Track live delivery" })}
+        </Button>
+      )}
+      {!order.fmDelivery?.id && order.trackingNumber && !order.isHaiti && !isDeliveredView && (
+        <a
+          className="flex w-full h-12 items-center justify-center gap-2 text-base font-bold rounded-xl text-white"
+          style={{ background: FLEXA_BRAND.primary }}
+          target="_blank"
+          rel="noopener noreferrer"
+          href={
+            order.deliveryMethod === "Vimenpaq" ? "https://vimenpaq.do/"
+            : order.deliveryMethod === "Caribe Pack" ? "https://caribetours.com.do/caribe-pack/"
+            : order.carrier?.toLowerCase().includes("ups") ? `https://www.ups.com/track?tracknum=${encodeURIComponent(order.trackingNumber)}`
+            : order.carrier?.toLowerCase().includes("fedex") ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(order.trackingNumber)}`
+            : order.carrier?.toLowerCase().includes("dhl") ? `https://www.dhl.com/en/express/tracking.html?AWB=${encodeURIComponent(order.trackingNumber)}`
+            : order.carrier?.toLowerCase().includes("usps") ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(order.trackingNumber)}`
+            : `https://www.google.com/search?q=${encodeURIComponent(`${order.carrier || ""} ${order.trackingNumber}`)}`
+          }
+          data-testid="track-carrier-shipment"
+        >
+          <Truck className="h-5 w-5" />
+          {t("orderTracking.trackShipment", { defaultValue: "Track shipment" })}
+        </a>
+      )}
+      {isDeliveredView && order.isBuyer && (
+        <Button
+          className="w-full h-12 text-base font-bold rounded-xl text-white"
+          style={{ background: FLEXA_BRAND.primary }}
+          onClick={() => setLocation(`/orders/${order.orderId}/delivered`)}
+          data-testid="view-delivery-confirmation"
+        >
+          <CheckCircle2 className="h-5 w-5 mr-2" />
+          {t("orderTracking.deliveryConfirmation", { defaultValue: "Delivery confirmation" })}
+        </Button>
+      )}
 
       {/* ── Carrier tracking (non-Haiti) ── */}
       {isDominicanCompanyDelivery && order.trackingNumber && (
@@ -1226,13 +1280,17 @@ export default function OrderDetail() {
                     return (
                       <div className="flex items-center justify-between gap-2">
                         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${meta.color}`}>{meta.label}</span>
-                        {!isDominicanSellerDelivery && <button
-                          type="button"
-                          onClick={() => setLocation(`/delivery/tracking/${order.fmDelivery!.id}`)}
-                          className="flex items-center gap-1.5 text-xs font-bold text-primary hover:underline"
-                        >
-                          <MapPin className="h-3.5 w-3.5" /> Suiv Livrezon →
-                        </button>}
+                        {!isDominicanSellerDelivery && order.fmDelivery?.id && (
+                          <button
+                            type="button"
+                            onClick={() => setLocation(`/delivery/tracking/${order.fmDelivery!.id}`)}
+                            className="flex items-center gap-1.5 text-xs font-bold hover:underline"
+                            style={{ color: FLEXA_BRAND.primary }}
+                          >
+                            <MapPin className="h-3.5 w-3.5" />
+                            {t("orderTracking.trackLiveDelivery", { defaultValue: "Track live delivery" })}
+                          </button>
+                        )}
                       </div>
                     );
                   })()}

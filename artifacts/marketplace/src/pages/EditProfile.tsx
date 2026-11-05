@@ -686,6 +686,11 @@ export default function EditProfile() {
               onSuccess: () => {
                 toast({ title: t("editProfile.countryUpdated") ?? `Country updated! 🎉`, description: `${newCountryName}` });
                 queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+                // Refresh all discovery surfaces under the new marketplace country.
+                queryClient.invalidateQueries({ predicate: (q) => {
+                  const key = String(q.queryKey?.[0] ?? "");
+                  return key.includes("/api/listings") || key.includes("/api/videos");
+                }});
                 setCountryDialogOpen(false);
                 setChangeStep("select");
                 setNewPhone(""); setOtp(""); setDevCode(null); setNewPhoneIso(null);

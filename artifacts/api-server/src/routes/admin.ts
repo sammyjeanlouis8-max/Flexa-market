@@ -1670,7 +1670,10 @@ router.post("/admin/moderation/:id/approve", requireRole("moderator"), async (re
     status: "available",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
-  }).where(eq(listingsTable.id, id));
+    eligibilityClass: "allowed",
+    lifecycleStatus: "published",
+    rejectionCode: null,
+  } as any).where(eq(listingsTable.id, id));
   if (!wasApproved) {
     await db.update(categoriesTable).set({ listingCount: sql`${categoriesTable.listingCount} + 1` }).where(eq(categoriesTable.id, listing.categoryId));
     if (listing.subcategoryId) {
@@ -1710,7 +1713,10 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
     status: "removed",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
-  }).where(eq(listingsTable.id, id));
+    eligibilityClass: "prohibited",
+    lifecycleStatus: "rejected",
+    rejectionCode: "PROHIBITED_ILLEGAL",
+  } as any).where(eq(listingsTable.id, id));
   if (wasApproved) {
     await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, listing.categoryId));
     if (listing.subcategoryId) {
@@ -1727,6 +1733,37 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
   });
   await log(req.userId!, "moderation_reject", "listing", id, `Rejected listing: "${listing.title}"`);
   res.json({ message: "Listing rejected" });
+});
+
+/** Suspend a listing from discovery without deleting history (UGC enforcement). */
+router.post("/admin/moderation/:id/suspend", requireRole("moderator"), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const reason = String((req.body as { reason?: string })?.reason ?? "Suspended by moderator").slice(0, 500);
+  const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
+  if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  const scopeErr = assertListingInScope(req.user!, listing);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+  await db.update(listingsTable).set({
+    status: "removed",
+    moderationStatus: listing.moderationStatus === "approved" ? "pending" : listing.moderationStatus,
+    lifecycleStatus: "suspended",
+    eligibilityClass: "requires_review",
+    rejectionCode: "SUSPENDED",
+    moderationReason: reason,
+    moderationSource: "admin",
+    moderatedAt: new Date(),
+    moderatedBy: req.userId!,
+    isBoosted: false,
+  } as any).where(eq(listingsTable.id, id));
+  await db.insert(notificationsTable).values({
+    userId: listing.sellerId,
+    actorId: req.userId!,
+    type: "moderation_rejected",
+    listingId: id,
+    message: reason,
+  }).catch(() => {});
+  await log(req.userId!, "moderation_suspend", "listing", id, `Suspended listing: "${listing.title}"`);
+  res.json({ message: "Listing suspended" });
 });
 
 router.post("/admin/listings/:id/feature", requireAdmin, async (req, res): Promise<void> => {

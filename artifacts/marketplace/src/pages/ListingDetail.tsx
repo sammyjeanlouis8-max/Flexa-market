@@ -2054,6 +2054,23 @@ export default function ListingDetail() {
           >
             {t("listing.reportListing", { defaultValue: "Report listing" })}
           </button>
+          <span className="text-border" aria-hidden>·</span>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-destructive transition-colors"
+            data-testid="button-report-seller"
+            onClick={() => fetch("/api/reports", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                targetType: "user",
+                targetId: listing.sellerId,
+                reason: "Seller reported for policy or safety concerns",
+              }),
+            })}
+          >
+            {t("listing.reportSeller", { defaultValue: "Report seller" })}
+          </button>
         </div>
       )}
 

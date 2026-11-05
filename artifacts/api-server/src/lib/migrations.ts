@@ -2647,6 +2647,42 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // ── Product eligibility / lifecycle (additive; preserves status + moderation) ─
+  migrations.push({ name: "listings.eligibility_class", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS eligibility_class TEXT NOT NULL DEFAULT 'allowed'" });
+  migrations.push({ name: "listings.lifecycle_status", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'published'" });
+  migrations.push({ name: "listings.rejection_code", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS rejection_code TEXT" });
+  migrations.push({ name: "listings.appeal_status", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_status TEXT" });
+  migrations.push({ name: "listings.appeal_note", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_note TEXT" });
+  migrations.push({ name: "listings.appeal_at", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_at TIMESTAMPTZ" });
+  migrations.push({ name: "listings.appeal_resolved_at", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_resolved_at TIMESTAMPTZ" });
+  migrations.push({ name: "listings.appeal_resolved_by", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_resolved_by INTEGER" });
+  migrations.push({
+    name: "listings.eligibility_lifecycle_backfill_v1",
+    sql: `UPDATE listings SET
+      eligibility_class = CASE
+        WHEN moderation_status = 'rejected' THEN 'prohibited'
+        WHEN moderation_status = 'pending' THEN 'requires_review'
+        ELSE 'allowed'
+      END,
+      lifecycle_status = CASE
+        WHEN status = 'sold' THEN 'sold'
+        WHEN moderation_status = 'rejected' THEN 'rejected'
+        WHEN moderation_status = 'pending' THEN 'pending_review'
+        WHEN status = 'available' AND moderation_status = 'approved' THEN 'published'
+        WHEN status = 'removed' THEN 'archived'
+        ELSE 'published'
+      END
+      WHERE eligibility_class = 'allowed' OR lifecycle_status = 'published'`,
+  });
+  migrations.push({
+    name: "listings.lifecycle_status_idx",
+    sql: "CREATE INDEX IF NOT EXISTS listings_lifecycle_status_idx ON listings(lifecycle_status)",
+  });
+  migrations.push({
+    name: "listings.eligibility_class_idx",
+    sql: "CREATE INDEX IF NOT EXISTS listings_eligibility_class_idx ON listings(eligibility_class)",
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt

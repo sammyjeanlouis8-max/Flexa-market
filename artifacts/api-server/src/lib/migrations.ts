@@ -2666,6 +2666,26 @@ export async function runStartupMigrations(): Promise<void> {
     name: "flexa_ai_usage.user_day_cap_idx",
     sql: "CREATE INDEX IF NOT EXISTS flexa_ai_usage_user_day_idx ON flexa_ai_usage(user_id, capability, day)",
   });
+  migrations.push({
+    name: "flexabot_audit.v1",
+    sql: `CREATE TABLE IF NOT EXISTS flexabot_audit (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      intent TEXT,
+      lang TEXT,
+      ok BOOLEAN NOT NULL DEFAULT FALSE,
+      provider TEXT,
+      model TEXT,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      deep_links TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexabot_audit.idx_user",
+    sql: "CREATE INDEX IF NOT EXISTS flexabot_audit_user_idx ON flexabot_audit(user_id, created_at DESC)",
+  });
 
   // ── Product eligibility / lifecycle (additive; preserves status + moderation) ─
   migrations.push({ name: "listings.eligibility_class", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS eligibility_class TEXT NOT NULL DEFAULT 'allowed'" });

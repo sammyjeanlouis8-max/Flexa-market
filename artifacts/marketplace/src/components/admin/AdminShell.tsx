@@ -99,7 +99,7 @@ function AdminTopBar() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { displayName, roleLabel } = useAdminRoleFlags();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const resolvedDark =
     theme === "dark" ||
     (theme === "system" &&
@@ -107,18 +107,32 @@ function AdminTopBar() {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   const handleBack = useCallback(() => {
-    // Prefer browser history when there is a prior page.
-    // Safe fallback: admin dashboard (never leave the user stranded).
+    // Mobile Safari often reports history.length > 1 even on a deep-link
+    // entry, so history.back() can no-op or leave the SPA. Prefer explicit
+    // in-app parents for Flexa Control routes.
+    const path = (location || "/").split("?")[0].replace(/\/$/, "") || "/";
+    if (path === "/admin" || path === "/") {
+      setLocation("/");
+      return;
+    }
+    if (path.startsWith("/admin/")) {
+      setLocation("/admin");
+      return;
+    }
     try {
-      if (typeof window !== "undefined" && window.history.length > 1) {
-        window.history.back();
-        return;
+      const ref = typeof document !== "undefined" ? document.referrer : "";
+      if (ref) {
+        const origin = window.location.origin;
+        if (new URL(ref).origin === origin) {
+          window.history.back();
+          return;
+        }
       }
     } catch {
       /* ignore */
     }
     setLocation("/admin");
-  }, [setLocation]);
+  }, [location, setLocation]);
 
   // Compact Flexa Control bar: one safe-area pad (env / --sat fallback) + 56px row.
   const iconBtn =

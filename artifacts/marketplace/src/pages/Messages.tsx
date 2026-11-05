@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, Component, type ReactNode, lazy, Suspense } from "react";
+import React, { useState, useEffect, useCallback, useMemo, Component, type ReactNode, lazy, Suspense } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
-  MessageCircle, ArrowLeft, Sun, Moon,
+  MessageCircle, ArrowLeft, Sun, Moon, Search, SlidersHorizontal,
+  PenSquare, ChevronRight, Mic, ShoppingBag,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   useGetConversations,
   getGetMessagesQueryKey, getGetMessagesQueryOptions, getGetConversationsQueryKey,
@@ -13,12 +13,14 @@ import {
 import { useAuth } from "@/contexts/auth";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/hooks/useSocket";
+import { useToast } from "@/hooks/use-toast";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import {
   type Conversation,
   type ChatTheme,
   THEME_KEY,
   T,
+  FLEXA,
 } from "./messages/chatTheme";
 
 const MessageThread = lazy(() =>
@@ -26,6 +28,8 @@ const MessageThread = lazy(() =>
 );
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
+type InboxTab = "all" | "buyers" | "sellers" | "unread";
+type SortMode = "latest" | "unread";
 
 function dateParts(iso: string): { date: Date; dayDiff: number; ageMs: number } | null {
   const date = new Date(iso);
@@ -89,30 +93,28 @@ class ThreadBoundary extends Component<
   render() {
     if (!this.state.hasError) return this.props.children;
 
-    // Silent retry → spinner only
     if (this.state.isRetrying) {
       return (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: this.props.pageBg }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "3px solid #3b82f6", borderTopColor: "transparent", animation: "eb-spin 0.8s linear infinite" }} />
+          <div style={{ width: 32, height: 32, borderRadius: "50%", border: `3px solid ${FLEXA.green}`, borderTopColor: "transparent", animation: "eb-spin 0.8s linear infinite" }} />
         </div>
       );
     }
 
-    // Final fail → friendly UI
     return (
       <div style={{
         display: "flex", flexDirection: "column", alignItems: "center",
         justifyContent: "center", height: "100%", padding: 32,
         background: this.props.pageBg, textAlign: "center", gap: 14,
       }}>
-        <MessageCircle style={{ width: 44, height: 44, color: "#3b82f6", opacity: 0.7 }} />
-        <p style={{ color: "#94a3b8", fontSize: 14, margin: 0, maxWidth: 240, lineHeight: 1.6 }}>
+        <MessageCircle style={{ width: 44, height: 44, color: FLEXA.green, opacity: 0.7 }} />
+        <p style={{ color: "#64748B", fontSize: 14, margin: 0, maxWidth: 240, lineHeight: 1.6 }}>
           There was a connection problem. Please try again.
         </p>
         <button
           onClick={() => this.setState({ hasError: false, retryCount: 0, isRetrying: false })}
           style={{
-            background: "linear-gradient(135deg, #4f7cff, #3b82f6)",
+            background: FLEXA.green,
             color: "#fff", border: "none", borderRadius: 10,
             padding: "10px 26px", fontSize: 14, fontWeight: 700, cursor: "pointer",
           }}
@@ -130,18 +132,33 @@ function localizeConversationPreview(
   t: (key: string, options?: any) => string,
 ): string {
   if (!preview) return fallback;
-
-  // Conversation previews were historically saved in the database as a
-  // localized-looking string. Recognize the old variants so the interface
-  // language controls the label without changing a user's message content.
   const voiceMatch = preview.match(/^(\S+)\s+(?:Mesaj vwa|Message vocal|Voice message)$/i);
   return voiceMatch ? `${voiceMatch[1]} ${t("messages.voiceMessage")}` : preview;
 }
 
-function ConvList({ convs, activeId, theme, onSelect }: {
+function isVoicePreview(preview: string | null | undefined): boolean {
+  if (!preview) return false;
+  return /Mesaj vwa|Message vocal|Voice message|🎤/i.test(preview);
+}
+
+function avatarHue(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hues = [152, 200, 24, 280, 340, 40];
+  return `hsl(${hues[h % hues.length]} 48% 38%)`;
+}
+
+function ConvList({
+  convs,
+  activeId,
+  theme,
+  onlineMap,
+  onSelect,
+}: {
   convs: Conversation[];
   activeId?: number;
   theme: (typeof T)[ChatTheme];
+  onlineMap: Record<number, boolean>;
   onSelect?: (conversationId: number) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -154,18 +171,27 @@ function ConvList({ convs, activeId, theme, onSelect }: {
       request: { timeoutMs: 6_000 },
     }));
   };
-  const sortedConvs = [...convs].sort((a, b) => {
-    const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
-    const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
-    return bTime - aTime;
-  });
-  if (convs.length === 0) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center", padding: "64px 16px", background: c.listBg }}>
-      <MessageCircle style={{ width: 48, height: 48, color: c.emptyIcon, marginBottom: 12 }} />
-      <p style={{ fontWeight: 600, color: c.listName, margin: 0 }}>{t("messages.noConversations")}</p>
-      <p style={{ fontSize: 14, color: c.emptyText, marginTop: 4 }}>{t("messages.browseListings")}</p>
-    </div>
-  );
+
+  if (convs.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, textAlign: "center", padding: "64px 16px", background: c.listBg }}>
+        <MessageCircle style={{ width: 48, height: 48, color: c.emptyIcon, marginBottom: 12 }} />
+        <p style={{ fontWeight: 600, color: c.listName, margin: 0 }}>{t("messages.noConversations")}</p>
+        <p style={{ fontSize: 14, color: c.emptyText, marginTop: 4 }}>{t("messages.browseListings")}</p>
+        <button
+          type="button"
+          onClick={() => setLocation("/search")}
+          style={{
+            marginTop: 16, minHeight: 44, padding: "10px 20px", borderRadius: 12,
+            background: FLEXA.green, color: "#fff", border: "none", fontWeight: 700, cursor: "pointer",
+          }}
+        >
+          {t("messages.browseListingsCta", { defaultValue: "Browse listings" })}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className="conversation-list-scroll"
@@ -174,13 +200,22 @@ function ConvList({ convs, activeId, theme, onSelect }: {
         overflowX: "hidden",
         flex: "1 1 0%",
         minHeight: 0,
-        background: c.listBg,
+        background: c.pageBg,
         WebkitOverflowScrolling: "touch",
         touchAction: "pan-y",
         overscrollBehaviorY: "contain",
+        padding: "8px 12px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
       }}
     >
-      {sortedConvs.map(conv => (
+      {convs.map(conv => {
+        const unread = conv.unreadCount > 0;
+        const online = !!onlineMap[conv.otherUserId];
+        const preview = localizeConversationPreview(conv.lastMessage, conv.listingTitle, t);
+        const voice = isVoicePreview(conv.lastMessage);
+        return (
           <div
             key={conv.id}
             role="link"
@@ -195,60 +230,125 @@ function ConvList({ convs, activeId, theme, onSelect }: {
             onPointerDown={() => prefetchMessages(conv.id)}
             onMouseEnter={() => prefetchMessages(conv.id)}
             style={{
-            display: "flex", alignItems: "center", gap: 12,
-            padding: "12px 16px",
-            borderBottom: `1px solid ${c.listBorder}`,
-            background: activeId === conv.id ? c.listItemActive : c.listBg,
-            cursor: "pointer",
-            transition: "background 80ms",
-          }}>
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 14px",
+              borderRadius: 16,
+              border: `1px solid ${unread ? "rgba(4,77,44,0.18)" : c.listBorder}`,
+              background: activeId === conv.id
+                ? c.listItemActive
+                : unread
+                  ? "rgba(4, 77, 44, 0.05)"
+                  : c.listBg,
+              cursor: "pointer",
+              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+              transition: "background 80ms, border-color 80ms",
+            }}
+          >
             <div
               style={{ position: "relative", flexShrink: 0 }}
-              onClick={e => { e.preventDefault(); e.stopPropagation(); window.location.href = `/profile/${conv.otherUserId}`; }}
+              onClick={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                setLocation(`/profile/${conv.otherUserId}`);
+              }}
             >
               <Avatar className="h-12 w-12" style={{ cursor: "pointer" }}>
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
-                <AvatarFallback style={{ background: "#2563EB", color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                <AvatarFallback style={{
+                  background: avatarHue(conv.otherUserName || "?"),
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 16,
+                }}>
                   {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
                 </AvatarFallback>
               </Avatar>
-              {conv.unreadCount > 0 && (
+              {online && (
                 <span style={{
-                  position: "absolute", top: -2, right: -2,
-                  width: 16, height: 16, borderRadius: "50%",
-                  background: "#2563EB", border: `2px solid ${c.listBg}`,
+                  position: "absolute", right: 0, bottom: 0,
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: "#22C55E",
+                  border: `2px solid ${c.listBg}`,
                 }} />
               )}
             </div>
+
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4, marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
                 <span style={{
-                  fontSize: 15, color: c.listName, fontWeight: conv.unreadCount > 0 ? 700 : 500,
+                  fontSize: 15, color: c.listName, fontWeight: unread ? 700 : 600,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  display: "inline-flex", alignItems: "center", gap: 4,
                 }}>
                   {conv.otherUserName}
+                  {conv.otherUserIsVerified && (
+                    <span
+                      title={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
+                      style={{
+                        width: 14, height: 14, borderRadius: "50%",
+                        background: "#16A34A", color: "#fff",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 9, fontWeight: 800, flexShrink: 0,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
                 </span>
                 <span style={{ fontSize: 11, color: c.listTime, flexShrink: 0 }}>
                   {conv.lastMessageAt ? conversationTime(conv.lastMessageAt, i18n.language, t) : ""}
                 </span>
               </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <p style={{
-                  fontSize: 13, color: conv.unreadCount > 0 ? c.listName : c.listSub,
-                  fontWeight: conv.unreadCount > 0 ? 600 : 400,
-                  margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  fontSize: 13,
+                  color: unread ? c.listName : c.listSub,
+                  fontWeight: unread ? 600 : 400,
+                  margin: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  minWidth: 0,
                 }}>
-                  {localizeConversationPreview(conv.lastMessage, conv.listingTitle, t)}
+                  {voice && <Mic style={{ width: 13, height: 13, flexShrink: 0, color: FLEXA.orange }} />}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{preview}</span>
                 </p>
-                {conv.unreadCount > 0 && (
-                  <Badge style={{ fontSize: 11, minWidth: 20, height: 20, padding: "0 6px", background: "#2563EB", flexShrink: 0 }}>
-                    {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
-                  </Badge>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  {unread && (
+                    <span style={{
+                      minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999,
+                      background: "#EF4444", color: "#fff",
+                      fontSize: 11, fontWeight: 700,
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
+                    </span>
+                  )}
+                  <ChevronRight style={{ width: 16, height: 16, color: "#CBD5E1" }} />
+                </div>
               </div>
+
+              {!!conv.listingId && !!conv.listingTitle && (
+                <div style={{
+                  marginTop: 6, display: "inline-flex", alignItems: "center", gap: 4,
+                  maxWidth: "100%", fontSize: 11, color: FLEXA.greenMid, fontWeight: 600,
+                }}>
+                  <ShoppingBag style={{ width: 11, height: 11, flexShrink: 0 }} />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {conv.listingTitle}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -258,9 +358,10 @@ export default function Messages({ embedded = false, onClose, initialConversatio
   onClose?: () => void;
   initialConversationId?: number | null;
 } = {}) {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, token, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [, params] = useRoute("/messages/:id");
   const routeConvId = params?.id ? parseInt(params.id, 10) : null;
   const [embeddedConvId, setEmbeddedConvId] = useState<number | null>(initialConversationId);
@@ -271,11 +372,16 @@ export default function Messages({ embedded = false, onClose, initialConversatio
   const queryClient = useQueryClient();
   const socket = useSocket();
 
-  // Theme state — persisted to localStorage
   const [chatTheme, setChatTheme] = useState<ChatTheme>(() => {
     return (localStorage.getItem(THEME_KEY) as ChatTheme) ?? "sunlight";
   });
   const theme = T[chatTheme];
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [inboxTab, setInboxTab] = useState<InboxTab>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("latest");
+  const [showFilter, setShowFilter] = useState(false);
+  const [onlineMap, setOnlineMap] = useState<Record<number, boolean>>({});
 
   const toggleTheme = useCallback(() => {
     setChatTheme(prev => {
@@ -294,7 +400,6 @@ export default function Messages({ embedded = false, onClose, initialConversatio
     query: {
       enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
-      // Socket invalidation is primary; HTTP poll is a safety net only.
       refetchInterval: 30_000,
       refetchIntervalInBackground: false,
       refetchOnMount: true,
@@ -321,9 +426,89 @@ export default function Messages({ embedded = false, onClose, initialConversatio
     });
   }, [socket, queryClient]);
 
-  useEffect(() => { if (!authLoading && !user) setLocation("/auth/login"); }, [authLoading, user]);
+  useEffect(() => { if (!authLoading && !user) setLocation("/auth/login"); }, [authLoading, user, setLocation]);
+
+  const allConvs = (convs as Conversation[] | undefined) ?? [];
+
+  // Real presence dots for inbox — only when the presence API responds.
+  useEffect(() => {
+    if (!token || allConvs.length === 0) return;
+    let cancelled = false;
+    const ids = Array.from(new Set(allConvs.map(c => c.otherUserId))).slice(0, 40);
+    (async () => {
+      const entries = await Promise.all(ids.map(async (id) => {
+        try {
+          const res = await fetch(`/api/users/${id}/presence`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) return [id, false] as const;
+          const data = await res.json() as { isOnline?: boolean };
+          return [id, !!data.isOnline] as const;
+        } catch {
+          return [id, false] as const;
+        }
+      }));
+      if (cancelled) return;
+      const next: Record<number, boolean> = {};
+      for (const [id, online] of entries) next[id] = online;
+      setOnlineMap(next);
+    })();
+    return () => { cancelled = true; };
+  }, [token, allConvs.map(c => c.otherUserId).join(",")]);
+
+  const tabCounts = useMemo(() => {
+    const buyers = allConvs.filter(c => c.myRole === "seller").length;
+    const sellers = allConvs.filter(c => c.myRole === "buyer").length;
+    const unread = allConvs.filter(c => c.unreadCount > 0).length;
+    return { all: allConvs.length, buyers, sellers, unread };
+  }, [allConvs]);
+
+  const filteredConvs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    let list = allConvs.filter(conv => {
+      if (inboxTab === "buyers" && conv.myRole !== "seller") return false;
+      if (inboxTab === "sellers" && conv.myRole !== "buyer") return false;
+      if (inboxTab === "unread" && !(conv.unreadCount > 0)) return false;
+      if (!q) return true;
+      const hay = [
+        conv.otherUserName,
+        conv.listingTitle,
+        conv.lastMessage ?? "",
+      ].join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+
+    list = [...list].sort((a, b) => {
+      if (sortMode === "unread") {
+        if ((b.unreadCount > 0) !== (a.unreadCount > 0)) {
+          return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+        }
+      }
+      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+      return bTime - aTime;
+    });
+    return list;
+  }, [allConvs, searchQuery, inboxTab, sortMode]);
 
   const c = theme;
+
+  const startNewMessage = () => {
+    toast({
+      title: t("messages.newMessageHintTitle", { defaultValue: "Start a conversation" }),
+      description: t("messages.newMessageHintBody", {
+        defaultValue: "Open a listing and tap Message seller to start chatting.",
+      }),
+    });
+    setLocation("/search");
+  };
+
+  const tabs: { id: InboxTab; label: string; count: number; badge?: boolean }[] = [
+    { id: "all", label: t("messages.tabAll", { defaultValue: "All" }), count: tabCounts.all },
+    { id: "buyers", label: t("messages.tabBuyers", { defaultValue: "Buyers" }), count: tabCounts.buyers },
+    { id: "sellers", label: t("messages.tabSellers", { defaultValue: "Sellers" }), count: tabCounts.sellers },
+    { id: "unread", label: t("messages.tabUnread", { defaultValue: "Unread" }), count: tabCounts.unread, badge: tabCounts.unread > 0 },
+  ];
 
   return (
     <div style={{ display: "flex", height: "100%", background: c.pageBg }} className="md:max-w-5xl md:mx-auto md:border-x md:border-border">
@@ -334,48 +519,200 @@ export default function Messages({ embedded = false, onClose, initialConversatio
           borderRight: `1px solid ${c.listBorder}`,
           flexDirection: "column", minHeight: 0, background: c.listBg,
         }}
-        className={`w-full md:w-80 ${convId ? "hidden md:flex" : "flex"}`}
+        className={`w-full md:w-[360px] lg:w-[380px] ${convId ? "hidden md:flex" : "flex"}`}
       >
-        {/* List header */}
+        {/* Title row */}
         <div style={{
-          padding: "10px 12px 10px",
-          borderBottom: `1px solid ${c.listBorder}`,
-          background: c.headerBg, flexShrink: 0,
-          display: "flex", alignItems: "center", gap: 6,
+          padding: "12px 14px 8px",
+          background: c.listBg,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 10,
         }}>
-          {/* Back button → home */}
           <button
             type="button"
             onClick={() => embedded ? onClose?.() : setLocation("/")}
+            aria-label={t("messages.back")}
             style={{
-              width: 44, height: 44, borderRadius: "50%", background: "none",
-              border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              color: c.iconColor, cursor: "pointer", flexShrink: 0,
+              width: 40, height: 40, borderRadius: 12, background: "none",
+              border: `1px solid ${c.listBorder}`, display: "flex", alignItems: "center", justifyContent: "center",
+              color: FLEXA.green, cursor: "pointer", flexShrink: 0, marginTop: 2,
               touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-              userSelect: "none",
             } as React.CSSProperties}
           >
-            <ArrowLeft style={{ width: 20, height: 20 }} />
+            <ArrowLeft style={{ width: 18, height: 18 }} />
           </button>
-          <h1 style={{ fontWeight: 700, color: c.nameColor, fontSize: 18, margin: 0, flex: 1 }}>
-            {t("messages.title")}
-          </h1>
-          {/* Theme toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            style={{
-              width: 34, height: 34, borderRadius: "50%",
-              background: c.iconActiveBg, border: "none",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-            }}
-          >
-            {chatTheme === "night"
-              ? <Sun style={{ width: 16, height: 16, color: "#FCD34D" }} />
-              : <Moon style={{ width: 16, height: 16, color: "#818CF8" }} />}
-          </button>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <MessageCircle style={{ width: 22, height: 22, color: FLEXA.green, flexShrink: 0 }} />
+              <h1 style={{ fontWeight: 800, color: c.listName, fontSize: 22, margin: 0, letterSpacing: "-0.02em" }}>
+                {t("messages.title")}
+              </h1>
+            </div>
+            <p style={{ margin: "2px 0 0", fontSize: 13, color: c.listSub }}>
+              {t("messages.subtitle", { defaultValue: "Your conversations and requests" })}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={chatTheme === "night" ? t("messages.sunlightMode") : t("messages.nightMode")}
+              style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: c.listBg, border: `1px solid ${c.listBorder}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              {chatTheme === "night"
+                ? <Sun style={{ width: 16, height: 16, color: "#FCD34D" }} />
+                : <Moon style={{ width: 16, height: 16, color: FLEXA.green }} />}
+            </button>
+            <button
+              type="button"
+              onClick={startNewMessage}
+              aria-label={t("messages.newMessage", { defaultValue: "New message" })}
+              style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: FLEXA.green, border: "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#fff",
+              }}
+            >
+              <PenSquare style={{ width: 17, height: 17 }} />
+            </button>
+          </div>
         </div>
+
+        {/* Search + filter */}
+        <div style={{ padding: "4px 14px 10px", flexShrink: 0, position: "relative" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{
+              flex: 1, display: "flex", alignItems: "center", gap: 8,
+              minHeight: 44, padding: "0 12px",
+              borderRadius: 12, border: `1px solid ${c.listBorder}`,
+              background: c.pageBg,
+            }}>
+              <Search style={{ width: 16, height: 16, color: c.listTime, flexShrink: 0 }} />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder={t("messages.searchPlaceholder", { defaultValue: "Search a conversation..." })}
+                style={{
+                  flex: 1, minWidth: 0, border: "none", outline: "none",
+                  background: "transparent", fontSize: 14, color: c.listName,
+                  height: 42,
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFilter(v => !v)}
+              aria-expanded={showFilter}
+              aria-label={t("messages.filter", { defaultValue: "Filter" })}
+              style={{
+                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                border: `1px solid ${showFilter ? FLEXA.green : c.listBorder}`,
+                background: showFilter ? "rgba(4,77,44,0.08)" : c.listBg,
+                color: FLEXA.green, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <SlidersHorizontal style={{ width: 17, height: 17 }} />
+            </button>
+          </div>
+
+          {showFilter && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute", right: 14, top: 52, zIndex: 20,
+                width: 220, borderRadius: 14,
+                border: `1px solid ${c.listBorder}`, background: c.listBg,
+                boxShadow: "0 10px 30px rgba(15,23,42,0.12)",
+                padding: 8,
+              }}
+            >
+              {([
+                ["latest", t("messages.sortLatest", { defaultValue: "Latest activity" })],
+                ["unread", t("messages.sortUnreadFirst", { defaultValue: "Unread first" })],
+              ] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setSortMode(mode); setShowFilter(false); }}
+                  style={{
+                    width: "100%", textAlign: "left", padding: "10px 12px",
+                    borderRadius: 10, border: "none", cursor: "pointer",
+                    background: sortMode === mode ? "rgba(4,77,44,0.08)" : "transparent",
+                    color: c.listName, fontWeight: sortMode === mode ? 700 : 500, fontSize: 13,
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div
+          style={{
+            display: "flex", gap: 8, padding: "0 14px 12px",
+            overflowX: "auto", flexShrink: 0, WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {tabs.map(tab => {
+            const active = inboxTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setInboxTab(tab.id)}
+                style={{
+                  flexShrink: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  minHeight: 36,
+                  padding: "0 14px",
+                  borderRadius: 999,
+                  border: active ? "none" : `1px solid ${c.listBorder}`,
+                  background: active ? FLEXA.green : c.listBg,
+                  color: active ? "#fff" : c.listName,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  position: "relative",
+                }}
+              >
+                <span>{tab.label}</span>
+                {tab.id !== "unread" && (
+                  <span style={{ opacity: active ? 0.85 : 0.55, fontWeight: 600 }}>
+                    ({tab.count})
+                  </span>
+                )}
+                {tab.id === "unread" && tab.badge && (
+                  <span style={{
+                    minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999,
+                    background: "#EF4444", color: "#fff",
+                    fontSize: 10, fontWeight: 800,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {tab.count > 99 ? "99+" : tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {(!user || authLoading || (conversationsPending && !convs)) ? (
           <div role="status" style={{ padding: "64px 16px", textAlign: "center", color: c.emptyText }}>
             {t("messages.loading")}
@@ -386,16 +723,17 @@ export default function Messages({ embedded = false, onClose, initialConversatio
             <button
               type="button"
               onClick={() => void refetchConversations()}
-              style={{ minHeight: 44, padding: "8px 20px", borderRadius: 8, color: c.nameColor, border: `1px solid ${c.listBorder}`, background: c.listBg }}
+              style={{ minHeight: 44, padding: "8px 20px", borderRadius: 8, color: c.listName, border: `1px solid ${c.listBorder}`, background: c.listBg }}
             >
               {t("messages.retry")}
             </button>
           </div>
         ) : (
           <ConvList
-            convs={(convs as Conversation[]) ?? []}
+            convs={filteredConvs}
             activeId={convId ?? undefined}
             theme={theme}
+            onlineMap={onlineMap}
             onSelect={embedded ? setEmbeddedConvId : undefined}
           />
         )}
@@ -424,7 +762,7 @@ export default function Messages({ embedded = false, onClose, initialConversatio
             padding: "0 32px", background: c.pageBg,
           }}>
             <MessageCircle style={{ width: 64, height: 64, color: c.emptyIcon, marginBottom: 16 }} />
-            <p style={{ fontSize: 18, fontWeight: 700, color: c.nameColor, margin: 0 }}>
+            <p style={{ fontSize: 18, fontWeight: 700, color: c.listName, margin: 0 }}>
               {t("messages.selectConversation")}
             </p>
             <p style={{ fontSize: 14, color: c.emptyText, marginTop: 6 }}>

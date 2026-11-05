@@ -94,6 +94,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         avatar: buyerUser.avatar,
         isAdmin: buyerUser.isAdmin,
         isSuperAdmin: buyerUser.isSuperAdmin,
+        isVerified: buyerUser.isVerified,
       },
       seller: {
         id: sellerUser.id,
@@ -101,6 +102,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         avatar: sellerUser.avatar,
         isAdmin: sellerUser.isAdmin,
         isSuperAdmin: sellerUser.isSuperAdmin,
+        isVerified: sellerUser.isVerified,
       },
       unreadCount: unreadSubquery.unreadCount,
     })
@@ -128,6 +130,9 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
       otherUserId,
       otherUserName: otherUser?.name ?? "Unknown",
       otherUserAvatar: otherUser?.avatar ?? null,
+      otherUserIsVerified: !!otherUser?.isVerified,
+      /** Role of the current user in this conversation — drives Buyers/Sellers inbox tabs. */
+      myRole: (isBuyer ? "buyer" : "seller") as "buyer" | "seller",
       lastMessage: r.conv.lastMessage ?? null,
       lastMessageAt: r.conv.lastMessageAt?.toISOString() ?? null,
       unreadCount: Number(r.unreadCount ?? 0),

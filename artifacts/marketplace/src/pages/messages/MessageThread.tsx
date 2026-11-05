@@ -7,12 +7,12 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import {
   Send, MessageCircle, ArrowLeft, Check, CheckCheck,
-  Plus, Camera, Image, Smile, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+  Plus, Camera, Image, Smile, X, Play, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+  MoreVertical, UserRound, Flag, Ban, ShoppingBag, ChevronRight, BadgeCheck,
 } from "lucide-react";
 import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   useGetConversations, useGetMessages, useSendMessage,
   getGetMessagesQueryKey, getGetMessagesQueryOptions, getGetConversationsQueryKey,
@@ -31,7 +31,7 @@ import {
   updatePendingVoice,
   type PendingVoiceMessage,
 } from "@/lib/voiceOutbox";
-import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T } from "./chatTheme";
+import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T, FLEXA } from "./chatTheme";
 
 let _animInjected = false;
 function injectChatAnimations() {
@@ -931,6 +931,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [blockingUser, setBlockingUser] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [typingOther, setTypingOther] = useState(false);
   const [otherOnline, setOtherOnline] = useState<boolean | null>(null);
@@ -969,6 +971,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     document.addEventListener("pointerdown", closeWhenTappingOutside);
     return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
   }, [showEmojiPanel]);
+
+  useEffect(() => {
+    if (!showHeaderMenu) return;
+    const closeWhenTappingOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-chat-header-menu]")) return;
+      setShowHeaderMenu(false);
+    };
+    document.addEventListener("pointerdown", closeWhenTappingOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
+  }, [showHeaderMenu]);
   const voiceQueueBusyRef = useRef(false);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -989,8 +1002,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     /Android/i.test(navigator.userAgent) ||
     (/FlexaMarket/i.test(navigator.userAgent) && typeof window !== "undefined" && window.innerWidth <= 374)
   );
-  // Warm coral for light mode (matches mockup send button & attach icon), violet for dark
-  const composerActionColor = c.isDark ? "#A5B4FC" : "#df715b";
+  // Flexa orange accents for composer actions
+  const composerActionColor = c.isDark ? "#FB923C" : FLEXA.orange;
 
   useEffect(() => {
     const input = chatInputRef.current;
@@ -1640,15 +1653,15 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
       {conv && (<>
 
-          {/* Avatar with rounded-square shape + online indicator — mockup approved style */}
+          {/* Avatar + online indicator from real presence */}
           <Link href={`/profile/${conv.otherUserId}`} style={{ flexShrink: 0 }}>
             <div style={{ position: "relative", cursor: "pointer" }}>
               <div style={{
-                width: 43, height: 43, borderRadius: 14,
+                width: 44, height: 44, borderRadius: "50%",
                 overflow: "hidden", flexShrink: 0,
-                background: "linear-gradient(145deg, #203a4f, #df795e)",
-                boxShadow: "0 4px 10px rgba(37,52,50,0.14)",
+                background: FLEXA.greenMid,
                 display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid rgba(255,255,255,0.25)",
               }}>
                 {conv.otherUserAvatar ? (
                   <img
@@ -1662,26 +1675,46 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   </span>
                 )}
               </div>
-              {/* Online indicator — bottom-right of avatar */}
-              <span style={{
-                position: "absolute", right: -1, bottom: -1,
-                width: 11, height: 11, borderRadius: "50%",
-                background: otherOnline ? c.presenceOn : "transparent",
-                border: otherOnline ? `2px solid ${c.isDark ? c.headerBg : "#fffefa"}` : "none",
-              }} />
+              {otherOnline && (
+                <span style={{
+                  position: "absolute", right: 0, bottom: 0,
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: c.presenceOn,
+                  border: `2px solid ${c.headerBg}`,
+                }} />
+              )}
             </div>
           </Link>
 
-          {/* Name + status */}
+          {/* Name + verified + status */}
           <Link href={`/profile/${conv.otherUserId}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: c.nameColor, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {conv.otherUserName}
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
-              {otherOnline && (
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.presenceOn, flexShrink: 0 }} />
+            <p style={{
+              margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em",
+              color: c.nameColor, lineHeight: 1.2, overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap",
+              display: "flex", alignItems: "center", gap: 5,
+            }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{conv.otherUserName}</span>
+              {conv.otherUserIsVerified && (
+                <BadgeCheck
+                  aria-label={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
+                  style={{ width: 16, height: 16, color: "#86EFAC", flexShrink: 0 }}
+                />
               )}
-              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: otherOnline ? c.presenceOn : c.presenceOff }}>
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+              {conv.otherUserIsVerified && conv.myRole === "buyer" && (
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4,
+                  padding: "1px 8px", borderRadius: 999,
+                  background: "rgba(134,239,172,0.18)",
+                  color: "#BBF7D0", fontSize: 10, fontWeight: 700,
+                }}>
+                  <Check style={{ width: 10, height: 10 }} />
+                  {t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
+                </span>
+              )}
+              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: otherOnline ? "#86EFAC" : "rgba(255,255,255,0.55)" }}>
                 {otherOnline
                   ? t("messages.online")
                   : otherLastSeen
@@ -1691,9 +1724,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             </div>
           </Link>
 
-          {/* Actions — compact (40×40) */}
-          <div className="chat-header-actions" style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
-            {/* Theme toggle */}
+          {/* Actions — theme + overflow menu (no fake call buttons) */}
+          <div className="chat-header-actions" data-chat-header-menu style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0, position: "relative" }}>
             <button
               className="chat-theme-toggle"
               type="button"
@@ -1708,107 +1740,201 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             >
               {isDarkMode
                 ? <Sun style={{ width: 19, height: 19, color: "#FCD34D" }} />
-                : <Moon style={{ width: 19, height: 19, color: "#818CF8" }} />}
+                : <Moon style={{ width: 19, height: 19, color: "rgba(255,255,255,0.85)" }} />}
             </button>
 
-            {/* Video call */}
-            <button type="button" style={{
-              width: 40, height: 40, borderRadius: "50%", background: "transparent",
-              border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-            }}>
-              <Video style={{ width: 19, height: 19, color: c.iconColor }} />
-            </button>
-
-            {/* Profile */}
-            <Link href={`/profile/${conv.otherUserId}`}>
-              <button type="button" style={{
+            <button
+              type="button"
+              aria-label={t("messages.moreOptions", { defaultValue: "More options" })}
+              aria-expanded={showHeaderMenu}
+              onClick={() => setShowHeaderMenu(v => !v)}
+              style={{
                 width: 40, height: 40, borderRadius: "50%", background: "transparent",
                 border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", flexShrink: 0,
-              }}>
-                <Phone style={{ width: 19, height: 19, color: c.iconColor }} />
-              </button>
-            </Link>
+                cursor: "pointer", flexShrink: 0, color: c.iconColor,
+              }}
+            >
+              <MoreVertical style={{ width: 19, height: 19 }} />
+            </button>
 
-            {/* Admin block */}
-            {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
-              <AdminBlockButton
-                targetUserId={conv.otherUserId}
-                targetUserName={conv.otherUserName}
-                variant="icon"
-              />
+            {showHeaderMenu && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute", top: 44, right: 0, zIndex: 40,
+                  width: 220, borderRadius: 14,
+                  background: c.contextBg, border: `1px solid ${c.contextBorder}`,
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+                  padding: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setShowHeaderMenu(false); setLocation(`/profile/${conv.otherUserId}`); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: "pointer", color: c.contextText, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  <UserRound style={{ width: 16, height: 16 }} />
+                  {t("messages.viewProfile", { defaultValue: "View profile" })}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setShowHeaderMenu(false); setLocation("/report-abuse"); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: "pointer", color: c.contextText, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  <Flag style={{ width: 16, height: 16 }} />
+                  {t("messages.reportUser", { defaultValue: "Report user" })}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={blockingUser}
+                  onClick={async () => {
+                    if (!token || !conv) return;
+                    const ok = window.confirm(
+                      t("messages.confirmBlock", {
+                        defaultValue: "Block {{name}}? You will no longer be able to message each other.",
+                        name: conv.otherUserName,
+                      }),
+                    );
+                    if (!ok) return;
+                    setBlockingUser(true);
+                    try {
+                      const res = await fetch(`/api/users/${conv.otherUserId}/block`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) throw new Error("block failed");
+                      toast({ title: t("messages.userBlocked", { defaultValue: "User blocked" }) });
+                      setShowHeaderMenu(false);
+                      setLocation("/messages");
+                    } catch {
+                      toast({
+                        title: t("messages.blockFailed", { defaultValue: "Could not block user" }),
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setBlockingUser(false);
+                    }
+                  }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: blockingUser ? "wait" : "pointer",
+                    color: c.contextDestructive, fontSize: 13, fontWeight: 600,
+                    opacity: blockingUser ? 0.6 : 1,
+                  }}
+                >
+                  <Ban style={{ width: 16, height: 16 }} />
+                  {t("listing.blockUser", { defaultValue: "Block user" })}
+                </button>
+                {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
+                  <div style={{ padding: "4px 6px 6px" }}>
+                    <AdminBlockButton
+                      targetUserId={conv.otherUserId}
+                      targetUserName={conv.otherUserName}
+                      variant="icon"
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </>)}
       </div>
 
-      {/* Keep the reason for the conversation visible while the thread is open. */}
+      {/* Product context card — real listing data only */}
       {conv?.listingId && (
-        <Link
-          href={`/listings/${conv.listingId}`}
-          style={{ textDecoration: "none", flexShrink: 0 }}
-        >
+        <div style={{
+          flexShrink: 0,
+          padding: "8px 12px",
+          background: c.msgAreaBg,
+          borderBottom: `1px solid ${c.listBorder}`,
+        }}>
           <div style={{
             display: "flex", alignItems: "center", gap: 10,
-            padding: "9px 13px",
+            padding: "10px 12px",
             background: c.contextBg,
-            borderBottom: `1px solid ${c.contextBorder}`,
+            border: `1px solid ${c.contextBorder}`,
+            borderRadius: 14,
+            boxShadow: c.isDark ? "none" : "0 4px 14px rgba(15, 23, 42, 0.06)",
             color: c.contextText,
           }}>
-            <div style={{
-              width: 50, height: 50, borderRadius: 10, overflow: "hidden",
-              flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              {conv.listingImage ? (
-                <img
-                  src={conv.listingImage}
-                  alt={conv.listingTitle}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-              ) : (
-                <span style={{ fontSize: 22 }}>🛍️</span>
-              )}
-            </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{
-                margin: 0, fontSize: 10, fontWeight: 800,
-                letterSpacing: "0.08em", textTransform: "uppercase",
-                color: c.listSub,
+                margin: 0, fontSize: 11, fontWeight: 700,
+                color: FLEXA.orange, display: "flex", alignItems: "center", gap: 5,
               }}>
+                <ShoppingBag style={{ width: 12, height: 12 }} />
                 {t("messages.productContext")}
               </p>
-              <p style={{
-                margin: "3px 0 0", fontSize: 14, fontWeight: 700,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {conv.listingTitle}
-              </p>
-              {conv.listingPrice > 0 && (
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: c.listSub }}>
-                  ${Number(conv.listingPrice).toFixed(2)}
-                </p>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 10, overflow: "hidden",
+                  flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {conv.listingImage ? (
+                    <img
+                      src={conv.listingImage}
+                      alt={conv.listingTitle}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <ShoppingBag style={{ width: 18, height: 18, color: c.listSub }} />
+                  )}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{
+                    margin: 0, fontSize: 14, fontWeight: 700,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {conv.listingTitle}
+                  </p>
+                  {Number(conv.listingPrice) > 0 && (
+                    <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 800, color: FLEXA.orange }}>
+                      ${Number(conv.listingPrice).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-            <span aria-hidden="true" style={{ fontSize: 25, lineHeight: 1, color: c.listSub }}>›</span>
+            <Link
+              href={`/listings/${conv.listingId}`}
+              style={{ textDecoration: "none", flexShrink: 0 }}
+            >
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 2,
+                minHeight: 36, padding: "0 12px",
+                borderRadius: 999,
+                border: `1.5px solid ${FLEXA.orange}`,
+                color: FLEXA.orange, fontSize: 12, fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}>
+                {t("messages.viewProduct", { defaultValue: "View product" })}
+                <ChevronRight style={{ width: 14, height: 14 }} />
+              </span>
+            </Link>
           </div>
-        </Link>
+        </div>
       )}
 
-      {/* ── Messages scroll area — warm ivory/mint radial gradient background ── */}
+      {/* ── Messages scroll area — clean light / dark surface, no decorative art ── */}
       <div
         ref={msgContainerRef}
         style={{
           flex: 1, overflowY: "auto", overflowX: "hidden",
-          background: c.isDark
-            ? c.pageBg
-            : `radial-gradient(circle at 10% 16%, rgba(241,229,201,0.4), transparent 28%),
-               radial-gradient(circle at 92% 67%, rgba(218,236,225,0.7), transparent 30%),
-               #f8f8f3`,
+          background: c.msgAreaBg,
           position: "relative",
-          // Explicitly tell iOS this container handles vertical pan — prevents
-          // the browser from suspending scroll when a child captures pointerdown
           touchAction: "pan-y",
           overscrollBehavior: "contain",
         } as React.CSSProperties}
@@ -2065,7 +2191,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             minHeight: isAndroidMobile ? 48 : 53,
           }}>
 
-            {/* Add attachment — rounded circle with warm bg matching mockup */}
+            {/* Add attachment — soft green circle (ref composer) */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -2076,10 +2202,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 width: isAndroidMobile ? 36 : 38,
                 height: isAndroidMobile ? 36 : 38,
                 borderRadius: "50%",
-                background: c.isDark ? c.iconActiveBg : "#f0f3ed",
+                background: c.isDark ? c.iconActiveBg : "rgba(4, 77, 44, 0.12)",
                 border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                color: c.isDark ? composerActionColor : FLEXA.green, opacity: uploading ? 0.4 : 1,
               }}
             >
               <Plus style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
@@ -2139,7 +2265,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   }}
                   style={{
                     width: 34, height: 34, borderRadius: "50%",
-                    background: showEmojiPanel ? "rgba(223,113,91,0.12)" : "none",
+                    background: showEmojiPanel ? "rgba(249,115,22,0.12)" : "none",
                     border: "none", cursor: "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: composerActionColor,
@@ -2197,7 +2323,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading ? 0.3 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
               >
                 <Send style={{ width: 17, height: 17 }} />
@@ -2215,7 +2341,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
                 aria-label={t("messages.recordVoice")}
               >

@@ -1083,6 +1083,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     request: { timeoutMs: 6_000 },
   });
   const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
+  const isSystemNotifications = conv?.conversationType === "system_notifications";
   const sendMsg = useSendMessage();
 
   useEffect(() => {
@@ -2237,7 +2238,18 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
         <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
 
-            {isRestricted ? (
+            {isSystemNotifications ? (
+          <div style={{
+            padding: "10px 12px 14px",
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.4,
+            color: c.listSub,
+            fontWeight: 600,
+          }}>
+            Official Flexa Market notifications — replies are disabled. Delivery PINs appear here for Haiti domestic orders.
+          </div>
+        ) : isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
         ) : isRecording ? (
           <div style={{

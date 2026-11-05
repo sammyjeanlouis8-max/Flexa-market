@@ -210,10 +210,11 @@ function ConvList({
     >
       {convs.map(conv => {
         const unread = conv.unreadCount > 0;
-        const online = !!onlineMap[conv.otherUserId];
+        const isSystem = conv.conversationType === "system_notifications";
+        const online = !isSystem && !!onlineMap[conv.otherUserId];
         const preview = localizeConversationPreview(conv.lastMessage, conv.listingTitle, t);
         const voice = isVoicePreview(conv.lastMessage);
-        const hasProduct = !!conv.listingId && !!conv.listingTitle;
+        const hasProduct = !isSystem && !!conv.listingId && !!conv.listingTitle;
         return (
           <div
             key={conv.id}
@@ -240,9 +241,11 @@ function ConvList({
               borderBottom: `1px solid ${c.listBorder}`,
               background: activeId === conv.id
                 ? c.listItemActive
-                : unread
-                  ? "rgba(4, 77, 44, 0.04)"
-                  : c.listBg,
+                : isSystem
+                  ? "rgba(4, 77, 44, 0.08)"
+                  : unread
+                    ? "rgba(4, 77, 44, 0.04)"
+                    : c.listBg,
               cursor: "pointer",
               transition: "background 80ms",
             }}
@@ -250,20 +253,21 @@ function ConvList({
             <div
               style={{ position: "relative", flexShrink: 0 }}
               onClick={e => {
+                if (isSystem) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setLocation(`/profile/${conv.otherUserId}`);
               }}
             >
-              <Avatar className="h-10 w-10" style={{ cursor: "pointer" }}>
+              <Avatar className="h-10 w-10" style={{ cursor: isSystem ? "default" : "pointer" }}>
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
                 <AvatarFallback style={{
-                  background: avatarHue(conv.otherUserName || "?"),
+                  background: isSystem ? FLEXA.green : avatarHue(conv.otherUserName || "?"),
                   color: "#fff",
                   fontWeight: 700,
                   fontSize: 14,
                 }}>
-                  {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
+                  {isSystem ? "F" : ((conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?")}
                 </AvatarFallback>
               </Avatar>
               {online && (
@@ -279,14 +283,18 @@ function ConvList({
             <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{
-                  fontSize: 14, color: c.listName, fontWeight: unread ? 700 : 600,
+                  fontSize: 14, color: c.listName, fontWeight: unread || isSystem ? 700 : 600,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0,
                 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{conv.otherUserName}</span>
-                  {conv.otherUserIsVerified && (
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {isSystem ? "System Notifications" : conv.otherUserName}
+                  </span>
+                  {(isSystem || conv.otherUserIsVerified) && (
                     <span
-                      title={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
+                      title={isSystem
+                        ? "Official Flexa Market"
+                        : t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
                       style={{
                         width: 13, height: 13, borderRadius: "50%",
                         background: "#16A34A", color: "#fff",
@@ -323,13 +331,18 @@ function ConvList({
                 </p>
                 {unread && (
                   <span style={{
-                    minWidth: 18, height: 18, padding: "0 5px", borderRadius: 999,
-                    background: "#EF4444", color: "#fff",
+                    width: isSystem ? 10 : undefined,
+                    minWidth: isSystem ? 10 : 18,
+                    height: isSystem ? 10 : 18,
+                    padding: isSystem ? 0 : "0 5px",
+                    borderRadius: 999,
+                    background: isSystem ? "#16A34A" : "#EF4444",
+                    color: "#fff",
                     fontSize: 10, fontWeight: 700,
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     flexShrink: 0,
                   }}>
-                    {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
+                    {isSystem ? null : (conv.unreadCount > 99 ? "99+" : conv.unreadCount)}
                   </span>
                 )}
               </div>

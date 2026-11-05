@@ -123,11 +123,12 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "order_delivered": return t("notifications.orderDelivered");
       case "card_refund": return n.message || t("notifications.defaultNotif");
       case "delivery_picked_up": return t("notifications.deliveryPickedUp");
+      case "delivery_pin": return n.message || t("notifications.confirmCode", { defaultValue: "Delivery PIN" });
       case "delivery_on_the_way": return t("notifications.deliveryOnTheWay");
       case "delivery_arrived": return t("notifications.deliveryArrived");
       case "delivery_delivered": return t("notifications.deliveryDelivered");
       case "delivery_paid": return t("notifications.deliveryPaid");
-      case "driver_assigned": return t("notifications.driverAssigned");
+      case "driver_assigned": return n.message || t("notifications.driverAssigned");
       case "boost_approved":
       case "boost_activated": return t("notifications.boostActivated");
       case "transfer_received": return n.message
@@ -184,6 +185,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "card_refund":
         return n.referenceId ? `/orders/${n.referenceId}` : "/orders";
       case "delivery_picked_up":
+      case "delivery_pin":
       case "delivery_on_the_way":
       case "delivery_arrived":
       case "delivery_delivered":
@@ -241,6 +243,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "order_shipped": return "🚚";
       case "order_delivered": return "📦";
       case "delivery_picked_up": return "🔐";
+      case "delivery_pin": return "🔐";
       case "delivery_on_the_way": return "🛵";
       case "delivery_arrived": return "📍";
       case "delivery_delivered": return "✅";
@@ -326,8 +329,12 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
                     <p className="text-xs text-foreground leading-snug">
                       {notifMessage(n)}
                     </p>
-                    {n.type === "delivery_picked_up" && n.message && (() => {
-                      const m = n.message.match(/kòd konfirmasyon ou:\s*(\d{4,8})/i) ?? n.message.match(/:\s*(\d{4,8})\./);
+                    {(n.type === "delivery_picked_up" || n.type === "delivery_pin" || n.type === "driver_assigned") && n.message && (() => {
+                      const m =
+                        n.message.match(/kòd\s*pin\s*livrezon\s*ou:\s*(\d{4,8})/i) ??
+                        n.message.match(/kòd\s*sekrè\s*ou:\s*(\d{4,8})/i) ??
+                        n.message.match(/kòd\s*konfirmasyon\s*ou:\s*(\d{4,8})/i) ??
+                        n.message.match(/:\s*(\d{4,8})(?:\n|\.|\s|$)/);
                       const code = m?.[1];
                       return code ? (
                         <div className="mt-1 px-2 py-1.5 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-between gap-2">

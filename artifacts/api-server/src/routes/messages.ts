@@ -131,25 +131,40 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
     const isBuyer = r.conv.buyerId === userId;
     const otherUserId = isBuyer ? r.conv.sellerId : r.conv.buyerId;
     const otherUser = isBuyer ? r.seller : r.buyer;
-    const otherIsAdmin = !!(otherUser?.isAdmin || otherUser?.isSuperAdmin);
+    const isSystemNotifications = r.conv.conversationType === "system_notifications";
     return {
       id: r.conv.id,
       listingId: r.conv.listingId,
       listingTitle: r.conv.conversationType === "agent_recharge"
         ? "💼 Agent Recharge"
-        : (r.listing?.title ?? "Deleted listing"),
+        : isSystemNotifications
+          ? "System Notifications"
+          : (r.listing?.title ?? "Deleted listing"),
       listingImage: r.listing?.images?.[0] ?? null,
       listingPrice: r.listing?.price ?? 0,
       otherUserId,
-      otherUserName: otherUser?.name ?? "Unknown",
-      otherUserAvatar: otherUser?.avatar ?? null,
-      otherUserIsVerified: !!otherUser?.isVerified,
+      otherUserName: isSystemNotifications ? "System Notifications" : (otherUser?.name ?? "Unknown"),
+      otherUserAvatar: isSystemNotifications
+        ? (otherUser?.avatar || "/flexa-logo-v2.png")
+        : (otherUser?.avatar ?? null),
+      otherUserIsVerified: isSystemNotifications ? true : !!otherUser?.isVerified,
+      conversationType: r.conv.conversationType ?? "listing",
       /** Role of the current user in this conversation — drives Buyers/Sellers inbox tabs. */
       myRole: (isBuyer ? "buyer" : "seller") as "buyer" | "seller",
       lastMessage: r.conv.lastMessage ?? null,
       lastMessageAt: r.conv.lastMessageAt?.toISOString() ?? null,
       unreadCount: Number(r.unreadCount ?? 0),
     };
+  });
+
+  // Keep official System Notifications near the top of the inbox.
+  result.sort((a, b) => {
+    const aSys = a.conversationType === "system_notifications" ? 1 : 0;
+    const bSys = b.conversationType === "system_notifications" ? 1 : 0;
+    if (aSys !== bSys) return bSys - aSys;
+    const aTime = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
+    const bTime = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
+    return bTime - aTime;
   });
 
   res.json(result);

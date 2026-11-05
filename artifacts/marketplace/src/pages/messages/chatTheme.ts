@@ -10,6 +10,8 @@ export type Conversation = {
   otherUserAvatar?: string | null;
   /** Real KYC/verified flag from users.is_verified */
   otherUserIsVerified?: boolean;
+  /** listing | agent_recharge | system_notifications | … */
+  conversationType?: string;
   /** Current user's role in this conversation */
   myRole?: "buyer" | "seller";
   lastMessage?: string | null;

@@ -675,6 +675,11 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
 
 // ─── Sales summary ────────────────────────────────────────────────────────────
 
+router.get("/sales/dashboard", requireAuth, async (req, res): Promise<void> => {
+  const { handleSellerSalesDashboard } = await import("./sellerSalesDashboard");
+  await handleSellerSalesDashboard(req, res);
+});
+
 router.get("/sales/summary", requireAuth, async (req, res): Promise<void> => {
   // Retain the legacy no-query summary for existing callers. The new center
   // explicitly requests the monthly, paginated reporting contract.

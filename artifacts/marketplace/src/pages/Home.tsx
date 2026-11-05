@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import ListingCard from "@/components/ListingCard";
-import BoostedDealCard from "@/components/BoostedDealCard";
+import TodaysDealCard from "@/components/TodaysDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
+import { selectTodaysDealSlots } from "@/lib/todaysDeals";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -60,8 +61,11 @@ type NormalListing = {
   condition: string;
   isBoosted: boolean;
   boostExpiresAt?: string | null;
+  isFeatured?: boolean;
   boostVideoUrl?: string | null;
   listingVideoUrl?: string | null;
+  moderationStatus?: string | null;
+  lifecycleStatus?: string | null;
   promaxGroup?: "booster_vip" | "booster_ordinary" | "vip" | "ordinary" | null;
   promaxPosition?: number | null;
   status: string;
@@ -351,7 +355,7 @@ export default function Home() {
     }));
   }, [allListings, activeCategory]);
 
-  // Real boosted listings only — used for hero / deals (never invent promotions).
+  // Real boosted listings only — used for hero (never invent promotions).
   // Country eligibility is enforced server-side; re-check client-side so a paid
   // boost can never bypass the selected marketplace country in this section.
   const boostedListings = useMemo(
@@ -364,7 +368,20 @@ export default function Home() {
     }),
     [allListings, activeCategory, activeCountry, isAdmin],
   );
-  const heroListing = boostedListings[0] ?? allListings[0] ?? null;
+
+  // Today's Deals / Today's Picks — always fill 2 slots: boosted first, then
+  // eligible regular products. Never leave an empty half of the grid.
+  const todaysDeals = useMemo(
+    () =>
+      selectTodaysDealSlots(allListings, {
+        slotCount: 2,
+        activeCategory,
+        activeCountry: isAdmin ? null : activeCountry,
+        skipCountryFilter: isAdmin,
+      }),
+    [allListings, activeCategory, activeCountry, isAdmin],
+  );
+  const heroListing = boostedListings[0] ?? todaysDeals.slots[0] ?? allListings[0] ?? null;
 
   const recordedBoostImpressionsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -994,38 +1011,44 @@ export default function Home() {
           </section>
         )}
 
-        {/* === TODAY'S DEALS — full-width two-column boosted cards (no empty half) === */}
-        {boostedListings.length > 0 && (
+        {/* === TODAY'S DEALS / PICKS — professional two-column product grid === */}
+        {todaysDeals.slots.length > 0 && (
           <section
             className="rounded-2xl border border-orange-300/70 bg-[#FBF6EC] dark:bg-orange-950/15 dark:border-orange-900/40 p-3"
             data-testid="todays-deals-section"
+            data-used-fallback={todaysDeals.usedFallback ? "true" : "false"}
           >
             <div className="mb-2.5 flex items-center justify-between gap-2">
               <h2 className="text-base font-bold text-foreground">
-                {t("home.todaysDeals", { defaultValue: "Today's Deals" })}
+                {todaysDeals.useNeutralHeading
+                  ? t("home.todaysPicks", { defaultValue: "Today's Picks" })
+                  : t("home.todaysDeals", { defaultValue: "Today's Deals" })}
               </h2>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-300">
-                <span aria-hidden>⚡</span>
-                {t("home.boostedListings", { defaultValue: "Boosted listings" })}
-              </span>
+              {!todaysDeals.useNeutralHeading && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-300">
+                  <span aria-hidden>⚡</span>
+                  {t("home.boostedListings", { defaultValue: "Boosted listings" })}
+                </span>
+              )}
             </div>
-            {boostedListings.length === 1 ? (
-              <BoostedDealCard listing={boostedListings[0]} />
-            ) : (
-              <div
-                className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                data-testid="todays-deals-carousel"
-              >
-                {boostedListings.slice(0, 8).map((listing) => (
-                  <div
-                    key={`deal-${listing.id}`}
-                    className="w-[min(100%,100%)] max-w-[560px] shrink-0 snap-start sm:w-[min(92%,640px)]"
-                  >
-                    <BoostedDealCard listing={listing} />
-                  </div>
-                ))}
-              </div>
-            )}
+            <div
+              className="grid grid-cols-2 gap-2.5 sm:gap-3"
+              data-testid="todays-deals-grid"
+            >
+              {todaysDeals.slots.map((listing) => (
+                <div key={`deal-${listing.id}`} className="min-w-0 h-full">
+                  <TodaysDealCard listing={listing} />
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/search?boosted=true"
+              className="mt-3 flex w-full items-center justify-center gap-1 rounded-full border border-orange-400/80 bg-transparent px-3 py-2.5 text-[13px] font-bold text-orange-600 transition-colors hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+              data-testid="view-all-boosted-listings"
+            >
+              {t("home.viewAllBoosted", { defaultValue: "View All Boosted Listings" })}
+              <span aria-hidden>→</span>
+            </Link>
           </section>
         )}
 

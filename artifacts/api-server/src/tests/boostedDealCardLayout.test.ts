@@ -1,6 +1,6 @@
 /**
- * Guards Today's Deals boosted card: always two columns, video XOR info panel,
- * second-image fallback, and valid-video URL checks.
+ * Guards Today's Deals: two-column product grid, boosted-first fallback
+ * selection, and BoostedDealCard video helpers used by the preview page.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -9,9 +9,14 @@ import {
   isValidProductVideoUrl,
   resolveValidProductVideoUrl,
 } from "../../../marketplace/src/lib/boostedDealVideo";
+import { selectTodaysDealSlots } from "../../../marketplace/src/lib/todaysDeals";
 
 const card = readFileSync(
   resolve(__dirname, "../../../marketplace/src/components/BoostedDealCard.tsx"),
+  "utf8",
+);
+const dealCard = readFileSync(
+  resolve(__dirname, "../../../marketplace/src/components/TodaysDealCard.tsx"),
   "utf8",
 );
 const home = readFileSync(
@@ -64,10 +69,59 @@ describe("BoostedDealCard layout contract", () => {
     expect(card).toMatch(/onUnavailable/);
     expect(card).toMatch(/onError=\{\(\) => setError\(true\)\}/);
   });
+});
 
-  it("Home only wraps Today's Deals section (Featured Products untouched heading)", () => {
+describe("Today's Deals Home section contract", () => {
+  it("renders a two-column product grid with View All Boosted link", () => {
     expect(home).toMatch(/todays-deals-section/);
+    expect(home).toMatch(/todays-deals-grid/);
+    expect(home).toMatch(/grid-cols-2/);
+    expect(home).toMatch(/TodaysDealCard/);
+    expect(home).toMatch(/selectTodaysDealSlots/);
+    expect(home).toMatch(/view-all-boosted-listings/);
+    expect(home).toMatch(/\/search\?boosted=true/);
     expect(home).toMatch(/bg-\[#FBF6EC\]/);
     expect(home).toMatch(/home\.featuredProducts/);
+    expect(home).toMatch(/home\.todaysPicks/);
+  });
+
+  it("only shows Boosted badges for actively boosted products", () => {
+    expect(dealCard).toMatch(/isActivelyBoosted/);
+    expect(dealCard).toMatch(/badge-boosted-overlay/);
+    expect(dealCard).toMatch(/badge-featured-overlay/);
+    expect(dealCard).toMatch(/showFeatured/);
+    // Regular products must not get a hard-coded Boosted footer.
+    expect(dealCard).toMatch(/activelyBoosted && \(/);
+  });
+
+  it("fills empty slots with regular products via selectTodaysDealSlots", () => {
+    const now = Date.parse("2026-11-05T12:00:00.000Z");
+    const result = selectTodaysDealSlots(
+      [
+        {
+          id: 1,
+          isBoosted: true,
+          boostExpiresAt: "2026-12-01T00:00:00.000Z",
+          status: "available",
+          moderationStatus: "approved",
+          images: ["a.jpg"],
+          viewCount: 10,
+          createdAt: "2026-11-01T00:00:00.000Z",
+        },
+        {
+          id: 2,
+          isBoosted: false,
+          status: "available",
+          moderationStatus: "approved",
+          images: ["b.jpg"],
+          viewCount: 50,
+          createdAt: "2026-11-04T00:00:00.000Z",
+        },
+      ],
+      { nowMs: now },
+    );
+    expect(result.slots.map((s) => s.id)).toEqual([1, 2]);
+    expect(result.usedFallback).toBe(true);
+    expect(result.useNeutralHeading).toBe(true);
   });
 });

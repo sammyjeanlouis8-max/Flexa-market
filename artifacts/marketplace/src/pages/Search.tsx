@@ -255,6 +255,7 @@ export default function SearchPage() {
     initialUrl.maxPrice,
   ]);
   const [page, setPage] = useState(initialUrl.page);
+  const [boostedOnly, setBoostedOnly] = useState(initialUrl.boosted);
   const [adminCountry, setAdminCountry] = useState<string | null>(null);
 
   useSearchUrlSync(
@@ -267,6 +268,7 @@ export default function SearchPage() {
       minPrice: priceRange[0],
       maxPrice: priceRange[1],
       page,
+      boosted: boostedOnly,
     },
     (next) => {
       setQ(next.q);
@@ -276,6 +278,7 @@ export default function SearchPage() {
       setCity(next.city);
       setPriceRange([next.minPrice, next.maxPrice]);
       setPage(next.page);
+      setBoostedOnly(next.boosted);
     },
   );
 
@@ -393,6 +396,7 @@ export default function SearchPage() {
       minPrice: priceRange[0] || undefined,
       maxPrice: priceRange[1] < SEARCH_DEFAULT_MAX_PRICE ? priceRange[1] : undefined,
       city: debouncedCity || undefined,
+      ...(boostedOnly ? { boosted: true } : {}),
       ...(isAdmin && effectiveAdminCountry != null ? { country: effectiveAdminCountry } : {}),
       page,
       limit: 20,
@@ -403,6 +407,7 @@ export default function SearchPage() {
           "listings", debouncedQ, category, subcategory, condition,
           priceRange, debouncedCity, page, user?.id,
           isAdmin ? effectiveAdminCountry : null,
+          boostedOnly,
         ],
       },
     },
@@ -411,6 +416,7 @@ export default function SearchPage() {
   const clearFilters = useCallback(() => {
     setQ(""); setCategory(""); setSubcategory(""); setCondition("");
     setCity(""); setPriceRange([0, SEARCH_DEFAULT_MAX_PRICE]); setPage(1);
+    setBoostedOnly(false);
     if (isSuperAdmin) setAdminCountry(null);
   }, [isSuperAdmin]);
 
@@ -429,6 +435,7 @@ export default function SearchPage() {
 
   const activeFiltersCount =
     [category, subcategory, condition, city, q].filter(Boolean).length +
+    (boostedOnly ? 1 : 0) +
     (priceRange[0] > 0 || priceRange[1] < SEARCH_DEFAULT_MAX_PRICE ? 1 : 0);
 
   return (
@@ -623,8 +630,20 @@ export default function SearchPage() {
       </div>
 
       {/* Active filter chips */}
-      {(category || subcategory) && (
+      {(category || subcategory || boostedOnly) && (
         <div className="flex flex-wrap gap-2 mb-4">
+          {boostedOnly && (
+            <Badge variant="secondary" className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+              ⚡ {t("home.boostedListings", { defaultValue: "Boosted listings" })}
+              <button
+                onClick={() => { setBoostedOnly(false); setPage(1); }}
+                className="ml-1 hover:text-destructive"
+                aria-label="Clear boosted filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
           {category && (
             <Badge variant="secondary" className="flex items-center gap-1 px-2 py-1">
               {categories?.find(c => c.slug === category)?.icon}{" "}

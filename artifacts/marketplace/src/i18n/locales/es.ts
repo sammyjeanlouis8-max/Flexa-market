@@ -478,10 +478,12 @@ export default {
   },
   home: {
     todaysDeals: "Ofertas de hoy",
+    todaysPicks: "Selección de hoy",
     dealInfoFallback: "Abre la página del producto para ver todos los detalles del vendedor.",
     dealVideoUnavailable: "Video no disponible",
     featuredBadge: "Destacado",
     boostedListings: "Anuncios impulsados",
+    viewAllBoosted: "Ver todos los anuncios impulsados",
     featuredProducts: "Productos destacados",
     featured: "Destacados",
     justListed: "Recién publicados",

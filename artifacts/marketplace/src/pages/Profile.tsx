@@ -63,7 +63,7 @@ function PickupScheduleBadge({ schedule }: { schedule: PickupSlot[] }) {
 export default function ProfilePage() {
   const [, params] = useRoute("/profile/:id");
   const id = parseInt(params?.id ?? "0", 10);
-  const { user: me } = useAuth();
+  const { user: me, token } = useAuth();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { t } = useTranslation();
@@ -208,12 +208,69 @@ export default function ProfilePage() {
               {(listings as any[])?.map((l: any) => (
                 <div key={l.id} className="min-w-0">
                   <ListingCard listing={l} />
-                  {me?.id === id && (l.status === "removed" || l.moderationStatus === "rejected") && (
-                    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
-                      <p className="font-semibold">Pwodwi sa a pa pibliye ankò.</p>
-                      <p className="mt-0.5">
-                        Rezon admin nan: {l.moderationReason || "Administratè a pa bay plis detay."}
+                  {me?.id === id && (
+                    l.status === "removed" ||
+                    l.moderationStatus === "rejected" ||
+                    l.moderationStatus === "pending" ||
+                    l.lifecycleStatus === "suspended"
+                  ) && (
+                    <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200 space-y-1.5">
+                      <p className="font-semibold">
+                        {l.lifecycleStatus === "suspended"
+                          ? t("profile.listingSuspended", { defaultValue: "This listing is suspended." })
+                          : l.moderationStatus === "pending"
+                            ? t("profile.listingPendingReview", { defaultValue: "Pending human review." })
+                            : t("profile.listingNotPublished", { defaultValue: "This product is not published." })}
                       </p>
+                      <p className="mt-0.5">
+                        {l.rejectionCode ? `${l.rejectionCode}: ` : ""}
+                        {l.moderationReason || t("profile.noAdminReason", { defaultValue: "No additional details yet." })}
+                      </p>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Link href={`/sell?edit=${l.id}`}>
+                          <Button size="sm" variant="outline" className="h-7 text-[11px]">
+                            {t("profile.editAndCorrect", { defaultValue: "Edit & correct" })}
+                          </Button>
+                        </Link>
+                        {l.lifecycleStatus !== "suspended" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[11px]"
+                            onClick={async () => {
+                              const note = window.prompt(
+                                t("profile.appealPrompt", { defaultValue: "Explain your correction for reviewers:" }),
+                              );
+                              if (!note?.trim()) return;
+                              await fetch(`/api/listings/${l.id}/appeal`, {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({ note: note.trim() }),
+                              });
+                            }}
+                          >
+                            {t("profile.appealListing", { defaultValue: "Appeal" })}
+                          </Button>
+                        )}
+                        {l.moderationStatus === "rejected" && l.lifecycleStatus !== "suspended" && (
+                          <Button
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            onClick={async () => {
+                              await fetch(`/api/listings/${l.id}/resubmit`, {
+                                method: "POST",
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              queryClient.invalidateQueries({ queryKey: ["user-listings", id] });
+                            }}
+                          >
+                            {t("profile.resubmitListing", { defaultValue: "Resubmit" })}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -9,6 +9,8 @@ export type SearchUrlState = {
   minPrice: number;
   maxPrice: number;
   page: number;
+  /** When true, only return actively boosted listings (View All Boosted). */
+  boosted: boolean;
 };
 
 const DEFAULT_MAX = 5000;
@@ -29,6 +31,7 @@ function readFromLocation(): SearchUrlState {
     minPrice: Number.isFinite(min) && min >= 0 ? min : 0,
     maxPrice: Number.isFinite(max) && max > 0 ? max : DEFAULT_MAX,
     page: Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1,
+    boosted: params.get("boosted") === "true",
   };
 }
 
@@ -42,6 +45,7 @@ function buildSearch(state: SearchUrlState): string {
   if (state.minPrice > 0) params.set("minPrice", String(state.minPrice));
   if (state.maxPrice < DEFAULT_MAX) params.set("maxPrice", String(state.maxPrice));
   if (state.page > 1) params.set("page", String(state.page));
+  if (state.boosted) params.set("boosted", "true");
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -92,6 +96,7 @@ export function getInitialSearchUrlState(): SearchUrlState {
       minPrice: 0,
       maxPrice: DEFAULT_MAX,
       page: 1,
+      boosted: false,
     };
   }
   return readFromLocation();

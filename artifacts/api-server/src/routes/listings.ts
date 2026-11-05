@@ -261,6 +261,7 @@ async function formatListing(
     images: cleanListingImages(listing.images),
     status: listing.status,
     isBoosted: listing.isBoosted,
+    isFeatured: listing.isFeatured,
     boostExpiresAt: listing.boostExpiresAt?.toISOString() ?? null,
     promaxGroup: precomputed?.promaxGroup ?? null,
     promaxPosition: precomputed?.promaxPosition ?? null,
@@ -347,7 +348,11 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   if (condition) baseConditions.push(eq(listingsTable.condition, condition));
   if (location) baseConditions.push(ilike(listingsTable.location, `%${location}%`));
   if (city) baseConditions.push(ilike(listingsTable.city!, `%${city}%`));
-  if (boosted === "true") baseConditions.push(eq(listingsTable.isBoosted, true));
+  if (boosted === "true") {
+    // View All Boosted — only active, non-expired paid boosts.
+    baseConditions.push(eq(listingsTable.isBoosted, true));
+    baseConditions.push(sql`(${listingsTable.boostExpiresAt} IS NULL OR ${listingsTable.boostExpiresAt} > NOW())`);
+  }
 
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {

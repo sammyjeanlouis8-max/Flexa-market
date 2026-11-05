@@ -34,6 +34,7 @@ const SetNewPassword   = lazy(() => import("@/pages/auth/SetNewPassword"));
 // ── Lazy-loaded pages — only downloaded when the route is visited ─────────────
 const DriverSelfieMobile = lazy(() => import("@/pages/DriverSelfieMobile"));
 const Home               = lazy(() => import("@/pages/Home"));
+const BoostedDealPreview = lazy(() => import("@/pages/dev/BoostedDealPreview"));
 const Search             = lazy(() => import("@/pages/Search"));
 const ListingDetail      = lazy(() => import("@/pages/ListingDetail"));
 const Sell               = lazy(() => import("@/pages/Sell"));
@@ -213,6 +214,7 @@ function LayoutRoutes() {
           <Route path="/auth/suspended" component={SuspendedScreen} />
           <Route path="/auth/set-new-password" component={SetNewPassword} />
           <Route path="/" component={Home} />
+          <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}

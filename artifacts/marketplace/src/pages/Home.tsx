@@ -61,6 +61,7 @@ type NormalListing = {
   isBoosted: boolean;
   boostExpiresAt?: string | null;
   boostVideoUrl?: string | null;
+  listingVideoUrl?: string | null;
   promaxGroup?: "booster_vip" | "booster_ordinary" | "vip" | "ordinary" | null;
   promaxPosition?: number | null;
   status: string;
@@ -996,7 +997,7 @@ export default function Home() {
         {/* === TODAY'S DEALS — full-width two-column boosted cards (no empty half) === */}
         {boostedListings.length > 0 && (
           <section
-            className="rounded-2xl border border-orange-200/80 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10 dark:border-orange-900/40 p-3"
+            className="rounded-2xl border border-orange-300/70 bg-[#FBF6EC] dark:bg-orange-950/15 dark:border-orange-900/40 p-3"
             data-testid="todays-deals-section"
           >
             <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -1009,18 +1010,18 @@ export default function Home() {
               </span>
             </div>
             {boostedListings.length === 1 ? (
-              <BoostedDealCard listing={boostedListings[0]} indexLabel="1/1" />
+              <BoostedDealCard listing={boostedListings[0]} />
             ) : (
               <div
                 className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 data-testid="todays-deals-carousel"
               >
-                {boostedListings.slice(0, 8).map((listing, i, arr) => (
-                  <div key={`deal-${listing.id}`} className="w-[min(100%,560px)] shrink-0 snap-start sm:w-[min(92%,640px)]">
-                    <BoostedDealCard
-                      listing={listing}
-                      indexLabel={`${i + 1}/${Math.min(arr.length, 8)}`}
-                    />
+                {boostedListings.slice(0, 8).map((listing) => (
+                  <div
+                    key={`deal-${listing.id}`}
+                    className="w-[min(100%,100%)] max-w-[560px] shrink-0 snap-start sm:w-[min(92%,640px)]"
+                  >
+                    <BoostedDealCard listing={listing} />
                   </div>
                 ))}
               </div>

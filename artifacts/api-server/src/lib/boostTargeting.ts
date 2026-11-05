@@ -5,9 +5,9 @@ export const VALID_PAY_METHODS = ["card", "usdt", "moncash", "natcash", "sepa", 
 export type PayMethod = (typeof VALID_PAY_METHODS)[number];
 
 export const PLAN_META: Record<Plan, { days: number; basePrice: number }> = {
-  "1day": { days: 1, basePrice: 2.99 },
-  "3day": { days: 3, basePrice: 6.99 },
-  "7day": { days: 7, basePrice: 12.99 },
+  "1day": { days: 1, basePrice: 2.00 },
+  "3day": { days: 3, basePrice: 5.00 },
+  "7day": { days: 7, basePrice: 10.00 },
 };
 
 export const VALID_RADIUS_KM = [5, 10, 20, 50, 100] as const;
@@ -132,12 +132,52 @@ export function estimateReach(budget: number, plan: Plan, audience: Audience): n
   return Math.max(50, base);
 }
 
-export const MIN_BOOST_BUDGET = 5;
+/** Minimum total campaign budget in USD (flexible custom budgets start here). */
+export const MIN_BOOST_BUDGET = 2;
+/**
+ * Soft fraud / ops threshold — budgets at or above this are accepted but flagged
+ * for elevated monitoring. Not shown as a UI maximum.
+ */
+export const LARGE_BOOST_BUDGET_USD = 500;
+/**
+ * Hard ceiling for payment-provider safety and abuse prevention.
+ * There is no fixed maximum in the seller UI; this is server-only.
+ */
+export const ABSOLUTE_MAX_BOOST_BUDGET_USD = 25_000;
 
-export function validateBudget(raw: unknown, plan: Plan): { ok: true; budget: number } | { ok: false; error: string } {
+export function roundUsdCents(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+export function planDays(plan: Plan): number {
+  return PLAN_META[plan].days;
+}
+
+/** Even daily allocation used for delivery pacing (never exceeds total budget). */
+export function dailyBudgetFromTotal(totalBudget: number, plan: Plan): number {
+  const days = Math.max(1, planDays(plan));
+  return roundUsdCents(totalBudget / days);
+}
+
+export function validateBudget(
+  raw: unknown,
+  _plan: Plan,
+): { ok: true; budget: number; largeBudget: boolean } | { ok: false; error: string } {
   const n = typeof raw === "number" ? raw : parseFloat(String(raw ?? ""));
   if (!Number.isFinite(n)) return { ok: false, error: "Invalid budget" };
-  if (n < MIN_BOOST_BUDGET) return { ok: false, error: `Budget must be at least $${MIN_BOOST_BUDGET.toFixed(2)}` };
-  if (n > 500) return { ok: false, error: "Budget cannot exceed $500" };
-  return { ok: true, budget: Math.round(n * 100) / 100 };
+  // Reject sub-cent noise and negative values before rounding.
+  if (n < MIN_BOOST_BUDGET - 1e-9) {
+    return { ok: false, error: `Budget must be at least $${MIN_BOOST_BUDGET.toFixed(2)}` };
+  }
+  if (n > ABSOLUTE_MAX_BOOST_BUDGET_USD + 1e-9) {
+    return {
+      ok: false,
+      error: `Budget exceeds the payment-provider safety limit of $${ABSOLUTE_MAX_BOOST_BUDGET_USD.toLocaleString("en-US")}`,
+    };
+  }
+  const budget = roundUsdCents(n);
+  if (budget < MIN_BOOST_BUDGET) {
+    return { ok: false, error: `Budget must be at least $${MIN_BOOST_BUDGET.toFixed(2)}` };
+  }
+  return { ok: true, budget, largeBudget: budget >= LARGE_BOOST_BUDGET_USD };
 }

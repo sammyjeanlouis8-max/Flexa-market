@@ -37,6 +37,7 @@ import {
   type PromaxGroup,
 } from "../lib/promaxRotation";
 import {
+  BOOST_IMPRESSIONS_PER_USD,
   isUndefinedTableError,
   isWithinPromaxDailyBudget,
   matchesPromaxAudience,
@@ -2130,7 +2131,11 @@ router.post("/listings/:id/impression", optionalAuth, async (req, res): Promise<
   try {
     const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
     const [boost] = await db
-      .select({ id: boostsTable.id })
+      .select({
+        id: boostsTable.id,
+        budget: boostsTable.budget,
+        impressions: boostsTable.impressions,
+      })
       .from(boostsTable)
       .where(and(
         eq(boostsTable.listingId, id),
@@ -2147,8 +2152,17 @@ router.post("/listings/:id/impression", optionalAuth, async (req, res): Promise<
           eq(boostDailyImpressionsTable.boostId, boost.id),
           eq(boostDailyImpressionsTable.date, today),
         )).limit(1);
+      // Hard stop when lifetime delivery would exceed the authorized campaign budget.
+      const authorizedBudget = Number(boost.budget ?? 0);
+      if (authorizedBudget > 0) {
+        const lifetimeCap = Math.floor(authorizedBudget * BOOST_IMPRESSIONS_PER_USD);
+        if ((boost.impressions ?? 0) >= lifetimeCap) {
+          res.json({ ok: true, capped: true, reason: "campaign_budget" });
+          return;
+        }
+      }
       if (!isWithinPromaxDailyBudget(listing?.dailyBudget, daily?.impressionCount ?? 0)) {
-        res.json({ ok: true, capped: true });
+        res.json({ ok: true, capped: true, reason: "daily_budget" });
         return;
       }
       await Promise.all([

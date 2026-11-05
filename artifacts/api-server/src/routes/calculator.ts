@@ -29,7 +29,7 @@ YOUR SPECIALTIES:
    - Same commune (Menm komin): Moto $3, Compact car $5, Large car/SUV $8
    - Cross-city (Lòt vil): $2 per km, minimum $3
 4. Currency conversions: 1 USD ≈ 130 HTG (Goud ayisyen). Always clarify this is approximate.
-5. Boost costs: starts at $5/day. Budget × days = total cost.
+5. Boost costs: campaigns start at $2 USD total. Sellers choose any custom budget from $2. Daily spend is allocated as budget ÷ days.
 6. Transfer fees: 1% of transfer amount + $3 daily access fee (first transfer per day)
 7. Wallet math: balance after commission, after delivery fee, after fees
 8. Discounts, promo codes, price reductions
@@ -40,7 +40,7 @@ FLEXA MARKET QUICK REFERENCE:
 - Delivery same commune: Moto=$3 | Compact=$5 | Large/SUV=$8
 - Delivery cross-city: $2/km, min $3
 - MonCash rate: varies, use 1 USD = 130 HTG as default
-- Boost: $5/day minimum
+- Boost: $2 USD minimum total campaign budget (flexible custom amounts)
 - Transfer: 1% fee + $3/day access
 
 RULES:

@@ -63,6 +63,10 @@ interface ActiveBoost {
   boostId: number;
   plan: string;
   budget: number;
+  dailyBudget?: number | null;
+  durationDays?: number | null;
+  estimatedSpentUsd?: number;
+  remainingBudgetUsd?: number;
   isExpired: boolean;
 }
 
@@ -387,6 +391,20 @@ export default function MyBoosts() {
                               {boost.impressions > 0 ? `${((boost.clicks / boost.impressions) * 100).toFixed(1)}%` : "—"}
                             </span>
                             <span className="text-[9px] text-muted-foreground font-medium">{t("myBoosts.ctrLabel")}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
+                          <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+                            <p className="text-muted-foreground">{t("myBoosts.budgetLabel")}</p>
+                            <p className="font-bold tabular-nums text-foreground">${Number(boost.budget ?? 0).toFixed(2)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+                            <p className="text-muted-foreground">{t("myBoosts.spentLabel")}</p>
+                            <p className="font-bold tabular-nums text-foreground">${Number(boost.estimatedSpentUsd ?? 0).toFixed(2)}</p>
+                          </div>
+                          <div className="rounded-lg bg-muted/60 px-2 py-1.5 text-center">
+                            <p className="text-muted-foreground">{t("myBoosts.remainingLabel")}</p>
+                            <p className="font-bold tabular-nums text-foreground">${Number(boost.remainingBudgetUsd ?? boost.budget ?? 0).toFixed(2)}</p>
                           </div>
                         </div>
                       </div>

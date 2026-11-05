@@ -2369,6 +2369,8 @@ export async function runStartupMigrations(): Promise<void> {
 
   // ── Driver zone preference (department-level delivery visibility) ────────────
   migrations.push({ name: "drivers.department", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS department text" });
+  // Multi-commune work zones for Haiti drivers (JSON string array)
+  migrations.push({ name: "drivers.work_zones", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS work_zones text" });
 
   // ── Flexa TV ─────────────────────────────────────────────────────────────────
   migrations.push({
@@ -2647,6 +2649,82 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // ── Flexa AI usage ledger (quotas / cost visibility; no secrets stored) ─────
+  migrations.push({
+    name: "flexa_ai_usage.create",
+    sql: `CREATE TABLE IF NOT EXISTS flexa_ai_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      capability TEXT NOT NULL,
+      day DATE NOT NULL DEFAULT (CURRENT_DATE),
+      model TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexa_ai_usage.user_day_cap_idx",
+    sql: "CREATE INDEX IF NOT EXISTS flexa_ai_usage_user_day_idx ON flexa_ai_usage(user_id, capability, day)",
+  });
+  migrations.push({
+    name: "flexabot_audit.v1",
+    sql: `CREATE TABLE IF NOT EXISTS flexabot_audit (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      intent TEXT,
+      lang TEXT,
+      ok BOOLEAN NOT NULL DEFAULT FALSE,
+      provider TEXT,
+      model TEXT,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      deep_links TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexabot_audit.idx_user",
+    sql: "CREATE INDEX IF NOT EXISTS flexabot_audit_user_idx ON flexabot_audit(user_id, created_at DESC)",
+  });
+
+  // ── Product eligibility / lifecycle (additive; preserves status + moderation) ─
+  migrations.push({ name: "listings.eligibility_class", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS eligibility_class TEXT NOT NULL DEFAULT 'allowed'" });
+  migrations.push({ name: "listings.lifecycle_status", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS lifecycle_status TEXT NOT NULL DEFAULT 'published'" });
+  migrations.push({ name: "listings.rejection_code", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS rejection_code TEXT" });
+  migrations.push({ name: "listings.appeal_status", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_status TEXT" });
+  migrations.push({ name: "listings.appeal_note", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_note TEXT" });
+  migrations.push({ name: "listings.appeal_at", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_at TIMESTAMPTZ" });
+  migrations.push({ name: "listings.appeal_resolved_at", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_resolved_at TIMESTAMPTZ" });
+  migrations.push({ name: "listings.appeal_resolved_by", sql: "ALTER TABLE listings ADD COLUMN IF NOT EXISTS appeal_resolved_by INTEGER" });
+  migrations.push({
+    name: "listings.eligibility_lifecycle_backfill_v1",
+    sql: `UPDATE listings SET
+      eligibility_class = CASE
+        WHEN moderation_status = 'rejected' THEN 'prohibited'
+        WHEN moderation_status = 'pending' THEN 'requires_review'
+        ELSE 'allowed'
+      END,
+      lifecycle_status = CASE
+        WHEN status = 'sold' THEN 'sold'
+        WHEN moderation_status = 'rejected' THEN 'rejected'
+        WHEN moderation_status = 'pending' THEN 'pending_review'
+        WHEN status = 'available' AND moderation_status = 'approved' THEN 'published'
+        WHEN status = 'removed' THEN 'archived'
+        ELSE 'published'
+      END
+      WHERE eligibility_class = 'allowed' OR lifecycle_status = 'published'`,
+  });
+  migrations.push({
+    name: "listings.lifecycle_status_idx",
+    sql: "CREATE INDEX IF NOT EXISTS listings_lifecycle_status_idx ON listings(lifecycle_status)",
+  });
+  migrations.push({
+    name: "listings.eligibility_class_idx",
+    sql: "CREATE INDEX IF NOT EXISTS listings_eligibility_class_idx ON listings(eligibility_class)",
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt
@@ -2806,10 +2884,92 @@ export async function runStartupMigrations(): Promise<void> {
       CREATE INDEX IF NOT EXISTS listings_seller_report_idx ON listings (seller_id, id);`,
   });
 
+  migrations.push({
+    name: "transactions.operational_perf_indexes",
+    // Index-only: buyer history, escrow auto-release scan, Stripe session lookup.
+    // Does not alter financial rows or settlement semantics.
+    sql: `CREATE INDEX IF NOT EXISTS transactions_user_id_created_at_idx
+      ON transactions (user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS transactions_auto_release_due_idx
+      ON transactions (auto_release_at)
+      WHERE type = 'purchase' AND payment_status = 'completed'
+        AND escrow_released = false AND auto_release_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS transactions_stripe_checkout_session_idx
+      ON transactions (stripe_checkout_session_id)
+      WHERE stripe_checkout_session_id IS NOT NULL;`,
+  });
+
+  // ── Site visit analytics (admin dashboard: day / month / year / all-time) ──
+  migrations.push({
+    name: "site_daily_visits.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_daily_visits (
+      date TEXT PRIMARY KEY,
+      visit_count INTEGER NOT NULL DEFAULT 0
+    )`,
+  });
+  migrations.push({
+    name: "site_visit_dedupe.create",
+    sql: `CREATE TABLE IF NOT EXISTS site_visit_dedupe (
+      visitor_key TEXT NOT NULL,
+      date TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (visitor_key, date)
+    )`,
+  });
+  migrations.push({
+    name: "site_visit_dedupe.date_idx",
+    sql: `CREATE INDEX IF NOT EXISTS site_visit_dedupe_date_idx ON site_visit_dedupe(date)`,
+  });
+
   let applied = 0;
   let failed = 0;
 
   migrations.push(...CARD_CANCELLATION_MIGRATIONS);
+
+  // ── Live support: priority, CSAT rating, internal notes, idempotent sends ──
+  migrations.push({
+    name: "support_threads.priority",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'normal'`,
+  });
+  migrations.push({
+    name: "support_threads.rating",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS rating integer`,
+  });
+  migrations.push({
+    name: "support_threads.rated_at",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS rated_at timestamptz`,
+  });
+  migrations.push({
+    name: "support_messages.is_internal",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false`,
+  });
+  migrations.push({
+    name: "support_messages.client_message_id",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS client_message_id text`,
+  });
+  migrations.push({
+    name: "support_messages.client_message_id_uniq",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS support_messages_client_msg_uidx
+      ON support_messages (thread_id, sender_id, client_message_id)
+      WHERE client_message_id IS NOT NULL`,
+  });
+
+  // ── Marketplace chat: idempotent sends + reply-to ──
+  migrations.push({
+    name: "messages.client_message_id",
+    sql: `ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_id text`,
+  });
+  migrations.push({
+    name: "messages.reply_to_message_id",
+    sql: `ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_message_id integer`,
+  });
+  migrations.push({
+    name: "messages.client_message_id_uniq",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS messages_client_msg_uidx
+      ON messages (conversation_id, sender_id, client_message_id)
+      WHERE client_message_id IS NOT NULL`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

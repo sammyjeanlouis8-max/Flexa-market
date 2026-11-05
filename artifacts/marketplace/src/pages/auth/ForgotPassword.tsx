@@ -261,9 +261,9 @@ export default function ForgotPassword() {
         <LanguageSwitcher languages={PUBLIC_LANGUAGES} align="end" />
       </div>
       <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-20 sm:h-28 w-auto max-w-[55vw] object-contain mx-auto mb-2" />
-          <h1 className="text-2xl font-extrabold text-foreground mt-4">
+        <div className="text-center mb-5">
+          <img src="/flexa-logo-v2.png" alt="FLEXA MARKET" className="h-14 sm:h-16 w-auto max-w-[48vw] object-contain mx-auto" />
+          <h1 className="text-2xl font-extrabold text-foreground mt-3">
             {step === "done" ? t("auth.passwordUpdated") : t("auth.resetPassword")}
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -304,7 +304,7 @@ export default function ForgotPassword() {
           </div>
         )}
 
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-lg space-y-4">
+        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 shadow-sm space-y-4">
 
           {step === "done" && (
             <div className="flex flex-col items-center gap-3 py-4">

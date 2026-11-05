@@ -10,6 +10,8 @@ import { sendExpoPushToUser, sendNewOrderAlertsForSeller } from "../lib/expo-pus
 import { logger } from "../lib/logger";
 import { sendEmail } from "../lib/email";
 import { escrowReleasedSellerEmail } from "../lib/emailTemplates";
+import { notifyBuyerHaitiDeliveryPin } from "../lib/haitiDeliveryPinNotify";
+import { isDomesticHaitiPinDelivery } from "../lib/deliveryConfirmationPolicy";
 import { getStripeClient } from "../lib/stripeClient";
 import { requireActiveStripeDestination } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
@@ -673,6 +675,11 @@ router.get("/commission/quote", requireAuth, async (req, res): Promise<void> => 
 
 // ─── Sales summary ────────────────────────────────────────────────────────────
 
+router.get("/sales/dashboard", requireAuth, async (req, res): Promise<void> => {
+  const { handleSellerSalesDashboard } = await import("./sellerSalesDashboard");
+  await handleSellerSalesDashboard(req, res);
+});
+
 router.get("/sales/summary", requireAuth, async (req, res): Promise<void> => {
   // Retain the legacy no-query summary for existing callers. The new center
   // explicitly requests the monthly, paginated reporting contract.
@@ -957,6 +964,17 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
   const dominicanMode = dominicanOrderMode(listingCountry, tx.deliveryMethod);
   const isHaiti = listingCountry === "Haiti" || (listingCountry === "Dominican Republic" && dominicanMode !== "company");
 
+  // Destination + service-type confirmation policy (never GPS / IP / account country).
+  // Domestic Haiti → PIN only; carrier POD photos never enabled for Haiti domestic.
+  const { deliveryConfirmationPublicFields } = await import("../lib/deliveryConfirmationPolicy");
+  const confirmation = deliveryConfirmationPublicFields({
+    shipToCountry: listingCountry,
+    listingCountry,
+    deliveryMethod: tx.deliveryMethod,
+    deliveryType: tx.deliveryType,
+    carrier: tx.carrier,
+  });
+
   // FM delivery: fetch linked delivery + driver info if it's an FM driver order
   const fmDelivery = await loadFmDelivery(orderId);
 
@@ -1001,6 +1019,13 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     listingCountry,
     deliveryMethod: tx.deliveryMethod,
     isHaiti,
+    // Explicit confirmation policy (destination + service). Prefer these over isHaiti for POD.
+    destinationCountry: confirmation.destinationCountry,
+    confirmationMode: confirmation.confirmationMode,
+    carrierPodEligible: confirmation.carrierPodEligible,
+    haitiPinConfirmation: confirmation.haitiPinConfirmation,
+    // Never return carrier POD media for Haiti domestic — keep array empty for clients.
+    carrierPodPhotos: confirmation.carrierPodEligible ? [] : [],
     isSeller,
     isBuyer,
     isAdminView: isAdminReq,
@@ -1269,8 +1294,9 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
       const busCode = Math.floor(100000 + Math.random() * 900000).toString();
       const deliveryAddr = [tx.shippingStreet, tx.shippingCity, tx.shippingRegion].filter(Boolean).join(", ") || "Adres pa disponib";
       const busFeeUsd = typeof tx.deliveryFeeUsd === "number" && tx.deliveryFeeUsd > 0 ? tx.deliveryFeeUsd : null;
+      const busCountry = listingCountry ?? "Haiti";
 
-      await db.insert(deliveriesTable).values({
+      const [busDelivery] = await db.insert(deliveriesTable).values({
         transactionId: orderId,
         listingId: listing.id,
         sellerId: listing.sellerId,
@@ -1281,12 +1307,12 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         pickupCity: listing.city ?? null,
         deliveryCity: tx.shippingCity ?? null,
         deliveryAddress: deliveryAddr,
-        country: listingCountry ?? "Haiti",
+        country: busCountry,
         currency: "USD",
         sellerNote: deliveryDescription.trim(),
         feeUsd: busFeeUsd,
         driverPhone: driverPhone.trim(),
-      } as any).catch(() => {});
+      } as any).returning({ id: deliveriesTable.id }).catch(() => [null]);
 
       const cityLine = busDestCity?.trim() ? ` → ${busDestCity.trim()}` : "";
       const notifNote = busTrackingLink?.trim()
@@ -1298,6 +1324,29 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         isRead: false,
         message: `📦 Kòmand ou nan wout pa bis/transpò${cityLine}. Transpòtè: ${driverName?.trim() || "—"} (${driverPhone.trim()}).${notifNote} Kòd sekrè ou: ${busCode}. Bay machann nan kòd la PA MESAJ sèlman lè ou resevwa atik la — sa ap libere lajan li imedyatman.`,
       } as any).catch(() => {});
+
+      if (busDelivery?.id && isDomesticHaitiPinDelivery({
+        shipToCountry: tx.shippingCountry || busCountry,
+        listingCountry: busCountry,
+        deliveryMethod: "bus",
+        deliveryType: "delivery",
+      })) {
+        await notifyBuyerHaitiDeliveryPin({
+          buyerId: tx.userId,
+          code: busCode,
+          deliveryId: busDelivery.id,
+          orderRef: `#FM-${String(orderId).padStart(6, "0")}`,
+          deliveryCity: tx.shippingCity ?? null,
+          listingTitle: listing.title ?? null,
+          trackingUrl: `https://flexamarket.com/orders/${orderId}`,
+          policy: {
+            shipToCountry: tx.shippingCountry || busCountry,
+            listingCountry: busCountry,
+            deliveryMethod: "bus",
+            deliveryType: "delivery",
+          },
+        }).catch(() => {});
+      }
 
       const noteToStore = [deliveryNote?.trim(), busTrackingLink?.trim()].filter(Boolean).join(" | ") || null;
       updateData = {
@@ -1357,7 +1406,8 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
       const deliveryAddr = [tx.shippingStreet, tx.shippingCity, tx.shippingRegion].filter(Boolean).join(", ") || "Adres pa disponib";
       const personalFeeUsd = typeof tx.deliveryFeeUsd === "number" && tx.deliveryFeeUsd > 0 ? tx.deliveryFeeUsd : null;
       const personalDriverEarnings = personalFeeUsd != null ? Math.round(personalFeeUsd * 0.85 * 100) / 100 : null;
-      await db.insert(deliveriesTable).values({
+      const personalCountry = listingCountry ?? "Haiti";
+      const [personalDelivery] = await db.insert(deliveriesTable).values({
         transactionId: orderId,
         listingId: listing.id,
         sellerId: listing.sellerId,
@@ -1367,12 +1417,12 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         pickupCity: listing.city ?? null,
         deliveryCity: tx.shippingCity ?? null,
         deliveryAddress: deliveryAddr,
-        country: listingCountry ?? "Haiti",
+        country: personalCountry,
         currency: "USD",
         sellerNote: deliveryDescription.trim(),
         feeUsd: personalFeeUsd,
         driverEarnings: personalDriverEarnings,
-      } as any).catch(() => {});
+      } as any).returning({ id: deliveriesTable.id }).catch(() => [null]);
 
       // Notify buyer with the secret code
       await db.insert(notificationsTable).values({
@@ -1381,6 +1431,29 @@ router.post("/orders/:id/ship", requireAuth, async (req, res): Promise<void> => 
         isRead: false,
         message: `Chofè ou a ap vini. Kòd sekrè ou: ${personalCode}. Ba li chofè a SÈLMAN lè li rive ba ou kòmand lan. Pa pataje li ak pèsonn.`,
       } as any).catch(() => {});
+
+      if (personalDelivery?.id && isDomesticHaitiPinDelivery({
+        shipToCountry: tx.shippingCountry || personalCountry,
+        listingCountry: personalCountry,
+        deliveryMethod: null,
+        deliveryType: "delivery",
+      })) {
+        await notifyBuyerHaitiDeliveryPin({
+          buyerId: tx.userId,
+          code: personalCode,
+          deliveryId: personalDelivery.id,
+          orderRef: `#FM-${String(orderId).padStart(6, "0")}`,
+          deliveryCity: tx.shippingCity ?? null,
+          listingTitle: listing.title ?? null,
+          trackingUrl: `https://flexamarket.com/orders/${orderId}`,
+          policy: {
+            shipToCountry: tx.shippingCountry || personalCountry,
+            listingCountry: personalCountry,
+            deliveryMethod: null,
+            deliveryType: "delivery",
+          },
+        }).catch(() => {});
+      }
 
       updateData = {
         ...updateData,
@@ -2751,30 +2824,25 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
   }
   const grandTotalFinal = Math.round((grandTotalWithDelivery + cartReferralFee) * 100) / 100;
 
-  // Check wallet — must cover product total + delivery fees + referral surcharge
-  const [wallet] = await db.select({ balanceUsd: promoWalletTable.balanceUsd, promoBalance: promoWalletTable.promoBalance })
-    .from(promoWalletTable).where(eq(promoWalletTable.userId, userId)).limit(1);
-  const available = Math.round(((wallet?.balanceUsd ?? 0) + (wallet?.promoBalance ?? 0)) * 100) / 100;
-  if (available < grandTotalFinal) {
+  // Atomic hybrid debit (promo-first + real balance with CAS guards).
+  // Prevents concurrent cart checkouts from overdrafting the wallet.
+  const { deductWalletHybrid } = await import("./wallet");
+  const now = new Date();
+  const cartDebitNote = `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`;
+  const debit = await deductWalletHybrid(
+    userId,
+    grandTotalFinal,
+    cartDebitNote,
+    "purchase_debit",
+    userId,
+  );
+  if (!debit.ok) {
+    const available = Math.round(((debit.promoBalance ?? 0) + (debit.realBalance ?? 0)) * 100) / 100;
     res.status(402).json({
       error: `Balans ensifizan. Ou bezwen $${grandTotalFinal.toFixed(2)} (atik $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}), ou gen $${available.toFixed(2)}`,
-    }); return;
+    });
+    return;
   }
-
-  // Deduct wallet upfront — products + delivery + referral surcharge
-  const now = new Date();
-  if (wallet) {
-    await db.update(promoWalletTable)
-      .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} - ${grandTotalFinal}`, updatedAt: now })
-      .where(eq(promoWalletTable.userId, userId));
-  } else {
-    await db.insert(promoWalletTable).values({ userId, balanceUsd: -grandTotalFinal });
-  }
-  await db.insert(walletTransactionsTable).values({
-    userId, type: "purchase", amountUsd: -grandTotalFinal,
-    paymentRef: `CART-${Date.now()}`,
-    note: `Panye — ${rawItems.length} atik — pwodwi $${grandTotal.toFixed(2)} + livrezon $${totalDeliveryFees.toFixed(2)}${cartReferralFee > 0 ? ` + frè referans $${cartReferralFee.toFixed(2)}` : ""}`,
-  }).catch(() => {});
 
   const orders: { txId: number; sellerId: number; amount: number; deliveryFee: number; title: string }[] = [];
   let refundTotal = 0;
@@ -2892,13 +2960,13 @@ router.post("/cart/checkout", requireAuth, requireCardNotBlocked, async (req, re
     orders.push({ txId: txRow.id, sellerId: listing.sellerId, amount: itemTotal, deliveryFee: itemDeliveryFeeUsd, title: listing.title });
   }
 
-  // Refund items that were already sold
+  // Refund items that were already sold (credit real balance — CAS-safe add)
   if (refundTotal > 0) {
     await db.update(promoWalletTable)
       .set({ balanceUsd: sql`${promoWalletTable.balanceUsd} + ${refundTotal}`, updatedAt: now })
       .where(eq(promoWalletTable.userId, userId));
     await db.insert(walletTransactionsTable).values({
-      userId, type: "refund", amountUsd: refundTotal,
+      userId, type: "refund", amountUsd: refundTotal, status: "completed",
       paymentRef: `CART-REFUND-${Date.now()}`,
       note: `Ranbousman — atik ki deja vann nan panye a`,
     }).catch(() => {});

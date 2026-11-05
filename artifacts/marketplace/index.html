@@ -276,37 +276,56 @@
          ═══════════════════════════════════════════════════════════════════════ -->
     <script>
       (function () {
-        // Priority 1: native React Native WebView injects window.__flexaNativeSafeTop
-        // before this script runs (injectedJavaScriptBeforeContentLoaded).
-        // If it's already set we trust it unconditionally.
+        // --sat is a FALLBACK only when CSS env(safe-area-inset-top) is 0
+        // (React Native / FlexaMarket WKWebView). Safari/Chrome with
+        // viewport-fit=cover already expose a correct env() value — forcing
+        // a heuristic 59px there was stacking with env() and producing a
+        // ~120px empty green gap above the nav row on iPhone.
+        var root = document.documentElement;
+        var isAndroid = /Android/i.test(navigator.userAgent);
+
+        function setSat(px) {
+          root.style.setProperty('--sat', Math.max(0, Math.round(px)) + 'px');
+        }
+
+        // Priority 1: native bridge injects the real inset before content loads.
         if (typeof window.__flexaNativeSafeTop === 'number' && window.__flexaNativeSafeTop > 0) {
-          document.documentElement.style.setProperty('--sat', window.__flexaNativeSafeTop + 'px');
-          return;
+          setSat(window.__flexaNativeSafeTop);
+        } else if (/FlexaMarket/i.test(navigator.userAgent)) {
+          // Priority 2: FlexaMarket WebView UA — env() is unreliable; heuristic.
+          setSat(window.screen.height >= 812 ? 59 : 20);
+        } else {
+          // Priority 3: Safari / Chrome / PWA — trust env(); keep --sat at 0.
+          setSat(0);
         }
-        // Priority 2: standard iOS Safari / Chrome UA detection
-        var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
-        // Priority 3: FlexaMarket native WebView uses a custom UA — detect by
-        // the app name OR by the absence of "Chrome" / "Safari" (pure WKWebView).
-        var isFlexaWebView = /FlexaMarket/i.test(navigator.userAgent);
-        var sat = 0;
-        if (isIOS || isFlexaWebView) {
-          // screen.height in logical px (always portrait-native value)
-          // >= 812 → iPhone X and all later models (notch or Dynamic Island)
-          // Dynamic Island (iPhone 14 Pro+): ~59 px
-          // Notch (iPhone X–14 regular): ~47 px
-          // We use 59 for all modern iPhones — slightly generous but safe.
-          sat = window.screen.height >= 812 ? 59 : 20;
+
+        // After first paint, if env() is non-zero clear any heuristic so we
+        // never double-apply. If env() is still 0 inside a native shell, keep
+        // the heuristic. Cap at 59px (Dynamic Island) to prevent runaway values.
+        function reconcileSat() {
+          try {
+            var probe = document.createElement('div');
+            probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px);';
+            document.documentElement.appendChild(probe);
+            var envTop = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+            probe.remove();
+            if (envTop > 0) {
+              setSat(0);
+            } else if ((parseFloat(getComputedStyle(root).getPropertyValue('--sat')) || 0) > 59) {
+              setSat(59);
+            }
+          } catch (e) { /* ignore */ }
         }
-        document.documentElement.style.setProperty('--sat', sat + 'px');
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', reconcileSat, { once: true });
+        } else {
+          reconcileSat();
+        }
+        window.addEventListener('resize', reconcileSat, { passive: true });
 
         // Android WebView/standalone shells can draw behind the system
         // navigation bar while still reporting safe-area-inset-bottom as 0.
-        // Keep the app's bottom navigation controls above the OS buttons.
-        var isAndroid = /Android/i.test(navigator.userAgent);
-        document.documentElement.style.setProperty(
-          '--flexa-android-bottom',
-          isAndroid ? '32px' : '0px'
-        );
+        root.style.setProperty('--flexa-android-bottom', isAndroid ? '32px' : '0px');
       })();
     </script>
     <!-- Keep fixed mobile controls inside Safari's visual viewport. Safari can

@@ -9,10 +9,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   ChevronLeft, MessageSquare, Send, Shield, Plus, Lock,
-  Check, CheckCheck, Bot, Loader2, CheckCircle2,
+  Check, CheckCheck, Bot, Loader2, CheckCircle2, Star,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSocket } from "@/hooks/useSocket";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ type Thread = {
   lastMessageAt: string | null;
   unreadByUser: number;
   unreadByAdmin: number;
+  rating?: number | null;
   createdAt: string;
   closedAt: string | null;
 };
@@ -460,6 +462,7 @@ export default function Support() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const socket = useSocket();
+  const { toast } = useToast();
 
   const [matchDetail, paramsDetail] = useRoute<{ id: string }>("/support/:id");
   const routeId = matchDetail ? Number(paramsDetail?.id) : null;
@@ -472,6 +475,7 @@ export default function Support() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [typingAdmin, setTypingAdmin] = useState(false);
   const typingTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -564,7 +568,27 @@ export default function Support() {
 
     const unsubUpdate = socket.onSupportUpdate((data) => {
       if (data?.threadId !== activeId) return;
-      setDetail((prev) => (prev ? { ...prev, status: data.status ?? prev.status } : prev));
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: data.status ?? prev.status,
+              assignedAdminId:
+                data.assignedAdminId !== undefined ? data.assignedAdminId : prev.assignedAdminId,
+              assignedAdminName:
+                data.assignedAdminName !== undefined
+                  ? data.assignedAdminName
+                  : prev.assignedAdminName,
+              rating: data.rating ?? prev.rating,
+            }
+          : prev,
+      );
+      if (data?.event === "agent_joined" && data.assignedAdminName) {
+        toast({
+          title: t("support.agentJoined", { defaultValue: "A human agent joined" }),
+          description: data.assignedAdminName,
+        });
+      }
       loadThreads();
     });
 
@@ -793,8 +817,50 @@ export default function Support() {
           </Button>
         </div>
       ) : (
-        <div className="border-t border-border px-4 py-3 text-center text-xs text-muted-foreground flex-shrink-0">
-          {t("support.closedNotice", { defaultValue: "Konvèsasyon sa a fèmen. Ouvri yon nouvo demand si w bezwen plis èd." })}
+        <div className="border-t border-border px-4 py-3 flex-shrink-0 space-y-2">
+          <p className="text-center text-xs text-muted-foreground">
+            {t("support.closedNotice", { defaultValue: "Konvèsasyon sa a fèmen. Ouvri yon nouvo demand si w bezwen plis èd." })}
+          </p>
+          {detail.rating == null ? (
+            <div className="flex flex-col items-center gap-1.5">
+              <p className="text-xs font-medium">
+                {t("support.ratePrompt", { defaultValue: "How was your support experience?" })}
+              </p>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    disabled={ratingBusy}
+                    className="rounded-full p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50"
+                    aria-label={`Rate ${n}`}
+                    onClick={async () => {
+                      if (!activeId || ratingBusy) return;
+                      setRatingBusy(true);
+                      try {
+                        await apiFetch(`/api/support/threads/${activeId}/rate`, {
+                          method: "POST",
+                          body: JSON.stringify({ rating: n }),
+                        });
+                        setDetail((prev) => (prev ? { ...prev, rating: n } : prev));
+                        toast({ title: t("support.rateThanks", { defaultValue: "Thank you for your feedback" }) });
+                      } catch (e: any) {
+                        toast({ title: e.message ?? "Error", variant: "destructive" });
+                      } finally {
+                        setRatingBusy(false);
+                      }
+                    }}
+                  >
+                    <Star className="h-5 w-5 text-amber-400" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-center text-xs font-medium text-amber-600">
+              {t("support.rated", { defaultValue: "You rated this conversation" })}: {detail.rating}/5
+            </p>
+          )}
         </div>
       )}
     </>

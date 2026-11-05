@@ -206,12 +206,18 @@ export function emitAudioListened(convId: number, msgId: number): void {
 
 export function emitSupportMessage(threadId: number, msg: object): void {
   if (!io) return;
-  io.to(`support:${threadId}`).emit("support-new-message", msg);
+  const payload = { threadId, ...msg };
+  // Thread participants
+  io.to(`support:${threadId}`).emit("support-new-message", payload);
+  // Agent inbox (admins not currently in the thread room)
+  io.to("support-admin").emit("support-new-message", payload);
 }
 
 export function emitSupportUpdate(threadId: number, data: object): void {
   if (!io) return;
-  io.to(`support:${threadId}`).emit("support-update", data);
+  const payload = { threadId, ...data };
+  io.to(`support:${threadId}`).emit("support-update", payload);
+  io.to("support-admin").emit("support-update", payload);
 }
 
 export function emitNewSupportThread(data: object): void {
@@ -221,7 +227,8 @@ export function emitNewSupportThread(data: object): void {
 
 export function emitMsgDeleted(convId: number, msgId: number): void {
   if (!io) return;
-  io.to(`conv_${convId}`).emit("msg_deleted", { convId, msgId });
+  // Must match join-conv room naming: `conv:${id}`
+  io.to(`conv:${convId}`).emit("msg_deleted", { convId, msgId });
 }
 
 export { io };

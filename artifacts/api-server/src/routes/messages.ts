@@ -18,6 +18,8 @@ const SendMessageBody = z.object({
   messageType: z.enum(["text", "image", "video", "audio"]).default("text"),
   mediaUrl: z.string().optional(),
   imageUrl: z.string().optional(),
+  clientMessageId: z.string().trim().min(1).max(64).optional(),
+  replyToMessageId: z.number().int().positive().optional(),
 });
 
     // The API starts listening before the full startup migration chain finishes.
@@ -36,6 +38,17 @@ const SendMessageBody = z.object({
         ));
         await db.execute(sql.raw(
           "ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted_at timestamptz",
+        ));
+        await db.execute(sql.raw(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_id text",
+        ));
+        await db.execute(sql.raw(
+          "ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_message_id integer",
+        ));
+        await db.execute(sql.raw(
+          `CREATE UNIQUE INDEX IF NOT EXISTS messages_client_msg_uidx
+            ON messages (conversation_id, sender_id, client_message_id)
+            WHERE client_message_id IS NOT NULL`,
         ));
       })().catch((error) => {
         // Allow the next request to retry if the database was still waking up.
@@ -94,6 +107,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         avatar: buyerUser.avatar,
         isAdmin: buyerUser.isAdmin,
         isSuperAdmin: buyerUser.isSuperAdmin,
+        isVerified: buyerUser.isVerified,
       },
       seller: {
         id: sellerUser.id,
@@ -101,6 +115,7 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
         avatar: sellerUser.avatar,
         isAdmin: sellerUser.isAdmin,
         isSuperAdmin: sellerUser.isSuperAdmin,
+        isVerified: sellerUser.isVerified,
       },
       unreadCount: unreadSubquery.unreadCount,
     })
@@ -116,22 +131,40 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
     const isBuyer = r.conv.buyerId === userId;
     const otherUserId = isBuyer ? r.conv.sellerId : r.conv.buyerId;
     const otherUser = isBuyer ? r.seller : r.buyer;
-    const otherIsAdmin = !!(otherUser?.isAdmin || otherUser?.isSuperAdmin);
+    const isSystemNotifications = r.conv.conversationType === "system_notifications";
     return {
       id: r.conv.id,
       listingId: r.conv.listingId,
       listingTitle: r.conv.conversationType === "agent_recharge"
         ? "💼 Agent Recharge"
-        : (r.listing?.title ?? "Deleted listing"),
+        : isSystemNotifications
+          ? "System Notifications"
+          : (r.listing?.title ?? "Deleted listing"),
       listingImage: r.listing?.images?.[0] ?? null,
       listingPrice: r.listing?.price ?? 0,
       otherUserId,
-      otherUserName: otherUser?.name ?? "Unknown",
-      otherUserAvatar: otherUser?.avatar ?? null,
+      otherUserName: isSystemNotifications ? "System Notifications" : (otherUser?.name ?? "Unknown"),
+      otherUserAvatar: isSystemNotifications
+        ? (otherUser?.avatar || "/flexa-logo-v2.png")
+        : (otherUser?.avatar ?? null),
+      otherUserIsVerified: isSystemNotifications ? true : !!otherUser?.isVerified,
+      conversationType: r.conv.conversationType ?? "listing",
+      /** Role of the current user in this conversation — drives Buyers/Sellers inbox tabs. */
+      myRole: (isBuyer ? "buyer" : "seller") as "buyer" | "seller",
       lastMessage: r.conv.lastMessage ?? null,
       lastMessageAt: r.conv.lastMessageAt?.toISOString() ?? null,
       unreadCount: Number(r.unreadCount ?? 0),
     };
+  });
+
+  // Keep official System Notifications near the top of the inbox.
+  result.sort((a, b) => {
+    const aSys = a.conversationType === "system_notifications" ? 1 : 0;
+    const bSys = b.conversationType === "system_notifications" ? 1 : 0;
+    if (aSys !== bSys) return bSys - aSys;
+    const aTime = a.lastMessageAt ? Date.parse(a.lastMessageAt) : 0;
+    const bTime = b.lastMessageAt ? Date.parse(b.lastMessageAt) : 0;
+    return bTime - aTime;
   });
 
   res.json(result);
@@ -196,17 +229,21 @@ router.get("/conversations/:id/messages", requireAuth, async (req, res): Promise
 
   const messages = rows.map(r => {
     const senderIsAdmin = !!(r.users?.isAdmin || r.users?.isSuperAdmin);
+    const deleted = !!(r.messages as any).isDeleted;
     return {
       id: r.messages.id, conversationId: r.messages.conversationId, senderId: r.messages.senderId,
       senderName: r.users?.name ?? "Unknown",
       senderAvatar: r.users?.avatar ?? null,
       senderIsAdmin,
-      content: r.messages.content,
+      content: deleted ? "" : r.messages.content,
       messageType: r.messages.messageType ?? "text",
-      mediaUrl: r.messages.mediaUrl ?? null,
-      imageUrl: r.messages.imageUrl ?? null,
+      mediaUrl: deleted ? null : (r.messages.mediaUrl ?? null),
+      imageUrl: deleted ? null : (r.messages.imageUrl ?? null),
       isRead: r.messages.isRead,
       isListened: r.messages.isListened,
+      isDeleted: deleted,
+      clientMessageId: (r.messages as any).clientMessageId ?? null,
+      replyToMessageId: (r.messages as any).replyToMessageId ?? null,
       createdAt: r.messages.createdAt.toISOString(),
     };
   }).reverse();
@@ -231,7 +268,35 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
   const parsed = SendMessageBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
-  const { content, messageType, mediaUrl, imageUrl } = parsed.data;
+  const { content, messageType, mediaUrl, imageUrl, clientMessageId, replyToMessageId } = parsed.data;
+
+  const formatExisting = async (existing: typeof messagesTable.$inferSelect) => {
+    const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
+    return {
+      id: existing.id, conversationId: existing.conversationId, senderId: existing.senderId,
+      senderName: sender?.name ?? "Unknown", senderAvatar: sender?.avatar ?? null,
+      content: existing.content, messageType: existing.messageType, mediaUrl: existing.mediaUrl ?? null,
+      imageUrl: existing.imageUrl ?? null, isRead: existing.isRead, isListened: existing.isListened,
+      isDeleted: !!(existing as any).isDeleted,
+      clientMessageId: (existing as any).clientMessageId ?? null,
+      replyToMessageId: (existing as any).replyToMessageId ?? null,
+      createdAt: existing.createdAt.toISOString(),
+      duplicate: true as const,
+    };
+  };
+
+  // Idempotent retry via clientMessageId
+  if (clientMessageId) {
+    const [existing] = await db.select().from(messagesTable).where(and(
+      eq(messagesTable.conversationId, id),
+      eq(messagesTable.senderId, req.userId!),
+      eq(messagesTable.clientMessageId, clientMessageId),
+    )).limit(1);
+    if (existing) {
+      res.json(await formatExisting(existing));
+      return;
+    }
+  }
 
   // The uploaded media URL is stable across retries, so it acts as an idempotency key.
   if (messageType === "audio" && mediaUrl) {
@@ -242,16 +307,18 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       eq(messagesTable.mediaUrl, mediaUrl),
     )).limit(1);
     if (existing) {
-      const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
-      res.json({
-        id: existing.id, conversationId: existing.conversationId, senderId: existing.senderId,
-        senderName: sender?.name ?? "Unknown", senderAvatar: sender?.avatar ?? null,
-        content: existing.content, messageType: existing.messageType, mediaUrl: existing.mediaUrl ?? null,
-        imageUrl: existing.imageUrl ?? null, isRead: existing.isRead, isListened: existing.isListened,
-        createdAt: existing.createdAt.toISOString(),
-      });
+      res.json(await formatExisting(existing));
       return;
     }
+  }
+
+  let replyParent: number | null = null;
+  if (replyToMessageId) {
+    const [parent] = await db.select({ id: messagesTable.id, conversationId: messagesTable.conversationId })
+      .from(messagesTable)
+      .where(eq(messagesTable.id, replyToMessageId))
+      .limit(1);
+    if (parent && parent.conversationId === id) replyParent = parent.id;
   }
 
   const lastMessagePreview = messageType === "image" ? "📷 Photo"
@@ -265,7 +332,9 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
     messageType,
     mediaUrl: mediaUrl ?? null,
     imageUrl: imageUrl ?? null,
-  }).returning();
+    clientMessageId: clientMessageId ?? null,
+    replyToMessageId: replyParent,
+  } as any).returning();
 
   // Fraud: scan message for scam patterns + mass-messaging check (fire-and-forget)
   if (content && messageType === "text") {
@@ -294,6 +363,9 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
     content: msg.content, messageType: msg.messageType, mediaUrl: msg.mediaUrl ?? null,
     imageUrl: msg.imageUrl ?? null,
     isRead: msg.isRead, isListened: msg.isListened,
+    isDeleted: false,
+    clientMessageId: (msg as any).clientMessageId ?? clientMessageId ?? null,
+    replyToMessageId: (msg as any).replyToMessageId ?? replyParent,
     createdAt: msg.createdAt.toISOString(),
   };
 

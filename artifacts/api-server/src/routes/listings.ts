@@ -9,7 +9,7 @@ import { requireListingPublicationAccess } from "../middlewares/listingPublicati
 import { CreateListingBody, UpdateListingBody, BoostListingBody } from "@workspace/api-zod";
 import { resolveListingDeliveryMethod } from "../lib/listingDeliveryPolicy";
 import { computeProximity, scoreToLevel, buildProximitySql, buildDistanceSql, type GeoUser } from "../lib/geoRanking";
-import { moderateListing } from "../lib/moderation";
+import { evaluateProductEligibility, isPubliclyDiscoverable } from "../lib/productEligibility";
 import { isStripeOnlySale } from "../lib/usSellerPayoutPolicy";
 import { requireNewSalePayout, NEW_SALE_PAYOUT_ERROR } from "../lib/newSalePayoutPolicy";
 import { quoteForListing } from "../lib/commission";
@@ -308,6 +308,10 @@ async function formatListing(
     moderationRiskLevel: listing.moderationRiskLevel ?? null,
     moderationReason: listing.moderationReason ?? null,
     moderationFlags: listing.moderationFlags ?? [],
+    eligibilityClass: (listing as any).eligibilityClass ?? null,
+    lifecycleStatus: (listing as any).lifecycleStatus ?? null,
+    rejectionCode: (listing as any).rejectionCode ?? null,
+    appealStatus: (listing as any).appealStatus ?? null,
     shippingCost: listing.shippingCost ?? null,
     shippingCarriers: listing.shippingCarriers ?? null,
     deliveryMethod: listing.deliveryMethod ?? null,
@@ -329,6 +333,7 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
   const baseConditions = [
     eq(listingsTable.status, "available"),
     eq(listingsTable.moderationStatus, "approved"),
+    sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`,
     listingHasUsableImageSql(),
     or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any,
   ];
@@ -345,33 +350,19 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
   const isAdmin = hasRole(req.user, "admin");
   if (req.userId && req.user?.country && !isAdmin) {
-    // A country bypass is allowed only for a currently active paid boost.
-    // Viewer audience/budget filtering below is applied to the same row set
-    // before every fallback and total, so stale audience fields cannot leak.
-    const activePaidBoostForCountry = sql`(
-      ${listingsTable.isBoosted} = true
-      AND ${listingsTable.boostExpiresAt} > ${promaxNow}
-      AND EXISTS (
-        SELECT 1 FROM boosts b
-        WHERE b.listing_id = ${listingsTable.id}
-          AND b.payment_status = 'paid'
-          AND b.expires_at > ${promaxNow}
-      )
-    )`;
-    baseConditions.push(or(
-      eq(listingsTable.country!, req.user.country),
-      and(
-        activePaidBoostForCountry,
-        or(
-          eq(listingsTable.boostAudienceCountry, "ALL"),
-          eq(listingsTable.boostAudienceCountry, req.user.country),
-        ),
-      ),
-    ) as any);
+    // STRICT country gate FIRST — paid boosts, audience ALL, 72h exposure, and
+    // trending scores never admit a listing from another marketplace country.
+    baseConditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(baseConditions, req.user, country || undefined);
   } else if (!req.userId && country) {
     baseConditions.push(eq(listingsTable.country!, country));
+  } else if (!req.userId && !country) {
+    // Guests must declare a marketplace country — fail closed (no global dump).
+    baseConditions.push(sql`false` as any);
+  } else if (req.userId && !req.user?.country && !isAdmin) {
+    // Authenticated shoppers without a selected country see nothing until they pick one.
+    baseConditions.push(sql`false` as any);
   }
 
   const geoUser: GeoUser | null = req.user
@@ -397,9 +388,8 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     res.status(410).json({ error: "PROMAX page token has expired. Restart pagination.", code: "PROMAX_SNAPSHOT_EXPIRED" });
     return;
   }
-  // A missing snapshot (including a client-requested legacy fallback) must
-  // never widen the authenticated viewer's country scope. Paid audience
-  // bypasses are only evaluated by the verified PROMAX path below.
+  // Country eligibility is already hard-gated above. Keep this redundant pin so
+  // a missing PROMAX snapshot can never widen customer country scope.
   if (!promaxSnapshot && req.userId && req.user?.country && !isAdmin) {
     baseConditions.push(eq(listingsTable.country!, req.user.country));
   }
@@ -484,15 +474,12 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
       // Admin country access was already enforced in the SQL conditions.
       // Shopper audience rules must never hide products from an admin view.
       if (isAdmin) return true;
-      // A same-country listing remains eligible organically when its paid
-      // placement is gated. Cross-country rows still need a valid paid
-      // audience match to bypass the viewer's country scope.
-      if (!promaxViewer?.country || row.listings.country === promaxViewer.country) return true;
-      if (!isActiveBoost(row.listings, promaxNow) || !paidBoostByListing.has(row.listings.id)) return false;
-      if (hasPinnedDemotions) return !requestedDemotions.has(row.listings.id);
-      const eligible = isPromaxPlacementEligible(row.listings);
-      if (!eligible) sequenceDemotions.add(row.listings.id);
-      return eligible;
+      // Country eligibility is absolute — paid boost / ALL audience cannot keep
+      // a foreign listing in the customer feed after ranking.
+      if (promaxViewer?.country && row.listings.country !== promaxViewer.country) {
+        return false;
+      }
+      return true;
     });
   // Subscription tier boost: VIP=3, Premium=2, Standard=1, Basic=0
   const subTierSql = sql<number>`(CASE ${usersTable.subscriptionPlan}
@@ -701,13 +688,18 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
 
 router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`, listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserT: GeoUser | null = req.user
@@ -750,15 +742,20 @@ router.get("/listings/trending", optionalAuth, async (req, res): Promise<void> =
 
 router.get("/listings/foryou", optionalAuth, async (req, res): Promise<void> => {
   try {
-  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
+  const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved"), sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`, listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
   const userCountry = req.user?.country ?? null;
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
 
   if (req.userId && userCountry && !isAdmin) {
     conditions.push(eq(listingsTable.country!, userCountry));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserF: GeoUser | null = req.user
@@ -819,10 +816,15 @@ router.get("/listings/featured", optionalAuth, async (req, res): Promise<void> =
   const conditions = [eq(listingsTable.status, "available"), eq(listingsTable.isBoosted, true), eq(listingsTable.moderationStatus, "approved"), listingHasUsableImageSql(), or(isNull(listingsTable.stockQuantity), gt(listingsTable.stockQuantity, 0)) as any];
   excludeBlockedSellers(conditions, req.userId);
   const isAdmin = hasRole(req.user, "admin");
+  const guestCountry = typeof req.query.country === "string" ? req.query.country.trim() : "";
   if (req.userId && req.user?.country && !isAdmin) {
     conditions.push(eq(listingsTable.country!, req.user.country));
   } else if (isAdmin) {
     enforceAdminCountryScope(conditions, req.user);
+  } else if (guestCountry) {
+    conditions.push(eq(listingsTable.country!, guestCountry));
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   const geoUserFeat: GeoUser | null = req.user
@@ -884,13 +886,18 @@ router.get("/listings/boosted-feed", optionalAuth, async (req, res): Promise<voi
   excludeBlockedSellers(conditions, req.userId);
 
   if (userCountry) {
-    // Strict country isolation: use COALESCE so that boosts with NULL audienceCountry
-    // fall back to the listing's own country. The IS NULL loophole is closed.
-    // Exception: super-admin-created boosts with audienceCountry = 'ALL' are shown
-    // globally to every authenticated viewer regardless of country.
+    // STRICT: listing.country must match the viewer. Audience ALL only means
+    // unrestricted cities within that same listing country — never cross-border.
+    conditions.push(eq(listingsTable.country!, userCountry) as any);
     conditions.push(
-      sql`(lower(COALESCE(${listingsTable.boostAudienceCountry}, ${listingsTable.country})) = ${userCountry.toLowerCase()} OR ${listingsTable.boostAudienceCountry} = 'ALL')` as any
+      sql`(
+        ${listingsTable.boostAudienceCountry} IS NULL
+        OR ${listingsTable.boostAudienceCountry} = 'ALL'
+        OR lower(${listingsTable.boostAudienceCountry}) = ${userCountry.toLowerCase()}
+      )` as any
     );
+  } else {
+    conditions.push(sql`false` as any);
   }
 
   if (userLoc) {
@@ -1077,12 +1084,17 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
   const sellerPlanExpired = seller.subscriptionExpiresAt && new Date(seller.subscriptionExpiresAt) < new Date();
   const effectivePlan = sellerPlanExpired ? "basic" : sellerPlan;
 
-  // Basic plan: max 4 active listings (admins bypass)
+  // Basic plan: max 4 published listings (admins bypass). Pending/rejected do not count.
   if (!sellerIsAdmin && effectivePlan === "basic") {
     const [activeRow] = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(listingsTable)
-      .where(and(eq(listingsTable.sellerId, req.userId!), eq(listingsTable.status, "available")));
+      .where(and(
+        eq(listingsTable.sellerId, req.userId!),
+        eq(listingsTable.status, "available"),
+        eq(listingsTable.moderationStatus, "approved"),
+        sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`,
+      ));
     const activeCount = Number(activeRow.count ?? 0);
 
     if (activeCount >= 4) {
@@ -1135,14 +1147,32 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     }
   }
 
-  const moderation = await moderateListing({
+  let subcatForEligibility: { name: string; slug: string } | null = null;
+  if (parsed.data.subcategoryId) {
+    const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, parsed.data.subcategoryId));
+    subcatForEligibility = sc ? { name: sc.name, slug: sc.slug } : null;
+  }
+
+  const eligibility = await evaluateProductEligibility({
     title: parsed.data.title,
     description: parsed.data.description,
+    price: parsed.data.price,
     imageUrls,
+    categorySlug: cat.slug,
+    categoryName: cat.name,
+    subcategorySlug: subcatForEligibility?.slug,
+    subcategoryName: subcatForEligibility?.name,
+    sellerCountry: seller?.country,
+    listingCountry,
   });
 
-  const moderationStatus = moderation.decision;
-  const insertStatus = moderationStatus === "rejected" ? "removed" : "available";
+  if (eligibility.rejectionCode === "VALIDATION_FAILED") {
+    res.status(400).json({ error: eligibility.reason, code: eligibility.rejectionCode });
+    return;
+  }
+
+  const moderationStatus = eligibility.decision;
+  const insertStatus = eligibility.publishStatus;
 
   // Derive state from city if not explicitly provided
   const listingState = ((parsed.data as any).state ?? "").trim() || STATE_BY_CITY[rawCity] || null;
@@ -1160,12 +1190,15 @@ router.post("/listings", requireAuth, requireListingPublicationAccess, async (re
     sellerId: req.userId!,
     status: insertStatus,
     moderationStatus,
-    moderationRiskLevel: moderation.riskLevel,
-    moderationReason: moderation.reason,
-    moderationConfidence: moderation.confidence,
-    moderationFlags: moderation.flags,
-    moderationSource: moderation.source,
+    moderationRiskLevel: eligibility.riskLevel,
+    moderationReason: eligibility.reason,
+    moderationConfidence: eligibility.confidence,
+    moderationFlags: eligibility.flags,
+    moderationSource: eligibility.source === "policy" ? "rules" : eligibility.source,
     moderatedAt: new Date(),
+    eligibilityClass: eligibility.eligibilityClass.toLowerCase(),
+    lifecycleStatus: eligibility.lifecycleOnInsert,
+    rejectionCode: eligibility.rejectionCode,
   }).returning();
 
   // Fraud: assess listing for scam content + rapid posting (fire-and-forget)
@@ -1265,7 +1298,12 @@ router.get("/listings/my-count", requireAuth, async (req, res): Promise<void> =>
   const [activeRow] = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(listingsTable)
-    .where(and(eq(listingsTable.sellerId, req.userId!), eq(listingsTable.status, "available")));
+    .where(and(
+      eq(listingsTable.sellerId, req.userId!),
+      eq(listingsTable.status, "available"),
+      eq(listingsTable.moderationStatus, "approved"),
+      sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived')`,
+    ));
   const [totalRow] = await db
     .select({ count: sql<number>`COUNT(*)` })
     .from(listingsTable)
@@ -1311,6 +1349,15 @@ router.get("/listings/:id", optionalAuth, async (req, res): Promise<void> => {
     res.status(404).json({ error: "Listing not found" }); return;
   }
   if (row.listings.moderationStatus !== "approved" && !isAdminD && !isOwnerD) {
+    res.status(404).json({ error: "Listing not found" }); return;
+  }
+  if (
+    !isPubliclyDiscoverable({
+      status: row.listings.status,
+      moderationStatus: row.listings.moderationStatus,
+      lifecycleStatus: (row.listings as any).lifecycleStatus,
+    }) && !isAdminD && !isOwnerD
+  ) {
     res.status(404).json({ error: "Listing not found" }); return;
   }
 
@@ -1408,20 +1455,172 @@ router.put("/listings/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  // Suspended listings cannot self-republish via edit — admin must clear suspension.
+  if ((existing as any).lifecycleStatus === "suspended") {
+    res.status(403).json({ error: "This listing is suspended. Contact support or wait for an admin review." });
+    return;
+  }
+
+  const nextTitle = parsed.data.title ?? existing.title;
+  const nextDescription = parsed.data.description ?? existing.description;
+  const nextCategoryId = parsed.data.categoryId ?? existing.categoryId;
+  const nextSubcategoryId = parsed.data.subcategoryId !== undefined ? parsed.data.subcategoryId : existing.subcategoryId;
+  const contentChanged =
+    nextTitle !== existing.title ||
+    nextDescription !== existing.description ||
+    JSON.stringify(updatedImages) !== JSON.stringify(existing.images ?? []) ||
+    nextCategoryId !== existing.categoryId;
+
+  const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, nextCategoryId));
+  let subcat: { name: string; slug: string } | null = null;
+  if (nextSubcategoryId) {
+    const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, nextSubcategoryId));
+    subcat = sc ? { name: sc.name, slug: sc.slug } : null;
+  }
+
+  let eligibilityPatch: Record<string, unknown> = {};
+  if (contentChanged) {
+    const eligibility = await evaluateProductEligibility({
+      title: nextTitle,
+      description: nextDescription,
+      price: parsed.data.price ?? existing.price,
+      imageUrls: updatedImages,
+      categorySlug: cat?.slug,
+      categoryName: cat?.name,
+      subcategorySlug: subcat?.slug,
+      subcategoryName: subcat?.name,
+      sellerCountry: (req.user as any)?.country,
+      listingCountry: updatedCountry,
+    });
+    if (eligibility.rejectionCode === "VALIDATION_FAILED") {
+      res.status(400).json({ error: eligibility.reason, code: eligibility.rejectionCode });
+      return;
+    }
+    eligibilityPatch = {
+      moderationStatus: eligibility.decision,
+      moderationRiskLevel: eligibility.riskLevel,
+      moderationReason: eligibility.reason,
+      moderationConfidence: eligibility.confidence,
+      moderationFlags: eligibility.flags,
+      moderationSource: eligibility.source === "policy" ? "rules" : eligibility.source,
+      moderatedAt: new Date(),
+      eligibilityClass: eligibility.eligibilityClass.toLowerCase(),
+      lifecycleStatus: eligibility.lifecycleOnInsert,
+      rejectionCode: eligibility.rejectionCode,
+      // Content edits that fail policy leave discovery; approved edits republish.
+      status: eligibility.decision === "rejected"
+        ? "removed"
+        : (parsed.data.status === "sold" ? "sold" : eligibility.publishStatus),
+      appealStatus: null,
+      appealNote: null,
+      appealAt: null,
+    };
+  }
+
   const [listing] = await db.update(listingsTable).set({
     ...parsed.data,
     ...(parsed.data.images !== undefined ? { images: updatedImages } : {}),
     ...(canonicalListingVideoUrl ? { listingVideoUrl: canonicalListingVideoUrl } : {}),
     country: updatedCountry || null,
     deliveryMethod: listingDeliveryMethod,
+    ...eligibilityPatch,
   }).where(eq(listingsTable.id, id)).returning();
   const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
-  const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.categoryId));
+  res.json(await formatListing(listing, seller, cat ?? null, subcat));
+});
+
+/** Seller appeal / correction request for a rejected or pending listing. */
+router.post("/listings/:id/appeal", requireAuth, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const note = String(req.body?.note ?? req.body?.message ?? "").trim().slice(0, 2000);
+  if (!note) {
+    res.status(400).json({ error: "Appeal note is required." });
+    return;
+  }
+  const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!["rejected", "pending"].includes(existing.moderationStatus) && (existing as any).lifecycleStatus !== "suspended") {
+    res.status(400).json({ error: "Only pending, rejected, or suspended listings can be appealed." });
+    return;
+  }
+  if ((existing as any).appealStatus === "open") {
+    res.status(409).json({ error: "An appeal is already open for this listing." });
+    return;
+  }
+  const [listing] = await db.update(listingsTable).set({
+    appealStatus: "open",
+    appealNote: note,
+    appealAt: new Date(),
+    appealResolvedAt: null,
+    appealResolvedBy: null,
+  } as any).where(eq(listingsTable.id, id)).returning();
+
+  const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.isAdmin, true)).limit(50);
+  if (admins.length) {
+    await db.insert(notificationsTable).values(admins.map((a) => ({
+      userId: a.id,
+      actorId: req.userId!,
+      type: "listing_appeal",
+      listingId: id,
+      message: `Seller appealed listing #${id}`,
+    }))).catch(() => {});
+  }
+  res.json({ ok: true, appealStatus: (listing as any).appealStatus, rejectionCode: (listing as any).rejectionCode, moderationReason: listing.moderationReason });
+});
+
+/**
+ * Seller resubmit after editing a rejected listing — re-runs eligibility.
+ * Prefer PUT with content changes (auto re-check); this endpoint forces re-evaluation.
+ */
+router.post("/listings/:id/resubmit", requireAuth, requireListingPublicationAccess, async (req, res): Promise<void> => {
+  const id = parseInt(String(req.params.id), 10);
+  const [existing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (existing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if ((existing as any).lifecycleStatus === "suspended") {
+    res.status(403).json({ error: "Suspended listings cannot be resubmitted by the seller." });
+    return;
+  }
+  const images = cleanListingImages(existing.images ?? []);
+  if (images.length < 1 || !hasUsableListingImage(images)) {
+    res.status(400).json({ error: "Add at least one valid product photo before resubmitting." });
+    return;
+  }
+  const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, existing.categoryId));
   let subcat: { name: string; slug: string } | null = null;
-  if (listing.subcategoryId) {
-    const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, listing.subcategoryId));
+  if (existing.subcategoryId) {
+    const [sc] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, existing.subcategoryId));
     subcat = sc ? { name: sc.name, slug: sc.slug } : null;
   }
+  const eligibility = await evaluateProductEligibility({
+    title: existing.title,
+    description: existing.description,
+    price: existing.price,
+    imageUrls: images,
+    categorySlug: cat?.slug,
+    categoryName: cat?.name,
+    subcategorySlug: subcat?.slug,
+    subcategoryName: subcat?.name,
+    sellerCountry: (req.user as any)?.country,
+    listingCountry: existing.country,
+  });
+  const [listing] = await db.update(listingsTable).set({
+    moderationStatus: eligibility.decision,
+    moderationRiskLevel: eligibility.riskLevel,
+    moderationReason: eligibility.reason,
+    moderationConfidence: eligibility.confidence,
+    moderationFlags: eligibility.flags,
+    moderationSource: eligibility.source === "policy" ? "rules" : eligibility.source,
+    moderatedAt: new Date(),
+    eligibilityClass: eligibility.eligibilityClass.toLowerCase(),
+    lifecycleStatus: eligibility.lifecycleOnInsert,
+    rejectionCode: eligibility.rejectionCode,
+    status: eligibility.publishStatus,
+    appealStatus: eligibility.decision === "approved" ? "resolved" : (existing as any).appealStatus,
+    appealResolvedAt: eligibility.decision === "approved" ? new Date() : (existing as any).appealResolvedAt,
+  } as any).where(eq(listingsTable.id, id)).returning();
+  const [seller] = await db.select().from(usersTable).where(eq(usersTable.id, listing.sellerId));
   res.json(await formatListing(listing, seller, cat ?? null, subcat));
 });
 
@@ -2333,11 +2532,13 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     ];
     excludeBlockedSellers(baseConditions, req.userId);
 
-    // 3. Scope to the user's country (same rule as the main feed)
+    // 3. Country eligibility FIRST (before boost / distance / relevance ranking)
     const userCountry = req.user?.country ?? null;
     const isAdmin = hasRole(req.user, "admin");
     if (userCountry && !isAdmin) {
       baseConditions.push(eq(listingsTable.country!, userCountry));
+    } else if (!isAdmin) {
+      baseConditions.push(sql`false` as any);
     }
 
     const geoUserP: GeoUser | null = req.user

@@ -14,6 +14,7 @@ import blocksRouter from "./blocks";
 import adminRouter from "./admin";
 import adminOperationsRouter from "./adminOperations";
 import statsRouter from "./stats";
+import analyticsRouter from "./analytics";
 import storageRouter from "./storage";
 import boostRouter from "./boost";
 import commentsRouter from "./comments";
@@ -28,6 +29,7 @@ import jobsRouter from "./jobs";
 import supportRouter from "./support";
 import s3UploadRouter from "./s3-upload";
 import chatbotRouter from "./chatbot";
+import flexaAiRouter from "./flexaAi";
 import stripeConnectRouter from "./stripeConnect";
 import stripeCheckoutRouter from "./stripeCheckout";
 import adminStripeTransactionsRouter from "./adminStripeTransactions";
@@ -37,6 +39,7 @@ import cashoutRouter from "./cashout";
 import haitiMoneyRouter from "./haiti-money";
 import phoneOtpRouter from "./phone-otp";
 import sellerPayoutsRouter from "./seller-payouts";
+import sellerAnalyticsRouter from "./sellerAnalytics";
 import promoRouter from "./promo";
 import subscriptionRouter from "./subscription";
 import recoveryRouter from "./recovery";
@@ -74,8 +77,7 @@ import musicRouter from "./music";
 import storeManagerRouter from "./storeManager";
 import bridgeRouter from "./bridge";
 import { extractToken, verifyToken } from "../lib/auth";
-import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { loadAuthUser } from "../middlewares/auth";
 
 const router: IRouter = Router();
 router.use(bridgeRouter);
@@ -143,20 +145,12 @@ async function profileCompletionGuard(req: Request, res: Response, next: NextFun
   const payload = verifyToken(token);
   if (!payload) { next(); return; }
 
-  const [user] = await db
-    .select({
-      id: usersTable.id,
-      name: usersTable.name,
-      avatar: usersTable.avatar,
-      country: usersTable.country,
-      location: usersTable.location,
-      isBanned: usersTable.isBanned,
-      isPhoneVerified: usersTable.isPhoneVerified,
-    })
-    .from(usersTable)
-    .where(eq(usersTable.id, payload.userId));
-
+  // Shared cache-aware load — requireAuth on the same request reuses req.user.
+  const user = await loadAuthUser(payload.userId);
   if (!user || user.isBanned) { next(); return; }
+
+  req.userId = user.id;
+  req.user = user;
 
   const profileCompleted = !!(user.name?.trim());
   if (!profileCompleted) {
@@ -194,6 +188,7 @@ router.use(blocksRouter);
 router.use(adminRouter);
 router.use(adminOperationsRouter);
 router.use(statsRouter);
+router.use(analyticsRouter);
 router.use(storageRouter);
 router.use(commentsRouter);
 router.use(notificationsRouter);
@@ -206,6 +201,7 @@ router.use(jobsRouter);
 router.use(supportRouter);
 router.use(s3UploadRouter);
 router.use(chatbotRouter);
+router.use(flexaAiRouter);
 router.use(stripeConnectRouter);
 router.use(stripeCheckoutRouter);
 router.use(adminStripeTransactionsRouter);
@@ -215,6 +211,7 @@ router.use(fintechRouter);
 router.use(cashoutRouter);
 router.use(phoneOtpRouter);
 router.use(sellerPayoutsRouter);
+router.use(sellerAnalyticsRouter);
 router.use(promoRouter);
 router.use(subscriptionRouter);
 router.use("/recovery", otpLimiter);

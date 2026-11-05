@@ -41,7 +41,11 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/saved": () => import("@/pages/Saved"),
   "/settings": () => import("@/pages/Settings"),
   "/subscription": () => import("@/pages/Subscription"),
-  "/videos": () => import("@/pages/VideoFeed"),
+  "/videos": () =>
+    Promise.all([
+      import("@/pages/VideoDiscover"),
+      import("@/pages/VideoFeed"),
+    ]),
   "/tv": () => import("@/pages/FlexaTV"),
   "/music": () => import("@/pages/FlexaMusic"),
   "/offers": () => import("@/pages/Offers"),

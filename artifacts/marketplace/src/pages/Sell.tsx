@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth";
 import { useRestriction } from "@/hooks/useRestriction";
 import { Children, type ReactNode, useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle } from "lucide-react";
+import { X, Globe, Loader2, ChevronRight, ArrowLeft, Check, Images, ImagePlus, Video, AlertTriangle, Package, Tag, Truck, Eye, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor, stateForCity, statesFor } from "@/lib/countries";
@@ -28,6 +28,7 @@ import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import sellPreviewCar from "@/assets/sell-preview-car.webp";
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
+import SellerCenterShell, { SellAccordionSection, SELL_STEPS } from "@/components/seller/SellerCenterShell";
 
 const MAX_IMAGES = 5;
 const MIN_IMAGES = 2;
@@ -102,8 +103,9 @@ export default function Sell() {
     !!(user as any)?.isSuperAdmin;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  const [aiDescLoading, setAiDescLoading] = useState(false);
 
   // ── Edit mode detection ────────────────────────────────────────────────────
   const editId = (() => {
@@ -575,6 +577,13 @@ export default function Sell() {
   // ── Video upload ──────────────────────────────────────────────────────────
   const [listingVideoUrl, setListingVideoUrl] = useState<string | null>(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [openSection, setOpenSection] = useState<"info" | "media" | "pricing" | "delivery" | "review">("info");
+  const [sellerStep, setSellerStep] = useState(0);
+
+  const goSection = (id: typeof openSection, step: number) => {
+    setOpenSection(id);
+    setSellerStep(step);
+  };
   const videoFileInputRef = useRef<HTMLInputElement | null>(null);
   const MAX_VIDEO_SECONDS = 300;
   const MAX_VIDEO_BYTES   = 300 * 1024 * 1024; // 300 MB — matches server cap
@@ -689,30 +698,121 @@ export default function Sell() {
         ? "N ap anrejistre peman…"
         : null;
 
+  const watchedVals = form.watch();
+  const checklist = {
+    title: (watchedVals.title ?? "").trim().length >= 3,
+    category: Number(watchedVals.categoryId) > 0,
+    description: (watchedVals.description ?? "").trim().length >= 10,
+    photos: uploadedImages.length >= requiredPhotoCount,
+    price: Number(watchedVals.price) > 0,
+    stock: true, // optional
+    delivery: !!(watchedVals.city && watchedVals.location && watchedVals.country),
+  };
+
+  const handleSaveDraftClick = () => {
+    if (isEditMode) {
+      toast({ title: t("sell.draftEditSkip", { defaultValue: "Drafts are for new listings only" }) });
+      return;
+    }
+    saveDraft();
+    toast({ title: t("sell.draftSaved", { defaultValue: "Draft saved" }) });
+  };
+
   return (
-    <div className="max-w-xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-extrabold text-foreground mb-2">
-        {isEditMode ? t("sell.editTitle") : t("sell.pageTitle")}
-      </h1>
-      {isEditMode && !editPrefilled && (
-        <p className="text-sm text-muted-foreground mb-4">{t("sell.loadingEdit")}</p>
-      )}
+    <SellerCenterShell>
+      <div className="px-3 md:px-6 py-4 md:py-6 pb-28 md:pb-8">
+        {/* Page header + actions */}
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
+          <div>
+            <h1 className="text-[22px] md:text-[26px] font-extrabold text-foreground tracking-tight">
+              {isEditMode ? t("sell.editTitle") : t("sell.addNewProduct", { defaultValue: "Add New Product" })}
+            </h1>
+            <p className="text-[13px] text-muted-foreground mt-0.5">
+              {t("sell.addNewProductDesc", { defaultValue: "Create a new product listing for your store." })}
+            </p>
+            {isEditMode && !editPrefilled && (
+              <p className="text-sm text-muted-foreground mt-1">{t("sell.loadingEdit")}</p>
+            )}
+          </div>
+          <div className="hidden md:flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSaveDraftClick}
+              className="h-10 px-4 border-[hsl(152,65%,22%)] text-[hsl(152,65%,22%)] font-bold rounded-lg"
+              data-testid="button-save-draft"
+            >
+              {t("sell.saveDraft", { defaultValue: "Save Draft" })}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
+              disabled={isPublishBusy}
+              className="h-10 px-5 bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold rounded-lg"
+              data-testid="button-publish-header"
+            >
+              {isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" })}
+            </Button>
+          </div>
+        </div>
+
+        {/* Progress stepper */}
+        <div className="mb-5 overflow-x-auto scrollbar-none" data-testid="sell-stepper">
+          <div className="flex items-center gap-0 min-w-[520px] md:min-w-0">
+            {SELL_STEPS.map((step, i) => {
+              const active = sellerStep === i;
+              const done = sellerStep > i;
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => goSection(step.id as typeof openSection, i)}
+                  className="flex items-center flex-1 min-w-0"
+                >
+                  <div className="flex flex-col items-center gap-1 min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center text-[12px] font-bold border-2",
+                        active || done
+                          ? "bg-[#F97316] border-[#F97316] text-white"
+                          : "bg-white border-border text-muted-foreground",
+                      )}
+                    >
+                      {done ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] md:text-[11px] font-semibold text-center leading-tight px-0.5 truncate w-full",
+                        active ? "text-[#F97316]" : "text-muted-foreground",
+                      )}
+                    >
+                      {t(step.labelKey, { defaultValue: step.defaultLabel })}
+                    </span>
+                  </div>
+                  {i < SELL_STEPS.length - 1 && (
+                    <div className={cn("h-0.5 w-4 md:w-8 shrink-0 mb-4", done || active ? "bg-[#F97316]" : "bg-border")} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
       {myListingCount !== null && myListingCount.activeCount >= 3 && myListingCount.activeCount < 4 && !hasActivePlan && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-50 px-4 py-3">
           <span className="text-2xl leading-none mt-0.5">⚠️</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-amber-700 dark:text-amber-300">{t("sell.lastFreeSlot")}</p>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">{t("sell.lastFreeSlotDesc")}</p>
+            <p className="text-sm font-bold text-amber-700">{t("sell.lastFreeSlot")}</p>
+            <p className="text-xs text-amber-600 mt-0.5">{t("sell.lastFreeSlotDesc")}</p>
           </div>
         </div>
       )}
       {myListingCount !== null && myListingCount.activeCount >= 4 && !hasActivePlan && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-orange-400/40 bg-orange-50 dark:bg-orange-950/40 px-4 py-3">
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-orange-400/40 bg-orange-50 px-4 py-3">
           <span className="text-2xl leading-none mt-0.5">🚫</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-orange-700 dark:text-orange-300">{t("sell.freeLimit", { count: myListingCount.activeCount, max: 4 })}</p>
-            <p className="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+            <p className="text-sm font-bold text-orange-700">{t("sell.freeLimit", { count: myListingCount.activeCount, max: 4 })}</p>
+            <p className="text-xs text-orange-600 mt-0.5">
               {purchasesDisabled ? t("androidPurchasePolicy.unavailable") : t("sell.freeLimitDesc")}
             </p>
             {!purchasesDisabled && <button
@@ -726,8 +826,9 @@ export default function Sell() {
         </div>
       )}
 
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-5" noValidate>
+        <form onSubmit={form.handleSubmit(onSubmit, onInvalidSubmit)} className="space-y-3 md:space-y-4" noValidate>
 
           {/* ── Draft restored banner ─────────────────────────────────── */}
           {draftRestored && (
@@ -764,6 +865,95 @@ export default function Sell() {
             </div>
           )}
 
+          <SellAccordionSection
+            id="info"
+            title={t("sell.productInformation", { defaultValue: "Product Information" })}
+            icon={Package}
+            open={openSection === "info"}
+            onToggle={() => goSection("info", 0)}
+            complete={checklist.title && checklist.category && checklist.description}
+          >
+          <FormField control={form.control} name="title" render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t("sell.listingTitle")}<ReqDot filled={(field.value ?? "").trim().length >= 3} /></FormLabel>
+              <FormControl><Input placeholder={t("sell.titlePlaceholder")} {...field} data-testid="input-title" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
+          <FormField control={form.control} name="description" render={({ field }) => (
+            <FormItem>
+              <div className="flex items-center justify-between gap-2">
+                <FormLabel className="mb-0">{t("sell.description")}<ReqDot filled={(field.value ?? "").trim().length >= 10} /></FormLabel>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={aiDescLoading || !token || !(form.getValues("title") || "").trim()}
+                  data-testid="button-ai-description"
+                  onClick={async () => {
+                    const title = (form.getValues("title") || "").trim();
+                    if (!title || !token) {
+                      toast({
+                        title: t("sell.aiDescriptionNeedTitle", { defaultValue: "Add a title first" }),
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    setAiDescLoading(true);
+                    try {
+                      const catName = categories?.find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? categories?.flatMap((c: any) => c.children ?? []).find((c: any) => c.id === selectedCategoryId)?.name
+                        ?? "";
+                      const data = await apiFetch<{ content?: string }>("/api/flexa-ai/product-description", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          title,
+                          category: catName,
+                          condition: form.getValues("condition") || undefined,
+                          price: form.getValues("price") || undefined,
+                          language: (i18n.language || "en").slice(0, 2),
+                          details: field.value || undefined,
+                        }),
+                      });
+                      if (!data?.content) {
+                        throw new Error(t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }));
+                      }
+                      form.setValue("description", String(data.content).trim(), { shouldDirty: true, shouldValidate: true });
+                      toast({ title: t("sell.aiDescriptionDone", { defaultValue: "Description drafted with Flexa AI" }) });
+                    } catch (err: any) {
+                      toast({
+                        title: t("sell.aiDescriptionFailed", { defaultValue: "Could not generate description" }),
+                        description: err?.message,
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setAiDescLoading(false);
+                    }
+                  }}
+                >
+                  {aiDescLoading
+                    ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    : <Sparkles className="h-3.5 w-3.5 mr-1" />}
+                  {t("sell.aiDescription", { defaultValue: "Flexa AI" })}
+                </Button>
+              </div>
+              <FormControl><Textarea placeholder={t("sell.descriptionPlaceholder")} rows={4} {...field} data-testid="input-description" /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+
+          </SellAccordionSection>
+
+          <SellAccordionSection
+            id="media"
+            title={t("sell.photosVideos", { defaultValue: "Photos & Videos" })}
+            icon={Images}
+            open={openSection === "media"}
+            onToggle={() => goSection("media", 1)}
+            complete={checklist.photos}
+          >
           {/* Image upload section */}
           <div
             ref={photoSectionRef}
@@ -878,22 +1068,16 @@ export default function Sell() {
             </div>
           </div>
 
-          <FormField control={form.control} name="title" render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t("sell.listingTitle")}<ReqDot filled={(field.value ?? "").trim().length >= 3} /></FormLabel>
-              <FormControl><Input placeholder={t("sell.titlePlaceholder")} {...field} data-testid="input-title" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
+          </SellAccordionSection>
 
-          <FormField control={form.control} name="description" render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t("sell.description")}<ReqDot filled={(field.value ?? "").trim().length >= 10} /></FormLabel>
-              <FormControl><Textarea placeholder={t("sell.descriptionPlaceholder")} rows={4} {...field} data-testid="input-description" /></FormControl>
-              <FormMessage />
-            </FormItem>
-          )} />
-
+          <SellAccordionSection
+            id="pricing"
+            title={t("sell.pricingInventory", { defaultValue: "Pricing & Inventory" })}
+            icon={Tag}
+            open={openSection === "pricing"}
+            onToggle={() => goSection("pricing", 2)}
+            complete={checklist.price}
+          >
           <FormField control={form.control} name="price" render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between mb-1.5">
@@ -1279,6 +1463,16 @@ export default function Sell() {
           )}
 
           {/* Country — editable for admins, read-only for regular users */}
+          </SellAccordionSection>
+
+          <SellAccordionSection
+            id="delivery"
+            title={t("sell.deliveryLocation", { defaultValue: "Delivery & Location" })}
+            icon={Truck}
+            open={openSection === "delivery"}
+            onToggle={() => goSection("delivery", 3)}
+            complete={checklist.delivery}
+          >
           <FormField control={form.control} name="country" render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center gap-1">
@@ -1645,6 +1839,15 @@ export default function Sell() {
             </div>
           )}
 
+          </SellAccordionSection>
+
+          <SellAccordionSection
+            id="review"
+            title={t("sell.reviewPublish", { defaultValue: "Review & Publish" })}
+            icon={Eye}
+            open={openSection === "review"}
+            onToggle={() => goSection("review", 4)}
+          >
           {/* ── Live listing preview ─────────────────────────────────────────── */}
           {(() => {
             const vals = form.watch();
@@ -1853,7 +2056,7 @@ export default function Sell() {
 
           <Button
             type="submit"
-            className="w-full font-bold"
+            className="w-full h-12 font-bold rounded-full bg-[#F97316] hover:bg-[#ea6a0c] text-white"
             disabled={isPublishBusy}
             aria-busy={isPublishBusy}
             data-testid="button-submit-listing"
@@ -1862,10 +2065,106 @@ export default function Sell() {
               ? publishBusyLabel
               : isPending
                 ? (isEditMode ? t("sell.savingChanges") : t("sell.publishing"))
-                : (isEditMode ? t("sell.saveChanges") : t("sell.publishListing"))}
+                : (isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" }))}
           </Button>
+          </SellAccordionSection>
         </form>
       </Form>
-    </div>
+
+      {/* Desktop right column — preview + checklist */}
+      <aside className="hidden lg:block space-y-4 sticky top-20 self-start" data-testid="sell-preview-column">
+        <div className="rounded-xl border border-border bg-white shadow-sm p-4">
+          <p className="text-[12px] font-bold uppercase tracking-wide text-muted-foreground mb-3">
+            {t("sell.preview", { defaultValue: "Product Preview" })}
+          </p>
+          {(() => {
+            const vals = watchedVals;
+            const selCat = categories?.find(c => c.id === vals.categoryId);
+            const selSub = selCat ? (selCat as any).children?.find((s: any) => s.id === vals.subcategoryId) : null;
+            const imgs = uploadedImages.map(img => img.previewUrl);
+            const usingSample = imgs.length === 0;
+            const previewImages = usingSample ? [sellPreviewCar] : imgs;
+            const previewListing = {
+              id: -1,
+              title: vals.title?.trim() || t("sell.titlePlaceholder", "Your listing title"),
+              price: Number(vals.price) || 0,
+              currency,
+              images: previewImages,
+              location: vals.location || vals.city || "",
+              city: vals.city || null,
+              country: vals.country || null,
+              condition: vals.condition || "good",
+              isBoosted: false,
+              status: "active",
+              sellerName: user?.name ?? "",
+              sellerRating: 0,
+              sellerIsVerified: (user as any)?.isVerified ?? false,
+              favoriteCount: 0,
+              isFavorited: false,
+              createdAt: new Date().toISOString(),
+              categoryIcon: selCat?.icon ?? null,
+              subcategory: selSub?.name ?? null,
+              sellerId: undefined,
+            };
+            return (
+              <div className="max-w-[240px] mx-auto relative">
+                <ListingCard listing={previewListing} preview previewFallbackImage={sellPreviewCar} />
+              </div>
+            );
+          })()}
+        </div>
+
+        <div className="rounded-xl border border-border bg-white shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <Check className="h-4 w-4" />
+            </span>
+            <p className="font-bold text-[14px]">{t("sell.listingChecklist", { defaultValue: "Listing Checklist" })}</p>
+          </div>
+          <ul className="space-y-2.5 text-[13px]">
+            {[
+              { ok: checklist.title, label: t("sell.listingTitle") },
+              { ok: checklist.category, label: t("sell.category") },
+              { ok: checklist.description, label: t("sell.description") },
+              { ok: checklist.photos, label: t("sell.atLeastOnePhoto", { defaultValue: "At least 1 product photo" }) },
+              { ok: checklist.price, label: t("sell.price") },
+              { ok: !!watchedVals.stockQuantity, label: t("sell.stockQuantity", { defaultValue: "Quantity (inventory)" }) },
+              { ok: checklist.delivery, label: t("sell.deliveryInfo", { defaultValue: "Delivery information" }) },
+            ].map((row) => (
+              <li key={row.label} className="flex items-center gap-2">
+                <span className={row.ok ? "text-emerald-600" : "text-muted-foreground/40"}>
+                  {row.ok ? <Check className="h-4 w-4" /> : <span className="inline-block w-4 h-4 rounded border border-border" />}
+                </span>
+                <span className={row.ok ? "text-foreground font-medium" : "text-muted-foreground"}>{row.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+      </div>
+
+      {/* Mobile sticky actions */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-border px-3 py-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleSaveDraftClick}
+          className="flex-1 h-11 border-[hsl(152,65%,22%)] text-[hsl(152,65%,22%)] font-bold rounded-full"
+          data-testid="button-save-draft-mobile"
+        >
+          {t("sell.saveDraft", { defaultValue: "Save Draft" })}
+        </Button>
+        <Button
+          type="button"
+          onClick={() => form.handleSubmit(onSubmit, onInvalidSubmit)()}
+          disabled={isPublishBusy}
+          className="flex-1 h-11 bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold rounded-full"
+          data-testid="button-publish-mobile"
+        >
+          {isEditMode ? t("sell.saveChanges") : t("sell.publishProduct", { defaultValue: "Publish Product" })}
+        </Button>
+      </div>
+      </div>
+    </SellerCenterShell>
   );
 }

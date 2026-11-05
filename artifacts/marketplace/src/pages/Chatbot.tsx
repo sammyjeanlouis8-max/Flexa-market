@@ -225,7 +225,7 @@ const TOPICS: Topic[] = [
   },
 ];
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatMessage = { role: "user" | "assistant"; content: string; deepLinks?: string[] };
 
 const MAX_HISTORY = 40;
 const STORAGE_PREFIX = "flexamarket_chatbot_history_";
@@ -349,12 +349,21 @@ export default function Chatbot() {
       });
 
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data?.error ?? `HTTP ${resp.status}`);
-      if (data?.error) throw new Error(data.error);
+      if (!resp.ok && !data?.content) throw new Error(data?.error ?? `HTTP ${resp.status}`);
+      if (data?.error && !data?.content) throw new Error(data.error);
+
+      const deepLinks = Array.isArray(data?.deepLinks)
+        ? data.deepLinks.filter((x: unknown) => typeof x === "string" && String(x).startsWith("/")).slice(0, 6)
+        : [];
+      if (data?.escalateSuggested) setShowEscalate(true);
 
       setMessages(curr => [
         ...curr,
-        { role: "assistant" as const, content: data?.content || "…" },
+        {
+          role: "assistant" as const,
+          content: data?.content || "…",
+          deepLinks,
+        },
       ].slice(-MAX_HISTORY));
     } catch (err: any) {
       setError(err?.message ?? "Something went wrong");
@@ -368,17 +377,24 @@ export default function Chatbot() {
     if (escalating) return;
     setEscalating(true);
     try {
-      const contextLines = messages
-        .slice(-10)
-        .map(m => `${m.role === "user" ? "Itilizatè" : "FlexaBot"}: ${m.content}`)
-        .join("\n");
+      const botHistory = messages
+        .slice(-40)
+        .filter((m) => m.content?.trim())
+        .map((m) => ({
+          role: m.role === "assistant" ? ("bot" as const) : ("user" as const),
+          content: m.content.trim().slice(0, 4000),
+        }));
       const subject = t("chatbot.escalateSubject", { defaultValue: "Demann sipò ki soti nan FlexaBot" });
-      const message = contextLines.length > 0
-        ? t("chatbot.escalateBody", { defaultValue: "Itilizatè a t ap pale ak FlexaBot epi li bezwen yon ajan reyèl.\n\nKonvèsasyon an:\n{{context}}", context: contextLines })
-        : t("chatbot.escalateBodyEmpty", { defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl." });
+      const message = t("chatbot.escalateBodyEmpty", {
+        defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl apre yon konvèsasyon FlexaBot.",
+      });
       const r = await apiFetch<{ id: number }>("/api/support/threads", {
         method: "POST",
-        body: JSON.stringify({ subject, message }),
+        body: JSON.stringify({
+          subject,
+          message,
+          botHistory: botHistory.length > 0 ? botHistory : undefined,
+        }),
       });
       setLocation(`/support/${r.id}`);
     } catch (err: any) {
@@ -533,14 +549,29 @@ export default function Chatbot() {
                   {m.role === "user" ? <UserIcon className="h-4 w-4" /> : <Bot className="h-4 w-4 text-primary" />}
                 </AvatarFallback>
               </Avatar>
-              <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words ${
-                  m.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-tr-sm"
-                    : "bg-muted rounded-tl-sm"
-                }`}
-              >
-                {m.content}
+              <div className="max-w-[85%] space-y-1.5">
+                <div
+                  className={`rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words ${
+                    m.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-tr-sm"
+                      : "bg-muted rounded-tl-sm"
+                  }`}
+                >
+                  {m.content}
+                </div>
+                {m.role === "assistant" && m.deepLinks && m.deepLinks.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 px-0.5" data-testid="chat-deep-links">
+                    {m.deepLinks.map((href) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        className="inline-flex items-center rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-primary hover:bg-accent"
+                      >
+                        {href}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -591,13 +622,15 @@ export default function Chatbot() {
             </Button>
           </div>
           <p className="text-center text-[10px] text-muted-foreground mt-2">
-            FlexaBot pa toujou egzak —{" "}
+            {t("chatbot.disclaimer", {
+              defaultValue: "FlexaBot uses verified Flexa Market data when available and may still be imperfect —",
+            })}{" "}
             <button
               className="underline hover:text-foreground"
               onClick={() => setLocation("/support")}
               data-testid="link-live-support"
             >
-              klike la pou sipò dirèk
+              {t("chatbot.disclaimerSupport", { defaultValue: "talk to live support" })}
             </button>
           </p>
         </div>

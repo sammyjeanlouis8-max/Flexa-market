@@ -59,6 +59,19 @@ export const listingsTable = pgTable("listings", {
   moderationSource: text("moderation_source"),
   moderatedAt: timestamp("moderated_at", { withTimezone: true }),
   moderatedBy: integer("moderated_by"),
+  /** allowed | requires_review | prohibited — durable eligibility class */
+  eligibilityClass: text("eligibility_class").notNull().default("allowed"),
+  /**
+   * Additive lifecycle: draft | pending_review | approved | published |
+   * rejected | suspended | sold | archived. Coexists with status/moderationStatus.
+   */
+  lifecycleStatus: text("lifecycle_status").notNull().default("published"),
+  rejectionCode: text("rejection_code"),
+  appealStatus: text("appeal_status"),
+  appealNote: text("appeal_note"),
+  appealAt: timestamp("appeal_at", { withTimezone: true }),
+  appealResolvedAt: timestamp("appeal_resolved_at", { withTimezone: true }),
+  appealResolvedBy: integer("appeal_resolved_by"),
   // Optional listing video for Standard/Premium/VIP subscribers
   listingVideoUrl: text("listing_video_url"),
   // Package weight & dimensions (used for carrier rate calculation)

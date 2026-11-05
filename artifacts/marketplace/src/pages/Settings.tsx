@@ -9,736 +9,44 @@ import {
   HelpCircle,
   ChevronRight,
   LogOut,
-  Heart,
-  Package,
-  ShoppingBag,
-  MessageCircle,
-  Tag,
   Shield,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  Smartphone,
-  AlertCircle,
-  Save,
+  Plus,
+  Play,
+  Megaphone,
   CreditCard,
-  ExternalLink,
-  AlertTriangle,
-  XCircle,
+  Tag,
+  BarChart3,
+  Film,
   Lock,
-  UserCheck,
-  Globe,
+  Pencil,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { useState, useEffect } from "react";
-import { STRIPE_SUPPORTED_COUNTRIES, MONCASH_COUNTRIES, isStripeOnlySellerCountry } from "@/lib/paymentCountries";
+import { COUNTRY_FLAGS } from "@/lib/countries";
+import { cn } from "@/lib/utils";
 
-async function handOffStripeUrlToBrowser(url: string, promptText: string): Promise<boolean> {
-  const nativeBridge = (window as typeof window & {
-    ReactNativeWebView?: { postMessage(message: string): void };
-  }).ReactNativeWebView;
-  if (!nativeBridge) return false;
-
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch {
-    const input = document.createElement("textarea");
-    input.value = url;
-    input.setAttribute("readonly", "");
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.appendChild(input);
-    input.select();
-    const copied = document.execCommand("copy");
-    input.remove();
-    if (!copied) window.prompt(promptText, url);
-  }
-  return true;
+interface SettingsRow {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  sub?: string;
+  to: string;
+  testid?: string;
+  tone?: "emerald" | "blue" | "amber" | "violet" | "rose" | "slate" | "orange";
+  highlight?: boolean;
 }
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-interface PayoutAccount {
-  id: number;
-  moncashNumber: string | null;
-  moncashVerified: boolean;
-  moncashVerifiedAt: string | null;
-  moncashRejectedReason: string | null;
-  bankName: string | null;
-  bankAccountName: string | null;
-  bankAccountNumber: string | null;
-  bankVerified: boolean;
-  bankVerifiedAt: string | null;
-  bankRejectedReason: string | null;
-  cardPayoutMethod: "fm_wallet" | "stripe" | null;
-}
+const TONE: Record<NonNullable<SettingsRow["tone"]>, string> = {
+  emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  violet: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+};
 
-// ─── Stripe Connect Panel (Stripe-supported countries) ────────────────────────
-function StripeConnectPanel({ required = false }: { required?: boolean }) {
-  const [status, setStatus] = useState<string>("not_connected");
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const { t } = useTranslation();
-  const { token } = useAuth();
-
-  useEffect(() => {
-    if (!token) return;
-    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setStatus(d.stripeAccountStatus ?? "not_connected"); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [token]);
-
-  const startOnboarding = async () => {
-    if (!token) {
-      setActionError(t("settings.stripeSessionExpired"));
-      return;
-    }
-    setActionError(null);
-    setActionNotice(null);
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/stripe/connect/onboard", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(
-          data.code === "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED"
-            ? t("settings.stripePlatformProfileRequired")
-            : t("settings.stripeConnectError"),
-        );
-      }
-      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
-        setActionNotice(t("settings.stripeExternalBrowserCopied"));
-        return;
-      }
-      window.location.assign(data.url);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
-    }
-    finally { setActionLoading(false); }
-  };
-
-  const openDashboard = async () => {
-    if (!token) {
-      setActionError(t("settings.stripeSessionExpired"));
-      return;
-    }
-    setActionError(null);
-    setActionNotice(null);
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/stripe/connect/dashboard", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
-      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
-        setActionNotice(t("settings.stripeExternalBrowserCopied"));
-        return;
-      }
-      window.location.assign(data.url);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
-    }
-    finally { setActionLoading(false); }
-  };
-
-  const isActive = status === "active";
-  const isConnected = status === "connected";
-  const isPending = status === "pending";
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="p-4 border-b border-border bg-muted/30">
-        <div className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-sm">Stripe Connect</span>
-          {required && <Badge className="ml-1 bg-primary/10 text-primary border-0 text-[10px]">{t("settings.required")}</Badge>}
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
-          ) : isActive || isConnected ? (
-            <Badge className="ml-auto bg-green-100 text-green-700 border-0 text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" />{t("settings.connected")} ✅
-            </Badge>
-          ) : isPending ? (
-            <Badge className="ml-auto bg-yellow-100 text-yellow-700 border-0 text-xs">
-              <Clock className="h-3 w-3 mr-1" />{t("settings.pending")}
-            </Badge>
-          ) : (
-            <Badge className="ml-auto bg-muted text-muted-foreground border-0 text-xs">
-              <XCircle className="h-3 w-3 mr-1" />{t("settings.notConnected")}
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      <div className="p-4 space-y-3">
-        {isActive ? (
-          <>
-            <p className="text-sm text-muted-foreground">{t("settings.stripeActiveDesc")}</p>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoNoWait")}</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletPaydays")}</li>
-            </ul>
-            <Button size="sm" variant="outline" onClick={openDashboard} disabled={actionLoading} className="w-full">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
-              {t("settings.stripeDashboard")}
-            </Button>
-          </>
-        ) : isConnected ? (
-          <>
-            <p className="text-sm text-muted-foreground">{t("settings.stripeConnectedPendingDesc")}</p>
-            <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              {t("settings.stripeReviewBtn")}
-            </Button>
-          </>
-        ) : isPending ? (
-          <>
-            <p className="text-sm text-muted-foreground">{t("settings.stripePendingDesc")}</p>
-            <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              {t("settings.stripeCompleteBtn")}
-            </Button>
-          </>
-        ) : (
-          <>
-            {required && (
-              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>{t("settings.stripeRequiredAlert")}</span>
-              </div>
-            )}
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletAutoFast")}</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{t("settings.bulletIdentityVerified")}</li>
-            </ul>
-            <Button size="sm" onClick={startOnboarding} disabled={actionLoading} className="w-full">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              {t("settings.stripeConnectBtn")}
-            </Button>
-          </>
-        )}
-        {actionError && (
-          <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
-            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            {actionError}
-          </p>
-        )}
-        {actionNotice && (
-          <p role="status" className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-            {actionNotice}
-          </p>
-        )}
-        <TrustFooter />
-      </div>
-    </Card>
-  );
-}
-
-// ─── MonCash sub-panel ─────────────────────────────────────────────────────────
-function MonCashSubPanel({ account, onSaved }: { account: PayoutAccount | null; onSaved: (a: PayoutAccount) => void }) {
-  const [input, setInput] = useState(account?.moncashNumber ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const { t } = useTranslation();
-  const { token } = useAuth();
-
-  useEffect(() => { setInput(account?.moncashNumber ?? ""); }, [account?.moncashNumber]);
-
-  const save = async () => {
-    setError(null); setSuccess(false);
-    const num = input.trim();
-    if (!num) { setError(t("settings.moncashNumberRequired")); return; }
-    if (!/^509\d{8}$/.test(num)) { setError(t("settings.moncashNumberInvalid")); return; }
-    if (!token) { setError(t("settings.stripeSessionExpired")); return; }
-    setSaving(true);
-    try {
-      const res = await fetch("/api/seller/payout-account/moncash", {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ moncashNumber: num }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? t("settings.saveError")); return; }
-      onSaved(data);
-      setSuccess(true);
-    } catch { setError(t("settings.networkError")); }
-    finally { setSaving(false); }
-  };
-
-  const isVerified = account?.moncashVerified;
-  const isRejected = !account?.moncashVerified && !!account?.moncashRejectedReason;
-  const isPending = account?.moncashNumber && !account?.moncashVerified && !account?.moncashRejectedReason;
-
-  return (
-    <div className="space-y-3">
-      {isRejected && (
-        <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-xs text-red-700 dark:text-red-400">
-          <p className="font-semibold mb-1">{t("settings.rejectionReason")}:</p>
-          <p>{account!.moncashRejectedReason}</p>
-        </div>
-      )}
-
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-          {t("settings.moncashSectionTitle")}
-        </p>
-        {isVerified ? (
-          <p className="text-sm text-muted-foreground">
-            MonCash <span className="font-mono font-semibold text-foreground">{account!.moncashNumber}</span> ✓
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t("settings.moncashEnterDesc")}
-          </p>
-        )}
-      </div>
-
-      <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-        <span>{t("settings.moncashDelay")}</span>
-      </div>
-
-      <div className="flex gap-2">
-        <Input
-          value={input}
-          onChange={e => { setInput(e.target.value); setError(null); setSuccess(false); }}
-          placeholder="50937001234"
-          maxLength={11}
-          className="h-9 text-sm font-mono flex-1"
-          data-testid="input-moncash-number"
-        />
-        <Button size="sm" onClick={save} disabled={saving} className="h-9 shrink-0">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          <span className="ml-1">{saving ? t("settings.saving") : t("settings.save")}</span>
-        </Button>
-      </div>
-
-      {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />{error}</p>}
-      {success && <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" />{t("settings.savedPendingVerification")}</p>}
-      {isPending && !success && (
-        <p className="text-xs text-yellow-600 flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{t("settings.pendingVerification")}</p>
-      )}
-    </div>
-  );
-}
-
-// ─── Trust footer (reused across panels) ──────────────────────────────────────
-function TrustFooter() {
-  const { t } = useTranslation();
-  return (
-    <div className="border-t border-border pt-3 mt-1 grid grid-cols-2 gap-2">
-      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-        <span>{t("settings.securePayout")}</span>
-      </div>
-      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
-        <UserCheck className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary/70" />
-        <span>{t("settings.manualPayout")}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Card payout method selector (Kat FM vs Stripe) ──────────────────────────
-function CardPayoutMethodPanel() {
-  const { user } = useAuth();
-  const isStripeOnlySeller = isStripeOnlySellerCountry(user?.country);
-  const [method, setMethod] = useState<"fm_wallet" | "stripe">("fm_wallet");
-  const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const { t } = useTranslation();
-
-  const tk = () => localStorage.getItem("flexamarket_token") ?? "";
-
-  useEffect(() => {
-    fetch("/api/seller/payout-account", { headers: { Authorization: `Bearer ${tk()}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.cardPayoutMethod) setMethod(d.cardPayoutMethod); })
-      .catch(() => {})
-      .finally(() => setLoaded(true));
-  }, []);
-
-  const save = async (m: "fm_wallet" | "stripe") => {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/seller/payout-account/card-method", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk()}` },
-        body: JSON.stringify({ method: m }),
-      });
-      if (res.ok) setMethod(m);
-    } catch { /* noop */ }
-    finally { setSaving(false); }
-  };
-
-  if (!loaded) return null;
-
-  if (isStripeOnlySeller) {
-    return (
-      <Card className="overflow-hidden mt-3">
-        <div className="p-4">
-          <p className="font-semibold text-sm">Stripe</p>
-          <p className="text-xs text-muted-foreground mt-1">{t("sell.usStripeOnly")}</p>
-        </div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="overflow-hidden mt-3">
-      <div className="p-4 border-b border-border bg-muted/30">
-        <span className="font-semibold text-sm">{t("settings.cardPayoutQuestion")}</span>
-      </div>
-      <div className="p-4 space-y-3">
-        {/* Kat FM option */}
-        <button
-          onClick={() => save("fm_wallet")}
-          disabled={saving}
-          className={`w-full flex items-start gap-3 p-3 rounded-xl border-2 text-left transition-all ${
-            method === "fm_wallet"
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-primary/40"
-          }`}
-        >
-          <div className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
-            method === "fm_wallet" ? "border-primary" : "border-muted-foreground"
-          }`}>
-            {method === "fm_wallet" && <div className="w-2 h-2 rounded-full bg-primary" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">Kat FM</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400">
-                {t("settings.recommended")}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("settings.fmWalletPayoutDesc")}
-            </p>
-          </div>
-        </button>
-
-        {/* Stripe Connect option */}
-        <button
-          onClick={() => save("stripe")}
-          disabled={saving}
-          className={`w-full flex items-start gap-3 p-3 rounded-xl border-2 text-left transition-all ${
-            method === "stripe"
-              ? "border-blue-500 bg-blue-500/5"
-              : "border-border hover:border-blue-400/40"
-          }`}
-        >
-          <div className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
-            method === "stripe" ? "border-blue-500" : "border-muted-foreground"
-          }`}>
-            {method === "stripe" && <div className="w-2 h-2 rounded-full bg-blue-500" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">Stripe Connect</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
-                {t("settings.advanced")}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {t("settings.stripePayoutMethodDesc")}
-            </p>
-          </div>
-        </button>
-
-        {saving && (
-          <p className="text-xs text-center text-muted-foreground animate-pulse">
-            {t("settings.saving")}
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-// ─── Haiti payout panel: Stripe (recommended) + MonCash (manual) — no bank ────
-function HaitiPayoutPanel() {
-  const [account, setAccount] = useState<PayoutAccount | null>(null);
-  const [loading, setLoading] = useState(true);
-  const { t } = useTranslation();
-  const { token } = useAuth();
-
-  // Stripe status
-  const [stripeStatus, setStripeStatus] = useState<string>("not_connected");
-  const [stripeLoading, setStripeLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!token) return;
-    fetch("/api/seller/payout-account", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => setAccount(d))
-      .catch(() => setAccount(null))
-      .finally(() => setLoading(false));
-
-    fetch("/api/stripe/connect/status", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setStripeStatus(d.stripeAccountStatus ?? "not_connected"); })
-      .catch(() => {})
-      .finally(() => setStripeLoading(false));
-  }, [token]);
-
-  const moncashVerified = account?.moncashVerified;
-  const moncashPending = account?.moncashNumber && !account?.moncashVerified && !account?.moncashRejectedReason;
-  const moncashRejected = !account?.moncashVerified && !!account?.moncashRejectedReason;
-
-  const stripeActive = stripeStatus === "active";
-  const stripeConnected = stripeStatus === "connected";
-  const stripePending = stripeStatus === "pending";
-
-  const makeBadge = (verified: any, pending: any, rejected: any) =>
-    verified
-      ? <Badge className="ml-1.5 bg-green-100 text-green-700 border-0 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("settings.active")}</Badge>
-      : pending
-      ? <Badge className="ml-1.5 bg-yellow-100 text-yellow-700 border-0 text-[10px]"><Clock className="h-2.5 w-2.5 mr-0.5" />{t("settings.pending")}</Badge>
-      : rejected
-      ? <Badge className="ml-1.5 bg-red-100 text-red-700 border-0 text-[10px]"><AlertCircle className="h-2.5 w-2.5 mr-0.5" />{t("settings.rejected")}</Badge>
-      : null;
-
-  const startOnboarding = async () => {
-    if (!token) {
-      setActionError(t("settings.stripeSessionExpired"));
-      return;
-    }
-    setActionError(null);
-    setActionNotice(null);
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/stripe/connect/onboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (!res.ok || !data.url) {
-        throw new Error(
-          data.code === "STRIPE_CONNECT_PLATFORM_PROFILE_REQUIRED"
-            ? t("settings.stripePlatformProfileRequired")
-            : t("settings.stripeConnectError"),
-        );
-      }
-      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
-        setActionNotice(t("settings.stripeExternalBrowserCopied"));
-        return;
-      }
-      window.location.assign(data.url);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : t("settings.stripeConnectError"));
-    }
-    finally { setActionLoading(false); }
-  };
-
-  const openDashboard = async () => {
-    if (!token) {
-      setActionError(t("settings.stripeSessionExpired"));
-      return;
-    }
-    setActionError(null);
-    setActionNotice(null);
-    setActionLoading(true);
-    try {
-      const res = await fetch("/api/stripe/connect/dashboard", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(t("settings.stripeDashboardError"));
-      if (await handOffStripeUrlToBrowser(data.url, t("settings.stripeExternalBrowserPrompt"))) {
-        setActionNotice(t("settings.stripeExternalBrowserCopied"));
-        return;
-      }
-      window.location.assign(data.url);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : t("settings.stripeDashboardError"));
-    }
-    finally { setActionLoading(false); }
-  };
-
-  return (
-    <div className="space-y-3">
-      <Card className="overflow-hidden">
-        <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
-          <CreditCard className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">Stripe Connect</span>
-          {stripeLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground ml-auto" />
-          ) : (
-            <>
-              {stripeConnected
-                ? <Badge className="ml-1.5 bg-green-100 text-green-700 border-0 text-[10px]"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />{t("settings.connected")}</Badge>
-                : makeBadge(stripeActive, stripePending, false)}
-              {!stripeActive && !stripeConnected && !stripePending && (
-                <Badge className="ml-auto bg-blue-100 text-blue-700 border-0 text-[10px]">{t("settings.recommended")}</Badge>
-              )}
-            </>
-          )}
-        </div>
-        {!stripeLoading && (
-          <div className="p-4 space-y-3">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                {t("settings.instantPayout")}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {stripeActive
-                  ? t("settings.stripeActiveDesc")
-                  : stripeConnected
-                    ? t("settings.stripeConnectedPendingDesc")
-                    : t("settings.stripeConnectDesc")}
-              </p>
-            </div>
-            <ul className="text-xs text-muted-foreground space-y-1">
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{stripeActive ? t("settings.bulletAutoFast") : t("settings.bulletInstantPayout")}</li>
-              <li className="flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />{stripeActive ? t("settings.bulletAutoNoWait") : t("settings.bulletIdentityVerified")}</li>
-            </ul>
-            <Button size="sm" variant={stripeActive ? "outline" : "default"} onClick={stripeActive ? openDashboard : startOnboarding} disabled={actionLoading} className="w-full">
-              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : stripeActive ? <ExternalLink className="h-4 w-4 mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
-              {stripeActive
-                ? t("settings.stripeDashboard")
-                : stripeConnected
-                  ? t("settings.stripeReviewBtn")
-                  : stripePending
-                    ? t("settings.stripeCompleteBtn")
-                    : t("settings.stripeConnectBtn")}
-            </Button>
-            {actionError && (
-              <p role="alert" className="text-xs text-red-600 flex items-start gap-1.5">
-                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                {actionError}
-              </p>
-            )}
-            {actionNotice && (
-              <p role="status" className="text-xs text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                {actionNotice}
-              </p>
-            )}
-          </div>
-        )}
-      </Card>
-
-      <Card className="overflow-hidden">
-        <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
-          <Smartphone className="h-4 w-4 text-primary" />
-          <span className="font-semibold text-sm">{t("settings.moncashTitle")}</span>
-          <span className="ml-auto">{makeBadge(moncashVerified, moncashPending, moncashRejected)}</span>
-        </div>
-        {!loading && (
-          <div className="p-4">
-            <MonCashSubPanel account={account} onSaved={setAccount} />
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-// ─── Payment Status Summary Banner ────────────────────────────────────────────
-function PaymentStatusBanner({ stripeStatus }: { stripeStatus?: string | null }) {
-  const { t } = useTranslation();
-
-  if (stripeStatus === "active") {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
-        <CheckCircle2 className="h-4 w-4 shrink-0" />
-        <span>{t("settings.stripeConnectedBanner")}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
-      <AlertTriangle className="h-4 w-4 shrink-0" />
-      <span>{t("settings.stripeNotConnectedBanner")}</span>
-    </div>
-  );
-}
-
-// ─── Auto-Translate Toggle Card ───────────────────────────────────────────────
-function TranslationToggleCard() {
-  const { user, refreshUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [enabled, setEnabled] = useState<boolean>(!!(user as any)?.translateMessages);
-
-  const tk = () => localStorage.getItem("flexamarket_token") ?? "";
-
-  const toggle = async () => {
-    setLoading(true);
-    const next = !enabled;
-    try {
-      const res = await fetch("/api/auth/translate-preference", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk()}` },
-        body: JSON.stringify({ enabled: next }),
-      });
-      if (res.ok) {
-        setEnabled(next);
-        refreshUser();
-      }
-    } catch { /* noop */ } finally { setLoading(false); }
-  };
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="p-4 flex items-start gap-3">
-        <div className="h-9 w-9 rounded-xl bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center shrink-0">
-          <Globe className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold text-sm">Tradiksyon Otomatik</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Tradui mesaj ki soti nan lòt lang vè lang ou chwazi a
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={toggle}
-              disabled={loading}
-              aria-label="Toggle auto-translate"
-              style={{
-                position: "relative", display: "inline-flex", alignItems: "center",
-                width: 44, height: 24, borderRadius: 12, border: "none", cursor: loading ? "default" : "pointer",
-                background: enabled ? "#3b82f6" : "#D1D5DB",
-                transition: "background 200ms",
-                flexShrink: 0,
-                opacity: loading ? 0.6 : 1,
-              }}
-            >
-              <span style={{
-                position: "absolute", top: 2,
-                left: enabled ? 22 : 2,
-                width: 20, height: 20, borderRadius: "50%", background: "#fff",
-                transition: "left 200ms", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-              }} />
-            </button>
-          </div>
-          {enabled && (
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 flex items-center gap-1.5">
-              <Globe className="h-3 w-3" />
-              Tradiksyon AI aktif — Messaj yo ap tradui otomatikman
-            </p>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ─── Settings Page ─────────────────────────────────────────────────────────────
 export default function Settings() {
   const { user, logout } = useAuth();
   const { t } = useTranslation();
@@ -752,93 +60,215 @@ export default function Settings() {
     );
   }
 
-  const isStripeSupported = user.country ? STRIPE_SUPPORTED_COUNTRIES.has(user.country) : false;
-  const isMoncashCountry = user.country ? MONCASH_COUNTRIES.has(user.country) : false;
+  const countryFlag = user.country ? (COUNTRY_FLAGS[user.country] ?? "🌍") : "🌍";
 
-  const accountRows = [
-    { icon: UserIcon, label: t("settings.editProfile"), sub: t("settings.editProfileSub"), to: "/profile/edit", testid: "row-edit-profile" },
-    { icon: Tag, label: t("settings.myListings"), sub: t("settings.myListingsSub"), to: `/profile/${user.id}`, testid: "row-my-listings" },
-    { icon: Heart, label: t("settings.savedItems"), sub: t("settings.savedItemsSub"), to: "/saved", testid: "row-saved" },
-  ];
-
-  const activityRows = [
-    { icon: ShoppingBag, label: t("settings.orders"), sub: t("settings.ordersSub"), to: "/orders", testid: "row-orders" },
-    { icon: Package, label: t("settings.sales"), sub: t("settings.salesSub"), to: "/sales", testid: "row-sales" },
-    { icon: MessageCircle, label: t("settings.messages"), sub: t("settings.messagesSub"), to: "/messages", testid: "row-messages" },
-  ];
-
-  const settingsRows = [
-    { icon: ShieldCheck, label: t("settings.security"), sub: t("settings.securitySub"), to: "/settings/security", testid: "row-security" },
-    { icon: Bell, label: t("settings.notifications"), sub: t("settings.notificationsSub"), to: "/settings/notifications", testid: "row-notifications" },
-    { icon: Palette, label: t("settings.preferences"), sub: t("settings.preferencesSub"), to: "/settings/preferences", testid: "row-preferences" },
-    { icon: HelpCircle, label: t("settings.helpSupport"), sub: t("settings.helpSupportSub"), to: "/settings/help", testid: "row-help" },
+  const menuRows: SettingsRow[] = [
+    {
+      icon: UserIcon,
+      label: t("accountCenter.profileIdentity"),
+      sub: t("accountCenter.profileIdentitySub"),
+      to: "/settings/identity",
+      testid: "row-profile-identity",
+      tone: "blue",
+    },
+    {
+      icon: ShieldCheck,
+      label: t("accountCenter.securityLogin"),
+      sub: t("accountCenter.securityLoginSub"),
+      to: "/settings/security",
+      testid: "row-security",
+      tone: "violet",
+    },
+    {
+      icon: CreditCard,
+      label: t("accountCenter.paymentsWithdrawals"),
+      sub: t("accountCenter.paymentsWithdrawalsSub"),
+      to: "/settings/payments",
+      testid: "row-payments",
+      tone: "emerald",
+    },
+    {
+      icon: Tag,
+      label: t("accountCenter.myListings"),
+      sub: t("accountCenter.myListingsSub"),
+      to: `/profile/${user.id}`,
+      testid: "row-my-listings",
+      tone: "amber",
+    },
+    {
+      icon: Megaphone,
+      label: t("accountCenter.myBoosts"),
+      sub: t("accountCenter.myBoostsSub"),
+      to: "/my-boosts",
+      testid: "row-my-boosts",
+      tone: "orange",
+    },
+    {
+      icon: Film,
+      label: t("accountCenter.myVideos"),
+      sub: t("accountCenter.myVideosSub"),
+      to: "/settings/videos",
+      testid: "row-my-videos",
+      tone: "violet",
+    },
+    {
+      icon: BarChart3,
+      label: t("accountCenter.analytics"),
+      sub: t("accountCenter.analyticsSub"),
+      to: "/settings/analytics",
+      testid: "row-analytics",
+      tone: "emerald",
+      highlight: true,
+    },
+    {
+      icon: Bell,
+      label: t("accountCenter.notifications"),
+      sub: t("accountCenter.notificationsSub"),
+      to: "/settings/notifications",
+      testid: "row-notifications",
+      tone: "blue",
+    },
+    {
+      icon: Lock,
+      label: t("accountCenter.privacy"),
+      sub: t("accountCenter.privacySub"),
+      to: "/settings/privacy",
+      testid: "row-privacy",
+      tone: "slate",
+    },
+    {
+      icon: Palette,
+      label: t("accountCenter.appearance"),
+      sub: t("accountCenter.appearanceSub"),
+      to: "/settings/preferences",
+      testid: "row-appearance",
+      tone: "rose",
+    },
+    {
+      icon: HelpCircle,
+      label: t("settings.helpSupport"),
+      sub: t("settings.helpSupportSub"),
+      to: "/settings/help",
+      testid: "row-help",
+      tone: "slate",
+    },
   ];
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-6 pb-24">
-      {/* Identity card */}
-      <Card className="p-5 flex items-center gap-4">
-        <Avatar className="h-16 w-16">
-          <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
-          <AvatarFallback>{user.name?.[0]?.toUpperCase() ?? "?"}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-lg truncate" data-testid="text-settings-user-name">{user.name}</p>
-          <p className="text-sm text-muted-foreground truncate" data-testid="text-settings-user-email">{user.email}</p>
-          {user.isVerified && (
-            <span className="inline-block mt-1 text-xs font-semibold text-green-700 bg-green-100 dark:bg-green-950 dark:text-green-400 px-2 py-0.5 rounded-full">
-              ✓ {t("settings.verified")}
-            </span>
-          )}
+    <div className="max-w-2xl mx-auto p-3 sm:p-4 md:p-5 space-y-4 pb-24">
+      {/* Profile card */}
+      <Card className="overflow-hidden rounded-2xl border-border">
+        <div className="p-4 flex items-center gap-3">
+          <Avatar className="h-14 w-14">
+            <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
+            <AvatarFallback className="bg-[hsl(152,65%,18%)] text-white font-bold">
+              {user.name?.[0]?.toUpperCase() ?? "?"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-base truncate" data-testid="text-settings-user-name">{user.name}</p>
+            <p className="text-sm text-muted-foreground truncate" data-testid="text-settings-user-email">{user.email}</p>
+            {user.isVerified && (
+              <span className="inline-flex items-center mt-1 text-xs font-semibold text-emerald-700 bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 px-2 py-0.5 rounded-full">
+                ✓ {t("settings.verified")}
+              </span>
+            )}
+          </div>
+          <Link
+            href="/profile/edit"
+            className="h-11 w-11 rounded-full border border-border flex items-center justify-center hover:bg-accent"
+            aria-label={t("settings.editProfile")}
+            data-testid="button-edit-profile"
+          >
+            <Pencil className="h-4 w-4" />
+          </Link>
         </div>
+        {user.country && (
+          <div className="mx-4 mb-4 rounded-xl bg-muted/70 px-3 py-2.5 flex items-center gap-2 text-sm">
+            <span aria-hidden>{countryFlag}</span>
+            <span className="flex-1 text-muted-foreground">
+              {t("accountCenter.accountCountry")}: <span className="font-medium text-foreground">{user.country}</span>
+            </span>
+            <Info className="h-4 w-4 text-muted-foreground" aria-hidden />
+          </div>
+        )}
       </Card>
 
-      <SettingsGroup title={t("settings.groupAccount")} rows={accountRows} />
-      <SettingsGroup title={t("settings.groupActivity")} rows={activityRows} />
-
-      {/* Payments section */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2">
-          {t("settings.paymentSection")}
-        </h2>
-
-        <PaymentStatusBanner stripeStatus={user.stripeAccountStatus} />
-
-        {isStripeSupported ? (
-          <StripeConnectPanel required />
-        ) : isMoncashCountry ? (
-          <HaitiPayoutPanel />
-        ) : (
-          <StripeConnectPanel />
-        )}
-
-        {/* Card payout method: visible to all sellers */}
-        <CardPayoutMethodPanel />
+      {/* Quick actions */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <Link
+          href="/sell"
+          className="min-h-[76px] rounded-2xl bg-[hsl(152,65%,18%)] text-white flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center shadow-sm"
+          data-testid="button-settings-add-product"
+        >
+          <Plus className="h-5 w-5" aria-hidden />
+          <span className="text-[11px] font-semibold leading-tight">{t("settings.addProduct")}</span>
+        </Link>
+        <Link
+          href="/settings/videos"
+          className="min-h-[76px] rounded-2xl bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-100 border border-sky-100 dark:border-sky-900 flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center"
+          data-testid="button-settings-my-videos"
+        >
+          <Play className="h-5 w-5 text-violet-600" aria-hidden />
+          <span className="text-[11px] font-semibold leading-tight">{t("accountCenter.quickVideos")}</span>
+        </Link>
+        <Link
+          href="/my-boosts"
+          className="min-h-[76px] rounded-2xl bg-orange-50 dark:bg-orange-950/30 text-orange-900 dark:text-orange-100 border border-orange-100 dark:border-orange-900 flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center"
+          data-testid="button-settings-my-boosts"
+        >
+          <Megaphone className="h-5 w-5 text-orange-500" aria-hidden />
+          <span className="text-[11px] font-semibold leading-tight">{t("accountCenter.quickBoosts")}</span>
+        </Link>
       </div>
 
-      {/* Translation section */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground px-2">
-          Tradiksyon
-        </h2>
-        <TranslationToggleCard />
-      </div>
+      {/* Menu */}
+      <Card className="overflow-hidden rounded-2xl divide-y divide-border">
+        {menuRows.map(({ icon: Icon, label, sub, to, testid, tone = "blue", highlight }) => (
+          <Link key={to + label} href={to}>
+            <button
+              type="button"
+              className={cn(
+                "w-full flex items-center gap-3 px-3.5 py-3.5 hover:bg-accent/60 transition-colors text-left min-h-[56px]",
+                highlight && "bg-emerald-50/80 dark:bg-emerald-950/20",
+              )}
+              data-testid={testid}
+            >
+              <div className={cn("rounded-xl p-2.5 flex-shrink-0", TONE[tone])}>
+                <Icon className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm text-foreground">{label}</p>
+                {sub && <p className="text-xs text-muted-foreground truncate mt-0.5">{sub}</p>}
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </button>
+          </Link>
+        ))}
+      </Card>
 
-      <SettingsGroup title={t("settings.groupSettings")} rows={settingsRows} />
-
-      {(user.isAdmin || (user as any).isSuperAdmin) && (
-        <SettingsGroup
-          title={t("settings.groupAdmin")}
-          rows={[
-            { icon: Shield, label: t("settings.adminPanel"), sub: t("settings.adminPanelSub"), to: "/admin", testid: "row-admin" },
-          ]}
-        />
+      {(user.isAdmin || (user as { isSuperAdmin?: boolean }).isSuperAdmin) && (
+        <Card className="overflow-hidden rounded-2xl">
+          <Link href="/admin">
+            <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3.5 hover:bg-accent text-left" data-testid="row-admin">
+              <div className="rounded-xl p-2.5 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                <Shield className="h-4 w-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">{t("settings.adminPanel")}</p>
+                <p className="text-xs text-muted-foreground">{t("settings.adminPanelSub")}</p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </Link>
+        </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden rounded-2xl">
         <button
+          type="button"
           onClick={logout}
-          className="w-full flex items-center gap-3 p-4 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          className="w-full flex items-center gap-3 p-4 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors min-h-11"
           data-testid="button-settings-logout"
         >
           <LogOut className="h-5 w-5" />
@@ -846,42 +276,7 @@ export default function Settings() {
         </button>
       </Card>
 
-      <p className="text-center text-xs text-muted-foreground pt-2">FLEXA MARKET</p>
-    </div>
-  );
-}
-
-interface SettingsRow {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  sub?: string;
-  to: string;
-  testid?: string;
-}
-
-function SettingsGroup({ title, rows }: { title: string; rows: SettingsRow[] }) {
-  return (
-    <div>
-      <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2 px-2">{title}</h2>
-      <Card className="overflow-hidden divide-y divide-border">
-        {rows.map(({ icon: Icon, label, sub, to, testid }) => (
-          <Link key={to} href={to}>
-            <button
-              className="w-full flex items-center gap-3 p-4 hover:bg-accent transition-colors text-left"
-              data-testid={testid}
-            >
-              <div className="bg-primary/10 text-primary rounded-lg p-2 flex-shrink-0">
-                <Icon className="h-5 w-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">{label}</p>
-                {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            </button>
-          </Link>
-        ))}
-      </Card>
+      <p className="text-center text-xs text-muted-foreground pt-1">FLEXA MARKET</p>
     </div>
   );
 }

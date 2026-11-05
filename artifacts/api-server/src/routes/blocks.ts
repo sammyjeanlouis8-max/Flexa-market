@@ -1,9 +1,34 @@
 import { Router } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, notificationsTable, reportsTable, userBlocksTable, usersTable } from "@workspace/db";
 import { hasRole, requireAuth } from "../middlewares/auth";
 
 const router = Router();
+
+/** List users the authenticated account has blocked. */
+router.get("/users/me/blocks", requireAuth, async (req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: usersTable.id,
+      name: usersTable.name,
+      avatar: usersTable.avatar,
+      blockedAt: userBlocksTable.createdAt,
+    })
+    .from(userBlocksTable)
+    .innerJoin(usersTable, eq(usersTable.id, userBlocksTable.blockedId))
+    .where(eq(userBlocksTable.blockerId, req.userId!))
+    .orderBy(desc(userBlocksTable.createdAt))
+    .limit(200);
+
+  res.json({
+    blocks: rows.map((r: { id: number; name: string; avatar: string | null; blockedAt: Date | null }) => ({
+      id: r.id,
+      name: r.name,
+      avatar: r.avatar,
+      blockedAt: r.blockedAt instanceof Date ? r.blockedAt.toISOString() : r.blockedAt ?? null,
+    })),
+  });
+});
 
 router.post("/users/:id/block", requireAuth, async (req, res): Promise<void> => {
   const blockedId = Number(req.params.id);

@@ -33,6 +33,13 @@ router.put("/seller/payout-account/moncash", requireAuth, async (req, res): Prom
   const { moncashNumber } = req.body as { moncashNumber?: string };
   const num = (moncashNumber ?? "").trim();
 
+  // MonCash seller payouts are restricted to registered country Haiti only.
+  const [viewer] = await db.select({ country: usersTable.country }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (isStripeOnlySellerCountry(viewer?.country)) {
+    res.status(403).json({ error: "MonCash payouts are only available for accounts registered in Haiti" });
+    return;
+  }
+
   if (!num || !MONCASH_RE.test(num)) {
     res.status(400).json({ error: "Nimewo MonCash la dwe kòmanse pa 509 epi gen 11 chif (egzanp: 50937001234)" });
     return;
@@ -118,6 +125,12 @@ router.put("/seller/payout-account", requireAuth, async (req, res): Promise<void
   const userId = req.userId!;
   const { moncashNumber } = req.body as { moncashNumber?: string };
   const num = (moncashNumber ?? "").trim();
+
+  const [viewer] = await db.select({ country: usersTable.country }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (isStripeOnlySellerCountry(viewer?.country)) {
+    res.status(403).json({ error: "MonCash payouts are only available for accounts registered in Haiti" });
+    return;
+  }
 
   if (!num || !MONCASH_RE.test(num)) {
     res.status(400).json({ error: "Nimewo MonCash la dwe kòmanse pa 509 epi gen 11 chif (egzanp: 50937001234)" });

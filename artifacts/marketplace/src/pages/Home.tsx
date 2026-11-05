@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import ListingCard from "@/components/ListingCard";
+import BoostedDealCard from "@/components/BoostedDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -38,12 +39,18 @@ import {
 type Scope = "nearby" | "city" | "country";
 
 import { COUNTRY_FLAGS, SUPPORTED_COUNTRIES, citiesFor } from "@/lib/countries";
+import { formatPrice } from "@/lib/currency";
+
+function formatPriceHome(listing: { price: number; country?: string | null; currency?: string | null }) {
+  return formatPrice(listing.price, listing.country, listing.currency);
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type NormalListing = {
   id: number;
   title: string;
+  description?: string | null;
   price: number;
   currency?: string | null;
   images: string[];
@@ -52,6 +59,9 @@ type NormalListing = {
   country?: string | null;
   condition: string;
   isBoosted: boolean;
+  boostExpiresAt?: string | null;
+  boostVideoUrl?: string | null;
+  listingVideoUrl?: string | null;
   promaxGroup?: "booster_vip" | "booster_ordinary" | "vip" | "ordinary" | null;
   promaxPosition?: number | null;
   status: string;
@@ -59,8 +69,11 @@ type NormalListing = {
   sellerRating: number;
   sellerIsVerified: boolean;
   favoriteCount: number;
+  viewCount?: number;
+  sharesCount?: number;
   isFavorited?: boolean;
   createdAt: string;
+  category?: string | null;
   categoryIcon?: string | null;
   subcategory?: string | null;
   categorySlug?: string | null;
@@ -338,6 +351,21 @@ export default function Home() {
     }));
   }, [allListings, activeCategory]);
 
+  // Real boosted listings only — used for hero / deals (never invent promotions).
+  // Country eligibility is enforced server-side; re-check client-side so a paid
+  // boost can never bypass the selected marketplace country in this section.
+  const boostedListings = useMemo(
+    () => allListings.filter((l) => {
+      if (!l.isBoosted) return false;
+      if (activeCategory && l.categorySlug !== activeCategory) return false;
+      if (l.boostExpiresAt && new Date(l.boostExpiresAt).getTime() <= Date.now()) return false;
+      if (!isAdmin && activeCountry && l.country && l.country !== activeCountry) return false;
+      return true;
+    }),
+    [allListings, activeCategory, activeCountry, isAdmin],
+  );
+  const heroListing = boostedListings[0] ?? allListings[0] ?? null;
+
   const recordedBoostImpressionsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
     // Impression accounting is tied to a paid booster card entering the
@@ -532,8 +560,48 @@ export default function Home() {
   const displayCity = detectedCity ?? user?.location ?? null;
 
   return (
-    <div className="w-full">
-      {/* === TOP SEARCH BAR === */}
+    <div className="w-full fm-home-amazon">
+      {/* === MOBILE: Amazon-style green search + deliver strip === */}
+      <div className="md:hidden bg-[hsl(152,65%,18%)] text-white px-3 pb-2.5 pt-1 space-y-2">
+        <form onSubmit={handleSearch} className="flex gap-2 items-stretch">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder={t("home.searchPlaceholder")}
+              className="pl-9 pr-3 h-11 rounded-lg bg-white border-0 text-sm text-foreground shadow-sm focus-visible:ring-2 focus-visible:ring-[#F97316]"
+              data-testid="input-search-hero-mobile"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="icon"
+            className="h-11 w-11 rounded-lg bg-[#F97316] hover:bg-[#ea6a0c] text-white shrink-0"
+            data-testid="button-search-hero-mobile"
+            aria-label={t("buttons.search")}
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+        </form>
+        {(displayCity || userCountry) && (
+          <button
+            type="button"
+            onClick={() => user && !isAdmin && setShowCityPicker(true)}
+            className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
+            data-testid="button-deliver-to"
+          >
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {t("home.deliverTo", { defaultValue: "Deliver to" })}{" "}
+              <strong>{displayCity ?? userCountry}</strong>
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 ml-auto shrink-0 opacity-80" />
+          </button>
+        )}
+      </div>
+
+      {/* === DESKTOP SEARCH BAR === */}
       <div className="hidden md:block sticky top-0 z-10 bg-background border-b border-border px-4 py-3">
         <form onSubmit={handleSearch} className="flex gap-2">
           <div className="relative flex-1">
@@ -552,7 +620,7 @@ export default function Home() {
         </form>
       </div>
 
-      <div className="px-4 py-2 space-y-3 md:py-4 md:space-y-6">
+      <div className="px-3 py-2 space-y-4 md:px-4 md:py-4 md:space-y-6">
 
         {/* === ADMIN VIEW BANNER + COUNTRY PICKER === */}
         {/* Super admin: full dropdown with "All Countries" option */}
@@ -662,6 +730,11 @@ export default function Home() {
                         });
                       } catch {}
                       await refreshUser?.();
+                      queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
+                      queryClient.invalidateQueries({ predicate: (q) => {
+                        const key = String(q.queryKey?.[0] ?? "");
+                        return key.includes("/api/listings") || key.includes("/api/videos");
+                      }});
                     }}
                   >
                     <span className="text-2xl">{COUNTRY_FLAGS[c]}</span>
@@ -808,20 +881,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* === CATEGORY CHIPS === */}
+        {/* === HORIZONTAL CATEGORY NAV (Amazon-style underline) === */}
         {categories && categories.length > 0 && (
-          <div>
+          <div className="-mx-3 md:-mx-4 border-b border-border bg-background">
             <div
-              className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4"
+              className="flex gap-1 overflow-x-auto px-3 md:px-4 scrollbar-none"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               <button
                 onClick={() => setActiveCategory(null)}
                 className={cn(
-                  "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all",
+                  "flex-shrink-0 px-3 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors",
                   activeCategory === null
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-foreground border-border hover:border-primary/50"
+                    ? "border-[#F97316] text-[hsl(152,65%,22%)]"
+                    : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
                 data-testid="button-category-all"
               >
@@ -832,14 +905,14 @@ export default function Home() {
                   key={cat.id}
                   onClick={() => handleCategoryClick(cat.slug)}
                   className={cn(
-                    "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all whitespace-nowrap",
+                    "flex-shrink-0 px-3 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors",
                     activeCategory === cat.slug
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-card text-foreground border-border hover:border-primary/50"
+                      ? "border-[#F97316] text-[hsl(152,65%,22%)]"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
                   )}
                   data-testid={`button-category-${cat.slug}`}
                 >
-                  <span className="text-base leading-none">{cat.icon}</span>
+                  <span className="mr-1">{cat.icon}</span>
                   {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
                 </button>
               ))}
@@ -847,17 +920,133 @@ export default function Home() {
           </div>
         )}
 
+        {/* === HERO — real listing only (boosted preferred) === */}
+        {heroListing && (
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(152,65%,18%)] to-[hsl(152,50%,28%)] text-white shadow-md">
+            <div className="flex items-stretch min-h-[148px]">
+              <div className="flex-1 p-4 flex flex-col justify-center gap-2 min-w-0">
+                {heroListing.isBoosted && (
+                  <span className="inline-flex w-fit text-[10px] font-bold uppercase tracking-wide bg-[#F97316] text-white px-2 py-0.5 rounded-full">
+                    {t("home.boostedBadge", { defaultValue: "Boosted" })}
+                  </span>
+                )}
+                <h2 className="text-lg sm:text-xl font-bold leading-tight line-clamp-2">
+                  {heroListing.title}
+                </h2>
+                <p className="text-sm text-white/85 font-semibold tabular-nums">
+                  {formatPriceHome(heroListing)}
+                </p>
+                <Button
+                  size="sm"
+                  className="w-fit mt-1 rounded-full bg-[#F97316] hover:bg-[#ea6a0c] text-white font-bold"
+                  onClick={() => setLocation(`/listings/${heroListing.id}`)}
+                >
+                  {t("home.shopNow", { defaultValue: "Shop Now" })}
+                  <ChevronRight className="h-4 w-4 ml-0.5" />
+                </Button>
+              </div>
+              {heroListing.images?.[0] && (
+                <div className="w-[42%] max-w-[180px] relative bg-white/10">
+                  <img
+                    src={heroListing.images[0]}
+                    alt=""
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* === SHOP BY CATEGORY === */}
+        {categories && categories.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-2.5">
+              <h2 className="text-base font-bold text-foreground">
+                {t("home.shopByCategory", { defaultValue: "Shop by Category" })}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setLocation("/search")}
+                className="text-xs font-semibold text-[hsl(152,65%,28%)] flex items-center gap-0.5"
+              >
+                {t("buttons.seeAll")} <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {categories.slice(0, 8).map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => handleCategoryClick(cat.slug)}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl bg-muted/60 border border-border p-2.5 active:scale-[0.98] transition",
+                    activeCategory === cat.slug && "border-[#F97316] bg-orange-50 dark:bg-orange-950/20",
+                  )}
+                >
+                  <span className="text-2xl leading-none">{cat.icon}</span>
+                  <span className="text-[10px] font-semibold text-foreground text-center line-clamp-2 leading-tight">
+                    {t(`categories.${cat.slug}`, { defaultValue: cat.name })}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* === TODAY'S DEALS — full-width two-column boosted cards (no empty half) === */}
+        {boostedListings.length > 0 && (
+          <section
+            className="rounded-2xl border border-orange-300/70 bg-[#FBF6EC] dark:bg-orange-950/15 dark:border-orange-900/40 p-3"
+            data-testid="todays-deals-section"
+          >
+            <div className="mb-2.5 flex items-center justify-between gap-2">
+              <h2 className="text-base font-bold text-foreground">
+                {t("home.todaysDeals", { defaultValue: "Today's Deals" })}
+              </h2>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-300">
+                <span aria-hidden>⚡</span>
+                {t("home.boostedListings", { defaultValue: "Boosted listings" })}
+              </span>
+            </div>
+            {boostedListings.length === 1 ? (
+              <BoostedDealCard listing={boostedListings[0]} />
+            ) : (
+              <div
+                className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                data-testid="todays-deals-carousel"
+              >
+                {boostedListings.slice(0, 8).map((listing) => (
+                  <div
+                    key={`deal-${listing.id}`}
+                    className="w-[min(100%,100%)] max-w-[560px] shrink-0 snap-start sm:w-[min(92%,640px)]"
+                  >
+                    <BoostedDealCard listing={listing} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* === FEATURED PRODUCTS (2-col mobile) === */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-foreground">
+            {t("home.featuredProducts", { defaultValue: "Featured Products" })}
+          </h2>
+        </div>
+
         {/* === PROMAX GROUPS — server-owned hourly order, strict/no mixing === */}
         {feedLoading ? (
-          <div className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3">
             {[...Array(10)].map((_, i) => (
-              <Skeleton key={i} className="aspect-square md:aspect-[3/4] rounded-xl" />
+              <Skeleton key={i} className="aspect-square rounded-xl" />
             ))}
           </div>
         ) : (
           promaxGroups.some(group => group.listings.length > 0) && (
             <div
-              className="home-product-grid grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4"
+              className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3"
               aria-label="Marketplace products"
             >
               {(() => {
@@ -868,7 +1057,7 @@ export default function Home() {
                     aboveFoldIndex += 1;
                     return (
                       <div key={listing.id} data-promax-group={key} className="min-w-0">
-                        <ListingCard listing={listing} mosaicLayout priority={priority} />
+                        <ListingCard listing={listing} priority={priority} showAddToCart />
                       </div>
                     );
                   }),
@@ -878,7 +1067,7 @@ export default function Home() {
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">
-                    <ListingCard listing={listing} mosaicLayout />
+                    <ListingCard listing={listing} showAddToCart />
                   </div>
                 )),
               )}

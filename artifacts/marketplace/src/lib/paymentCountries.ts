@@ -1,10 +1,18 @@
-/** Countries where MonCash is available as a payout option */
-export const MONCASH_COUNTRIES = new Set(["Haiti", "Dominican Republic"]);
+/** @deprecated Prefer isMonCashPayoutCountry — MonCash seller payouts are Haiti-only. */
+export const MONCASH_COUNTRIES = new Set(["Haiti"]);
+
+function normalizeCountry(country?: string | null): string {
+  return (country ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+}
+
+/** Seller MonCash payout configuration is allowed only for registered country Haiti. */
+export function isMonCashPayoutCountry(country?: string | null): boolean {
+  return ["haiti", "ayiti", "ht"].includes(normalizeCountry(country));
+}
 
 /** Only Haiti may receive new seller proceeds in FM; wallets remain accessible everywhere. */
 export function isStripeOnlySellerCountry(country?: string | null): boolean {
-  const normalized = (country ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
-  return !["haiti", "ayiti", "ht"].includes(normalized);
+  return !isMonCashPayoutCountry(country);
 }
 
 /** An admin's listing-country override must not expose FM outside Haiti. */

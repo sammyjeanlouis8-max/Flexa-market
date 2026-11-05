@@ -75,6 +75,18 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
   const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, listingId));
   if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
   if (listing.sellerId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  // Boosts/ads only for publicly discoverable (published) listings — no platform bypass.
+  if (
+    listing.status !== "available" ||
+    listing.moderationStatus !== "approved" ||
+    ["suspended", "archived", "rejected", "pending_review"].includes((listing as any).lifecycleStatus ?? "")
+  ) {
+    res.status(403).json({
+      error: "Only approved, published listings can be boosted.",
+      code: "LISTING_NOT_ELIGIBLE_FOR_BOOST",
+    });
+    return;
+  }
   const isAdmin = !!req.user?.isSuperAdmin;
 
   // Guard against double-submit: if there is already a boost for this listing
@@ -392,6 +404,12 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
   const conds = [
     eq(listingsTable.isBoosted, true),
     or(eq(listingsTable.status, "available"), eq(listingsTable.status, "hidden")),
+    // Available listings must be approved; hidden video-only promos stay owner-inventory only.
+    or(
+      and(eq(listingsTable.status, "available"), eq(listingsTable.moderationStatus, "approved")),
+      eq(listingsTable.status, "hidden"),
+    ) as any,
+    sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived', 'rejected')`,
     isNotNull(listingsTable.boostVideoUrl),
     gt(listingsTable.boostExpiresAt, now),
     // NULL boostStartAt is treated as "already started" for backward-compat with
@@ -407,7 +425,14 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     // Regular users must match their country; unauthenticated → sql`false` (no match).
     ...(skipCountryFilter ? [] : [
       viewerCountry
-        ? sql`(lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) = ${viewerCountry.toLowerCase()} OR ${listingsTable.boostAudienceCountry} = 'ALL')`
+        ? sql`(
+            lower(${listingsTable.country}) = ${viewerCountry.toLowerCase()}
+            AND (
+              ${listingsTable.boostAudienceCountry} IS NULL
+              OR ${listingsTable.boostAudienceCountry} = 'ALL'
+              OR lower(COALESCE(NULLIF(${listingsTable.boostAudienceCountry}, ''), ${listingsTable.country})) = ${viewerCountry.toLowerCase()}
+            )
+          )`
         : sql`false`,
     ]),
     // State isolation: only exclude when viewer has a known state AND boost targets

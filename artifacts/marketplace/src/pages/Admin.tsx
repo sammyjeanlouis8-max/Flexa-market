@@ -15,6 +15,14 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useSearch, Link } from "wouter";
 import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import AdminCardCancellations from "@/components/AdminCardCancellations";
+import AdminControlCenterDashboard from "@/components/admin/AdminControlCenterDashboard";
+import AdminModerationCenter from "@/components/admin/AdminModerationCenter";
+import {
+  adminPathToTab,
+  adminTabToPath,
+  ADMIN_PRIMARY_SECTIONS,
+  adminSectionTitleKey,
+} from "@/components/admin/adminSections";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -263,10 +271,13 @@ function BroadcastEmailPanel() {
   );
 }
 
+/** Dense Seller-Central-style KPI cell (bordered metric, not a colorful card). */
 function StatCard({
-  icon: Icon, label, value, color, bg, alert = false, onClick,
+  icon: Icon, label, value, alert = false, onClick,
 }: {
-  icon: any; label: string; value: number | string; color: string; bg: string; alert?: boolean; onClick?: () => void;
+  icon: any; label: string; value: number | string; alert?: boolean; onClick?: () => void;
+  /** @deprecated kept optional for call-site compatibility */
+  color?: string; bg?: string;
 }) {
   const isAlert = alert && Number(value) > 0;
   return (
@@ -275,21 +286,32 @@ function StatCard({
       tabIndex={onClick ? 0 : undefined}
       onClick={onClick}
       onKeyDown={onClick ? e => e.key === "Enter" && onClick() : undefined}
-      className={`relative overflow-hidden rounded-2xl border p-4 transition-all select-none
-        ${isAlert ? "border-amber-400 bg-amber-50/60 dark:bg-amber-950/20" : `${bg} border-border/60`}
-        ${onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]" : ""}
+      className={`relative flex flex-col justify-between min-h-[72px] border px-3 py-2.5 select-none bg-background
+        ${isAlert ? "border-amber-500/80 bg-amber-50/40 dark:bg-amber-950/15" : "border-border"}
+        ${onClick ? "cursor-pointer hover:bg-muted/40 active:bg-muted/60" : ""}
       `}
     >
-      <div className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${color} mb-3 shadow-sm`}>
-        <Icon className="h-5 w-5" />
+      <div className="flex items-center justify-between gap-1">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold leading-tight truncate">{label}</p>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${isAlert ? "text-amber-600" : "text-muted-foreground"}`} />
       </div>
-      <p className={`text-2xl font-black leading-none ${isAlert ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
-        {value}
+      <p className={`text-xl font-bold tabular-nums leading-none mt-1.5 ${isAlert ? "text-amber-700 dark:text-amber-400" : "text-foreground"}`}>
+        {typeof value === "number" ? value.toLocaleString() : value}
       </p>
-      <p className="text-[11px] text-muted-foreground mt-1 font-medium">{label}</p>
       {isAlert && (
-        <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-amber-500" />
       )}
+    </div>
+  );
+}
+
+function VisitStat({ label, value, emphasize = false }: { label: string; value: number; emphasize?: boolean }) {
+  return (
+    <div className={`flex flex-col gap-0.5 px-3 py-2.5 border-border ${emphasize ? "bg-primary/5" : "bg-background"}`}>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums leading-none ${emphasize ? "text-primary" : "text-foreground"}`}>
+        {value.toLocaleString()}
+      </p>
     </div>
   );
 }
@@ -348,7 +370,7 @@ const MODERATOR_TABS = new Set(["operations", "appeals", "users", "flagged", "re
 export default function Admin() {
   const { user, isLoading } = useAuth();
   const { t } = useTranslation();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const search = useSearch();
   const isAndroidInlineRoute = useContext(AndroidInlineRouteContext);
   const { toast } = useToast();
@@ -519,25 +541,40 @@ export default function Admin() {
   const [logsDateFrom, setLogsDateFrom] = useState(_initParams.get("dateFrom") || "");
   const [logsDateTo, setLogsDateTo] = useState(_initParams.get("dateTo") || "");
 
-  // Tab state is URL-driven so deep links like /admin?tab=support&thread=42
-  // (used by support push notifications) land users in the right place.
-  // We default to "operations" here (a safe value that is always available) and
-  // let an effect promote to "flagged" later once the user list has loaded —
-  // referencing `flaggedUsers` directly here would be a TDZ access since it
-  // is derived from `users` further down in this component.
+  // Section routing: prefer dedicated paths (/admin/operations, …). Legacy
+  // /admin?tab=… deep links still work and redirect to the path when mapped.
   const initialQuery = new URLSearchParams(search);
-  const initialTab = initialQuery.get("tab") || "operations";
+  const pathTab = adminPathToTab(location);
+  const initialTab =
+    (pathTab && pathTab !== "dashboard" ? pathTab : null) ||
+    initialQuery.get("tab") ||
+    (pathTab === "dashboard" ? "dashboard" : "operations");
   const initialDeepThread = initialQuery.get("thread");
   const [adminTab, setAdminTabState] = useState<string>(initialTab);
-  const [tabExplicitlySet, setTabExplicitlySet] = useState<boolean>(initialQuery.has("tab"));
+  const [tabExplicitlySet, setTabExplicitlySet] = useState<boolean>(
+    initialQuery.has("tab") || (!!pathTab && pathTab !== "dashboard"),
+  );
+  const isDashboardView = pathTab === "dashboard";
+  const isSecurityView = pathTab === "security";
+  const isDedicatedSection = !!pathTab && pathTab !== "dashboard";
+
   const setAdminTab = (next: string) => {
     setAdminTabState(next);
     setTabExplicitlySet(true);
-    if (!isAndroidInlineRoute && typeof window !== "undefined") {
+    if (isAndroidInlineRoute) return;
+    const dedicated = adminTabToPath(next);
+    if (dedicated) {
+      const thread = next === "support" ? new URLSearchParams(search).get("thread") : null;
+      setLocation(thread ? `${dedicated}?thread=${thread}` : dedicated);
+      return;
+    }
+    if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.pathname = "/admin";
       url.searchParams.set("tab", next);
       if (next !== "support") url.searchParams.delete("thread");
       window.history.replaceState({}, "", url.toString());
+      setLocation(url.pathname + url.search);
     }
   };
   const goToTab = (next: string, extra?: () => void) => {
@@ -545,6 +582,38 @@ export default function Admin() {
     setAdminTab(next);
     setTimeout(() => tabsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   };
+
+  // Keep tab state synced when navigating via sidebar dedicated routes.
+  useEffect(() => {
+    const fromPath = adminPathToTab(location);
+    if (!fromPath) return;
+    if (fromPath === "dashboard") {
+      setAdminTabState("dashboard");
+      return;
+    }
+    if (fromPath === "security") {
+      // Security page shows password panel + moderation logs.
+      setAdminTabState("logs");
+      setTabExplicitlySet(true);
+      return;
+    }
+    setAdminTabState(fromPath);
+    setTabExplicitlySet(true);
+  }, [location]);
+
+  // Redirect legacy /admin?tab=operations → /admin/operations (etc.)
+  useEffect(() => {
+    if (isAndroidInlineRoute) return;
+    const q = new URLSearchParams(search);
+    const legacyTab = q.get("tab");
+    if (!legacyTab) return;
+    const pathOnly = location.split("?")[0].replace(/\/$/, "") || "/";
+    if (pathOnly !== "/admin") return;
+    const dedicated = adminTabToPath(legacyTab);
+    if (!dedicated) return;
+    const thread = q.get("thread");
+    setLocation(thread && legacyTab === "support" ? `${dedicated}?thread=${thread}` : dedicated);
+  }, [location, search, isAndroidInlineRoute, setLocation]);
 
   useEffect(() => {
     // Updating the real URL inside Android's in-document menu makes older
@@ -605,10 +674,11 @@ export default function Admin() {
   });
 
   // Apply the global admin view country filter to all sub-filters at once.
+  // Listing/user country fields store full names ("Haiti"), not ISO codes.
   const applyAdminViewCountry = (c: "all" | "HT" | "DO") => {
     setAdminViewCountry(c);
     if (typeof window !== "undefined") localStorage.setItem("admin_view_country", c);
-    const v = c === "all" ? "all" : c;
+    const v = c === "all" ? "all" : c === "HT" ? "Haiti" : "Dominican Republic";
     setUserCountryFilter(v);
     setListingCountryFilter(v);
     setBoostCountryFilter(v);
@@ -769,7 +839,7 @@ export default function Admin() {
     }, [user, isLoading, hasAdminPanelAccess]);
 
   useEffect(() => {
-    if (isModerator && !MODERATOR_TABS.has(adminTab)) {
+    if (isModerator && adminTab !== "dashboard" && !MODERATOR_TABS.has(adminTab)) {
       setAdminTabState("operations");
     }
   }, [isModerator, adminTab]);
@@ -821,7 +891,10 @@ export default function Admin() {
         }
       } catch {}
       if ((user as any)?.isSuperAdmin) {
-        try { const opts = await adminFetch("/api/admin/scope-options", "GET"); setScopeOptions(opts); } catch {}
+        try {
+          const opts = await adminFetch("/api/admin/scope-options", "GET");
+          setScopeOptions(Array.isArray(opts) ? opts : []);
+        } catch {}
       }
     })();
   }, [user, hasAdminPanelAccess]);
@@ -1603,7 +1676,7 @@ export default function Admin() {
     try {
       const qs = status === "all" ? "" : `?status=${status}`;
       const data = await adminFetch(`/api/admin/moderation${qs}`, "GET");
-      setModerationQueue(data);
+      setModerationQueue(Array.isArray(data) ? data : (data?.items ?? []));
     } catch (e: any) {
       toast({ title: "Failed to load queue", description: e?.message ?? "", variant: "destructive" });
     }
@@ -1630,6 +1703,23 @@ export default function Admin() {
       invalidate();
     } catch (e: any) {
       toast({ title: "Failed to reject", description: e?.message ?? "", variant: "destructive" });
+    }
+  };
+
+  const handleModerationSuspend = async (id: number) => {
+    const reason = window.prompt(
+      t("modCenter.suspendPrompt", { defaultValue: "Reason for suspending this listing from discovery:" }),
+      t("modCenter.suspendDefault", { defaultValue: "Suspended by moderator" }),
+    );
+    if (reason === null || !reason.trim()) return;
+    if (!window.confirm(t("modCenter.suspendConfirm", { defaultValue: "Suspend this listing?" }))) return;
+    try {
+      await adminFetch(`/api/admin/moderation/${id}/suspend`, "POST", { reason: reason.trim() });
+      toast({ title: t("modCenter.suspended", { defaultValue: "Listing suspended" }) });
+      await loadModerationQueue();
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Failed to suspend", description: e?.message ?? "", variant: "destructive" });
     }
   };
 
@@ -2557,54 +2647,94 @@ export default function Admin() {
     }
   };
 
+  const sectionHeading = isDashboardView
+    ? (isModerator ? t("adminDash.modTitle") : t("adminControl.title"))
+    : t(adminSectionTitleKey(pathTab || adminTab), {
+        defaultValue: (pathTab || adminTab).replace(/^\w/, (c) => c.toUpperCase()),
+      });
+
+  // Dedicated Moderation Control Center (visual redesign; real APIs).
+  if (pathTab === "moderation") {
+    return <AdminModerationCenter />;
+  }
+
   return (
-    <div className="max-w-7xl mx-auto px-3 py-5">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
-        <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${isSuperAdmin ? "bg-purple-600" : "bg-primary"}`}>
-          {isSuperAdmin ? <Crown className="h-5 w-5 text-white" /> : <Shield className="h-5 w-5 text-white" />}
-        </div>
+    <div className="mx-auto max-w-[1400px] px-3 py-4 md:px-5">
+      {/* Page title row (shell provides primary nav) */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-extrabold text-foreground leading-tight">{isModerator ? "Panel Modération" : "Admin Panel"}</h1>
-          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-            <p className="text-xs text-muted-foreground">
-              {isSuperAdmin ? "Super Admin — full access" : isModerator ? "Modérateur — accès limité" : "Admin — limited access"}
-            </p>
-            {me?.scopeLevel && !isSuperAdmin && (
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full
-                ${me.scopeCity ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                  : me.scopeDepartment ? "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
-                  : me.scopeCountry ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                  : "bg-secondary text-secondary-foreground"}`}>
-                <MapPin className="h-2.5 w-2.5" />
-                {me.scopeCity ?? me.scopeDepartment ?? me.scopeCountry ?? "Global"}
-                {" · "}{me.scopeLevel}
-              </span>
-            )}
-          </div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground">
+            {sectionHeading}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {isSuperAdmin ? t("adminDash.roleSuper") : isModerator ? t("adminDash.roleMod") : t("adminDash.roleAdmin")}
+            {me?.scopeLevel && !isSuperAdmin ? ` · ${me.scopeCity ?? me.scopeDepartment ?? me.scopeCountry ?? "Global"}` : ""}
+          </p>
         </div>
-        {s?.flaggedUsers > 0 && <Badge variant="destructive" className="ml-auto animate-pulse">{s.flaggedUsers} Flagged</Badge>}
+        {s?.flaggedUsers > 0 && (
+          <Badge variant="destructive" className="shrink-0">
+            {s.flaggedUsers} {t("adminDash.flagged")}
+          </Badge>
+        )}
       </div>
 
-      {/* Stats Grid */}
-      {s && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
-          <StatCard icon={Users} label="Itilizatè" value={s.totalUsers} color="bg-blue-600 text-white shadow-blue-200 dark:shadow-blue-900" bg="bg-blue-50/60 dark:bg-blue-950/20" onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
-          <StatCard icon={Wifi} label="Online Kounye a" value={s.onlineUsers ?? 0} color="bg-green-600 text-white" bg="bg-green-50/60 dark:bg-green-950/20" />
-          <StatCard icon={Package} label="Anons Aktif" value={s.activeListings} color="bg-emerald-600 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" onClick={() => setAdminTab("listings")} />
-          {!isModerator && <StatCard icon={Zap} label="Boosté" value={s.boostedListings ?? 0} color="bg-amber-500 text-white" bg="bg-amber-50/60 dark:bg-amber-950/20" onClick={() => setAdminTab("boosts")} />}
-          {!isModerator && <StatCard icon={Star} label="Featured" value={s.featuredListings ?? 0} color="bg-yellow-500 text-white" bg="bg-yellow-50/60 dark:bg-yellow-950/20" onClick={() => setAdminTab("listings")} />}
-          <StatCard icon={AlertTriangle} label="Flagged" value={s.flaggedUsers ?? 0} color="bg-orange-600 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setAdminTab("flagged")} />
-          <StatCard icon={Flag} label="Rapò" value={s.pendingReports} color="bg-red-600 text-white" bg="bg-red-50/60 dark:bg-red-950/20" alert onClick={() => setAdminTab("reports")} />
-          {!isModerator && <StatCard icon={Truck} label="Chofe Atant" value={driverApps.filter((a: any) => a.status === "pending").length} color="bg-orange-500 text-white" bg="bg-orange-50/60 dark:bg-orange-950/20" alert onClick={() => setLocation("/admin/driver-applications")} />}
-          {!isModerator && <StatCard icon={ShieldCheck} label="Anje Atant" value={kycAgentApps.filter((a: any) => a.status === "pending").length} color="bg-violet-600 text-white" bg="bg-violet-50/60 dark:bg-violet-950/20" alert onClick={() => setLocation("/admin/agent-applications")} />}
-          {!isModerator && <StatCard icon={Landmark} label="Prè Atant" value={loanAdminPending} color="bg-emerald-700 text-white" bg="bg-emerald-50/60 dark:bg-emerald-950/20" alert onClick={() => goToTab("loans")} />}
-          {!isModerator && <StatCard icon={Briefcase} label="Anplwayè Atant" value={employerApps.filter((a: any) => a.status === "pending").length} color="bg-teal-600 text-white" bg="bg-teal-50/60 dark:bg-teal-950/20" alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
-          {!isModerator && <StatCard icon={Crown} label="Flexa VIP" value={s?.activeSubscriptions ?? 0} color="bg-purple-600 text-white" bg="bg-purple-50/60 dark:bg-purple-950/20" alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
-        </div>
+      {/* Control Center overview — dashboard route only */}
+      {isDashboardView && !isModerator && <AdminControlCenterDashboard />}
+
+      {/* Primary section launcher on dashboard (replaces mega tab strip) */}
+      {isDashboardView && (
+        <section className="mb-5" data-testid="admin-section-launcher">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("adminNav.groupOverview", { defaultValue: "Overview" })}
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {ADMIN_PRIMARY_SECTIONS.filter((s) => s.tab !== "dashboard").filter((s) => {
+              if (s.tab === "admins" && !isSuperAdmin) return false;
+              if (s.tab === "security" && isModerator) return false;
+              return true;
+            }).map((s) => (
+              <Link
+                key={s.path}
+                href={s.path}
+                className="flex items-center gap-2 rounded-xl border bg-card p-3 text-sm font-semibold shadow-sm transition-colors hover:border-[var(--flexa-green)]/40 hover:bg-[var(--flexa-green-soft)]"
+              >
+                <span className="truncate">{t(s.titleKey, { defaultValue: s.tab })}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
-      {!isModerator && (
+      {/* Moderator-facing ops KPIs (admins use Control Center overview above) */}
+      {isDashboardView && s && isModerator && (
+        <section className="mb-4">
+          <div className="mb-1.5 flex items-center gap-2 px-0.5">
+            <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("adminDash.opsTitle")}</p>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-y divide-border border border-border bg-background sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            <StatCard icon={Users} label={t("adminDash.users")} value={s.totalUsers} onClick={() => setAdminTab("users")} />
+            <StatCard icon={Wifi} label={t("adminDash.onlineNow")} value={s.onlineUsers ?? 0} />
+            <StatCard icon={Package} label={t("adminDash.activeListings")} value={s.activeListings} onClick={() => setAdminTab("listings")} />
+            <StatCard icon={AlertTriangle} label={t("adminDash.flagged")} value={s.flaggedUsers ?? 0} alert onClick={() => setAdminTab("flagged")} />
+            <StatCard icon={Flag} label={t("adminDash.reports")} value={s.pendingReports} alert onClick={() => setAdminTab("reports")} />
+          </div>
+        </section>
+      )}
+
+      {/* Admin attention strip — real pending queues only */}
+      {isDashboardView && s && !isModerator && (
+        <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCard icon={Zap} label={t("adminDash.boosted")} value={s.boostedListings ?? 0} onClick={() => setAdminTab("boosts")} />
+          <StatCard icon={Star} label={t("adminDash.featured")} value={s.featuredListings ?? 0} onClick={() => setAdminTab("listings")} />
+          <StatCard icon={Truck} label={t("adminDash.driversPending")} value={driverApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/driver-applications")} />
+          <StatCard icon={ShieldCheck} label={t("adminDash.agentsPending")} value={kycAgentApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/agent-applications")} />
+          <StatCard icon={Landmark} label={t("adminDash.loansPending")} value={loanAdminPending} alert onClick={() => goToTab("loans")} />
+          <StatCard icon={Briefcase} label={t("adminDash.employersPending")} value={employerApps.filter((a: any) => a.status === "pending").length} alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />
+        </section>
+      )}
+
+      {isDashboardView && !isModerator && (
       <>
       {/* ── Pending Applications Urgent Banner ── */}
       {(driverApps.filter((a: any) => a.status === "pending").length > 0 || kycAgentApps.filter((a: any) => a.status === "pending").length > 0 || loanAdminPending > 0 || employerApps.filter((a: any) => a.status === "pending").length > 0) && (
@@ -3140,7 +3270,7 @@ export default function Admin() {
       )}
 
       {/* Password upgrade status card */}
-      {!isModerator && pwHashStats !== null && (() => {
+      {(isDashboardView || isSecurityView) && !isModerator && pwHashStats !== null && (() => {
         const isInCooldown = pwHashStats.nudgeCooldownEndsAt != null && new Date(pwHashStats.nudgeCooldownEndsAt) > new Date();
         const cooldownEndsLabel = pwHashStats.nudgeCooldownEndsAt
           ? new Date(pwHashStats.nudgeCooldownEndsAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -3261,7 +3391,11 @@ export default function Admin() {
       })()}
 
       <div ref={tabsSectionRef} />
-      <Tabs value={adminTab} onValueChange={setAdminTab}>
+      {/* Dedicated section pages + legacy ?tab= use Tabs. Dashboard uses launcher above. */}
+      {!isDashboardView && (
+      <Tabs value={adminTab === "dashboard" ? "operations" : adminTab} onValueChange={setAdminTab}>
+        {/* Hide mega tab strip on dedicated routes — sidebar/drawer is primary nav */}
+        {!isDedicatedSection && (
         <div className="overflow-x-auto pb-1 mb-5">
           <TabsList className="flex w-max gap-1 h-auto p-1">
             {isModerator ? (
@@ -3406,6 +3540,7 @@ export default function Admin() {
             )}
           </TabsList>
         </div>
+        )}
 
         {/* ── Operations Queue ── */}
         <TabsContent value="operations" className="mt-4">
@@ -3417,8 +3552,8 @@ export default function Admin() {
               if (ctx?.search && tab === "users") setUserSearch(ctx.search);
 
               if (ctx?.thread && tab === "support") {
-                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
                 setAdminTab("support");
+                setLocation(`/admin/support?thread=${ctx.thread}`);
               } else {
                 setAdminTab(tab);
               }
@@ -3436,8 +3571,8 @@ export default function Admin() {
               if (ctx?.search && tab === "users") setUserSearch(ctx.search);
 
               if (ctx?.thread && tab === "support") {
-                setLocation(`/admin?tab=support&thread=${ctx.thread}`);
                 setAdminTab("support");
+                setLocation(`/admin/support?thread=${ctx.thread}`);
               } else {
                 setAdminTab(tab);
               }
@@ -4073,6 +4208,14 @@ export default function Admin() {
                               Reject
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs text-amber-700 border-amber-300"
+                            onClick={() => handleModerationSuspend(item.id)}
+                          >
+                            Suspend
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -4479,7 +4622,7 @@ export default function Admin() {
             </div>
 
             {/* Totals */}
-            {commissionSummary && (
+            {commissionSummary?.totals && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-card border border-border rounded-xl p-4">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Orders</div>
@@ -8896,6 +9039,7 @@ export default function Admin() {
           </TabsContent>
         )}
       </Tabs>
+      )}
 
       {/* ── Security Dialog ── */}
       <Dialog open={!!securityUser} onOpenChange={v => !v && (setSecurityUser(null), setSecurityData(null))}>

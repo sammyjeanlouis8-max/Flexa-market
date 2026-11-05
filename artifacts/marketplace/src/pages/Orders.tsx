@@ -1,13 +1,19 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { ShoppingBag, ChevronLeft, Eye, XCircle, Loader2, CheckCircle2, AlertTriangle, Download, Search, ExternalLink } from "lucide-react";
+import { ChevronRight, Loader2, ShoppingBag, AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
-import { FulfillmentBadge, getCarrierUrl } from "@/components/FulfillmentShared";
+import OrderStatusBadge from "@/components/orders/OrderStatusBadge";
+import {
+  FLEXA_BRAND,
+  ORDER_FILTERS,
+  matchesOrderFilter,
+  orderRef,
+  type OrderFilterKey,
+} from "@/lib/orderTrackingUi";
 
 type Order = {
   id: number;
@@ -35,68 +41,21 @@ type Order = {
   deliveryStatus: string | null;
 };
 
-const statusLabel = (status: string | null | undefined, kind: "order" | "payment" | "shipping") => {
-  const labels: Record<string, string> = {
-    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
-    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
-    completed: "Terminée", cancelled: "Annulée", failed: "Échoué",
-    completed_payment: "Payé", paid: "Payé", refunded: "Remboursé",
-    partially_refunded: "Partiellement remboursé", not_shipped: "Non expédiée",
-    label_created: "Étiquette créée", in_transit: "En transit",
-    out_for_delivery: "En cours de livraison", exception: "Exception",
-    returned: "Colis retourné",
-  };
-  if (kind === "payment" && status === "completed") return "Payé";
-  if (kind === "shipping" && !status) return "Non expédiée";
-  return labels[status ?? ""] ?? status ?? "Non disponible";
-};
+function filterLabelKey(filter: OrderFilterKey): string {
+  return `orderTracking.filter.${filter}`;
+}
 
 export default function Orders() {
   const { user, token } = useAuth();
   const [, setLocation] = useLocation();
   const { t } = useTranslation();
   const { toast } = useToast();
-  
+
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-
-  const downloadCSV = () => {
-    if (!orders || orders.length === 0) return;
-    const header = ["ID", "Title", "Seller", "Amount", "Currency", "Status", "Country", "Date", "Tracking"].join(",");
-    const rows = orders.map(o => [
-      `#BZH-${String(o.id).padStart(6, "0")}`,
-      `"${(o.listingTitle ?? "").replace(/"/g, '""')}"`,
-      `"${(o.sellerName ?? "").replace(/"/g, '""')}"`,
-      o.amount.toFixed(2),
-      o.currency,
-      o.orderStatus,
-      o.listingCountry ?? "",
-      new Date(o.createdAt).toLocaleDateString(),
-      o.trackingNumber ?? "",
-    ].join(","));
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleCancelClick = (orderId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (confirmingId === orderId) {
-      doCancel(orderId);
-    } else {
-      setConfirmingId(orderId);
-    }
-  };
+  const [statusFilter, setStatusFilter] = useState<OrderFilterKey>("all");
 
   const doCancel = async (orderId: number) => {
     setConfirmingId(null);
@@ -108,28 +67,34 @@ export default function Orders() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast({ title: data?.error ?? "Erè kanselasyon", variant: "destructive" });
+        toast({ title: data?.error ?? t("orders.cancelError", { defaultValue: "Cancel failed" }), variant: "destructive" });
         return;
       }
       toast({
-        title: "Kòmand kansele",
+        title: t("orders.cancelledTitle", { defaultValue: "Order cancelled" }),
         description: data.walletRefunded
-          ? `$${(data.refundAmount as number).toFixed(2)} retounen nan pòtfèy ou.`
-          : data.refundMethod === "stripe_card" ? t("cardCancellation.requested")
-          : "Kontakte sipò pou rembosman ou.",
+          ? t("orders.walletRefunded", { amount: (data.refundAmount as number).toFixed(2), defaultValue: `$${(data.refundAmount as number).toFixed(2)} returned to your wallet.` })
+          : data.refundMethod === "stripe_card"
+            ? t("cardCancellation.requested")
+            : t("orders.contactSupportRefund", { defaultValue: "Contact support for your refund." }),
       });
-      setOrders(prev =>
-        prev?.map(o => o.id === orderId ? { ...o, orderStatus: "cancelled", cardRefundStatus: data.refundStatus ?? null } : o) ?? null
+      setOrders((prev) =>
+        prev?.map((o) =>
+          o.id === orderId ? { ...o, orderStatus: "cancelled", cardRefundStatus: data.refundStatus ?? null } : o,
+        ) ?? null,
       );
     } catch {
-      toast({ title: "Erè koneksyon", variant: "destructive" });
+      toast({ title: t("orders.connectionError", { defaultValue: "Connection error" }), variant: "destructive" });
     } finally {
       setCancellingId(null);
     }
   };
 
   useEffect(() => {
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) {
+      setLocation("/auth/login");
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -138,102 +103,82 @@ export default function Orders() {
         });
         const data = await res.json().catch(() => []);
         if (cancelled) return;
-        if (!res.ok) { setError((data as any)?.error || t("orders.loading")); return; }
+        if (!res.ok) {
+          setError((data as any)?.error || t("orders.loading"));
+          return;
+        }
         setOrders(data as Order[]);
-      } catch { if (!cancelled) setError(t("orders.loading")); }
+      } catch {
+        if (!cancelled) setError(t("orders.loading"));
+      }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [user, token, setLocation, t]);
 
   const filteredOrders = useMemo(() => {
     if (!orders) return null;
-    let result = orders;
-    
-    if (statusFilter !== "all") {
-      result = result.filter(o => o.orderStatus === statusFilter);
-    }
-    
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(o => 
-        String(o.id).includes(q) || 
-        o.listingTitle?.toLowerCase().includes(q) ||
-        o.sellerName?.toLowerCase().includes(q) ||
-        o.trackingNumber?.toLowerCase().includes(q)
-      );
-    }
-    
-    return result;
-  }, [orders, searchQuery, statusFilter]);
+    return orders.filter((o) =>
+      matchesOrderFilter(statusFilter, {
+        orderStatus: o.orderStatus,
+        deliveryStatus: o.deliveryStatus,
+        trackingStatus: o.trackingStatus,
+      }),
+    );
+  }, [orders, statusFilter]);
 
   if (!user) return null;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <Button variant="ghost" size="sm" onClick={() => history.back()} className="mb-4 -ml-2 text-muted-foreground hover:text-foreground transition-colors" data-testid="button-back">
-        <ChevronLeft className="h-4 w-4 mr-1" /> {t("orders.back")}
-      </Button>
+    <div className="max-w-2xl mx-auto px-4 py-5 pb-24" data-testid="orders-page">
+      <h1 className="text-2xl font-black tracking-tight text-foreground mb-4">
+        {t("orderTracking.myOrders", { defaultValue: "My Orders" })}
+      </h1>
 
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800/50 flex items-center justify-center shrink-0">
-            <ShoppingBag className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-foreground">{t("orders.title")}</h1>
-            <p className="text-sm font-medium text-muted-foreground">{t("orders.subtitle")}</p>
-          </div>
-        </div>
-        {orders && orders.length > 0 && (
-          <Button variant="outline" size="sm" onClick={downloadCSV} className="gap-1.5 font-bold shadow-sm self-start md:self-auto">
-            <Download className="h-4 w-4" /> Export CSV
-          </Button>
-        )}
+      <div className="flex gap-2 overflow-x-auto pb-3 mb-4 scrollbar-none" data-testid="orders-filters">
+        {ORDER_FILTERS.map((filter) => {
+          const active = statusFilter === filter;
+          return (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setStatusFilter(filter)}
+              className={cn(
+                "shrink-0 rounded-full px-4 py-2 text-sm font-bold border transition-colors",
+                active ? "text-white border-transparent" : "bg-card text-foreground border-border hover:bg-muted/60",
+              )}
+              style={active ? { background: FLEXA_BRAND.header } : undefined}
+              data-testid={`orders-filter-${filter}`}
+            >
+              {t(filterLabelKey(filter), {
+                defaultValue:
+                  filter === "all"
+                    ? "All"
+                    : filter === "processing"
+                      ? "Processing"
+                      : filter === "shipped"
+                        ? "Shipped"
+                        : "Delivered",
+              })}
+            </button>
+          );
+        })}
       </div>
 
-      {orders && orders.length > 0 && (
-        <div className="flex flex-col md:flex-row gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by order ID, title, or tracking..."
-              className="pl-9 h-10 bg-card border-border shadow-sm font-medium"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 hide-scrollbar shrink-0">
-            {["all", "pending", "ready_to_ship", "shipped", "delivered"].map(status => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status)}
-                className={cn(
-                  "px-4 h-10 rounded-lg text-sm font-bold transition-all whitespace-nowrap border shrink-0",
-                  statusFilter === status 
-                    ? "bg-foreground text-background border-foreground shadow-sm"
-                    : "bg-card text-muted-foreground border-border hover:bg-accent hover:text-foreground"
-                )}
-              >
-                {status === "all" ? "All Orders" : status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {error && (
-        <div className="p-4 mb-6 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium flex items-center gap-2">
+        <div className="p-4 mb-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm font-medium flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" /> {error}
         </div>
       )}
-      
+
       {orders === null && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin mb-4 text-indigo-500" />
-          <p className="font-bold tracking-wide uppercase text-xs">Loading Orders</p>
+          <Loader2 className="h-8 w-8 animate-spin mb-4" style={{ color: FLEXA_BRAND.success }} />
+          <p className="font-bold tracking-wide uppercase text-xs">{t("orders.loading")}</p>
         </div>
       )}
-      
+
       {orders && orders.length === 0 && (
         <div className="text-center py-20 border-2 border-dashed border-border rounded-3xl bg-card/50">
           <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
@@ -243,173 +188,124 @@ export default function Orders() {
       )}
 
       {filteredOrders && filteredOrders.length > 0 && (
-        <div className="space-y-4">
-          {filteredOrders.map(o => {
+        <div className="space-y-3">
+          {filteredOrders.map((o) => {
             const img = o.listingImages?.[0] ?? null;
-            const carrierUrl = o.carrier && o.trackingNumber
-              ? getCarrierUrl(o.carrier, o.trackingNumber)
-              : null;
-            const canCancel = o.paymentMethod === "stripe"
-              ? o.paymentStatus === "completed" && !o.escrowReleased && !o.shippedAt &&
-                ["pending", "ready_to_ship"].includes(o.orderStatus) &&
-                (!o.deliveryStatus || ["waiting", "assigned", "accepted", "driver_assigned"].includes(o.deliveryStatus)) &&
-                (!o.trackingStatus || ["label_created", "pending", "pre_transit", "not_shipped", "unknown"].includes(o.trackingStatus))
-              : o.deliveryStatus !== null
-              ? o.deliveryStatus === "waiting"
-              : ["pending", "ready_to_ship"].includes(o.orderStatus);
+            const canCancel =
+              o.paymentMethod === "stripe"
+                ? o.paymentStatus === "completed" &&
+                  !o.escrowReleased &&
+                  !o.shippedAt &&
+                  ["pending", "ready_to_ship"].includes(o.orderStatus)
+                : ["pending", "ready_to_ship"].includes(o.orderStatus) &&
+                  (!o.deliveryStatus || o.deliveryStatus === "waiting");
             const isConfirming = confirmingId === o.id;
             const isCancelling = cancellingId === o.id;
+            const dateLine =
+              o.deliveredAt || ["delivered", "completed"].includes(o.orderStatus)
+                ? t("orderTracking.deliveredOn", {
+                    date: new Date(o.deliveredAt ?? o.createdAt).toLocaleDateString(undefined, {
+                      day: "numeric",
+                      month: "short",
+                    }),
+                    defaultValue: `Delivered: ${new Date(o.deliveredAt ?? o.createdAt).toLocaleDateString()}`,
+                  })
+                : o.estimatedDelivery
+                  ? t("orderTracking.estimatedDelivery", {
+                      date: new Date(o.estimatedDelivery).toLocaleDateString(undefined, {
+                        day: "numeric",
+                        month: "short",
+                      }),
+                      defaultValue: `Estimated delivery: ${new Date(o.estimatedDelivery).toLocaleDateString()}`,
+                    })
+                  : o.shippedAt
+                    ? t("orderTracking.shippedOn", {
+                        date: new Date(o.shippedAt).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                        }),
+                        defaultValue: `Shipped: ${new Date(o.shippedAt).toLocaleDateString()}`,
+                      })
+                    : t("orderTracking.estimatedShip", {
+                        date: new Date(o.createdAt).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                        }),
+                        defaultValue: `Placed: ${new Date(o.createdAt).toLocaleDateString()}`,
+                      });
 
             return (
-              <div key={o.id} className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
-                <div
-                  className="flex flex-col md:flex-row md:items-center gap-4 p-5 cursor-pointer"
-                  onClick={() => { setConfirmingId(null); setLocation(`/orders/${o.id}`); }}
-                  data-testid={`order-row-${o.id}`}
+              <div
+                key={o.id}
+                className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden"
+                data-testid={`order-card-${o.id}`}
+              >
+                <button
+                  type="button"
+                  className="w-full text-left flex items-center gap-3 p-3.5 active:bg-muted/40"
+                  onClick={() => {
+                    setConfirmingId(null);
+                    setLocation(`/orders/${o.id}`);
+                  }}
                 >
-                  <div className="flex gap-4 items-start md:items-center flex-1 min-w-0">
-                    {img ? (
-                      <img
-                        src={img} alt=""
-                        loading="lazy"
-                        className="w-20 h-20 rounded-xl object-cover border border-border/50 flex-shrink-0"
-                        onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' rx='12' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
-                      />
-                    ) : (
-                      <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-muted/50 border border-border/50 flex items-center justify-center">
-                        <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
-                      </div>
-                    )}
-                    
-                    <div className="flex-1 min-w-0 py-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <span className="font-mono text-[11px] font-bold tracking-wider text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md">
-                          #{String(o.id).padStart(6, "0")}
-                        </span>
-                        <FulfillmentBadge status={o.orderStatus} type="order" />
-                        {o.shipmentId && o.trackingStatus && (
-                          <FulfillmentBadge status={o.trackingStatus} type="tracking" />
-                        )}
-                        {o.listingCountry === "Haiti" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800">
-                            Local: HT
-                          </span>
-                        )}
-                        {o.listingCountry === "Dominican Republic" && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800">
-                            Local: DR
-                          </span>
-                        )}
-                      </div>
-                      
-                      <p className="font-bold text-foreground truncate text-base mb-1 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        {o.listingTitle}
-                      </p>
-                      
-                      <div className="flex items-center gap-3 text-xs font-medium text-muted-foreground flex-wrap">
-                        <span>{t("orders.from", { seller: o.sellerName ?? "Seller" })}</span>
-                        <span className="w-1 h-1 rounded-full bg-border"></span>
-                        <span>{new Date(o.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        
-                        {o.carrier && o.trackingNumber && (
-                          <>
-                            <span className="w-1 h-1 rounded-full bg-border"></span>
-                            {carrierUrl ? (
-                              <a
-                                href={carrierUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(event) => event.stopPropagation()}
-                                className="inline-flex items-center gap-1 font-mono bg-muted/50 px-1.5 rounded text-primary hover:underline"
-                              >
-                                {o.carrier}: {o.trackingNumber}
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : (
-                              <span className="font-mono bg-muted/50 px-1.5 rounded">{o.carrier}: {o.trackingNumber}</span>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
-                        <span><strong className="text-foreground">Commande :</strong> {statusLabel(o.orderStatus, "order")}</span>
-                        <span><strong className="text-foreground">Paiement :</strong> {statusLabel(o.paymentStatus, "payment")}</span>
-                        <span><strong className="text-foreground">Expédition :</strong> {statusLabel(o.shipmentId ? (o.trackingStatus ?? (o.deliveryStatus === "delivered" ? "delivered" : null)) : null, "shipping")}</span>
-                      </div>
-                      {o.estimatedDelivery && <p className="text-[11px] text-muted-foreground mt-1">Livraison estimée : {new Date(o.estimatedDelivery).toLocaleDateString()}</p>}
-                      {o.cardRefundStatus && <p className="mt-2 text-xs font-semibold">{t(`cardCancellation.${o.cardRefundStatus}`)}</p>}
+                  {img ? (
+                    <img
+                      src={img}
+                      alt=""
+                      loading="lazy"
+                      className="h-16 w-16 rounded-xl object-cover border border-border/60 shrink-0"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                      <ShoppingBag className="h-6 w-6 text-muted-foreground/40" />
                     </div>
-                  </div>
-                  
-                  <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 md:w-32 border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0">
-                    <div className="flex flex-col items-start md:items-end">
-                      <span className="font-black text-lg text-foreground">${o.amount.toFixed(2)}</span>
-                      {o.escrowReleased && (
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-1">
-                          <CheckCircle2 className="h-3 w-3" /> Settled
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      {canCancel ? (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className={cn(
-                            "h-9 w-9 rounded-xl transition-all",
-                            isConfirming
-                              ? "bg-rose-500 text-white hover:bg-rose-600 dark:bg-rose-600"
-                              : "text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                          )}
-                          onClick={e => handleCancelClick(o.id, e)}
-                          disabled={isCancelling}
-                          title="Cancel Order"
-                        >
-                          {isCancelling
-                            ? <Loader2 className="h-4 w-4 animate-spin" />
-                            : isConfirming
-                              ? <AlertTriangle className="h-4 w-4" />
-                              : <XCircle className="h-4 w-4" />
-                          }
-                        </Button>
-                      ) : null}
-                      
-                      <Button size="sm" variant="secondary" className="h-9 rounded-xl bg-indigo-50 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-colors gap-1.5" onClick={e => { e.stopPropagation(); setConfirmingId(null); setLocation(`/orders/${o.id}`); }}>
-                        <Eye className="h-4 w-4" /> {o.trackingNumber ? "Suivre le colis" : "Voir la commande"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {isConfirming && (
-                  <div
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-rose-50 dark:bg-rose-950/20 border-t border-rose-100 dark:border-rose-900/50 animate-in slide-in-from-top-2"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <p className="text-sm font-semibold text-rose-800 dark:text-rose-300 flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" />
-                      <span>{o.paymentMethod === "stripe" ? t("cardCancellation.confirm")
-                        : o.paymentMethod === "wallet" ? <>Cancel order? <strong className="font-black">${o.amount.toFixed(2)}</strong> will be refunded to your wallet.</>
-                        : "Anile kòmand sa a? Kontakte sipò pou ranbousman sou mwayen peman orijinal la."}</span>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-sm text-foreground truncate">{o.listingTitle}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {orderRef(o.id)}
+                      <span className="mx-1.5 text-border">·</span>
+                      <span className="font-bold text-foreground">${o.amount.toFixed(2)}</span>
                     </p>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="font-bold border-rose-200 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-900"
-                        onClick={e => { e.stopPropagation(); setConfirmingId(null); }}
-                      >
-                        Keep Order
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
-                        onClick={e => { e.stopPropagation(); doCancel(o.id); }}
-                      >
-                        Confirm Cancel
-                      </Button>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <OrderStatusBadge
+                        orderStatus={o.orderStatus}
+                        deliveryStatus={o.deliveryStatus}
+                        trackingStatus={o.trackingStatus}
+                      />
                     </div>
+                    <p className="text-[11px] text-muted-foreground mt-1.5">{dateLine}</p>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
+                </button>
+
+                {canCancel && (
+                  <div className="px-3.5 pb-3 flex justify-end gap-2 border-t border-border/60 pt-2">
+                    <Button
+                      size="sm"
+                      variant={isConfirming ? "destructive" : "outline"}
+                      className="h-8 text-xs font-bold gap-1"
+                      disabled={isCancelling}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isConfirming) doCancel(o.id);
+                        else setConfirmingId(o.id);
+                      }}
+                    >
+                      {isCancelling ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <XCircle className="h-3.5 w-3.5" />
+                          {isConfirming
+                            ? t("orders.confirmCancel", { defaultValue: "Confirm cancel" })
+                            : t("orders.cancel", { defaultValue: "Cancel" })}
+                        </>
+                      )}
+                    </Button>
                   </div>
                 )}
               </div>
@@ -417,11 +313,15 @@ export default function Orders() {
           })}
         </div>
       )}
-      
+
       {filteredOrders && filteredOrders.length === 0 && orders && orders.length > 0 && (
         <div className="text-center py-16">
-          <p className="font-bold text-muted-foreground">No orders match your search.</p>
-          <Button variant="link" onClick={() => {setSearchQuery(""); setStatusFilter("all");}} className="mt-2 text-indigo-600">Clear filters</Button>
+          <p className="font-bold text-muted-foreground">
+            {t("orderTracking.noFilterMatches", { defaultValue: "No orders match this filter." })}
+          </p>
+          <Button variant="link" onClick={() => setStatusFilter("all")} className="mt-2" style={{ color: FLEXA_BRAND.success }}>
+            {t("orderTracking.clearFilters", { defaultValue: "Show all orders" })}
+          </Button>
         </div>
       )}
     </div>

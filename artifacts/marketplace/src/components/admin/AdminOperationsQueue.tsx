@@ -307,32 +307,32 @@ export default function AdminOperationsQueue({
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col justify-center">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Total Queue</div>
-          <div className="text-2xl font-black">{data?.counts.total ?? "-"}</div>
+          <div className="text-2xl font-black">{data?.counts?.total ?? "-"}</div>
         </div>
         <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col justify-center cursor-pointer hover:border-blue-300 transition-colors" onClick={() => setType("report")}>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center"><Flag className="h-3 w-3 mr-1"/> Reports</div>
-          <div className="text-2xl font-black">{data?.counts.reports ?? "-"}</div>
+          <div className="text-2xl font-black">{data?.counts?.reports ?? "-"}</div>
         </div>
         <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col justify-center cursor-pointer hover:border-amber-300 transition-colors" onClick={() => setType("listing")}>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center"><Package className="h-3 w-3 mr-1"/> Listings</div>
-          <div className="text-2xl font-black">{data?.counts.listings ?? "-"}</div>
+          <div className="text-2xl font-black">{data?.counts?.listings ?? "-"}</div>
         </div>
         <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col justify-center cursor-pointer hover:border-red-300 transition-colors" onClick={() => setType("user")}>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center"><UserX className="h-3 w-3 mr-1"/> Users</div>
-          <div className="text-2xl font-black">{data?.counts.users ?? "-"}</div>
+          <div className="text-2xl font-black">{data?.counts?.users ?? "-"}</div>
         </div>
         <div className="bg-card border rounded-xl p-4 shadow-sm flex flex-col justify-center cursor-pointer hover:border-emerald-300 transition-colors" onClick={() => setType("support")}>
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center"><MessageSquare className="h-3 w-3 mr-1"/> Support</div>
-          <div className="text-2xl font-black">{data?.counts.support ?? "-"}</div>
+          <div className="text-2xl font-black">{data?.counts?.support ?? "-"}</div>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 bg-muted/20 p-3 rounded-xl border">
-        <div className="flex flex-wrap gap-2 w-full justify-between items-center">
-          <div className="flex flex-wrap gap-2 flex-1">
+      <div className="flex flex-col gap-3 bg-muted/20 p-3 rounded-xl border min-w-0 overflow-hidden">
+        <div className="flex flex-wrap gap-2 w-full justify-between items-center min-w-0">
+          <div className="flex flex-wrap gap-2 flex-1 min-w-0">
             <Select value={type} onValueChange={setType}>
-              <SelectTrigger className="w-[120px] bg-background h-8 text-xs"><SelectValue placeholder="All Types" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-[120px] bg-background h-8 text-xs"><SelectValue placeholder="All Types" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="report">Reports</SelectItem>
@@ -400,13 +400,13 @@ export default function AdminOperationsQueue({
               />
             </div>
             
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative w-full min-w-0 flex-1 sm:min-w-[200px]">
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-muted-foreground" />
               <Input 
                 placeholder="Search..." 
                 value={search} 
                 onChange={e => setSearch(e.target.value)} 
-                className="pl-8 h-8 text-xs bg-background" 
+                className="pl-8 h-8 text-xs bg-background w-full" 
                 data-testid="input-queue-search"
               />
             </div>
@@ -481,125 +481,329 @@ export default function AdminOperationsQueue({
             <p className="text-sm">No items matching your criteria require attention.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left w-[40px]">
-                    <Checkbox 
-                      checked={!!data?.items?.length && data.items.filter(i => i.type !== 'support').length > 0 && selectedIds.size === data.items.filter(i=>i.type!=='support').length} 
-                      onCheckedChange={toggleAll}
-                      data-testid="checkbox-select-all"
-                    />
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold">Priority</th>
-                  <th className="px-4 py-3 text-left font-semibold">Type</th>
-                  <th className="px-4 py-3 text-left font-semibold">Context</th>
-                  <th className="px-4 py-3 text-left font-semibold">Details</th>
-                  <th className="px-4 py-3 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data?.items.map(item => (
-                  <tr key={`${item.type}-${item.id}`} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(item.id) ? 'bg-primary/5' : ''}`} data-testid={`row-queue-${item.id}`}>
-                    <td className="px-4 py-3">
-                      {item.type !== "support" && (
-                        <Checkbox 
-                          checked={selectedIds.has(item.id)} 
-                          onCheckedChange={() => toggleSelection(item)}
-                          data-testid={`checkbox-select-${item.id}`}
-                        />
+          <>
+            {/* Mobile: stacked cards — no clipped columns */}
+            <div className="divide-y md:hidden" data-testid="queue-mobile-cards">
+              {data?.items.map(item => (
+                <div
+                  key={`m-${item.type}-${item.id}`}
+                  className={`space-y-3 p-4 ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`}
+                  data-testid={`card-queue-${item.id}`}
+                >
+                  <div className="flex items-start gap-3">
+                    {item.type !== "support" ? (
+                      <Checkbox
+                        className="mt-1"
+                        checked={selectedIds.has(item.id)}
+                        onCheckedChange={() => toggleSelection(item)}
+                        data-testid={`checkbox-select-mobile-${item.id}`}
+                      />
+                    ) : (
+                      <span className="mt-1 h-4 w-4 shrink-0" aria-hidden />
+                    )}
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={`${priorityColor[item.priority]} border-transparent text-[10px] uppercase tracking-wider`}
+                        >
+                          {item.priority}
+                        </Badge>
+                        <span className="inline-flex items-center gap-1 text-sm font-medium capitalize">
+                          {item.type === "report" && <Flag className="h-3.5 w-3.5 text-red-500" />}
+                          {item.type === "listing" && <Package className="h-3.5 w-3.5 text-amber-500" />}
+                          {item.type === "user" && <UserX className="h-3.5 w-3.5 text-purple-500" />}
+                          {item.type === "support" && <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />}
+                          {item.type}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(item.createdAt), "MMM d, HH:mm")}
+                        {(item.city || item.country) && (
+                          <>
+                            {" · "}
+                            {[item.city, item.country].filter(Boolean).join(", ")}
+                          </>
+                        )}
+                      </p>
+                      {item.risk === "high" && (
+                        <p className="flex items-center text-xs font-bold text-red-500">
+                          <AlertTriangle className="mr-0.5 h-3 w-3" /> High Risk
+                        </p>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline" className={`${priorityColor[item.priority]} border-transparent text-[10px] uppercase tracking-wider`}>
-                        {item.priority}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 font-medium flex items-center gap-1.5">
-                      {item.type === 'report' && <Flag className="h-3.5 w-3.5 text-red-500" />}
-                      {item.type === 'listing' && <Package className="h-3.5 w-3.5 text-amber-500" />}
-                      {item.type === 'user' && <UserX className="h-3.5 w-3.5 text-purple-500" />}
-                      {item.type === 'support' && <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />}
-                      <span className="capitalize">{item.type}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5">
-                        <span>{format(new Date(item.createdAt), "MMM d, HH:mm")}</span>
-                        {(item.city || item.country) && <span>{item.city}{item.city && item.country ? ', ' : ''}{item.country}</span>}
-                        {item.risk === 'high' && <span className="text-red-500 font-bold flex items-center"><AlertTriangle className="h-3 w-3 mr-0.5"/> High Risk</span>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 max-w-[300px]">
-                      <div className="truncate font-medium text-foreground">
-                        {item.type === 'report' && <>{item.data.target?.label} <span className="text-muted-foreground font-normal">({item.data.targetType})</span></>}
-                        {item.type === 'listing' && item.data.title}
-                        {item.type === 'user' && item.data.name}
-                        {item.type === 'support' && item.data.subject}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground mt-0.5">
-                        {item.type === 'report' && item.data.reason}
-                        {item.type === 'listing' && (item.data.moderationReason || "Pending review")}
-                        {item.type === 'user' && item.data.flagReason}
-                        {item.type === 'support' && item.data.lastMessage}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right space-x-2">
-                      <Button variant="ghost" size="sm" onClick={() => getTargetLink(item)} data-testid={`link-view-${item.id}`}>
-                        View <CornerUpRight className="h-3 w-3 ml-1" />
+                      <p className="break-words font-medium text-foreground">
+                        {item.type === "report" && (
+                          <>
+                            {item.data.target?.label}{" "}
+                            <span className="font-normal text-muted-foreground">({item.data.targetType})</span>
+                          </>
+                        )}
+                        {item.type === "listing" && item.data.title}
+                        {item.type === "user" && item.data.name}
+                        {item.type === "support" && item.data.subject}
+                      </p>
+                      <p className="break-words text-xs text-muted-foreground">
+                        {item.type === "report" && item.data.reason}
+                        {item.type === "listing" && (item.data.moderationReason || "Pending review")}
+                        {item.type === "user" && item.data.flagReason}
+                        {item.type === "support" && item.data.lastMessage}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pl-7">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => getTargetLink(item)}
+                      data-testid={`link-view-mobile-${item.id}`}
+                    >
+                      View <CornerUpRight className="ml-1 h-3 w-3" />
+                    </Button>
+                    {item.type === "support" && !item.assignment && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => claimSupport(item.id)}
+                        data-testid={`btn-claim-mobile-${item.id}`}
+                      >
+                        Claim
                       </Button>
-                      
-                      {item.type === "support" && !item.assignment && (
-                        <Button size="sm" variant="outline" onClick={() => claimSupport(item.id)} data-testid={`btn-claim-${item.id}`}>Claim</Button>
-                      )}
-                      
-                      {item.type === "report" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "assign")}>Assign</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "resolve")} className="text-emerald-600">Resolve</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "dismiss")} className="text-muted-foreground">Dismiss</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                      
-                      {item.type === "listing" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "approve")} className="text-emerald-600">Approve</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "reject")} className="text-red-600">Reject</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "remove")} className="text-red-600">Remove</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                    )}
+                    {item.type === "report" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" data-testid={`menu-actions-mobile-${item.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "assign")}>Assign</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "resolve")} className="text-emerald-600">
+                            Resolve
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "dismiss")} className="text-muted-foreground">
+                            Dismiss
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {item.type === "listing" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" data-testid={`menu-actions-mobile-${item.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "approve")} className="text-emerald-600">
+                            Approve
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "reject")} className="text-red-600">
+                            Reject
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "remove")} className="text-red-600">
+                            Remove
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                    {item.type === "user" && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="icon" variant="ghost" data-testid={`menu-actions-mobile-${item.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "clear_flag")}>Clear Flag</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "restrict")} className="text-red-600">
+                            Restrict Account
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openSingleDialog(item, "unrestrict")}>
+                            Unrestrict Account
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                      {item.type === "user" && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}><MoreHorizontal className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "clear_flag")}>Clear Flag</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "restrict")} className="text-red-600">Restrict Account</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openSingleDialog(item, "unrestrict")}>Unrestrict Account</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </td>
+            {/* Desktop / tablet: table with controlled horizontal scroll */}
+            <div className="hidden overflow-x-auto md:block" data-testid="queue-desktop-table">
+              <table className="w-full min-w-[720px] text-sm">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <th className="w-[40px] px-4 py-3 text-left">
+                      <Checkbox
+                        checked={
+                          !!data?.items?.length &&
+                          data.items.filter((i) => i.type !== "support").length > 0 &&
+                          selectedIds.size === data.items.filter((i) => i.type !== "support").length
+                        }
+                        onCheckedChange={toggleAll}
+                        data-testid="checkbox-select-all"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left font-semibold">Priority</th>
+                    <th className="px-4 py-3 text-left font-semibold">Type</th>
+                    <th className="px-4 py-3 text-left font-semibold">Context</th>
+                    <th className="px-4 py-3 text-left font-semibold">Details</th>
+                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y">
+                  {data?.items.map((item) => (
+                    <tr
+                      key={`${item.type}-${item.id}`}
+                      className={`transition-colors hover:bg-muted/30 ${selectedIds.has(item.id) ? "bg-primary/5" : ""}`}
+                      data-testid={`row-queue-${item.id}`}
+                    >
+                      <td className="px-4 py-3">
+                        {item.type !== "support" && (
+                          <Checkbox
+                            checked={selectedIds.has(item.id)}
+                            onCheckedChange={() => toggleSelection(item)}
+                            data-testid={`checkbox-select-${item.id}`}
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge
+                          variant="outline"
+                          className={`${priorityColor[item.priority]} border-transparent text-[10px] uppercase tracking-wider`}
+                        >
+                          {item.priority}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        <span className="inline-flex items-center gap-1.5">
+                          {item.type === "report" && <Flag className="h-3.5 w-3.5 text-red-500" />}
+                          {item.type === "listing" && <Package className="h-3.5 w-3.5 text-amber-500" />}
+                          {item.type === "user" && <UserX className="h-3.5 w-3.5 text-purple-500" />}
+                          {item.type === "support" && <MessageSquare className="h-3.5 w-3.5 text-emerald-500" />}
+                          <span className="capitalize">{item.type}</span>
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="whitespace-nowrap">{format(new Date(item.createdAt), "MMM d, HH:mm")}</span>
+                          {(item.city || item.country) && (
+                            <span className="max-w-[160px] truncate">
+                              {item.city}
+                              {item.city && item.country ? ", " : ""}
+                              {item.country}
+                            </span>
+                          )}
+                          {item.risk === "high" && (
+                            <span className="flex items-center font-bold text-red-500">
+                              <AlertTriangle className="mr-0.5 h-3 w-3" /> High Risk
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="max-w-[300px] px-4 py-3">
+                        <div className="truncate font-medium text-foreground">
+                          {item.type === "report" && (
+                            <>
+                              {item.data.target?.label}{" "}
+                              <span className="font-normal text-muted-foreground">({item.data.targetType})</span>
+                            </>
+                          )}
+                          {item.type === "listing" && item.data.title}
+                          {item.type === "user" && item.data.name}
+                          {item.type === "support" && item.data.subject}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {item.type === "report" && item.data.reason}
+                          {item.type === "listing" && (item.data.moderationReason || "Pending review")}
+                          {item.type === "user" && item.data.flagReason}
+                          {item.type === "support" && item.data.lastMessage}
+                        </div>
+                      </td>
+                      <td className="space-x-2 px-4 py-3 text-right whitespace-nowrap">
+                        <Button variant="ghost" size="sm" onClick={() => getTargetLink(item)} data-testid={`link-view-${item.id}`}>
+                          View <CornerUpRight className="ml-1 h-3 w-3" />
+                        </Button>
+
+                        {item.type === "support" && !item.assignment && (
+                          <Button size="sm" variant="outline" onClick={() => claimSupport(item.id)} data-testid={`btn-claim-${item.id}`}>
+                            Claim
+                          </Button>
+                        )}
+
+                        {item.type === "report" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "assign")}>Assign</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "resolve")} className="text-emerald-600">
+                                Resolve
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "dismiss")} className="text-muted-foreground">
+                                Dismiss
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+
+                        {item.type === "listing" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "approve")} className="text-emerald-600">
+                                Approve
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "reject")} className="text-red-600">
+                                Reject
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "remove")} className="text-red-600">
+                                Remove
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+
+                        {item.type === "user" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="icon" variant="ghost" data-testid={`menu-actions-${item.id}`}>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "clear_flag")}>Clear Flag</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "restrict")} className="text-red-600">
+                                Restrict Account
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openSingleDialog(item, "unrestrict")}>
+                                Unrestrict Account
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openAppealDialog(item)}>Request Review</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         
         {/* Pagination */}

@@ -20,6 +20,7 @@ import VideoUploadCenter from "@/components/VideoUploadCenter";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { prefetchCriticalRoutes } from "@/lib/prefetchRoutes";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { trackSiteVisit } from "@/lib/siteVisit";
 
 // ── All auth pages are lazy — they are visited rarely and should not bloat
 // the main bundle that must download before the home page can render.
@@ -33,6 +34,7 @@ const SetNewPassword   = lazy(() => import("@/pages/auth/SetNewPassword"));
 // ── Lazy-loaded pages — only downloaded when the route is visited ─────────────
 const DriverSelfieMobile = lazy(() => import("@/pages/DriverSelfieMobile"));
 const Home               = lazy(() => import("@/pages/Home"));
+const BoostedDealPreview = lazy(() => import("@/pages/dev/BoostedDealPreview"));
 const Search             = lazy(() => import("@/pages/Search"));
 const ListingDetail      = lazy(() => import("@/pages/ListingDetail"));
 const Sell               = lazy(() => import("@/pages/Sell"));
@@ -46,13 +48,20 @@ const Boost              = lazy(() => import("@/pages/Boost"));
 const Sales              = lazy(() => import("@/pages/Sales"));
 const Orders             = lazy(() => import("@/pages/Orders"));
 const OrderDetail        = lazy(() => import("@/pages/OrderDetail"));
+const OrderDelivered     = lazy(() => import("@/pages/OrderDelivered"));
 const OrderLabel         = lazy(() => import("@/pages/OrderLabel"));
 const Admin              = lazy(() => import("@/pages/Admin"));
+const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
 const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
 const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications"));
 const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
+const SettingsPayments   = lazy(() => import("@/pages/SettingsPayments"));
+const SettingsIdentity   = lazy(() => import("@/pages/SettingsIdentity"));
+const SettingsPrivacy    = lazy(() => import("@/pages/SettingsPrivacy"));
+const SettingsVideos     = lazy(() => import("@/pages/SettingsVideos"));
+const SellerAnalytics    = lazy(() => import("@/pages/SellerAnalytics"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
 const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
@@ -71,6 +80,7 @@ const StripeOnboardReturn = lazy(() => import("@/pages/StripeOnboardReturn"));
 const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
+const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
 const TermsOfService     = lazy(() => import("@/pages/TermsOfService"));
@@ -108,6 +118,7 @@ const AdminAgentApplicationsPage     = lazy(() => import("@/pages/AdminAgentAppl
 const AdminVehiclePanel              = lazy(() => import("@/pages/AdminVehiclePanel"));
 const AdminDriversLiveMap            = lazy(() => import("@/pages/AdminDriversLiveMap"));
 const DriverDashboard                = lazy(() => import("@/pages/DriverDashboard"));
+const DriverJobDetail                = lazy(() => import("@/pages/DriverJobDetail"));
 const ManagerDashboard               = lazy(() => import("@/pages/ManagerDashboard"));
 const DriverApplicationStatus        = lazy(() => import("@/pages/DriverApplicationStatus"));
 const Cart                           = lazy(() => import("@/pages/Cart"));
@@ -186,6 +197,9 @@ function RedirectHome() {
 function LayoutRoutes() {
   const [, setLocation] = useLocation();
   useEffect(() => {
+    trackSiteVisit();
+  }, []);
+  useEffect(() => {
     prefetchCriticalRoutes();
   }, []);
   const routes = (
@@ -200,11 +214,13 @@ function LayoutRoutes() {
           <Route path="/auth/suspended" component={SuspendedScreen} />
           <Route path="/auth/set-new-password" component={SetNewPassword} />
           <Route path="/" component={Home} />
+          <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}
           </Route>
-          <Route path="/videos" component={VideoFeed} />
+          <Route path="/videos/watch" component={VideoFeed} />
+          <Route path="/videos" component={VideoDiscover} />
           <Route path="/my-boosts" component={MyBoosts} />
           <Route path="/listings/:id/video" component={VideoPost} />
           <Route path="/listings/:id" component={ListingDetail} />
@@ -220,6 +236,7 @@ function LayoutRoutes() {
           <Route path="/sales" component={Sales} />
           <Route path="/orders" component={Orders} />
           <Route path="/orders/:id/label" component={OrderLabel} />
+          <Route path="/orders/:id/delivered" component={OrderDelivered} />
           <Route path="/orders/:id" component={OrderDetail} />
           <Route path="/manager" component={ManagerDashboard} />
           <Route path="/driver/dashboard" component={DriverDashboard} />
@@ -227,12 +244,29 @@ function LayoutRoutes() {
           <Route path="/admin/deliveries" component={AdminDeliveriesPage} />
               <Route path="/admin/driver-applications" component={AdminDriverApplicationsPage} />
           <Route path="/admin/agent-applications" component={AdminAgentApplicationsPage} />
+          {/* Flexa Control dedicated section routes (same Admin shell, path-driven panels) */}
+          <Route path="/admin/operations" component={Admin} />
+          <Route path="/admin/appeals" component={Admin} />
+          <Route path="/admin/users" component={Admin} />
+          <Route path="/admin/team" component={Admin} />
+          <Route path="/admin/support" component={Admin} />
+          <Route path="/admin/live-support" component={AdminLiveSupport} />
+          <Route path="/admin/security" component={Admin} />
+          <Route path="/admin/listings" component={Admin} />
+          <Route path="/admin/reports" component={Admin} />
+          <Route path="/admin/flagged" component={Admin} />
+          <Route path="/admin/moderation" component={Admin} />
           <Route path="/admin" component={Admin} />
-          <Route path="/settings" component={Settings} />
           <Route path="/settings/security" component={SettingsSecurity} />
           <Route path="/settings/notifications" component={SettingsNotifications} />
           <Route path="/settings/preferences" component={SettingsPreferences} />
           <Route path="/settings/help" component={SettingsHelp} />
+          <Route path="/settings/payments" component={SettingsPayments} />
+          <Route path="/settings/identity" component={SettingsIdentity} />
+          <Route path="/settings/privacy" component={SettingsPrivacy} />
+          <Route path="/settings/videos" component={SettingsVideos} />
+          <Route path="/settings/analytics" component={SellerAnalytics} />
+          <Route path="/settings" component={Settings} />
           <Route path="/support" component={Support} />
           <Route path="/support/:id" component={Support} />
           <Route path="/wallet" component={WalletPage} />
@@ -271,6 +305,7 @@ function LayoutRoutes() {
           <Route path="/faq" component={FAQ} />
           <Route path="/delivery/apply" component={ApplyForDriver} />
           <Route path="/delivery/deliveries" component={AvailableDeliveries} />
+          <Route path="/delivery/job/:id" component={DriverJobDetail} />
           <Route path="/cart" component={Cart} />
           <Route path="/loans">
             {isNativeMobileApp() ? <RedirectHome /> : <LoanPage />}

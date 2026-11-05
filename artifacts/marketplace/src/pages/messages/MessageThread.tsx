@@ -7,12 +7,12 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import {
   Send, MessageCircle, ArrowLeft, Check, CheckCheck,
-  Plus, Camera, Image, Smile, X, Play, Phone, Video, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+  Plus, Camera, Image, Smile, X, Play, Mic, Sun, Moon, Copy, Trash2, Globe, Loader2,
+  MoreVertical, UserRound, Flag, Ban, ShoppingBag, ChevronRight, BadgeCheck,
 } from "lucide-react";
 import { insertEmojiAtCursor } from "@/components/EmojiPickerButton";
 import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   useGetConversations, useGetMessages, useSendMessage,
   getGetMessagesQueryKey, getGetMessagesQueryOptions, getGetConversationsQueryKey,
@@ -31,7 +31,16 @@ import {
   updatePendingVoice,
   type PendingVoiceMessage,
 } from "@/lib/voiceOutbox";
-import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T } from "./chatTheme";
+import {
+  listPendingMessages,
+  savePendingMessage,
+  updatePendingMessage,
+  removePendingMessage,
+  newClientMessageId,
+  type PendingChatMessage,
+} from "@/lib/messageOutbox";
+import { compressChatImage } from "@/lib/compressChatImage";
+import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T, FLEXA } from "./chatTheme";
 
 let _animInjected = false;
 function injectChatAnimations() {
@@ -239,8 +248,13 @@ const AudioBubble = React.memo(function AudioBubble({
   const [duration, setDuration] = useState(0);
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
   const [playbackError, setPlaybackError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
 
   const N = VOICE_BARS.length;
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   // ── colours ──────────────────────────────────────────────────────────────
   const PLAYED_COLOR = isMe ? (theme.isDark ? "#86efac" : "#2a76d8") : "#2a76d8";
@@ -445,8 +459,24 @@ const AudioBubble = React.memo(function AudioBubble({
           />
         </div>
 
-        {/* Time + metadata inline */}
+        {/* Time + speed + metadata */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1));
+            }}
+            aria-label={t("messages.playbackSpeed", { defaultValue: "Playback speed" })}
+            style={{
+              border: "none", cursor: "pointer", borderRadius: 8,
+              padding: "2px 5px", fontSize: 10, fontWeight: 800,
+              background: isMe ? (theme.isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : (theme.isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)"),
+              color: timeColor, minWidth: 28, minHeight: 22,
+            }}
+          >
+            {playbackRate === 1 ? "1x" : playbackRate === 1.5 ? "1.5x" : "2x"}
+          </button>
           <Mic style={{
             width: 11, height: 11, flexShrink: 0,
             color: micColor,
@@ -931,6 +961,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
   const [text, setText] = useState("");
   const [showEmojiPanel, setShowEmojiPanel] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [blockingUser, setBlockingUser] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [typingOther, setTypingOther] = useState(false);
   const [otherOnline, setOtherOnline] = useState<boolean | null>(null);
@@ -943,6 +975,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const [voiceFinalizing, setVoiceFinalizing] = useState(false);
   const [sendingVoiceId, setSendingVoiceId] = useState<string | null>(null);
   const [pendingVoices, setPendingVoices] = useState<PendingVoiceMessage[]>([]);
+  const [pendingTexts, setPendingTexts] = useState<PendingChatMessage[]>([]);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
@@ -969,6 +1002,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     document.addEventListener("pointerdown", closeWhenTappingOutside);
     return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
   }, [showEmojiPanel]);
+
+  useEffect(() => {
+    if (!showHeaderMenu) return;
+    const closeWhenTappingOutside = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-chat-header-menu]")) return;
+      setShowHeaderMenu(false);
+    };
+    document.addEventListener("pointerdown", closeWhenTappingOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenTappingOutside);
+  }, [showHeaderMenu]);
   const voiceQueueBusyRef = useRef(false);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingBarRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -989,8 +1033,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     /Android/i.test(navigator.userAgent) ||
     (/FlexaMarket/i.test(navigator.userAgent) && typeof window !== "undefined" && window.innerWidth <= 374)
   );
-  // Warm coral for light mode (matches mockup send button & attach icon), violet for dark
-  const composerActionColor = c.isDark ? "#A5B4FC" : "#df715b";
+  // Flexa orange accents for composer actions
+  const composerActionColor = c.isDark ? "#FB923C" : FLEXA.orange;
 
   useEffect(() => {
     const input = chatInputRef.current;
@@ -1013,8 +1057,9 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
       enabled: !!user && !authLoading && Number.isInteger(convId),
       queryKey: getGetMessagesQueryKey(convId),
       staleTime: 15_000,
-      refetchInterval: 5000,
-      refetchIntervalInBackground: true,
+      // Socket onNewMessage is primary; keep a light safety-net poll.
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
       refetchOnWindowFocus: true,
       refetchOnMount: true,
       // Retry the first request quietly so the conversation can open without
@@ -1028,15 +1073,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     query: {
       enabled: !!user && !authLoading,
       queryKey: getGetConversationsQueryKey(),
-      refetchInterval: 5000,
-      refetchIntervalInBackground: true,
-      refetchOnWindowFocus: true,
+      // Parent Messages list already polls; avoid a duplicate 5s storm here.
+      refetchInterval: false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: false,
       refetchOnMount: true,
       retry: 0,
     },
     request: { timeoutMs: 6_000 },
   });
   const conv = convs?.find((cv: any) => cv.id === convId) as Conversation | undefined;
+  const isSystemNotifications = conv?.conversationType === "system_notifications";
   const sendMsg = useSendMessage();
 
   useEffect(() => {
@@ -1169,24 +1216,118 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
   const doSend = useCallback((body: {
     content?: string; messageType?: MsgType; mediaUrl?: string; imageUrl?: string;
-  }) => {
+    clientMessageId?: string; replyToMessageId?: number;
+  }, opts?: { onFail?: (err: string) => void; onSuccess?: () => void }) => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     if (user) socket.emitStopTyping(convId, user.id);
     sendMsg.mutate({ id: convId, data: body as any }, {
       onSuccess: () => {
+        opts?.onSuccess?.();
         queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
         queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
         setTimeout(() => scrollToBottom(true), 100);
       },
+      onError: (err: any) => {
+        opts?.onFail?.(err?.message ?? "Send failed");
+      },
     });
   }, [convId, queryClient, sendMsg, socket, user]);
 
-  const sendText = () => {
+  const flushPendingTexts = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const items = await listPendingMessages(convId).catch(() => [] as PendingChatMessage[]);
+    setPendingTexts(items);
+    for (const item of items) {
+      if (item.messageType !== "text") continue;
+      try {
+        await updatePendingMessage(item.id, { status: "sending", attempts: item.attempts + 1 });
+        await new Promise<void>((resolve, reject) => {
+          sendMsg.mutate(
+            {
+              id: convId,
+              data: {
+                content: item.content,
+                messageType: "text",
+                clientMessageId: item.id,
+              } as any,
+            },
+            {
+              onSuccess: () => resolve(),
+              onError: (e: any) => reject(e),
+            },
+          );
+        });
+        await removePendingMessage(item.id);
+        setPendingTexts((cur) => cur.filter((p) => p.id !== item.id));
+        queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+      } catch (e: any) {
+        await updatePendingMessage(item.id, {
+          status: "failed",
+          lastError: e?.message ?? "Waiting for connection",
+        });
+        setPendingTexts((cur) =>
+          cur.map((p) =>
+            p.id === item.id
+              ? { ...p, status: "failed", lastError: e?.message ?? "Waiting for connection" }
+              : p,
+          ),
+        );
+      }
+    }
+  }, [convId, queryClient, sendMsg]);
+
+  useEffect(() => {
+    listPendingMessages(convId)
+      .then(setPendingTexts)
+      .catch(() => {});
+    void flushPendingTexts();
+    const onOnline = () => void flushPendingTexts();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onOnline);
+    };
+  }, [convId, flushPendingTexts]);
+
+  const sendText = async () => {
     if (!text.trim() || isRestricted) return;
     const content = text.trim();
+    const clientMessageId = newClientMessageId();
     setText("");
     setShowEmojiPanel(false);
-    doSend({ content, messageType: "text" });
+
+    // Persist first so refresh / offline never loses the draft send
+    try {
+      const queued = await savePendingMessage({
+        id: clientMessageId,
+        conversationId: convId,
+        messageType: "text",
+        content,
+      });
+      setPendingTexts((cur) => [...cur.filter((p) => p.id !== queued.id), queued]);
+      setTimeout(() => scrollToBottom(true), 40);
+    } catch {
+      // IndexedDB unavailable — still attempt live send
+    }
+
+    if (!navigator.onLine) return;
+
+    doSend(
+      { content, messageType: "text", clientMessageId },
+      {
+        onSuccess: () => {
+          void removePendingMessage(clientMessageId);
+          setPendingTexts((cur) => cur.filter((p) => p.id !== clientMessageId));
+        },
+        onFail: (err) => {
+          void updatePendingMessage(clientMessageId, { status: "failed", lastError: err });
+          setPendingTexts((cur) =>
+            cur.map((p) => (p.id === clientMessageId ? { ...p, status: "failed", lastError: err } : p)),
+          );
+        },
+      },
+    );
   };
 
   const stopRecordingTimer = () => {
@@ -1489,8 +1630,21 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     try {
       for (const file of files) {
         const isVideo = file.type.startsWith("video/");
-        const url = await uploadMedia(file, file.type, tkn);
-        doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
+        const clientMessageId = newClientMessageId();
+        let uploadBlob: Blob = file;
+        let contentType = file.type || "application/octet-stream";
+        if (!isVideo) {
+          const compressed = await compressChatImage(file);
+          uploadBlob = compressed.blob;
+          contentType = compressed.contentType;
+        }
+        const url = await uploadMedia(uploadBlob, contentType, tkn);
+        doSend({
+          messageType: isVideo ? "video" : "image",
+          mediaUrl: url,
+          content: "",
+          clientMessageId,
+        });
       }
     } catch { alert(t("messages.uploadFailed")); }
     finally { setUploading(false); }
@@ -1533,7 +1687,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   }, [stopRecordingMeter]);
 
   const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
-  const timeline = buildChatTimeline(msgList, pendingVoices);
+  type TimelinePending = PendingVoiceMessage | (PendingChatMessage & { __text: true });
+  const pendingForTimeline: TimelinePending[] = [
+    ...pendingVoices,
+    ...pendingTexts.map((p) => ({ ...p, __text: true as const })),
+  ];
+  const timeline = buildChatTimeline(msgList, pendingForTimeline);
   // Find the last message sent by me (for status icon)
   let lastSentByMeId: number | null = null;
   for (let i = timeline.length - 1; i >= 0; i--) {
@@ -1585,38 +1744,31 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     });
   }, [convId, queryClient]);
 
-  // ── iOS safe-area top inset (inline — more reliable than CSS class in WKWebView)
-  // max(env(safe-area-inset-top), var(--sat)) can silently return 0 in some
-  // WKWebView builds. Reading the JS-set CSS variable directly and applying it
-  // as an inline numeric value is guaranteed to win over any CSS rule.
-  const threadHeaderTopPad = (() => {
-    if (typeof document === "undefined") return 8;
-    // Priority 1: injected by the native React Native WebView before page load
+  // Compact header: CSS owns safe-area (env / --sat). Native WebView may set
+  // __flexaNativeSafeTop — only then do we pad inline. Never use UA heuristics
+  // (they doubled the green gap under Safari's Dynamic Island).
+  const nativeSafeTop = (() => {
+    if (typeof window === "undefined") return 0;
     const native = (window as any).__flexaNativeSafeTop;
-    if (typeof native === "number" && native > 0) return native + 8;
-    // Priority 2: --sat set synchronously in index.html bootstrap
-    const v = document.documentElement.style.getPropertyValue("--sat") ||
-              getComputedStyle(document.documentElement).getPropertyValue("--sat");
-    const sat = parseInt(v, 10);
-    if (!isNaN(sat) && sat > 0) return sat + 8;
-    // Priority 3: FlexaMarket WebView UA or standard iOS UA
-    if (/FlexaMarket|iPhone|iPad|iPod/.test(navigator.userAgent)) {
-      return (window.screen.height >= 812 ? 59 : 20) + 8;
-    }
-    return 8;
+    return typeof native === "number" && native > 0 ? native : 0;
   })();
 
   return (
     <ChatViewport background={c.pageBg}>
 
-      {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
-      <div className="chat-thread-header" style={{
-        display: "flex", alignItems: "center", gap: 11,
-        paddingTop: threadHeaderTopPad,
-        paddingBottom: "11px", paddingLeft: "13px", paddingRight: "13px",
-        borderBottom: `1px solid ${c.headerBorder}`,
-        background: c.headerBg, flexShrink: 0, overflow: "hidden",
-      }}>
+      {/* ── Compact sticky thread header ── */}
+      <div
+        className="chat-thread-header chat-header-safe"
+        style={{
+          borderBottom: `1px solid ${c.headerBorder}`,
+          background: c.headerBg, flexShrink: 0, overflow: "hidden",
+          ...(nativeSafeTop > 0 ? { paddingTop: nativeSafeTop } : null),
+        }}
+      >
+        <div
+          className="chat-thread-header-row"
+          style={{ gap: 10, paddingLeft: 10, paddingRight: 10 }}
+        >
         {/* Back button — always visible.
             Uses window.history.back() to pop the sentinel we pushed on mount.
             The popstate handler then calls setLocation("/messages"), which
@@ -1625,6 +1777,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         <button
           type="button"
           onClick={onBack ?? (() => window.history.back())}
+          aria-label={t("messages.back")}
+          className="chat-touch-btn"
           style={{
             width: 40, height: 40, borderRadius: "50%", background: "transparent",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1633,20 +1787,20 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             userSelect: "none",
           } as React.CSSProperties}
         >
-          <ArrowLeft style={{ width: 21, height: 21 }} />
+          <ArrowLeft style={{ width: 20, height: 20 }} />
         </button>
 
       {conv && (<>
 
-          {/* Avatar with rounded-square shape + online indicator — mockup approved style */}
+          {/* Avatar + online indicator from real presence */}
           <Link href={`/profile/${conv.otherUserId}`} style={{ flexShrink: 0 }}>
             <div style={{ position: "relative", cursor: "pointer" }}>
               <div style={{
-                width: 43, height: 43, borderRadius: 14,
+                width: 40, height: 40, borderRadius: "50%",
                 overflow: "hidden", flexShrink: 0,
-                background: "linear-gradient(145deg, #203a4f, #df795e)",
-                boxShadow: "0 4px 10px rgba(37,52,50,0.14)",
+                background: FLEXA.greenMid,
                 display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid rgba(255,255,255,0.25)",
               }}>
                 {conv.otherUserAvatar ? (
                   <img
@@ -1660,38 +1814,48 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   </span>
                 )}
               </div>
-              {/* Online indicator — bottom-right of avatar */}
-              <span style={{
-                position: "absolute", right: -1, bottom: -1,
-                width: 11, height: 11, borderRadius: "50%",
-                background: otherOnline ? c.presenceOn : "transparent",
-                border: otherOnline ? `2px solid ${c.isDark ? c.headerBg : "#fffefa"}` : "none",
-              }} />
-            </div>
-          </Link>
-
-          {/* Name + status */}
-          <Link href={`/profile/${conv.otherUserId}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
-            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em", color: c.nameColor, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {conv.otherUserName}
-            </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
               {otherOnline && (
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.presenceOn, flexShrink: 0 }} />
+                <span style={{
+                  position: "absolute", right: 0, bottom: 0,
+                  width: 12, height: 12, borderRadius: "50%",
+                  background: c.presenceOn,
+                  border: `2px solid ${c.headerBg}`,
+                }} />
               )}
-              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: otherOnline ? c.presenceOn : c.presenceOff }}>
-                {otherOnline
-                  ? t("messages.online")
-                  : otherLastSeen
-                    ? formatLastSeen(otherLastSeen, t)
-                    : ""}
-              </p>
             </div>
           </Link>
 
-          {/* Actions — compact (40×40) */}
-          <div className="chat-header-actions" style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
-            {/* Theme toggle */}
+          {/* Name + verified + status */}
+          <Link href={`/profile/${conv.otherUserId}`} style={{ flex: 1, minWidth: 0, textDecoration: "none" }}>
+            <p style={{
+              margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em",
+              color: c.nameColor, lineHeight: 1.2, overflow: "hidden",
+              textOverflow: "ellipsis", whiteSpace: "nowrap",
+              display: "flex", alignItems: "center", gap: 5,
+            }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{conv.otherUserName}</span>
+              {conv.otherUserIsVerified && (
+                <BadgeCheck
+                  aria-label={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
+                  style={{ width: 16, height: 16, color: "#86EFAC", flexShrink: 0 }}
+                />
+              )}
+            </p>
+            <p style={{
+              margin: "2px 0 0", fontSize: 11, lineHeight: 1.2,
+              color: otherOnline ? "#86EFAC" : "rgba(255,255,255,0.55)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {otherOnline
+                ? t("messages.online")
+                : otherLastSeen
+                  ? formatLastSeen(otherLastSeen, t)
+                  : ""}
+            </p>
+          </Link>
+
+          {/* Actions — theme + overflow menu (no fake call buttons) */}
+          <div className="chat-header-actions" data-chat-header-menu style={{ display: "flex", alignItems: "center", gap: 0, flexShrink: 0, position: "relative" }}>
             <button
               className="chat-theme-toggle"
               type="button"
@@ -1706,107 +1870,194 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             >
               {isDarkMode
                 ? <Sun style={{ width: 19, height: 19, color: "#FCD34D" }} />
-                : <Moon style={{ width: 19, height: 19, color: "#818CF8" }} />}
+                : <Moon style={{ width: 19, height: 19, color: "rgba(255,255,255,0.85)" }} />}
             </button>
 
-            {/* Video call */}
-            <button type="button" style={{
-              width: 40, height: 40, borderRadius: "50%", background: "transparent",
-              border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-            }}>
-              <Video style={{ width: 19, height: 19, color: c.iconColor }} />
-            </button>
-
-            {/* Profile */}
-            <Link href={`/profile/${conv.otherUserId}`}>
-              <button type="button" style={{
+            <button
+              type="button"
+              aria-label={t("messages.moreOptions", { defaultValue: "More options" })}
+              aria-expanded={showHeaderMenu}
+              onClick={() => setShowHeaderMenu(v => !v)}
+              style={{
                 width: 40, height: 40, borderRadius: "50%", background: "transparent",
                 border: "none", display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", flexShrink: 0,
-              }}>
-                <Phone style={{ width: 19, height: 19, color: c.iconColor }} />
-              </button>
-            </Link>
+                cursor: "pointer", flexShrink: 0, color: c.iconColor,
+              }}
+            >
+              <MoreVertical style={{ width: 19, height: 19 }} />
+            </button>
 
-            {/* Admin block */}
-            {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
-              <AdminBlockButton
-                targetUserId={conv.otherUserId}
-                targetUserName={conv.otherUserName}
-                variant="icon"
-              />
+            {showHeaderMenu && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute", top: 44, right: 0, zIndex: 40,
+                  width: 220, borderRadius: 14,
+                  background: c.contextBg, border: `1px solid ${c.contextBorder}`,
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+                  padding: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setShowHeaderMenu(false); setLocation(`/profile/${conv.otherUserId}`); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: "pointer", color: c.contextText, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  <UserRound style={{ width: 16, height: 16 }} />
+                  {t("messages.viewProfile", { defaultValue: "View profile" })}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { setShowHeaderMenu(false); setLocation("/report-abuse"); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: "pointer", color: c.contextText, fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  <Flag style={{ width: 16, height: 16 }} />
+                  {t("messages.reportUser", { defaultValue: "Report user" })}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={blockingUser}
+                  onClick={async () => {
+                    if (!token || !conv) return;
+                    const ok = window.confirm(
+                      t("messages.confirmBlock", {
+                        defaultValue: "Block {{name}}? You will no longer be able to message each other.",
+                        name: conv.otherUserName,
+                      }),
+                    );
+                    if (!ok) return;
+                    setBlockingUser(true);
+                    try {
+                      const res = await fetch(`/api/users/${conv.otherUserId}/block`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (!res.ok) throw new Error("block failed");
+                      toast({ title: t("messages.userBlocked", { defaultValue: "User blocked" }) });
+                      setShowHeaderMenu(false);
+                      setLocation("/messages");
+                    } catch {
+                      toast({
+                        title: t("messages.blockFailed", { defaultValue: "Could not block user" }),
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setBlockingUser(false);
+                    }
+                  }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "11px 12px", border: "none", background: "transparent",
+                    borderRadius: 10, cursor: blockingUser ? "wait" : "pointer",
+                    color: c.contextDestructive, fontSize: 13, fontWeight: 600,
+                    opacity: blockingUser ? 0.6 : 1,
+                  }}
+                >
+                  <Ban style={{ width: 16, height: 16 }} />
+                  {t("listing.blockUser", { defaultValue: "Block user" })}
+                </button>
+                {(!!(user as any)?.isAdmin || !!(user as any)?.isSuperAdmin) && (
+                  <div style={{ padding: "4px 6px 6px" }}>
+                    <AdminBlockButton
+                      targetUserId={conv.otherUserId}
+                      targetUserName={conv.otherUserName}
+                      variant="icon"
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </>)}
+        </div>
       </div>
 
-      {/* Keep the reason for the conversation visible while the thread is open. */}
+      {/* Compact product context — real listing data only */}
       {conv?.listingId && (
-        <Link
-          href={`/listings/${conv.listingId}`}
-          style={{ textDecoration: "none", flexShrink: 0 }}
-        >
+        <div style={{
+          flexShrink: 0,
+          padding: "6px 10px",
+          background: c.msgAreaBg,
+          borderBottom: `1px solid ${c.listBorder}`,
+        }}>
           <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "9px 13px",
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "6px 10px",
             background: c.contextBg,
-            borderBottom: `1px solid ${c.contextBorder}`,
+            border: `1px solid ${c.contextBorder}`,
+            borderRadius: 12,
             color: c.contextText,
           }}>
-            <div style={{
-              width: 50, height: 50, borderRadius: 10, overflow: "hidden",
-              flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              {conv.listingImage ? (
-                <img
-                  src={conv.listingImage}
-                  alt={conv.listingTitle}
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-              ) : (
-                <span style={{ fontSize: 22 }}>🛍️</span>
-              )}
-            </div>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{
-                margin: 0, fontSize: 10, fontWeight: 800,
-                letterSpacing: "0.08em", textTransform: "uppercase",
-                color: c.listSub,
-              }}>
-                {t("messages.productContext")}
-              </p>
-              <p style={{
-                margin: "3px 0 0", fontSize: 14, fontWeight: 700,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {conv.listingTitle}
-              </p>
-              {conv.listingPrice > 0 && (
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: c.listSub }}>
-                  ${Number(conv.listingPrice).toFixed(2)}
-                </p>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 8, overflow: "hidden",
+                  flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {conv.listingImage ? (
+                    <img
+                      src={conv.listingImage}
+                      alt={conv.listingTitle}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <ShoppingBag style={{ width: 18, height: 18, color: c.listSub }} />
+                  )}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <p style={{
+                    margin: 0, fontSize: 14, fontWeight: 700,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {conv.listingTitle}
+                  </p>
+                  {Number(conv.listingPrice) > 0 && (
+                    <p style={{ margin: "2px 0 0", fontSize: 14, fontWeight: 800, color: FLEXA.orange }}>
+                      ${Number(conv.listingPrice).toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-            <span aria-hidden="true" style={{ fontSize: 25, lineHeight: 1, color: c.listSub }}>›</span>
+            <Link
+              href={`/listings/${conv.listingId}`}
+              style={{ textDecoration: "none", flexShrink: 0 }}
+            >
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 2,
+                minHeight: 36, padding: "0 12px",
+                borderRadius: 999,
+                border: `1.5px solid ${FLEXA.orange}`,
+                color: FLEXA.orange, fontSize: 12, fontWeight: 700,
+                whiteSpace: "nowrap",
+              }}>
+                {t("messages.viewProduct", { defaultValue: "View product" })}
+                <ChevronRight style={{ width: 14, height: 14 }} />
+              </span>
+            </Link>
           </div>
-        </Link>
+        </div>
       )}
 
-      {/* ── Messages scroll area — warm ivory/mint radial gradient background ── */}
+      {/* ── Messages scroll area — clean light / dark surface, no decorative art ── */}
       <div
         ref={msgContainerRef}
         style={{
           flex: 1, overflowY: "auto", overflowX: "hidden",
-          background: c.isDark
-            ? c.pageBg
-            : `radial-gradient(circle at 10% 16%, rgba(241,229,201,0.4), transparent 28%),
-               radial-gradient(circle at 92% 67%, rgba(218,236,225,0.7), transparent 30%),
-               #f8f8f3`,
+          background: c.msgAreaBg,
           position: "relative",
-          // Explicitly tell iOS this container handles vertical pan — prevents
-          // the browser from suspending scroll when a child captures pointerdown
           touchAction: "pan-y",
           overscrollBehavior: "contain",
         } as React.CSSProperties}
@@ -1862,7 +2113,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           </div>
         )}
 
-        {(msgList.length > 0 || pendingVoices.length > 0) && (
+        {(msgList.length > 0 || pendingVoices.length > 0 || pendingTexts.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", padding: "18px 14px 12px", maxWidth: 680, margin: "0 auto", boxSizing: "border-box", overflowX: "hidden" }}>
             <div style={{ flex: 1 }} />
             {timeline.map((entry, idx) => {
@@ -1871,13 +2122,46 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               const startsDay = entry.day != null && entry.day !== prev?.day;
               const isFirstInGroup = !sameChatGroup(prev, entry, Number(user?.id));
               const isLastInGroup = !sameChatGroup(entry, next, Number(user?.id));
+              const isTextPending = entry.kind === "pending" && "__text" in entry.item;
 
               return (
                 <React.Fragment key={entry.key}>
                   {startsDay && <ChatDateDivider createdAt={entry.createdAt} isDark={c.isDark} />}
                   <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 8 : 2 }}>
-                    {entry.kind === "pending" ? (
-                      <PendingVoiceBubble item={entry.item} theme={c}
+                    {entry.kind === "pending" && isTextPending ? (
+                      <div className="msg-bubble-anim" style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{
+                          maxWidth: "85%", borderRadius: "12px 12px 4px 12px",
+                          background: c.bubbleOut, padding: "8px 12px",
+                          opacity: 0.9, border: (c as any).bubbleOutBorder ? `1px solid ${(c as any).bubbleOutBorder}` : undefined,
+                        }}>
+                          <p style={{ margin: 0, fontSize: 14, color: c.textOut, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            {(entry.item as PendingChatMessage).content}
+                          </p>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 4 }}>
+                            <span style={{ fontSize: 10, color: c.timeOut }}>
+                              {(entry.item as PendingChatMessage).status === "failed" || !navigator.onLine
+                                ? t("messages.waitingConnection", { defaultValue: "Waiting for connection" })
+                                : t("messages.sending", { defaultValue: "Sending…" })}
+                            </span>
+                            {((entry.item as PendingChatMessage).status === "failed" || !navigator.onLine) && (
+                              <button
+                                type="button"
+                                onClick={() => void flushPendingTexts()}
+                                style={{
+                                  border: "none", background: "transparent", cursor: "pointer",
+                                  fontSize: 10, fontWeight: 700, color: c.timeOut, textDecoration: "underline",
+                                  minHeight: 28, padding: "0 4px",
+                                }}
+                              >
+                                {t("messages.voiceRetry")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : entry.kind === "pending" ? (
+                      <PendingVoiceBubble item={entry.item as PendingVoiceMessage} theme={c}
                         isSending={sendingVoiceId === entry.item.id}
                         onRetry={() => void flushPendingVoices()} />
                     ) : (
@@ -1954,7 +2238,18 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileSelect} />
         <input ref={audioCaptureInputRef} type="file" accept="audio/*" capture className="hidden" onChange={handleAudioCapture} />
 
-            {isRestricted ? (
+            {isSystemNotifications ? (
+          <div style={{
+            padding: "10px 12px 14px",
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.4,
+            color: c.listSub,
+            fontWeight: 600,
+          }}>
+            Official Flexa Market notifications — replies are disabled. Delivery PINs appear here for Haiti domestic orders.
+          </div>
+        ) : isRestricted ? (
           <div style={{ padding: "4px 0" }}><RestrictionBanner action="message" /></div>
         ) : isRecording ? (
           <div style={{
@@ -2063,7 +2358,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             minHeight: isAndroidMobile ? 48 : 53,
           }}>
 
-            {/* Add attachment — rounded circle with warm bg matching mockup */}
+            {/* Add attachment — soft green circle (ref composer) */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -2074,10 +2369,10 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 width: isAndroidMobile ? 36 : 38,
                 height: isAndroidMobile ? 36 : 38,
                 borderRadius: "50%",
-                background: c.isDark ? c.iconActiveBg : "#f0f3ed",
+                background: c.isDark ? c.iconActiveBg : "rgba(4, 77, 44, 0.12)",
                 border: "none", cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                color: composerActionColor, opacity: uploading ? 0.4 : 1,
+                color: c.isDark ? composerActionColor : FLEXA.green, opacity: uploading ? 0.4 : 1,
               }}
             >
               <Plus style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
@@ -2137,7 +2432,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   }}
                   style={{
                     width: 34, height: 34, borderRadius: "50%",
-                    background: showEmojiPanel ? "rgba(223,113,91,0.12)" : "none",
+                    background: showEmojiPanel ? "rgba(249,115,22,0.12)" : "none",
                     border: "none", cursor: "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: composerActionColor,
@@ -2195,7 +2490,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading ? 0.3 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
               >
                 <Send style={{ width: 17, height: 17 }} />
@@ -2213,7 +2508,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   background: c.sendBg, border: "none", cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", opacity: uploading || voiceFinalizing ? 0.4 : 1,
-                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(218,92,71,0.22)",
+                  boxShadow: c.isDark ? "none" : "0 4px 11px rgba(249,115,22,0.28)",
                 }}
                 aria-label={t("messages.recordVoice")}
               >

@@ -75,7 +75,7 @@ function CounterDialog({
         <div className="space-y-4 py-2">
           <div>
             <p className="text-xs text-muted-foreground mb-1">{t("offers.originalOffer")}</p>
-            <p className="text-2xl font-black text-primary">${offer.amount.toFixed(2)}</p>
+            <p className="text-xl font-bold text-primary">${offer.amount.toFixed(2)}</p>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-medium">{t("offers.counterAmount")}</label>
@@ -144,15 +144,15 @@ function OfferCard({ offer, isSent, userId }: { offer: Offer; isSent: boolean; u
 
   return (
     <>
-      <div className="bg-card border border-border rounded-2xl p-4 space-y-3 shadow-sm" data-testid={`offer-card-${offer.id}`}>
+      <div className="bg-card border border-border rounded-xl p-3.5 space-y-2.5 shadow-sm" data-testid={`offer-card-${offer.id}`}>
         {/* Header: image + title + status */}
         <div className="flex items-start gap-3">
           {offer.listingImage && (
-            <img src={offer.listingImage} alt="" className="h-16 w-16 object-cover rounded-xl flex-shrink-0" />
+            <img src={offer.listingImage} alt="" className="h-14 w-14 object-cover rounded-lg flex-shrink-0" />
           )}
           <div className="flex-1 min-w-0">
             <Link href={`/listings/${offer.listingId}`}>
-              <p className="font-bold text-foreground hover:text-primary truncate">{offer.listingTitle}</p>
+              <p className="font-semibold text-sm text-foreground hover:text-primary truncate">{offer.listingTitle}</p>
             </Link>
             {offer.listingPrice != null && (
               <p className="text-xs text-muted-foreground">{t("offer.listedPrice")}: ${offer.listingPrice.toFixed(2)}</p>
@@ -182,20 +182,20 @@ function OfferCard({ offer, isSent, userId }: { offer: Offer; isSent: boolean; u
 
         {/* Price thread */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between bg-muted/50 rounded-xl px-3 py-2">
+          <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-1.5">
             <span className="text-xs text-muted-foreground">{t("offers.originalOffer")}</span>
-            <span className="text-lg font-black text-primary">${offer.amount.toFixed(2)}</span>
+            <span className="text-base font-bold text-primary">${offer.amount.toFixed(2)}</span>
           </div>
           {offer.status === "counter" && offer.counterAmount != null && (
-            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2">
+            <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-1.5">
               <span className="text-xs font-medium text-blue-700 dark:text-blue-300">{t("offers.counterProposal")}</span>
-              <span className="text-lg font-black text-blue-700 dark:text-blue-300">${offer.counterAmount.toFixed(2)}</span>
+              <span className="text-base font-bold text-blue-700 dark:text-blue-300">${offer.counterAmount.toFixed(2)}</span>
             </div>
           )}
           {(offer.status === "accepted") && offer.counterAmount != null && (
-            <div className="flex items-center justify-between bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl px-3 py-2">
+            <div className="flex items-center justify-between bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg px-3 py-1.5">
               <span className="text-xs font-medium text-green-700 dark:text-green-300">{t("offers.agreedPrice")}</span>
-              <span className="text-lg font-black text-green-700 dark:text-green-300">${offer.amount.toFixed(2)}</span>
+              <span className="text-base font-bold text-green-700 dark:text-green-300">${offer.amount.toFixed(2)}</span>
             </div>
           )}
           {offer.counterMessage && (
@@ -269,7 +269,7 @@ export default function Offers() {
       enabled: !!user,
       queryKey: getGetMyOffersQueryKey(),
       // Fallback polling: refetch every 15s to catch any SSE gaps
-      refetchInterval: 15_000,
+      refetchInterval: 45_000,
       refetchIntervalInBackground: false,
     },
   });
@@ -307,9 +307,9 @@ export default function Offers() {
   const pendingSent = sent.filter(o => o.status === "counter").length; // counter offers waiting for buyer
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-extrabold text-foreground">{t("offers.title")}</h1>
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl sm:text-2xl font-extrabold text-foreground">{t("offers.title")}</h1>
         <div className="flex items-center gap-2">
           {liveActive && (
             <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 px-2 py-1 rounded-full">
@@ -328,7 +328,7 @@ export default function Offers() {
       </div>
 
       <Tabs defaultValue="received">
-        <TabsList className="w-full mb-6">
+        <TabsList className="w-full mb-4">
           <TabsTrigger value="received" className="flex-1 gap-1.5" data-testid="tab-received">
             {t("offers.received")}
             {pendingReceived > 0 && (
@@ -347,12 +347,12 @@ export default function Offers() {
           {isLoading ? (
             <p className="text-center text-muted-foreground py-8">{t("offers.loading")}</p>
           ) : received.length === 0 ? (
-            <div className="text-center py-16 bg-card border border-border rounded-2xl">
-              <Tag className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <div className="text-center py-12 bg-card border border-border rounded-xl">
+              <Tag className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("offers.noReceived")}</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {received.map(o => (
                 <OfferCard key={`${o.id}-${o.status}-${o.updatedAt}`} offer={o} isSent={false} userId={user?.id ?? 0} />
               ))}
@@ -364,12 +364,12 @@ export default function Offers() {
           {isLoading ? (
             <p className="text-center text-muted-foreground py-8">{t("offers.loading")}</p>
           ) : sent.length === 0 ? (
-            <div className="text-center py-16 bg-card border border-border rounded-2xl">
-              <Tag className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <div className="text-center py-12 bg-card border border-border rounded-xl">
+              <Tag className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("offers.noSent")}</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {sent.map(o => (
                 <OfferCard key={`${o.id}-${o.status}-${o.updatedAt}`} offer={o} isSent={true} userId={user?.id ?? 0} />
               ))}

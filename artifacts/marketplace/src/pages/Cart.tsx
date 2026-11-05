@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -6,29 +6,12 @@ import {
   Trash2, ShoppingBag, ChevronDown, ChevronUp,
   Shield, Truck, CreditCard, CheckSquare, Square,
   ChevronRight, SlidersHorizontal, Tag, X, Package,
-  CheckCircle, MapPin, Phone, User, Bike, Loader2,
+  CheckCircle, MapPin, Phone, User, Bike, Loader2, Info,
 } from "lucide-react";
 import { useCart, CartItem } from "@/contexts/cart";
 import { useAuth } from "@/contexts/auth";
 import { formatPrice } from "@/lib/currency";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
-
-/* ── Helpers ── */
-const fakeDiscount = (price: number) => {
-  const pct = [10, 15, 20, 25, 30, 35, 40, 45, 50, 52, 55][Math.abs(Math.floor(price)) % 11];
-  return { pct, original: parseFloat((price / (1 - pct / 100)).toFixed(2)) };
-};
-
-const PROMO_BADGES: Record<number, { label: string; color: string }> = {};
-const getBadge = (id: number) => {
-  const badges = [
-    { label: "VANT FLASH ⚡", color: "#f59e0b" },
-    { label: "GWO PROMO 🔥", color: "#ef4444" },
-    { label: "SÈLEKSYON MOMAN 🌟", color: "#8b5cf6" },
-  ];
-  if (!PROMO_BADGES[id]) PROMO_BADGES[id] = badges[id % badges.length];
-  return PROMO_BADGES[id];
-};
 
 /* ── Group cart items by seller ── */
 function groupBySeller(items: CartItem[]): { sellerId: number; items: CartItem[] }[] {
@@ -105,6 +88,7 @@ function CheckoutModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [requiresItemCheckout, setRequiresItemCheckout] = useState(false);
+  const submitLock = useRef(false);
 
   const groups = groupBySeller(selectedItems);
   const deliveryTotal = deliveryFees.reduce((s, d) => s + d.feeUsd, 0);
@@ -113,9 +97,11 @@ function CheckoutModal({
   const grandTotal = total + deliveryTotal + cartReferralFee;
 
   const handleConfirm = async () => {
+    if (submitLock.current || loading) return;
     if (!name.trim() || !phone.trim() || !city.trim()) {
-      setError("Non, telefòn, ak vil obligatwa"); return;
+      setError("Full name, phone, and city are required"); return;
     }
+    submitLock.current = true;
     setLoading(true);
     setError("");
     try {
@@ -147,9 +133,10 @@ function CheckoutModal({
       });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {
-      setError("Erè rezo — verifye koneksyon ou");
+      setError("Network error — check your connection and try again");
     } finally {
       setLoading(false);
+      submitLock.current = false;
     }
   };
 
@@ -160,20 +147,20 @@ function CheckoutModal({
     <div className="fixed inset-0 z-[80] flex items-end justify-center" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}>
       <div className="w-full max-w-lg rounded-t-3xl overflow-y-auto" style={{ background: "#ffffff", maxHeight: "92vh" }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3" style={{ borderBottom: `1px solid ${border}` }}>
+        <div className="flex items-center justify-between px-5 pt-4 pb-3" style={{ borderBottom: `1px solid ${border}` }}>
           <div>
-            <p className="font-black text-gray-900 text-base">Konfime Kòmand</p>
-            <p className="text-xs text-gray-500 mt-0.5">{selectedItems.length} pwodwi · {groups.length} machann · ${grandTotal.toFixed(2)}</p>
+            <p className="font-black text-gray-900 text-[15px]">Confirm order</p>
+            <p className="text-xs text-gray-500 mt-0.5">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} · {groups.length} seller{groups.length === 1 ? "" : "s"} · ${grandTotal.toFixed(2)}</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-2xl flex items-center justify-center" style={{ background: "#f1f5f9" }}>
+          <button type="button" onClick={onClose} disabled={loading} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9" }} aria-label="Close checkout">
             <X className="h-4 w-4 text-gray-600" />
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-5">
+        <div className="px-5 py-4 space-y-4">
           {/* Seller groups summary */}
           <div className="space-y-2">
-            <p className="text-xs font-black text-gray-500 uppercase tracking-wide">Rezime pa machann</p>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">Order summary</p>
             {groups.map(({ sellerId, items }) => {
               const df = deliveryFees.find(d => d.sellerId === sellerId);
               return (
@@ -204,21 +191,22 @@ function CheckoutModal({
           </div>
 
           {/* Shipping form */}
-          <div className="space-y-3">
-            <p className="text-xs font-black text-gray-500 uppercase tracking-wide">Adrès Livrezon</p>
+          <div className="space-y-2.5">
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">Delivery address</p>
             {[
-              { label: "Non konplè", value: name, set: setName, icon: <User className="h-4 w-4" />, required: true },
-              { label: "Telefòn", value: phone, set: setPhone, icon: <Phone className="h-4 w-4" />, required: true },
-              { label: "Vil", value: city, set: setCity, icon: <MapPin className="h-4 w-4" />, required: true },
-              { label: "Adres (opsyonèl)", value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: false },
-              { label: "Rejyon (opsyonèl)", value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: false },
+              { label: "Full name", value: name, set: setName, icon: <User className="h-4 w-4" />, required: true },
+              { label: "Phone", value: phone, set: setPhone, icon: <Phone className="h-4 w-4" />, required: true },
+              { label: "City", value: city, set: setCity, icon: <MapPin className="h-4 w-4" />, required: true },
+              { label: "Street (optional)", value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: false },
+              { label: "Region (optional)", value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: false },
             ].map(f => (
-              <div key={f.label} className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ border: `1.5px solid ${f.required && !f.value.trim() && error ? "#fca5a5" : border}`, background: "#f8fafc" }}>
+              <div key={f.label} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl" style={{ border: `1.5px solid ${f.required && !f.value.trim() && error ? "#fca5a5" : border}`, background: "#f8fafc" }}>
                 <span className="text-gray-400">{f.icon}</span>
                 <input
                   value={f.value}
                   onChange={e => f.set(e.target.value)}
                   placeholder={f.label}
+                  autoComplete={f.label === "Phone" ? "tel" : f.label === "Full name" ? "name" : "address-level2"}
                   className="flex-1 bg-transparent text-sm outline-none text-gray-900 placeholder-gray-400"
                 />
               </div>
@@ -226,11 +214,11 @@ function CheckoutModal({
           </div>
 
           {/* Price breakdown */}
-          <div className="rounded-2xl p-4 space-y-2" style={{ background: "#f8fafc", border: `1px solid ${border}` }}>
-            <p className="text-xs font-black text-gray-500 uppercase tracking-wide mb-3">Rezime Pri</p>
+          <div className="rounded-xl p-3.5 space-y-2" style={{ background: "#f8fafc", border: `1px solid ${border}` }}>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide mb-2">Price summary</p>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">🛍 Pwodwi ({selectedItems.length} atik)</span>
-              <span className="font-bold text-gray-900">${total.toFixed(2)}</span>
+              <span className="text-gray-600">Products ({selectedItems.length})</span>
+              <span className="font-bold text-gray-900 tabular-nums">${total.toFixed(2)}</span>
             </div>
             {groups.map(({ sellerId, items }) => {
               const df = deliveryFees.find(d => d.sellerId === sellerId);
@@ -248,21 +236,24 @@ function CheckoutModal({
             })}
             {cartReferralFee > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500 text-xs flex items-center gap-1">🔗 Frè referans</span>
-                <span className="font-bold text-orange-500">+${cartReferralFee.toFixed(2)}</span>
+                <span className="text-gray-500 text-xs">Referral fee</span>
+                <span className="font-bold text-orange-500 tabular-nums">+${cartReferralFee.toFixed(2)}</span>
               </div>
             )}
             <div className="border-t pt-2 mt-1 flex justify-between" style={{ borderColor: border }}>
-              <span className="font-black text-gray-900 text-sm">💰 Total</span>
-              <span className="font-black text-lg" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
+              <span className="font-black text-gray-900 text-sm">Estimated total</span>
+              <span className="font-black text-lg tabular-nums" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
             </div>
+            <p className="text-[10px] text-muted-foreground leading-snug pt-1">
+              Final amount is recalculated on the server from live prices, inventory, and delivery fees. Card payments use Stripe Checkout on the product page when required.
+            </p>
           </div>
 
           {/* Info note */}
-          <div className="flex items-start gap-3 p-3 rounded-2xl" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
+          <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
             <Truck className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
             <p className="text-xs text-blue-800 leading-relaxed">
-              Chak machann ap jwenn pwòp chofe moto pou livrezon pa yo. Frè livrezon kalkile otomatikman baze sou distans. Tout kòmand ap parèt nan seksyon "Kòmand Mwen" ou.
+              Cart checkout pays with your Flexa Market wallet. Each seller ships separately; delivery fees are estimated from your city. Orders appear under My Orders after confirmation.
             </p>
           </div>
 
@@ -281,19 +272,21 @@ function CheckoutModal({
           )}
 
           {/* Total + confirm */}
-          <div className="space-y-3 pb-2">
+          <div className="space-y-2 pb-2">
             <button
+              type="button"
               onClick={handleConfirm}
               disabled={loading || requiresItemCheckout}
-              className="w-full py-4 rounded-2xl font-black text-white text-sm transition-all active:scale-[0.98]"
-              style={loading ? { background: "#e2e8f0", color: "#94a3b8", cursor: "not-allowed" } : {
+              data-testid="button-cart-place-order"
+              className="w-full h-11 rounded-xl font-bold text-white text-sm transition-all active:scale-[0.98] disabled:opacity-60"
+              style={loading || requiresItemCheckout ? { background: "#e2e8f0", color: "#94a3b8", cursor: "not-allowed" } : {
                 background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
-                boxShadow: "0 8px 30px rgba(249,115,22,0.35)",
+                boxShadow: "0 2px 12px rgba(249,115,22,0.28)",
               }}
             >
               {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Ap trete kòmand yo…</span>
-                : `Konfime — Peye $${grandTotal.toFixed(2)} avèk FM Wallet`
+                ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Processing…</span>
+                : `Place order — $${grandTotal.toFixed(2)} (Wallet)`
               }
             </button>
           </div>
@@ -321,68 +314,69 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
   const grandTotal = productTotal + deliveryTotal;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12 text-center" style={{ background: "#f8fafc" }}>
-      <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5" style={{ background: "linear-gradient(135deg, #d1fae5, #a7f3d0)" }}>
-        <CheckCircle className="h-10 w-10 text-emerald-600" />
+    <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10 text-center" style={{ background: "#f8fafc" }}>
+      <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, #d1fae5, #a7f3d0)" }}>
+        <CheckCircle className="h-8 w-8 text-emerald-600" />
       </div>
-      <p className="font-black text-xl text-gray-900 mb-1">Kòmand Konfime! 🎉</p>
-      <p className="text-sm text-gray-500 mb-2">{orders.length} kòmand kreye — {groups.length} machann ap livre ba ou</p>
+      <p className="font-black text-xl text-gray-900 mb-1">Order confirmed</p>
+      <p className="text-sm text-gray-500 mb-2">{orders.length} order{orders.length === 1 ? "" : "s"} created · {groups.length} seller{groups.length === 1 ? "" : "s"}</p>
       {deliveryTotal > 0 && (
-        <p className="text-xs text-blue-600 font-bold mb-6 bg-blue-50 px-3 py-1.5 rounded-full">
-          🏍 {groups.length} chofè moto asiyane · livrezon ${deliveryTotal.toFixed(2)} total
+        <p className="text-xs text-blue-700 font-semibold mb-5 bg-blue-50 px-3 py-1.5 rounded-full">
+          Delivery ${deliveryTotal.toFixed(2)} · {groups.length} motorcycle run{groups.length === 1 ? "" : "s"}
         </p>
       )}
 
-      <div className="w-full max-w-sm space-y-3 mb-8">
+      <div className="w-full max-w-sm space-y-2 mb-6">
         {orders.map(o => (
-          <div key={o.txId} className="flex items-center gap-3 p-3.5 rounded-2xl text-left" style={{ background: "#ffffff", border: "1px solid #e2e8f0", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#fff7ed" }}>
+          <div key={o.txId} className="flex items-center gap-3 p-3 rounded-xl text-left" style={{ background: "#ffffff", border: "1px solid #e2e8f0" }}>
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#fff7ed" }}>
               <Package className="h-4 w-4" style={{ color: purple }} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 truncate">{o.title}</p>
-              <p className="text-xs text-gray-500">
-                Kòmand #{o.txId} · ${o.amount.toFixed(2)}
-                {(o.deliveryFee ?? 0) > 0 && <span className="text-blue-500"> + liv. ${(o.deliveryFee ?? 0).toFixed(2)}</span>}
+              <p className="text-xs text-gray-500 tabular-nums">
+                Order #{o.txId} · ${o.amount.toFixed(2)}
+                {(o.deliveryFee ?? 0) > 0 && <span className="text-blue-500"> + ship ${(o.deliveryFee ?? 0).toFixed(2)}</span>}
               </p>
             </div>
-            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">Peye ✓</span>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">Paid</span>
           </div>
         ))}
       </div>
 
-      {/* Grand total summary */}
-      <div className="w-full max-w-sm rounded-2xl p-4 mb-6 space-y-2 text-left" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
+      <div className="w-full max-w-sm rounded-xl p-3.5 mb-5 space-y-2 text-left" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Pwodwi</span>
-          <span className="font-bold">${productTotal.toFixed(2)}</span>
+          <span className="text-gray-500">Products</span>
+          <span className="font-bold tabular-nums">${productTotal.toFixed(2)}</span>
         </div>
         {deliveryTotal > 0 && (
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Livrezon ({groups.length} chofè)</span>
-            <span className="font-bold text-blue-600">${deliveryTotal.toFixed(2)}</span>
+            <span className="text-gray-500">Delivery</span>
+            <span className="font-bold text-blue-600 tabular-nums">${deliveryTotal.toFixed(2)}</span>
           </div>
         )}
         <div className="border-t pt-2 flex justify-between">
-          <span className="font-black text-gray-900">Total peye</span>
-          <span className="font-black text-lg" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
+          <span className="font-black text-gray-900">Total paid</span>
+          <span className="font-black text-lg tabular-nums" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
         </div>
       </div>
 
-      <div className="flex gap-3 w-full max-w-sm">
+      <div className="flex gap-2.5 w-full max-w-sm">
         <button
+          type="button"
           onClick={() => setLocation("/orders/purchases")}
-          className="flex-1 py-3.5 rounded-2xl font-black text-sm text-white"
-          style={{ background: "linear-gradient(135deg, #f97316, #ea580c)", boxShadow: "0 4px 16px rgba(249,115,22,0.3)" }}
+          className="flex-1 h-11 rounded-xl font-bold text-sm text-white"
+          style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
         >
-          Wè Kòmand Mwen
+          View orders
         </button>
         <button
+          type="button"
           onClick={onDone}
-          className="flex-1 py-3.5 rounded-2xl font-black text-sm text-gray-700"
+          className="flex-1 h-11 rounded-xl font-bold text-sm text-gray-700"
           style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}
         >
-          Kontinye Achte
+          Continue shopping
         </button>
       </div>
     </div>
@@ -402,8 +396,7 @@ export default function Cart() {
   const [selected, setSelected] = useState<Set<number>>(() => new Set(items.map(i => i.listingId)));
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [promoCode, setPromoCode] = useState("");
-  const [promoApplied, setPromoApplied] = useState(false);
+  const [promoNote, setPromoNote] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "selected">("all");
   const [showCheckout, setShowCheckout] = useState(false);
   const [successOrders, setSuccessOrders] = useState<CheckoutOrder[] | null>(null);
@@ -471,8 +464,7 @@ export default function Cart() {
   const handleClearAll = () => { clearCart(); setSelected(new Set()); setShowClearConfirm(false); };
 
   const subtotal = useMemo(() => selectedItems.reduce((s, i) => s + i.price * (i.quantity ?? 1), 0), [selectedItems]);
-  const discount = promoApplied ? subtotal * 0.05 : 0;
-  const total = subtotal - discount;
+  const total = subtotal;
   const deliveryTotal = deliveryFees.filter(d => !d.loading).reduce((s, d) => s + d.feeUsd, 0);
   const grandTotal = total + deliveryTotal;
 
@@ -489,7 +481,7 @@ export default function Cart() {
   const purpleBtn = "linear-gradient(135deg, #f97316 0%, #ea580c 100%)";
 
   return (
-    <div className="min-h-screen" style={{ background: bg, fontFamily: "system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-background" style={{ background: bg }}>
 
       {/* ══ STICKY HEADER ══ */}
       <div
@@ -554,9 +546,11 @@ export default function Cart() {
           <p className="text-xl font-black text-gray-900 mb-2">{t("cart.emptyTitle")}</p>
           <p className="text-sm mb-8" style={{ color: muted }}>{t("cart.emptySubtitle")}</p>
           <button
+            type="button"
             onClick={() => setLocation("/")}
-            className="px-8 py-3.5 rounded-2xl font-black text-white text-sm"
-            style={{ background: purpleBtn, boxShadow: "0 8px 30px rgba(249,115,22,0.35)" }}
+            className="px-6 h-11 rounded-xl font-bold text-white text-sm"
+            style={{ background: purpleBtn, boxShadow: "0 2px 12px rgba(249,115,22,0.28)" }}
+            data-testid="button-cart-empty-cta"
           >
             {t("cart.emptyCta")}
           </button>
@@ -565,116 +559,107 @@ export default function Cart() {
 
       {/* ══ ITEM GROUPS ══ */}
       {items.length > 0 && (
-        <div className="pb-52">
+        <div className="pb-40">
           {groups.length === 0 && (
             <p className="text-center py-10 text-sm" style={{ color: muted }}>{t("cart.noItemsFilter")}</p>
           )}
 
           {groups.map(({ sellerId, items: groupItems }, gi) => {
             const df = deliveryFees.find(d => d.sellerId === sellerId);
+            const shippingLabel = df?.loading
+              ? "Estimating delivery…"
+              : df?.pickupCity
+                ? `${df.pickupCity}${!df.loading && df.feeUsd > 0 ? ` · $${df.feeUsd.toFixed(2)}` : df && !df.loading && df.feeUsd === 0 ? " · Free delivery" : ""}`
+                : buyerCity
+                  ? "Delivery fee pending"
+                  : "Add city at checkout for delivery estimate";
             return (
-              <div key={sellerId} className="mb-2">
+              <div key={sellerId} className="mb-1.5">
                 {/* Seller header */}
                 <div
-                  className="flex items-center gap-2 px-4 py-2.5"
+                  className="flex items-center gap-2 px-4 py-2"
                   style={{ background: "#f0fdf4", borderBottom: `1px solid ${border}`, borderTop: gi > 0 ? `1px solid ${border}` : undefined }}
                 >
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  <span className="text-[11px] font-bold" style={{ color: "#16a34a" }}>
-                    {df?.pickupCity ? `📍 ${df.pickupCity}` : t("cart.freeShipping")}
+                  <Bike className="h-3 w-3 text-green-600 flex-shrink-0" />
+                  <span className="text-[11px] font-semibold text-green-800 truncate flex-1">
+                    {shippingLabel}
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-lg font-bold ml-1 flex items-center gap-1" style={{ background: "#dcfce7", color: muted }}>
-                    <Bike className="h-2.5 w-2.5" /> 1 chofe moto
-                  </span>
-                  {df?.loading && <Loader2 className="h-3 w-3 animate-spin ml-1" style={{ color: muted }} />}
-                  {df && !df.loading && df.feeUsd > 0 && (
-                    <span className="text-[10px] font-bold ml-auto px-1.5 py-0.5 rounded-lg" style={{ background: "#eff6ff", color: "#2563eb" }}>
-                      liv. ${df.feeUsd.toFixed(2)}
-                    </span>
-                  )}
-                  <ChevronRight className="h-3 w-3" style={{ color: muted, marginLeft: df?.feeUsd ? 0 : "auto" }} />
+                  {df?.loading && <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" style={{ color: muted }} />}
                 </div>
 
                 {groupItems.map(item => {
                   const qty = item.quantity ?? 1;
-                  const img = item.image ?? `https://placehold.co/100x100/8b5cf6/white?text=${encodeURIComponent(item.title.slice(0, 2))}`;
+                  const img = item.image ?? `https://placehold.co/100x100/f97316/white?text=${encodeURIComponent(item.title.slice(0, 2))}`;
                   const isSel = selected.has(item.listingId);
-                  const { pct, original } = fakeDiscount(item.price);
-                  const badge = getBadge(item.listingId);
 
                   return (
                     <div
                       key={item.listingId}
-                      className="relative px-4 py-3.5"
+                      className="relative px-3 py-2.5"
                       style={{
                         background: isSel ? "rgba(249,115,22,0.04)" : card,
                         borderBottom: `1px solid ${border}`,
                         borderLeft: isSel ? `2px solid rgba(249,115,22,0.5)` : "2px solid transparent",
                       }}
                     >
-                      <div className="flex gap-3 items-start">
-                        <button onClick={() => toggleItem(item.listingId)} className="mt-1 flex-shrink-0 pt-0.5">
+                      <div className="flex gap-2.5 items-start">
+                        <button type="button" onClick={() => toggleItem(item.listingId)} className="mt-1 flex-shrink-0" aria-label={isSel ? "Deselect item" : "Select item"}>
                           {isSel
                             ? <CheckSquare className="h-5 w-5" style={{ color: purple }} />
                             : <Square className="h-5 w-5" style={{ color: muted }} />
                           }
                         </button>
-                        <div className="flex-shrink-0">
+                        <Link href={`/listings/${item.listingId}`} className="flex-shrink-0">
                           <img
                             src={img}
                             alt=""
-                            className="w-[88px] h-[88px] rounded-2xl object-cover"
+                            loading="lazy"
+                            className="w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-lg object-cover"
                             style={{ border: `1px solid ${border}` }}
                             onError={e => { (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3C/svg%3E"; }}
                           />
-                        </div>
+                        </Link>
                         <div className="flex-1 min-w-0">
-                          <button
-                            onClick={() => handleRemove(item.listingId)}
-                            className="float-right ml-2 mt-0.5 w-7 h-7 flex items-center justify-center rounded-xl"
-                            style={{ background: "rgba(239,68,68,0.1)" }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" style={{ color: "#f87171" }} />
-                          </button>
-                          <p className="text-sm font-bold leading-tight line-clamp-2 pr-9" style={{ color: "#0f172a" }}>
-                            {item.title}
-                          </p>
-                          <div className="flex items-center gap-1 mt-1">
-                            <span className="text-[10px]" style={{ color: muted }}>{t("cart.variant")}</span>
-                            <ChevronDown className="h-2.5 w-2.5" style={{ color: muted }} />
-                          </div>
-                          <div className="mt-1.5">
-                            <span
-                              className="text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wide"
-                              style={{ background: `${badge.color}22`, color: badge.color, border: `1px solid ${badge.color}44` }}
+                          <div className="flex items-start gap-2">
+                            <Link href={`/listings/${item.listingId}`} className="flex-1 min-w-0">
+                              <p className="text-[13px] font-bold leading-snug line-clamp-2" style={{ color: "#0f172a" }}>
+                                {item.title}
+                              </p>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => handleRemove(item.listingId)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0"
+                              style={{ background: "rgba(239,68,68,0.08)" }}
+                              aria-label="Remove from cart"
+                              data-testid={`button-remove-cart-${item.listingId}`}
                             >
-                              {badge.label}
-                            </span>
+                              <Trash2 className="h-3.5 w-3.5" style={{ color: "#ef4444" }} />
+                            </button>
                           </div>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <span className="text-base font-black" style={{ color: purple }}>
+                            <span className="text-[15px] font-black tabular-nums" style={{ color: "#0f172a" }}>
                               {formatPrice(item.price, item.country, item.currency)}
                             </span>
-                            <span className="text-xs line-through" style={{ color: muted }}>
-                              ${original.toFixed(2)}
-                            </span>
-                            <span
-                              className="text-[10px] font-black px-1.5 py-0.5 rounded-md"
-                              style={{ background: "rgba(239,68,68,0.18)", color: "#f87171" }}
-                            >
-                              -{pct}%
-                            </span>
+                            {qty > 1 && (
+                              <span className="text-[11px] font-semibold tabular-nums" style={{ color: muted }}>
+                                ×{qty} = ${(item.price * qty).toFixed(2)}
+                              </span>
+                            )}
                           </div>
-                          <div className="flex items-center justify-between mt-2.5">
+                          <div className="flex items-center justify-between mt-2">
                             <span className="text-[10px] font-semibold" style={{ color: muted }}>
-                              {t("cart.itemTotal")} <span style={{ color: "#0f172a" }}>${(item.price * qty).toFixed(2)}</span>
+                              {t("cart.itemTotal")} <span className="tabular-nums" style={{ color: "#0f172a" }}>${(item.price * qty).toFixed(2)}</span>
                             </span>
                             <div className="relative">
+                              <label className="sr-only" htmlFor={`cart-qty-${item.listingId}`}>Quantity</label>
                               <select
+                                id={`cart-qty-${item.listingId}`}
                                 value={qty}
-                                onChange={e => updateQuantity(item.listingId, parseInt(e.target.value))}
-                                className="appearance-none text-xs font-black pl-3 pr-7 py-1.5 rounded-xl outline-none cursor-pointer"
+                                onChange={e => updateQuantity(item.listingId, parseInt(e.target.value, 10))}
+                                className="appearance-none text-xs font-bold pl-2.5 pr-7 py-1.5 rounded-lg outline-none cursor-pointer min-h-[36px]"
                                 style={{ background: "#f1f5f9", border: `1px solid ${border}`, color: "#0f172a" }}
+                                data-testid={`select-cart-qty-${item.listingId}`}
                               >
                                 {QTY_OPTIONS.map(n => (
                                   <option key={n} value={n} style={{ background: "#ffffff", color: "#0f172a" }}>{n}</option>
@@ -693,7 +678,7 @@ export default function Cart() {
           })}
 
           {activeFilter === "all" && selected.size < items.length && selected.size > 0 && (
-            <div className="flex items-center gap-3 px-4 py-4 my-1">
+            <div className="flex items-center gap-3 px-4 py-3 my-1">
               <div className="flex-1 h-px" style={{ background: border }} />
               <p className="text-[11px] text-center font-semibold flex-shrink-0 px-2" style={{ color: muted }}>
                 {t("cart.unselectedSeparator")}
@@ -702,39 +687,43 @@ export default function Cart() {
             </div>
           )}
 
-          <div
-            className="mx-4 my-3 p-3.5 rounded-2xl flex items-center gap-3"
+          <button
+            type="button"
+            onClick={() => setPromoNote(true)}
+            className="mx-4 my-2 p-3 rounded-xl flex items-start gap-2.5 w-[calc(100%-2rem)] text-left"
             style={{ background: "#fff7ed", border: `1px solid #fed7aa` }}
           >
-            <Tag className="h-4 w-4 flex-shrink-0" style={{ color: "#f97316" }} />
-            <input
-              value={promoCode}
-              onChange={e => setPromoCode(e.target.value.toUpperCase())}
-              placeholder={t("cart.promoPlaceholder")}
-              className="flex-1 bg-transparent text-sm outline-none"
-              style={{ color: "#0f172a" }}
-            />
-            {promoCode.length >= 3 && (
-              <button
-                onClick={() => setPromoApplied(p => !p)}
-                className="px-3 py-1.5 rounded-xl text-xs font-black transition-all"
-                style={promoApplied ? { color: "#16a34a", background: "#dcfce7" } : { color: "#f97316", background: "#fff7ed", border: "1px solid #fed7aa" }}
-              >
-                {promoApplied ? t("cart.promoApplied") : t("cart.applyPromo")}
-              </button>
-            )}
-          </div>
+            <Tag className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: "#f97316" }} />
+            <span className="text-xs leading-snug" style={{ color: "#9a3412" }}>
+              {promoNote
+                ? "Promo codes are verified on the product checkout / payment step. Wallet cart totals use live server prices — no client-side discounts are applied here."
+                : `${t("cart.promoPlaceholder")} — tap for details`}
+            </span>
+            <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: "#f97316" }} />
+          </button>
 
-          <div className="flex gap-4 px-4 py-2 justify-center">
+          <div className="flex gap-3 px-4 py-2 justify-center flex-wrap">
             <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: muted }}>
               <Shield className="h-3 w-3" style={{ color: "#16a34a" }} /> {t("cart.securePayment")}
             </div>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: muted }}>
-              <Truck className="h-3 w-3" style={{ color: "#3b82f6" }} /> Livrezon otomatik
+              <Truck className="h-3 w-3" style={{ color: "#3b82f6" }} /> Delivery estimate
             </div>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: muted }}>
-              <CreditCard className="h-3 w-3" style={{ color: "#f97316" }} /> {t("cart.paymentMethods")}
+              <CreditCard className="h-3 w-3" style={{ color: "#f97316" }} /> Wallet checkout
             </div>
+          </div>
+
+          <div className="px-4 pb-2">
+            <button
+              type="button"
+              onClick={() => setLocation("/")}
+              className="w-full h-10 rounded-xl text-sm font-bold text-gray-700"
+              style={{ background: "#f1f5f9", border: `1px solid ${border}` }}
+              data-testid="button-continue-shopping"
+            >
+              Continue shopping
+            </button>
           </div>
         </div>
       )}
@@ -745,7 +734,7 @@ export default function Cart() {
           data-testid="cart-checkout-bar"
           className="fixed left-0 right-0 z-[60]"
           style={{
-            bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+            bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
             background: "rgba(248,250,252,0.98)",
             backdropFilter: "blur(20px)",
             borderTop: `1px solid rgba(249,115,22,0.2)`,
@@ -753,38 +742,32 @@ export default function Cart() {
           }}
         >
           {summaryExpanded && (
-            <div className="px-4 pt-4 pb-2 space-y-2.5 max-w-lg mx-auto">
+            <div className="px-4 pt-3 pb-2 space-y-2 max-w-lg mx-auto">
               <div className="flex justify-between text-sm">
                 <span style={{ color: muted }}>{t("cart.subtotal", { count: selectedItems.length })}</span>
-                <span className="font-bold text-gray-900">${subtotal.toFixed(2)}</span>
+                <span className="font-bold text-gray-900 tabular-nums">${subtotal.toFixed(2)}</span>
               </div>
               {sellerCount > 1 && (
                 <div className="flex justify-between text-sm">
-                  <span style={{ color: muted }}>{sellerCount} machann · {sellerCount} chofe moto</span>
-                  <span className="text-[11px] font-bold text-blue-600">livrezon separe</span>
+                  <span style={{ color: muted }}>{sellerCount} sellers · separate delivery</span>
+                  <span className="text-[11px] font-bold text-blue-600">per seller</span>
                 </div>
               )}
               {deliveryFees.length > 0 && deliveryFees.map(df => (
                 <div key={df.sellerId} className="flex justify-between text-sm">
                   <span style={{ color: muted }} className="flex items-center gap-1">
                     <Bike className="h-3 w-3 text-blue-500" />
-                    Livrezon · Machann {df.sellerId}
+                    Delivery · Seller {df.sellerId}
                     {df.loading && <Loader2 className="h-3 w-3 animate-spin" />}
                   </span>
-                  <span className="font-bold text-blue-600">
+                  <span className="font-bold text-blue-600 tabular-nums">
                     {df.loading ? "…" : `+$${df.feeUsd.toFixed(2)}`}
                   </span>
                 </div>
               ))}
-              {discount > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span style={{ color: muted }}>{t("cart.coupons")}</span>
-                  <span className="font-bold" style={{ color: "#16a34a" }}>-${discount.toFixed(2)}</span>
-                </div>
-              )}
               <div className="flex justify-between text-xs py-2" style={{ borderTop: `1px solid ${border}` }}>
                 <span className="font-black text-gray-900">{t("cart.estimatedTotal")}</span>
-                <span className="font-black text-lg" style={{ color: purple }}>
+                <span className="font-black text-base tabular-nums" style={{ color: purple }}>
                   {deliveryFeesLoading ? <Loader2 className="h-4 w-4 animate-spin inline" /> : `$${grandTotal.toFixed(2)}`}
                 </span>
               </div>
@@ -792,26 +775,19 @@ export default function Cart() {
           )}
 
           <div
-            className="flex items-center gap-3 px-4 py-2.5 max-w-lg mx-auto cursor-pointer"
+            className="flex items-center gap-3 px-4 py-2 max-w-lg mx-auto cursor-pointer"
             onClick={() => setSummaryExpanded(p => !p)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSummaryExpanded(p => !p); }}
           >
-            {discount > 0 && (
-              <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ background: "#dcfce7", color: "#16a34a" }}>
-                {t("cart.discountApplied", { amount: discount.toFixed(2) })}
-              </span>
-            )}
             {sellerCount > 1 && (
-              <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ background: "#eff6ff", color: "#2563eb" }}>
-                {sellerCount} machann · {sellerCount} moto
+              <span className="text-[10px] font-bold px-2 py-1 rounded-md" style={{ background: "#eff6ff", color: "#2563eb" }}>
+                {sellerCount} sellers
               </span>
             )}
             <div className="flex items-center gap-1.5 ml-auto">
-              {subtotal > 0 && (
-                <span className="text-sm line-through" style={{ color: muted }}>
-                  ${(subtotal * 1.3).toFixed(2)}
-                </span>
-              )}
-              <span className="text-xl font-black text-gray-900">
+              <span className="text-lg font-black text-gray-900 tabular-nums">
                 {deliveryFeesLoading
                   ? <Loader2 className="h-5 w-5 animate-spin inline" style={{ color: purple }} />
                   : `$${grandTotal.toFixed(2)}`
@@ -824,30 +800,31 @@ export default function Cart() {
             </div>
           </div>
 
-          <div className="px-4 pb-3 max-w-lg mx-auto">
+          <div className="px-4 pb-2.5 max-w-lg mx-auto">
             <button
+              type="button"
               onClick={() => selectedItems.length > 0 && setShowCheckout(true)}
               disabled={selectedItems.length === 0 || deliveryFeesLoading}
-              className="w-full flex items-center justify-between gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-all active:scale-[0.98]"
+              data-testid="button-proceed-checkout"
+              className="w-full flex items-center justify-center gap-2 px-4 h-11 rounded-xl font-bold text-sm transition-all active:scale-[0.98] disabled:opacity-60"
               style={selectedItems.length === 0 || deliveryFeesLoading ? {
                 background: "#e2e8f0", color: "#94a3b8", cursor: "not-allowed",
               } : {
                 background: purpleBtn,
                 color: "#fff",
-                boxShadow: "0 2px 12px rgba(249,115,22,0.3)",
+                boxShadow: "0 2px 10px rgba(249,115,22,0.28)",
               }}
             >
               {selectedItems.length === 0 ? (
-                <span className="w-full text-center">{t("cart.selectToCheckout")}</span>
+                <span>{t("cart.selectToCheckout")}</span>
               ) : deliveryFeesLoading ? (
-                <span className="w-full text-center flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Kalkil livrezon…
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Estimating delivery…
                 </span>
               ) : (
                 <>
-                  <span className="font-bold text-[13px]">{t("cart.orderButton", { count: selectedItems.length })}</span>
-                  <span className="text-[11px] opacity-80">{sellerCount > 1 ? `${sellerCount} machann` : t("cart.paymentBadge")}</span>
-                  <span className="font-black text-[15px]">${grandTotal.toFixed(2)}</span>
+                  <span>{t("cart.orderButton", { count: selectedItems.length })}</span>
+                  <span className="opacity-90 tabular-nums">${grandTotal.toFixed(2)}</span>
                 </>
               )}
             </button>

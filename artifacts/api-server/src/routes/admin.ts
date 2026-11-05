@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "node:crypto";
-import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable } from "@workspace/db";
-import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte } from "drizzle-orm";
+import { db, usersTable, listingsTable, boostsTable, reportsTable, adminLogsTable, categoriesTable, loginLogsTable, notificationsTable, transactionsTable, jobsTable, platformSettingsTable, messagesTable, conversationsTable, listingViewsTable, userRestrictionsTable, deliveriesTable, vendorSubscriptionsTable, promoWalletTable, flexCardDebtsTable, siteDailyVisitsTable, adminAppealsTable } from "@workspace/db";
+import { eq, count, sql, desc, and, ilike, or, ne, inArray, gte, lte, like, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { requireAdmin, requireSuperAdmin, requireRole, getRole, getOnlineUserCount } from "../middlewares/auth";
 import { hashPassword } from "../lib/auth";
@@ -211,12 +211,17 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     .from(usersTable)
     .where(userWhere());
 
+  const today = new Date().toISOString().slice(0, 10);
+  const monthPrefix = today.slice(0, 7); // YYYY-MM
+  const yearPrefix = today.slice(0, 4);  // YYYY
+
   const [
     [totalUsers], [totalListings], [activeListings],
     [boostedListings], [featuredListings], [totalBoosts],
     [pendingReports], [flaggedUsers], [bannedUsers], [adminUsers],
     revenueResult,
     [activeSubscriptions], [graceSubscriptions],
+    [visitsToday], [visitsMonth], [visitsYear], [visitsAllTime],
   ] = await Promise.all([
     db.select({ count: count() }).from(usersTable).where(userWhere()),
     db.select({ count: count() }).from(listingsTable).where(listingWhere()),
@@ -234,7 +239,27 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     db.select({ total: sql<number>`COALESCE(SUM(price), 0)` }).from(boostsTable),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "active")),
     db.select({ count: count() }).from(vendorSubscriptionsTable).where(eq(vendorSubscriptionsTable.status, "grace_period")),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(eq(siteDailyVisitsTable.date, today)),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(like(siteDailyVisitsTable.date, `${monthPrefix}%`)),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable)
+      .where(like(siteDailyVisitsTable.date, `${yearPrefix}%`)),
+    db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+      .from(siteDailyVisitsTable),
   ]);
+
+  const visitStats = {
+    visitsToday: Number(visitsToday?.total ?? 0),
+    visitsMonth: Number(visitsMonth?.total ?? 0),
+    visitsYear: Number(visitsYear?.total ?? 0),
+    visitsAllTime: Number(visitsAllTime?.total ?? 0),
+  };
+
+  // Extended comparisons are available via GET /admin/analytics/traffic.
 
   const safeStats = {
     totalUsers: Number(totalUsers.count),
@@ -255,6 +280,7 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
   }
   res.json({
     ...safeStats,
+    ...visitStats,
     onlineUsers: getOnlineUserCount(),
     boostedListings: Number(boostedListings.count),
     featuredListings: Number(featuredListings.count),
@@ -264,6 +290,110 @@ router.get("/admin/stats", requireRole("moderator"), async (req, res): Promise<v
     activeSubscriptions: Number(activeSubscriptions.count),
     graceSubscriptions: Number(graceSubscriptions.count),
   });
+});
+
+
+// ─── Site traffic analytics (real aggregates only) ────────────────────────────
+
+function utcDateOffset(days: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function utcWeekRange(weeksAgo: number): { start: string; end: string } {
+  const endOffset = weeksAgo === 0 ? 0 : -7 * weeksAgo;
+  const end = utcDateOffset(endOffset);
+  const start = utcDateOffset(endOffset - 6);
+  return { start, end };
+}
+
+function utcMonthPrefix(monthsAgo: number): string {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - monthsAgo);
+  return d.toISOString().slice(0, 7);
+}
+
+/**
+ * GET /admin/analytics/traffic?days=30
+ * Unique site visitors from site_daily_visits. Never fabricates traffic beyond empty days in range.
+ */
+router.get("/admin/analytics/traffic", requireAdmin, async (req, res): Promise<void> => {
+  const daysRaw = parseInt(String(req.query.days ?? "30"), 10);
+  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 7), 90) : 30;
+
+  const today = utcDateOffset(0);
+  const yesterday = utcDateOffset(-1);
+  const thisWeek = utcWeekRange(0);
+  const lastWeek = utcWeekRange(1);
+  const thisMonthPrefix = utcMonthPrefix(0);
+  const lastMonthPrefix = utcMonthPrefix(1);
+  const rangeStart = utcDateOffset(-(days - 1));
+
+  try {
+    const [
+      [visitsToday],
+      [visitsYesterday],
+      [visitsThisWeek],
+      [visitsLastWeek],
+      [visitsThisMonth],
+      [visitsLastMonth],
+      [visitsAllTime],
+      seriesRows,
+    ] = await Promise.all([
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable).where(eq(siteDailyVisitsTable.date, today)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable).where(eq(siteDailyVisitsTable.date, yesterday)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, thisWeek.start), lte(siteDailyVisitsTable.date, thisWeek.end))),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, lastWeek.start), lte(siteDailyVisitsTable.date, lastWeek.end))),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(like(siteDailyVisitsTable.date, `${thisMonthPrefix}%`)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable)
+        .where(like(siteDailyVisitsTable.date, `${lastMonthPrefix}%`)),
+      db.select({ total: sql<number>`COALESCE(SUM(${siteDailyVisitsTable.visitCount}), 0)` })
+        .from(siteDailyVisitsTable),
+      db.select({
+        date: siteDailyVisitsTable.date,
+        visits: siteDailyVisitsTable.visitCount,
+      })
+        .from(siteDailyVisitsTable)
+        .where(and(gte(siteDailyVisitsTable.date, rangeStart), lte(siteDailyVisitsTable.date, today)))
+        .orderBy(siteDailyVisitsTable.date),
+    ]);
+
+    const byDate = new Map(seriesRows.map((r) => [r.date, Number(r.visits ?? 0)]));
+    const series: { date: string; visits: number }[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const date = utcDateOffset(-i);
+      series.push({ date, visits: byDate.get(date) ?? 0 });
+    }
+
+    res.json({
+      summary: {
+        visitsToday: Number(visitsToday?.total ?? 0),
+        visitsYesterday: Number(visitsYesterday?.total ?? 0),
+        visitsThisWeek: Number(visitsThisWeek?.total ?? 0),
+        visitsLastWeek: Number(visitsLastWeek?.total ?? 0),
+        visitsThisMonth: Number(visitsThisMonth?.total ?? 0),
+        visitsLastMonth: Number(visitsLastMonth?.total ?? 0),
+        visitsAllTime: Number(visitsAllTime?.total ?? 0),
+        onlineUsers: getOnlineUserCount(),
+      },
+      series,
+      range: { days, start: rangeStart, end: today },
+      note: "Unique visitors per UTC day. Country/device/source dimensions are not collected yet.",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Failed to load traffic analytics" });
+  }
 });
 
 // ─── Password Hash Stats ──────────────────────────────────────────────────────
@@ -1487,28 +1617,220 @@ router.delete("/admin/jobs/:id", requireAdmin, async (req, res): Promise<void> =
 
 // ─── Moderation Queue ────────────────────────────────────────────────────────
 
-router.get("/admin/moderation", requireRole("moderator"), async (req, res): Promise<void> => {
-  const { status } = req.query as Record<string, string>;
+/** Map UI country codes (HT/DO) or full names to listing.country values. */
+function resolveModerationCountryFilter(
+  admin: AdminUser,
+  raw: string | undefined,
+): { country: string | null; denied: boolean } {
+  if (!raw || raw === "all") return { country: null, denied: false };
+  const map: Record<string, string> = {
+    HT: "Haiti",
+    DO: "Dominican Republic",
+    Haiti: "Haiti",
+    "Dominican Republic": "Dominican Republic",
+    Haïti: "Haiti",
+    Dominikani: "Dominican Republic",
+  };
+  const country = map[raw] ?? raw;
+  if (!isCountryInAdminScope(admin, country)) return { country: null, denied: true };
+  return { country, denied: false };
+}
+
+/**
+ * Aggregated Moderation Center KPIs — real DB counts only, scoped to the
+ * administrator's geographic permissions (+ optional country view filter).
+ */
+router.get("/admin/moderation/overview", requireRole("moderator"), async (req, res): Promise<void> => {
   const admin = req.user!;
+  const { country: countryQ } = req.query as Record<string, string>;
+  const { country, denied } = resolveModerationCountryFilter(admin, countryQ);
+  if (denied) {
+    res.status(403).json({ error: "Country is outside your administrative scope" });
+    return;
+  }
+
+  const scopeConds = getListingScopeConditions(admin);
+  const listingWhere = (extra?: any) => {
+    const all = [
+      ...scopeConds,
+      ...(country ? [eq(listingsTable.country!, country)] : []),
+      ...(extra ? [extra] : []),
+    ];
+    return all.length ? and(...all) : undefined;
+  };
+  const uScope = getUserScopeConditions(admin);
+  const userWhere = (extra?: any) => {
+    const all = [
+      ...uScope,
+      ...(country ? [eq(usersTable.country!, country)] : []),
+      ...(extra ? [extra] : []),
+    ];
+    return all.length ? and(...all) : undefined;
+  };
+  const scopedReporterIds = db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(userWhere());
+
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
+
+  const hasVideo = or(
+    and(isNotNull(listingsTable.listingVideoUrl), ne(listingsTable.listingVideoUrl, "")),
+    and(isNotNull(listingsTable.boostVideoUrl), ne(listingsTable.boostVideoUrl, "")),
+  );
+
+  const [
+    [pendingReviews],
+    [approvedToday],
+    [rejectedToday],
+    [userReports],
+    [flaggedContent],
+    [pendingAppeals],
+    [pendingProducts],
+    [pendingVideos],
+    [pendingBoosts],
+  ] = await Promise.all([
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(eq(listingsTable.moderationStatus, "pending"))),
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(and(
+      eq(listingsTable.moderationStatus, "approved"),
+      gte(listingsTable.moderatedAt, startOfToday),
+    ))),
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(and(
+      eq(listingsTable.moderationStatus, "rejected"),
+      gte(listingsTable.moderatedAt, startOfToday),
+    ))),
+    db.select({ count: count() }).from(reportsTable).where(and(
+      eq(reportsTable.status, "pending"),
+      inArray(reportsTable.reporterId, scopedReporterIds),
+    )),
+    db.select({ count: count() }).from(usersTable).where(userWhere(eq(usersTable.isFlagged, true))),
+    db.select({ count: count() }).from(adminAppealsTable).where(eq(adminAppealsTable.status, "pending")),
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(and(
+      eq(listingsTable.moderationStatus, "pending"),
+      sql`NOT (${hasVideo})`,
+    ))),
+    db.select({ count: count() }).from(listingsTable).where(listingWhere(and(
+      eq(listingsTable.moderationStatus, "pending"),
+      hasVideo,
+    ))),
+    (async () => {
+      const boostConds: any[] = [
+        inArray(boostsTable.paymentStatus, ["pending", "pending_review"]),
+      ];
+      if (country || scopeConds.length > 0) {
+        const joined = await db
+          .select({ count: count() })
+          .from(boostsTable)
+          .innerJoin(listingsTable, eq(boostsTable.listingId, listingsTable.id))
+          .where(and(
+            ...boostConds,
+            ...scopeConds,
+            ...(country ? [eq(listingsTable.country!, country)] : []),
+          ));
+        return joined;
+      }
+      return db.select({ count: count() }).from(boostsTable).where(and(...boostConds));
+    })(),
+  ]);
+
+  // Open Stripe chargebacks (superadmin-visible; others get 0 — never fabricate).
+  let openChargebacks = 0;
+  if (getRole(admin) === "superadmin" || admin.isSuperAdmin) {
+    try {
+      const rows = await db.execute(sql`
+        SELECT COUNT(*)::int AS count FROM chargebacks
+        WHERE status IS NULL OR status NOT IN ('resolved', 'won', 'lost', 'closed')
+      `);
+      openChargebacks = Number((rows as any)?.rows?.[0]?.count ?? (rows as any)?.[0]?.count ?? 0);
+    } catch {
+      openChargebacks = 0;
+    }
+  }
+
+  const pendingListingCount = Number(pendingReviews?.count ?? 0);
+  const reportsCount = Number(userReports?.count ?? 0);
+  const boostsCount = Number(pendingBoosts?.count ?? 0);
+  const appealsCount = Number(pendingAppeals?.count ?? 0);
+
+  res.json({
+    pendingReviews: pendingListingCount,
+    approvedToday: Number(approvedToday?.count ?? 0),
+    rejectedToday: Number(rejectedToday?.count ?? 0),
+    userReports: reportsCount,
+    activeDisputes: appealsCount + openChargebacks,
+    flaggedContent: Number(flaggedContent?.count ?? 0),
+    tabCounts: {
+      all: pendingListingCount + reportsCount + boostsCount,
+      products: Number(pendingProducts?.count ?? 0),
+      videos: Number(pendingVideos?.count ?? 0),
+      reports: reportsCount,
+      boosts: boostsCount,
+    },
+    scopeCountry: country,
+    scopeLevel: getScopeLevel(admin),
+  });
+});
+
+router.get("/admin/moderation", requireRole("moderator"), async (req, res): Promise<void> => {
+  const { status, country: countryQ, q, contentType, page: pageQ, limit: limitQ } = req.query as Record<string, string>;
+  const admin = req.user!;
+  const { country, denied } = resolveModerationCountryFilter(admin, countryQ);
+  if (denied) {
+    res.status(403).json({ error: "Country is outside your administrative scope" });
+    return;
+  }
   const scopeConds = getListingScopeConditions(admin);
   const conditions: any[] = [...scopeConds];
+  if (country) conditions.push(eq(listingsTable.country!, country));
   if (status === "pending" || status === "rejected" || status === "approved") {
     conditions.push(eq(listingsTable.moderationStatus, status));
   } else {
     conditions.push(sql`${listingsTable.moderationStatus} <> 'approved'`);
   }
+  if (q && q.trim()) {
+    const term = `%${q.trim().slice(0, 80)}%`;
+    conditions.push(or(
+      ilike(listingsTable.title, term),
+      ilike(listingsTable.description, term),
+      ilike(listingsTable.location, term),
+    )!);
+  }
+  const hasVideo = or(
+    and(isNotNull(listingsTable.listingVideoUrl), ne(listingsTable.listingVideoUrl, "")),
+    and(isNotNull(listingsTable.boostVideoUrl), ne(listingsTable.boostVideoUrl, "")),
+  );
+  if (contentType === "video") {
+    conditions.push(hasVideo!);
+  } else if (contentType === "product") {
+    conditions.push(sql`NOT (${hasVideo})`);
+  }
+
+  const page = Math.max(1, parseInt(pageQ || "1", 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(limitQ || "40", 10) || 40));
+  const offset = (page - 1) * limit;
+
+  const whereClause = and(...conditions);
+  const [totalRow] = await db.select({ count: count() }).from(listingsTable).where(whereClause);
   const rows = await db.select().from(listingsTable)
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
     .leftJoin(categoriesTable, eq(listingsTable.categoryId, categoriesTable.id))
-    .where(and(...conditions))
-    .orderBy(desc(listingsTable.createdAt));
-  res.json(rows.map((r) => ({
+    .where(whereClause)
+    .orderBy(desc(listingsTable.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const items = rows.map((r) => ({
     id: r.listings.id,
+    kind: "listing" as const,
     title: r.listings.title,
     description: r.listings.description,
     price: r.listings.price,
     category: r.categories?.name ?? "Other",
     images: r.listings.images ?? [],
+    thumbnail: (r.listings.images ?? [])[0] ?? null,
+    hasVideo: !!(r.listings.listingVideoUrl || r.listings.boostVideoUrl),
+    listingVideoUrl: r.listings.listingVideoUrl ?? null,
     location: r.listings.location,
     country: r.listings.country,
     moderationStatus: r.listings.moderationStatus,
@@ -1522,7 +1844,19 @@ router.get("/admin/moderation", requireRole("moderator"), async (req, res): Prom
     sellerName: r.users?.name ?? "Unknown",
     sellerAvatar: r.users?.avatar ?? null,
     createdAt: r.listings.createdAt.toISOString(),
-  })));
+  }));
+
+  // Backward-compatible: legacy clients expect a bare array when no pagination flags.
+  if (!pageQ && !limitQ && !countryQ && !q && !contentType) {
+    res.json(items);
+    return;
+  }
+  res.json({
+    items,
+    total: Number(totalRow?.count ?? 0),
+    page,
+    pageSize: limit,
+  });
 });
 
 router.post("/admin/moderation/:id/approve", requireRole("moderator"), async (req, res): Promise<void> => {
@@ -1540,7 +1874,10 @@ router.post("/admin/moderation/:id/approve", requireRole("moderator"), async (re
     status: "available",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
-  }).where(eq(listingsTable.id, id));
+    eligibilityClass: "allowed",
+    lifecycleStatus: "published",
+    rejectionCode: null,
+  } as any).where(eq(listingsTable.id, id));
   if (!wasApproved) {
     await db.update(categoriesTable).set({ listingCount: sql`${categoriesTable.listingCount} + 1` }).where(eq(categoriesTable.id, listing.categoryId));
     if (listing.subcategoryId) {
@@ -1580,7 +1917,10 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
     status: "removed",
     moderatedAt: new Date(),
     moderatedBy: req.userId!,
-  }).where(eq(listingsTable.id, id));
+    eligibilityClass: "prohibited",
+    lifecycleStatus: "rejected",
+    rejectionCode: "PROHIBITED_ILLEGAL",
+  } as any).where(eq(listingsTable.id, id));
   if (wasApproved) {
     await db.update(categoriesTable).set({ listingCount: sql`GREATEST(${categoriesTable.listingCount} - 1, 0)` }).where(eq(categoriesTable.id, listing.categoryId));
     if (listing.subcategoryId) {
@@ -1597,6 +1937,37 @@ router.post("/admin/moderation/:id/reject", requireRole("moderator"), async (req
   });
   await log(req.userId!, "moderation_reject", "listing", id, `Rejected listing: "${listing.title}"`);
   res.json({ message: "Listing rejected" });
+});
+
+/** Suspend a listing from discovery without deleting history (UGC enforcement). */
+router.post("/admin/moderation/:id/suspend", requireRole("moderator"), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const reason = String((req.body as { reason?: string })?.reason ?? "Suspended by moderator").slice(0, 500);
+  const [listing] = await db.select().from(listingsTable).where(eq(listingsTable.id, id));
+  if (!listing) { res.status(404).json({ error: "Listing not found" }); return; }
+  const scopeErr = assertListingInScope(req.user!, listing);
+  if (scopeErr) { res.status(403).json({ error: scopeErr }); return; }
+  await db.update(listingsTable).set({
+    status: "removed",
+    moderationStatus: listing.moderationStatus === "approved" ? "pending" : listing.moderationStatus,
+    lifecycleStatus: "suspended",
+    eligibilityClass: "requires_review",
+    rejectionCode: "SUSPENDED",
+    moderationReason: reason,
+    moderationSource: "admin",
+    moderatedAt: new Date(),
+    moderatedBy: req.userId!,
+    isBoosted: false,
+  } as any).where(eq(listingsTable.id, id));
+  await db.insert(notificationsTable).values({
+    userId: listing.sellerId,
+    actorId: req.userId!,
+    type: "moderation_rejected",
+    listingId: id,
+    message: reason,
+  }).catch(() => {});
+  await log(req.userId!, "moderation_suspend", "listing", id, `Suspended listing: "${listing.title}"`);
+  res.json({ message: "Listing suspended" });
 });
 
 router.post("/admin/listings/:id/feature", requireAdmin, async (req, res): Promise<void> => {

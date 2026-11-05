@@ -13,6 +13,8 @@ export const notificationsTable = pgTable("notifications", {
   // types; shipment notifications use it for deterministic deduplication.
   referenceId: integer("reference_id"),
   commentId: integer("comment_id"),
+  /** Optional short title for richer dropdown rows (official communications, admin push). */
+  title: text("title"),
   message: text("message"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

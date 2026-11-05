@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { Bell } from "lucide-react";
+import {
+  Bell, Megaphone, Calendar, Package, Shield, Tag, MessageSquare, Wallet,
+  Heart, ShoppingBag, Truck, Zap, ChevronRight, CheckCircle2, KeyRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
-import { orderNotificationDestination } from "@/lib/order-notification-destination";
+import { resolveNotificationDestination } from "@/lib/notificationDestination";
 import { cn } from "@/lib/utils";
 
 interface Notification {
@@ -14,7 +16,9 @@ interface Notification {
   type: string;
   isRead: boolean;
   listingId: number | null;
+  referenceId: number | null;
   commentId: number | null;
+  title: string | null;
   message: string | null;
   createdAt: string;
   actorName: string;
@@ -31,6 +35,95 @@ function timeAgo(dateStr: string, justNow: string): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+type IconTone = "emerald" | "blue" | "amber" | "violet" | "rose" | "slate" | "orange";
+
+function notifVisual(type: string): { Icon: typeof Bell; tone: IconTone } {
+  switch (type) {
+    case "official_communication":
+      return { Icon: Megaphone, tone: "emerald" };
+    case "admin_broadcast":
+      return { Icon: Megaphone, tone: "emerald" };
+    case "subscription_billing_reminder":
+    case "subscription_welcome":
+    case "subscription_payment_failed":
+    case "subscription_grace_expired":
+      return { Icon: Calendar, tone: "blue" };
+    case "purchase":
+    case "new_order":
+    case "order_confirmed":
+    case "order_shipped":
+    case "order_delivered":
+    case "shipment_created":
+    case "shipment_shipped":
+    case "shipment_in_transit":
+    case "shipment_out_for_delivery":
+    case "shipment_delivered":
+    case "shipment_exception":
+    case "shipment_returned":
+    case "card_refund":
+      return { Icon: Package, tone: "amber" };
+    case "identity_verified":
+    case "password_reset":
+      return { Icon: Shield, tone: "blue" };
+    case "offer_received":
+    case "offer_accepted":
+    case "offer_rejected":
+    case "new_listing":
+      return { Icon: Tag, tone: "violet" };
+    case "message":
+    case "support_reply":
+    case "support_message":
+    case "comment":
+      return { Icon: MessageSquare, tone: "blue" };
+    case "transfer_received":
+    case "transfer_sent":
+    case "wallet_recharged":
+    case "payment_refunded":
+    case "delivery_paid":
+      return { Icon: Wallet, tone: "emerald" };
+    case "like":
+    case "comment_like":
+      return { Icon: Heart, tone: "rose" };
+    case "delivery_picked_up":
+    case "delivery_on_the_way":
+    case "delivery_arrived":
+    case "delivery_delivered":
+    case "driver_assigned":
+      return { Icon: Truck, tone: "orange" };
+    case "boost_approved":
+    case "boost_activated":
+      return { Icon: Zap, tone: "amber" };
+    case "listing_approved":
+    case "moderation_approved":
+      return { Icon: CheckCircle2, tone: "emerald" };
+    case "listing_rejected":
+    case "moderation_rejected":
+      return { Icon: KeyRound, tone: "rose" };
+    default:
+      return { Icon: Bell, tone: "slate" };
+  }
+}
+
+const TONE_CLASS: Record<IconTone, string> = {
+  emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  violet: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  rose: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+  slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+};
+
+const UNREAD_BG: Record<IconTone, string> = {
+  emerald: "bg-emerald-50/80 dark:bg-emerald-950/20",
+  blue: "bg-blue-50/80 dark:bg-blue-950/20",
+  amber: "bg-amber-50/70 dark:bg-amber-950/20",
+  violet: "bg-violet-50/70 dark:bg-violet-950/20",
+  rose: "bg-rose-50/70 dark:bg-rose-950/20",
+  slate: "bg-muted/50",
+  orange: "bg-orange-50/70 dark:bg-orange-950/20",
+};
+
 export default function NotificationsDropdown({ light = false }: { light?: boolean }) {
   const { user, token } = useAuth();
   const { t } = useTranslation();
@@ -45,13 +138,12 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
     try {
       const res = await fetch("/api/notifications/unread-count", { signal, headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { const d = await res.json(); if (!signal?.aborted) setUnreadCount(d.count); }
-    } catch {}
+    } catch { /* ignore */ }
   }, [user?.id, token]);
 
   useEffect(() => {
     const controller = new AbortController();
     void fetchCount(controller.signal);
-    // Desktop UX: slower background poll; refresh on focus/visibility instead.
     const interval = setInterval(() => { void fetchCount(controller.signal); }, 60_000);
     const onVisible = () => {
       if (document.visibilityState === "visible") void fetchCount();
@@ -71,7 +163,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
     try {
       const res = await fetch("/api/notifications", { signal, headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { const d = await res.json(); if (!signal?.aborted) { setNotifications(d); setLoaded(true); } }
-    } catch {}
+    } catch { /* ignore */ }
   }, [user?.id, token]);
 
   useEffect(() => {
@@ -92,14 +184,74 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
     setUnreadCount(0);
   };
 
-  const handleOpen = (v: boolean) => {
-    setOpen(v);
-    if (v) {
-      if (unreadCount > 0) markAllRead();
+  const markOneRead = async (id: number) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+    await fetch(`/api/notifications/${id}/read`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+  };
+
+  const notifTitle = (n: Notification): string => {
+    if (n.title?.trim()) {
+      if (n.type === "official_communication") {
+        return t("notifications.communiquePrefix", { title: n.title.trim() });
+      }
+      return n.title.trim();
+    }
+    switch (n.type) {
+      case "official_communication":
+        return t("notifications.officialCommunication");
+      case "admin_broadcast":
+        return t("notifications.adminBroadcast");
+      case "subscription_billing_reminder":
+        return t("notifications.subscriptionBillingReminder");
+      case "subscription_payment_failed":
+        return t("notifications.subscriptionPaymentFailed");
+      case "subscription_grace_expired":
+        return t("notifications.subscriptionGraceExpired");
+      case "subscription_welcome":
+        return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
+      case "purchase":
+      case "new_order":
+        return t("notifications.orderUpdateTitle");
+      case "order_confirmed":
+      case "order_shipped":
+      case "order_delivered":
+      case "shipment_created":
+      case "shipment_shipped":
+      case "shipment_in_transit":
+      case "shipment_out_for_delivery":
+      case "shipment_delivered":
+      case "shipment_exception":
+      case "shipment_returned":
+        return t("notifications.orderUpdateTitle");
+      case "identity_verified":
+      case "password_reset":
+        return t("notifications.securityTitle");
+      case "message":
+        return t("notifications.messageTitle", { name: n.actorName });
+      case "wallet_recharged":
+      case "transfer_received":
+      case "transfer_sent":
+      case "payment_refunded":
+        return t("notifications.walletTitle");
+      default:
+        return n.actorName || t("notifications.notifications");
     }
   };
 
-  const notifMessage = (n: Notification): string => {
+  const notifPreview = (n: Notification): string => {
+    if (n.type === "official_communication" || n.type === "admin_broadcast") {
+      return n.message?.trim() || t("notifications.defaultNotif");
+    }
+    if (n.message?.trim() && [
+      "shipment_created", "shipment_shipped", "shipment_in_transit", "shipment_out_for_delivery",
+      "shipment_delivered", "shipment_exception", "shipment_returned", "card_refund",
+      "transfer_received", "transfer_sent", "exchange_rate_changed", "new_listing",
+    ].includes(n.type)) {
+      if (n.type === "transfer_received") return t("notifications.transferReceivedDetail", { amount: n.message });
+      if (n.type === "transfer_sent") return t("notifications.transferSentDetail", { detail: n.message });
+      return n.message;
+    }
     switch (n.type) {
       case "like": return t("notifications.liked");
       case "comment": return t("notifications.commented");
@@ -113,15 +265,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "new_order": return t("notifications.purchased");
       case "order_confirmed": return t("notifications.orderConfirmed");
       case "order_shipped": return t("notifications.orderShipped");
-      case "shipment_created":
-      case "shipment_shipped":
-      case "shipment_in_transit":
-      case "shipment_out_for_delivery":
-      case "shipment_delivered":
-      case "shipment_exception":
-      case "shipment_returned": return n.message || t("notifications.orderShipped");
       case "order_delivered": return t("notifications.orderDelivered");
-      case "card_refund": return n.message || t("notifications.defaultNotif");
       case "delivery_picked_up": return t("notifications.deliveryPickedUp");
       case "delivery_on_the_way": return t("notifications.deliveryOnTheWay");
       case "delivery_arrived": return t("notifications.deliveryArrived");
@@ -130,223 +274,132 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "driver_assigned": return t("notifications.driverAssigned");
       case "boost_approved":
       case "boost_activated": return t("notifications.boostActivated");
-      case "transfer_received": return n.message
-        ? t("notifications.transferReceivedDetail", { amount: n.message })
-        : t("notifications.transferReceived");
-      case "transfer_sent": return n.message
-        ? t("notifications.transferSentDetail", { detail: n.message })
-        : t("notifications.transferSent");
       case "wallet_recharged": return t("notifications.walletRecharged");
       case "payment_refunded": return t("notifications.paymentRefunded");
       case "identity_verified": return t("notifications.identityVerified");
       case "password_reset": return t("notifications.passwordReset");
-      case "subscription_payment_failed": return t("notifications.subscriptionPaymentFailed");
-      case "subscription_billing_reminder": return t("notifications.subscriptionBillingReminder");
-      case "subscription_grace_expired": return t("notifications.subscriptionGraceExpired");
-      case "subscription_welcome": return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
-      case "exchange_rate_changed": return n.message ?? t("notifications.defaultNotif");
-      case "new_listing": return n.message ?? `${n.actorName} ajoute yon nouvo pwodwi.`;
       case "listing_approved":
       case "moderation_approved": return t("notifications.listingApproved");
       case "listing_rejected":
       case "moderation_rejected": return t("notifications.listingRejected");
       case "moderation_pending": return t("notifications.moderationPending");
-      default: return t("notifications.defaultNotif");
+      default: return n.listingTitle || t("notifications.defaultNotif");
     }
   };
 
-  const getNotifHref = (n: Notification): string => {
-    const orderDestination = orderNotificationDestination(n);
-    if (orderDestination) return orderDestination;
-    switch (n.type) {
-      // Listing-specific
-      case "like":
-      case "comment":
-      case "comment_like":
-      case "offer_received":
-      case "offer_accepted":
-      case "offer_rejected":
-      case "listing_approved":
-      case "listing_rejected":
-      case "moderation_approved":
-      case "moderation_rejected":
-      case "moderation_pending":
-      case "new_listing":
-        return n.listingId ? `/listings/${n.listingId}` : "/sell";
-
-      // Video/boost
-      case "share":
-      case "boost_approved":
-      case "boost_activated":
-        return n.listingId ? `/listings/${n.listingId}/video` : "/sell";
-
-      // Delivery tracking
-      case "card_refund":
-        return n.referenceId ? `/orders/${n.referenceId}` : "/orders";
-      case "delivery_picked_up":
-      case "delivery_on_the_way":
-      case "delivery_arrived":
-      case "delivery_delivered":
-      case "driver_assigned":
-        return "/orders";
-
-      // Driver payment credited
-      case "delivery_paid":
-        return "/wallet";
-
-      // Messages
-      case "message":
-        return "/messages";
-
-      // Wallet & transfers
-      case "transfer_received":
-      case "transfer_sent":
-      case "wallet_recharged":
-      case "payment_refunded":
-        return "/wallet";
-
-      // Subscription
-      case "subscription_payment_failed":
-      case "subscription_billing_reminder":
-      case "subscription_grace_expired":
-      case "subscription_welcome":
-        return "/subscription";
-
-      // Account/security
-      case "identity_verified":
-      case "password_reset":
-        return "/settings";
-
-      case "exchange_rate_changed":
-        return "/admin";
-
-      default:
-        return n.listingId ? `/listings/${n.listingId}` : "/";
-    }
-  };
-
-  const notifEmoji = (type: string): string => {
-    switch (type) {
-      case "like": return "❤️";
-      case "comment": return "💬";
-      case "comment_like": return "❤️";
-      case "share": return "🔗";
-      case "message": return "✉️";
-      case "offer_received":
-      case "offer_accepted":
-      case "offer_rejected": return "🏷️";
-      case "purchase":
-      case "new_order": return "🛒";
-      case "order_confirmed": return "🧾";
-      case "order_shipped": return "🚚";
-      case "order_delivered": return "📦";
-      case "delivery_picked_up": return "🔐";
-      case "delivery_on_the_way": return "🛵";
-      case "delivery_arrived": return "📍";
-      case "delivery_delivered": return "✅";
-      case "delivery_paid": return "💰";
-      case "driver_assigned": return "🚗";
-      case "exchange_rate_changed": return "💱";
-      case "boost_approved":
-      case "boost_activated": return "⚡";
-      case "transfer_received": return "💸";
-      case "transfer_sent": return "📤";
-      case "wallet_recharged": return "💰";
-      case "payment_refunded": return "💸";
-      case "identity_verified": return "✅";
-      case "password_reset": return "🔑";
-      case "subscription_payment_failed": return "⚠️";
-      case "subscription_billing_reminder": return "📅";
-      case "subscription_grace_expired": return "🔒";
-      case "subscription_welcome": return "🎉";
-      case "listing_approved":
-      case "moderation_approved": return "✅";
-      case "listing_rejected":
-      case "moderation_rejected": return "⛔";
-      case "moderation_pending": return "⏳";
-      case "new_listing": return "📦";
-      default: return "🔔";
-    }
+  const openNotification = async (n: Notification) => {
+    setOpen(false);
+    if (!n.isRead) void markOneRead(n.id);
+    navigate(resolveNotificationDestination(n));
   };
 
   if (!user) return null;
 
   return (
-    <Popover open={open} onOpenChange={handleOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          className={cn("relative", light && "text-white hover:bg-white/10 hover:text-white")}
+          className={cn("relative h-11 w-11", light && "text-white hover:bg-white/10 hover:text-white")}
           data-testid="button-notifications"
+          aria-label={t("notifications.notifications")}
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-xs font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">
+            <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-black rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0 overflow-hidden" sideOffset={8}>
-        <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
+      <PopoverContent
+        align="end"
+        className="w-[min(100vw-1.5rem,22rem)] p-0 overflow-hidden rounded-2xl shadow-xl border-border"
+        sideOffset={8}
+      >
+        <div className="px-3.5 py-3 border-b border-border flex items-center justify-between gap-2">
           <h3 className="font-semibold text-sm text-foreground">{t("notifications.notifications")}</h3>
-          {notifications.some(n => !n.isRead) && (
-            <button onClick={markAllRead} className="text-xs text-primary hover:underline font-medium">
-              {t("notifications.markAllRead")}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); navigate("/communications"); }}
+              className="text-xs text-muted-foreground hover:text-foreground font-medium"
+            >
+              {t("notifications.historyLink")}
             </button>
-          )}
+            {notifications.some(n => !n.isRead) && (
+              <button
+                type="button"
+                onClick={markAllRead}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
+              >
+                {t("notifications.markAllRead")}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="max-h-80 overflow-y-auto">
+        <div className="max-h-[min(70vh,24rem)] overflow-y-auto">
           {!loaded ? (
             <p className="text-sm text-muted-foreground text-center py-6">{t("profile.loading")}</p>
           ) : notifications.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-8 px-4">
               <Bell className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">{t("notifications.noNotifications")}</p>
             </div>
           ) : (
-            notifications.map(n => (
-              <div
-                key={n.id}
-                onClick={() => { setOpen(false); navigate(getNotifHref(n)); }}
-                className={`flex items-start gap-2.5 px-3 py-2.5 hover:bg-accent transition-colors cursor-pointer ${!n.isRead ? "bg-primary/5" : ""}`}
-                data-testid={`notification-${n.id}`}
-              >
-                  <div className="relative flex-shrink-0">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={n.actorAvatar ?? undefined} />
-                      <AvatarFallback className="text-xs bg-primary text-primary-foreground font-bold">{n.actorName[0]}</AvatarFallback>
-                    </Avatar>
-                    <span className="absolute -bottom-0.5 -right-0.5 text-sm leading-none">
-                      {notifEmoji(n.type)}
+            notifications.map(n => {
+              const { Icon, tone } = notifVisual(n.type);
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => void openNotification(n)}
+                  className={cn(
+                    "w-full flex items-start gap-3 px-3.5 py-3 text-left transition-colors hover:bg-accent/60 min-h-[56px]",
+                    !n.isRead && UNREAD_BG[tone],
+                  )}
+                  data-testid={`notification-${n.id}`}
+                >
+                  <span className={cn("h-10 w-10 rounded-xl flex items-center justify-center shrink-0", TONE_CLASS[tone])}>
+                    <Icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold text-foreground leading-snug line-clamp-2">
+                      {notifTitle(n)}
                     </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-foreground leading-snug">
-                      {notifMessage(n)}
-                    </p>
+                    <span className="block text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                      {notifPreview(n)}
+                    </span>
                     {n.type === "delivery_picked_up" && n.message && (() => {
                       const m = n.message.match(/kòd konfirmasyon ou:\s*(\d{4,8})/i) ?? n.message.match(/:\s*(\d{4,8})\./);
                       const code = m?.[1];
                       return code ? (
-                        <div className="mt-1 px-2 py-1.5 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-muted-foreground">🔐 {t("notifications.confirmCode")}</span>
+                        <span className="mt-1.5 px-2 py-1.5 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-muted-foreground">{t("notifications.confirmCode")}</span>
                           <span className="text-base font-black tracking-widest text-primary">{code}</span>
-                          <button
+                          <span
+                            role="button"
+                            tabIndex={0}
                             onClick={e => { e.preventDefault(); e.stopPropagation(); navigator.clipboard.writeText(code).catch(() => {}); }}
+                            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); navigator.clipboard.writeText(code).catch(() => {}); } }}
                             className="text-[10px] text-primary font-bold hover:underline shrink-0"
-                          >{t("notifications.copy")}</button>
-                        </div>
+                          >{t("notifications.copy")}</span>
+                        </span>
                       ) : null;
                     })()}
-                    {n.listingTitle && <p className="text-xs text-muted-foreground truncate mt-0.5">{n.listingTitle}</p>}
-                    <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(n.createdAt, t("notifications.justNow"))}</p>
-                  </div>
-                  {n.listingImage && <img src={n.listingImage} className="h-8 w-8 rounded object-cover flex-shrink-0" alt="" />}
-                  {!n.isRead && <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1" />}
-              </div>
-            ))
+                    <span className="block text-[11px] text-muted-foreground mt-1">
+                      {timeAgo(n.createdAt, t("notifications.justNow"))}
+                    </span>
+                  </span>
+                  {!n.isRead ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-2" aria-label={t("notifications.unread")} />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0 mt-1" aria-hidden />
+                  )}
+                </button>
+              );
+            })
           )}
         </div>
       </PopoverContent>

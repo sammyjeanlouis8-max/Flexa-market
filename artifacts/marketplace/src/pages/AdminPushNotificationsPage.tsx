@@ -1,9 +1,9 @@
 /**
  * AdminPushNotificationsPage — Push Notifications (APNs)
  * Route: /admin/push-notifications
- * Super-admin only — view registered token counts and send a test push.
+ * Super-admin only — standard push + official communications.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ArrowLeft, Bell, Smartphone, Users, Send, Loader2,
-  AlertTriangle, CheckCircle2, RefreshCw,
+  AlertTriangle, CheckCircle2, RefreshCw, Megaphone, ImagePlus, Eye, FileText,
 } from "lucide-react";
 
 interface TokenCounts { total: number; apns: number; expo: number; android?: number; ios?: number }
@@ -29,7 +29,9 @@ interface ManualPushResult {
   failedDevices: number;
   skippedUsers: number;
   inAppStored: number;
-  note: string;
+  note?: string;
+  url?: string;
+  announcementId?: number;
 }
 
 export default function AdminPushNotificationsPage() {
@@ -45,12 +47,23 @@ export default function AdminPushNotificationsPage() {
   const [testToken,  setTestToken]  = useState("");
   const [sending,    setSending]    = useState(false);
   const [result,     setResult]     = useState<PushResult | null>(null);
+  const [notifKind, setNotifKind] = useState<"standard" | "official">("standard");
   const [audience, setAudience] = useState<"all" | "countries" | "country" | "user">("all");
   const [selectedCountry, setSelectedCountry] = useState("");
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
   const [manualTitle, setManualTitle] = useState("");
   const [manualMessage, setManualMessage] = useState("");
   const [manualUrl, setManualUrl] = useState("/");
+  const [officialBody, setOfficialBody] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [category, setCategory] = useState("update");
+  const [highlightTitle, setHighlightTitle] = useState("");
+  const [highlightItemsText, setHighlightItemsText] = useState("");
+  const [actionLabel, setActionLabel] = useState("");
+  const [actionUrl, setActionUrl] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   const [recipientSearch, setRecipientSearch] = useState("");
   const [recipients, setRecipients] = useState<ManualRecipient[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<ManualRecipient | null>(null);
@@ -106,7 +119,113 @@ export default function AdminPushNotificationsPage() {
     };
   }, [audience, recipientSearch, selectedCountry, selectedCountries, BASE, authHeader, toast, t]);
 
+  const audienceValid =
+    (audience !== "user" || !!selectedRecipient)
+    && (audience !== "country" || !!selectedCountry)
+    && (audience !== "countries" || selectedCountries.length >= 2);
+
+  const canSendStandard = !!manualTitle.trim() && !!manualMessage.trim() && audienceValid;
+  const canSendOfficial = !!manualTitle.trim() && !!manualMessage.trim() && !!officialBody.trim() && audienceValid;
+
+  const uploadBanner = async (file: File) => {
+    setUploadingBanner(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${BASE}/api/upload`, {
+        method: "POST",
+        headers: { Authorization: authHeader },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || t("pushNotificationsPage.bannerUploadError"));
+      setBannerUrl(data.url);
+      toast({ title: t("pushNotificationsPage.bannerUploaded") });
+    } catch (error: any) {
+      toast({ title: error.message || t("pushNotificationsPage.bannerUploadError"), variant: "destructive" });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const publishOfficial = async (publish: boolean) => {
+    if (!canSendOfficial && publish) return;
+    if (audience === "user" && !selectedRecipient) {
+      toast({ title: t("pushNotificationsPage.chooseUserError"), variant: "destructive" });
+      return;
+    }
+    if (audience === "country" && !selectedCountry) {
+      toast({ title: t("pushNotificationsPage.chooseCountryError"), variant: "destructive" });
+      return;
+    }
+    if (audience === "countries" && selectedCountries.length < 2) {
+      toast({ title: t("pushNotificationsPage.chooseCountriesError"), variant: "destructive" });
+      return;
+    }
+    setConfirmManualOpen(false);
+    setPreviewOpen(false);
+    setManualSending(true);
+    setManualResult(null);
+    try {
+      const highlightItems = highlightItemsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const response = await fetch(`${BASE}/api/admin/announcements`, {
+        method: "POST",
+        headers: { Authorization: authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: manualTitle.trim(),
+          preview: manualMessage.trim(),
+          body: officialBody,
+          bannerUrl: bannerUrl || undefined,
+          category,
+          audience,
+          country: audience === "country" ? selectedCountry : undefined,
+          countries: audience === "countries" ? selectedCountries : undefined,
+          userId: audience === "user" ? selectedRecipient!.id : undefined,
+          highlightTitle: highlightTitle.trim() || undefined,
+          highlightItems,
+          actionLabel: actionLabel.trim() || undefined,
+          actionUrl: actionUrl.trim() || undefined,
+          publish,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || t("pushNotificationsPage.sendError"));
+      const delivered = data.delivered;
+      if (publish && delivered) {
+        setManualResult({
+          ok: (delivered.failedDevices ?? 0) === 0 && (delivered.acceptedDevices ?? 0) >= 0,
+          targetedUsers: delivered.targetedUsers ?? 0,
+          acceptedUsers: delivered.acceptedUsers ?? 0,
+          acceptedDevices: delivered.acceptedDevices ?? 0,
+          failedDevices: delivered.failedDevices ?? 0,
+          skippedUsers: delivered.skippedUsers ?? 0,
+          inAppStored: delivered.inAppStored ?? 0,
+          url: delivered.url,
+          announcementId: data.announcement?.id,
+          note: t("pushNotificationsPage.officialPublishedNote"),
+        });
+        toast({
+          title: t("pushNotificationsPage.officialPublished"),
+          description: t("pushNotificationsPage.resultStored", { count: delivered.inAppStored ?? 0 }),
+        });
+      } else {
+        toast({ title: t("pushNotificationsPage.draftSaved") });
+      }
+    } catch (error: any) {
+      toast({ title: error.message || t("pushNotificationsPage.sendError"), variant: "destructive" });
+    } finally {
+      setManualSending(false);
+    }
+  };
+
   const sendManualPush = async () => {
+    if (notifKind === "official") {
+      await publishOfficial(true);
+      return;
+    }
     if (!manualTitle.trim() || !manualMessage.trim()) return;
     if (audience === "user" && !selectedRecipient) {
       toast({ title: t("pushNotificationsPage.chooseUserError"), variant: "destructive" });
@@ -259,6 +378,39 @@ export default function AdminPushNotificationsPage() {
             <p className="text-xs text-muted-foreground mt-1">
               {t("pushNotificationsPage.manualDescription")}
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setNotifKind("standard")}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                notifKind === "standard"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                  : "border-border hover:bg-accent"
+              }`}
+              data-testid="button-notif-kind-standard"
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Bell className="h-4 w-4" /> {t("pushNotificationsPage.kindStandard")}
+              </span>
+              <span className="block text-xs text-muted-foreground mt-0.5">{t("pushNotificationsPage.kindStandardHint")}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setNotifKind("official")}
+              className={`rounded-xl border px-3 py-3 text-left transition-colors ${
+                notifKind === "official"
+                  ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30"
+                  : "border-border hover:bg-accent"
+              }`}
+              data-testid="button-notif-kind-official"
+            >
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                <Megaphone className="h-4 w-4" /> {t("pushNotificationsPage.kindOfficial")}
+              </span>
+              <span className="block text-xs text-muted-foreground mt-0.5">{t("pushNotificationsPage.kindOfficialHint")}</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
@@ -424,52 +576,183 @@ export default function AdminPushNotificationsPage() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.titleLabel")}</Label>
-              <span className="text-[11px] text-muted-foreground">{manualTitle.length}/80</span>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                {notifKind === "official" ? t("pushNotificationsPage.announcementTitleLabel") : t("pushNotificationsPage.titleLabel")}
+              </Label>
+              <span className="text-[11px] text-muted-foreground">{manualTitle.length}/{notifKind === "official" ? 120 : 80}</span>
             </div>
             <Input
               value={manualTitle}
-              onChange={(event) => setManualTitle(event.target.value.slice(0, 80))}
-              placeholder={t("pushNotificationsPage.titlePlaceholder")}
+              onChange={(event) => setManualTitle(event.target.value.slice(0, notifKind === "official" ? 120 : 80))}
+              placeholder={notifKind === "official" ? t("pushNotificationsPage.announcementTitlePlaceholder") : t("pushNotificationsPage.titlePlaceholder")}
               data-testid="input-manual-push-title"
             />
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.messageLabel")}</Label>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wide">
+                {notifKind === "official" ? t("pushNotificationsPage.previewLabel") : t("pushNotificationsPage.messageLabel")}
+              </Label>
               <span className="text-[11px] text-muted-foreground">{manualMessage.length}/240</span>
             </div>
             <Textarea
               value={manualMessage}
               onChange={(event) => setManualMessage(event.target.value.slice(0, 240))}
-              placeholder={t("pushNotificationsPage.messagePlaceholder")}
-              rows={4}
+              placeholder={notifKind === "official" ? t("pushNotificationsPage.previewPlaceholder") : t("pushNotificationsPage.messagePlaceholder")}
+              rows={notifKind === "official" ? 3 : 4}
               data-testid="input-manual-push-message"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.urlLabel")}</Label>
-            <Input
-              value={manualUrl}
-              onChange={(event) => setManualUrl(event.target.value)}
-              placeholder={t("pushNotificationsPage.urlPlaceholder")}
-              data-testid="input-manual-push-url"
-            />
-            <p className="text-[11px] text-muted-foreground">{t("pushNotificationsPage.urlHint")}</p>
-          </div>
+          {notifKind === "official" ? (
+            <>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.bodyLabel")}</Label>
+                <Textarea
+                  value={officialBody}
+                  onChange={(event) => setOfficialBody(event.target.value.slice(0, 20000))}
+                  placeholder={t("pushNotificationsPage.bodyPlaceholder")}
+                  rows={8}
+                  data-testid="input-official-body"
+                />
+                <p className="text-[11px] text-muted-foreground">{t("pushNotificationsPage.bodyHint")}</p>
+              </div>
 
-          <Button
-            onClick={() => setConfirmManualOpen(true)}
-            disabled={manualSending || !manualTitle.trim() || !manualMessage.trim() || (audience === "user" && !selectedRecipient) || (audience === "country" && !selectedCountry) || (audience === "countries" && selectedCountries.length < 2)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-            data-testid="button-send-manual-push"
-          >
-            {manualSending
-              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("pushNotificationsPage.sending")}</>
-              : <><Send className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.sendButton")}</>}
-          </Button>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.categoryLabel")}</Label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {["update", "security", "promo", "ops", "general"].map((c) => (
+                    <option key={c} value={c}>{t(`communications.category.${c}`)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.bannerLabel")}</Label>
+                <input
+                  ref={bannerInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void uploadBanner(file);
+                    e.target.value = "";
+                  }}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={uploadingBanner}
+                    onClick={() => bannerInputRef.current?.click()}
+                  >
+                    {uploadingBanner
+                      ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("pushNotificationsPage.uploading")}</>
+                      : <><ImagePlus className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.uploadBanner")}</>}
+                  </Button>
+                  {bannerUrl && (
+                    <Button type="button" variant="ghost" onClick={() => setBannerUrl("")}>
+                      {t("pushNotificationsPage.removeBanner")}
+                    </Button>
+                  )}
+                </div>
+                {bannerUrl && (
+                  <img src={bannerUrl} alt="" className="mt-2 rounded-xl max-h-40 w-full object-cover border" />
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.highlightTitleLabel")}</Label>
+                <Input
+                  value={highlightTitle}
+                  onChange={(e) => setHighlightTitle(e.target.value.slice(0, 120))}
+                  placeholder={t("pushNotificationsPage.highlightTitlePlaceholder")}
+                />
+                <Textarea
+                  value={highlightItemsText}
+                  onChange={(e) => setHighlightItemsText(e.target.value)}
+                  placeholder={t("pushNotificationsPage.highlightItemsPlaceholder")}
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.actionLabelLabel")}</Label>
+                  <Input value={actionLabel} onChange={(e) => setActionLabel(e.target.value.slice(0, 80))} placeholder={t("pushNotificationsPage.actionLabelPlaceholder")} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.actionUrlLabel")}</Label>
+                  <Input value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} placeholder="/subscription" />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2">
+                {t("pushNotificationsPage.autoDestinationHint")}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={manualSending || !canSendOfficial}
+                  onClick={() => void publishOfficial(false)}
+                  data-testid="button-save-draft"
+                >
+                  <FileText className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.saveDraft")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canSendOfficial}
+                  onClick={() => setPreviewOpen(true)}
+                  data-testid="button-preview-official"
+                >
+                  <Eye className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.preview")}
+                </Button>
+                <Button
+                  onClick={() => setConfirmManualOpen(true)}
+                  disabled={manualSending || !canSendOfficial}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  data-testid="button-send-manual-push"
+                >
+                  {manualSending
+                    ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("pushNotificationsPage.sending")}</>
+                    : <><Send className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.publishOfficial")}</>}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground uppercase tracking-wide">{t("pushNotificationsPage.urlLabel")}</Label>
+                <Input
+                  value={manualUrl}
+                  onChange={(event) => setManualUrl(event.target.value)}
+                  placeholder={t("pushNotificationsPage.urlPlaceholder")}
+                  data-testid="input-manual-push-url"
+                />
+                <p className="text-[11px] text-muted-foreground">{t("pushNotificationsPage.urlHint")}</p>
+              </div>
+
+              <Button
+                onClick={() => setConfirmManualOpen(true)}
+                disabled={manualSending || !canSendStandard}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid="button-send-manual-push"
+              >
+                {manualSending
+                  ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("pushNotificationsPage.sending")}</>
+                  : <><Send className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.sendButton")}</>}
+              </Button>
+            </>
+          )}
 
           {manualResult && (
             <div className={`rounded-xl border px-4 py-3 text-sm ${
@@ -479,13 +762,16 @@ export default function AdminPushNotificationsPage() {
             }`}>
               <p className="font-semibold">{t("pushNotificationsPage.resultAccepted", { devices: manualResult.acceptedDevices, users: manualResult.acceptedUsers })}</p>
               <p className="text-xs mt-1">{t("pushNotificationsPage.resultStored", { count: manualResult.inAppStored })}</p>
+              {manualResult.url && (
+                <p className="text-xs mt-1">{t("pushNotificationsPage.opens", { url: manualResult.url })}</p>
+              )}
               {manualResult.failedDevices > 0 && (
                 <p className="text-xs mt-1">{t("pushNotificationsPage.resultFailed", { count: manualResult.failedDevices })}</p>
               )}
               {manualResult.skippedUsers > 0 && (
                 <p className="text-xs mt-1">{t("pushNotificationsPage.resultSkipped", { count: manualResult.skippedUsers })}</p>
               )}
-              <p className="text-[11px] opacity-80 mt-2">{manualResult.note}</p>
+              {manualResult.note && <p className="text-[11px] opacity-80 mt-2">{manualResult.note}</p>}
             </div>
           )}
         </div>
@@ -577,7 +863,11 @@ export default function AdminPushNotificationsPage() {
             <div className="rounded-xl bg-muted/60 border border-border p-3 space-y-1.5">
               <p className="text-sm font-semibold text-foreground">{manualTitle}</p>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{manualMessage}</p>
-              <p className="text-xs text-blue-600 dark:text-blue-400">{t("pushNotificationsPage.opens", { url: manualUrl.trim() || "/" })}</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">
+                {notifKind === "official"
+                  ? t("pushNotificationsPage.opens", { url: "/communications/:id" })
+                  : t("pushNotificationsPage.opens", { url: manualUrl.trim() || "/" })}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -593,12 +883,48 @@ export default function AdminPushNotificationsPage() {
                 type="button"
                 onClick={sendManualPush}
                 disabled={manualSending}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className={notifKind === "official" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"}
                 data-testid="button-confirm-manual-push"
               >
                 {manualSending
                   ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> {t("pushNotificationsPage.sending")}</>
-                  : <><Send className="h-4 w-4 mr-2" /> {t("pushNotificationsPage.confirmSend")}</>}
+                  : <><Send className="h-4 w-4 mr-2" /> {notifKind === "official" ? t("pushNotificationsPage.publishOfficial") : t("pushNotificationsPage.confirmSend")}</>}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewOpen && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl bg-background border border-border shadow-2xl p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-5 w-5 text-emerald-600" />
+              <h2 className="font-bold">{t("pushNotificationsPage.preview")}</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">{t("communications.officialBadge")}</p>
+            <h3 className="text-xl font-bold">{manualTitle}</h3>
+            <p className="text-sm text-muted-foreground">{manualMessage}</p>
+            {bannerUrl && <img src={bannerUrl} alt="" className="rounded-xl w-full max-h-40 object-cover" />}
+            <div className="text-sm whitespace-pre-wrap leading-relaxed">{officialBody}</div>
+            {highlightTitle && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 p-3">
+                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100 mb-2">{highlightTitle}</p>
+                <ul className="space-y-1 text-sm">
+                  {highlightItemsText.split("\n").map((line) => line.trim()).filter(Boolean).map((line, i) => (
+                    <li key={i} className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setPreviewOpen(false)}>{t("pushNotificationsPage.cancel")}</Button>
+              <Button type="button" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { setPreviewOpen(false); setConfirmManualOpen(true); }}>
+                {t("pushNotificationsPage.publishOfficial")}
               </Button>
             </div>
           </div>

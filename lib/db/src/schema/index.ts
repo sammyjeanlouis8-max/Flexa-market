@@ -9,6 +9,7 @@ export * from "./otp";
 export * from "./admin_logs";
 export * from "./comments";
 export * from "./notifications";
+export * from "./announcements";
 export * from "./transactions";
 export * from "./login_logs";
 export * from "./platform_settings";

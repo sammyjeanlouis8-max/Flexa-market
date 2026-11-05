@@ -13,7 +13,7 @@ import {
   Send, Copy, Share2, QrCode, CreditCard, Phone, ArrowLeft,
   ArrowDownCircle, ArrowRightLeft, ChevronRight, User, Loader2, Eye, EyeOff, Gift, Users,
   Upload, ImageIcon, CheckCircle, MapPin, KeyRound, DollarSign, Zap, RefreshCw, ShieldCheck, Truck,
-  MessageCircle,
+  MessageCircle, Crown, LayoutGrid, BarChart3, Plus,
 } from "lucide-react";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { preloadAgentChat, prepareAgentChat } from "@/lib/agentChat";
@@ -279,6 +279,8 @@ export default function WalletPage() {
   const [showQR, setShowQR] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [showReferralDetails, setShowReferralDetails] = useState(false);
+  /** Presentation-only home section filter (matches PRO MAX wallet tabs). */
+  const [homeTab, setHomeTab] = useState<"overview" | "promo" | "transactions">("overview");
 
   // MonCash state
   const [selectedHtg, setSelectedHtg] = useState(1000);
@@ -2725,10 +2727,14 @@ export default function WalletPage() {
   }
 
   // =========================================================================
-  // ── HOME ──────────────────────────────────────────────────────────────────
+  // ── HOME (PRO MAX responsive visual redesign — logic unchanged) ──────────
   // =========================================================================
+  const showOverview = homeTab === "overview";
+  const showPromo = homeTab === "promo";
+  const showTx = homeTab === "transactions";
+
   return (
-    <div className="max-w-xl mx-auto px-3 py-4 pb-24 space-y-3">
+    <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-24 space-y-3 sm:px-4 lg:px-6">
 
       {/* ── Return-to-app banner ──────────────────────────────────────────── */}
       {showReturnApp && (
@@ -2749,8 +2755,8 @@ export default function WalletPage() {
       )}
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => stepStack.length > 0 ? goBack() : window.history.back()}
             className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -2758,8 +2764,20 @@ export default function WalletPage() {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <Wallet className="h-5 w-5 text-primary" />
-          <h1 className="text-lg font-black">{t("wallet.myWallet")}</h1>
+          <Wallet className="h-5 w-5 text-emerald-700 shrink-0" />
+          <h1 className="text-lg font-black text-foreground truncate">{t("wallet.myWallet")}</h1>
+          {isSuperAdmin && (
+            <span
+              className="hidden xs:inline-flex sm:inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold shrink-0"
+              style={{
+                background: "linear-gradient(135deg,#f59e0b 0%,#d97706 100%)",
+                color: "#1a1205",
+                boxShadow: "0 1px 4px rgba(217,119,6,0.35)",
+              }}
+            >
+              <Crown className="h-3 w-3" /> Super Admin
+            </span>
+          )}
         </div>
         <button
           onClick={async () => {
@@ -2770,6 +2788,7 @@ export default function WalletPage() {
               qc.invalidateQueries({ queryKey: ["/wallet/balance"] }),
               qc.invalidateQueries({ queryKey: ["/wallet/history"] }),
             ]);
+            if (isSuperAdmin) await loadPlatformRev();
           }}
           className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           aria-label={t("wallet.refresh")}
@@ -2778,181 +2797,162 @@ export default function WalletPage() {
         </button>
       </div>
 
+      {/* ── Presentation tabs (scroll/filter existing home sections) ──────── */}
+      <div
+        className="flex items-center gap-1 rounded-full p-1 bg-white border border-emerald-100 shadow-sm"
+        role="tablist"
+        aria-label="Wallet sections"
+      >
+        {([
+          { id: "overview" as const, label: t("wallet.tabOverview", { defaultValue: "Overview" }), Icon: LayoutGrid },
+          { id: "promo" as const, label: t("wallet.tabPromo", { defaultValue: "Promo Account" }), Icon: Gift },
+          { id: "transactions" as const, label: t("wallet.tabTransactions", { defaultValue: "Transactions" }), Icon: Clock },
+        ]).map(({ id, label, Icon }) => {
+          const active = homeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setHomeTab(id)}
+              className={cn(
+                "flex-1 inline-flex items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-bold transition-all",
+                active
+                  ? "bg-emerald-800 text-white shadow-sm"
+                  : "text-emerald-900/70 hover:bg-emerald-50"
+              )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {showOverview && (
+        <>
+      {/* ══ Admin + personal wallet cards — side-by-side from md when Super Admin ══ */}
+      <div className={cn(
+        "grid grid-cols-1 gap-3",
+        isSuperAdmin && "md:grid-cols-2 md:items-stretch"
+      )}>
       {/* ══ FLEXA WALLET HERO CARD ══════════════════════════════════════════════ */}
       <div
-        className="relative rounded-3xl overflow-hidden"
+        className="relative rounded-2xl overflow-hidden h-full"
         style={{
-          border: "1px solid rgba(139,92,246,0.30)",
-          boxShadow: "0 0 40px rgba(109,40,217,0.25), 0 8px 32px rgba(0,0,0,0.6)",
+          border: "1px solid rgba(16,185,129,0.35)",
+          boxShadow: "0 8px 28px rgba(6,78,59,0.22)",
+          background: "linear-gradient(145deg,#064e3b 0%,#065f46 42%,#047857 100%)",
         }}
       >
-        {/* ── Layer 1: Base deep space bg ── */}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(150deg,#060614 0%,#0b0923 45%,#100b28 100%)" }} />
-
-        {/* ── Layer 2: Large glow orb (right-center) ── */}
+        {/* gold light streak */}
         <div className="absolute pointer-events-none" style={{
-          right: "-10%", top: "50%", transform: "translateY(-50%)",
-          width: "65%", height: "160%",
-          background: "radial-gradient(ellipse at center, rgba(139,92,246,0.70) 0%, rgba(109,40,217,0.38) 30%, rgba(76,29,149,0.12) 60%, transparent 80%)",
-          filter: "blur(2px)",
+          right: "12%", top: "-30%", width: "2px", height: "170%",
+          background: "linear-gradient(180deg, transparent 0%, rgba(251,191,36,0) 20%, rgba(252,211,77,0.85) 48%, rgba(245,158,11,0.45) 58%, transparent 100%)",
+          transform: "rotate(-28deg)",
+          filter: "blur(0.4px)",
+        }} />
+        <div className="absolute pointer-events-none opacity-40" style={{
+          right: "-8%", bottom: "-20%", width: "55%", height: "70%",
+          background: "radial-gradient(ellipse at center, rgba(251,191,36,0.28) 0%, transparent 70%)",
         }} />
 
-        {/* ── Layer 3: Bright diagonal streak / comet ── */}
-        <div className="absolute pointer-events-none" style={{
-          right: "8%", top: "-20%", width: "3px", height: "160%",
-          background: "linear-gradient(180deg, transparent 0%, rgba(216,180,254,0.0) 20%, rgba(232,210,255,0.95) 45%, rgba(216,180,254,0.85) 52%, rgba(139,92,246,0.4) 65%, transparent 100%)",
-          transform: "rotate(-30deg)",
-          transformOrigin: "center center",
-          filter: "blur(0.5px)",
-          boxShadow: "0 0 12px 3px rgba(196,160,255,0.55)",
-        }} />
-        {/* Streak halo */}
-        <div className="absolute pointer-events-none" style={{
-          right: "4%", top: "-30%", width: "40px", height: "180%",
-          background: "linear-gradient(180deg, transparent 10%, rgba(139,92,246,0.0) 30%, rgba(139,92,246,0.20) 48%, rgba(139,92,246,0.10) 55%, transparent 75%)",
-          transform: "rotate(-30deg)",
-          transformOrigin: "center center",
-          filter: "blur(8px)",
-        }} />
-
-        {/* ── Layer 4: Dot grid (right half) ── */}
-        <div className="absolute inset-y-0 right-0 pointer-events-none" style={{
-          width: "55%",
-          backgroundImage: "radial-gradient(circle, rgba(167,139,250,0.45) 1px, transparent 1px)",
-          backgroundSize: "11px 11px",
-          maskImage: "linear-gradient(to right, transparent 0%, black 40%)",
-          WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 40%)",
-          opacity: 0.55,
-        }} />
-
-        {/* ── Layer 5: Large faint ring (top-right) ── */}
-        <div className="absolute pointer-events-none" style={{
-          right: "-15%", top: "-35%",
-          width: "280px", height: "280px",
-          borderRadius: "50%",
-          border: "1px solid rgba(167,139,250,0.18)",
-        }} />
-        <div className="absolute pointer-events-none" style={{
-          right: "-5%", top: "-15%",
-          width: "160px", height: "160px",
-          borderRadius: "50%",
-          border: "1px solid rgba(167,139,250,0.12)",
-        }} />
-
-        {/* ── Content ── */}
-        <div className="relative p-4">
-
-          {/* Top row */}
-          <div className="flex items-center justify-between mb-3">
-            {/* Logo + title */}
-            <div className="flex items-center gap-2.5">
+        <div className="relative p-3.5 sm:p-4 flex flex-col h-full min-h-[168px]">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: "linear-gradient(145deg,#6d28d9 0%,#8b5cf6 50%,#7c3aed 100%)",
-                  boxShadow: "0 0 14px rgba(139,92,246,0.50), inset 0 1px 0 rgba(255,255,255,0.15)",
+                  background: "linear-gradient(145deg,#059669 0%,#10b981 100%)",
+                  boxShadow: "0 0 0 2px rgba(251,191,36,0.35)",
                 }}
               >
-                <span className="text-white font-black text-base leading-none italic" style={{ textShadow: "0 0 10px rgba(255,255,255,0.4)" }}>F</span>
+                <span className="text-white font-black text-sm leading-none italic">F</span>
               </div>
-              <div>
-                <p className="text-white font-black text-sm tracking-wider leading-tight">FLEXA WALLET</p>
-                <p className="font-mono text-[11px] mt-0.5" style={{ color: "rgba(167,139,250,0.65)" }}>
+              <div className="min-w-0">
+                <p className="text-white font-black text-xs sm:text-sm tracking-wider leading-tight truncate">FLEXA WALLET</p>
+                <p className="font-mono text-[10px] mt-0.5 truncate" style={{ color: "rgba(167,243,208,0.75)" }}>
                   {balance?.accountNumber ?? "FM-······"}
                 </p>
               </div>
             </div>
-
-            {/* Eye + QR */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setBalanceVisible(v => !v)}
                 className="flex items-center justify-center transition-all active:scale-90"
                 style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1.5px solid rgba(255,255,255,0.18)",
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(252,211,77,0.35)",
                 }}
+                aria-label={balanceVisible ? "Hide balance" : "Show balance"}
               >
                 {balanceVisible
-                  ? <Eye style={{ width: 16, height: 16, color: "rgba(255,255,255,0.75)" }} />
-                  : <EyeOff style={{ width: 16, height: 16, color: "rgba(255,255,255,0.75)" }} />}
+                  ? <Eye style={{ width: 14, height: 14, color: "rgba(255,255,255,0.85)" }} />
+                  : <EyeOff style={{ width: 14, height: 14, color: "rgba(255,255,255,0.85)" }} />}
               </button>
               <button
                 onClick={() => setShowQR(true)}
                 disabled={!balance?.accountNumber}
                 className="flex items-center justify-center transition-all active:scale-90 disabled:opacity-40"
                 style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1.5px solid rgba(255,255,255,0.18)",
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(252,211,77,0.35)",
                 }}
+                aria-label="QR"
               >
-                <QrCode style={{ width: 15, height: 15, color: "rgba(255,255,255,0.75)" }} />
+                <QrCode style={{ width: 14, height: 14, color: "rgba(255,255,255,0.85)" }} />
               </button>
             </div>
           </div>
 
-          {/* Balance */}
-          <div className="mb-3">
-            <p className="font-semibold mb-1" style={{ color: "#22d3ee", fontSize: 12, letterSpacing: "0.03em" }}>
+          <div className="mb-2.5 flex-1">
+            <p className="font-semibold mb-0.5" style={{ color: "rgba(167,243,208,0.9)", fontSize: 11, letterSpacing: "0.04em" }}>
               {t("wallet.totalBalance")}
             </p>
             {isLoading ? (
-              <div className="h-9 w-36 rounded-lg animate-pulse" style={{ background: "rgba(255,255,255,0.12)" }} />
+              <div className="h-8 w-36 rounded-lg animate-pulse" style={{ background: "rgba(255,255,255,0.12)" }} />
             ) : (
               <p
                 className="font-black leading-none text-white"
-                style={{
-                  fontSize: "clamp(1.6rem, 7.5vw, 2.2rem)",
-                  letterSpacing: "-0.02em",
-                  textShadow: "0 0 24px rgba(255,255,255,0.22), 0 0 48px rgba(139,92,246,0.18)",
-                }}
+                style={{ fontSize: "clamp(1.45rem, 5vw, 1.85rem)", letterSpacing: "-0.02em" }}
               >
                 {balanceVisible ? `$${(balance?.balanceUsd ?? 0).toFixed(2)}` : "$  ••••••"}
               </p>
             )}
-
-            {/* Local currency pill — HTG (Haiti) or DOP (Dominican Republic) */}
             {!isLoading && (
-              <div
-                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full"
-                style={{
-                  background: "rgba(15,10,40,0.65)",
-                  border: "1px solid rgba(139,92,246,0.22)",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
+              <div className="inline-flex items-center gap-1.5 mt-1.5 text-[11px]" style={{ color: "rgba(255,255,255,0.82)" }}>
                 {isDominican ? (
                   <>
-                    <span className="font-bold text-[11px]" style={{ color: "rgba(255,255,255,0.50)" }}>RD$</span>
-                    <span className="font-mono font-semibold text-xs" style={{ color: "rgba(255,255,255,0.85)", letterSpacing: "0.05em" }}>
+                    <span className="font-bold opacity-70">RD$</span>
+                    <span className="font-mono font-semibold tracking-wide">
                       {balanceVisible
                         ? (balance?.balanceDop ?? 0).toLocaleString().replace(/,/g, " ")
                         : "••• ••• •••"}
                     </span>
-                    <span className="font-bold text-[11px]" style={{ color: "rgba(255,255,255,0.50)" }}>DOP</span>
+                    <span className="font-bold opacity-70">DOP</span>
                   </>
                 ) : (
                   <>
-                    <span className="font-bold text-[11px]" style={{ color: "rgba(255,255,255,0.50)" }}>G</span>
-                    <span className="font-mono font-semibold text-xs" style={{ color: "rgba(255,255,255,0.85)", letterSpacing: "0.05em" }}>
+                    <span className="font-bold opacity-70">G</span>
+                    <span className="font-mono font-semibold tracking-wide">
                       {balanceVisible
                         ? (balance?.balanceHtg ?? 0).toLocaleString().replace(/,/g, " ")
                         : "••• ••• •••"}
                     </span>
-                    <span className="font-bold text-[11px]" style={{ color: "rgba(255,255,255,0.50)" }}>HTG</span>
+                    <span className="font-bold opacity-70">HTG</span>
                   </>
                 )}
               </div>
             )}
           </div>
 
-          {/* Bottom: bonus + Copy ID / Share */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 mt-auto">
             <div>
               {(balance?.bonusPct ?? 0) > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-100 border border-amber-300/40">
                   +{balance?.bonusPct}% bonus
                 </span>
               )}
@@ -2963,27 +2963,25 @@ export default function WalletPage() {
                 disabled={!balance?.accountNumber}
                 className="flex items-center gap-1 transition-all active:scale-95 disabled:opacity-30"
                 style={{
-                  padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
-                  color: "rgba(255,255,255,0.78)",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backdropFilter: "blur(8px)",
+                  padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600,
+                  color: "rgba(255,255,255,0.9)",
+                  background: "rgba(0,0,0,0.18)",
+                  border: "1px solid rgba(252,211,77,0.45)",
                 }}
               >
-                <Copy style={{ width: 11, height: 11 }} /> Copy ID
+                <Copy style={{ width: 11, height: 11 }} /> {t("wallet.copyId", { defaultValue: "Copy ID" })}
               </button>
               <button
                 onClick={handleShare}
                 className="flex items-center gap-1 transition-all active:scale-95"
                 style={{
-                  padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
-                  color: "rgba(255,255,255,0.78)",
-                  background: "rgba(255,255,255,0.08)",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  backdropFilter: "blur(8px)",
+                  padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600,
+                  color: "rgba(255,255,255,0.9)",
+                  background: "rgba(0,0,0,0.18)",
+                  border: "1px solid rgba(252,211,77,0.45)",
                 }}
               >
-                <Share2 style={{ width: 11, height: 11 }} /> Share
+                <Share2 style={{ width: 11, height: 11 }} /> {t("wallet.share", { defaultValue: "Share" })}
               </button>
             </div>
           </div>
@@ -2993,46 +2991,27 @@ export default function WalletPage() {
       {/* ══ PLATFORM REVENUE CARD (super admin only) ════════════════════════════ */}
       {isSuperAdmin && (
         <div
-          className="relative overflow-hidden rounded-2xl"
+          className="relative overflow-hidden rounded-2xl h-full bg-white"
           style={{
-            background: "linear-gradient(145deg,#022c22 0%,#064e3b 45%,#065f46 100%)",
-            border: "1.5px solid rgba(52,211,153,0.30)",
-            boxShadow: "0 4px 24px rgba(16,185,129,0.18), inset 0 1px 0 rgba(52,211,153,0.12)",
-            minHeight: 140,
+            border: "1.5px solid rgba(16,185,129,0.35)",
+            boxShadow: "0 6px 22px rgba(6,78,59,0.10)",
+            minHeight: 168,
           }}
         >
-          {/* glow orb */}
-          <div className="absolute pointer-events-none" style={{
-            right: "-10%", top: "50%", transform: "translateY(-50%)",
-            width: "55%", height: "160%",
-            background: "radial-gradient(ellipse at center, rgba(16,185,129,0.55) 0%, rgba(5,150,105,0.25) 40%, transparent 75%)",
-            filter: "blur(2px)",
-          }} />
-          {/* dot grid */}
-          <div className="absolute inset-y-0 right-0 pointer-events-none" style={{
-            width: "55%",
-            backgroundImage: "radial-gradient(circle, rgba(52,211,153,0.35) 1px, transparent 1px)",
-            backgroundSize: "11px 11px",
-            maskImage: "linear-gradient(to right, transparent 0%, black 40%)",
-            WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 40%)",
-            opacity: 0.5,
-          }} />
-
-          <div className="relative p-4">
-            {/* Top row */}
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          <div className="relative p-3.5 sm:p-4 flex flex-col h-full">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                   style={{
-                    background: "linear-gradient(145deg,#047857 0%,#059669 50%,#10b981 100%)",
-                    boxShadow: "0 0 14px rgba(16,185,129,0.50), inset 0 1px 0 rgba(255,255,255,0.15)",
+                    background: "linear-gradient(145deg,#047857 0%,#10b981 100%)",
+                    boxShadow: "0 2px 8px rgba(16,185,129,0.35)",
                   }}
                 >
-                  <Wallet style={{ width: 18, height: 18, color: "#fff" }} />
+                  <Wallet style={{ width: 16, height: 16, color: "#fff" }} />
                 </div>
-                <div>
-                  <p className="text-white font-black text-sm tracking-wider leading-tight">KAT FM FLEXAMARKET</p>
-                  <p className="font-mono text-[11px] mt-0.5" style={{ color: "rgba(52,211,153,0.65)" }}>FM-FLEXA-MARKET</p>
+                <div className="min-w-0">
+                  <p className="text-emerald-950 font-black text-xs sm:text-sm tracking-wider leading-tight truncate">KAT FM FLEXAMARKET</p>
+                  <p className="font-mono text-[10px] mt-0.5 text-emerald-700/70 truncate">FM-FLEXA-MARKET</p>
                 </div>
               </div>
               <button
@@ -3040,102 +3019,100 @@ export default function WalletPage() {
                 className="flex items-center justify-center transition-all active:scale-90"
                 style={{
                   width: 32, height: 32, borderRadius: "50%",
-                  background: "rgba(255,255,255,0.07)",
-                  border: "1.5px solid rgba(255,255,255,0.18)",
+                  background: "rgba(16,185,129,0.10)",
+                  border: "1px solid rgba(16,185,129,0.30)",
                 }}
+                aria-label={t("wallet.refresh")}
               >
-                <RefreshCw style={{ width: 13, height: 13, color: "rgba(255,255,255,0.75)" }}
+                <RefreshCw style={{ width: 13, height: 13, color: "#047857" }}
                   className={platformRevLoading ? "animate-spin" : ""} />
               </button>
             </div>
 
-            {/* Balance */}
-            <div className="mb-3">
-              <p className="font-semibold mb-1" style={{ color: "#34d399", fontSize: 12, letterSpacing: "0.03em" }}>
+            <div className="mb-2.5 flex-1">
+              <p className="font-semibold mb-0.5 text-emerald-700" style={{ fontSize: 11, letterSpacing: "0.03em" }}>
                 Kont Platfòm Ofisyèl
               </p>
               {platformRevLoading || !platformRev ? (
-                <div className="h-9 w-32 rounded-lg animate-pulse" style={{ background: "rgba(255,255,255,0.12)" }} />
+                <div className="h-8 w-32 rounded-lg animate-pulse bg-emerald-50" />
               ) : (
-                <p className="font-black leading-none text-white"
-                  style={{ fontSize: "clamp(1.6rem, 7.5vw, 2.2rem)", letterSpacing: "-0.02em" }}>
+                <p className="font-black leading-none text-emerald-950"
+                  style={{ fontSize: "clamp(1.45rem, 5vw, 1.85rem)", letterSpacing: "-0.02em" }}>
                   ${platformRev.totalRevenue.toFixed(2)}
                 </p>
               )}
-              {/* Breakdown lines */}
               {platformRev && platformRev.totalRevenue > 0 && (
-                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-2">
                   {platformRev.merchantCommission > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Komisyon <span className="text-white">${platformRev.merchantCommission.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Komisyon <span className="text-emerald-950">${platformRev.merchantCommission.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.boostRevenue > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Boost <span className="text-white">${platformRev.boostRevenue.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Boost <span className="text-emerald-950">${platformRev.boostRevenue.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.p2pTransferFees > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Frè Transfè <span className="text-white">${platformRev.p2pTransferFees.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Frè Transfè <span className="text-emerald-950">${platformRev.p2pTransferFees.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.deliveryFees > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Livrezon 15% <span className="text-white">${platformRev.deliveryFees.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Livrezon 15% <span className="text-emerald-950">${platformRev.deliveryFees.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.subscriptionRevenue > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Abònman <span className="text-white">${platformRev.subscriptionRevenue.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Abònman <span className="text-emerald-950">${platformRev.subscriptionRevenue.toFixed(2)}</span>
                     </p>
                   )}
                   {platformRev.rechargeFees > 0 && (
-                    <p style={{ color: "rgba(167,243,208,0.70)", fontSize: 11, fontWeight: 600 }}>
-                      Rechaj <span className="text-white">${platformRev.rechargeFees.toFixed(2)}</span>
+                    <p className="text-[11px] font-semibold text-emerald-800/70">
+                      Rechaj <span className="text-emerald-950">${platformRev.rechargeFees.toFixed(2)}</span>
                     </p>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Bottom action buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap mt-auto">
               <button
                 onClick={() => { navigator.clipboard?.writeText("FM-FLEXA-MARKET"); toast({ title: "ID kopye" }); }}
                 className="flex items-center gap-1 transition-all active:scale-95"
-                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", backdropFilter: "blur(8px)" }}
+                style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600, color: "#065f46", background: "#fff", border: "1px solid rgba(16,185,129,0.35)" }}
               >
-                <Copy style={{ width: 11, height: 11 }} /> Copy ID
+                <Copy style={{ width: 11, height: 11 }} /> {t("wallet.copyId", { defaultValue: "Copy ID" })}
               </button>
               <button
                 onClick={loadStatements}
                 disabled={statementsLoading}
                 className="flex items-center gap-1 transition-all active:scale-95"
-                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.90)", background: "rgba(16,185,129,0.25)", border: "1px solid rgba(52,211,153,0.45)", backdropFilter: "blur(8px)" }}
+                style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 700, color: "#fff", background: "#065f46", border: "1px solid #047857" }}
               >
-                {statementsLoading ? "..." : "📊 Relevé Mwa"}
+                <BarChart3 style={{ width: 12, height: 12, color: "#fbbf24" }} />
+                {statementsLoading ? "..." : "Relevé Mwa"}
               </button>
               <button
                 onClick={() => { const url = window.location.origin; navigator.share?.({ title: "FlexaMarket Platform", text: `Kont Platfòm: FM-FLEXA-MARKET\nRevni: $${platformRev?.totalRevenue?.toFixed(2) ?? "0.00"}`, url }); }}
                 className="flex items-center gap-1 transition-all active:scale-95"
-                style={{ padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.78)", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", backdropFilter: "blur(8px)" }}
+                style={{ padding: "5px 10px", borderRadius: 10, fontSize: 11, fontWeight: 600, color: "#065f46", background: "#fff", border: "1px solid rgba(16,185,129,0.35)" }}
               >
-                <Share2 style={{ width: 11, height: 11 }} /> Share
+                <Share2 style={{ width: 11, height: 11 }} /> {t("wallet.share", { defaultValue: "Share" })}
               </button>
             </div>
 
-            {/* ── Monthly Statements Panel ── */}
             {showStatements && statements && (
-              <div className="mt-3 rounded-xl overflow-hidden" style={{ background: "rgba(0,0,0,0.35)", border: "1px solid rgba(52,211,153,0.25)" }}>
-                <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid rgba(52,211,153,0.15)" }}>
-                  <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em" }}>RELEVÉ MANSYÈL {new Date().getFullYear()}</span>
-                  <button onClick={() => setShowStatements(false)} style={{ color: "rgba(255,255,255,0.5)", fontSize: 14, lineHeight: 1 }}>✕</button>
+              <div className="mt-3 rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50/60">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-emerald-200">
+                  <span className="text-emerald-800 text-[11px] font-bold tracking-wider">RELEVÉ MANSYÈL {new Date().getFullYear()}</span>
+                  <button type="button" onClick={() => setShowStatements(false)} className="text-emerald-700/60 text-sm leading-none">✕</button>
                 </div>
                 <div className="overflow-x-auto">
                   <table style={{ width: "100%", fontSize: 10.5, borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{ color: "rgba(167,243,208,0.60)", borderBottom: "1px solid rgba(52,211,153,0.12)" }}>
+                      <tr className="text-emerald-800/60 border-b border-emerald-100">
                         {["Mwa","Total","Komisyon","Boost","Transfè","Livrezon","Abònman","Rechaj","Lòd"].map(h => (
                           <th key={h} style={{ padding: "5px 8px", textAlign: "right", fontWeight: 600 }}>{h}</th>
                         ))}
@@ -3143,9 +3120,9 @@ export default function WalletPage() {
                     </thead>
                     <tbody>
                       {statements.filter(m => m.totalRevenue > 0).reverse().map(m => (
-                        <tr key={m.month} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.85)" }}>
-                          <td style={{ padding: "5px 8px", fontWeight: 700, color: "#34d399" }}>{m.month.slice(5)}/{m.month.slice(0,4)}</td>
-                          <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: "#fff" }}>${m.totalRevenue.toFixed(2)}</td>
+                        <tr key={m.month} className="border-b border-emerald-50 text-emerald-950/85">
+                          <td style={{ padding: "5px 8px", fontWeight: 700, color: "#047857" }}>{m.month.slice(5)}/{m.month.slice(0,4)}</td>
+                          <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700 }}>${m.totalRevenue.toFixed(2)}</td>
                           <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.merchantCommission.toFixed(2)}</td>
                           <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.boostRevenue.toFixed(2)}</td>
                           <td style={{ padding: "5px 8px", textAlign: "right" }}>${m.p2pTransferFees.toFixed(2)}</td>
@@ -3156,7 +3133,7 @@ export default function WalletPage() {
                         </tr>
                       ))}
                       {statements.every(m => m.totalRevenue === 0) && (
-                        <tr><td colSpan={9} style={{ padding: "12px 8px", textAlign: "center", color: "rgba(255,255,255,0.35)", fontStyle: "italic" }}>Pa gen done pou ane sa a</td></tr>
+                        <tr><td colSpan={9} style={{ padding: "12px 8px", textAlign: "center", color: "rgba(6,95,70,0.45)", fontStyle: "italic" }}>Pa gen done pou ane sa a</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -3166,152 +3143,316 @@ export default function WalletPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* ══ QUICK ACTION BUTTONS ════════════════════════════════════════════════ */}
-      <div className="flex justify-between gap-1">
+      <div className="flex flex-wrap justify-start sm:justify-between gap-2">
         {([
           ...(walletFundingDisabled ? [] : [{
-            label: t("wallet.actionDeposit"), Icon: ArrowUpCircle,
-            iconColor: "#60a5fa",
-            bg: "linear-gradient(145deg,#0f1f3d,#0d1a35)",
-            border: "rgba(59,130,246,0.35)",
-            glow: "rgba(59,130,246,0.15)",
+            label: t("wallet.actionDeposit"), Icon: Plus,
+            accent: "deposit" as const,
             action: () => navigateTo(isHaiti ? "topup" : "card"),
           }]),
           {
             label: t("wallet.actionSend"), Icon: Send,
-            iconColor: "#93c5fd",
-            bg: "linear-gradient(145deg,#0c1c3a,#0b1830)",
-            border: "rgba(96,165,250,0.30)",
-            glow: "rgba(96,165,250,0.12)",
+            accent: "green" as const,
             action: () => navigateTo("send"),
           },
           ...(purchasesDisabled ? [] : [{
             label: t("wallet.actionContacts"), Icon: Users,
-            iconColor: "#4ade80",
-            bg: "linear-gradient(145deg,#0a2318,#081e14)",
-            border: "rgba(34,197,94,0.30)",
-            glow: "rgba(34,197,94,0.12)",
+            accent: "gold" as const,
             action: () => setLocation("/wallet/agents"),
           }]),
           {
             label: t("wallet.actionBonus"), Icon: Gift,
-            iconColor: "#f97316",
-            bg: "linear-gradient(145deg,#2d150a,#261008)",
-            border: "rgba(249,115,22,0.30)",
-            glow: "rgba(249,115,22,0.12)",
+            accent: "gold" as const,
             action: () => { setRedeemCode(""); setRedeemSuccess(null); navigateTo("redeem_card"); },
           },
           {
             label: t("wallet.actionReceive"), Icon: ArrowDownCircle,
-            iconColor: "#a78bfa",
-            bg: "linear-gradient(145deg,#130d2e,#0f0926)",
-            border: "rgba(139,92,246,0.30)",
-            glow: "rgba(139,92,246,0.12)",
+            accent: "green" as const,
             action: () => navigateTo("cashout"),
           },
           {
-            label: t("wallet.actionHistory"), Icon: Zap,
-            iconColor: "#fbbf24",
-            bg: "linear-gradient(145deg,#2a1d06,#231804)",
-            border: "rgba(251,191,36,0.30)",
-            glow: "rgba(251,191,36,0.12)",
+            label: t("wallet.actionHistory"), Icon: Clock,
+            accent: "gold" as const,
             action: () => setLocation("/sales"),
           },
           {
             label: t("wallet.actionCard"), Icon: CreditCard,
-            iconColor: "#2dd4bf",
-            bg: "linear-gradient(145deg,#07231f,#061d1a)",
-            border: "rgba(45,212,191,0.30)",
-            glow: "rgba(45,212,191,0.12)",
+            accent: "green" as const,
             action: () => navigateTo("my_card"),
           },
-        ]).map(({ label, Icon, iconColor, bg, border, glow, action }) => (
+        ]).map(({ label, Icon, accent, action }) => {
+          const isDeposit = accent === "deposit";
+          const iconColor = isDeposit ? "#fff" : accent === "gold" ? "#b45309" : "#047857";
+          return (
           <button
             key={label}
             onClick={action}
-            className="flex flex-col items-center gap-1 rounded-2xl transition-all active:scale-90"
+            className="flex flex-col items-center justify-center gap-1 rounded-xl transition-all active:scale-95 hover:shadow-md"
             style={{
-              width: 46, flexShrink: 0,
-              paddingTop: 10, paddingBottom: 10,
-              background: bg,
-              border: `1.5px solid ${border}`,
-              boxShadow: `0 3px 12px ${glow}, inset 0 1px 0 rgba(255,255,255,0.04)`,
+              width: 56, minHeight: 58, flexShrink: 0,
+              paddingTop: 8, paddingBottom: 8,
+              background: isDeposit ? "#065f46" : "#ffffff",
+              border: isDeposit ? "1px solid #047857" : "1px solid rgba(6,95,70,0.18)",
+              boxShadow: isDeposit ? "0 4px 12px rgba(6,95,70,0.25)" : "0 2px 8px rgba(6,78,59,0.06)",
             }}
           >
-            <Icon style={{ width: 18, height: 18, color: iconColor, filter: `drop-shadow(0 0 4px ${iconColor}99)` }} />
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.65)", lineHeight: 1.2, textAlign: "center" }}>
+            <Icon style={{ width: 18, height: 18, color: iconColor }} />
+            <span style={{ fontSize: 9, fontWeight: 700, color: isDeposit ? "rgba(255,255,255,0.92)" : "#134e4a", lineHeight: 1.15, textAlign: "center", maxWidth: 52 }}>
               {label}
             </span>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── 3-card Balance Breakdown ─────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2">
-        {/* Available (Spendable) Balance */}
-        <div className="rounded-xl border border-border bg-card p-2.5 shadow-sm">
+      <div className="grid grid-cols-3 gap-2 lg:gap-3">
+        <div className="rounded-xl border border-emerald-100 bg-white p-2.5 shadow-sm">
           <div className="flex items-center gap-1 mb-1.5">
-            <DollarSign className="h-3 w-3 text-blue-400" />
-            <p className="text-xs text-muted-foreground font-medium">{t("wallet.availableLabel")}</p>
+            <DollarSign className="h-3 w-3 text-emerald-600" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.availableLabel")}</p>
           </div>
           {isLoading ? (
             <div className="h-5 w-14 bg-muted animate-pulse rounded" />
           ) : (
             <>
-              <p className="text-base font-black text-foreground">${availableUsd.toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{t("wallet.availableSub")}</p>
+              <p className="text-sm sm:text-base font-black text-foreground">${availableUsd.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.availableSub")}</p>
             </>
           )}
         </div>
 
-        {/* Promo Balance (locked) */}
-        <div className="rounded-xl border border-purple-200/60 dark:border-purple-700/40 bg-card p-2.5 shadow-sm">
+        <div className="rounded-xl border border-violet-100 bg-white p-2.5 shadow-sm">
           <div className="flex items-center gap-1 mb-1.5">
-            <Gift className="h-3 w-3 text-purple-400" />
-            <p className="text-xs text-muted-foreground font-medium">{t("wallet.promoBalanceLabel")}</p>
+            <Gift className="h-3 w-3 text-violet-500" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.promoBalanceLabel")}</p>
           </div>
           {isLoading ? (
             <div className="h-5 w-14 bg-muted animate-pulse rounded" />
           ) : (
             <>
-              <p className="text-base font-black text-purple-500">${(balance?.promoBalance ?? 0).toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{t("wallet.promoBalanceSub")}</p>
+              <p className="text-sm sm:text-base font-black text-violet-600">${(balance?.promoBalance ?? 0).toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.promoBalanceSub")}</p>
             </>
           )}
         </div>
 
-        {/* Unlocked Balance */}
         <div className={cn(
-          "rounded-xl border p-2.5 shadow-sm",
+          "rounded-xl border p-2.5 shadow-sm bg-white",
           (balance?.unlockedBalance ?? 0) > 0
-            ? "border-amber-300/60 dark:border-amber-600/40 bg-amber-50/40 dark:bg-amber-950/20"
-            : "border-border bg-card"
+            ? "border-amber-200"
+            : "border-emerald-100"
         )}>
           <div className="flex items-center gap-1 mb-1.5">
-            <ArrowRightLeft className="h-3 w-3 text-amber-400" />
-            <p className="text-xs text-muted-foreground font-medium">{t("wallet.unlockedLabel")}</p>
+            <ArrowRightLeft className="h-3 w-3 text-amber-500" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.unlockedLabel")}</p>
           </div>
           {isLoading ? (
             <div className="h-5 w-14 bg-muted animate-pulse rounded" />
           ) : (
             <>
-              <p className="text-base font-black text-amber-500">${(balance?.unlockedBalance ?? 0).toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{t("wallet.unlockedSub")}</p>
+              <p className="text-sm sm:text-base font-black text-amber-600">${(balance?.unlockedBalance ?? 0).toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.unlockedSub")}</p>
             </>
           )}
         </div>
       </div>
 
+      {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
+      <div className={cn(
+        "grid grid-cols-1 gap-3",
+        "md:grid-cols-2 xl:grid-cols-3"
+      )}>
+      <button
+        type="button"
+        onClick={() => {
+          if (walletFundingDisabled) {
+            setCashoutRetraitOnly(false);
+            setCashoutMethod("agent");
+            navigateTo("cashout");
+          } else {
+            navigateTo("choice");
+          }
+        }}
+        className="w-full group relative overflow-hidden rounded-2xl text-left shadow-md md:col-span-2 xl:col-span-1"
+        style={{
+          background: "linear-gradient(135deg,#064e3b 0%,#047857 55%,#059669 100%)",
+          border: "1px solid rgba(16,185,129,0.4)",
+        }}
+      >
+        <div className="px-4 py-3.5 flex items-center justify-between relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-2">
+              <div className="w-9 h-9 rounded-lg bg-emerald-400/25 ring-1 ring-white/30 flex items-center justify-center">
+                <CreditCard className="h-4 w-4 text-amber-200" />
+              </div>
+              <div className="w-9 h-9 rounded-lg bg-white/15 ring-1 ring-white/30 flex items-center justify-center">
+                <CreditCard className="h-4 w-4 text-white" />
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-black text-white">
+                {walletFundingDisabled ? t("wallet.panelWithdrawTitle") : `${t("wallet.panelRechargeTitle")} · ${t("wallet.panelWithdrawTitle")}`}
+              </p>
+              <p className="text-[11px] text-emerald-100/85">
+                {walletFundingDisabled ? `${t("wallet.agentPickup")} · ${t("wallet.authorizedAgent")}` : t("wallet.panelRechargeSub")}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+        </div>
+      </button>
 
+      {!isNativeMobileApp() && <button
+        type="button"
+        onClick={() => setLocation("/loans")}
+        className="group relative overflow-hidden rounded-2xl p-[1.5px] shadow-md hover:shadow-lg transition-all duration-300 w-full text-left"
+        style={{ background: "linear-gradient(135deg,#0e7490,#0369a1)" }}
+      >
+        <div className="relative rounded-2xl px-4 py-3.5 flex items-center gap-3 overflow-hidden" style={{ background: "linear-gradient(135deg,#0e7490,#0369a1)" }}>
+          <div className="relative w-10 h-10 rounded-xl bg-white/15 ring-1 ring-white/25 flex items-center justify-center shrink-0">
+            <DollarSign className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-bold text-white leading-tight">{t("wallet.businessLoanTitle")}</p>
+              <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">{t("wallet.businessLoanBadge")}</span>
+            </div>
+            <p className="text-xs text-cyan-100 leading-snug">{t("wallet.businessLoanDesc")}</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
+        </div>
+      </button>}
+
+      {isApprovedAgent && (
+        <button
+          type="button"
+          onClick={() => setLocation("/agent")}
+          className="group relative overflow-hidden rounded-2xl bg-white border border-emerald-200 shadow-sm hover:shadow-md transition-all duration-300 w-full text-left px-4 py-3.5 flex items-center gap-3"
+        >
+          <div className="relative w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+            <ShieldCheck className="h-5 w-5 text-emerald-700" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-bold text-emerald-950 leading-tight">Panel Ajan Mwen</p>
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-800 uppercase tracking-wider">Otorize</span>
+            </div>
+            <p className="text-xs text-emerald-800/70 leading-snug">Modifye taux an gro, taux an detay, estati, ak profil ou</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-emerald-600/70 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </button>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setLocation("/agents/apply")}
+        className="group relative overflow-hidden rounded-2xl bg-white border border-amber-200 shadow-sm hover:shadow-md transition-all duration-300 w-full text-left px-4 py-3.5 flex items-center gap-3"
+      >
+        <div className="relative w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+          <Crown className="h-5 w-5 text-amber-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <p className="text-sm font-bold text-amber-950 leading-tight">{t("wallet.agentApplyTitle")}</p>
+            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-800 uppercase tracking-wider">
+              {t("wallet.agentApplyBadge")}
+            </span>
+          </div>
+          <p className="text-xs text-amber-800/70 leading-snug">{t("wallet.agentApplySubtitle")}</p>
+        </div>
+        <ChevronRight className="h-5 w-5 text-amber-600/70 group-hover:translate-x-0.5 transition-all shrink-0" />
+      </button>
+
+      {canShowFMDeliveryLinks(user?.country) && (
+        <button
+          type="button"
+          onClick={() => setLocation("/delivery/apply")}
+          className="group relative overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 w-full text-left px-4 py-3.5 flex items-center gap-3"
+          style={{ background: "linear-gradient(135deg,#f59e0b 0%,#d97706 100%)" }}
+        >
+          <div className="relative w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Truck className="h-5 w-5 text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-sm font-bold text-white leading-tight">{t("nav.applyDriver")}</p>
+              <span className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">{t("wallet.driverBadge")}</span>
+            </div>
+            <p className="text-xs text-amber-50 leading-snug">{t("nav.deliveryAvailable")} — {t("nav.driverApproved").toLowerCase()}</p>
+          </div>
+          <ChevronRight className="h-5 w-5 text-white/80 group-hover:translate-x-0.5 transition-all shrink-0" />
+        </button>
+      )}
+      </div>
+        </>
+      )}
+
+
+      {/* Promo tab: show balance breakdown without full overview chrome */}
+      {showPromo && !showOverview && (
+      <div className="grid grid-cols-3 gap-2 lg:gap-3">
+        <div className="rounded-xl border border-emerald-100 bg-white p-2.5 shadow-sm">
+          <div className="flex items-center gap-1 mb-1.5">
+            <DollarSign className="h-3 w-3 text-emerald-600" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.availableLabel")}</p>
+          </div>
+          {isLoading ? (
+            <div className="h-5 w-14 bg-muted animate-pulse rounded" />
+          ) : (
+            <>
+              <p className="text-sm sm:text-base font-black text-foreground">${availableUsd.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.availableSub")}</p>
+            </>
+          )}
+        </div>
+        <div className="rounded-xl border border-violet-100 bg-white p-2.5 shadow-sm">
+          <div className="flex items-center gap-1 mb-1.5">
+            <Gift className="h-3 w-3 text-violet-500" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.promoBalanceLabel")}</p>
+          </div>
+          {isLoading ? (
+            <div className="h-5 w-14 bg-muted animate-pulse rounded" />
+          ) : (
+            <>
+              <p className="text-sm sm:text-base font-black text-violet-600">${(balance?.promoBalance ?? 0).toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.promoBalanceSub")}</p>
+            </>
+          )}
+        </div>
+        <div className={cn(
+          "rounded-xl border p-2.5 shadow-sm bg-white",
+          (balance?.unlockedBalance ?? 0) > 0 ? "border-amber-200" : "border-emerald-100"
+        )}>
+          <div className="flex items-center gap-1 mb-1.5">
+            <ArrowRightLeft className="h-3 w-3 text-amber-500" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">{t("wallet.unlockedLabel")}</p>
+          </div>
+          {isLoading ? (
+            <div className="h-5 w-14 bg-muted animate-pulse rounded" />
+          ) : (
+            <>
+              <p className="text-sm sm:text-base font-black text-amber-600">${(balance?.unlockedBalance ?? 0).toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{t("wallet.unlockedSub")}</p>
+            </>
+          )}
+        </div>
+      </div>
+      )}
+
+      {(showOverview || showPromo) && (
+        <>
       {/* ── Promo Actions (Unlock + Convert) ───────────────────────────────── */}
       {!purchasesDisabled && !isLoading && ((balance?.newUnlockableUsd ?? 0) > 0 || (balance?.unlockedBalance ?? 0) > 0) && (
-        <div className="rounded-xl border border-amber-200/70 dark:border-amber-700/40 bg-amber-50/30 dark:bg-amber-950/10 p-3 space-y-2.5">
-          <p className="text-xs font-bold uppercase tracking-widest text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+        <div className="rounded-xl border border-amber-200/70 bg-amber-50/40 p-3 space-y-2.5">
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-700 flex items-center gap-1.5">
             <Gift className="h-3.5 w-3.5" /> {t("wallet.promoActionsTitle")}
           </p>
 
-          {/* Unlock */}
           {(balance?.newUnlockableUsd ?? 0) > 0 && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -3321,7 +3462,7 @@ export default function WalletPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="shrink-0 h-7 text-xs border-amber-400 text-amber-600 hover:bg-amber-50"
+                className="shrink-0 h-7 text-xs border-amber-400 text-amber-700 hover:bg-amber-50"
                 disabled={promoUnlockMut.isPending}
                 onClick={() => promoUnlockMut.mutate()}
               >
@@ -3330,7 +3471,6 @@ export default function WalletPage() {
             </div>
           )}
 
-          {/* Convert */}
           {(balance?.unlockedBalance ?? 0) > 0 && (
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1 min-w-0">
@@ -3350,9 +3490,8 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* ── Promo Unlock Progress ───────────────────────────────────────────── */}
       {!purchasesDisabled && !isLoading && (balance?.promoBalance ?? 0) > 0 && (balance?.newUnlockableUsd ?? 0) === 0 && (
-        <div className="rounded-xl border border-border bg-card p-3">
+        <div className="rounded-xl border border-emerald-100 bg-white p-3 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-bold text-foreground">{t("wallet.promoUnlockProgress")}</p>
             <p className="text-xs text-muted-foreground font-mono">{t("wallet.promoUnlockProgressDetail", {
@@ -3360,9 +3499,9 @@ export default function WalletPage() {
               next: (20 - ((balance?.totalRealBoostSpend ?? 0) % 20)).toFixed(2)
             })}</p>
           </div>
-          <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-emerald-50 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-purple-500 to-amber-500 transition-all"
+              className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-amber-500 transition-all"
               style={{ width: `${Math.min(100, (((balance?.totalRealBoostSpend ?? 0) % 20) / 20) * 100)}%` }}
             />
           </div>
@@ -3370,182 +3509,30 @@ export default function WalletPage() {
         </div>
       )}
 
-      {/* ── Recharge / Retrait — bouton entry → choice screen ──────────────── */}
-      <><style>{`
-        @keyframes fmEntryPulse {
-          0%,100% { box-shadow:0 0 10px 2px rgba(99,102,241,0.3); }
-          50%     { box-shadow:0 0 28px 8px rgba(99,102,241,0.7); }
-        }
-        .fm-entry-btn { animation: fmEntryPulse 1.4s ease-in-out infinite; }
-      `}</style>
-      <button
-        type="button"
-        onClick={() => {
-          if (walletFundingDisabled) {
-            setCashoutRetraitOnly(false);
-            setCashoutMethod("agent");
-            navigateTo("cashout");
-          } else {
-            navigateTo("choice");
-          }
-        }}
-        className="fm-entry-btn w-full group relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-left shadow-lg"
-      >
-        <div className="px-4 py-4 flex items-center justify-between relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1">
-              <div className="w-9 h-9 rounded-xl bg-white/20 ring-2 ring-white/30 flex items-center justify-center">
-                <ArrowUpCircle className="h-5 w-5 text-white" />
-              </div>
-              <div className="w-9 h-9 rounded-xl bg-white/20 ring-2 ring-white/30 flex items-center justify-center">
-                <ArrowDownCircle className="h-5 w-5 text-white" />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-black text-white">
-                {walletFundingDisabled ? t("wallet.panelWithdrawTitle") : `${t("wallet.panelRechargeTitle")} · ${t("wallet.panelWithdrawTitle")}`}
-              </p>
-              <p className="text-[11px] text-white/75">
-                {walletFundingDisabled ? `${t("wallet.agentPickup")} · ${t("wallet.authorizedAgent")}` : t("wallet.panelRechargeSub")}
-              </p>
-            </div>
-          </div>
-          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-        </div>
-      </button></>
-
-      {!isNativeMobileApp() && <button
-        type="button"
-        onClick={() => setLocation("/loans")}
-        className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-700 p-[1.5px] shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
-      >
-        <div className="relative rounded-2xl bg-gradient-to-br from-indigo-600/95 via-blue-600 to-cyan-700 px-4 py-4 flex items-center gap-4 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-          <div className="relative w-12 h-12 rounded-xl bg-white/15 ring-2 ring-white/25 flex items-center justify-center shrink-0">
-            <DollarSign className="h-6 w-6 text-white" />
-            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center">
-              <CheckCircle className="h-2.5 w-2.5 text-white" />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-sm font-bold text-white leading-tight">{t("wallet.businessLoanTitle")}</p>
-              <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">{t("wallet.businessLoanBadge")}</span>
-            </div>
-            <p className="text-xs text-blue-200 leading-snug">{t("wallet.businessLoanDesc")}</p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-        </div>
-      </button>}
-
-      {/* ── Panel Ajan Otorize (ajan ki déjà apwouve) ───────────────────────── */}
-      {isApprovedAgent && (
-        <button
-          type="button"
-          onClick={() => setLocation("/agent")}
-          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 p-[1.5px] shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
-        >
-          <div className="relative rounded-2xl bg-gradient-to-br from-emerald-500/95 via-teal-600 to-cyan-700 px-4 py-4 flex items-center gap-4 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-            <div className="relative w-12 h-12 rounded-xl bg-white/15 ring-2 ring-white/25 flex items-center justify-center shrink-0">
-              <ShieldCheck className="h-6 w-6 text-white" />
-              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center">
-                <span className="text-[8px] font-black text-yellow-900">✓</span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <p className="text-sm font-bold text-white leading-tight">Panel Ajan Mwen</p>
-                <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">Otorize</span>
-              </div>
-              <p className="text-xs text-emerald-100 leading-snug">Modifye taux an gro, taux an detay, estati, ak profil ou</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-          </div>
-        </button>
-      )}
-
-      {/* ── Aplike pou Ajan Otorize ─────────────────────────────────────────── */}
-      <button
-        type="button"
-        onClick={() => setLocation("/agents/apply")}
-        className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-violet-700 to-purple-800 p-[1.5px] shadow-lg shadow-violet-500/20 hover:shadow-violet-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
-      >
-        <div className="relative rounded-2xl bg-gradient-to-br from-violet-600/95 via-violet-700 to-purple-800 px-4 py-4 flex items-center gap-4 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-          <div className="relative w-12 h-12 rounded-xl bg-white/15 ring-2 ring-white/25 flex items-center justify-center shrink-0">
-            <ShieldCheck className="h-6 w-6 text-white" />
-            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-400 flex items-center justify-center">
-              <Zap className="h-2.5 w-2.5 text-white" />
-            </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-sm font-bold text-white leading-tight">{t("wallet.agentApplyTitle")}</p>
-              <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">
-                {t("wallet.agentApplyBadge")}
-              </span>
-            </div>
-            <p className="text-xs text-violet-200 leading-snug">{t("wallet.agentApplySubtitle")}</p>
-          </div>
-          <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-        </div>
-      </button>
-
-      {/* ── Driver Application — Haiti only, without an admin bypass ───── */}
-      {canShowFMDeliveryLinks(user?.country) && (
-        <button
-          type="button"
-          onClick={() => setLocation("/delivery/apply")}
-          className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 via-amber-500 to-yellow-500 p-[1.5px] shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:shadow-xl transition-all duration-300 w-full text-left"
-        >
-          <div className="relative rounded-2xl bg-gradient-to-br from-orange-500/95 via-amber-500 to-yellow-500 px-4 py-4 flex items-center gap-4 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-            <div className="relative w-12 h-12 rounded-xl bg-white/15 ring-2 ring-white/25 flex items-center justify-center shrink-0">
-              <Truck className="h-6 w-6 text-white" />
-              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white/30 flex items-center justify-center">
-                <span className="text-[8px] font-black text-white">FM</span>
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <p className="text-sm font-bold text-white leading-tight">{t("nav.applyDriver")}</p>
-                <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[9px] font-bold text-white uppercase tracking-wider">{t("wallet.driverBadge")}</span>
-              </div>
-              <p className="text-xs text-orange-100 leading-snug">{t("nav.deliveryAvailable")} — {t("nav.driverApproved").toLowerCase()}</p>
-            </div>
-            <ChevronRight className="h-5 w-5 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
-          </div>
-        </button>
-      )}
-
-      {/* ── Compact Referral / Promo Card ──────────────────────────────────── */}
       {!purchasesDisabled && (referral?.referralCode ? (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+        <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/40 p-3">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
-              <Gift className="h-3.5 w-3.5 text-primary" />
+              <Gift className="h-3.5 w-3.5 text-emerald-700" />
               <p className="text-xs font-bold text-foreground">{t("wallet.promoTitle")}</p>
             </div>
             <button
               onClick={() => setShowReferralDetails(v => !v)}
-              className="text-xs text-primary hover:underline"
+              className="text-xs text-emerald-700 hover:underline"
             >
               {showReferralDetails ? "Less ▲" : "Learn more ▼"}
             </button>
           </div>
 
-          {/* Code row */}
           <div className="flex items-center gap-2 mb-2.5">
-            <div className="flex-1 bg-background border border-primary/25 rounded-lg px-3 py-1.5 font-mono text-sm font-bold tracking-[0.15em] text-primary text-center">
+            <div className="flex-1 bg-white border border-emerald-200 rounded-lg px-3 py-1.5 font-mono text-sm font-bold tracking-[0.15em] text-emerald-800 text-center">
               {referral.referralCode}
             </div>
             <button
               onClick={() => navigator.clipboard.writeText(referral.referralCode ?? "").then(() => toast({ title: t("wallet.promoCopied") }))}
-              className="w-8 h-8 rounded-lg border border-border bg-background hover:bg-muted flex items-center justify-center transition-colors"
+              className="w-8 h-8 rounded-lg border border-emerald-200 bg-white hover:bg-emerald-50 flex items-center justify-center transition-colors"
             >
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5 text-emerald-700" />
             </button>
             <button
               onClick={() => {
@@ -3553,43 +3540,41 @@ export default function WalletPage() {
                 if (navigator.share) { navigator.share({ title: "FLEXA MARKET", text }).catch(() => {}); }
                 else { navigator.clipboard.writeText(text).then(() => toast({ title: t("wallet.promoMsgCopied") })); }
               }}
-              className="w-8 h-8 rounded-lg border border-border bg-background hover:bg-muted flex items-center justify-center transition-colors"
+              className="w-8 h-8 rounded-lg border border-emerald-200 bg-white hover:bg-emerald-50 flex items-center justify-center transition-colors"
             >
-              <Share2 className="h-3.5 w-3.5" />
+              <Share2 className="h-3.5 w-3.5 text-emerald-700" />
             </button>
           </div>
 
-          {/* Compact 3-stat row */}
           <div className="grid grid-cols-3 gap-1.5">
-            <div className="bg-background/70 rounded-lg p-2 text-center">
+            <div className="bg-white rounded-lg p-2 text-center border border-emerald-100">
               <p className="text-sm font-black text-foreground">{referral.totalReferred}</p>
               <p className="text-xs text-muted-foreground">{t("wallet.registered")}</p>
             </div>
-            <div className="bg-background/70 rounded-lg p-2 text-center">
-              <p className="text-sm font-black text-purple-400">${parseFloat(String(referral.promoBalance ?? 0)).toFixed(2)}</p>
+            <div className="bg-white rounded-lg p-2 text-center border border-emerald-100">
+              <p className="text-sm font-black text-violet-600">${parseFloat(String(referral.promoBalance ?? 0)).toFixed(2)}</p>
               <p className="text-xs text-muted-foreground">{t("wallet.promoLocked")}</p>
             </div>
-            <div className="bg-background/70 rounded-lg p-2 text-center">
-              <p className="text-sm font-black text-amber-400">${parseFloat(String(referral.unlockedBalance ?? 0)).toFixed(2)}</p>
+            <div className="bg-white rounded-lg p-2 text-center border border-emerald-100">
+              <p className="text-sm font-black text-amber-600">${parseFloat(String(referral.unlockedBalance ?? 0)).toFixed(2)}</p>
               <p className="text-xs text-muted-foreground">{t("wallet.unlockedLabel")}</p>
             </div>
           </div>
 
-          {/* Expanded details */}
           {showReferralDetails && (
-            <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
+            <div className="mt-3 pt-3 border-t border-emerald-200/60 space-y-2">
               <p className="text-xs text-muted-foreground leading-relaxed">{t("wallet.promoDesc")}</p>
               <div className="flex items-start gap-1.5">
                 <Clock className="h-3 w-3 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-muted-foreground leading-snug">{t("wallet.pendingConvertDesc")}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-1">
-                <div className="bg-background/60 rounded-lg p-2 text-center">
-                  <p className="text-sm font-black text-green-400">{referral.bonusesPaid}</p>
+                <div className="bg-white rounded-lg p-2 text-center border border-emerald-100">
+                  <p className="text-sm font-black text-emerald-600">{referral.bonusesPaid}</p>
                   <p className="text-xs text-muted-foreground">{t("wallet.recharged20")}</p>
                 </div>
-                <div className="bg-background/60 rounded-lg p-2 text-center">
-                  <p className="text-sm font-black text-amber-400">{referral.pendingBonuses}</p>
+                <div className="bg-white rounded-lg p-2 text-center border border-emerald-100">
+                  <p className="text-sm font-black text-amber-600">{referral.pendingBonuses}</p>
                   <p className="text-xs text-muted-foreground">{t("wallet.pending")}</p>
                 </div>
               </div>
@@ -3597,15 +3582,19 @@ export default function WalletPage() {
           )}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground animate-pulse">{t("wallet.loadingPromo")}</div>
+        showPromo ? <div className="text-xs text-muted-foreground animate-pulse">{t("wallet.loadingPromo")}</div> : null
       ))}
+        </>
+      )}
 
+      {(showOverview || showTx) && (
+        <>
       {/* ── Recent Transactions ─────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{t("wallet.txHistory")}</p>
           {history && history.length > 0 && (
-            <button type="button" onClick={() => setLocation("/wallet/history")} className="text-xs text-primary font-semibold hover:underline">
+            <button type="button" onClick={() => setLocation("/wallet/history")} className="text-xs text-emerald-700 font-semibold hover:underline">
               {t("wallet.viewAll")}
             </button>
           )}
@@ -3627,7 +3616,7 @@ export default function WalletPage() {
               const { Icon } = meta;
               const isIn = tx.amountUsd > 0;
               return (
-                <div key={tx.id} className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
+                <div key={tx.id} className="rounded-xl border border-emerald-100 bg-white px-3 py-2.5 flex items-center gap-2.5 shadow-sm">
                   <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0", meta.iconColor)}>
                     <Icon style={{ width: 15, height: 15 }} />
                   </div>
@@ -3638,7 +3627,7 @@ export default function WalletPage() {
                     </p>
                   </div>
                   <div className="text-right shrink-0 space-y-0.5">
-                    <p className={cn("text-sm font-black", isIn ? "text-emerald-500" : "text-red-500")}>
+                    <p className={cn("text-sm font-black", isIn ? "text-emerald-600" : "text-red-500")}>
                       {isIn ? "+" : "-"}${Math.abs(tx.amountUsd).toFixed(2)}
                     </p>
                     {statusBadge(tx.status, t)}
@@ -3649,7 +3638,7 @@ export default function WalletPage() {
             {history.length > 5 && (
               <a
                 href="/wallet/history"
-                className="block text-center text-xs text-primary font-semibold py-2.5 rounded-xl border border-border hover:bg-accent transition-colors"
+                className="block text-center text-xs text-emerald-700 font-semibold py-2.5 rounded-xl border border-emerald-100 hover:bg-emerald-50 transition-colors"
               >
                 Wè {history.length - 5} lòt tranzaksyon →
               </a>
@@ -3658,22 +3647,23 @@ export default function WalletPage() {
         )}
       </div>
 
-      {/* ── Security notice (compact) ──────────────────────────────────────── */}
-      <div className="rounded-xl border border-amber-200/60 bg-amber-50/40 dark:bg-amber-950/15 px-3 py-2.5 flex items-center gap-2">
+      {showOverview && (
+      <div className="rounded-xl border border-amber-200/60 bg-amber-50/40 px-3 py-2.5 flex items-center gap-2">
         <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-        <p className="text-xs text-amber-700 dark:text-amber-400 leading-snug">
+        <p className="text-xs text-amber-800 leading-snug">
           <strong>{t("wallet.securityWay1Title")}</strong> — {t("wallet.securityWay1Desc")}
         </p>
       </div>
+      )}
 
-      {/* ── How it works (3 bullets) ───────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-card p-3">
+      {showOverview && (
+      <div className="rounded-xl border border-emerald-100 bg-white p-3 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2.5">{t("wallet.howItWorks")}</p>
         <div className="space-y-2">
           {([
-            { Icon: ArrowUpCircle, text: t("wallet.howTo1"), cls: "text-primary bg-primary/10" },
-            { Icon: Send, text: t("wallet.howTo3"), cls: "text-blue-500 bg-blue-500/10" },
-            { Icon: Zap, text: t("wallet.howTo4"), cls: "text-amber-500 bg-amber-500/10" },
+            { Icon: ArrowUpCircle, text: t("wallet.howTo1"), cls: "text-emerald-700 bg-emerald-50" },
+            { Icon: Send, text: t("wallet.howTo3"), cls: "text-emerald-600 bg-emerald-50" },
+            { Icon: Zap, text: t("wallet.howTo4"), cls: "text-amber-600 bg-amber-50" },
           ] as const).map(({ Icon, text, cls }, i) => (
             <div key={i} className="flex items-center gap-2.5 text-xs text-foreground">
               <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${cls}`}>
@@ -3684,23 +3674,23 @@ export default function WalletPage() {
           ))}
         </div>
       </div>
+      )}
 
-      {/* ── Cashout Requests ──────────────────────────────────────────────── */}
       <div id="wallet-withdrawals">
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
-            <ArrowDownCircle className="h-3.5 w-3.5 text-violet-500" /> {t("wallet.myWithdrawals")}
+            <ArrowDownCircle className="h-3.5 w-3.5 text-emerald-600" /> {t("wallet.myWithdrawals")}
           </p>
           {cashoutRequestsLoading ? (
             <p role="status" className="text-sm text-muted-foreground">{t("wallet.withdrawalsLoading")}</p>
           ) : cashoutRequestsError ? (
-            <div role="alert" className="rounded-xl border border-amber-400 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+            <div role="alert" className="rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm">
               <p>{t("wallet.withdrawalsLoadError")}</p>
               <Button type="button" variant="outline" className="mt-2" onClick={() => void refetchCashoutRequests()}>
                 {t("wallet.withdrawalsRetry")}
               </Button>
             </div>
           ) : cashoutRequests.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card p-3 text-sm text-muted-foreground">{t("wallet.noWithdrawals")}</p>
+            <p className="rounded-xl border border-emerald-100 bg-white p-3 text-sm text-muted-foreground shadow-sm">{t("wallet.noWithdrawals")}</p>
           ) : (
             <div className="space-y-1.5">
             {cashoutRequests.slice(0, 3).map((r: any) => {
@@ -3710,30 +3700,30 @@ export default function WalletPage() {
                 : ["paid", "approved", "refunded", "rejected"].includes(r.status) ? r.status
                 : r.status === "request_failed" ? "failed" : "unknown";
               return (
-              <div key={r.id} className="rounded-xl border border-border bg-card px-3 py-2.5 flex items-center gap-2.5">
+              <div key={r.id} className="rounded-xl border border-emerald-100 bg-white px-3 py-2.5 flex items-center gap-2.5 shadow-sm">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                  isPending ? "bg-amber-100 dark:bg-amber-900/30" :
-                  r.status === "approved" ? "bg-blue-100 dark:bg-blue-900/30" :
-                  r.status === "paid" ? "bg-green-100 dark:bg-green-900/30" :
-                  "bg-red-100 dark:bg-red-900/30"
+                  isPending ? "bg-amber-100" :
+                  r.status === "approved" ? "bg-blue-100" :
+                  r.status === "paid" ? "bg-emerald-100" :
+                  "bg-red-100"
                 }`}>
                   {r.method === "moncash"
-                    ? <Phone style={{ width: 14, height: 14 }} className={r.status === "paid" ? "text-green-400" : r.status === "rejected" ? "text-red-400" : r.status === "approved" ? "text-blue-400" : "text-amber-400"} />
-                    : <MapPin style={{ width: 14, height: 14 }} className={r.status === "paid" ? "text-green-400" : r.status === "rejected" ? "text-red-400" : r.status === "approved" ? "text-blue-400" : "text-amber-400"} />}
+                    ? <Phone style={{ width: 14, height: 14 }} className={r.status === "paid" ? "text-emerald-600" : r.status === "rejected" ? "text-red-500" : r.status === "approved" ? "text-blue-500" : "text-amber-500"} />
+                    : <MapPin style={{ width: 14, height: 14 }} className={r.status === "paid" ? "text-emerald-600" : r.status === "rejected" ? "text-red-500" : r.status === "approved" ? "text-blue-500" : "text-amber-500"} />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-xs font-semibold">{r.method === "moncash" ? "MonCash" : "Ajant"}</span>
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
-                      isPending ? "bg-amber-900/30 text-amber-300" :
-                      r.status === "approved" ? "bg-blue-900/30 text-blue-300" :
-                      r.status === "paid" ? "bg-green-900/30 text-green-300" :
-                      "bg-red-900/30 text-red-300"
+                      isPending ? "bg-amber-100 text-amber-700" :
+                      r.status === "approved" ? "bg-blue-100 text-blue-700" :
+                      r.status === "paid" ? "bg-emerald-100 text-emerald-700" :
+                      "bg-red-100 text-red-700"
                     }`}>
                       {t(`wallet.withdrawalStatus_${statusKey}`)}
                     </span>
                     {r.status === "approved" && r.otpCode && (
-                      <span className="font-mono font-black text-violet-400 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 px-1.5 py-0.5 rounded text-xs tracking-widest">
+                      <span className="font-mono font-black text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded text-xs tracking-widest">
                         {r.otpCode}
                       </span>
                     )}
@@ -3749,6 +3739,8 @@ export default function WalletPage() {
           </div>
           )}
       </div>
+        </>
+      )}
 
       {/* QR Modal */}
       {showQR && balance?.accountNumber && (

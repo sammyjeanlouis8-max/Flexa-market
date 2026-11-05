@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
 import ListingCard from "@/components/ListingCard";
+import BoostedDealCard from "@/components/BoostedDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ function formatPriceHome(listing: { price: number; country?: string | null; curr
 type NormalListing = {
   id: number;
   title: string;
+  description?: string | null;
   price: number;
   currency?: string | null;
   images: string[];
@@ -57,6 +59,8 @@ type NormalListing = {
   country?: string | null;
   condition: string;
   isBoosted: boolean;
+  boostExpiresAt?: string | null;
+  boostVideoUrl?: string | null;
   promaxGroup?: "booster_vip" | "booster_ordinary" | "vip" | "ordinary" | null;
   promaxPosition?: number | null;
   status: string;
@@ -64,8 +68,11 @@ type NormalListing = {
   sellerRating: number;
   sellerIsVerified: boolean;
   favoriteCount: number;
+  viewCount?: number;
+  sharesCount?: number;
   isFavorited?: boolean;
   createdAt: string;
+  category?: string | null;
   categoryIcon?: string | null;
   subcategory?: string | null;
   categorySlug?: string | null;
@@ -343,10 +350,18 @@ export default function Home() {
     }));
   }, [allListings, activeCategory]);
 
-  // Real boosted listings only — used for hero / deals (never invent promotions)
+  // Real boosted listings only — used for hero / deals (never invent promotions).
+  // Country eligibility is enforced server-side; re-check client-side so a paid
+  // boost can never bypass the selected marketplace country in this section.
   const boostedListings = useMemo(
-    () => allListings.filter((l) => l.isBoosted && (!activeCategory || l.categorySlug === activeCategory)),
-    [allListings, activeCategory],
+    () => allListings.filter((l) => {
+      if (!l.isBoosted) return false;
+      if (activeCategory && l.categorySlug !== activeCategory) return false;
+      if (l.boostExpiresAt && new Date(l.boostExpiresAt).getTime() <= Date.now()) return false;
+      if (!isAdmin && activeCountry && l.country && l.country !== activeCountry) return false;
+      return true;
+    }),
+    [allListings, activeCategory, activeCountry, isAdmin],
   );
   const heroListing = boostedListings[0] ?? allListings[0] ?? null;
 
@@ -973,24 +988,38 @@ export default function Home() {
           </section>
         )}
 
-        {/* === TODAY'S DEALS — real boosted listings only === */}
+        {/* === TODAY'S DEALS — full-width two-column boosted cards (no empty half) === */}
         {boostedListings.length > 0 && (
-          <section className="rounded-2xl border border-orange-200/80 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10 dark:border-orange-900/40 p-3">
-            <div className="flex items-center justify-between mb-2.5">
+          <section
+            className="rounded-2xl border border-orange-200/80 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10 dark:border-orange-900/40 p-3"
+            data-testid="todays-deals-section"
+          >
+            <div className="mb-2.5 flex items-center justify-between gap-2">
               <h2 className="text-base font-bold text-foreground">
                 {t("home.todaysDeals", { defaultValue: "Today's Deals" })}
               </h2>
-              <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-300">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-300">
+                <span aria-hidden>⚡</span>
                 {t("home.boostedListings", { defaultValue: "Boosted listings" })}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              {boostedListings.slice(0, 4).map((listing) => (
-                <div key={`deal-${listing.id}`} className="min-w-0">
-                  <ListingCard listing={listing} showAddToCart />
-                </div>
-              ))}
-            </div>
+            {boostedListings.length === 1 ? (
+              <BoostedDealCard listing={boostedListings[0]} indexLabel="1/1" />
+            ) : (
+              <div
+                className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                data-testid="todays-deals-carousel"
+              >
+                {boostedListings.slice(0, 8).map((listing, i, arr) => (
+                  <div key={`deal-${listing.id}`} className="w-[min(100%,560px)] shrink-0 snap-start sm:w-[min(92%,640px)]">
+                    <BoostedDealCard
+                      listing={listing}
+                      indexLabel={`${i + 1}/${Math.min(arr.length, 8)}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 

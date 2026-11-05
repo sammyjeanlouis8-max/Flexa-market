@@ -582,6 +582,12 @@ export default {
     relist: "Remettre en vente",
   },
   home: {
+    todaysDeals: "Offres du jour",
+    dealInfoFallback: "Ouvrez la page produit pour tous les détails du vendeur.",
+    dealVideoUnavailable: "Vidéo indisponible",
+    featuredBadge: "En vedette",
+    boostedListings: "Annonces boostées",
+    featuredProducts: "Produits en vedette",
     featured: "En vedette",
     justListed: "Récemment ajoutés",
     trending: "Tendances",

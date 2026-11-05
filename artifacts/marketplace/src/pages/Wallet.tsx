@@ -21,6 +21,7 @@ import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { HaitiCheckoutError, initiateHaitiCheckout } from "@/lib/haitiCheckout";
 import { canShowFMDeliveryLinks } from "@/contexts/delivery-navigation";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { walletChoiceMethodLines } from "@/lib/walletChoiceMethods";
 
 const VirtualCard = lazy(() =>
   import("./wallet/VirtualCardPanel").then((m) => ({ default: m.VirtualCard }))
@@ -2650,57 +2651,83 @@ export default function WalletPage() {
   }
 
   // =========================================================================
-  // ── CHOICE (Recharge / Retrait) ───────────────────────────────────────────
+  // ── CHOICE (Recharge / Cash Out selection — visual redesign only) ────────
   // =========================================================================
   if (step === "choice") {
+    // Method lines use saved account country only (user.country) — never GPS/IP.
+    const { recharge: rechargeMethods, withdraw: withdrawMethods } = walletChoiceMethodLines(isHaiti, {
+      monCash: t("wallet.methodMonCash", { defaultValue: "MonCash" }),
+      card: t("wallet.methodCard", { defaultValue: "Card" }),
+      agent: t("wallet.methodAgent", { defaultValue: "Agent" }),
+      crypto: t("wallet.methodCrypto", { defaultValue: "Crypto" }),
+      transfer: t("wallet.methodTransfer", { defaultValue: "Transfer" }),
+    });
+
     return (
-      <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+      <div
+        className="mx-auto w-full max-w-lg px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4"
+        data-testid="wallet-choice-page"
+      >
         <BackButton onClick={() => goBack()} />
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Wallet className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-black">{t("wallet.myWallet")}</h1>
+
+        <header className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0B1F3A]/10 text-[#0B1F3A] dark:bg-primary/15 dark:text-primary">
+              <Wallet className="h-5 w-5" aria-hidden />
+            </span>
+            <h1 className="text-[21px] sm:text-2xl font-bold tracking-tight text-[#0B1F3A] dark:text-foreground">
+              {t("wallet.choiceTitle", { defaultValue: "Choose an option" })}
+            </h1>
           </div>
-          <p className="text-sm text-muted-foreground">Chwazi opsyon ou an pou kontinye</p>
-        </div>
-        <style>{`
-          @keyframes fmColorSwap {
-            0%   { background: linear-gradient(135deg,#10b981,#06d6a0); }
-            25%  { background: linear-gradient(135deg,#3b82f6,#6366f1); }
-            50%  { background: linear-gradient(135deg,#ef4444,#f97316); }
-            75%  { background: linear-gradient(135deg,#ec4899,#8b5cf6); }
-            100% { background: linear-gradient(135deg,#10b981,#06d6a0); }
-          }
-          @keyframes fmGlowFlash {
-            0%,100% { box-shadow:0 0 8px 2px rgba(255,255,255,0.1); filter:brightness(1); }
-            50%     { box-shadow:0 0 36px 10px rgba(255,255,255,0.55); filter:brightness(1.6); }
-          }
-          .fm-choice-recharge {
-            animation: fmColorSwap 1.6s ease infinite, fmGlowFlash 0.8s ease-in-out infinite;
-          }
-          .fm-choice-recharge:hover { animation:none; background:linear-gradient(135deg,#059669,#2563eb); }
-          .fm-choice-retrait {
-            animation: fmColorSwap 1.6s ease infinite 0.8s, fmGlowFlash 0.8s ease-in-out infinite 0.4s;
-          }
-          .fm-choice-retrait:hover { animation:none; background:linear-gradient(135deg,#d97706,#dc2626); }
-        `}</style>
-        <div className="grid grid-cols-2 gap-4">
+          <p className="text-sm text-slate-500 dark:text-muted-foreground leading-snug">
+            {t("wallet.choiceSubtitle", {
+              defaultValue: "Select the transaction type you want to continue with",
+            })}
+          </p>
+        </header>
+
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
           <button
             type="button"
             onClick={() => navigateTo(isHaiti ? "topup" : "card")}
-            className="fm-choice-recharge group relative rounded-2xl shadow-xl text-left overflow-hidden"
+            className="group relative flex min-h-[152px] sm:min-h-[164px] flex-col rounded-2xl text-left overflow-hidden shadow-[0_6px_20px_rgba(16,185,129,0.18)] transition-[transform,filter] active:scale-[0.98] hover:brightness-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2"
+            style={{
+              background: "linear-gradient(165deg, #4ade80 0%, #22c55e 42%, #16a34a 100%)",
+            }}
+            data-testid="wallet-choice-recharge"
+            aria-label={t("wallet.panelRechargeTitle")}
           >
-            <div className="px-4 py-6 flex flex-col gap-3 relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-              <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
-                <ArrowUpCircle className="h-6 w-6 text-white" />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-12 opacity-40"
+              style={{
+                background:
+                  "radial-gradient(90% 100% at 30% 120%, rgba(255,255,255,0.45), transparent 65%)",
+              }}
+              aria-hidden
+            />
+            <div className="relative flex h-full flex-col gap-2.5 px-3.5 py-4 sm:px-4 sm:py-5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/35">
+                  <ArrowUpCircle className="h-5 w-5 text-white" strokeWidth={1.75} aria-hidden />
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 text-white/75 opacity-80 group-hover:translate-x-0.5 transition-transform" aria-hidden />
               </div>
-              <div>
-                <p className="text-base font-black text-white leading-tight">{t("wallet.panelRechargeTitle")}</p>
-                <p className="text-xs text-white/80 leading-snug mt-1">{t("wallet.panelRechargeSub")}</p>
+              <div className="mt-auto space-y-1 pr-1">
+                <p className="text-[15px] sm:text-base font-bold text-white leading-tight">
+                  {t("wallet.panelRechargeTitle")}
+                </p>
+                <p className="text-[11px] sm:text-xs text-white/90 leading-snug">
+                  {t("wallet.panelRechargeDesc", {
+                    defaultValue: "Add funds to your account",
+                  })}
+                </p>
+                <p className="text-[10px] sm:text-[11px] font-medium text-white/80 leading-snug pt-0.5">
+                  {rechargeMethods}
+                </p>
               </div>
             </div>
           </button>
+
           <button
             type="button"
             onClick={() => {
@@ -2708,16 +2735,40 @@ export default function WalletPage() {
               setCashoutMethod(isHaiti ? "moncash" : "agent");
               navigateTo("cashout");
             }}
-            className="fm-choice-retrait group relative rounded-2xl shadow-xl text-left overflow-hidden"
+            className="group relative flex min-h-[152px] sm:min-h-[164px] flex-col rounded-2xl text-left overflow-hidden shadow-[0_6px_20px_rgba(249,115,22,0.18)] transition-[transform,filter] active:scale-[0.98] hover:brightness-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60 focus-visible:ring-offset-2"
+            style={{
+              background: "linear-gradient(165deg, #fb923c 0%, #f97316 45%, #ea580c 100%)",
+            }}
+            data-testid="wallet-choice-cashout"
+            aria-label={t("wallet.panelWithdrawTitle")}
           >
-            <div className="px-4 py-6 flex flex-col gap-3 relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
-              <div className="w-12 h-12 rounded-xl bg-white/20 ring-2 ring-white/40 flex items-center justify-center">
-                <ArrowDownCircle className="h-6 w-6 text-white" />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-12 opacity-40"
+              style={{
+                background:
+                  "radial-gradient(90% 100% at 70% 120%, rgba(255,255,255,0.45), transparent 65%)",
+              }}
+              aria-hidden
+            />
+            <div className="relative flex h-full flex-col gap-2.5 px-3.5 py-4 sm:px-4 sm:py-5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/25 ring-1 ring-white/35">
+                  <ArrowDownCircle className="h-5 w-5 text-white" strokeWidth={1.75} aria-hidden />
+                </div>
+                <ChevronRight className="mt-1 h-4 w-4 text-white/75 opacity-80 group-hover:translate-x-0.5 transition-transform" aria-hidden />
               </div>
-              <div>
-                <p className="text-base font-black text-white leading-tight">{t("wallet.panelWithdrawTitle")}</p>
-                <p className="text-xs text-white/80 leading-snug mt-1">{t("wallet.panelWithdrawSub")}</p>
+              <div className="mt-auto space-y-1 pr-1">
+                <p className="text-[15px] sm:text-base font-bold text-white leading-tight">
+                  {t("wallet.panelWithdrawTitle")}
+                </p>
+                <p className="text-[11px] sm:text-xs text-white/90 leading-snug">
+                  {t("wallet.panelWithdrawDesc", {
+                    defaultValue: "Withdraw funds from your account",
+                  })}
+                </p>
+                <p className="text-[10px] sm:text-[11px] font-medium text-white/80 leading-snug pt-0.5">
+                  {withdrawMethods}
+                </p>
               </div>
             </div>
           </button>

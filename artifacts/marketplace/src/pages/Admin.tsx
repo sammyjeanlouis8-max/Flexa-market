@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useSearch, Link } from "wouter";
 import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import AdminCardCancellations from "@/components/AdminCardCancellations";
-import AdminAnalyticsDashboard from "@/components/admin/AdminAnalyticsDashboard";
+import AdminControlCenterDashboard from "@/components/admin/AdminControlCenterDashboard";
 import {
   Shield, Users, Package, Flag, DollarSign, Ban, Trash2, AlertTriangle,
   CheckCircle2, UserX, RotateCcw, Zap, Star, Crown, Activity,
@@ -2581,7 +2581,7 @@ export default function Admin() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground">
-            {isModerator ? t("adminDash.modTitle") : t("adminDash.title")}
+            {isModerator ? t("adminDash.modTitle") : t("adminControl.title")}
           </h1>
           <p className="text-xs text-muted-foreground">
             {isSuperAdmin ? t("adminDash.roleSuper") : isModerator ? t("adminDash.roleMod") : t("adminDash.roleAdmin")}
@@ -2595,30 +2595,35 @@ export default function Admin() {
         )}
       </div>
 
-      {/* Real traffic analytics + charts (admins / super admins) */}
-      {!isModerator && <AdminAnalyticsDashboard rangeDays={30} />}
+      {/* Control Center overview — real instrumented metrics only */}
+      {!isModerator && <AdminControlCenterDashboard />}
 
-      {/* Operations KPIs */}
-      {s && (
+      {/* Moderator-facing ops KPIs (admins use Control Center overview above) */}
+      {s && isModerator && (
         <section className="mb-4">
           <div className="mb-1.5 flex items-center gap-2 px-0.5">
             <BarChart3 className="h-3.5 w-3.5 text-muted-foreground" />
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("adminDash.opsTitle")}</p>
           </div>
           <div className="grid grid-cols-2 divide-x divide-y divide-border border border-border bg-background sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            <StatCard icon={Users} label={t("adminDash.users")} value={s.totalUsers} onClick={() => isModerator ? setAdminTab("users") : (loadWalletAdmin(), setShowUsersSheet(true))} />
-            {isModerator && <StatCard icon={Wifi} label={t("adminDash.onlineNow")} value={s.onlineUsers ?? 0} />}
+            <StatCard icon={Users} label={t("adminDash.users")} value={s.totalUsers} onClick={() => setAdminTab("users")} />
+            <StatCard icon={Wifi} label={t("adminDash.onlineNow")} value={s.onlineUsers ?? 0} />
             <StatCard icon={Package} label={t("adminDash.activeListings")} value={s.activeListings} onClick={() => setAdminTab("listings")} />
-            {!isModerator && <StatCard icon={Zap} label={t("adminDash.boosted")} value={s.boostedListings ?? 0} onClick={() => setAdminTab("boosts")} />}
-            {!isModerator && <StatCard icon={Star} label={t("adminDash.featured")} value={s.featuredListings ?? 0} onClick={() => setAdminTab("listings")} />}
             <StatCard icon={AlertTriangle} label={t("adminDash.flagged")} value={s.flaggedUsers ?? 0} alert onClick={() => setAdminTab("flagged")} />
             <StatCard icon={Flag} label={t("adminDash.reports")} value={s.pendingReports} alert onClick={() => setAdminTab("reports")} />
-            {!isModerator && <StatCard icon={Truck} label={t("adminDash.driversPending")} value={driverApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/driver-applications")} />}
-            {!isModerator && <StatCard icon={ShieldCheck} label={t("adminDash.agentsPending")} value={kycAgentApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/agent-applications")} />}
-            {!isModerator && <StatCard icon={Landmark} label={t("adminDash.loansPending")} value={loanAdminPending} alert onClick={() => goToTab("loans")} />}
-            {!isModerator && <StatCard icon={Briefcase} label={t("adminDash.employersPending")} value={employerApps.filter((a: any) => a.status === "pending").length} alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />}
-            {!isModerator && <StatCard icon={Crown} label={t("adminDash.flexaVip")} value={s?.activeSubscriptions ?? 0} alert={(s?.graceSubscriptions ?? 0) > 0} onClick={() => { loadAdminSubscriptions(); setAdminTab("subscriptions"); }} />}
           </div>
+        </section>
+      )}
+
+      {/* Admin attention strip — real pending queues only */}
+      {s && !isModerator && (
+        <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCard icon={Zap} label={t("adminDash.boosted")} value={s.boostedListings ?? 0} onClick={() => setAdminTab("boosts")} />
+          <StatCard icon={Star} label={t("adminDash.featured")} value={s.featuredListings ?? 0} onClick={() => setAdminTab("listings")} />
+          <StatCard icon={Truck} label={t("adminDash.driversPending")} value={driverApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/driver-applications")} />
+          <StatCard icon={ShieldCheck} label={t("adminDash.agentsPending")} value={kycAgentApps.filter((a: any) => a.status === "pending").length} alert onClick={() => setLocation("/admin/agent-applications")} />
+          <StatCard icon={Landmark} label={t("adminDash.loansPending")} value={loanAdminPending} alert onClick={() => goToTab("loans")} />
+          <StatCard icon={Briefcase} label={t("adminDash.employersPending")} value={employerApps.filter((a: any) => a.status === "pending").length} alert onClick={() => { loadEmployerApps(); setAdminTab("employer-apps"); }} />
         </section>
       )}
 

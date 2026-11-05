@@ -104,6 +104,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     labelKey: "adminNav.groupSystem",
     items: [
       { titleKey: "adminNav.fraud", href: "/admin/fraud", icon: Shield, hideFromModerator: true },
+      { titleKey: "adminNav.actions", href: "/admin/actions", icon: Shield, hideFromModerator: true },
       { titleKey: "adminNav.logs", href: "/admin?tab=logs", icon: Activity },
       { titleKey: "adminNav.settings", href: "/admin?tab=fees", icon: Settings, hideFromModerator: true },
     ],

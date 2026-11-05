@@ -15,7 +15,6 @@ import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -121,38 +120,42 @@ function AdminTopBar() {
     setLocation("/admin");
   }, [setLocation]);
 
+  // Match Flexa Market chat / marketplace chrome: dark-green bar under status bar,
+  // white Back control, orange accent on Dashboard.
+  const iconBtn =
+    "h-10 w-10 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white";
+
   return (
     <header
-      className="admin-console-header sticky top-0 z-30 flex shrink-0 items-center gap-1.5 border-b border-border bg-background/95 px-2 sm:px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      className="admin-console-header sticky top-0 z-30 flex shrink-0 items-center border-b border-black/20 bg-[hsl(152,65%,18%)] px-2 text-white sm:px-3"
       style={{
-        paddingTop: "max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px)",
-        minHeight: "calc(3.5rem + max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px))",
+        paddingTop: "max(env(safe-area-inset-top, 0px), var(--sat, 0px))",
+        minHeight: "calc(3.5rem + max(env(safe-area-inset-top, 0px), var(--sat, 0px)))",
       }}
       data-testid="admin-top-bar"
     >
-      <div className="flex h-14 w-full items-center gap-1.5">
+      <div className="flex h-14 w-full items-center gap-1">
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          className="h-10 w-10 shrink-0 rounded-full"
+          className={iconBtn}
           onClick={handleBack}
           aria-label={t("adminNav.back", { defaultValue: "Back" })}
           data-testid="admin-button-back"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-5 w-5" strokeWidth={2.25} />
         </Button>
         <SidebarTrigger
-          className="h-10 w-10 shrink-0 rounded-full"
+          className={cn(iconBtn, "[&_svg]:text-white")}
           aria-label={t("adminNav.menu", { defaultValue: "Admin menu" })}
           data-testid="admin-sidebar-trigger"
         />
-        <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:block" />
-        <div className="min-w-0 flex-1 px-1">
-          <p className="truncate text-sm font-semibold tracking-tight text-foreground">
-            {t("adminNav.consoleTitle")}
+        <div className="min-w-0 flex-1 px-1 text-center sm:text-left">
+          <p className="truncate text-sm font-bold tracking-tight text-white">
+            {t("adminControl.shellBrand")}
           </p>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-[11px] text-white/70">
             {displayName} · {roleLabel}
           </p>
         </div>
@@ -160,7 +163,7 @@ function AdminTopBar() {
           asChild
           variant="ghost"
           size="icon"
-          className="h-10 w-10 shrink-0 rounded-full"
+          className={cn(iconBtn, "text-[var(--flexa-orange)] hover:text-[var(--flexa-orange)]")}
           aria-label={t("adminNav.dashboard", { defaultValue: "Dashboard" })}
           data-testid="admin-button-home"
         >
@@ -172,7 +175,7 @@ function AdminTopBar() {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className={cn(iconBtn, "opacity-60")}
           aria-label={t("adminNav.notifications")}
           disabled
           title={t("adminNav.notificationsSoon")}
@@ -183,13 +186,17 @@ function AdminTopBar() {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className={iconBtn}
           aria-label={resolvedDark ? "Light mode" : "Dark mode"}
           onClick={() => setTheme(resolvedDark ? "light" : "dark")}
         >
           {resolvedDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
-        <Button asChild variant="outline" size="sm" className="hidden h-8 gap-1 lg:inline-flex">
+        <Button
+          asChild
+          size="sm"
+          className="hidden h-8 gap-1 border-0 bg-[var(--flexa-orange)] text-white hover:bg-[var(--flexa-orange-deep)] lg:inline-flex"
+        >
           <Link href="/">
             <Home className="h-3.5 w-3.5" />
             {t("adminNav.backToSite")}
@@ -214,11 +221,13 @@ export default function AdminShell({ children }: { children: ReactNode }) {
       <Sidebar collapsible="icon" variant="sidebar" className="border-r border-sidebar-border">
         <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
           <Link href="/admin" className="flex items-center gap-2.5 rounded-md px-1 py-1 hover:bg-sidebar-accent">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--flexa-green)] text-white shadow-sm">
               <ShieldMark />
             </div>
             <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-              <p className="truncate text-sm font-bold leading-tight">Flexa Admin</p>
+              <p className="truncate text-sm font-bold leading-tight tracking-tight">
+                {t("adminControl.shellBrand")}
+              </p>
               <p className="truncate text-[10px] text-muted-foreground">
                 {isSuperAdmin ? t("adminNav.roleSuper") : t("adminNav.roleStaff")}
               </p>

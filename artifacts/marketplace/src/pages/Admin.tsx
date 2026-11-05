@@ -836,7 +836,10 @@ export default function Admin() {
         }
       } catch {}
       if ((user as any)?.isSuperAdmin) {
-        try { const opts = await adminFetch("/api/admin/scope-options", "GET"); setScopeOptions(opts); } catch {}
+        try {
+          const opts = await adminFetch("/api/admin/scope-options", "GET");
+          setScopeOptions(Array.isArray(opts) ? opts : []);
+        } catch {}
       }
     })();
   }, [user, hasAdminPanelAccess]);
@@ -4494,7 +4497,7 @@ export default function Admin() {
             </div>
 
             {/* Totals */}
-            {commissionSummary && (
+            {commissionSummary?.totals && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-card border border-border rounded-xl p-4">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Orders</div>

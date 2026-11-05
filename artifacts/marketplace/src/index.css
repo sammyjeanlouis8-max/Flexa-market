@@ -391,6 +391,17 @@ main {
     padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
   }
 
+  /* Admin console sticky header — keep controls below iPhone status bar / notch */
+  .admin-console-header {
+    padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px);
+    box-sizing: border-box;
+  }
+
+  .admin-console-shell {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   /* Message scroll area — fills remaining space between header and input */
   .chat-messages-scroll {
     flex: 1;

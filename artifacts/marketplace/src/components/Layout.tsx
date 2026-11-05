@@ -958,7 +958,13 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   if (isAdminConsole) {
     return (
       <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-        <div className="app-shell admin-console-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col min-h-dvh">
+        <div
+          className="app-shell admin-console-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col min-h-dvh"
+          style={{
+            // Keep shell below notch/status bar; AdminTopBar also pads for sticky header.
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
+        >
           <AdminShell>{children}</AdminShell>
         </div>
       </DeliveryMenuCountryContext.Provider>

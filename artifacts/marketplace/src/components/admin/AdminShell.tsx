@@ -1,10 +1,12 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
+  ArrowLeft,
   Bell,
   ChevronLeft,
   Home,
+  LayoutDashboard,
   LogOut,
   Moon,
   Sun,
@@ -98,51 +100,102 @@ function AdminTopBar() {
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { displayName, roleLabel } = useAdminRoleFlags();
+  const [, setLocation] = useLocation();
   const resolvedDark =
     theme === "dark" ||
     (theme === "system" &&
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-color-scheme: dark)").matches);
 
+  const handleBack = useCallback(() => {
+    // Prefer browser history when there is a prior page.
+    // Safe fallback: admin dashboard (never leave the user stranded).
+    try {
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setLocation("/admin");
+  }, [setLocation]);
+
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mx-1 h-5" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold tracking-tight text-foreground">
-          {t("adminNav.consoleTitle")}
-        </p>
-        <p className="truncate text-[11px] text-muted-foreground">
-          {displayName} · {roleLabel}
-        </p>
+    <header
+      className="admin-console-header sticky top-0 z-30 flex shrink-0 items-center gap-1.5 border-b border-border bg-background/95 px-2 sm:px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      style={{
+        paddingTop: "max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px)",
+        minHeight: "calc(3.5rem + max(env(safe-area-inset-top, 0px), var(--sat, 0px), 8px))",
+      }}
+      data-testid="admin-top-bar"
+    >
+      <div className="flex h-14 w-full items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-full"
+          onClick={handleBack}
+          aria-label={t("adminNav.back", { defaultValue: "Back" })}
+          data-testid="admin-button-back"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <SidebarTrigger
+          className="h-10 w-10 shrink-0 rounded-full"
+          aria-label={t("adminNav.menu", { defaultValue: "Admin menu" })}
+          data-testid="admin-sidebar-trigger"
+        />
+        <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:block" />
+        <div className="min-w-0 flex-1 px-1">
+          <p className="truncate text-sm font-semibold tracking-tight text-foreground">
+            {t("adminNav.consoleTitle")}
+          </p>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {displayName} · {roleLabel}
+          </p>
+        </div>
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 shrink-0 rounded-full"
+          aria-label={t("adminNav.dashboard", { defaultValue: "Dashboard" })}
+          data-testid="admin-button-home"
+        >
+          <Link href="/admin">
+            <LayoutDashboard className="h-5 w-5" />
+          </Link>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          aria-label={t("adminNav.notifications")}
+          disabled
+          title={t("adminNav.notificationsSoon")}
+        >
+          <Bell className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          aria-label={resolvedDark ? "Light mode" : "Dark mode"}
+          onClick={() => setTheme(resolvedDark ? "light" : "dark")}
+        >
+          {resolvedDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+        <Button asChild variant="outline" size="sm" className="hidden h-8 gap-1 lg:inline-flex">
+          <Link href="/">
+            <Home className="h-3.5 w-3.5" />
+            {t("adminNav.backToSite")}
+          </Link>
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        aria-label={t("adminNav.notifications")}
-        disabled
-        title={t("adminNav.notificationsSoon")}
-      >
-        <Bell className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        aria-label={resolvedDark ? "Light mode" : "Dark mode"}
-        onClick={() => setTheme(resolvedDark ? "light" : "dark")}
-      >
-        {resolvedDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </Button>
-      <Button asChild variant="outline" size="sm" className="hidden h-8 gap-1 sm:inline-flex">
-        <Link href="/">
-          <Home className="h-3.5 w-3.5" />
-          {t("adminNav.backToSite")}
-        </Link>
-      </Button>
     </header>
   );
 }

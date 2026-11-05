@@ -3293,6 +3293,8 @@ export default {
     consoleTitle: "Administration console",
     roleSuper: "Super Admin",
     roleStaff: "Staff access",
+    back: "Back",
+    menu: "Admin menu",
     backToSite: "Back to site",
     signOut: "Sign out",
     notifications: "Notifications",

@@ -58,7 +58,9 @@ export default {
     shippingFeeBold: "are required",
     shippingFeePost: "and will be added at the Delivery step.",
     videoFeedSeoDesc: "Watch promotional product videos from Haiti. Shop easily on FLEXA MARKET.",
-  },
+  
+    easyReturns: "Easy Returns",
+},
   footer: {
     tagline: "The community marketplace — buy, sell, and find work near you.",
     explore: "Explore",
@@ -140,7 +142,12 @@ export default {
     driverPending: "⏳ Application Pending",
     driverRejected: "❌ Application Rejected",
     driverSuspended: "⚠️ Account Suspended",
-  },
+  
+    cart: "Cart",
+    categories: "Categories",
+    all: "All",
+    helpCenter: "Help Center",
+},
   videoFeed: {
     title: "Promotional Videos",
     follow: "Follow",
@@ -515,7 +522,23 @@ export default {
     loadingBalance: "Loading balance…",
     directDeduction: "Deducted automatically — no need to enter a number",
     insufficientBalance: "Insufficient balance — you need ${{amount}}",
-  },
+  
+    quantity: "Quantity",
+    freeShipping: "Free Shipping",
+    addToWishlist: "Add to Wishlist",
+    hoverToZoom: "Hover to zoom",
+    fullscreen: "Fullscreen",
+    specifications: "Specifications",
+    reviews: "Reviews",
+    qa: "Q&A",
+    relatedProducts: "Related products",
+    reviewsHint: "Ratings reflect this seller’s overall marketplace reputation.",
+    sellerRating: "Seller rating",
+    support: "Support",
+    blockUser: "Block user",
+    blocking: "Blocking…",
+    reportListing: "Report listing",
+},
   buttons: {
     buyNow: "Buy Now",
     messageSeller: "Message Seller",
@@ -2261,7 +2284,9 @@ export default {
     visualSearchLowConfidence: "Could not identify item clearly. Try a clearer photo.",
     visualSearchError: "Could not analyze image. Try again.",
     visualSearchTip: "Tip: Center the item with good lighting for best results",
-  },
+  
+    available: "available",
+},
   orders: {
     title: "My Orders",
     subtitle: "Track your purchases",
@@ -4605,7 +4630,9 @@ export default {
     discountApplied: "Discount −${{amount}} applied",
     variant: "Standard",
     itemTotal: "Total:",
-  },
+  
+    addToCart: "Add to Cart",
+},
   common: {
     net: "Net",
     error: "Error",

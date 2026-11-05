@@ -77,7 +77,12 @@ export default {
     driverPending: "⏳ Solicitud pendiente",
     driverRejected: "❌ Solicitud rechazada",
     driverSuspended: "⚠️ Cuenta suspendida",
-  },
+  
+    cart: "Carrito",
+    categories: "Categorías",
+    all: "Todo",
+    helpCenter: "Centro de ayuda",
+},
   jobs: {
     title: "Trabajos",
     subtitle: "Publica trabajos que otros pueden tomar, o toma uno cerca de ti.",
@@ -388,7 +393,23 @@ export default {
     loadingBalance: "Cargando saldo…",
     directDeduction: "Deducido automáticamente — no es necesario ingresar un número",
     insufficientBalance: "Saldo insuficiente — necesitas ${{amount}}",
-  },
+  
+    quantity: "Cantidad",
+    freeShipping: "Envío gratis",
+    addToWishlist: "Añadir a la lista de deseos",
+    hoverToZoom: "Pasa el cursor para ampliar",
+    fullscreen: "Pantalla completa",
+    specifications: "Especificaciones",
+    reviews: "Reseñas",
+    qa: "Preguntas",
+    relatedProducts: "Productos relacionados",
+    reviewsHint: "Las valoraciones reflejan la reputación general de este vendedor en el marketplace.",
+    sellerRating: "Valoración del vendedor",
+    support: "Soporte",
+    blockUser: "Bloquear usuario",
+    blocking: "Bloqueando…",
+    reportListing: "Reportar anuncio",
+},
   buttons: {
     buyNow: "Comprar ahora",
     messageSeller: "Contactar vendedor",
@@ -1837,7 +1858,9 @@ export default {
     visualSearchLowConfidence: "No se pudo identificar el artículo claramente. Intente con una foto más clara.",
     visualSearchError: "No se pudo analizar la imagen. Intente de nuevo.",
     visualSearchTip: "Consejo: Centre el artículo con buena iluminación para mejores resultados",
-  },
+  
+    available: "disponibles",
+},
   orders: {
     title: "Mis Pedidos",
     subtitle: "Sigue tus compras",
@@ -2752,7 +2775,9 @@ export default {
     shippingFeeBold: "son obligatorios",
     shippingFeePost: "y se añadirán en el paso de Entrega.",
     videoFeedSeoDesc: "Mira videos promocionales de productos desde Haití. Compra fácilmente en FLEXA MARKET.",
-  },
+  
+    easyReturns: "Devoluciones fáciles",
+},
   videoFeed: {
     title: "Solicitudes pendientes — Acción requerida",
     loading: "Cargando…",
@@ -4080,7 +4105,9 @@ export default {
     discountApplied: "Descuento de -${{amount}} aplicado",
     variant: "Estándar",
     itemTotal: "Total:",
-  },
+  
+    addToCart: "Añadir al carrito",
+},
   common: {
     net: "Neto",
     error: "Error",

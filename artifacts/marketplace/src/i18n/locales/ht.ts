@@ -58,7 +58,9 @@ export default {
     shippingFeeBold: "obligatwa",
     shippingFeePost: "pral ajoute nan etap Livrezon.",
     videoFeedSeoDesc: "Gade videyo pwodwi ki fè pwomasyon ann Ayiti. Achte fasil sou FLEXA MARKET.",
-  },
+  
+    easyReturns: "Retou fasil",
+},
   nav: {
     home: "Akèy",
     main: "Prensipal",
@@ -100,7 +102,12 @@ export default {
     driverPending: "⏳ Aplikasyon an Kous",
     driverRejected: "❌ Demann Refisé",
     driverSuspended: "⚠️ Kont Suspann",
-  },
+  
+    cart: "Panye",
+    categories: "Kategori",
+    all: "Tout",
+    helpCenter: "Sant Èd",
+},
   videoFeed: {
     title: "Videyo Pwomosyon",
     follow: "Swiv",
@@ -515,7 +522,23 @@ export default {
     loadingBalance: "Chaje balans…",
     directDeduction: "Dédwi dirèkteman — pa bezwen antre nimewo",
     insufficientBalance: "Balans pa ase — ou bezwen ${{amount}}",
-  },
+  
+    quantity: "Kantite",
+    freeShipping: "Livrezon gratis",
+    addToWishlist: "Ajoute nan lis dezi",
+    hoverToZoom: "Pase sourit la pou agrandi",
+    fullscreen: "Plen ekran",
+    specifications: "Espesifikasyon",
+    reviews: "Revizyon",
+    qa: "K&R",
+    relatedProducts: "Pwodwi ki sanble",
+    reviewsHint: "Nòt yo reflete repitasyon jeneral vandè sa a sou marketplace la.",
+    sellerRating: "Nòt vandè",
+    support: "Sipò",
+    blockUser: "Bloke itilizatè",
+    blocking: "Ap bloke…",
+    reportListing: "Rapòte anons lan",
+},
   buttons: {
     buyNow: "Achte kounye a",
     messageSeller: "Voye mesaj vandè",
@@ -2269,7 +2292,9 @@ export default {
     visualSearchLowConfidence: "Pa ka idantifye atik la klèman. Eseye yon foto ki pi klè.",
     visualSearchError: "Pa ka analize imaj la. Eseye ankò.",
     visualSearchTip: "Konsèy: Mete atik la nan mitan avèk bon limyè pou pi bon rezilta",
-  },
+  
+    available: "disponib",
+},
   orders: {
     title: "Kòmand Mwen",
     subtitle: "Swiv acha ou yo",
@@ -4606,7 +4631,9 @@ export default {
     discountApplied: "Reduksyon −${{amount}} aplike",
     variant: "Nòmal",
     itemTotal: "Total:",
-  },
+  
+    addToCart: "Ajoute nan panye",
+},
   common: {
     net: "Nèt",
     error: "Erè",

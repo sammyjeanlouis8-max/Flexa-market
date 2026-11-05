@@ -77,7 +77,12 @@ export default {
     driverPending: "⏳ Aplicação pendente",
     driverRejected: "❌ Aplicação rejeitada",
     driverSuspended: "⚠️ Conta suspensa",
-  },
+  
+    cart: "Carrinho",
+    categories: "Categorias",
+    all: "Tudo",
+    helpCenter: "Central de ajuda",
+},
   jobs: {
     title: "Trabalhos",
     subtitle: "Publique trabalhos que outros podem pegar, ou pegue um perto de você.",
@@ -388,7 +393,23 @@ export default {
     loadingBalance: "Carregando saldo…",
     directDeduction: "Deduzido automaticamente — não é necessário inserir um número",
     insufficientBalance: "Saldo insuficiente — você precisa de ${{amount}}",
-  },
+  
+    quantity: "Quantidade",
+    freeShipping: "Frete grátis",
+    addToWishlist: "Adicionar à lista de desejos",
+    hoverToZoom: "Passe o mouse para ampliar",
+    fullscreen: "Tela cheia",
+    specifications: "Especificações",
+    reviews: "Avaliações",
+    qa: "Perguntas",
+    relatedProducts: "Produtos relacionados",
+    reviewsHint: "As avaliações refletem a reputação geral deste vendedor no marketplace.",
+    sellerRating: "Avaliação do vendedor",
+    support: "Suporte",
+    blockUser: "Bloquear usuário",
+    blocking: "Bloqueando…",
+    reportListing: "Denunciar anúncio",
+},
   buttons: {
     buyNow: "Comprar agora",
     messageSeller: "Contatar vendedor",
@@ -1837,7 +1858,9 @@ export default {
     visualSearchLowConfidence: "Não foi possível identificar o item claramente. Tente uma foto mais clara.",
     visualSearchError: "Não foi possível analisar a imagem. Tente novamente.",
     visualSearchTip: "Dica: Centralize o item com boa iluminação para melhores resultados",
-  },
+  
+    available: "disponíveis",
+},
   orders: {
     title: "Meus Pedidos",
     subtitle: "Acompanhe suas compras",
@@ -2522,7 +2545,9 @@ export default {
     shippingFeeBold: "são necessárias",
     shippingFeePost: "e serão adicionadas na etapa de Entrega.",
     videoFeedSeoDesc: "Assista a vídeos promocionais de produtos do Haiti. Compre facilmente na FLEXA MARKET.",
-  },
+  
+    easyReturns: "Devoluções fáceis",
+},
   videoFeed: {
     title: "Solicitações pendentes — Ação necessária",
     loading: "Carregando…",
@@ -4057,7 +4082,9 @@ export default {
     discountApplied: "Desconto de -${{amount}} aplicado",
     variant: "Padrão",
     itemTotal: "Total:",
-  },
+  
+    addToCart: "Adicionar ao carrinho",
+},
   common: {
     net: "Líquido",
     error: "Erro",

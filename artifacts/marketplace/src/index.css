@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -1029,4 +1029,86 @@ main {
 @media (min-width: 768px) {
   body:has(.flexa-music-shell) { background: #100d16 !important; }
   .flexa-music-shell { width: 100%; max-width: none; min-height: 100dvh; border-left:1px solid rgba(255,255,255,.04); border-right:1px solid rgba(255,255,255,.04); }
+}
+
+/* ── Auth shell — matches Flexa Market login/signup reference ──────────────── */
+.auth-shell {
+  --auth-bg: #ffffff;
+  --auth-panel: #ffffff;
+  --auth-fg: #0f1b33;
+  --auth-muted: #6b7280;
+  --auth-border: #e5e7eb;
+  --auth-accent: #f97316;
+  --auth-accent-hover: #ea6c0f;
+  --auth-input-bg: #ffffff;
+  font-family: "Outfit", "DM Sans", system-ui, sans-serif;
+  color-scheme: light;
+}
+.auth-shell .auth-form-title,
+.auth-shell .auth-brand-title,
+.auth-shell .auth-wordmark {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+  letter-spacing: -0.02em;
+}
+.auth-shell .auth-wordmark { letter-spacing: 0.14em; }
+.auth-brand-panel {
+  background:
+    radial-gradient(90% 70% at 85% 35%, rgba(56, 189, 248, 0.22) 0%, transparent 55%),
+    radial-gradient(70% 55% at 70% 80%, rgba(249, 115, 22, 0.16) 0%, transparent 50%),
+    linear-gradient(165deg, #071428 0%, #0c1c38 42%, #081225 100%);
+  color: #fff;
+}
+.auth-brand-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(closest-side at 78% 42%, rgba(56, 189, 248, 0.28), transparent 72%),
+    radial-gradient(closest-side at 20% 10%, rgba(249, 115, 22, 0.12), transparent 60%);
+  animation: auth-glow 16s ease-in-out infinite alternate;
+}
+.auth-globe-wrap {
+  filter: drop-shadow(0 12px 28px rgba(14, 165, 233, 0.28));
+}
+@keyframes auth-glow {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  to { transform: translate3d(1.5%, -1%, 0) scale(1.03); opacity: 0.92; }
+}
+.auth-form-surface input,
+.auth-form-surface select,
+.auth-form-surface textarea {
+  min-height: 48px;
+  border-radius: 12px !important;
+  border-color: var(--auth-border) !important;
+  background: var(--auth-input-bg) !important;
+  font-size: 16px !important; /* prevent iOS zoom */
+  color: var(--auth-fg);
+}
+.auth-form-surface input:focus-visible,
+.auth-form-surface select:focus-visible {
+  border-color: color-mix(in srgb, var(--auth-accent) 50%, var(--auth-border)) !important;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16);
+}
+/* Circular EULA control to match reference */
+.auth-form-surface button[role="checkbox"] {
+  margin-top: 2px;
+  border-radius: 9999px !important;
+}
+@media (max-width: 359px) {
+  .auth-shell .auth-brand-title { font-size: 1.35rem !important; }
+  .auth-shell .auth-form-title { font-size: 1.4rem; }
+  .auth-globe-wrap svg { width: 5.75rem !important; height: 5.75rem !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand-atmosphere { animation: none; }
+}
+/* Keep intended light auth chrome even under dark OS preference */
+@media (prefers-color-scheme: dark) {
+  .auth-shell {
+    background: #ffffff;
+    color: #0f1b33;
+  }
+  .auth-shell main {
+    background: #ffffff !important;
+  }
 }

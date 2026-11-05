@@ -2647,6 +2647,46 @@ export async function runStartupMigrations(): Promise<void> {
   });
   migrations.push({ name: "promo_purchase_commissions.referrer_idx", sql: "CREATE INDEX IF NOT EXISTS ppc_referrer_idx ON promo_purchase_commissions(referrer_user_id, cycle_month, status)" });
 
+  // ── Flexa AI usage + FlexaBot audit (support chatbot) ───────────────────────
+  migrations.push({
+    name: "flexa_ai_usage.v1",
+    sql: `CREATE TABLE IF NOT EXISTS flexa_ai_usage (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      capability TEXT NOT NULL,
+      day DATE NOT NULL,
+      model TEXT,
+      provider TEXT,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexa_ai_usage.idx_user_day",
+    sql: "CREATE INDEX IF NOT EXISTS flexa_ai_usage_user_day_idx ON flexa_ai_usage(user_id, capability, day)",
+  });
+  migrations.push({
+    name: "flexabot_audit.v1",
+    sql: `CREATE TABLE IF NOT EXISTS flexabot_audit (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      intent TEXT,
+      lang TEXT,
+      ok BOOLEAN NOT NULL DEFAULT FALSE,
+      provider TEXT,
+      model TEXT,
+      input_chars INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      deep_links TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "flexabot_audit.idx_user",
+    sql: "CREATE INDEX IF NOT EXISTS flexabot_audit_user_idx ON flexabot_audit(user_id, created_at DESC)",
+  });
+
   // ── Seed extra Haitian test users with phone numbers ────────────────────────
   // These accounts let super-admins see a realistic SMS-broadcast recipient list
   // without needing real buyers. Emails & phones are fake; password is a bcrypt

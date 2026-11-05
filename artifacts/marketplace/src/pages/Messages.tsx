@@ -205,7 +205,7 @@ function ConvList({
         touchAction: "pan-y",
         overscrollBehaviorY: "contain",
         /* Clear fixed mobile bottom nav without wasting space on desktop */
-        paddingBottom: "max(8px, calc(64px + env(safe-area-inset-bottom, 0px)))",
+        paddingBottom: "max(8px, calc(56px + env(safe-area-inset-bottom, 0px)))",
       }}
     >
       {convs.map(conv => {

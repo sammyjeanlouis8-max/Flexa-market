@@ -734,7 +734,7 @@ export default function Cart() {
           data-testid="cart-checkout-bar"
           className="fixed left-0 right-0 z-[60]"
           style={{
-            bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+            bottom: "calc(56px + env(safe-area-inset-bottom, 0px))",
             background: "rgba(248,250,252,0.98)",
             backdropFilter: "blur(20px)",
             borderTop: `1px solid rgba(249,115,22,0.2)`,

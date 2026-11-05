@@ -304,6 +304,11 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
     // different ordering for videos with similar engagement scores.
     const seed = Math.abs(parseInt(String(req.query.seed ?? "0"), 10)) || 0;
     const selectedId = Math.max(0, parseInt(String(req.query.selected ?? "0"), 10) || 0);
+    // Discovery filters: all (default ranking) | trending | new | mine
+    const sortRaw = String(req.query.sort ?? "all").trim().toLowerCase();
+    const sort = (["all", "trending", "new", "mine"].includes(sortRaw) ? sortRaw : "all") as
+      "all" | "trending" | "new" | "mine";
+    const searchQ = String(req.query.q ?? "").trim().slice(0, 80);
 
     // ── Mandatory boost conditions (cannot be bypassed) ─────────────────────
     // Requirement §2: isBoosted, within [boostStartAt, boostExpiresAt], video present.
@@ -320,12 +325,82 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       )` as ReturnType<typeof eq>,
     ];
 
+    // My Videos — authenticated owner's active promotional boosts only
+    if (sort === "mine") {
+      if (!req.userId) {
+        res.json({
+          noCountry: false,
+          videos: [],
+          hasMore: false,
+          nextPage: null,
+          viewingCountry: null,
+          sort,
+        });
+        return;
+      }
+      conditions.push(eq(listingsTable.sellerId, req.userId) as ReturnType<typeof eq>);
+    }
+
+    if (searchQ) {
+      const like = `%${searchQ.replace(/[%_]/g, "")}%`;
+      conditions.push(
+        sql`(
+          ${listingsTable.title} ILIKE ${like}
+          OR COALESCE(${listingsTable.description}, '') ILIKE ${like}
+          OR COALESCE(${usersTable.name}, '') ILIKE ${like}
+        )` as ReturnType<typeof eq>,
+      );
+    }
+
     // ── Exclude already-seen videos ─────────────────────────────────────────
     if (excludeIds.length > 0) {
       conditions.push(
         sql`${listingsTable.id} NOT IN (${sql.join(excludeIds.map(id => sql`${id}`), sql`,`)})` as ReturnType<typeof eq>,
       );
     }
+
+    const pinSelected = sql<number>`CASE WHEN ${selectedId > 0} AND ${listingsTable.id} = ${selectedId} THEN 0 ELSE 1 END`;
+    const engagementScore = sql`(
+      ${listingsTable.viewCount}
+      + ${listingsTable.favoriteCount} * 3
+      + ${listingsTable.sharesCount} * 2
+      + (
+          SELECT COUNT(*)::int FROM comments
+          WHERE comments.listing_id = ${listingsTable.id}
+            AND comments.is_deleted = false
+        ) * 2
+      + CASE
+          WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '24 hours' THEN 200
+          WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '72 hours' THEN 80
+          WHEN ${listingsTable.createdAt}    > NOW() - INTERVAL '7 days'   THEN 30
+          ELSE 0
+        END
+      + CASE
+          WHEN ${seed} = 0 THEN (RANDOM() * 50)::int
+          ELSE (ABS(SIN(${listingsTable.id}::float * ${seed}::float)) * 50)::int
+        END
+    )`;
+    const trendingScore = sql`(
+      ${listingsTable.viewCount}
+      + ${listingsTable.favoriteCount} * 5
+      + ${listingsTable.sharesCount} * 4
+      + (
+          SELECT COUNT(*)::int FROM comments
+          WHERE comments.listing_id = ${listingsTable.id}
+            AND comments.is_deleted = false
+        ) * 3
+      + CASE
+          WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '48 hours' THEN 100
+          ELSE 0
+        END
+    )`;
+
+    const orderBy =
+      sort === "new" || sort === "mine"
+        ? [pinSelected, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt)]
+        : sort === "trending"
+          ? [pinSelected, sql`${trendingScore} DESC`, desc(listingsTable.boostStartAt)]
+          : [pinSelected, sql`${engagementScore} DESC`, desc(listingsTable.boostStartAt), desc(listingsTable.createdAt)];
 
     // ── Query ────────────────────────────────────────────────────────────────
     const rows = await db
@@ -361,56 +436,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       .from(listingsTable)
       .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
       .where(and(...conditions as Parameters<typeof and>))
-      .orderBy(
-        sql<number>`CASE WHEN ${selectedId > 0} AND ${listingsTable.id} = ${selectedId} THEN 0 ELSE 1 END`,
-        // ── AI Ranking Formula ───────────────────────────────────────────
-        //
-        // Score = engagement_base + freshness_bonus + diversity_noise
-        //
-        // engagement_base:
-        //   views + likes×3 + shares×2 + comments×1.5
-        //   (comments added — meaningful social signal)
-        //
-        // freshness_bonus:
-        //   +200 if boost started in last 24h    (new boosts get a push)
-        //   +80  if boost started in last 72h
-        //   +30  if listing created in last 7 days
-        //
-        // diversity_noise:
-        //   setseed(seed/1e9) is called via WITH clause — but since Drizzle
-        //   does not support CTEs in SELECT here, we approximate with
-        //   sin(id × seed) mapped to [0,50] so each session sees a
-        //   different ordering among videos with similar scores.
-        //   When seed=0 (anonymous / no session seed), RANDOM() is used
-        //   to give a light shuffle on every page-1 load.
-        //
-        sql`(
-          /* engagement base */
-          ${listingsTable.viewCount}
-          + ${listingsTable.favoriteCount} * 3
-          + ${listingsTable.sharesCount} * 2
-          + (
-              SELECT COUNT(*)::int FROM comments
-              WHERE comments.listing_id = ${listingsTable.id}
-                AND comments.is_deleted = false
-            ) * 2
-          /* freshness bonus */
-          + CASE
-              WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '24 hours' THEN 200
-              WHEN ${listingsTable.boostStartAt} > NOW() - INTERVAL '72 hours' THEN 80
-              WHEN ${listingsTable.createdAt}    > NOW() - INTERVAL '7 days'   THEN 30
-              ELSE 0
-            END
-          /* diversity noise — varies by session seed so order differs each visit */
-          + CASE
-              WHEN ${seed} = 0 THEN (RANDOM() * 50)::int
-              ELSE (ABS(SIN(${listingsTable.id}::float * ${seed}::float)) * 50)::int
-            END
-        ) DESC`,
-        // Tiebreak: newest boost first
-        desc(listingsTable.boostStartAt),
-        desc(listingsTable.createdAt),
-      )
+      .orderBy(...orderBy)
       .limit(limit + 1)
       .offset(offset);
 
@@ -481,6 +507,7 @@ router.get("/videos/feed", optionalAuth, async (req, res): Promise<void> => {
       videos,
       hasMore,
       nextPage:      hasMore ? page + 1 : null,
+      sort,
       // Return the canonical assigned spelling for scoped admins (rather than
       // echoing a differently-cased query parameter).
       viewingCountry: visibleCountries.length === 1 && visibleCountries[0] !== "__denied__"

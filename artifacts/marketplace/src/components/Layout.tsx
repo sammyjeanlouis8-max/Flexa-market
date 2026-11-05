@@ -714,7 +714,7 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/search")) return t("page.search");
   if (loc.startsWith("/agent")) return t("page.agent");
   if (loc.startsWith("/chatbot")) return t("page.chatbot");
-  if (loc === "/videos") return t("videoFeed.title");
+  if (loc === "/videos" || loc.startsWith("/videos/watch")) return t("videoFeed.title");
   return "";
 }
 
@@ -917,7 +917,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   // Messages page needs full-height layout (no bottom padding, overflow clipped)
   const isMessages = location.startsWith("/messages");
   // Video feed also needs full-height, immersive layout
-  const isVideoFeed = location === "/videos";
+  const isVideoFeed = location === "/videos/watch" || location.startsWith("/videos/watch?");
   // Inside a specific conversation: hide the mobile bottom nav (WhatsApp style)
   const isMessageThread = /^\/messages\/[^/]+/.test(location);
   // Listing detail — hide footer + bottom nav for a cleaner immersive view
@@ -942,7 +942,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,
     /^\/orders\/[^/]+\/?$/,
-    /^\/videos$/,
+    /^\/videos(?:\/watch)?\/?$/,
     /^\/wallet/,
     /^\/subscription\/?$/,
     /^\/chatbot/,

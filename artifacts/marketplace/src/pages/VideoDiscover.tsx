@@ -1,0 +1,502 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import {
+  ArrowLeft, BadgeCheck, Eye, Film, Loader2, Play, Plus, Search, ShoppingCart, Zap,
+} from "lucide-react";
+import { useSEO } from "@/hooks/useSEO";
+import { useAuth } from "@/contexts/auth";
+import { formatPrice } from "@/lib/currency";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import PromoVideoPoster from "@/components/PromoVideoPoster";
+import BoostWizard from "@/components/BoostWizard";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
+
+export type DiscoverSort = "all" | "trending" | "new" | "mine";
+
+type DiscoverVideo = {
+  id: number;
+  videoUrl: string;
+  thumbnailUrl: string | null;
+  title: string;
+  description: string;
+  price: number;
+  currency: string | null;
+  sellerId: number | null;
+  sellerName: string;
+  sellerAvatar: string | null;
+  sellerIsVerified: boolean;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  isVideoOnly: boolean;
+  boostEndAt: string | null;
+  boostStartAt: string | null;
+};
+
+const SCROLL_KEY = "fm_video_discover_scroll";
+const SEED_KEY = "fm_video_discover_seed";
+const STATE_KEY = "fm_video_discover_state";
+
+function formatViews(n: number, locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  } catch {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    return String(n);
+  }
+}
+
+function formatDuration(seconds: number | null | undefined): string | null {
+  if (!seconds || !Number.isFinite(seconds) || seconds <= 0) return null;
+  const s = Math.round(seconds);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function isLiveBoost(v: DiscoverVideo): boolean {
+  if (!v.boostEndAt) return true;
+  return new Date(v.boostEndAt).getTime() > Date.now();
+}
+
+export default function VideoDiscover() {
+  const { t, i18n } = useTranslation();
+  useSEO({ title: t("videoFeed.title"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
+  const [, navigate] = useLocation();
+  const { token, user } = useAuth();
+  const purchasesDisabled = isAndroidApp();
+
+  const [sort, setSort] = useState<DiscoverSort>(() => {
+    try {
+      const raw = sessionStorage.getItem(STATE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { sort?: DiscoverSort };
+        if (parsed.sort && ["all", "trending", "new", "mine"].includes(parsed.sort)) return parsed.sort;
+      }
+    } catch { /* ok */ }
+    return "all";
+  });
+  const [query, setQuery] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(STATE_KEY);
+      if (raw) return (JSON.parse(raw) as { q?: string }).q ?? "";
+    } catch { /* ok */ }
+    return "";
+  });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [videos, setVideos] = useState<DiscoverVideo[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalHint, setTotalHint] = useState(0);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [durations, setDurations] = useState<Record<number, number>>({});
+
+  const seedRef = useRef<number>(0);
+  if (seedRef.current === 0) {
+    try {
+      const existing = sessionStorage.getItem(SEED_KEY);
+      const n = existing ? parseInt(existing, 10) : NaN;
+      if (Number.isFinite(n) && n > 0) {
+        seedRef.current = n;
+      } else {
+        seedRef.current = Math.floor(Math.random() * 1_000_000) + 1;
+        sessionStorage.setItem(SEED_KEY, String(seedRef.current));
+      }
+    } catch {
+      seedRef.current = Math.floor(Math.random() * 1_000_000) + 1;
+    }
+  }
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedQ, setDebouncedQ] = useState(query);
+
+  // Deep-link: /videos?video=ID → fullscreen watch (preserve legacy Home links)
+  // Also restore sort/q from query when returning from the watch player.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const videoId = parseInt(params.get("video") ?? "", 10);
+    const sortParam = params.get("sort")?.trim().toLowerCase();
+    const qParam = params.get("q") ?? "";
+    if (sortParam && ["all", "trending", "new", "mine"].includes(sortParam)) {
+      setSort(sortParam as DiscoverSort);
+    }
+    if (qParam) {
+      setQuery(qParam);
+      setSearchOpen(true);
+    }
+    if (Number.isFinite(videoId) && videoId > 0) {
+      const country = params.get("country");
+      let url = `/videos/watch?video=${videoId}&sort=${encodeURIComponent(sortParam || sort)}&seed=${seedRef.current}`;
+      if (qParam) url += `&q=${encodeURIComponent(qParam)}`;
+      if (country) url += `&country=${encodeURIComponent(country)}`;
+      navigate(url, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQ(query.trim()), 280);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({ sort, q: query }));
+    } catch { /* ok */ }
+  }, [sort, query]);
+
+  const fetchPage = useCallback(async (p: number, replace: boolean) => {
+    if (replace) setLoading(true); else setLoadingMore(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const params = new URLSearchParams({
+        page: String(p),
+        limit: "12",
+        seed: String(seedRef.current),
+        sort,
+      });
+      if (debouncedQ) params.set("q", debouncedQ);
+      const res = await fetch(`/api/videos/feed?${params}`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
+      const incoming: DiscoverVideo[] = (data.videos ?? []).filter(isLiveBoost);
+      if (replace) {
+        setVideos(incoming);
+        setTotalHint(incoming.length + (data.hasMore ? 1 : 0));
+      } else {
+        setVideos(prev => {
+          const seen = new Set(prev.map(v => v.id));
+          return [...prev, ...incoming.filter(v => !seen.has(v.id))];
+        });
+      }
+      setHasMore(!!data.hasMore);
+      setPage(p);
+    } catch { /* non-critical */ } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [token, sort, debouncedQ]);
+
+  useEffect(() => {
+    setVideos([]);
+    setHasMore(true);
+    void fetchPage(1, true);
+  }, [fetchPage]);
+
+  // Restore grid scroll after returning from watch
+  useEffect(() => {
+    if (loading) return;
+    try {
+      const y = parseInt(sessionStorage.getItem(SCROLL_KEY) ?? "", 10);
+      if (Number.isFinite(y) && y > 0) {
+        requestAnimationFrame(() => {
+          window.scrollTo(0, y);
+          scrollRootRef.current?.scrollTo?.(0, y);
+        });
+      }
+    } catch { /* ok */ }
+  }, [loading, videos.length]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      try {
+        sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || document.documentElement.scrollTop || 0));
+      } catch { /* ok */ }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Infinite scroll
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting) && !loading && !loadingMore && hasMore) {
+        void fetchPage(page + 1, false);
+      }
+    }, { rootMargin: "400px" });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [fetchPage, hasMore, loading, loadingMore, page]);
+
+  // Probe durations lazily for badges (real metadata only)
+  useEffect(() => {
+    videos.slice(0, 24).forEach((v) => {
+      if (durations[v.id] || !v.videoUrl) return;
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.muted = true;
+      video.src = v.videoUrl;
+      const onMeta = () => {
+        if (Number.isFinite(video.duration) && video.duration > 0) {
+          setDurations(prev => (prev[v.id] ? prev : { ...prev, [v.id]: video.duration }));
+        }
+        video.removeAttribute("src");
+        video.load();
+      };
+      video.addEventListener("loadedmetadata", onMeta, { once: true });
+    });
+  }, [videos, durations]);
+
+  const openWatch = (videoId: number) => {
+    try {
+      sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || 0));
+      sessionStorage.setItem(SEED_KEY, String(seedRef.current));
+    } catch { /* ok */ }
+    const params = new URLSearchParams({
+      video: String(videoId),
+      sort,
+      seed: String(seedRef.current),
+    });
+    if (debouncedQ) params.set("q", debouncedQ);
+    navigate(`/videos/watch?${params}`);
+  };
+
+  const filters = useMemo(() => ([
+    { id: "all" as const, label: t("videoFeed.filterAll", { defaultValue: "All" }), count: sort === "all" ? Math.max(totalHint, videos.length) : undefined },
+    { id: "trending" as const, label: t("videoFeed.filterTrending", { defaultValue: "🔥 Trending" }) },
+    { id: "new" as const, label: t("videoFeed.filterNew", { defaultValue: "✨ New" }) },
+    { id: "mine" as const, label: t("videoFeed.filterMine", { defaultValue: "📹 My Videos" }) },
+  ]), [t, sort, totalHint, videos.length]);
+
+  const emptyTitle = sort === "mine"
+    ? t("videoFeed.emptyMineTitle", { defaultValue: "You have no active promotional videos" })
+    : t("videoFeed.emptyTitle");
+  const emptyDesc = sort === "mine"
+    ? t("videoFeed.emptyMineDesc", { defaultValue: "Boost a product video to appear here while the campaign is active." })
+    : t("videoFeed.emptyDesc");
+
+  return (
+    <div ref={scrollRootRef} className="min-h-dvh bg-white dark:bg-background" data-testid="video-discover-page">
+      {/* Sub-header under global Layout header */}
+      <div className="sticky top-0 z-30 border-b border-border/70 bg-white/95 dark:bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => (window.history.length > 1 ? window.history.back() : navigate("/"))}
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted"
+            aria-label={t("common.back", { defaultValue: "Back" })}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[hsl(152,65%,18%)] text-white shrink-0">
+            <Play className="h-3.5 w-3.5 fill-white ml-0.5" />
+          </div>
+          <h1 className="flex-1 truncate text-[15px] font-black tracking-tight text-foreground">
+            {t("videoFeed.title")}
+          </h1>
+          <button
+            type="button"
+            onClick={() => setSearchOpen(v => !v)}
+            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted"
+            aria-label={t("common.search", { defaultValue: "Search" })}
+          >
+            <Search className="h-5 w-5" />
+          </button>
+        </div>
+
+        {searchOpen && (
+          <div className="mx-auto max-w-5xl px-3 pb-2.5">
+            <input
+              autoFocus
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder={t("videoFeed.searchPlaceholder", { defaultValue: "Search promotional videos…" })}
+              className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm outline-none focus:border-[hsl(152,65%,18%)] focus:ring-1 focus:ring-[hsl(152,65%,18%)]/30"
+            />
+          </div>
+        )}
+
+        <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-3 pb-3 scrollbar-none">
+          {filters.map(f => {
+            const active = sort === f.id;
+            const label = f.id === "all" && typeof f.count === "number"
+              ? `${t("videoFeed.filterAll", { defaultValue: "All" })} (${Math.max(f.count, videos.length)})`
+              : f.label;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  if (f.id === "mine" && !user) {
+                    navigate("/auth/login");
+                    return;
+                  }
+                  setSort(f.id);
+                }}
+                className={cn(
+                  "shrink-0 rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition-colors",
+                  active
+                    ? "border-[hsl(152,65%,18%)] bg-[hsl(152,65%,18%)] text-white"
+                    : "border-border bg-white text-foreground hover:bg-muted/60 dark:bg-card",
+                )}
+                data-testid={`video-filter-${f.id}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-5xl px-3 pb-28 pt-3">
+        {loading && videos.length === 0 ? (
+          <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
+            <Loader2 className="h-7 w-7 animate-spin" />
+          </div>
+        ) : videos.length === 0 ? (
+          <div className="flex min-h-[50vh] flex-col items-center justify-center px-6 text-center" data-testid="video-discover-empty">
+            <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-emerald-50 dark:bg-emerald-950/40">
+              <Film className="h-10 w-10 text-[hsl(152,65%,18%)]" />
+            </div>
+            <h2 className="text-lg font-black text-foreground">{emptyTitle}</h2>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground leading-relaxed">{emptyDesc}</p>
+            {!purchasesDisabled && (
+              <button
+                type="button"
+                onClick={() => setWizardOpen(true)}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-5 py-3 text-sm font-black text-white shadow-md"
+              >
+                <Zap className="h-4 w-4" />
+                {t("videoFeed.emptyCta")}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+            {videos.map(v => {
+              const duration = formatDuration(durations[v.id]);
+              const canBuy = !v.isVideoOnly && typeof v.price === "number" && v.price > 0;
+              return (
+                <article
+                  key={v.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-white dark:bg-card shadow-sm"
+                  data-testid={`video-card-${v.id}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openWatch(v.id)}
+                    className="relative aspect-[3/4] w-full overflow-hidden bg-muted text-left"
+                  >
+                    <PromoVideoPoster
+                      videoUrl={v.videoUrl}
+                      thumbnailUrl={v.thumbnailUrl}
+                      title={v.title}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                    />
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20" />
+                    {duration && (
+                      <span className="absolute left-2 top-2 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
+                        {duration}
+                      </span>
+                    )}
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-white/70 bg-black/25 backdrop-blur-sm">
+                        <Play className="h-5 w-5 fill-white text-white ml-0.5" />
+                      </span>
+                    </span>
+                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-[hsl(152,65%,18%)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
+                      {t("videoFeed.promoBadge")}
+                    </span>
+                  </button>
+
+                  <div className="flex flex-1 flex-col gap-1.5 p-2.5">
+                    <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-foreground">{v.title}</h3>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Avatar className="h-5 w-5 shrink-0">
+                        <AvatarImage src={v.sellerAvatar ?? undefined} />
+                        <AvatarFallback className="text-[9px] bg-[hsl(152,65%,18%)] text-white">
+                          {(v.sellerName || "?")[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate text-[11px] font-semibold text-muted-foreground">{v.sellerName}</span>
+                      {v.sellerIsVerified && (
+                        <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Eye className="h-3 w-3" />
+                      <span className="tabular-nums">{formatViews(v.viewCount, i18n.language)} {t("videoFeed.views")}</span>
+                      {v.likeCount > 0 && (
+                        <>
+                          <span className="opacity-40">·</span>
+                          <span className="tabular-nums">{formatViews(v.likeCount, i18n.language)} ♥</span>
+                        </>
+                      )}
+                    </div>
+                    {canBuy && (
+                      <Link
+                        href={`/listings/${v.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg border border-[hsl(152,65%,18%)] px-2 py-1.5 text-[11px] font-bold text-[hsl(152,65%,18%)] hover:bg-emerald-50"
+                      >
+                        <ShoppingCart className="h-3.5 w-3.5" />
+                        {t("videoFeed.buy")}
+                      </Link>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        <div ref={sentinelRef} className="h-8" />
+        {loadingMore && (
+          <div className="flex justify-center py-4 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+
+        {/* Boost CTA section */}
+        {!purchasesDisabled && videos.length > 0 && (
+          <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/70 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-5 text-center">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm dark:bg-card">
+              <Film className="h-7 w-7 text-[hsl(152,65%,18%)]" />
+            </div>
+            <h2 className="text-base font-black text-foreground">
+              {t("videoFeed.boostSectionTitle", { defaultValue: "Boost your videos" })}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t("videoFeed.boostSectionDesc", { defaultValue: "Increase product visibility with a promotional video." })}
+            </p>
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="mt-4 inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-4 py-3 text-sm font-black text-white"
+              data-testid="button-boost-video"
+            >
+              <Zap className="h-4 w-4" />
+              {t("videoFeed.boostSectionCta", { defaultValue: "Boost a video" })}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {!purchasesDisabled && (
+        <button
+          type="button"
+          onClick={() => setWizardOpen(true)}
+          className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(152,65%,18%)] text-white shadow-xl md:bottom-8"
+          aria-label={t("videoFeed.addBoost")}
+          data-testid="fab-boost-video"
+        >
+          <Plus className="h-7 w-7" />
+        </button>
+      )}
+
+      {wizardOpen && (
+        <BoostWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
+      )}
+    </div>
+  );
+}

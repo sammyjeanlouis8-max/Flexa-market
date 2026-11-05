@@ -1462,7 +1462,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           {!searchLoading && tracks.length === 0 ? (
             <div className="flex flex-col items-center py-16 gap-3">
               <Music2 size={40} className="text-white/10" />
-              <p className="text-white/30 text-sm">Pa gen rezilta</p>
+              <p className="text-white/30 text-sm">{t("music.noResults")}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-1.5">
@@ -1495,7 +1495,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
       ) : tracks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <Music2 size={48} className="text-white/10" />
-          <p className="text-white/40 text-sm">Pa gen chante disponib ankò</p>
+          <p className="text-white/40 text-sm">{t("music.noTracksYet")}</p>
           {user && artistToolsAvailable && (
             <button onClick={onUpload}
               className="flex items-center gap-2 text-sm font-bold px-5 py-2.5 rounded-full"
@@ -2066,20 +2066,20 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   const rel = (iso: string) => {
     const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return "kounye an";
-    if (s < 3600) return `${Math.floor(s / 60)}min`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h`;
-    return `${Math.floor(s / 86400)}j`;
+    if (s < 60) return t("music.justNow");
+    if (s < 3600) return t("music.minutesShort", { n: Math.floor(s / 60) });
+    if (s < 86400) return t("music.hoursShort", { n: Math.floor(s / 3600) });
+    return t("music.daysShort", { n: Math.floor(s / 86400) });
   };
 
   const itemText = (item: MusicActivity) => {
-    const name = item.actor_name ?? "Yon moun";
+    const name = item.actor_name ?? t("music.someone");
     if (item.type === "comment") {
       const preview = item.detail ? `"${item.detail.slice(0, 50)}${item.detail.length > 50 ? "…" : ""}"` : "";
-      return `${name} komante sou "${item.track_title}" ${preview}`;
+      return t("music.activityComment", { name, title: item.track_title, preview });
     }
-    if (item.type === "like") return `${name} renmen "${item.track_title}"`;
-    return item.detail ?? `Revni debloke sou "${item.track_title}"`;
+    if (item.type === "like") return t("music.activityLike", { name, title: item.track_title });
+    return item.detail ?? t("music.activityEarning", { title: item.track_title });
   };
 
   const itemEmoji = (item: MusicActivity): React.ReactNode =>
@@ -2099,7 +2099,7 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3">
-          <p className="text-white font-black text-base">Aktivite Mizik</p>
+          <p className="text-white font-black text-base">{t("music.activityTitle")}</p>
           <button onClick={onClose}><X size={18} className="text-white/40" /></button>
         </div>
 
@@ -2113,7 +2113,7 @@ function MusicNotificationsDrawer({ onClose }: { onClose: () => void }) {
           {!loading && items.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 gap-3">
               <Bell size={36} className="text-white/15" />
-              <p className="text-white/30 text-sm">Pa gen aktivite mizik pou kounye an</p>
+              <p className="text-white/30 text-sm">{t("music.noActivity")}</p>
             </div>
           )}
           {!loading && items.map((item, i) => (
@@ -2532,6 +2532,7 @@ function NowPlayingModal({
   onShowQueue?: () => void;
   onDownload?: () => void;
 }) {
+  const { t } = useTranslation();
   const store = getMusicState();
   const { track, playing, currentTime, duration, muted } = playerState;
   const pct            = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -2659,7 +2660,7 @@ function NowPlayingModal({
               {track.is_artist_verified && <CheckCircle size={13} className="text-[#00D9FF] fill-[#00D9FF]/"/>}
             </button>
           </div>
-          <button onClick={() => onToggleLike(track.id)} aria-label="Favorite"
+          <button onClick={() => onToggleLike(track.id)} aria-label={t("music.favorite")}
             className="w-11 h-11 flex items-center justify-center shrink-0">
             <Heart size={22} className={isLiked ? "text-[#F02DDB] fill-[#F02DDB]" : "text-white/55"} />
           </button>
@@ -2668,7 +2669,7 @@ function NowPlayingModal({
         {MUSIC_COMMERCE_ENABLED && isPaidPreview && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-4"
             style={{ background: "rgba(160,32,240,0.12)", border: "1px solid rgba(160,32,240,0.28)" }}>
-            <span className="text-[#00D9FF] text-xs font-bold">Free preview</span>
+            <span className="text-[#00D9FF] text-xs font-bold">{t("music.freePreview")}</span>
             {track.price_usd && (
               <span className="text-white/50 text-xs font-bold ml-auto">${Number(track.price_usd).toFixed(2)}</span>
             )}
@@ -2699,15 +2700,15 @@ function NowPlayingModal({
 
         {/* Transport */}
         <div className="flex items-center justify-between mt-4 px-1">
-          <button onClick={() => { musicToggleShuffle(); }} aria-label="Shuffle"
+          <button onClick={() => { musicToggleShuffle(); }} aria-label={t("music.shuffle")}
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             <Shuffle size={22} style={{ color: shuffleOn ? "#F02DDB" : "rgba(255,255,255,0.75)" }} />
           </button>
-          <button onClick={onPrev} aria-label="Previous"
+          <button onClick={onPrev} aria-label={t("music.previous")}
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             <SkipBack size={28} className="text-white" />
           </button>
-          <button onClick={onToggle} aria-label={playing ? "Pause" : "Play"}
+          <button onClick={onToggle} aria-label={playing ? t("music.pause") : t("music.play")}
             className="flex items-center justify-center rounded-full active:scale-90 transition-transform"
             style={{
               width: 74, height: 74,
@@ -2716,11 +2717,11 @@ function NowPlayingModal({
             }}>
             {playing ? <Pause size={28} className="text-white" /> : <Play size={28} className="text-white ml-1" />}
           </button>
-          <button onClick={onNext} aria-label="Next"
+          <button onClick={onNext} aria-label={t("music.next")}
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             <SkipForward size={28} className="text-white" />
           </button>
-          <button onClick={() => setRepeatMode(musicCycleRepeat())} aria-label={`Repeat ${repeatMode}`}
+          <button onClick={() => setRepeatMode(musicCycleRepeat())} aria-label={t("music.repeat")}
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
             {repeatMode === "one"
               ? <Repeat1 size={22} style={{ color: "#00D9FF" }} />
@@ -2731,40 +2732,40 @@ function NowPlayingModal({
         {/* Action tiles */}
         <div className="grid grid-cols-4 gap-2.5 mt-7">
           <button className={glassTile} onClick={() => track.lyrics ? setLyricsOpen(o => !o) : undefined}
-            aria-label="Lyrics" disabled={!track.lyrics} style={{ opacity: track.lyrics ? 1 : 0.45 }}>
+            aria-label={t("music.lyrics")} disabled={!track.lyrics} style={{ opacity: track.lyrics ? 1 : 0.45 }}>
             <AlignLeft size={18} className="text-white/85" />
-            <span className="text-[10px] font-bold text-white/70">Lyrics</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.lyrics")}</span>
           </button>
-          <button className={glassTile} onClick={() => onShowQueue?.()} aria-label="Queue">
+          <button className={glassTile} onClick={() => onShowQueue?.()} aria-label={t("music.queue")}>
             <ListMusic size={18} className="text-white/85" />
-            <span className="text-[10px] font-bold text-white/70">Queue</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.queue")}</span>
           </button>
-          <button className={glassTile} onClick={() => onDownload?.()} aria-label="Download">
+          <button className={glassTile} onClick={() => onDownload?.()} aria-label={t("music.download")}>
             <Download size={18} className="text-white/85" />
-            <span className="text-[10px] font-bold text-white/70">Download</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.download")}</span>
           </button>
-          <button className={glassTile} onClick={() => musicShareTrack(track)} aria-label="Share">
+          <button className={glassTile} onClick={() => musicShareTrack(track)} aria-label={t("music.share")}>
             <Share2 size={18} className="text-white/85" />
-            <span className="text-[10px] font-bold text-white/70">Share</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.share")}</span>
           </button>
         </div>
 
         <div className="grid grid-cols-4 gap-2.5 mt-2.5">
-          <button className={glassTile} onClick={() => setPanel(p => p === "timer" ? "none" : "timer")} aria-label="Sleep timer">
+          <button className={glassTile} onClick={() => setPanel(p => p === "timer" ? "none" : "timer")} aria-label={t("music.sleepTimer")}>
             <Timer size={18} style={{ color: sleepUntil ? "#00D9FF" : "rgba(255,255,255,0.85)" }} />
-            <span className="text-[10px] font-bold text-white/70">Timer</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.timer")}</span>
           </button>
-          <button className={glassTile} onClick={() => setPanel(p => p === "speed" ? "none" : "speed")} aria-label="Playback speed">
+          <button className={glassTile} onClick={() => setPanel(p => p === "speed" ? "none" : "speed")} aria-label={t("music.playbackSpeed")}>
             <span className="text-xs font-black text-white/90">{playbackRate.toFixed(1)}x</span>
-            <span className="text-[10px] font-bold text-white/70">Speed</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.speed")}</span>
           </button>
-          <button className={glassTile} onClick={onMute} aria-label={muted ? "Unmute" : "Mute"}>
+          <button className={glassTile} onClick={onMute} aria-label={muted ? t("music.unmute") : t("music.mute")}>
             {muted ? <VolumeX size={18} className="text-white/85" /> : <Volume2 size={18} className="text-white/85" />}
-            <span className="text-[10px] font-bold text-white/70">Audio</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.audio")}</span>
           </button>
-          <button className={glassTile} onClick={() => setPanel(p => p === "more" ? "none" : "more")} aria-label="Equalizer">
+          <button className={glassTile} onClick={() => setPanel(p => p === "more" ? "none" : "more")} aria-label={t("music.equalizer")}>
             <SlidersHorizontal size={18} className="text-white/85" />
-            <span className="text-[10px] font-bold text-white/70">EQ</span>
+            <span className="text-[10px] font-bold text-white/70">{t("music.eq")}</span>
           </button>
         </div>
 
@@ -2779,7 +2780,7 @@ function NowPlayingModal({
                   border: "1px solid rgba(0,217,255,0.25)",
                   color: "#fff",
                 }}>
-                {m === 0 ? "Off" : `${m} min`}
+                {m === 0 ? t("music.timerOff") : t("music.timerMin", { m })}
               </button>
             ))}
           </div>
@@ -2805,12 +2806,10 @@ function NowPlayingModal({
         {panel === "more" && (
           <div className="mt-4 rounded-2xl px-4 py-3 text-xs leading-relaxed"
             style={{ background: "rgba(255,255,255,0.05)", color: "#A1AEC4" }}>
-            System equalizer and audio output are controlled by your device
-            (iOS Control Center / Android media output). Flexa Music uses the
-            Media Session API for lock-screen and Bluetooth controls.
+            {t("music.eqHelp")}
             <div className="mt-3">
-              <label className="block text-white/70 font-bold mb-1">Volume</label>
-              <input aria-label="Volume" type="range" min="0" max="1" step="0.01"
+              <label className="block text-white/70 font-bold mb-1">{t("music.volume")}</label>
+              <input aria-label={t("music.volume")} type="range" min="0" max="1" step="0.01"
                 value={playerState.volume}
                 onChange={e => onVolume(Number(e.target.value))}
                 className="music-volume-range w-full" />

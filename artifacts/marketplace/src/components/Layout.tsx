@@ -932,6 +932,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const noFooter = isSellPage || isAdminConsole || [
     /^\/messages/,
     /^\/auth\//,
+    /^\/cart\/?$/,
     /^\/checkout/,
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,

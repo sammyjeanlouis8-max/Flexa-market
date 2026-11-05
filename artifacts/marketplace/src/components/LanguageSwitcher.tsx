@@ -2,9 +2,11 @@ import { useTranslation } from "react-i18next";
 import { Globe } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { SUPPORTED_LANGUAGES, PUBLIC_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
+import { SUPPORTED_LANGUAGES, PUBLIC_LANGUAGES, type SupportedLanguage } from "@/i18n";
+import { persistLanguage } from "@/lib/persistLanguage";
 import { useAuth } from "@/contexts/auth";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface LanguageSwitcherProps {
   variant?: "icon" | "full";
@@ -20,22 +22,17 @@ export default function LanguageSwitcher({
   className,
   languages = SUPPORTED_LANGUAGES,
 }: LanguageSwitcherProps) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const currentLang =
     (languages as readonly { code: string; flag: string; name: string }[]).find(l => l.code === i18n.language) ??
     languages[0];
 
   const { token } = useAuth();
   const handleChange = (code: SupportedLanguage) => {
-    setLanguage(code);
-    // Sync to server so push notifications use the new language immediately
-    if (token) {
-      void fetch("/api/auth/language", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ language: code }),
-      }).catch(() => {});
-    }
+    void persistLanguage(code, token).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["getMe"] });
+    });
   };
 
   return (
@@ -46,7 +43,7 @@ export default function LanguageSwitcher({
           size={variant === "icon" ? "icon" : "sm"}
           className={cn("gap-1.5", className)}
           data-testid="button-language-switcher"
-          aria-label="Change language"
+          aria-label={t("userMenu.language")}
         >
           {variant === "icon" ? (
             <>

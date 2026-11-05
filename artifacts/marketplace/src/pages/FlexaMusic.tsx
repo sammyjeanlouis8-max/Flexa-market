@@ -1395,7 +1395,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             <span className="hidden sm:inline">{t("music.artistStudio")}</span>
           </button>
         </div>
-        <div className="music-topbar-title text-base font-black">Accueil</div>
+        <div className="music-topbar-title text-base font-black">{t("nav.home")}</div>
         <div className="flex items-center gap-1.5">
           {artistToolsAvailable && (
             <button onClick={onUpload} aria-label={t("music.uploadFirstSong")}
@@ -1407,7 +1407,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             className="music-icon-button w-9 h-9 rounded-full flex items-center justify-center relative">
             <Bell size={17} />
           </button>
-          <button onClick={() => setLocation("/messages")} aria-label="Messages"
+          <button onClick={() => setLocation("/messages")} aria-label={t("nav.messages")}
             className="music-icon-button hidden sm:flex w-9 h-9 rounded-full items-center justify-center">
             <MessageCircle size={17} />
           </button>
@@ -1744,14 +1744,14 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
       )}
 
       {/* ── SoundCloud-style mobile navigation ── */}
-      <nav className="music-bottom-nav md:hidden" aria-label="Music navigation">
+      <nav className="music-bottom-nav md:hidden" aria-label={t("music.title")}>
         <button className="music-bottom-nav-item active" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
           <Home size={19} fill="currentColor" />
-          <span>Accueil</span>
+          <span>{t("nav.home")}</span>
         </button>
         <button className="music-bottom-nav-item" onClick={() => searchInputRef.current?.focus()}>
           <Search size={19} />
-          <span>Rechercher</span>
+          <span>{t("nav.search")}</span>
         </button>
         {artistToolsAvailable && (
           <button className="music-upload-fab" onClick={onUpload} aria-label={t("music.uploadFirstSong")}>
@@ -1760,11 +1760,11 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
         )}
         <button className="music-bottom-nav-item" onClick={() => setShowNotifications(true)}>
           <MessageCircle size={19} />
-          <span>Messages</span>
+          <span>{t("nav.messages")}</span>
         </button>
         <button className="music-bottom-nav-item" onClick={() => document.getElementById("music-library")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           <Library size={19} />
-          <span>Bibliothèque</span>
+          <span>{t("music.library")}</span>
         </button>
       </nav>
     </div>

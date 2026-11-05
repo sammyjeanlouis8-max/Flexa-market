@@ -2084,7 +2084,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   cursor: messagesFetching ? "wait" : "pointer", opacity: messagesFetching ? 0.6 : 1,
                 }}
               >
-                {t("messages.retry", { defaultValue: "Try again", lng: "en" })}
+                {t("messages.retry", { defaultValue: "Try again" })}
               </button>
             </div>
           </div>

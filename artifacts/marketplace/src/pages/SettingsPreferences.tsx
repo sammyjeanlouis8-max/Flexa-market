@@ -8,8 +8,10 @@ import { Switch } from "@/components/ui/switch";
 import {
   ArrowLeft, Sun, Moon, Monitor, Globe, Check, Type, Gauge, Wifi, Play,
 } from "lucide-react";
-import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/i18n";
+import { persistLanguage } from "@/lib/persistLanguage";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 type ThemeChoice = "light" | "dark" | "system";
 type TextSize = "normal" | "large" | "xlarge";
@@ -53,9 +55,10 @@ function applyVideoAutoplay(on: boolean) {
 }
 
 export default function SettingsPreferences() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [theme, setTheme] = useState<ThemeChoice>(() => readTheme());
   const [textSize, setTextSize] = useState<TextSize>(() => {
     const v = localStorage.getItem("fm_text_size");
@@ -67,6 +70,11 @@ export default function SettingsPreferences() {
 
   useEffect(() => { applyTheme(theme); }, [theme]);
   useEffect(() => { applyTextSize(textSize); }, [textSize]);
+
+  const handleLanguageChange = async (code: SupportedLanguage) => {
+    await persistLanguage(code, token);
+    queryClient.invalidateQueries({ queryKey: ["getMe"] });
+  };
 
   if (!user) {
     return (
@@ -213,7 +221,7 @@ export default function SettingsPreferences() {
               <button
                 key={lang.code}
                 type="button"
-                onClick={() => setLanguage(lang.code as SupportedLanguage)}
+                onClick={() => { void handleLanguageChange(lang.code as SupportedLanguage); }}
                 className="w-full flex items-center gap-3 p-4 hover:bg-accent transition-colors text-left min-h-11"
                 data-testid={`language-${lang.code}`}
               >

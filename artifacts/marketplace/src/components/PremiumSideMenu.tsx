@@ -10,10 +10,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
-import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/i18n";
+import { persistLanguage } from "@/lib/persistLanguage";
 import { apiPatch } from "@/lib/api";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function DarkModeToggle({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
@@ -195,7 +197,8 @@ export type PremiumSideMenuProps = {
  * Preserves existing routes, RBAC, country gates, and handlers.
  */
 export default function PremiumSideMenu({ open, onClose, onNavigate, showDelivery }: PremiumSideMenuProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
+  const queryClient = useQueryClient();
   const { t, i18n } = useTranslation();
   const [location] = useLocation();
   const [showLangPicker, setShowLangPicker] = useState(false);
@@ -508,8 +511,9 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
                       key={lang.code}
                       type="button"
                       onClick={() => {
-                        setLanguage(lang.code as SupportedLanguage);
-                        apiPatch("/auth/language", { language: lang.code }).catch(() => {});
+                        void persistLanguage(lang.code as SupportedLanguage, token).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["getMe"] });
+                        });
                         setShowLangPicker(false);
                         onClose();
                       }}

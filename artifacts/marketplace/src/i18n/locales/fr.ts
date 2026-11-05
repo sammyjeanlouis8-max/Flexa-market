@@ -5327,6 +5327,7 @@ export default {
     seeAll: "Voir tout",
     mixedFor: "Mixé pour {{name}}",
     allSongs: "Toutes les chansons",
+    library: "Bibliothèque",
     basedOn: "Basé sur · {{title}}",
     private: "Privé",
     public: "Public",

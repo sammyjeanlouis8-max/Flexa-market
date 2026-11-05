@@ -674,10 +674,11 @@ export default function Admin() {
   });
 
   // Apply the global admin view country filter to all sub-filters at once.
+  // Listing/user country fields store full names ("Haiti"), not ISO codes.
   const applyAdminViewCountry = (c: "all" | "HT" | "DO") => {
     setAdminViewCountry(c);
     if (typeof window !== "undefined") localStorage.setItem("admin_view_country", c);
-    const v = c === "all" ? "all" : c;
+    const v = c === "all" ? "all" : c === "HT" ? "Haiti" : "Dominican Republic";
     setUserCountryFilter(v);
     setListingCountryFilter(v);
     setBoostCountryFilter(v);
@@ -1702,6 +1703,23 @@ export default function Admin() {
       invalidate();
     } catch (e: any) {
       toast({ title: "Failed to reject", description: e?.message ?? "", variant: "destructive" });
+    }
+  };
+
+  const handleModerationSuspend = async (id: number) => {
+    const reason = window.prompt(
+      t("modCenter.suspendPrompt", { defaultValue: "Reason for suspending this listing from discovery:" }),
+      t("modCenter.suspendDefault", { defaultValue: "Suspended by moderator" }),
+    );
+    if (reason === null || !reason.trim()) return;
+    if (!window.confirm(t("modCenter.suspendConfirm", { defaultValue: "Suspend this listing?" }))) return;
+    try {
+      await adminFetch(`/api/admin/moderation/${id}/suspend`, "POST", { reason: reason.trim() });
+      toast({ title: t("modCenter.suspended", { defaultValue: "Listing suspended" }) });
+      await loadModerationQueue();
+      invalidate();
+    } catch (e: any) {
+      toast({ title: "Failed to suspend", description: e?.message ?? "", variant: "destructive" });
     }
   };
 
@@ -4190,6 +4208,14 @@ export default function Admin() {
                               Reject
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs text-amber-700 border-amber-300"
+                            onClick={() => handleModerationSuspend(item.id)}
+                          >
+                            Suspend
+                          </Button>
                         </div>
                       </div>
                     </div>

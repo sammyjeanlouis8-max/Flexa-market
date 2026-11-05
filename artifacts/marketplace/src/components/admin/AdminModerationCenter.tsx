@@ -17,6 +17,7 @@ import {
   Loader2,
   Package,
   PlayCircle,
+  RefreshCw,
   Rocket,
   Scale,
   Search,
@@ -471,6 +472,54 @@ export default function AdminModerationCenter() {
     }
   };
 
+  const runSuspend = async (item: ModerationItem) => {
+    if (item.kind && item.kind !== "listing") return;
+    const reason = window.prompt(
+      t("modCenter.suspendPrompt", {
+        defaultValue: "Reason for suspending this listing from discovery:",
+      }),
+      t("modCenter.suspendDefault", { defaultValue: "Suspended by moderator" }),
+    );
+    if (reason === null || !reason.trim()) return;
+    if (!window.confirm(t("modCenter.suspendConfirm", { defaultValue: "Suspend this listing?" }))) {
+      return;
+    }
+    setActionId(item.id);
+    try {
+      await adminFetch(`/api/admin/moderation/${item.id}/suspend`, "POST", { reason: reason.trim() });
+      toast({ title: t("modCenter.suspended", { defaultValue: "Listing suspended" }) });
+      setDetailItem(null);
+      await invalidateAll();
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Error", variant: "destructive" });
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const runResolveReport = async (item: ModerationItem) => {
+    if (item.kind !== "report") return;
+    const reason = window.prompt(
+      t("modCenter.resolvePrompt", { defaultValue: "Resolution note:" }),
+      t("modCenter.resolveDefault", { defaultValue: "Reviewed and resolved by moderator" }),
+    );
+    if (reason === null || !reason.trim()) return;
+    setActionId(item.id);
+    try {
+      await adminFetch(`/api/admin/reports/${item.id}/decision`, "POST", {
+        decision: "resolve",
+        reason: reason.trim(),
+      });
+      toast({ title: t("modCenter.resolved", { defaultValue: "Report resolved" }) });
+      setDetailItem(null);
+      await invalidateAll();
+    } catch (e: any) {
+      toast({ title: e?.message ?? "Error", variant: "destructive" });
+    } finally {
+      setActionId(null);
+    }
+  };
+
   const stats = overviewQuery.data;
   const tabCounts = stats?.tabCounts;
 
@@ -749,6 +798,17 @@ export default function AdminModerationCenter() {
           <h2 className="text-base font-bold text-[#0B1F3A] dark:text-foreground">
             {t("modCenter.queueTitle", { defaultValue: "Moderation queue" })}
           </h2>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 text-xs"
+            onClick={() => void invalidateAll()}
+            data-testid="mod-refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {t("modCenter.refresh", { defaultValue: "Refresh" })}
+          </Button>
         </div>
 
         <div className="relative mb-3">
@@ -858,6 +918,17 @@ export default function AdminModerationCenter() {
                             {t("modCenter.approve", { defaultValue: "Approve" })}
                           </Button>
                         )}
+                        {item.kind === "report" && (
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            className="h-8 gap-1 bg-emerald-600 px-2.5 text-xs text-white hover:bg-emerald-700"
+                            onClick={() => runResolveReport(item)}
+                          >
+                            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                            {t("modCenter.resolve", { defaultValue: "Resolve" })}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="destructive"
@@ -880,15 +951,27 @@ export default function AdminModerationCenter() {
                           {t("modCenter.details", { defaultValue: "Details" })}
                         </Button>
                         {(!item.kind || item.kind === "listing") && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 px-2 text-xs text-slate-600"
-                            disabled={busy}
-                            onClick={() => runEscalate(item)}
-                          >
-                            {t("modCenter.escalate", { defaultValue: "Escalate" })}
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 gap-1 px-2 text-xs text-amber-700 border-amber-300"
+                              disabled={busy}
+                              onClick={() => runSuspend(item)}
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                              {t("modCenter.suspend", { defaultValue: "Suspend" })}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2 text-xs text-slate-600"
+                              disabled={busy}
+                              onClick={() => runEscalate(item)}
+                            >
+                              {t("modCenter.escalate", { defaultValue: "Escalate" })}
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>

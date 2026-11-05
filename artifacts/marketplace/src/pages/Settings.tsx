@@ -28,6 +28,7 @@ import {
   Lock,
   UserCheck,
   Globe,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -792,6 +793,16 @@ export default function Settings() {
           )}
         </div>
       </Card>
+
+      <Link
+        href="/sell"
+        className="flex w-full items-center justify-center gap-2 min-h-11 h-12 rounded-xl bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] active:bg-[hsl(152,65%,12%)] text-white font-semibold text-[15px] shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(152,65%,18%)] focus-visible:ring-offset-2"
+        data-testid="button-settings-add-product"
+        aria-label={t("settings.addProduct")}
+      >
+        <Plus className="h-5 w-5 shrink-0" aria-hidden />
+        {t("settings.addProduct")}
+      </Link>
 
       <SettingsGroup title={t("settings.groupAccount")} rows={accountRows} />
       <SettingsGroup title={t("settings.groupActivity")} rows={activityRows} />

@@ -840,6 +840,7 @@ export default {
     loginRequired: "Inicia sesión para acceder a tu configuración.",
     backToSettings: "Volver a Configuración",
     verified: "Verificado",
+    addProduct: "Agregar producto",
     groupAccount: "Cuenta",
     groupActivity: "Actividad",
     groupSettings: "Configuración",

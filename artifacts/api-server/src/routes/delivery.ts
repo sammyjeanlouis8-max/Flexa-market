@@ -315,6 +315,124 @@ router.get("/driver/my-application", requireAuth, async (req, res): Promise<void
   });
 });
 
+function buildApplicationValues(userId: number, country: string, body: any, status: string) {
+  const {
+    firstName, lastName, dateOfBirth, address, city,
+    whatsappNumber, callPhone, email,
+    hasSmartphone, hasStableInternet, hasFastPhone,
+    phoneBrand, phoneModel, phoneOs, internetProvider,
+    vehicleType, vehicleBrand, vehicleModel, vehicleYear, vehicleColor,
+    licensePlateNumber, licenseNumber, licenseExpiry,
+    photoFront, photoSide, photoBody, photoIdSelfie,
+    photoVehicleRegistration, photoVehicleInsurance,
+    photoLicenseFront, photoLicenseBack,
+    photoVehicleFront, photoVehicleSide, photoLicensePlate, photoVehicleBack,
+    facePhotoFront, facePhotoLeft, facePhotoRight, facePhotoHoldingId,
+    insuranceNumber, selfiePhotoUrl,
+    bankName, bankAccountName, bankAccountNumber, preferredPaymentMethod,
+    workZones, workHours, maxDeliveryKm, residentialDepartment,
+  } = body;
+
+  const phone = String(callPhone || whatsappNumber || "").trim().slice(0, 30);
+  const nameParts = String(firstName || "").trim().split(/\s+/);
+  const resolvedFirst = String(firstName || "").trim().slice(0, 80) || "Applicant";
+  const resolvedLast = String(lastName || "").trim().slice(0, 80)
+    || (nameParts.length > 1 ? nameParts.slice(1).join(" ").slice(0, 80) : "Driver");
+
+  return {
+    userId,
+    status,
+    firstName: resolvedFirst,
+    lastName: resolvedLast,
+    dateOfBirth: String(dateOfBirth || "").trim() || "1900-01-01",
+    address: String(address || city || "").trim().slice(0, 200) || "—",
+    city: String(city || residentialDepartment || "").trim().slice(0, 100) || "—",
+    country,
+    whatsappNumber: String(whatsappNumber || phone).trim().slice(0, 30) || phone || "—",
+    callPhone: phone || "—",
+    hasSmartphone: hasSmartphone != null ? Boolean(hasSmartphone) : true,
+    hasStableInternet: hasStableInternet != null ? Boolean(hasStableInternet) : true,
+    hasFastPhone: hasFastPhone != null ? Boolean(hasFastPhone) : true,
+    phoneBrand: phoneBrand ? String(phoneBrand).trim().slice(0, 60) : null,
+    phoneModel: phoneModel ? String(phoneModel).trim().slice(0, 60) : null,
+    phoneOs: phoneOs ? String(phoneOs).trim() : null,
+    internetProvider: internetProvider ? String(internetProvider).trim().slice(0, 80) : (email ? String(email).trim().slice(0, 80) : null),
+    vehicleType: vehicleType ? String(vehicleType) : null,
+    vehicleBrand: vehicleBrand ? String(vehicleBrand).trim().slice(0, 80) : null,
+    vehicleModel: vehicleModel ? String(vehicleModel).trim().slice(0, 80) : null,
+    vehicleYear: vehicleYear ? String(vehicleYear).trim() : null,
+    vehicleColor: vehicleColor ? String(vehicleColor).trim().slice(0, 40) : null,
+    licensePlateNumber: licensePlateNumber ? String(licensePlateNumber).trim().toUpperCase().slice(0, 20) : null,
+    licenseNumber: licenseNumber ? String(licenseNumber).trim().slice(0, 60) : null,
+    licenseExpiry: licenseExpiry ? String(licenseExpiry).trim() : null,
+    photoFront: (photoFront ?? photoVehicleFront) ? String(photoFront ?? photoVehicleFront) : null,
+    photoSide: (photoSide ?? photoVehicleSide) ? String(photoSide ?? photoVehicleSide) : null,
+    photoBody: photoBody ? String(photoBody) : null,
+    photoIdSelfie: photoIdSelfie ? String(photoIdSelfie) : null,
+    photoVehicleRegistration: photoVehicleRegistration ? String(photoVehicleRegistration) : null,
+    photoVehicleInsurance: photoVehicleInsurance ? String(photoVehicleInsurance) : null,
+    photoLicenseFront: photoLicenseFront ? String(photoLicenseFront) : null,
+    photoLicenseBack: photoLicenseBack ? String(photoLicenseBack) : null,
+    photoVehicleFront: photoVehicleFront ? String(photoVehicleFront) : null,
+    photoVehicleSide: photoVehicleSide ? String(photoVehicleSide) : null,
+    photoLicensePlate: photoLicensePlate ? String(photoLicensePlate) : null,
+    facePhotoFront: facePhotoFront ? String(facePhotoFront) : null,
+    facePhotoLeft: facePhotoLeft ? String(facePhotoLeft) : null,
+    facePhotoRight: facePhotoRight ? String(facePhotoRight) : null,
+    facePhotoHoldingId: facePhotoHoldingId ? String(facePhotoHoldingId) : null,
+    photoVehicleBack: photoVehicleBack ? String(photoVehicleBack) : null,
+    insuranceNumber: insuranceNumber ? String(insuranceNumber).trim().slice(0, 80) : null,
+    selfiePhotoUrl: selfiePhotoUrl ? String(selfiePhotoUrl) : null,
+    bankName: bankName ? String(bankName).trim().slice(0, 120) : null,
+    bankAccountName: bankAccountName ? String(bankAccountName).trim().slice(0, 120) : null,
+    bankAccountNumber: bankAccountNumber ? String(bankAccountNumber).trim().slice(0, 60) : null,
+    preferredPaymentMethod: preferredPaymentMethod ? String(preferredPaymentMethod) : null,
+    workZones: workZones ? JSON.stringify(workZones) : null,
+    workHours: workHours ? JSON.stringify(workHours) : null,
+    maxDeliveryKm: maxDeliveryKm ? Number(maxDeliveryKm) : null,
+    updatedAt: new Date(),
+  };
+}
+
+// PUT /api/delivery/application/draft — save/resume draft without submitting for review
+router.put("/delivery/application/draft", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const country = req.user?.country ?? "Haiti";
+
+  const apps = await db
+    .select()
+    .from(driverApplicationsTable)
+    .where(eq(driverApplicationsTable.userId, userId))
+    .orderBy(desc(driverApplicationsTable.createdAt))
+    .limit(5);
+
+  const blocking = apps.find((a) => ["pending", "approved"].includes(a.status));
+  if (blocking) {
+    res.status(409).json({ error: "Application already submitted", status: blocking.status, application: blocking });
+    return;
+  }
+
+  const editable = apps.find((a) => ["draft", "needs_changes", "rejected"].includes(a.status));
+  const values = buildApplicationValues(userId, country, req.body, "draft");
+
+  let app;
+  if (editable) {
+    [app] = await db
+      .update(driverApplicationsTable)
+      .set({ ...values, status: editable.status === "needs_changes" ? "needs_changes" : "draft", allowEdit: false } as any)
+      .where(eq(driverApplicationsTable.id, editable.id))
+      .returning();
+  } else {
+    [app] = await db.insert(driverApplicationsTable).values(values as any).returning();
+  }
+
+  res.json({
+    application: app,
+    applicationId: `DRV-${String(app.id).padStart(10, "0")}`,
+    draft: true,
+  });
+});
+
 // POST /api/delivery/apply — submit driver application
 router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
@@ -325,100 +443,61 @@ router.post("/delivery/apply", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const existing = await db
+  const apps = await db
     .select({ id: driverApplicationsTable.id, status: driverApplicationsTable.status })
     .from(driverApplicationsTable)
     .where(eq(driverApplicationsTable.userId, userId))
-    .limit(1);
+    .orderBy(desc(driverApplicationsTable.createdAt))
+    .limit(5);
 
-  if (existing.length > 0 && ["pending", "approved"].includes(existing[0].status)) {
-    res.status(409).json({ error: "Application already submitted", status: existing[0].status });
+  if (apps.some((a) => ["pending", "approved"].includes(a.status))) {
+    const hit = apps.find((a) => ["pending", "approved"].includes(a.status))!;
+    res.status(409).json({ error: "Application already submitted", status: hit.status });
     return;
   }
 
   const {
     firstName, lastName, dateOfBirth, address, city,
     whatsappNumber, callPhone,
-    hasSmartphone, hasStableInternet, hasFastPhone,
-    phoneBrand, phoneModel, phoneOs, internetProvider,
-    vehicleType, vehicleBrand, vehicleModel, vehicleYear, vehicleColor,
-    licensePlateNumber, licenseNumber, licenseExpiry,
-    // Legacy photo fields (kept for backwards compat)
-    photoFront, photoSide, photoBody, photoIdSelfie,
-    // New dedicated document photo fields
-    photoVehicleRegistration, photoVehicleInsurance,
-    photoLicenseFront, photoLicenseBack,
-    photoVehicleFront, photoVehicleSide, photoLicensePlate, photoVehicleBack,
-    facePhotoFront, facePhotoLeft, facePhotoRight, facePhotoHoldingId,
-    // New fields (redesigned form)
-    insuranceNumber, selfiePhotoUrl,
-    bankName, bankAccountName, bankAccountNumber, preferredPaymentMethod,
-    workZones, workHours, maxDeliveryKm,
   } = req.body;
 
-  if (!firstName || !lastName || !city || !whatsappNumber || !callPhone) {
+  if (!firstName || !lastName || !city || !(whatsappNumber || callPhone)) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
 
-  const [app] = await db
-    .insert(driverApplicationsTable)
-    .values({
-      userId,
-      status: "pending",
-      firstName: String(firstName).trim().slice(0, 80),
-      lastName: String(lastName).trim().slice(0, 80),
-      dateOfBirth: String(dateOfBirth).trim(),
-      address: String(address).trim().slice(0, 200),
-      city: String(city).trim().slice(0, 100),
-      country: country,
-      whatsappNumber: String(whatsappNumber).trim().slice(0, 30),
-      callPhone: String(callPhone).trim().slice(0, 30),
-      hasSmartphone: Boolean(hasSmartphone),
-      hasStableInternet: Boolean(hasStableInternet),
-      hasFastPhone: Boolean(hasFastPhone),
-      phoneBrand: phoneBrand ? String(phoneBrand).trim().slice(0, 60) : null,
-      phoneModel: phoneModel ? String(phoneModel).trim().slice(0, 60) : null,
-      phoneOs: phoneOs ? String(phoneOs).trim() : null,
-      internetProvider: internetProvider ? String(internetProvider).trim().slice(0, 80) : null,
-      vehicleType: vehicleType ? String(vehicleType) : null,
-      vehicleBrand: vehicleBrand ? String(vehicleBrand).trim().slice(0, 80) : null,
-      vehicleModel: vehicleModel ? String(vehicleModel).trim().slice(0, 80) : null,
-      vehicleYear: vehicleYear ? String(vehicleYear).trim() : null,
-      vehicleColor: vehicleColor ? String(vehicleColor).trim().slice(0, 40) : null,
-      licensePlateNumber: licensePlateNumber ? String(licensePlateNumber).trim().toUpperCase().slice(0, 20) : null,
-      licenseNumber: licenseNumber ? String(licenseNumber).trim().slice(0, 60) : null,
-      licenseExpiry: licenseExpiry ? String(licenseExpiry).trim() : null,
-      // Legacy fields (backward compat)
-      photoFront: (photoFront ?? photoVehicleFront) ? String(photoFront ?? photoVehicleFront) : null,
-      photoSide: (photoSide ?? photoVehicleSide) ? String(photoSide ?? photoVehicleSide) : null,
-      photoBody: photoBody ? String(photoBody) : null,
-      photoIdSelfie: photoIdSelfie ? String(photoIdSelfie) : null,
-      // New document photo fields
-      photoVehicleRegistration: photoVehicleRegistration ? String(photoVehicleRegistration) : null,
-      photoVehicleInsurance: photoVehicleInsurance ? String(photoVehicleInsurance) : null,
-      photoLicenseFront: photoLicenseFront ? String(photoLicenseFront) : null,
-      photoLicenseBack: photoLicenseBack ? String(photoLicenseBack) : null,
-      photoVehicleFront: photoVehicleFront ? String(photoVehicleFront) : null,
-      photoVehicleSide: photoVehicleSide ? String(photoVehicleSide) : null,
-      photoLicensePlate: photoLicensePlate ? String(photoLicensePlate) : null,
-      facePhotoFront: facePhotoFront ? String(facePhotoFront) : null,
-      facePhotoLeft: facePhotoLeft ? String(facePhotoLeft) : null,
-      facePhotoRight: facePhotoRight ? String(facePhotoRight) : null,
-      facePhotoHoldingId: facePhotoHoldingId ? String(facePhotoHoldingId) : null,
-      // New fields from redesigned form
-      photoVehicleBack: photoVehicleBack ? String(photoVehicleBack) : null,
-      insuranceNumber: insuranceNumber ? String(insuranceNumber).trim().slice(0, 80) : null,
-      selfiePhotoUrl: selfiePhotoUrl ? String(selfiePhotoUrl) : null,
-      bankName: bankName ? String(bankName).trim().slice(0, 120) : null,
-      bankAccountName: bankAccountName ? String(bankAccountName).trim().slice(0, 120) : null,
-      bankAccountNumber: bankAccountNumber ? String(bankAccountNumber).trim().slice(0, 60) : null,
-      preferredPaymentMethod: preferredPaymentMethod ? String(preferredPaymentMethod) : null,
-      workZones: workZones ? JSON.stringify(workZones) : null,
-      workHours: workHours ? JSON.stringify(workHours) : null,
-      maxDeliveryKm: maxDeliveryKm ? Number(maxDeliveryKm) : null,
-    })
-    .returning();
+  // Basic age gate when DOB provided (must be 18+)
+  if (dateOfBirth) {
+    const dob = new Date(String(dateOfBirth));
+    if (!Number.isNaN(dob.getTime())) {
+      const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (age < 18) {
+        res.status(400).json({ error: "Applicants must be at least 18 years old" });
+        return;
+      }
+    }
+  }
+
+  const values = buildApplicationValues(userId, country, req.body, "pending");
+  const editable = apps.find((a) => ["draft", "needs_changes", "rejected"].includes(a.status));
+
+  let app;
+  if (editable) {
+    [app] = await db
+      .update(driverApplicationsTable)
+      .set({ ...values, status: "pending", allowEdit: false, reviewedAt: null, adminNote: null } as any)
+      .where(eq(driverApplicationsTable.id, editable.id))
+      .returning();
+  } else {
+    [app] = await db.insert(driverApplicationsTable).values(values as any).returning();
+  }
+
+  await db.insert(notificationsTable).values({
+    userId,
+    type: "driver_application_submitted",
+    isRead: false,
+    message: "Your Flexa Market driver application was submitted and is pending review.",
+  } as any).catch(() => {});
 
   const appId = `DRV-${String(app.id).padStart(10, "0")}`;
   res.status(201).json({ application: app, applicationId: appId });

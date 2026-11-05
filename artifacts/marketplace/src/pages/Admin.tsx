@@ -16,6 +16,7 @@ import { useLocation, useSearch, Link } from "wouter";
 import { AndroidInlineRouteContext } from "@/contexts/android-inline-route";
 import AdminCardCancellations from "@/components/AdminCardCancellations";
 import AdminControlCenterDashboard from "@/components/admin/AdminControlCenterDashboard";
+import AdminModerationCenter from "@/components/admin/AdminModerationCenter";
 import {
   adminPathToTab,
   adminTabToPath,
@@ -1674,7 +1675,7 @@ export default function Admin() {
     try {
       const qs = status === "all" ? "" : `?status=${status}`;
       const data = await adminFetch(`/api/admin/moderation${qs}`, "GET");
-      setModerationQueue(data);
+      setModerationQueue(Array.isArray(data) ? data : (data?.items ?? []));
     } catch (e: any) {
       toast({ title: "Failed to load queue", description: e?.message ?? "", variant: "destructive" });
     }
@@ -2633,6 +2634,11 @@ export default function Admin() {
     : t(adminSectionTitleKey(pathTab || adminTab), {
         defaultValue: (pathTab || adminTab).replace(/^\w/, (c) => c.toUpperCase()),
       });
+
+  // Dedicated Moderation Control Center (visual redesign; real APIs).
+  if (pathTab === "moderation") {
+    return <AdminModerationCenter />;
+  }
 
   return (
     <div className="mx-auto max-w-[1400px] px-3 py-4 md:px-5">

@@ -341,11 +341,18 @@ function DeliveryBrowseCard({ delivery, driverCta, onAcceptClick, onSkip, driver
             </div>
           )}
           <div className="min-w-0 flex-1 space-y-1.5">
-            <div>
-              <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">
-                {t("availableDeliveries.cardItemToPickup")}
-              </p>
-              <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{productName}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-0.5">
+                  {delivery.transactionIdNum
+                    ? `#FM-${String(delivery.transactionIdNum).padStart(6, "0")}`
+                    : t("availableDeliveries.cardItemToPickup")}
+                </p>
+                <p className="text-[13px] font-bold text-foreground leading-snug line-clamp-2">{productName}</p>
+              </div>
+              <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                {t("availableDeliveries.availableBadge", { defaultValue: "Available" })}
+              </span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${speedCfg.bg} ${speedCfg.color}`}>
@@ -554,6 +561,7 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
 }) {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const STATUS_CONFIG: Record<string, { label: string; color: string; step: number }> = {
     driver_assigned: { label: t("availableDeliveries.statusGoPickup"),      color: "bg-blue-500",    step: 1 },
@@ -892,9 +900,13 @@ function ActiveDeliveryCard({ delivery, onUpdateStatus, onDriverCancel, updating
       {/* ── Compact status bar ── */}
       <div className={`${cfg.color} px-3 py-2`}>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-white font-black text-[13px] tabular-nums">
-            {delivery.transactionIdNum ? `BZH-${String(delivery.transactionIdNum).padStart(6,"0")}` : `FM-${delivery.id}`}
-          </p>
+          <button
+            type="button"
+            className="text-white font-black text-[13px] tabular-nums underline-offset-2 hover:underline"
+            onClick={() => navigate(`/delivery/job/${delivery.id}`)}
+          >
+            {delivery.transactionIdNum ? `#FM-${String(delivery.transactionIdNum).padStart(6,"0")}` : `#FL-${delivery.id}`}
+          </button>
           <p className="text-white/90 text-[11px] font-semibold truncate max-w-[55%] text-right">{cfg.label}</p>
         </div>
         <div className="flex items-center gap-1 mt-1.5">
@@ -1561,7 +1573,9 @@ export default function AvailableDeliveries() {
   const defaultAdminCountry = adminScopeCountry
     ?? (DELIVERY_COUNTRIES.includes(user?.country ?? "") ? (user?.country ?? "Haiti") : "Haiti");
 
-  const [tab, setTab] = useState<"browse" | "mine">("browse");
+  const [tab, setTab] = useState<"browse" | "mine">(() =>
+    typeof window !== "undefined" && window.location.search.includes("tab=mine") ? "mine" : "browse",
+  );
   const [deliveries, setDeliveries] = useState<BrowseDelivery[]>([]);
   const [mine, setMine] = useState<ActiveDelivery[]>([]);
   const [driverCta, setDriverCta] = useState<DriverCta>("none");
@@ -1679,14 +1693,8 @@ export default function AvailableDeliveries() {
       if (res.ok) {
         toast({ title: t("availableDeliveries.toastAccepted") });
         const h = { Authorization: `Bearer ${token}` };
-        const [myRes, statsRes] = await Promise.all([
-          fetch("/api/delivery/my", { headers: h }),
-          fetch("/api/delivery/driver/stats", { headers: h }),
-        ]);
         await loadAll(h, false);
-        if (myRes.ok) setMine((await myRes.json()).deliveries ?? []);
-        if (statsRes.ok) setDriverStats((await statsRes.json()).driver ?? null);
-        setTab("mine");
+        navigate(`/delivery/job/${id}`);
       } else {
         toast({ title: data.error ?? t("availableDeliveries.toastError"), variant: "destructive" });
       }

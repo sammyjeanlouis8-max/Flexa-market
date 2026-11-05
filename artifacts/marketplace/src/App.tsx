@@ -116,6 +116,7 @@ const AdminAgentApplicationsPage     = lazy(() => import("@/pages/AdminAgentAppl
 const AdminVehiclePanel              = lazy(() => import("@/pages/AdminVehiclePanel"));
 const AdminDriversLiveMap            = lazy(() => import("@/pages/AdminDriversLiveMap"));
 const DriverDashboard                = lazy(() => import("@/pages/DriverDashboard"));
+const DriverJobDetail                = lazy(() => import("@/pages/DriverJobDetail"));
 const ManagerDashboard               = lazy(() => import("@/pages/ManagerDashboard"));
 const DriverApplicationStatus        = lazy(() => import("@/pages/DriverApplicationStatus"));
 const Cart                           = lazy(() => import("@/pages/Cart"));
@@ -300,6 +301,7 @@ function LayoutRoutes() {
           <Route path="/faq" component={FAQ} />
           <Route path="/delivery/apply" component={ApplyForDriver} />
           <Route path="/delivery/deliveries" component={AvailableDeliveries} />
+          <Route path="/delivery/job/:id" component={DriverJobDetail} />
           <Route path="/cart" component={Cart} />
           <Route path="/loans">
             {isNativeMobileApp() ? <RedirectHome /> : <LoanPage />}

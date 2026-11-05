@@ -11,34 +11,6 @@ import { sendSms } from "../lib/twilio";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { calculateDeliveryPrice, getAvailableCities, haversineKm, lookupCity, getOsrmDistanceKm, DRIVER_COMMISSION_PCT } from "../lib/deliveryPricing";
-
-// ── Haiti department → communes map ──────────────────────────────────────────
-// All values lowercase for case-insensitive SQL matching.
-const HAITI_DEPARTMENTS: Record<string, string[]> = {
-  "Ouest":      ["port-au-prince", "pétion-ville", "petionville", "petion-ville", "delmas", "carrefour", "croix-des-bouquets", "croix des bouquets", "léogâne", "leogane", "kenscoff", "arcahaie", "thomazeau"],
-  "Nord":       ["cap-haïtien", "cap-haitien", "cap haïtien", "cap haitien"],
-  "Artibonite": ["gonaïves", "gonaives", "saint-marc", "saint marc", "verrettes", "montrouis", "anse-à-galets", "gros-morne"],
-  "Centre":     ["hinche", "mirebalais"],
-  "Sud":        ["les cayes", "les-cayes"],
-  "Grand'Anse": ["jérémie", "jeremie"],
-  "Sud-Est":    ["jacmel"],
-};
-
-/** All city display names grouped by department (for the driver preference UI). */
-export const HAITI_DEPARTMENT_CITIES: Record<string, string[]> = {
-  "Ouest":      ["Port-au-Prince", "Pétion-Ville", "Delmas", "Carrefour", "Croix-des-Bouquets", "Léogâne", "Kenscoff", "Arcahaie", "Thomazeau"],
-  "Nord":       ["Cap-Haïtien"],
-  "Artibonite": ["Gonaïves", "Saint-Marc", "Verrettes", "Montrouis"],
-  "Centre":     ["Hinche", "Mirebalais"],
-  "Sud":        ["Les Cayes"],
-  "Grand'Anse": ["Jérémie"],
-  "Sud-Est":    ["Jacmel"],
-};
-
-/** Returns lowercase commune names for the given Haiti department. */
-function getCommunesForDepartment(department: string): string[] {
-  return HAITI_DEPARTMENTS[department] ?? [];
-}
 import { getExchangeRate } from "../lib/exchange-rate";
 import { sendEmail } from "../lib/email";
 import {
@@ -46,6 +18,44 @@ import {
   deliveryStatusEmail,
   deliveryCompletedEmail,
 } from "../lib/emailTemplates";
+import {
+  getCommuneMatchTokens,
+  getCommuneMatchTokensForDepartment,
+  haitiZonesApiPayload,
+  HAITI_COMMUNES_BY_DEPARTMENT,
+  parseWorkZonesJson,
+  validateWorkZones,
+} from "../lib/haitiGeography";
+
+/** @deprecated Prefer haitiZonesApiPayload / HAITI_COMMUNES_BY_DEPARTMENT */
+export const HAITI_DEPARTMENT_CITIES = HAITI_COMMUNES_BY_DEPARTMENT;
+
+function getCommunesForDepartment(department: string): string[] {
+  return getCommuneMatchTokensForDepartment(department);
+}
+
+/** Build pickup-city filter from driver department + optional multi-commune work zones. */
+function buildDriverZoneFilter(driver: {
+  department?: string | null;
+  commune?: string | null;
+  workZones?: string | null;
+}): ReturnType<typeof sql> | undefined {
+  const selected = parseWorkZonesJson(driver.workZones);
+  if (selected.length > 0) {
+    const tokens = getCommuneMatchTokens(selected);
+    if (tokens.length > 0) {
+      return sql`LOWER(${deliveriesTable.pickupCity}) = ANY(ARRAY[${sql.join(tokens.map((c) => sql`${c}::text`), sql`, `)}])`;
+    }
+  }
+  const depCommunes = driver.department ? getCommunesForDepartment(driver.department) : [];
+  if (depCommunes.length > 0) {
+    return sql`LOWER(${deliveriesTable.pickupCity}) = ANY(ARRAY[${sql.join(depCommunes.map((c) => sql`${c}::text`), sql`, `)}])`;
+  }
+  if (driver.commune) {
+    return sql`LOWER(${deliveriesTable.pickupCity}) = LOWER(${driver.commune})`;
+  }
+  return undefined;
+}
 
 // ── Tracking number generator (FM-XXXXXXXXX) ──────────────────────────────────
 function generateTrackingNumber(): string {
@@ -812,7 +822,15 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
 
   // ── Regular user / driver path ─────────────────────────────────────────────
   const [driver] = await db
-    .select({ status: driversTable.status, latitude: driversTable.latitude, longitude: driversTable.longitude, commune: driversTable.commune, department: (driversTable as any).department })
+    .select({
+      status: driversTable.status,
+      latitude: driversTable.latitude,
+      longitude: driversTable.longitude,
+      commune: driversTable.commune,
+      department: driversTable.department,
+      workZones: driversTable.workZones,
+      isOnline: driversTable.isOnline,
+    })
     .from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
 
   const [app] = await db
@@ -831,20 +849,22 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
   const driverLat = driver?.latitude;
   const driverLng = driver?.longitude;
   const driverCommune    = driver?.commune    ?? null;
-  const driverDepartment = (driver as any)?.department ?? null;
+  const driverDepartment = driver?.department ?? null;
+  const driverWorkZones  = parseWorkZonesJson(driver?.workZones);
+  const driverIsOnline   = driver?.isOnline ?? false;
 
-  // Department filter: ALL drivers in the same department see the SAME deliveries —
-  // no commune-level splits, no GPS radius.  Falls back to commune match if the
-  // driver has no department set yet, and shows country-wide if neither is set.
+  // Offline approved drivers keep active jobs elsewhere but do not receive new pool offers.
   let locationFilter: ReturnType<typeof sql> | undefined;
   if (driverCta === "approved") {
-    const depCommunes = driverDepartment ? getCommunesForDepartment(driverDepartment) : [];
-    if (depCommunes.length > 0) {
-      locationFilter = sql`LOWER(${deliveriesTable.pickupCity}) = ANY(ARRAY[${sql.join(depCommunes.map(c => sql`${c}::text`), sql`, `)}])`;
-    } else if (driverCommune) {
-      locationFilter = sql`LOWER(${deliveriesTable.pickupCity}) = LOWER(${driverCommune})`;
+    if (!driverIsOnline) {
+      locationFilter = sql`FALSE`;
+    } else {
+      locationFilter = buildDriverZoneFilter({
+        department: driverDepartment,
+        commune: driverCommune,
+        workZones: driver?.workZones,
+      });
     }
-    // neither set → no geographic filter, driver sees all country deliveries
   }
 
   const buyerAlias = alias(usersTable, "buyer");
@@ -927,6 +947,9 @@ router.get("/delivery/browse", requireAuth, async (req, res): Promise<void> => {
     isApprovedDriver: driverCta === "approved",
     driverHasGps: driverLat != null,
     driverCommune,
+    driverDepartment,
+    driverWorkZones,
+    driverIsOnline,
     rejectedAllowEdit,
     rejectedAdminNote,
   });
@@ -944,18 +967,26 @@ router.get("/delivery/available", requireAuth, async (req, res): Promise<void> =
   const driverLat        = driver.latitude;
   const driverLng        = driver.longitude;
   const driverCommune    = driver.commune;
-  const driverDepartment = (driver as any).department ?? null;
+  const driverDepartment = driver.department ?? null;
+
+  // Offline drivers do not receive new assignment offers.
+  if (!driver.isOnline) {
+    res.json({
+      deliveries: [],
+      offline: true,
+      driverCommune,
+      driverDepartment,
+      driverWorkZones: parseWorkZonesJson(driver.workZones),
+    });
+    return;
+  }
 
   // ── Build WHERE clause ────────────────────────────────────────────────────
-  // Department filter: ALL drivers in the same department see the SAME deliveries.
-  // Falls back to commune match when no department is set; country-wide if neither.
-  let zoneFilter: ReturnType<typeof sql> | undefined;
-  const depCommunes = driverDepartment ? getCommunesForDepartment(driverDepartment) : [];
-  if (depCommunes.length > 0) {
-    zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) = ANY(ARRAY[${sql.join(depCommunes.map(c => sql`${c}::text`), sql`, `)}])`;
-  } else if (driverCommune) {
-    zoneFilter = sql`LOWER(${deliveriesTable.pickupCity}) = LOWER(${driverCommune})`;
-  }
+  const zoneFilter = buildDriverZoneFilter({
+    department: driverDepartment,
+    commune: driverCommune,
+    workZones: driver.workZones,
+  });
 
   const baseWhere = and(
     eq(deliveriesTable.status, "waiting"),
@@ -1107,6 +1138,83 @@ router.get("/delivery/my", requireAuth, async (req, res): Promise<void> => {
   res.json({ deliveries });
 });
 
+// GET /api/delivery/:id/driver-view — assigned driver detail (never returns verification PIN)
+router.get("/delivery/:id/driver-view", requireAuth, async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const deliveryId = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(deliveryId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const sellerUser = alias(usersTable, "seller_user");
+  const buyerUser = alias(usersTable, "buyer_user");
+
+  const [row] = await db
+    .select({
+      id: deliveriesTable.id,
+      deliveryMethod: deliveriesTable.deliveryMethod,
+      pickupAddress: deliveriesTable.pickupAddress,
+      pickupCity: deliveriesTable.pickupCity,
+      deliveryAddress: deliveriesTable.deliveryAddress,
+      deliveryCity: deliveriesTable.deliveryCity,
+      country: deliveriesTable.country,
+      status: deliveriesTable.status,
+      totalAmount: deliveriesTable.totalAmount,
+      driverEarnings: deliveriesTable.driverEarnings,
+      currency: deliveriesTable.currency,
+      feeUsd: deliveriesTable.feeUsd,
+      feeLocal: deliveriesTable.feeLocal,
+      distanceKm: deliveriesTable.distanceKm,
+      sellerNote: deliveriesTable.sellerNote,
+      acceptedAt: deliveriesTable.acceptedAt,
+      pickedUpAt: deliveriesTable.pickedUpAt,
+      deliveredAt: deliveriesTable.deliveredAt,
+      arrivedAt: deliveriesTable.arrivedAt,
+      transactionId: deliveriesTable.transactionId,
+      createdAt: deliveriesTable.createdAt,
+      driverUserId: deliveriesTable.driverUserId,
+      sellerName: sellerUser.name,
+      sellerPhone: sellerUser.phone,
+      buyerName: buyerUser.name,
+      buyerPhone: buyerUser.phone,
+      listingTitle: listingsTable.title,
+      listingImages: listingsTable.images,
+      orderAmount: transactionsTable.amount,
+      orderCurrency: transactionsTable.currency,
+    })
+    .from(deliveriesTable)
+    .leftJoin(sellerUser, eq(deliveriesTable.sellerId, sellerUser.id))
+    .leftJoin(buyerUser, eq(deliveriesTable.buyerId, buyerUser.id))
+    .leftJoin(transactionsTable, eq(deliveriesTable.transactionId, transactionsTable.id))
+    .leftJoin(listingsTable, sql`${listingsTable.id} = COALESCE(${deliveriesTable.listingId}, ${transactionsTable.listingId})`)
+    .where(eq(deliveriesTable.id, deliveryId))
+    .limit(1);
+
+  if (!row) { res.status(404).json({ error: "Delivery not found" }); return; }
+  if (row.driverUserId !== userId) {
+    res.status(403).json({ error: "Not your delivery" });
+    return;
+  }
+
+  const { listingImages, driverUserId: _du, ...rest } = row;
+  const htgRate = await getExchangeRate().catch(() => 130);
+  const earningsHtg =
+    rest.feeLocal != null && rest.feeUsd != null && rest.feeUsd > 0 && rest.driverEarnings != null
+      ? Math.round((rest.driverEarnings / rest.feeUsd) * rest.feeLocal)
+      : rest.driverEarnings != null
+        ? Math.round(rest.driverEarnings * htgRate)
+        : null;
+
+  res.json({
+    delivery: {
+      ...rest,
+      listingImage: Array.isArray(listingImages) && listingImages.length > 0 ? listingImages[0] : null,
+      orderRef: rest.transactionId ? `#FM-${String(rest.transactionId).padStart(6, "0")}` : `#FL-${rest.id}`,
+      driverEarningsHtg: earningsHtg,
+      // Explicitly never expose verificationCode to drivers via this endpoint
+      pinRequired: rest.country === "Haiti",
+    },
+  });
+});
+
 // ─── Delivery state machine (server-side transition guard) ──────────────────
 // Canonical, ordered delivery lifecycle. A driver may only advance a delivery
 // ONE legal step forward — no skipping ahead and no going backward. Every other
@@ -1135,6 +1243,10 @@ router.post("/delivery/:id/accept", requireAuth, async (req, res): Promise<void>
 
   const [driver] = await db.select().from(driversTable).where(and(eq(driversTable.userId, userId), eq(driversTable.status, "active"))).limit(1);
   if (!driver) { res.status(403).json({ error: "Not an approved driver" }); return; }
+  if (!driver.isOnline) {
+    res.status(403).json({ error: "Go online to accept new deliveries" });
+    return;
+  }
 
   const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.id, deliveryId)).limit(1);
   if (!delivery) { res.status(404).json({ error: "Delivery not found" }); return; }
@@ -2844,24 +2956,64 @@ router.post("/admin/deliveries/:id/force-complete", requireAdmin, async (req, re
 
 // GET /api/delivery/driver/zones — return department→commune map for the preference UI
 router.get("/delivery/driver/zones", requireAuth, async (_req, res): Promise<void> => {
-  res.json({ departments: HAITI_DEPARTMENT_CITIES });
+  const payload = haitiZonesApiPayload();
+  res.json({
+    ...payload,
+    // Back-compat for older clients that expect departments as a map
+    departments: payload.communesByDepartment,
+  });
 });
 
 // PATCH /api/delivery/driver/location — update GPS + online toggle + zone preference
 router.patch("/delivery/driver/location", requireAuth, async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { latitude, longitude, commune, zone, isOnline, department } = req.body;
+  const { latitude, longitude, commune, zone, isOnline, department, workZones, communes } = req.body;
 
-  const [driver] = await db.select({ id: driversTable.id }).from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
+  const [driver] = await db.select({ id: driversTable.id, status: driversTable.status }).from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
   if (!driver) { res.status(403).json({ error: "Not a driver" }); return; }
+
+  const zoneUpdate: Record<string, unknown> = {};
+  const wantsZoneUpdate =
+    department != null || commune != null || workZones != null || communes != null || zone != null;
+  if (wantsZoneUpdate) {
+    const communeList: string[] = Array.isArray(workZones)
+      ? workZones.map(String)
+      : Array.isArray(communes)
+        ? communes.map(String)
+        : commune
+          ? [String(commune)]
+          : parseWorkZonesJson(typeof zone === "string" && zone.trim().startsWith("[") ? zone : null);
+
+    if (department != null || communeList.length > 0) {
+      const validated = validateWorkZones({
+        department: department != null ? String(department) : undefined,
+        communes: communeList,
+      });
+      if (!validated.ok) {
+        res.status(400).json({ error: validated.error });
+        return;
+      }
+      zoneUpdate.department = validated.department;
+      zoneUpdate.workZones = JSON.stringify(validated.communes);
+      zoneUpdate.commune = validated.communes[0] ?? null;
+      zoneUpdate.zone = validated.communes.length > 0
+        ? `${validated.department}: ${validated.communes.join(", ")}`
+        : validated.department;
+    } else if (zone != null) {
+      zoneUpdate.zone = String(zone);
+    }
+  }
+
+  if (isOnline === true && driver.status !== "active") {
+    res.status(403).json({ error: "Only approved drivers can go online" });
+    return;
+  }
 
   const now = new Date();
   await db.update(driversTable).set({
     ...(latitude != null ? { latitude: Number(latitude) } : {}),
     ...(longitude != null ? { longitude: Number(longitude) } : {}),
-    ...(commune != null ? { commune: String(commune) } : {}),
-    ...(department != null ? { department: String(department) } : {}),
-    ...(zone != null ? { zone: String(zone) } : {}),
+    ...zoneUpdate,
     ...(isOnline != null ? { isOnline: Boolean(isOnline) } : {}),
     ...(latitude != null ? { lastLocationAt: now } : {}),
   } as any).where(eq(driversTable.userId, userId));
@@ -2940,7 +3092,96 @@ router.get("/delivery/driver/stats", requireAuth, async (req, res): Promise<void
   const userId = req.userId!;
   const [driver] = await db.select().from(driversTable).where(eq(driversTable.userId, userId)).limit(1);
   if (!driver) { res.status(404).json({ error: "Not a driver" }); return; }
-  res.json({ driver });
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startOfWeek = new Date(startOfDay);
+  startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7)); // Monday
+  const startOfMonth = new Date(startOfDay.getFullYear(), startOfDay.getMonth(), 1);
+
+  const deliveredRows = await db
+    .select({
+      id: deliveriesTable.id,
+      driverEarnings: deliveriesTable.driverEarnings,
+      feeLocal: deliveriesTable.feeLocal,
+      feeUsd: deliveriesTable.feeUsd,
+      deliveredAt: deliveriesTable.deliveredAt,
+    })
+    .from(deliveriesTable)
+    .where(and(
+      eq(deliveriesTable.driverUserId, userId),
+      eq(deliveriesTable.status, "delivered"),
+    ))
+    .orderBy(desc(deliveriesTable.deliveredAt))
+    .limit(500);
+
+  const htgRate = await getExchangeRate().catch(() => 130);
+  const toHtg = (row: { driverEarnings: number | null; feeLocal: number | null; feeUsd: number | null }) => {
+    if (row.feeLocal != null && row.feeUsd != null && row.feeUsd > 0 && row.driverEarnings != null) {
+      return Math.round((row.driverEarnings / row.feeUsd) * row.feeLocal);
+    }
+    if (row.driverEarnings != null) return Math.round(row.driverEarnings * htgRate);
+    return 0;
+  };
+
+  const inRange = (iso: Date | string | null | undefined, from: Date) => {
+    if (!iso) return false;
+    return new Date(iso).getTime() >= from.getTime();
+  };
+
+  const todayRows = deliveredRows.filter((r) => inRange(r.deliveredAt, startOfDay));
+  const weekRows = deliveredRows.filter((r) => inRange(r.deliveredAt, startOfWeek));
+  const monthRows = deliveredRows.filter((r) => inRange(r.deliveredAt, startOfMonth));
+
+  const availableCountRows = driver.isOnline
+    ? await db
+        .select({ id: deliveriesTable.id })
+        .from(deliveriesTable)
+        .leftJoin(transactionsTable, eq(deliveriesTable.transactionId, transactionsTable.id))
+        .where(and(
+          eq(deliveriesTable.status, "waiting"),
+          notInArray(transactionsTable.orderStatus, ["cancelled", "return_refunded"]),
+          eq(deliveriesTable.country, driver.country),
+          or(
+            eq(deliveriesTable.deliveryMethod, "motorcycle"),
+            eq(deliveriesTable.deliveryMethod, "car"),
+          ),
+          buildDriverZoneFilter(driver),
+        ))
+        .limit(200)
+    : [];
+
+  const activeMine = await db
+    .select({ id: deliveriesTable.id })
+    .from(deliveriesTable)
+    .where(and(
+      eq(deliveriesTable.driverUserId, userId),
+      inArray(deliveriesTable.status, [
+        "driver_assigned", "arrived_pickup", "picked_up", "on_the_way", "arrived",
+      ]),
+    ))
+    .limit(50);
+
+  const sumHtg = (rows: typeof deliveredRows) => rows.reduce((s, r) => s + toHtg(r), 0);
+
+  res.json({
+    driver: {
+      ...driver,
+      workZones: parseWorkZonesJson(driver.workZones),
+    },
+    stats: {
+      deliveriesToday: todayRows.length,
+      earningsTodayHtg: sumHtg(todayRows),
+      earningsWeekHtg: sumHtg(weekRows),
+      earningsMonthHtg: sumHtg(monthRows),
+      completedTotal: driver.deliveryCount,
+      earningsTotalUsd: driver.earningsTotal,
+      availableCount: availableCountRows.length,
+      activeCount: activeMine.length,
+      currency: "HTG",
+      exchangeRate: htgRate,
+    },
+  });
 });
 
 // PATCH /api/admin/delivery/applications/:id/request-changes

@@ -102,6 +102,8 @@ export const driversTable = pgTable("drivers", {
   commune: text("commune"),
   department: text("department"),
   zone: text("zone"),
+  /** JSON string array of selected working communes within `department`. */
+  workZones: text("work_zones"),
   isOnline: boolean("is_online").notNull().default(false),
   lastLocationAt: timestamp("last_location_at", { withTimezone: true }),
   // Suspension details

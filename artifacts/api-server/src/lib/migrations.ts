@@ -2369,6 +2369,8 @@ export async function runStartupMigrations(): Promise<void> {
 
   // ── Driver zone preference (department-level delivery visibility) ────────────
   migrations.push({ name: "drivers.department", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS department text" });
+  // Multi-commune work zones for Haiti drivers (JSON string array)
+  migrations.push({ name: "drivers.work_zones", sql: "ALTER TABLE drivers ADD COLUMN IF NOT EXISTS work_zones text" });
 
   // ── Flexa TV ─────────────────────────────────────────────────────────────────
   migrations.push({

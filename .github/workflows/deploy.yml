@@ -135,3 +135,4 @@ jobs:
 # Owner requested deploy of PRs #81–#87 (orders, Haiti driver/PIN, videos, country filter, deals) (2026-11-05).
 
 # Owner requested deploy of Wallet UI + Sales analytics + bottom-nav safe-area (#88–#90) (2026-11-05).
+# deploy-trigger: premium-side-menu-9bdb

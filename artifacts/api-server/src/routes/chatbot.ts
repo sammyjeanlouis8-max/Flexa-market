@@ -1,24 +1,18 @@
 import { Router } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { requireAuth } from "../middlewares/auth";
+import {
+  FLEXA_AI_GROQ_MODEL,
+  FLEXA_AI_GROQ_URL,
+  FLEXA_AI_HAIKU,
+  getAnthropicClient,
+  isGroqConfigured,
+} from "../lib/flexaAi";
 
 const router = Router();
 
-// ── AI providers (optional — chatbot works without them via smart fallbacks) ──
-const GROQ_API_KEY  = process.env.GROQ_API_KEY ?? "";
-const GROQ_MODEL    = "llama-3.1-8b-instant";
-const GROQ_API_URL  = "https://api.groq.com/openai/v1/chat/completions";
-
-const anthropicBaseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY
-  ?? process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY;
-const anthropicClient = anthropicApiKey
-  ? new Anthropic({
-      ...(anthropicBaseURL ? { baseURL: anthropicBaseURL } : {}),
-      apiKey: anthropicApiKey,
-      timeout: 25000,
-    })
-  : null;
+// FlexaBot preserves its own system prompt and fallbacks.
+// Anthropic/Groq credentials come from the shared Flexa AI helper (same env vars).
 
 const SYSTEM_PROMPT = `You are FlexaBot, the general-purpose AI assistant inside FLEXA MARKET.
 
@@ -56,7 +50,6 @@ function detectLang(text: string): Lang {
   return "en";
 }
 
-// ── Fallback responses when AI is unavailable ─────────────────────────────────
 const FALLBACK: LangMap = {
   ht: "Asistan AI a pa disponib kounye a. Tanpri eseye ankò nan kèk minit oswa kontakte sipò Flexa Market.",
   fr: "L’assistant IA est indisponible pour le moment. Réessayez dans quelques minutes ou contactez l’assistance Flexa Market.",
@@ -65,7 +58,6 @@ const FALLBACK: LangMap = {
   pt: "O assistente de IA está indisponível no momento. Tente novamente em alguns minutos ou contate o suporte da Flexa Market.",
 };
 
-// ── Body parser ───────────────────────────────────────────────────────────────
 function parseBody(body: any): { ok: true; messages: ChatMessage[] } | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Invalid body" };
   const messages = body.messages;
@@ -85,13 +77,13 @@ function parseBody(body: any): { ok: true; messages: ChatMessage[] } | { ok: fal
   return { ok: true, messages: cleaned };
 }
 
-// ── AI callers with strict timeouts ──────────────────────────────────────────
 async function callGroq(messages: ChatMessage[]): Promise<string> {
-  const res = await fetch(GROQ_API_URL, {
+  const key = process.env.GROQ_API_KEY ?? "";
+  const res = await fetch(FLEXA_AI_GROQ_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: FLEXA_AI_GROQ_MODEL,
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
       max_tokens: 1024,
       temperature: 0.6,
@@ -107,9 +99,10 @@ async function callGroq(messages: ChatMessage[]): Promise<string> {
 }
 
 async function callAnthropic(messages: ChatMessage[]): Promise<string> {
+  const anthropicClient = getAnthropicClient();
   if (!anthropicClient) throw new Error("Anthropic not configured");
   const response = await anthropicClient.messages.create({
-    model: "claude-haiku-4-5",
+    model: FLEXA_AI_HAIKU,
     max_tokens: 1024,
     system: SYSTEM_PROMPT,
     messages,
@@ -119,11 +112,11 @@ async function callAnthropic(messages: ChatMessage[]): Promise<string> {
     .map(b => b.text).join("").trim();
 }
 
-// ── Route ─────────────────────────────────────────────────────────────────────
 router.get("/chatbot/status", (_req, res) => {
+  const anthropicClient = getAnthropicClient();
   res.json({
-    configured: Boolean(anthropicClient || GROQ_API_KEY),
-    provider: anthropicClient ? "anthropic" : GROQ_API_KEY ? "groq" : null,
+    configured: Boolean(anthropicClient || isGroqConfigured()),
+    provider: anthropicClient ? "anthropic" : isGroqConfigured() ? "groq" : null,
   });
 });
 
@@ -134,9 +127,8 @@ router.post("/chatbot/message", requireAuth, async (req, res) => {
   const lastMsg = parsed.messages[parsed.messages.length - 1].content;
   const lang    = detectLang(lastMsg);
 
-  // Use the managed AI provider first for the strongest general-purpose answers.
-  // Groq remains a bounded backup when it is already configured.
-  if (GROQ_API_KEY || anthropicClient) {
+  const anthropicClient = getAnthropicClient();
+  if (anthropicClient || isGroqConfigured()) {
     try {
       const text = anthropicClient
         ? await callAnthropic(parsed.messages)
@@ -145,11 +137,9 @@ router.post("/chatbot/message", requireAuth, async (req, res) => {
       return;
     } catch (err: any) {
       console.warn("[chatbot] AI failed, using fallback:", err?.message);
-      // Fall through to fallback below
     }
   }
 
-  // Graceful localized fallback — never returns 5xx to the client
   res.json({ content: FALLBACK[lang] });
 });
 

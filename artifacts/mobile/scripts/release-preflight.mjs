@@ -6,16 +6,19 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const mobileDir = path.resolve(scriptDir, "..");
 const workspaceDir = path.resolve(mobileDir, "../..");
 
-const [appJsonText, easJsonText, appSource, workspacePackageText] = await Promise.all([
-  readFile(path.join(mobileDir, "app.json"), "utf8"),
-  readFile(path.join(mobileDir, "eas.json"), "utf8"),
-  readFile(path.join(mobileDir, "App.tsx"), "utf8"),
-  readFile(path.join(workspaceDir, "package.json"), "utf8"),
-]);
+const [appJsonText, easJsonText, appSource, workspacePackageText, mobilePackageText] =
+  await Promise.all([
+    readFile(path.join(mobileDir, "app.json"), "utf8"),
+    readFile(path.join(mobileDir, "eas.json"), "utf8"),
+    readFile(path.join(mobileDir, "App.tsx"), "utf8"),
+    readFile(path.join(workspaceDir, "package.json"), "utf8"),
+    readFile(path.join(mobileDir, "package.json"), "utf8"),
+  ]);
 
 const appConfig = JSON.parse(appJsonText).expo;
 const easConfig = JSON.parse(easJsonText);
 const workspacePackage = JSON.parse(workspacePackageText);
+const mobilePackage = JSON.parse(mobilePackageText);
 const failures = [];
 const blockedAndroidPermissions = new Set(
   appConfig.android?.blockedPermissions ?? [],
@@ -30,9 +33,21 @@ requireCondition(
   "iOS bundle identifier must remain com.flexamarket.mobile.",
 );
 requireCondition(
-  /^\d+$/.test(appConfig.ios?.buildNumber ?? "") &&
-    Number(appConfig.ios.buildNumber) >= 4,
-  "iOS build number must be an integer at least 4.",
+  appConfig.ios?.buildNumber === "101",
+  "iOS buildNumber must be exactly 101 for the next Flexa Market TestFlight upload.",
+);
+requireCondition(
+  appConfig.version === "1.0.1",
+  "iOS marketing version must remain 1.0.1 for App Store Connect app 6754947270 unless intentionally bumped.",
+);
+requireCondition(
+  easConfig.cli?.appVersionSource === "local",
+  "EAS appVersionSource must be local so app.json buildNumber 101 is authoritative.",
+);
+requireCondition(
+  easConfig.build?.production?.autoIncrement === false &&
+    easConfig.build?.production?.ios?.autoIncrement === false,
+  "EAS production autoIncrement must be false so build 101 is not rewritten.",
 );
 requireCondition(
   appConfig.ios?.entitlements?.["aps-environment"] === "production",
@@ -56,10 +71,6 @@ requireCondition(
 requireCondition(
   easConfig.build?.production?.ios?.credentialsSource === "remote",
   "iOS production signing must use remote Expo credentials.",
-);
-requireCondition(
-  easConfig.build?.production?.autoIncrement === true,
-  "Production build-number auto-increment must remain enabled.",
 );
 requireCondition(
   appConfig.android?.package === "com.flexa.market",
@@ -114,6 +125,32 @@ requireCondition(
   !workspacePackage.dependencies?.expo &&
     !workspacePackage.devDependencies?.expo,
   "Expo must only be declared by the mobile package; a workspace-root Expo dependency creates duplicate native modules.",
+);
+requireCondition(
+  mobilePackage.main === "expo-router/entry",
+  "Mobile package main must be expo-router/entry for the native Phase 0+ app.",
+);
+requireCondition(
+  Array.isArray(appConfig.plugins) &&
+    appConfig.plugins.some(
+      (plugin) => plugin === "expo-router" || plugin?.[0] === "expo-router",
+    ),
+  "expo-router must be listed in app.json plugins.",
+);
+requireCondition(
+  typeof easConfig.build?.production?.env?.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY ===
+    "string" &&
+    easConfig.build.production.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY.startsWith(
+      "appl_",
+    ) &&
+    !easConfig.build.production.env.EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY.startsWith(
+      "sk_",
+    ),
+  "Production EAS env must ship the public RevenueCat appl_ key (never sk_).",
+);
+requireCondition(
+  Boolean(mobilePackage.dependencies?.["react-native-purchases"]),
+  "react-native-purchases must be a mobile dependency for Apple IAP.",
 );
 
 if (failures.length > 0) {

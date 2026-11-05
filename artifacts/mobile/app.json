@@ -8,6 +8,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "flexamarket",
     "userInterfaceStyle": "automatic",
+    "locales": {
+      "en": "./locales/en.json"
+    },
     "newArchEnabled": false,
     "splash": {
       "image": "./assets/images/icon.png",
@@ -17,7 +20,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.flexamarket.mobile",
-      "buildNumber": "4",
+      "buildNumber": "101",
       "privacyManifests": {
         "NSPrivacyAccessedAPITypes": [
           {
@@ -79,6 +82,8 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
+      "expo-router",
+      "expo-secure-store",
       [
         "expo-build-properties",
         {
@@ -106,7 +111,9 @@
       "./modules/flexa-background-upload/app.plugin.js",
       "./plugins/withAndroidAdaptiveLayout.js"
     ],
-    "experiments": {},
+    "experiments": {
+      "typedRoutes": true
+    },
     "extra": {
       "eas": {
         "projectId": "45ba4fe9-5e46-42cc-aea4-7a15d9b45f7e"

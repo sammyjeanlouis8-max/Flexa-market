@@ -2047,7 +2047,9 @@ export default function ListingDetail() {
               } finally { setBlockLoading(false); }
             }}
           >
-            {blockLoading ? "Blocking…" : "Block user"}
+            {blockLoading
+              ? t("listing.blocking", { defaultValue: "Blocking…" })
+              : t("listing.blockUser", { defaultValue: "Block user" })}
           </button>
           <span className="text-border" aria-hidden>·</span>
           <button
@@ -2055,7 +2057,7 @@ export default function ListingDetail() {
             className="text-muted-foreground hover:text-destructive transition-colors"
             onClick={() => fetch("/api/reports", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ targetType: "listing", targetId: listing.id, reason: "Inappropriate or abusive content" }) })}
           >
-            Report listing
+            {t("listing.reportListing", { defaultValue: "Report listing" })}
           </button>
         </div>
       )}

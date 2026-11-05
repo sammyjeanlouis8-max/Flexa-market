@@ -58,7 +58,9 @@ export default {
     shippingFeeBold: "obligatoires",
     shippingFeePost: "seront ajoutés à l'étape Livraison.",
     videoFeedSeoDesc: "Regardez des vidéos de produits en promotion en Haïti. Achetez facilement sur FLEXA MARKET.",
-  },
+  
+    easyReturns: "Retours faciles",
+},
   footer: {
     tagline: "La place de marché communautaire — achetez, vendez et trouvez du travail près de chez vous.",
     explore: "Explorer",
@@ -140,7 +142,12 @@ export default {
     driverPending: "⏳ Candidature en cours",
     driverRejected: "❌ Candidature refusée",
     driverSuspended: "⚠️ Compte Suspendu",
-  },
+  
+    cart: "Panier",
+    categories: "Catégories",
+    all: "Tout",
+    helpCenter: "Centre d'aide",
+},
   videoFeed: {
     title: "Vidéos promotionnelles",
     follow: "Suivre",
@@ -515,7 +522,23 @@ export default {
     loadingBalance: "Chargement du solde…",
     directDeduction: "Déduit automatiquement — pas besoin de saisir un numéro",
     insufficientBalance: "Solde insuffisant — vous avez besoin de ${{amount}}",
-  },
+  
+    quantity: "Quantité",
+    freeShipping: "Livraison gratuite",
+    addToWishlist: "Ajouter à la liste d'envies",
+    hoverToZoom: "Survolez pour zoomer",
+    fullscreen: "Plein écran",
+    specifications: "Spécifications",
+    reviews: "Avis",
+    qa: "Q&R",
+    relatedProducts: "Produits similaires",
+    reviewsHint: "Les notes reflètent la réputation globale de ce vendeur sur la marketplace.",
+    sellerRating: "Note du vendeur",
+    support: "Support",
+    blockUser: "Bloquer l'utilisateur",
+    blocking: "Blocage…",
+    reportListing: "Signaler l'annonce",
+},
   buttons: {
     buyNow: "Acheter",
     messageSeller: "Contacter le vendeur",
@@ -2260,7 +2283,9 @@ export default {
     visualSearchLowConfidence: "Impossible d'identifier l'article clairement. Essayez une photo plus nette.",
     visualSearchError: "Impossible d'analyser l'image. Réessayez.",
     visualSearchTip: "Astuce : Centrez l'article avec un bon éclairage pour de meilleurs résultats",
-  },
+  
+    available: "disponibles",
+},
   orders: {
     title: "Mes Commandes",
     subtitle: "Suivez vos achats",
@@ -4597,7 +4622,9 @@ export default {
     discountApplied: "Réduction −${{amount}} appliquée",
     variant: "Standard",
     itemTotal: "Total :",
-  },
+  
+    addToCart: "Ajouter au panier",
+},
   common: {
     net: "Net",
     error: "Erreur",

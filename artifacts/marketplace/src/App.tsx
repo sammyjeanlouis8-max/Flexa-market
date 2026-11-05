@@ -35,6 +35,7 @@ const SetNewPassword   = lazy(() => import("@/pages/auth/SetNewPassword"));
 const DriverSelfieMobile = lazy(() => import("@/pages/DriverSelfieMobile"));
 const Home               = lazy(() => import("@/pages/Home"));
 const BoostedDealPreview = lazy(() => import("@/pages/dev/BoostedDealPreview"));
+const FlexaControlPreview = lazy(() => import("@/pages/dev/FlexaControlPreview"));
 const Search             = lazy(() => import("@/pages/Search"));
 const ListingDetail      = lazy(() => import("@/pages/ListingDetail"));
 const Sell               = lazy(() => import("@/pages/Sell"));
@@ -215,6 +216,7 @@ function LayoutRoutes() {
           <Route path="/auth/set-new-password" component={SetNewPassword} />
           <Route path="/" component={Home} />
           <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
+          <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}

@@ -104,12 +104,26 @@ router.get("/orders/:id/tracking", requireAuth, async (req, res): Promise<void> 
   const events = await db.select().from(shipmentEventsTable)
     .where(eq(shipmentEventsTable.shipmentId, shipment.trackingId))
     .orderBy(asc(shipmentEventsTable.eventTimestamp));
+  const { deliveryConfirmationPublicFields } = await import("../lib/deliveryConfirmationPolicy");
+  const confirmation = deliveryConfirmationPublicFields({
+    shipmentDestinationCountry: shipment.destinationCountry,
+    shipToCountry: order.listingCountry,
+    listingCountry: order.listingCountry,
+    deliveryMethod: order.deliveryMethod,
+    deliveryType: order.deliveryType,
+    carrier: shipment.carrier ?? order.carrier,
+  });
   res.json({
     orderId,
     orderStatus: order.orderStatus,
     paymentStatus: order.paymentStatus,
     shipment: publicShipment(shipment),
     events: events.map(publicEvent),
+    destinationCountry: confirmation.destinationCountry,
+    confirmationMode: confirmation.confirmationMode,
+    // Domestic Haiti never gets external carrier POD photos.
+    carrierPodEligible: confirmation.carrierPodEligible,
+    carrierPodPhotos: [],
   });
 });
 

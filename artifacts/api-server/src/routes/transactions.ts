@@ -957,6 +957,17 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
   const dominicanMode = dominicanOrderMode(listingCountry, tx.deliveryMethod);
   const isHaiti = listingCountry === "Haiti" || (listingCountry === "Dominican Republic" && dominicanMode !== "company");
 
+  // Destination + service-type confirmation policy (never GPS / IP / account country).
+  // Domestic Haiti → PIN only; carrier POD photos never enabled for Haiti domestic.
+  const { deliveryConfirmationPublicFields } = await import("../lib/deliveryConfirmationPolicy");
+  const confirmation = deliveryConfirmationPublicFields({
+    shipToCountry: listingCountry,
+    listingCountry,
+    deliveryMethod: tx.deliveryMethod,
+    deliveryType: tx.deliveryType,
+    carrier: tx.carrier,
+  });
+
   // FM delivery: fetch linked delivery + driver info if it's an FM driver order
   const fmDelivery = await loadFmDelivery(orderId);
 
@@ -1001,6 +1012,13 @@ router.get("/orders/:id", requireAuth, async (req, res): Promise<void> => {
     listingCountry,
     deliveryMethod: tx.deliveryMethod,
     isHaiti,
+    // Explicit confirmation policy (destination + service). Prefer these over isHaiti for POD.
+    destinationCountry: confirmation.destinationCountry,
+    confirmationMode: confirmation.confirmationMode,
+    carrierPodEligible: confirmation.carrierPodEligible,
+    haitiPinConfirmation: confirmation.haitiPinConfirmation,
+    // Never return carrier POD media for Haiti domestic — keep array empty for clients.
+    carrierPodPhotos: confirmation.carrierPodEligible ? [] : [],
     isSeller,
     isBuyer,
     isAdminView: isAdminReq,

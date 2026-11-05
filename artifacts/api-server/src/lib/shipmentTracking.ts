@@ -22,6 +22,10 @@ import {
   isCarrierRegistrationEligible,
   isPayoutBlocked,
 } from "./settlementEligibility";
+import {
+  isExternalCarrierRegistrationEligible,
+  resolveDeliveryDestinationCountry,
+} from "./deliveryConfirmationPolicy";
 
 // Exceptions can later resolve to an in-transit or delivered update, so they
 // remain pollable. Delivered/returned are terminal provider states.
@@ -208,8 +212,28 @@ export async function registerShipmentForOrder(
   const ownerId = tx.sellerUserId ?? listing?.sellerId;
   if (ownerId !== sellerId) throw new AfterShipError("Only the seller can add tracking", "FORBIDDEN", 403);
   const listingCountry = tx.listingCountry ?? listing?.country;
-  if (listingCountry === "Haiti" || listingCountry === "Dominican Republic") {
-    throw new AfterShipError("Local FM delivery orders must use the existing driver flow", "LOCAL_DELIVERY_ORDER", 409);
+  // Gate on destination + shipping service type — never account country / GPS / IP.
+  // Domestic Haiti (and DR seller PIN) stay on local confirmation; company carriers may register.
+  const destinationCountry = resolveDeliveryDestinationCountry({
+    shipToCountry: listingCountry, // checkout currently snapshots destination via listing for local flows
+    listingCountry,
+    deliveryMethod: tx.deliveryMethod,
+    deliveryType: tx.deliveryType,
+    carrier,
+  });
+  if (!isExternalCarrierRegistrationEligible({
+    shipmentDestinationCountry: destinationCountry,
+    shipToCountry: listingCountry,
+    listingCountry,
+    deliveryMethod: tx.deliveryMethod,
+    deliveryType: tx.deliveryType,
+    carrier,
+  })) {
+    throw new AfterShipError(
+      "This order uses Flexa Market local delivery confirmation (PIN). External carrier tracking/POD is not available.",
+      "LOCAL_DELIVERY_ORDER",
+      409,
+    );
   }
   const [existingNumber] = await db.select({ trackingId: shipmentsTable.trackingId, orderId: shipmentsTable.orderId })
     .from(shipmentsTable)

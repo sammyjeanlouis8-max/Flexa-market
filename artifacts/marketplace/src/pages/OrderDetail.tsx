@@ -76,6 +76,13 @@ type Order = {
   listingCountry: string | null;
   listingCity: string | null;
   isHaiti: boolean;
+  /** Destination used for confirmation policy (not account/GPS/IP). */
+  destinationCountry?: string | null;
+  confirmationMode?: "haiti_pin" | "dr_seller_pin" | "carrier_tracking" | "pickup" | "unknown" | string;
+  /** External carrier POD photos — always false for domestic Haiti. */
+  carrierPodEligible?: boolean;
+  haitiPinConfirmation?: boolean;
+  carrierPodPhotos?: Array<{ url?: string | null; photoUrl?: string | null }>;
   isSeller: boolean;
   isBuyer: boolean;
   isAdminView?: boolean;
@@ -1109,11 +1116,34 @@ export default function OrderDetail() {
               </ol>
             </div>
           )}
+          {/* External carrier POD — never for domestic Haiti (confirmationMode haiti_pin). */}
+          {order.carrierPodEligible && (order.carrierPodPhotos?.length ?? 0) > 0 ? (
+            <div className="mt-5 border-t border-border pt-4" data-testid="carrier-pod-photos">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                {t("orderDetail.carrierPodPhotos", { defaultValue: "Carrier proof of delivery" })}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {order.carrierPodPhotos!.map((photo, idx) => {
+                  const src = photo.url || photo.photoUrl;
+                  if (!src) return null;
+                  return (
+                    <a key={idx} href={src} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-border">
+                      <img src={src} alt="" className="h-32 w-full object-cover" />
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          ) : order.carrierPodEligible ? (
+            <p className="mt-3 text-xs text-muted-foreground" data-testid="carrier-pod-unavailable">
+              {t("orderDetail.carrierPodUnavailable", { defaultValue: "Delivery photo unavailable." })}
+            </p>
+          ) : null}
         </div>
       )}
 
       {/* ── Haiti delivery info (shown after seller ships) ── */}
-      {order.isHaiti && (order.driverPhone || order.driverName === "fm_driver") && (
+      {(order.haitiPinConfirmation || (order.isHaiti && order.listingCountry !== "Dominican Republic")) && (order.driverPhone || order.driverName === "fm_driver") && (
         <div className="rounded-2xl border border-border bg-card p-5">
           <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
             <Truck className="h-4 w-4" /> {t("orderDetail.deliveryDetails")}
@@ -1248,8 +1278,8 @@ export default function OrderDetail() {
         </div>
       )}
 
-      {/* ── Buyer verification code (always visible for Haiti/DR delivery orders) ── */}
-      {order.isBuyer && order.isHaiti && order.deliveryType !== "pickup" &&
+      {/* ── Buyer verification code (Haiti domestic PIN + DR seller PIN — never replaced by carrier POD) ── */}
+      {order.isBuyer && (order.haitiPinConfirmation || order.isHaiti) && order.deliveryType !== "pickup" &&
         !["pending", "cancelled", "completed", "return_refunded", "delivered"].includes(order.orderStatus) && (
         order.fmDelivery?.verificationCode &&
         !["delivered", "returned", "cancelled"].includes(order.fmDelivery.status) ? (

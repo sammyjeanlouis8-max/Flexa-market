@@ -44,6 +44,18 @@ test("pending voices interleave chronologically without moving to a newer day", 
   assert.deepEqual(messages.map(m => m.id), [2, 1], "input/cache is not mutated");
 });
 
+test("hides pending outbox rows already confirmed by clientMessageId", () => {
+  const messages = [
+    { id: 10, senderId: 1, createdAt: iso(2026, 9, 10, 14), clientMessageId: "cmsg-1" },
+  ];
+  const pending = [
+    { id: "cmsg-1", createdAt: new Date(2026, 8, 10, 14).getTime() },
+    { id: "cmsg-2", createdAt: new Date(2026, 8, 10, 14, 1).getTime() },
+  ];
+  const entries = buildChatTimeline(messages, pending);
+  assert.deepEqual(entries.map(e => e.key), ["message-10", "cmsg-2"]);
+});
+
 test("groups split on sender, midnight or a long gap, not on delivery state", () => {
   const messages = [
     { id: 1, senderId: 1, createdAt: iso(2026, 9, 9, 23, 59) },

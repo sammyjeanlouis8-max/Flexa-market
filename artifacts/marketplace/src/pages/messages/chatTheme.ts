@@ -35,6 +35,8 @@ export type ChatMessage = {
   isRead: boolean;
   isListened: boolean;
   isDeleted?: boolean;
+  /** Client idempotency key — used to clear the local Sending… outbox */
+  clientMessageId?: string | null;
   createdAt: string;
 };
 

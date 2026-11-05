@@ -8,12 +8,17 @@ export const supportThreadsTable = pgTable("support_threads", {
   userId: integer("user_id").notNull().references(() => usersTable.id),
   subject: text("subject").notNull(),
   status: text("status").notNull().default("open"),
+  /** normal | high | urgent */
+  priority: text("priority").notNull().default("normal"),
   assignedAdminId: integer("assigned_admin_id").references(() => usersTable.id),
   country: text("country"),
   lastMessage: text("last_message"),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
   unreadByUser: integer("unread_by_user").notNull().default(0),
   unreadByAdmin: integer("unread_by_admin").notNull().default(0),
+  /** Customer CSAT 1–5 after resolution */
+  rating: integer("rating"),
+  ratedAt: timestamp("rated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
 });
@@ -30,6 +35,10 @@ export const supportMessagesTable = pgTable("support_messages", {
   senderRole: text("sender_role").notNull().default("user"),
   content: text("content").notNull(),
   isRead: boolean("is_read").notNull().default(false),
+  /** Agent-only note — never shown to customers */
+  isInternal: boolean("is_internal").notNull().default(false),
+  /** Client-generated idempotency key (retry-safe sends) */
+  clientMessageId: text("client_message_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -368,17 +368,24 @@ export default function Chatbot() {
     if (escalating) return;
     setEscalating(true);
     try {
-      const contextLines = messages
-        .slice(-10)
-        .map(m => `${m.role === "user" ? "Itilizatè" : "FlexaBot"}: ${m.content}`)
-        .join("\n");
+      const botHistory = messages
+        .slice(-40)
+        .filter((m) => m.content?.trim())
+        .map((m) => ({
+          role: m.role === "assistant" ? ("bot" as const) : ("user" as const),
+          content: m.content.trim().slice(0, 4000),
+        }));
       const subject = t("chatbot.escalateSubject", { defaultValue: "Demann sipò ki soti nan FlexaBot" });
-      const message = contextLines.length > 0
-        ? t("chatbot.escalateBody", { defaultValue: "Itilizatè a t ap pale ak FlexaBot epi li bezwen yon ajan reyèl.\n\nKonvèsasyon an:\n{{context}}", context: contextLines })
-        : t("chatbot.escalateBodyEmpty", { defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl." });
+      const message = t("chatbot.escalateBodyEmpty", {
+        defaultValue: "Itilizatè a bezwen sipò yon ajan reyèl apre yon konvèsasyon FlexaBot.",
+      });
       const r = await apiFetch<{ id: number }>("/api/support/threads", {
         method: "POST",
-        body: JSON.stringify({ subject, message }),
+        body: JSON.stringify({
+          subject,
+          message,
+          botHistory: botHistory.length > 0 ? botHistory : undefined,
+        }),
       });
       setLocation(`/support/${r.id}`);
     } catch (err: any) {

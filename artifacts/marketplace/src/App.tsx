@@ -49,6 +49,7 @@ const Orders             = lazy(() => import("@/pages/Orders"));
 const OrderDetail        = lazy(() => import("@/pages/OrderDetail"));
 const OrderLabel         = lazy(() => import("@/pages/OrderLabel"));
 const Admin              = lazy(() => import("@/pages/Admin"));
+const AdminLiveSupport   = lazy(() => import("@/pages/AdminLiveSupport"));
 const Settings           = lazy(() => import("@/pages/Settings"));
 const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
 const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications"));
@@ -237,6 +238,7 @@ function LayoutRoutes() {
           <Route path="/admin/users" component={Admin} />
           <Route path="/admin/team" component={Admin} />
           <Route path="/admin/support" component={Admin} />
+          <Route path="/admin/live-support" component={AdminLiveSupport} />
           <Route path="/admin/security" component={Admin} />
           <Route path="/admin/listings" component={Admin} />
           <Route path="/admin/reports" component={Admin} />

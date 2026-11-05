@@ -3410,6 +3410,7 @@ export default {
     admins: "Administrators",
     flagged: "Flagged users",
     support: "Support",
+    liveSupport: "Live Support",
     security: "Security",
     listings: "Listings",
     moderation: "Moderation",

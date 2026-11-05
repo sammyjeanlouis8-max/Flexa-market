@@ -25,6 +25,7 @@ import {
   Eye,
   ShieldCheck,
   KeyRound,
+  Headphones,
 } from "lucide-react";
 
 export type AdminNavItem = {
@@ -61,6 +62,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { titleKey: "adminNav.admins", href: "/admin/team", icon: Crown, hideFromModerator: true },
       { titleKey: "adminNav.flagged", href: "/admin/flagged", icon: AlertTriangle },
       { titleKey: "adminNav.support", href: "/admin/support", icon: MessageSquare },
+      { titleKey: "adminNav.liveSupport", href: "/admin/live-support", icon: Headphones },
       { titleKey: "adminNav.security", href: "/admin/security", icon: KeyRound, hideFromModerator: true },
     ],
   },

@@ -56,13 +56,16 @@ function parseCreateThread(body: any):
 }
 
 function parseSendMessage(body: any):
-  | { ok: true; content: string }
+  | { ok: true; content: string; isInternal: boolean; clientMessageId: string | null }
   | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Invalid body" };
   const content = typeof body.content === "string" ? body.content.trim() : "";
   if (content.length < 1) return { ok: false, error: "Message required" };
   if (content.length > 4000) return { ok: false, error: "Message too long" };
-  return { ok: true, content };
+  const isInternal = body.isInternal === true;
+  const rawId = typeof body.clientMessageId === "string" ? body.clientMessageId.trim() : "";
+  const clientMessageId = rawId.length > 0 && rawId.length <= 64 ? rawId : null;
+  return { ok: true, content, isInternal, clientMessageId };
 }
 
 /**
@@ -219,6 +222,7 @@ function formatThread(t: typeof supportThreadsTable.$inferSelect, userMap: Map<n
     id: t.id,
     subject: t.subject,
     status: t.status,
+    priority: (t as any).priority ?? "normal",
     userId: t.userId,
     userName: userMap.get(t.userId)?.name ?? "Unknown",
     userAvatar: userMap.get(t.userId)?.avatar ?? null,
@@ -229,6 +233,8 @@ function formatThread(t: typeof supportThreadsTable.$inferSelect, userMap: Map<n
     lastMessageAt: t.lastMessageAt?.toISOString() ?? null,
     unreadByUser: t.unreadByUser,
     unreadByAdmin: t.unreadByAdmin,
+    rating: (t as any).rating ?? null,
+    ratedAt: (t as any).ratedAt?.toISOString?.() ?? null,
     createdAt: t.createdAt.toISOString(),
     closedAt: t.closedAt?.toISOString() ?? null,
   };
@@ -292,7 +298,7 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
       void sendPushToUser(aid, {
         title: "Nouvo demand sipò",
         body: subject.length > 120 ? subject.slice(0, 117) + "..." : subject,
-        url: `/admin?tab=support&thread=${thread.id}`,
+        url: `/admin/live-support?thread=${thread.id}`,
         tag: `support-${thread.id}`,
       });
     }
@@ -306,6 +312,9 @@ router.post("/support/threads", requireAuth, async (req, res): Promise<void> => 
     userName: sender?.name ?? "Unknown",
     userAvatar: sender?.avatar ?? null,
     country: thread.country,
+    status: "open",
+    priority: "normal",
+    assignedAdminId: null,
     createdAt: thread.createdAt.toISOString(),
   });
 
@@ -386,27 +395,45 @@ router.get("/support/threads/:id", requireAuth, async (req, res): Promise<void> 
     ? await db.select().from(usersTable).where(eq(usersTable.id, thread.assignedAdminId)).then((r) => r[0])
     : null;
 
+  const visibleRows = isAdmin
+    ? rows
+    : rows.filter((r) => !(r.support_messages as any).isInternal);
+
   res.json({
     id: thread.id,
     subject: thread.subject,
     status: thread.status,
+    priority: (thread as any).priority ?? "normal",
     userId: thread.userId,
     userName: owner?.name ?? "Unknown",
     userAvatar: owner?.avatar ?? null,
     country: thread.country ?? null,
     assignedAdminId: thread.assignedAdminId,
     assignedAdminName: assignee?.name ?? null,
+    rating: (thread as any).rating ?? null,
+    ratedAt: (thread as any).ratedAt?.toISOString?.() ?? null,
     createdAt: thread.createdAt.toISOString(),
     closedAt: thread.closedAt?.toISOString() ?? null,
-    messages: rows.map((r) => ({
+    messages: visibleRows.map((r) => ({
       id: r.support_messages.id,
       content: r.support_messages.content,
       isAdminReply: r.support_messages.isAdminReply,
+      isInternal: !!(r.support_messages as any).isInternal,
       senderRole: r.support_messages.senderRole ?? "user",
       senderId: r.support_messages.senderId,
-      senderName: r.support_messages.isAdminReply ? "Flexa Support" : (r.users?.name ?? "Unknown"),
-      senderAvatar: r.support_messages.isAdminReply ? null : (r.users?.avatar ?? null),
+      senderName:
+        (r.support_messages as any).isInternal
+          ? (r.users?.name ?? "Agent")
+          : r.support_messages.isAdminReply
+            ? (assignee?.name ?? r.users?.name ?? "Flexa Support")
+            : r.support_messages.senderRole === "bot"
+              ? "FlexaBot"
+              : (r.users?.name ?? "Unknown"),
+      senderAvatar: r.support_messages.isAdminReply || r.support_messages.senderRole === "bot"
+        ? null
+        : (r.users?.avatar ?? null),
       isRead: r.support_messages.isRead,
+      clientMessageId: (r.support_messages as any).clientMessageId ?? null,
       createdAt: r.support_messages.createdAt.toISOString(),
     })),
   });
@@ -441,7 +468,51 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
     return;
   }
 
-  const senderRole = isSuperAdmin ? "super_admin" : isAdmin ? "admin" : "user";
+  const isInternal = isAdmin && parsed.isInternal;
+  if (isInternal && !isAdmin) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const senderRole = isInternal
+    ? "internal"
+    : isSuperAdmin
+      ? "super_admin"
+      : isAdmin
+        ? "admin"
+        : "user";
+
+  // Idempotent retry: return existing message if clientMessageId already stored
+  if (parsed.clientMessageId) {
+    const [existing] = await db
+      .select()
+      .from(supportMessagesTable)
+      .where(
+        and(
+          eq(supportMessagesTable.threadId, id),
+          eq(supportMessagesTable.senderId, req.userId!),
+          eq(supportMessagesTable.clientMessageId, parsed.clientMessageId),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      res.status(200).json({
+        id: existing.id,
+        threadId: id,
+        content: existing.content,
+        isAdminReply: existing.isAdminReply,
+        isInternal: !!(existing as any).isInternal,
+        senderRole: existing.senderRole,
+        senderId: existing.senderId,
+        senderName: me?.name ?? "Unknown",
+        senderAvatar: me?.avatar ?? null,
+        isRead: existing.isRead,
+        clientMessageId: (existing as any).clientMessageId ?? null,
+        createdAt: existing.createdAt.toISOString(),
+        duplicate: true,
+      });
+      return;
+    }
+  }
 
   let msg!: typeof supportMessagesTable.$inferSelect;
   let conflict = false;
@@ -464,26 +535,36 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
         isAdminReply: isAdmin,
         senderRole,
         content: parsed.content,
-      })
+        isInternal,
+        clientMessageId: parsed.clientMessageId,
+      } as any)
       .returning();
     msg = inserted;
 
-    await tx
-      .update(supportThreadsTable)
-      .set({
-        lastMessage: parsed.content,
-        lastMessageAt: new Date(),
-        unreadByUser: isAdmin
-          ? sql`${supportThreadsTable.unreadByUser} + 1`
-          : supportThreadsTable.unreadByUser,
-        unreadByAdmin: isAdmin
-          ? supportThreadsTable.unreadByAdmin
-          : sql`${supportThreadsTable.unreadByAdmin} + 1`,
-        assignedAdminId: isAdmin
-          ? sql`COALESCE(${supportThreadsTable.assignedAdminId}, ${req.userId!})`
-          : supportThreadsTable.assignedAdminId,
-      })
-      .where(eq(supportThreadsTable.id, id));
+    // Internal notes do not bump customer unread or lastMessage preview for customers
+    if (isInternal) {
+      await tx
+        .update(supportThreadsTable)
+        .set({ lastMessageAt: new Date() })
+        .where(eq(supportThreadsTable.id, id));
+    } else {
+      await tx
+        .update(supportThreadsTable)
+        .set({
+          lastMessage: parsed.content,
+          lastMessageAt: new Date(),
+          unreadByUser: isAdmin
+            ? sql`${supportThreadsTable.unreadByUser} + 1`
+            : supportThreadsTable.unreadByUser,
+          unreadByAdmin: isAdmin
+            ? supportThreadsTable.unreadByAdmin
+            : sql`${supportThreadsTable.unreadByAdmin} + 1`,
+          assignedAdminId: isAdmin
+            ? sql`COALESCE(${supportThreadsTable.assignedAdminId}, ${req.userId!})`
+            : supportThreadsTable.assignedAdminId,
+        })
+        .where(eq(supportThreadsTable.id, id));
+    }
   });
 
   if (conflict) {
@@ -496,18 +577,26 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
     threadId: id,
     content: msg.content,
     isAdminReply: msg.isAdminReply,
+    isInternal,
     senderRole,
     senderId: msg.senderId,
-    senderName: isAdmin ? "Flexa Support" : (me?.name ?? "Unknown"),
+    senderName: isAdmin ? (me?.name ?? "Flexa Support") : (me?.name ?? "Unknown"),
     senderAvatar: isAdmin ? null : (me?.avatar ?? null),
     isRead: false,
+    clientMessageId: parsed.clientMessageId,
     createdAt: msg.createdAt.toISOString(),
   };
 
-  // Real-time: push message to thread room
+  // Real-time: thread room + admin inbox (internal notes stay in admin rooms only —
+  // customers filter them client-side if accidentally received, and GET hides them)
   emitSupportMessage(id, msgPayload);
 
-  // Notify the recipient(s).
+  // Notify the recipient(s). Skip pushes for internal notes.
+  if (isInternal) {
+    res.status(201).json(msgPayload);
+    return;
+  }
+
   if (isAdmin) {
     await db.insert(adminLogsTable).values({
       adminId: req.userId!,
@@ -528,12 +617,24 @@ router.post("/support/threads/:id/messages", requireAuth, async (req, res): Prom
     });
   } else {
     const [threadUser] = await db.select({ country: usersTable.country }).from(usersTable).where(eq(usersTable.id, thread.userId));
-    const adminIds = await getAdminIds(threadUser?.country);
-    if (adminIds.length > 0) {
+    const notifyIds = new Set<number>();
+    if (thread.assignedAdminId) notifyIds.add(thread.assignedAdminId);
+    else {
+      for (const aid of await getAdminIds(threadUser?.country)) notifyIds.add(aid);
+    }
+    if (notifyIds.size > 0) {
       await db
         .insert(notificationsTable)
-        .values(adminIds.map((aid) => ({ userId: aid, actorId: req.userId!, type: "support" })))
+        .values([...notifyIds].map((aid) => ({ userId: aid, actorId: req.userId!, type: "support" })))
         .catch(() => {});
+      for (const aid of notifyIds) {
+        void sendPushToUser(aid, {
+          title: `Nouvo mesaj sipò #${id}`,
+          body: parsed.content.length > 120 ? parsed.content.slice(0, 117) + "..." : parsed.content,
+          url: `/admin/live-support?thread=${id}`,
+          tag: `support-msg-${id}`,
+        });
+      }
     }
   }
 
@@ -569,6 +670,12 @@ router.post("/support/threads/:id/close", requireRole("support"), async (req, re
     details: `Closed support thread ${id}`,
   }).catch(() => {});
   emitSupportUpdate(id, { threadId: id, status: "closed" });
+  void sendPushToUser(scopedThread.thread.userId, {
+    title: "Sipò rezoud",
+    body: `Demann #${id} fèmen. Ou ka bay yon nòt si ou vle.`,
+    url: `/support/${id}`,
+    tag: `support-closed-${id}`,
+  });
   res.json({ ok: true });
 });
 
@@ -645,8 +752,12 @@ router.post("/support/threads/:id/assign", requireRole("admin"), async (req, res
   res.json({ ok: true });
 });
 
-/** Moderators may only claim an unassigned thread within their own geographic scope. */
-router.post("/support/threads/:id/claim", requireRole("moderator"), async (req, res): Promise<void> => {
+/**
+ * POST /api/support/threads/:id/claim
+ * Support agents+ may claim an unassigned thread in scope.
+ * Concurrent claims: only the first UPDATE wins (assigned_admin_id IS NULL).
+ */
+router.post("/support/threads/:id/claim", requireRole("support"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const scoped = await getScopedThread(req.user!, id);
@@ -657,8 +768,86 @@ router.post("/support/threads/:id/claim", requireRole("moderator"), async (req, 
     .returning({ id: supportThreadsTable.id });
   if (!changed.length) { res.status(409).json({ error: "Thread is already assigned" }); return; }
   await db.insert(adminLogsTable).values({ adminId: req.userId!, action: "support_claim", targetType: "support_thread", targetId: id, details: "Claimed unassigned support thread" }).catch(() => {});
-  emitSupportUpdate(id, { threadId: id, assignedAdminId: req.userId!, assignedAdminName: req.user!.name });
+  emitSupportUpdate(id, {
+    threadId: id,
+    assignedAdminId: req.userId!,
+    assignedAdminName: req.user!.name,
+    event: "agent_joined",
+  });
+  void sendPushToUser(scoped.thread.userId, {
+    title: "Ajan sipò konekte",
+    body: `${req.user!.name ?? "Yon ajan"} rantre nan konvèsasyon ou.`,
+    url: `/support/${id}`,
+    tag: `support-claim-${id}`,
+  });
+  res.json({ ok: true, assignedAdminId: req.userId!, assignedAdminName: req.user!.name });
+});
+
+/** POST /api/support/threads/:id/release — assignee (or admin+) returns thread to queue. */
+router.post("/support/threads/:id/release", requireRole("support"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const scoped = await getScopedThread(req.user!, id);
+  if (!scoped) { res.status(403).json({ error: "Forbidden" }); return; }
+  const isAssignee = scoped.thread.assignedAdminId === req.userId;
+  const canForce = hasRole(req.user!, "admin");
+  if (!isAssignee && !canForce) {
+    res.status(403).json({ error: "Only the assigned agent or an admin can release" });
+    return;
+  }
+  await db.update(supportThreadsTable)
+    .set({ assignedAdminId: null })
+    .where(eq(supportThreadsTable.id, id));
+  await db.insert(adminLogsTable).values({
+    adminId: req.userId!,
+    action: "support_release",
+    targetType: "support_thread",
+    targetId: id,
+    details: "Released support thread to queue",
+  }).catch(() => {});
+  emitSupportUpdate(id, { threadId: id, assignedAdminId: null, assignedAdminName: null, event: "released" });
   res.json({ ok: true });
+});
+
+/** POST /api/support/threads/:id/priority — set priority (support+). */
+router.post("/support/threads/:id/priority", requireRole("support"), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const priority = typeof req.body?.priority === "string" ? req.body.priority.trim() : "";
+  if (!Number.isSafeInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!["normal", "high", "urgent"].includes(priority)) {
+    res.status(400).json({ error: "priority must be normal|high|urgent" });
+    return;
+  }
+  const scoped = await getScopedThread(req.user!, id);
+  if (!scoped) { res.status(403).json({ error: "Forbidden" }); return; }
+  await db.update(supportThreadsTable)
+    .set({ priority } as any)
+    .where(eq(supportThreadsTable.id, id));
+  emitSupportUpdate(id, { threadId: id, priority, event: "priority" });
+  res.json({ ok: true, priority });
+});
+
+/** POST /api/support/threads/:id/rate — customer CSAT after close (or anytime once assigned). */
+router.post("/support/threads/:id/rate", requireAuth, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const rating = Number(req.body?.rating);
+  if (!Number.isSafeInteger(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    res.status(400).json({ error: "rating must be 1–5" });
+    return;
+  }
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.id, id));
+  if (!thread) { res.status(404).json({ error: "Not found" }); return; }
+  if (thread.userId !== req.userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if ((thread as any).rating != null) {
+    res.status(409).json({ error: "Already rated" });
+    return;
+  }
+  await db.update(supportThreadsTable)
+    .set({ rating, ratedAt: new Date() } as any)
+    .where(eq(supportThreadsTable.id, id));
+  emitSupportUpdate(id, { threadId: id, rating, event: "rated" });
+  res.json({ ok: true, rating });
 });
 
 /**

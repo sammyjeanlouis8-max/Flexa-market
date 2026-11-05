@@ -2581,6 +2581,8 @@ export default {
     admins: "Administrators",
     flagged: "Flagged users",
     support: "Support",
+    liveSupport: "Soporte en vivo",
+    security: "Seguridad",
     listings: "Listings",
     moderation: "Moderation",
     reports: "Reports",

@@ -22,6 +22,7 @@ export const ADMIN_PRIMARY_SECTIONS = [
   { tab: "users", path: "/admin/users", titleKey: "adminNav.users" },
   { tab: "admins", path: "/admin/team", titleKey: "adminNav.admins" },
   { tab: "support", path: "/admin/support", titleKey: "adminNav.support" },
+  { tab: "live-support", path: "/admin/live-support", titleKey: "adminNav.liveSupport" },
   { tab: "security", path: "/admin/security", titleKey: "adminNav.security" },
 ] as const;
 

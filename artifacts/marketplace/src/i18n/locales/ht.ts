@@ -3418,6 +3418,7 @@ export default {
     admins: "Administratè",
     flagged: "Itilizatè flagged",
     support: "Sipò",
+    liveSupport: "Sipò an dirèk",
     security: "Sekirite",
     listings: "Anons",
     moderation: "Moderasyon",

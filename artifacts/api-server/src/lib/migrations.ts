@@ -2847,6 +2847,35 @@ export async function runStartupMigrations(): Promise<void> {
   let failed = 0;
 
   migrations.push(...CARD_CANCELLATION_MIGRATIONS);
+
+  // ── Live support: priority, CSAT rating, internal notes, idempotent sends ──
+  migrations.push({
+    name: "support_threads.priority",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS priority text NOT NULL DEFAULT 'normal'`,
+  });
+  migrations.push({
+    name: "support_threads.rating",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS rating integer`,
+  });
+  migrations.push({
+    name: "support_threads.rated_at",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS rated_at timestamptz`,
+  });
+  migrations.push({
+    name: "support_messages.is_internal",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false`,
+  });
+  migrations.push({
+    name: "support_messages.client_message_id",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS client_message_id text`,
+  });
+  migrations.push({
+    name: "support_messages.client_message_id_uniq",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS support_messages_client_msg_uidx
+      ON support_messages (thread_id, sender_id, client_message_id)
+      WHERE client_message_id IS NOT NULL`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

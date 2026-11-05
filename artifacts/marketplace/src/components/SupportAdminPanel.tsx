@@ -40,6 +40,7 @@ type SupportMessage = {
   threadId?: number;
   content: string;
   isAdminReply: boolean;
+  isInternal?: boolean;
   senderRole: string;
   senderId: number;
   senderName: string;
@@ -181,7 +182,7 @@ export default function SupportAdminPanel({ initialThreadId, onUnreadChange }: S
 
   useEffect(() => { loadThreads(); }, [statusFilter, countryFilter, searchQuery]);
 
-  // WebSocket: admin support room (new thread notifications)
+  // WebSocket: admin support room (new thread + inbox fan-out)
   useEffect(() => {
     socket.joinSupportAdmin();
 
@@ -195,12 +196,39 @@ export default function SupportAdminPanel({ initialThreadId, onUnreadChange }: S
       }
     });
 
+    const unsubInboxMsg = socket.onSupportMessage((msg: SupportMessage) => {
+      if (msg.threadId === activeId) return;
+      setThreads((prev) => {
+        const exists = prev.some((t) => t.id === msg.threadId);
+        if (!exists) {
+          loadThreads();
+          return prev;
+        }
+        return prev.map((t) =>
+          t.id === msg.threadId
+            ? {
+                ...t,
+                lastMessage: msg.isInternal ? t.lastMessage : msg.content,
+                lastMessageAt: msg.createdAt,
+                unreadByAdmin: !msg.isAdminReply ? t.unreadByAdmin + 1 : t.unreadByAdmin,
+              }
+            : t,
+        );
+      });
+    });
+
+    const unsubInboxUpd = socket.onSupportUpdate(() => {
+      loadThreads();
+    });
+
     return () => {
       socket.leaveSupportAdmin();
       if (typeof unsubNew === "function") unsubNew();
+      if (typeof unsubInboxMsg === "function") unsubInboxMsg();
+      if (typeof unsubInboxUpd === "function") unsubInboxUpd();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, activeId]);
 
   // WebSocket: join/leave active thread room
   useEffect(() => {
@@ -346,6 +374,17 @@ export default function SupportAdminPanel({ initialThreadId, onUnreadChange }: S
       toast({ title: "Erè", description: e.message, variant: "destructive" });
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const claimThread = async (id: number) => {
+    try {
+      await authFetch(`/api/support/threads/${id}/claim`, "POST");
+      if (activeId === id) await loadDetail(id);
+      loadThreads();
+      toast({ title: "Demann reklame" });
+    } catch (e: any) {
+      toast({ title: "Erè", description: e.message, variant: "destructive" });
     }
   };
 
@@ -573,6 +612,17 @@ export default function SupportAdminPanel({ initialThreadId, onUnreadChange }: S
                     >
                       <Download className="h-3 w-3 mr-1" />
                       {exporting ? "..." : "CSV"}
+                    </Button>
+                  )}
+
+                  {detail.status === "open" && !detail.assignedAdminId && (
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => claimThread(detail.id)}
+                      data-testid="button-claim-thread"
+                    >
+                      Claim
                     </Button>
                   )}
 

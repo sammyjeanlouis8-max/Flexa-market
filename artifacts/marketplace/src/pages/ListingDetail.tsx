@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSEO } from "@/hooks/useSEO";
 import { useRoute, useLocation, Link } from "wouter";
-import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
+import { Heart, MapPin, Star, MessageCircle, Tag, Zap, ArrowLeft, ChevronLeft, ChevronRight, Pencil, Trash2, Globe, Phone, CreditCard, Banknote, BadgeCheck, Share2, Copy, CheckCircle2, Shield, Gift, Ticket, Play, Film, Volume2, VolumeX, ShoppingCart, Truck, Users, Search, AlertTriangle, Send, ImageIcon, MoreHorizontal, Maximize2, Headphones } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -949,6 +949,19 @@ export default function ListingDetail() {
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank", "noopener,noreferrer");
   };
 
+  /** Mobile PDP Back — history when available, otherwise marketplace home. */
+  const handlePdpBack = () => {
+    try {
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    setLocation("/");
+  };
+
   /**
    * Share-this-listing handler used by the bottom Share button. Tries
    * the native Web Share sheet first (mobile), then falls back to
@@ -1471,6 +1484,17 @@ export default function ListingDetail() {
                 <ImageIcon className="h-14 w-14 text-primary/45" aria-hidden="true" />
               </div>
             )}
+
+            {/* Mobile Back — top left of media (does not replace header hamburger) */}
+            <button
+              type="button"
+              onClick={handlePdpBack}
+              aria-label={t("common.back", { defaultValue: "Back" })}
+              data-testid="button-pdp-back"
+              className="lg:hidden absolute top-2 left-2 z-20 w-9 h-9 rounded-full bg-white border border-border/70 shadow-sm flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <ArrowLeft className="h-4 w-4 text-[hsl(152,65%,18%)]" strokeWidth={2.5} aria-hidden="true" />
+            </button>
 
             {/* Share + Favorite — top right of media */}
             <div className="absolute top-2 right-2 z-20 flex flex-col gap-2">

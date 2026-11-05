@@ -693,6 +693,11 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/settings/notifications")) return t("page.notifications");
   if (loc.startsWith("/settings/security")) return t("page.security");
   if (loc.startsWith("/settings/preferences")) return t("page.preferences");
+  if (loc.startsWith("/settings/payments")) return t("accountCenter.paymentsWithdrawals");
+  if (loc.startsWith("/settings/identity")) return t("accountCenter.profileIdentity");
+  if (loc.startsWith("/settings/privacy")) return t("accountCenter.privacy");
+  if (loc.startsWith("/settings/videos")) return t("accountCenter.myVideos");
+  if (loc.startsWith("/settings/analytics")) return t("accountCenter.analytics");
   if (loc.startsWith("/settings")) return t("page.settings");
   if (loc.startsWith("/orders")) return t("page.orders");
   if (loc.startsWith("/order-label/")) return t("page.orderLabel");

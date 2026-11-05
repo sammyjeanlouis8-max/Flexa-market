@@ -55,6 +55,11 @@ const SettingsSecurity   = lazy(() => import("@/pages/SettingsSecurity"));
 const SettingsNotifications = lazy(() => import("@/pages/SettingsNotifications"));
 const SettingsPreferences   = lazy(() => import("@/pages/SettingsPreferences"));
 const SettingsHelp       = lazy(() => import("@/pages/SettingsHelp"));
+const SettingsPayments   = lazy(() => import("@/pages/SettingsPayments"));
+const SettingsIdentity   = lazy(() => import("@/pages/SettingsIdentity"));
+const SettingsPrivacy    = lazy(() => import("@/pages/SettingsPrivacy"));
+const SettingsVideos     = lazy(() => import("@/pages/SettingsVideos"));
+const SellerAnalytics    = lazy(() => import("@/pages/SellerAnalytics"));
 const Support            = lazy(() => import("@/pages/Support"));
 const NotFound           = lazy(() => import("@/pages/NotFound"));
 const AdminFlexCardUsers    = lazy(() => import("@/pages/AdminFlexCardUsers"));
@@ -245,11 +250,16 @@ function LayoutRoutes() {
           <Route path="/admin/flagged" component={Admin} />
           <Route path="/admin/moderation" component={Admin} />
           <Route path="/admin" component={Admin} />
-          <Route path="/settings" component={Settings} />
           <Route path="/settings/security" component={SettingsSecurity} />
           <Route path="/settings/notifications" component={SettingsNotifications} />
           <Route path="/settings/preferences" component={SettingsPreferences} />
           <Route path="/settings/help" component={SettingsHelp} />
+          <Route path="/settings/payments" component={SettingsPayments} />
+          <Route path="/settings/identity" component={SettingsIdentity} />
+          <Route path="/settings/privacy" component={SettingsPrivacy} />
+          <Route path="/settings/videos" component={SettingsVideos} />
+          <Route path="/settings/analytics" component={SellerAnalytics} />
+          <Route path="/settings" component={Settings} />
           <Route path="/support" component={Support} />
           <Route path="/support/:id" component={Support} />
           <Route path="/wallet" component={WalletPage} />

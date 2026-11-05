@@ -13,6 +13,9 @@ export interface MusicTrack {
   [key: string]: any;
 }
 
+/** Repeat: off → all → one → off */
+export type MusicRepeatMode = "off" | "all" | "one";
+
 interface MusicStoreState {
   track: MusicTrack | null;
   playing: boolean;
@@ -25,6 +28,13 @@ interface MusicStoreState {
   plTitle: string;
   plCover: string | null;
   plGrad: string | undefined;
+  shuffle: boolean;
+  repeat: MusicRepeatMode;
+  playbackRate: number;
+  /** Epoch ms when sleep timer should pause playback; null = inactive */
+  sleepUntil: number | null;
+  buffering: boolean;
+  error: string | null;
 }
 
 // ── Singleton audio element (created once, lives for the app's lifetime) ────
@@ -51,11 +61,20 @@ const _s: MusicStoreState = {
   muted: false, volume: 1,
   queue: [], queueIdx: 0,
   plTitle: "", plCover: null, plGrad: undefined,
+  shuffle: false,
+  repeat: "off",
+  playbackRate: 1,
+  sleepUntil: null,
+  buffering: false,
+  error: null,
 };
 const _fns = new Set<() => void>();
 let _playbackIntent = false;
 let _interruptedBySystem = false;
 let _resumeTimers: number[] = [];
+let _sleepTimerId: number | null = null;
+/** Original queue order before shuffle — restored when shuffle turns off */
+let _unshuffledQueue: MusicTrack[] | null = null;
 
 export function getMusicState(): Readonly<MusicStoreState> { return _s; }
 
@@ -67,6 +86,33 @@ export function patchMusicState(patch: Partial<MusicStoreState>): void {
 export function subscribeMusicState(fn: () => void): () => void {
   _fns.add(fn);
   return () => _fns.delete(fn);
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function playQueueTrack(next: MusicTrack, idx: number): void {
+  patchMusicState({
+    track: next,
+    queueIdx: idx,
+    currentTime: 0,
+    duration: 0,
+    error: null,
+    plTitle: next.title,
+    plCover: next.cover_url ?? null,
+  });
+  gAudio.src = next.audio_url ?? "";
+  gAudio.muted = _s.muted;
+  gAudio.playbackRate = _s.playbackRate;
+  gAudio.load();
+  musicRequestPlay().catch(() => {});
+  syncMediaSession(next);
 }
 
 // ── FlexaMusic mount flag — prevents double "ended" handling ─────────────────
@@ -117,14 +163,23 @@ export function musicTogglePlay(): void {
 }
 
 export function musicPlayNext(): void {
-  const next = _s.queue[_s.queueIdx + 1];
-  if (!next?.audio_url) return;
-  patchMusicState({ track: next, queueIdx: _s.queueIdx + 1, currentTime: 0, duration: 0 });
-  gAudio.src = next.audio_url;
-  gAudio.muted = _s.muted;
-  gAudio.load();
-  musicRequestPlay().catch(() => {});
-  syncMediaSession(next);
+  if (_s.repeat === "one" && _s.track) {
+    gAudio.currentTime = 0;
+    patchMusicState({ currentTime: 0 });
+    musicRequestPlay().catch(() => {});
+    return;
+  }
+  const nextIdx = _s.queueIdx + 1;
+  const next = _s.queue[nextIdx];
+  if (next?.audio_url) {
+    playQueueTrack(next, nextIdx);
+    return;
+  }
+  if (_s.repeat === "all" && _s.queue.length > 0) {
+    const first = _s.queue[0];
+    if (first?.audio_url) playQueueTrack(first, 0);
+    return;
+  }
 }
 
 export function musicPlayPrev(): void {
@@ -134,19 +189,23 @@ export function musicPlayPrev(): void {
     patchMusicState({ currentTime: 0 });
     return;
   }
-  const prev = _s.queue[_s.queueIdx - 1];
-  if (!prev?.audio_url) return;
-  patchMusicState({ track: prev, queueIdx: _s.queueIdx - 1, currentTime: 0, duration: 0 });
-  gAudio.src = prev.audio_url;
-  gAudio.muted = _s.muted;
-  gAudio.load();
-  musicRequestPlay().catch(() => {});
-  syncMediaSession(prev);
+  const prevIdx = _s.queueIdx - 1;
+  const prev = _s.queue[prevIdx];
+  if (prev?.audio_url) {
+    playQueueTrack(prev, prevIdx);
+    return;
+  }
+  if (_s.repeat === "all" && _s.queue.length > 0) {
+    const lastIdx = _s.queue.length - 1;
+    const last = _s.queue[lastIdx];
+    if (last?.audio_url) playQueueTrack(last, lastIdx);
+  }
 }
 
 export function musicStop(): void {
   musicRequestPause();
-  patchMusicState({ track: null, playing: false, currentTime: 0, duration: 0 });
+  clearSleepTimer();
+  patchMusicState({ track: null, playing: false, currentTime: 0, duration: 0, error: null });
 }
 
 export function musicSeek(t: number): void {
@@ -157,6 +216,70 @@ export function musicSeek(t: number): void {
 export function musicToggleMute(): void {
   gAudio.muted = !gAudio.muted;
   patchMusicState({ muted: gAudio.muted });
+}
+
+export function musicToggleShuffle(): void {
+  const next = !_s.shuffle;
+  if (next) {
+    _unshuffledQueue = [..._s.queue];
+    const current = _s.track;
+    const rest = _s.queue.filter(t => t.id !== current?.id);
+    const shuffled = current ? [current, ...shuffleArray(rest)] : shuffleArray(_s.queue);
+    patchMusicState({ shuffle: true, queue: shuffled, queueIdx: current ? 0 : _s.queueIdx });
+  } else {
+    const restored = _unshuffledQueue ?? _s.queue;
+    _unshuffledQueue = null;
+    const idx = _s.track ? Math.max(0, restored.findIndex(t => t.id === _s.track!.id)) : 0;
+    patchMusicState({ shuffle: false, queue: restored, queueIdx: idx });
+  }
+}
+
+export function musicCycleRepeat(): MusicRepeatMode {
+  const order: MusicRepeatMode[] = ["off", "all", "one"];
+  const next = order[(order.indexOf(_s.repeat) + 1) % order.length];
+  patchMusicState({ repeat: next });
+  return next;
+}
+
+export function musicSetPlaybackRate(rate: number): void {
+  const clamped = Math.max(0.5, Math.min(2, rate));
+  gAudio.playbackRate = clamped;
+  patchMusicState({ playbackRate: clamped });
+  syncPositionState();
+}
+
+export function clearSleepTimer(): void {
+  if (_sleepTimerId != null) {
+    window.clearTimeout(_sleepTimerId);
+    _sleepTimerId = null;
+  }
+  if (_s.sleepUntil != null) patchMusicState({ sleepUntil: null });
+}
+
+/** Pause playback after `minutes` (0 clears). */
+export function musicSetSleepTimer(minutes: number): void {
+  clearSleepTimer();
+  if (!minutes || minutes <= 0) return;
+  const until = Date.now() + minutes * 60_000;
+  patchMusicState({ sleepUntil: until });
+  _sleepTimerId = window.setTimeout(() => {
+    musicRequestPause();
+    patchMusicState({ sleepUntil: null });
+    _sleepTimerId = null;
+  }, minutes * 60_000);
+}
+
+export function musicShareTrack(track?: MusicTrack | null): Promise<void> {
+  const t = track ?? _s.track;
+  if (!t) return Promise.resolve();
+  const url = `${window.location.origin}/music?track=${t.id}`;
+  const payload = { title: t.title, text: `${t.title} — ${t.artist}`, url };
+  if (navigator.share) {
+    return navigator.share(payload).catch(() => {
+      return navigator.clipboard?.writeText(url).then(() => undefined);
+    });
+  }
+  return navigator.clipboard?.writeText(url).then(() => undefined) ?? Promise.resolve();
 }
 
 // ── Module-level audio event listeners ───────────────────────────────────────
@@ -196,6 +319,20 @@ if (typeof window !== "undefined") {
     _s.playing = false; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
   });
+  gAudio.addEventListener("waiting", () => {
+    if (!_s.track) return;
+    _s.buffering = true; _fns.forEach(f => f());
+  });
+  gAudio.addEventListener("canplay", () => {
+    if (!_s.buffering) return;
+    _s.buffering = false; _fns.forEach(f => f());
+  });
+  gAudio.addEventListener("error", () => {
+    if (!_s.track) return;
+    _s.buffering = false;
+    _s.error = "Playback failed. Check your connection and try again.";
+    _fns.forEach(f => f());
+  });
   gAudio.addEventListener("ended",   () => {
     _playbackIntent = false;
     _interruptedBySystem = false;
@@ -203,7 +340,14 @@ if (typeof window !== "undefined") {
     _fns.forEach(f => f());
     // Auto-advance queue — but only when FlexaMusic is not mounted
     // (FlexaMusic handles it locally via its own "ended" listener when mounted)
-    if (!_flexaMounted) musicPlayNext();
+    if (!_flexaMounted) {
+      if (_s.repeat === "one" && _s.track) {
+        gAudio.currentTime = 0;
+        musicRequestPlay().catch(() => {});
+      } else {
+        musicPlayNext();
+      }
+    }
   });
 
   // Safari may throttle timeupdate after the Music screen unmounts. The

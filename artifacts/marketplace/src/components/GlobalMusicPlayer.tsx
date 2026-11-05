@@ -41,20 +41,8 @@ function CoverThumb({ src, title }: { src: string | null; title: string }) {
   }
   return (
     <div className="w-full h-full flex items-center justify-center text-white font-bold text-base"
-      style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)" }}>
+      style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)" }}>
       {char}
-    </div>
-  );
-}
-
-function NowPlayingDots({ playing }: { playing: boolean }) {
-  return (
-    <div className="flex gap-0.5 items-end" style={{ height: 10 }}>
-      {[60, 100, 40].map((h, i) => (
-        <span key={i}
-          className={`w-1 rounded-full bg-violet-300 ${playing ? "animate-bounce" : ""}`}
-          style={{ height: `${h}%`, animationDelay: `${i * 150}ms` }} />
-      ))}
     </div>
   );
 }
@@ -247,13 +235,14 @@ export default function GlobalMusicPlayer() {
       className="fixed left-0 right-0 mx-3 z-[60] rounded-2xl select-none"
       style={{
         bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
-        background: "linear-gradient(135deg,#1c0934,#2a1648)",
+        background: "linear-gradient(135deg, rgba(8,16,40,0.94), rgba(12,20,48,0.96))",
         border: isDragging
-          ? "1.5px solid rgba(139,92,246,0.85)"
-          : "1px solid rgba(139,92,246,0.45)",
+          ? "1.5px solid rgba(0,217,255,0.55)"
+          : "1px solid rgba(0,217,255,0.28)",
         boxShadow: isDragging
-          ? "0 0 0 4px rgba(124,58,237,0.2), 0 16px 40px rgba(0,0,0,0.7)"
-          : "0 -4px 32px rgba(100,50,200,0.25), 0 8px 32px rgba(0,0,0,0.6)",
+          ? "0 0 0 4px rgba(0,217,255,0.15), 0 16px 40px rgba(0,0,0,0.7)"
+          : "0 0 0 1px rgba(160,32,240,0.12), 0 8px 28px rgba(0,0,0,0.45)",
+        backdropFilter: "blur(18px)",
         transform,
         transition: isDragging || isSwiping ? "none" : "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)",
         touchAction: "none",
@@ -269,10 +258,10 @@ export default function GlobalMusicPlayer() {
         className="absolute -top-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full cursor-grab active:cursor-grabbing"
         style={{
           background: isDragging
-            ? "linear-gradient(90deg,#7c3aed,#c026d3)"
-            : "rgba(139,92,246,0.35)",
+            ? "linear-gradient(90deg,#00D9FF,#A020F0)"
+            : "rgba(0,217,255,0.22)",
           backdropFilter: "blur(8px)",
-          boxShadow: isDragging ? "0 2px 12px rgba(124,58,237,0.6)" : "none",
+          boxShadow: isDragging ? "0 2px 12px rgba(0,217,255,0.45)" : "none",
           transition: "background 0.2s, box-shadow 0.2s",
         }}
         onTouchStart={onGripTouchStart}
@@ -284,15 +273,6 @@ export default function GlobalMusicPlayer() {
           <span className="text-[9px] font-black text-white tracking-widest uppercase">{t("music.playerDragging")}</span>
         )}
       </div>
-
-      {/* NOW PLAYING pill */}
-      {playing && !isDragging && !isMinimized && (
-        <div className="absolute -top-3 left-4 flex items-center gap-1.5 px-2 py-0.5 rounded-full"
-          style={{ background: "linear-gradient(90deg,#7c3aed,#c026d3)", boxShadow: "0 2px 8px rgba(124,58,237,0.6)" }}>
-          <NowPlayingDots playing={playing} />
-          <span className="text-[9px] font-black text-white tracking-widest uppercase">Now Playing</span>
-        </div>
-      )}
 
       <div className="rounded-2xl overflow-hidden">
 
@@ -346,16 +326,16 @@ export default function GlobalMusicPlayer() {
             style={{
               width: `calc(${isSwiping ? previewPct : pct}% - 4px)`,
               background: isSwiping
-                ? "linear-gradient(90deg,#ec4899,#f97316)"
-                : "linear-gradient(90deg,#8b5cf6,#ec4899)",
+                ? "linear-gradient(90deg,#F02DDB,#00D9FF)"
+                : "linear-gradient(90deg,#00D9FF,#A020F0)",
               transition: isSwiping ? "none" : "width 0.1s linear",
             }} />
           <div className="absolute w-4 h-4 rounded-full bg-white"
             style={{
               left: `calc(${isSwiping ? previewPct : pct}% - 8px + 4px)`,
               boxShadow: isSwiping
-                ? "0 0 0 4px rgba(236,72,153,0.5), 0 2px 6px rgba(0,0,0,0.5)"
-                : "0 0 0 3px rgba(139,92,246,0.6), 0 2px 6px rgba(0,0,0,0.5)",
+                ? "0 0 0 4px rgba(240,45,219,0.4), 0 2px 6px rgba(0,0,0,0.5)"
+                : "0 0 0 3px rgba(0,217,255,0.45), 0 2px 6px rgba(0,0,0,0.5)",
               transition: isSwiping ? "none" : "left 0.1s linear",
               transform: isSwiping ? "scale(1.25)" : "scale(1)",
             }} />
@@ -376,7 +356,7 @@ export default function GlobalMusicPlayer() {
               <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
               <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
                 {!isMinimized && <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-violet-300 text-[9px] font-mono tabular-nums">
+                <span className="text-[9px] font-mono tabular-nums" style={{ color: "#00D9FF" }}>
                   {fmtDur(Math.floor(isSwiping ? previewTime : currentTime))}
                 </span>
                 {duration > 0 && (
@@ -384,12 +364,12 @@ export default function GlobalMusicPlayer() {
                 )}
                 {isSwiping && !isDragging && Math.abs(swipeDelta) > SWIPE_THRESH && (
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                    style={{ background: "rgba(236,72,153,0.25)", color: "#f9a8d4" }}>
+                    style={{ background: "rgba(240,45,219,0.2)", color: "#F02DDB" }}>
                     {seekDeltaSec >= 0 ? `+${Math.round(seekDeltaSec)}s` : `${Math.round(seekDeltaSec)}s`}
                   </span>
                 )}
                 {isDragging && (
-                  <span className="text-[9px] font-bold text-violet-300 animate-pulse">
+                  <span className="text-[9px] font-bold animate-pulse" style={{ color: "#00D9FF" }}>
                     {t("music.playerDraggingTip")}
                   </span>
                 )}
@@ -404,7 +384,7 @@ export default function GlobalMusicPlayer() {
             </button>}
             <button onClick={musicTogglePlay}
               className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", boxShadow: "0 4px 12px rgba(124,58,237,0.5)" }}>
+              style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)", boxShadow: "0 4px 12px rgba(0,217,255,0.28)" }}>
               {playing
                 ? <Pause size={15} className="text-white" />
                 : <Play  size={15} className="text-white ml-0.5" />}

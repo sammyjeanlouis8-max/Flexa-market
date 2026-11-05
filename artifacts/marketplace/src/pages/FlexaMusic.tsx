@@ -13,14 +13,16 @@ import {
   Bell, MessageCircle, ChevronLeft, ChevronDown, Plus, Loader2, Globe,
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
   Pencil, Trash2, ShoppingBag, Send, Radio, Home, Library,
+  Repeat, Repeat1, Timer, Share2, ListMusic, AlignLeft, Cast, SlidersHorizontal,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
-import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek } from "@/lib/musicStore";
+import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek, musicToggleShuffle, musicCycleRepeat, musicSetSleepTimer, clearSleepTimer, musicSetPlaybackRate, musicShareTrack, type MusicRepeatMode } from "@/lib/musicStore";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
+import { musicListeningIsFree, musicUploadsAreFree, MUSIC_COMMERCE_ENABLED } from "@/lib/musicCommerce";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -462,9 +464,8 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
     onPrev: () => void; onNext: () => void; onClose: () => void;
     onToggle: () => void; onMute: () => void;
     onSeek: (t: number) => void; onExpand: () => void; }) {
-  const { track, playing, currentTime, duration, muted } = state;
+  const { track, playing, currentTime, duration } = state;
   const isDragging = useRef(false);
-  const [isMinimized, setIsMinimized] = useState(false);
 
   if (!track) return null;
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -478,99 +479,63 @@ function MiniPlayer({ state, audioRef, onPrev, onNext, onClose, onToggle, onMute
 
   return (
     <div
-      className="fixed left-0 right-0 mx-3 z-40 rounded-2xl select-none"
+      className="music-mini-player fixed left-0 right-0 mx-3 z-40 rounded-2xl select-none"
       style={{
         bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
-        background: "linear-gradient(135deg,#1c0934,#2a1648)",
-        border: "1px solid rgba(139,92,246,0.45)",
-        boxShadow: "0 -4px 32px rgba(100,50,200,0.25), 0 8px 32px rgba(0,0,0,0.6)",
-        overflow: "visible",
+        background: "linear-gradient(135deg, rgba(8,16,40,0.94), rgba(12,20,48,0.96))",
+        border: "1px solid rgba(0,217,255,0.28)",
+        boxShadow: "0 0 0 1px rgba(160,32,240,0.12), 0 8px 28px rgba(0,0,0,0.45)",
+        backdropFilter: "blur(18px)",
+        overflow: "hidden",
       }}>
+      {/* Thin progress under the neon border */}
+      <div
+        className="h-4 flex items-center cursor-pointer relative px-3"
+        style={{ touchAction: "none" }}
+        onClick={e => seekFromX(e.clientX, e.currentTarget)}
+        onTouchStart={e => {
+          isDragging.current = true;
+          seekFromX(e.touches[0].clientX, e.currentTarget);
+        }}
+        onTouchMove={e => {
+          if (!isDragging.current) return;
+          e.preventDefault();
+          seekFromX(e.touches[0].clientX, e.currentTarget);
+        }}
+        onTouchEnd={() => { isDragging.current = false; }}
+      >
+        <div className="absolute left-3 right-3 h-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.14)" }} />
+        <div className="absolute left-3 h-0.5 rounded-full"
+          style={{ width: `calc((100% - 24px) * ${pct / 100})`, background: "linear-gradient(90deg,#00D9FF,#A020F0)" }} />
+      </div>
 
-      {/* ── NOW PLAYING pill badge ── */}
-      {playing && !isMinimized && (
-        <div className="absolute -top-3 left-4 flex items-center gap-1.5 px-2 py-0.5 rounded-full"
-          style={{ background: "linear-gradient(90deg,#7c3aed,#c026d3)", boxShadow: "0 2px 8px rgba(124,58,237,0.6)" }}>
-          <NowPlayingBars playing={playing} size="xs" />
-          <span className="text-[9px] font-black text-white tracking-widest uppercase">Now Playing</span>
-        </div>
-      )}
+      <div className="flex items-center gap-2.5 px-3 pb-2.5 pt-0.5">
+        <button onClick={onExpand} className="shrink-0" aria-label="Open full player">
+          <CoverArt src={track.cover_url} title={track.title} size={44} radius={10} />
+        </button>
 
-      {/* Rounded container for inner content */}
-      <div className="rounded-2xl overflow-hidden">
-        {/* ── Draggable progress bar — tall touch target, thin visual bar ── */}
-        <div
-          className="h-5 flex items-center cursor-pointer relative"
-          style={{ touchAction: "none" }}
-          onClick={e => seekFromX(e.clientX, e.currentTarget)}
-          onTouchStart={e => {
-            isDragging.current = true;
-            seekFromX(e.touches[0].clientX, e.currentTarget);
-          }}
-          onTouchMove={e => {
-            if (!isDragging.current) return;
-            e.preventDefault();
-            seekFromX(e.touches[0].clientX, e.currentTarget);
-          }}
-          onTouchEnd={() => { isDragging.current = false; }}
-        >
-          <div className="absolute left-0 right-0 h-1 rounded-full" style={{ background: "rgba(255,255,255,0.1)" }} />
-          <div className="absolute left-0 h-1 rounded-full"
-            style={{ width: `${pct}%`, background: "linear-gradient(90deg,#8b5cf6,#ec4899)" }} />
-          <div className="absolute w-4 h-4 rounded-full bg-white -translate-x-1/2"
-            style={{ left: `${pct}%`, boxShadow: "0 0 0 3px rgba(139,92,246,0.6), 0 2px 6px rgba(0,0,0,0.5)" }} />
-        </div>
+        <button onClick={onExpand} className="flex-1 min-w-0 text-left">
+          <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
+          <p className="text-[10px] truncate" style={{ color: "#A1AEC4" }}>{track.artist}</p>
+        </button>
 
-        <div className={`flex items-center gap-2.5 px-3 ${isMinimized ? "py-1.5" : "pb-3 pt-1"}`}>
-          {/* Cover — tap to expand */}
-          <button onClick={onExpand} className="shrink-0 relative">
-            <CoverArt src={track.cover_url} title={track.title} size={42} radius={10} />
-            {playing && (
-              <div className="absolute inset-0 rounded-[10px] flex items-end justify-center pb-0.5"
-                style={{ background: "rgba(0,0,0,0.35)" }}>
-                <NowPlayingBars playing={playing} size="xs" />
-              </div>
-            )}
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button onClick={onPrev} aria-label="Previous" className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+            <SkipBack size={15} className="text-white/80" />
           </button>
-
-          {/* Info + time */}
-          <button onClick={onExpand} className="flex-1 min-w-0 text-left">
-            <p className="text-white text-xs font-bold truncate leading-tight">{track.title}</p>
-            <p className="text-white/50 text-[10px] truncate">{track.artist}</p>
-            {/* Live time progress under title */}
-            {!isMinimized && <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-violet-300 text-[9px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
-              {duration > 0 && <span className="text-white/20 text-[9px]">/ {fmtDur(Math.floor(duration))}</span>}
-            </div>}
+          <button onClick={onToggle} aria-label={playing ? "Pause" : "Play"}
+            className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+            style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)", boxShadow: "0 4px 14px rgba(0,217,255,0.28)" }}>
+            {playing
+              ? <Pause size={15} className="text-white" />
+              : <Play  size={15} className="text-white ml-0.5" />}
           </button>
-
-          {/* Controls */}
-          <div className="flex items-center gap-0.5 shrink-0">
-            {!isMinimized && <button onClick={onPrev} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
-              <SkipBack size={14} className="text-white/70" />
-            </button>}
-            <button onClick={onToggle}
-              className="w-10 h-10 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-              style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", boxShadow: "0 4px 12px rgba(124,58,237,0.5)" }}>
-              {playing
-                ? <Pause size={15} className="text-white" />
-                : <Play  size={15} className="text-white ml-0.5" />}
-            </button>
-            {!isMinimized && <button onClick={onNext} className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
-              <SkipForward size={14} className="text-white/70" />
-            </button>}
-            {!isMinimized && <button onClick={onMute} className="w-7 h-7 flex items-center justify-center">
-              {muted ? <VolumeX size={12} className="text-white/40" /> : <Volume2 size={12} className="text-white/60" />}
-            </button>}
-            <button onClick={() => setIsMinimized(value => !value)}
-              aria-label={isMinimized ? "Agrandi mini-player la" : "Minimize mini-player la"}
-              className="w-7 h-7 flex items-center justify-center">
-              <ChevronDown size={15} className={`text-white/55 transition-transform ${isMinimized ? "rotate-180" : ""}`} />
-            </button>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center">
-              <X size={13} className="text-white/30" />
-            </button>
-          </div>
+          <button onClick={onNext} aria-label="Next" className="w-8 h-8 flex items-center justify-center active:scale-90 transition-transform">
+            <SkipForward size={15} className="text-white/80" />
+          </button>
+          <button onClick={onClose} aria-label="Close player" className="w-7 h-7 flex items-center justify-center">
+            <X size={13} className="text-white/35" />
+          </button>
         </div>
       </div>
     </div>
@@ -1087,7 +1052,8 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
       type: audioFile.type, title: title.trim(), artist: artist.trim(),
     });
 
-    if (forSale && (!priceUsd || priceUsd < 0.99)) {
+    const sellEnabled = MUSIC_COMMERCE_ENABLED && forSale;
+    if (sellEnabled && (!priceUsd || priceUsd < 0.99)) {
       setErrMsg(t("upload.errMinPrice")); return;
     }
 
@@ -1101,8 +1067,8 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
         album:             album.trim() || undefined,
         genre:             genre || undefined,
         type:              "free",
-        monetizationType:  forSale ? "sale" : "stream",
-        priceUsd:          forSale ? priceUsd : undefined,
+        monetizationType:  sellEnabled ? "sale" : "stream",
+        priceUsd:          sellEnabled ? priceUsd : undefined,
         coverPreview:      coverPreview ?? undefined,
         lyrics:            lyrics.trim() || undefined,
       },
@@ -1134,13 +1100,22 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
 
       <form onSubmit={handleSubmit} className="px-4 py-5 flex flex-col gap-5 pb-28">
 
-        {/* ── Approaching free-limit warning (shown when 1 of 2 free slots used) ── */}
-        {songCount === 1 && (
+        {/* Free-limit warning only when commerce paywalls are re-enabled */}
+        {MUSIC_COMMERCE_ENABLED && songCount === 1 && (
           <div className="flex items-start gap-3 rounded-xl px-4 py-3"
             style={{ background: "rgba(234,179,8,0.1)", border: "1px solid rgba(234,179,8,0.35)" }}>
             <AlertCircle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
             <p className="text-xs text-yellow-300 leading-relaxed">
               {t("music.uploadLimitWarn", { count: 1 })}
+            </p>
+          </div>
+        )}
+        {musicUploadsAreFree() && (
+          <div className="flex items-start gap-3 rounded-xl px-4 py-3"
+            style={{ background: "rgba(0,217,255,0.08)", border: "1px solid rgba(0,217,255,0.28)" }}>
+            <CheckCircle size={16} className="text-[#00D9FF] shrink-0 mt-0.5" />
+            <p className="text-xs leading-relaxed" style={{ color: "#A1AEC4" }}>
+              Uploads are free for every Flexa Music artist. Keep original covers and confirm you own the rights to each track.
             </p>
           </div>
         )}
@@ -1259,8 +1234,8 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
           </div>
         )}
 
-        {/* For sale toggle */}
-        <div className="flex flex-col gap-3 rounded-xl p-4"
+        {/* For-sale toggle — hidden while music commerce is free */}
+        {MUSIC_COMMERCE_ENABLED && <div className="flex flex-col gap-3 rounded-xl p-4"
           style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}>
           <div className="flex items-center justify-between">
             <div>
@@ -1269,7 +1244,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
             </div>
             <button type="button" onClick={() => setForSale(v => !v)}
               className="w-12 h-6 rounded-full transition-all relative shrink-0"
-              style={{ background: forSale ? "#7c3aed" : "rgba(255,255,255,0.1)" }}>
+              style={{ background: forSale ? "#00D9FF" : "rgba(255,255,255,0.1)" }}>
               <span className="absolute top-0.5 transition-all w-5 h-5 rounded-full bg-white"
                 style={{ left: forSale ? "calc(100% - 22px)" : 2 }} />
             </button>
@@ -1304,13 +1279,13 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
               </p>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Info banner */}
         <div className="flex items-start gap-2 rounded-xl px-4 py-3"
-          style={{ background: "rgba(124,58,237,0.08)", border: "1px solid rgba(124,58,237,0.2)" }}>
-          <UploadCloud size={15} style={{ color: "#a855f7", flexShrink: 0, marginTop: 1 }} />
-          <p className="text-xs" style={{ color: "rgba(168,85,247,0.8)", lineHeight: 1.5 }}>
+          style={{ background: "rgba(0,217,255,0.08)", border: "1px solid rgba(0,217,255,0.2)" }}>
+          <UploadCloud size={15} style={{ color: "#00D9FF", flexShrink: 0, marginTop: 1 }} />
+          <p className="text-xs" style={{ color: "#A1AEC4", lineHeight: 1.5 }}>
             {t("upload.backgroundNote")}
           </p>
         </div>
@@ -1318,8 +1293,8 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
         {/* Submit */}
         <button type="submit"
           className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
-          style={{ background: "linear-gradient(135deg,#7c3aed,#c026d3)", color: "#fff",
-                   boxShadow: "0 8px 24px rgba(124,58,237,0.35)" }}>
+          style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)", color: "#fff",
+                   boxShadow: "0 8px 24px rgba(0,217,255,0.28)" }}>
           <UploadCloud size={18} /> {t("upload.submit")}
         </button>
 
@@ -1672,10 +1647,10 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                           <span>{fmtPlays(track.play_count)}</span>
                         </div>
                       </div>
-                      {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
-                        <span className="text-violet-300 text-xs font-bold shrink-0">${Number(track.price_usd).toFixed(2)}</span>
+                      {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                        <span className="text-[#00D9FF] text-xs font-bold shrink-0">${Number(track.price_usd).toFixed(2)}</span>
                       )}
-                      {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                      {MUSIC_COMMERCE_ENABLED && track.monetization_type === "sale" && purchasedIds.has(track.id) && (
                         <span className="text-emerald-400 text-[10px] font-bold shrink-0">✓</span>
                       )}
                     </button>
@@ -1703,22 +1678,22 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
                           </div>
                         )}
                         {track.is_artist_verified && track.id !== currentTrackId && (
-                          <div className="absolute -bottom-1 -right-1 w-[14px] h-[14px] rounded-full bg-violet-600 flex items-center justify-center"
-                            style={{ border: "1.5px solid #0a0a0a" }}>
+                          <div className="absolute -bottom-1 -right-1 w-[14px] h-[14px] rounded-full bg-[#0e6f8a] flex items-center justify-center"
+                            style={{ border: "1.5px solid #050B1F" }}>
                             <CheckCircle size={8} className="text-white" />
                           </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-violet-400" : "text-white"}`}>{track.title}</p>
-                          {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                          <p className={`text-sm font-semibold truncate ${track.id === currentTrackId ? "text-[#00D9FF]" : "text-white"}`}>{track.title}</p>
+                          {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                             <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                              style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                              style={{ background: "rgba(0,217,255,0.15)", color: "#00D9FF" }}>
                               ${Number(track.price_usd).toFixed(2)}
                             </span>
                           )}
-                          {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                          {MUSIC_COMMERCE_ENABLED && track.monetization_type === "sale" && purchasedIds.has(track.id) && (
                             <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                               style={{ background: "rgba(34,197,94,0.15)", color: "#86efac" }}>✓</span>
                           )}
@@ -2478,13 +2453,13 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className={`text-sm font-semibold truncate ${isActive ? "text-violet-400" : "text-white"}`}>{track.title}</p>
-                      {!isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
+                      {MUSIC_COMMERCE_ENABLED && !isAndroidApp() && track.monetization_type === "sale" && track.price_usd && !purchasedIds.has(track.id) && (
                         <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                          style={{ background: "rgba(124,58,237,0.2)", color: "#a78bfa" }}>
+                          style={{ background: "rgba(0,217,255,0.15)", color: "#00D9FF" }}>
                           ${Number(track.price_usd).toFixed(2)}
                         </span>
                       )}
-                      {track.monetization_type === "sale" && purchasedIds.has(track.id) && (
+                      {MUSIC_COMMERCE_ENABLED && track.monetization_type === "sale" && purchasedIds.has(track.id) && (
                         <span className="shrink-0 text-[9px] font-bold text-emerald-400">✓</span>
                       )}
                     </div>
@@ -2511,10 +2486,33 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
 // ══════════════════════════════════════════════════════════════════════════════
 // FULL-SCREEN NOW-PLAYING MODAL  (Spotify-style slide-up)
 // ══════════════════════════════════════════════════════════════════════════════
+function FlexaMusicLogoMark({ size = 28 }: { size?: number }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <div
+        className="shrink-0 rounded-lg flex items-center justify-center font-black text-white"
+        style={{
+          width: size, height: size,
+          background: "linear-gradient(135deg,#F02DDB,#00D9FF)",
+          boxShadow: "0 0 12px rgba(0,217,255,0.25)",
+          fontSize: size * 0.48,
+        }}
+        aria-hidden
+      >
+        F
+      </div>
+      <div className="leading-none min-w-0">
+        <span className="text-white font-black text-sm tracking-tight">Flexa </span>
+        <span className="font-black text-sm tracking-tight" style={{ color: "#00D9FF" }}>Music</span>
+      </div>
+    </div>
+  );
+}
+
 function NowPlayingModal({
   playerState, liked, onClose, onToggle, onPrev, onNext,
   onToggleLike, onSeek, onShuffle, onMute, onVolume, isPaidPreview,
-  radioMode, onToggleRadio, onArtistClick,
+  radioMode, onToggleRadio, onArtistClick, onShowQueue, onDownload,
 }: {
   playerState: PlayerState;
   liked: Set<number>;
@@ -2531,29 +2529,39 @@ function NowPlayingModal({
   radioMode: boolean;
   onToggleRadio: () => void;
   onArtistClick: (name: string) => void;
+  onShowQueue?: () => void;
+  onDownload?: () => void;
 }) {
+  const store = getMusicState();
   const { track, playing, currentTime, duration, muted } = playerState;
   const pct            = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const timeLeft       = Math.max(0, Math.floor(duration - currentTime));
-  const previewSecsLeft = isPaidPreview ? Math.max(0, 30 - Math.floor(currentTime)) : null;
   const seekRef  = useRef(false);
   const swipeStartY = useRef(0);
   const [slideY, setSlideY] = useState(0);
   const [visible, setVisible] = useState(false);
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [panel, setPanel] = useState<"none" | "timer" | "speed" | "more">("none");
+  const [shuffleOn, setShuffleOn] = useState(store.shuffle);
+  const [repeatMode, setRepeatMode] = useState<MusicRepeatMode>(store.repeat);
+  const [sleepUntil, setSleepUntil] = useState<number | null>(store.sleepUntil);
+  const [playbackRate, setPlaybackRate] = useState(store.playbackRate);
 
-  // Slide-in animation on mount
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
+  useEffect(() => subscribeMusicState(() => {
+    const s = getMusicState();
+    setShuffleOn(s.shuffle);
+    setRepeatMode(s.repeat);
+    setSleepUntil(s.sleepUntil);
+    setPlaybackRate(s.playbackRate);
+  }), []);
 
   if (!track) return null;
 
-  // ── Seek helpers ───────────────────────────────────────────────────────────
   const seekFromX = (clientX: number, el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     onSeek(Math.max(0, Math.min(1, (clientX - r.left) / r.width)) * (duration || 0));
   };
 
-  // ── Swipe-down-to-close ───────────────────────────────────────────────────
   const handleSwipeStart = (y: number) => { swipeStartY.current = y; };
   const handleSwipeMove  = (y: number) => {
     const dy = y - swipeStartY.current;
@@ -2564,6 +2572,7 @@ function NowPlayingModal({
   };
 
   const isLiked = liked.has(track.id);
+  const glassTile = "music-glass-tile flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3 px-1 active:scale-95 transition-transform";
 
   return (
     <div
@@ -2572,96 +2581,101 @@ function NowPlayingModal({
         transform: `translateY(${visible ? slideY : "100%"})`,
         transition: slideY > 0 ? "none" : "transform 0.38s cubic-bezier(0.32,0.72,0,1)",
         willChange: "transform",
+        background: "#050B1F",
       }}
       onTouchStart={e => handleSwipeStart(e.touches[0].clientY)}
       onTouchMove={e  => handleSwipeMove(e.touches[0].clientY)}
       onTouchEnd={e   => handleSwipeEnd(e.changedTouches[0].clientY)}
     >
-      {/* ── Blurred album art background ─────────────────────────────────── */}
       <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 0 }}>
         {track.cover_url
           ? <img src={track.cover_url} alt="" className="w-full h-full object-cover"
-              style={{ filter: "blur(60px) brightness(0.25) saturate(1.8)", transform: "scale(1.3)" }} />
+              style={{ filter: "blur(64px) brightness(0.28) saturate(1.35)", transform: "scale(1.25)" }} />
           : null}
-        <div className="absolute inset-0" style={{ background: "rgba(5,0,15,0.75)" }} />
+        <div className="absolute inset-0" style={{
+          background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(0,217,255,0.14), transparent 55%), rgba(5,11,31,0.82)",
+        }} />
       </div>
 
-      {/* ── Content ──────────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-col flex-1 px-6 overflow-y-auto"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 20px) + 12px)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}>
+      <div className="relative z-10 flex flex-col flex-1 px-5 overflow-y-auto"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 20px) + 8px)", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
 
-        {/* Top bar */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-10 h-1 rounded-full bg-white/25 mb-4" />
-          <div className="flex items-center justify-between w-full">
-            <button onClick={onClose}
-              className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
-              <ChevronDown size={26} className="text-white/80" />
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <button onClick={onClose} aria-label="Back"
+            className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
+            <ChevronLeft size={26} className="text-white/90" />
+          </button>
+          <FlexaMusicLogoMark />
+          <div className="flex items-center">
+            <button onClick={() => onToggleRadio()} aria-label="Cast / radio"
+              className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10">
+              <Cast size={18} className={radioMode ? "text-[#00D9FF]" : "text-white/70"} />
             </button>
-            <div className="text-center min-w-0 max-w-[58%]">
-              <p className="text-white text-sm font-black truncate">{track.title}</p>
-              <button onClick={() => { onClose(); onArtistClick(track.artist); }}
-                className="text-white/50 text-xs truncate max-w-full">
-                {track.artist}
-              </button>
-            </div>
-            <div className="flex items-center">
-              <button onClick={() => onToggleLike(track.id)}
-                aria-label={isLiked ? "Retire de favoris" : "Ajoute nan favoris"}
-                className="w-11 h-11 flex items-center justify-center rounded-full active:bg-white/10">
-                <Heart size={21} className={isLiked ? "text-fuchsia-400 fill-fuchsia-400" : "text-white/80"} />
-              </button>
+            <button onClick={() => onToggleLike(track.id)}
+              aria-label={isLiked ? "Remove from favorites" : "Add to favorites"}
+              className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10">
+              <Heart size={18} className={isLiked ? "text-[#F02DDB] fill-[#F02DDB]" : "text-white/80"} />
+            </button>
+            <button onClick={() => setPanel(p => p === "more" ? "none" : "more")} aria-label="More"
+              className="w-10 h-10 flex items-center justify-center rounded-full active:bg-white/10">
+              <MoreHorizontal size={18} className="text-white/80" />
+            </button>
+          </div>
+        </div>
+
+        {/* Album art + vinyl peek */}
+        <div className="music-player-art-stage flex justify-center mb-6">
+          <div className="relative" style={{ width: "min(72vw, 300px)", height: "min(72vw, 300px)" }}>
+            <div className="music-vinyl-peek absolute right-[-18%] top-[8%] bottom-[8%] w-[58%] rounded-full"
+              style={{
+                background: "repeating-radial-gradient(circle at 50% 50%, #1a2038 0 2px, #0a1020 3px 5px)",
+                boxShadow: "inset 0 0 20px rgba(0,0,0,0.8)",
+              }} aria-hidden />
+            <div className="absolute inset-0 rounded-3xl overflow-hidden"
+              style={{
+                border: "2px solid transparent",
+                background:
+                  "linear-gradient(#050B1F,#050B1F) padding-box, linear-gradient(135deg,#00D9FF,#A020F0,#F02DDB) border-box",
+                boxShadow: "0 18px 40px rgba(0,0,0,0.45), 0 0 28px rgba(0,217,255,0.12)",
+              }}>
+              {track.cover_url
+                ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center" style={{ background: "#0a1428" }}>
+                    <Music2 size={54} className="text-white/25" />
+                  </div>}
             </div>
           </div>
         </div>
 
-        {/* Vinyl-style album art with a live progress halo */}
-        <div className="music-vinyl-stage flex justify-center mb-6">
-          <div className="music-vinyl" style={{
-            background: `conic-gradient(from -90deg, #d319ff ${Math.max(0, pct)}%, rgba(255,255,255,0.12) ${Math.max(0, pct)}% 100%)`,
-          }}>
-            <div className="music-vinyl-disc">
-              <div className="music-vinyl-label">
-                {track.cover_url
-                  ? <img src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
-                  : <Music2 size={54} className="text-white/25" />}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Artist and album context */}
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div className="min-w-0">
+        {/* Title / artist */}
+        <div className="flex items-start justify-between gap-3 mb-5">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-white text-xl font-black truncate leading-tight">{track.title}</h1>
             <button onClick={() => { onClose(); onArtistClick(track.artist); }}
-              className="text-white/70 text-sm truncate text-left hover:text-white transition-colors">
+              className="text-sm truncate text-left mt-1 flex items-center gap-1.5"
+              style={{ color: "#A1AEC4" }}>
               {track.artist}
+              {track.is_artist_verified && <CheckCircle size={13} className="text-[#00D9FF] fill-[#00D9FF]/"/>}
             </button>
-            {track.is_artist_verified && <CheckCircle size={14} className="inline ml-1.5 text-fuchsia-400 fill-fuchsia-400" />}
           </div>
-          <span className="text-white/35 text-xs truncate">{track.album ?? "Flexa Music"}</span>
+          <button onClick={() => onToggleLike(track.id)} aria-label="Favorite"
+            className="w-11 h-11 flex items-center justify-center shrink-0">
+            <Heart size={22} className={isLiked ? "text-[#F02DDB] fill-[#F02DDB]" : "text-white/55"} />
+          </button>
         </div>
 
-        {/* ── 30s preview banner ───────────────────────────────────────────── */}
-        {isPaidPreview && (
+        {MUSIC_COMMERCE_ENABLED && isPaidPreview && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-4"
-            style={{ background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.25)" }}>
-            <span className="text-sm">🎧</span>
-            <div className="flex-1 min-w-0">
-              <span className="text-violet-300 text-xs font-bold">Apèsi gratis</span>
-              {previewSecsLeft !== null && previewSecsLeft > 0 && (
-                <span className="text-white/40 text-xs ml-1.5">· {previewSecsLeft}s rete</span>
-              )}
-            </div>
+            style={{ background: "rgba(160,32,240,0.12)", border: "1px solid rgba(160,32,240,0.28)" }}>
+            <span className="text-[#00D9FF] text-xs font-bold">Free preview</span>
             {track.price_usd && (
-              <span className="text-violet-300 text-xs font-bold shrink-0">
-                ${Number(track.price_usd).toFixed(2)}
-              </span>
+              <span className="text-white/50 text-xs font-bold ml-auto">${Number(track.price_usd).toFixed(2)}</span>
             )}
           </div>
         )}
 
-        {/* ── SoundCloud-style seek bar ──────────────────────────────────── */}
+        {/* Seek */}
         <div className="mb-1">
           <div
             className="music-player-seek relative cursor-pointer"
@@ -2672,85 +2686,144 @@ function NowPlayingModal({
             onTouchEnd={()  => { seekRef.current = false; }}
           >
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 rounded-full bg-white/20" />
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full bg-gradient-to-r from-fuchsia-500 to-violet-500"
-              style={{ width: `${pct}%` }} />
-            <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white shadow-[0_0_14px_rgba(217,25,255,.75)]"
-              style={{ left: `calc(${pct}% - 8px)` }} />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 rounded-full"
+              style={{ width: `${pct}%`, background: "linear-gradient(90deg,#F02DDB,#A020F0)" }} />
+            <div className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white"
+              style={{ left: `calc(${pct}% - 7px)`, boxShadow: "0 0 10px rgba(240,45,219,0.45)" }} />
           </div>
-          {/* Time labels */}
-          <div className="flex justify-between px-0.5 mt-1">
-            <span className="text-white/45 text-[11px] font-mono tabular-nums">{fmtDur(Math.floor(currentTime))}</span>
-            <span className="text-white/45 text-[11px] font-mono tabular-nums">-{fmtDur(timeLeft)}</span>
+          <div className="flex justify-between px-0.5 mt-1.5">
+            <span className="text-[11px] font-mono tabular-nums" style={{ color: "#A1AEC4" }}>{fmtDur(Math.floor(currentTime))}</span>
+            <span className="text-[11px] font-mono tabular-nums" style={{ color: "#A1AEC4" }}>{fmtDur(Math.floor(duration))}</span>
           </div>
         </div>
 
-        {/* ── Playback controls ─────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mt-5">
-          <button onClick={onShuffle} aria-label="Melanje"
+        {/* Transport */}
+        <div className="flex items-center justify-between mt-4 px-1">
+          <button onClick={() => { musicToggleShuffle(); }} aria-label="Shuffle"
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
-            <Shuffle size={23} className="text-white/90" />
+            <Shuffle size={22} style={{ color: shuffleOn ? "#F02DDB" : "rgba(255,255,255,0.75)" }} />
           </button>
-
-          <button onClick={onPrev}
-            aria-label="Chante anvan"
+          <button onClick={onPrev} aria-label="Previous"
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
-            <SkipBack size={30} className="text-white" />
+            <SkipBack size={28} className="text-white" />
           </button>
-
-          <button onClick={onToggle}
+          <button onClick={onToggle} aria-label={playing ? "Pause" : "Play"}
             className="flex items-center justify-center rounded-full active:scale-90 transition-transform"
-            style={{ width: 76, height: 76,
-                     background: "linear-gradient(135deg,#8b21ff,#d319ff)",
-                     boxShadow: "0 0 30px rgba(211,25,255,0.55)" }}>
-            {playing
-              ? <Pause  size={30} className="text-white" />
-              : <Play   size={30} className="text-white ml-1" />}
+            style={{
+              width: 74, height: 74,
+              background: "linear-gradient(135deg,#00D9FF,#A020F0)",
+              boxShadow: "0 0 28px rgba(0,217,255,0.35)",
+            }}>
+            {playing ? <Pause size={28} className="text-white" /> : <Play size={28} className="text-white ml-1" />}
           </button>
-
-          <button onClick={onNext}
-            aria-label="Chante apre"
+          <button onClick={onNext} aria-label="Next"
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
-            <SkipForward size={30} className="text-white" />
+            <SkipForward size={28} className="text-white" />
           </button>
-
-          <button onClick={onToggleRadio} aria-label="Radio"
+          <button onClick={() => setRepeatMode(musicCycleRepeat())} aria-label={`Repeat ${repeatMode}`}
             className="w-12 h-12 flex items-center justify-center rounded-full active:scale-90 transition-transform">
-            <Radio size={23} className={radioMode ? "text-fuchsia-400" : "text-white/75"} />
+            {repeatMode === "one"
+              ? <Repeat1 size={22} style={{ color: "#00D9FF" }} />
+              : <Repeat size={22} style={{ color: repeatMode === "all" ? "#00D9FF" : "rgba(255,255,255,0.75)" }} />}
           </button>
         </div>
 
-        {/* ── Volume control ─────────────────────────────────────────────── */}
-        <div className="music-volume-control flex items-center gap-3 mt-6 px-4 py-3 rounded-full">
-          <button onClick={onMute}
-            aria-label={muted ? "Retire mute" : "Mute"}
-            className="w-7 h-7 flex items-center justify-center shrink-0">
-            {muted ? <VolumeX size={20} className="text-white/70" /> : <Volume2 size={20} className="text-white/90" />}
+        {/* Action tiles */}
+        <div className="grid grid-cols-4 gap-2.5 mt-7">
+          <button className={glassTile} onClick={() => track.lyrics ? setLyricsOpen(o => !o) : undefined}
+            aria-label="Lyrics" disabled={!track.lyrics} style={{ opacity: track.lyrics ? 1 : 0.45 }}>
+            <AlignLeft size={18} className="text-white/85" />
+            <span className="text-[10px] font-bold text-white/70">Lyrics</span>
           </button>
-          <input aria-label="Volim" type="range" min="0" max="1" step="0.01"
-            value={playerState.volume}
-            onChange={e => onVolume(Number(e.target.value))}
-            className="music-volume-range flex-1" />
-          <BarChart2 size={20} className="text-white/70 shrink-0" />
+          <button className={glassTile} onClick={() => onShowQueue?.()} aria-label="Queue">
+            <ListMusic size={18} className="text-white/85" />
+            <span className="text-[10px] font-bold text-white/70">Queue</span>
+          </button>
+          <button className={glassTile} onClick={() => onDownload?.()} aria-label="Download">
+            <Download size={18} className="text-white/85" />
+            <span className="text-[10px] font-bold text-white/70">Download</span>
+          </button>
+          <button className={glassTile} onClick={() => musicShareTrack(track)} aria-label="Share">
+            <Share2 size={18} className="text-white/85" />
+            <span className="text-[10px] font-bold text-white/70">Share</span>
+          </button>
         </div>
 
-        {/* ── Lyrics ────────────────────────────────────────────────────── */}
-        {track.lyrics ? (
-          <div className="mt-5">
-            <button
-              onClick={() => setLyricsOpen(o => !o)}
-              className="flex items-center gap-2 w-full py-2">
-              <span className="text-white/50 text-sm font-bold flex items-center gap-2"><Music2 size={15} /> Paròl</span>
-              <ChevronDown size={14} className={`text-white/30 transition-transform ${lyricsOpen ? "rotate-180" : ""}`} />
-            </button>
-            {lyricsOpen && (
-              <div className="mt-1 rounded-2xl px-4 py-3 max-h-52 overflow-y-auto"
-                style={{ background: "rgba(255,255,255,0.05)" }}>
-                <p className="text-white/70 text-sm leading-relaxed whitespace-pre-wrap">{track.lyrics}</p>
-              </div>
-            )}
+        <div className="grid grid-cols-4 gap-2.5 mt-2.5">
+          <button className={glassTile} onClick={() => setPanel(p => p === "timer" ? "none" : "timer")} aria-label="Sleep timer">
+            <Timer size={18} style={{ color: sleepUntil ? "#00D9FF" : "rgba(255,255,255,0.85)" }} />
+            <span className="text-[10px] font-bold text-white/70">Timer</span>
+          </button>
+          <button className={glassTile} onClick={() => setPanel(p => p === "speed" ? "none" : "speed")} aria-label="Playback speed">
+            <span className="text-xs font-black text-white/90">{playbackRate.toFixed(1)}x</span>
+            <span className="text-[10px] font-bold text-white/70">Speed</span>
+          </button>
+          <button className={glassTile} onClick={onMute} aria-label={muted ? "Unmute" : "Mute"}>
+            {muted ? <VolumeX size={18} className="text-white/85" /> : <Volume2 size={18} className="text-white/85" />}
+            <span className="text-[10px] font-bold text-white/70">Audio</span>
+          </button>
+          <button className={glassTile} onClick={() => setPanel(p => p === "more" ? "none" : "more")} aria-label="Equalizer">
+            <SlidersHorizontal size={18} className="text-white/85" />
+            <span className="text-[10px] font-bold text-white/70">EQ</span>
+          </button>
+        </div>
+
+        {panel === "timer" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[0, 5, 15, 30, 45, 60].map(m => (
+              <button key={m}
+                onClick={() => { musicSetSleepTimer(m); setSleepUntil(m ? Date.now() + m * 60_000 : null); if (!m) clearSleepTimer(); }}
+                className="px-3 py-1.5 rounded-full text-xs font-bold"
+                style={{
+                  background: "rgba(255,255,255,0.07)",
+                  border: "1px solid rgba(0,217,255,0.25)",
+                  color: "#fff",
+                }}>
+                {m === 0 ? "Off" : `${m} min`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {panel === "speed" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[0.75, 1, 1.25, 1.5, 2].map(r => (
+              <button key={r}
+                onClick={() => { musicSetPlaybackRate(r); setPlaybackRate(r); }}
+                className="px-3 py-1.5 rounded-full text-xs font-bold"
+                style={{
+                  background: playbackRate === r ? "rgba(0,217,255,0.2)" : "rgba(255,255,255,0.07)",
+                  border: `1px solid ${playbackRate === r ? "#00D9FF" : "rgba(255,255,255,0.12)"}`,
+                  color: "#fff",
+                }}>
+                {r}x
+              </button>
+            ))}
+          </div>
+        )}
+
+        {panel === "more" && (
+          <div className="mt-4 rounded-2xl px-4 py-3 text-xs leading-relaxed"
+            style={{ background: "rgba(255,255,255,0.05)", color: "#A1AEC4" }}>
+            System equalizer and audio output are controlled by your device
+            (iOS Control Center / Android media output). Flexa Music uses the
+            Media Session API for lock-screen and Bluetooth controls.
+            <div className="mt-3">
+              <label className="block text-white/70 font-bold mb-1">Volume</label>
+              <input aria-label="Volume" type="range" min="0" max="1" step="0.01"
+                value={playerState.volume}
+                onChange={e => onVolume(Number(e.target.value))}
+                className="music-volume-range w-full" />
+            </div>
+          </div>
+        )}
+
+        {lyricsOpen && track.lyrics ? (
+          <div className="mt-5 rounded-2xl px-4 py-3 max-h-52 overflow-y-auto"
+            style={{ background: "rgba(255,255,255,0.05)" }}>
+            <p className="text-white/75 text-sm leading-relaxed whitespace-pre-wrap">{track.lyrics}</p>
           </div>
         ) : null}
-
       </div>
     </div>
   );
@@ -2962,11 +3035,14 @@ export default function FlexaMusic() {
       .finally(() => setPurchasedFetched(true)); // allow paywall to enforce after server confirm
   }, [(user as any)?.id]);
 
-  // ── Upload gate: check song count before showing upload view ──────────────
+  // ── Upload gate: plan check kept for re-enable; free while commerce is off ─
   const handleUploadClick = async () => {
     // The Artist Plan and its upload tools are web-only, including for staff.
     if (!artistToolsAvailable) return;
-    if (isAdmin) { setView("upload"); return; }
+    if (isAdmin || musicUploadsAreFree()) {
+      setView("upload");
+      return;
+    }
     try {
       const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
       const res = await fetch("/api/music/artist/plan", {
@@ -2982,7 +3058,7 @@ export default function FlexaMusic() {
         throw new Error("Invalid Artist Plan response");
       }
       if (data.canUpload) {
-        setArtistPlanSongCount(data.songCount); // passed to UploadView for warning banner
+        setArtistPlanSongCount(data.songCount);
         setView("upload");
       } else {
         setArtistPlanSongCount(data.songCount);
@@ -3070,16 +3146,14 @@ export default function FlexaMusic() {
     return () => clearInterval(id);
   }, []);
 
-  // ── 30s preview gate — paid tracks that haven't been purchased stop at 30s ──
+  // ── 30s preview gate — only while music commerce is enabled ───────────────
   useEffect(() => {
+    if (musicListeningIsFree()) return;
     const track = playerState.track;
     if (!track || track.monetization_type !== "sale") return;
     if (purchasedIdsRef.current.has(track.id)) return;
-    if (isPurchasedLocally(userRef.current?.id, track.id)) return; // trust localStorage after purchase
+    if (isPurchasedLocally(userRef.current?.id, track.id)) return;
     if (!playerState.playing || playerState.currentTime < 30) return;
-    // Reached 30 seconds — count the preview, then move on to a free track.
-    // The paid track remains available for an intentional purchase from its
-    // card/menu; playback itself should never become a payment roadblock.
     stopTimer();
     const uid = userRef.current?.id;
     incrementPlayCount(uid, track.id);
@@ -3116,11 +3190,11 @@ export default function FlexaMusic() {
     stopTimer();
     listenRef.current = setTimeout(() => {
       logImpression(id, 31);
+      if (musicListeningIsFree()) return;
       // Count paid-track listens ONLY for "sale" tracks not yet purchased
       if (track?.monetization_type === "sale" && !purchasedIds.has(id) && !isPurchasedLocally((user as any)?.id, id)) {
         const newCount = incrementPlayCount((user as any)?.id, id);
         if (purchasedFetched && newCount >= FREE_PLAYS) {
-          // Do not interrupt listening with a paywall; move to free music.
           playNextFreeRef.current();
         }
       }
@@ -3131,9 +3205,10 @@ export default function FlexaMusic() {
   const playTrack = useCallback((track: Track, newQueue?: Track[], idx?: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    // ── Paywall gate — blocks sale tracks from PlayerView skip/queue too ──────
+    // ── Paywall gate — disabled while MUSIC_COMMERCE_ENABLED is false ────────
     const uid = userRef.current?.id;
     if (
+      !musicListeningIsFree() &&
       purchasedFetched &&
       track.monetization_type === "sale" &&
       !purchasedIdsRef.current.has(track.id) &&
@@ -3182,10 +3257,22 @@ export default function FlexaMusic() {
   }, [playerState.muted, playerState.volume]);
 
   const playNext = useCallback(() => {
-    // ── Skip paid/unavailable queue entries instead of opening a paywall ──────
+    const store = getMusicState();
+    if (store.repeat === "one" && playerState.track) {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.currentTime = 0;
+        musicRequestPlay().catch(() => {});
+      }
+      return;
+    }
+
+    const freeListen = musicListeningIsFree();
+    // Skip locked sale tracks only when commerce paywalls are active.
     const next = queue.findIndex((candidate, index) =>
       index > queueIdx &&
-      (candidate.monetization_type !== "sale" ||
+      (freeListen ||
+        candidate.monetization_type !== "sale" ||
         purchasedIdsRef.current.has(candidate.id) ||
         isPurchasedLocally(userRef.current?.id, candidate.id))
     );
@@ -3195,28 +3282,33 @@ export default function FlexaMusic() {
       return;
     }
 
-    // ── Queue exhausted (or empty): auto-play from same genre (only in radio mode)
+    if (store.repeat === "all" && queue.length > 0) {
+      setQueueIdx(0);
+      playTrack(queue[0], queue, 0);
+      return;
+    }
+
+    // Queue exhausted: auto-play from same genre (only in radio mode)
     const cur = playerState.track;
     if (!cur || !tracks.length || !radioMode) return;
 
-    // Build same-genre pool (exclude the just-played track)
     const genre = cur.genre ?? "";
     let pool = genre
       ? tracks.filter(t => t.id !== cur.id && t.genre === genre)
       : [];
 
-    // Genre too small? Fall back to all tracks except current
     if (pool.length < 2) {
       pool = tracks.filter(t => t.id !== cur.id);
     }
-    pool = pool.filter(t =>
-      t.monetization_type !== "sale" ||
-      purchasedIdsRef.current.has(t.id) ||
-      isPurchasedLocally(userRef.current?.id, t.id)
-    );
+    if (!freeListen) {
+      pool = pool.filter(t =>
+        t.monetization_type !== "sale" ||
+        purchasedIdsRef.current.has(t.id) ||
+        isPurchasedLocally(userRef.current?.id, t.id)
+      );
+    }
     if (!pool.length) return;
 
-    // Shuffle so every auto-play session feels fresh
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     setQueue(shuffled);
     setQueueIdx(0);
@@ -3308,10 +3400,9 @@ export default function FlexaMusic() {
 
   // ── Open track from home → auto-switch to player view ─────────────────────
   const openTrack = (track: Track, q: Track[], idx: number) => {
-    // ── Paywall gate: "sale" tracks with ≥ FREE_PLAYS listens and not bought ─
-    // purchasedFetched guard: never block playback until the server has confirmed
-    // which tracks this user owns — prevents false paywalls on fresh sessions.
+    // Paywall only when commerce is re-enabled.
     if (
+      !musicListeningIsFree() &&
       purchasedFetched &&
       track.monetization_type === "sale" &&
       !purchasedIds.has(track.id) &&
@@ -3435,7 +3526,14 @@ export default function FlexaMusic() {
         <UploadView
           onBack={() => setView("home")}
           onSuccess={handleUploadSuccess}
-          onPlanRequired={(cnt) => { setArtistPlanSongCount(cnt); setView("artist-plan"); }}
+          onPlanRequired={(cnt) => {
+            if (musicUploadsAreFree()) {
+              setArtistPlanSongCount(cnt);
+              return;
+            }
+            setArtistPlanSongCount(cnt);
+            setView("artist-plan");
+          }}
           songCount={artistPlanSongCount}
         />
       ) : view === "home" || (!artistToolsAvailable && (view === "upload" || view === "artist-plan")) ? (
@@ -3454,7 +3552,15 @@ export default function FlexaMusic() {
           onUpload={handleUploadClick}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          onBuy={(t) => { setPaywallTrack(t); setPaywallPlayCount(0); setView("paywall"); }}
+          onBuy={(t) => {
+            if (musicListeningIsFree()) {
+              openTrack(t, tracks, Math.max(0, tracks.findIndex(x => x.id === t.id)));
+              return;
+            }
+            setPaywallTrack(t);
+            setPaywallPlayCount(0);
+            setView("paywall");
+          }}
           setLocation={setLocation}
           autoFocusSearch={focusSearch}
           onFocusHandled={() => setFocusSearch(false)}
@@ -3484,7 +3590,15 @@ export default function FlexaMusic() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onAdTap={(id) => setLocation(`/listings/${id}`)}
-          onBuy={(t) => { setPaywallTrack(t); setPaywallPlayCount(0); setView("paywall"); }}
+          onBuy={(t) => {
+            if (musicListeningIsFree()) {
+              openTrack(t, playlist.length ? playlist : tracks, Math.max(0, (playlist.length ? playlist : tracks).findIndex(x => x.id === t.id)));
+              return;
+            }
+            setPaywallTrack(t);
+            setPaywallPlayCount(0);
+            setView("paywall");
+          }}
         />
       )}
 
@@ -3524,8 +3638,9 @@ export default function FlexaMusic() {
           onSeek={seek}
           onShuffle={shuffleQueue}
           onMute={toggleMute}
-           onVolume={setVolume}
+          onVolume={setVolume}
           isPaidPreview={
+            MUSIC_COMMERCE_ENABLED &&
             playerState.track.monetization_type === "sale" &&
             !purchasedIds.has(playerState.track.id)
           }
@@ -3536,6 +3651,11 @@ export default function FlexaMusic() {
             setArtistViewName(name);
             setView("artist");
           }}
+          onShowQueue={() => {
+            setShowNowPlaying(false);
+            setView("player");
+          }}
+          onDownload={() => playerState.track && downloadTrack(playerState.track)}
         />
       )}
 

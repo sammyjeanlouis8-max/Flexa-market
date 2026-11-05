@@ -78,6 +78,7 @@ const StripeOnboardReturn = lazy(() => import("@/pages/StripeOnboardReturn"));
 const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
+const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
 const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
 const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
 const TermsOfService     = lazy(() => import("@/pages/TermsOfService"));
@@ -214,7 +215,8 @@ function LayoutRoutes() {
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}
           </Route>
-          <Route path="/videos" component={VideoFeed} />
+          <Route path="/videos/watch" component={VideoFeed} />
+          <Route path="/videos" component={VideoDiscover} />
           <Route path="/my-boosts" component={MyBoosts} />
           <Route path="/listings/:id/video" component={VideoPost} />
           <Route path="/listings/:id" component={ListingDetail} />

@@ -1252,7 +1252,7 @@ function VideoCard({
 
   const handleShare = async () => {
     if (isRestricted) { showRestrictionToast(); return; }
-    const url = `${window.location.origin}/videos?video=${video.id}`;
+    const url = `${window.location.origin}/videos/watch?video=${video.id}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: video.title, url });
@@ -1624,7 +1624,7 @@ function VideoCard({
               <Link href={`/listings/${video.id}`} onClick={trackBuyClick}>
                 <span className="flex items-center gap-1.5 bg-primary text-white font-black px-3 py-1.5 rounded-lg shadow-lg text-[11px] leading-none whitespace-nowrap">
                   <ShoppingBag className="h-3 w-3" />
-                  Achte
+                  {t("videoFeed.buy")}
                 </span>
               </Link>
             )}
@@ -1763,18 +1763,19 @@ interface SideListing {
 
 export default function VideoFeed() {
   const { t } = useTranslation();
-  useSEO({ title: t("tr.promoVideo"), description: t("tr.videoFeedSeoDesc"), path: "/videos" });
+  useSEO({ title: t("tr.promoVideo"), description: t("tr.videoFeedSeoDesc"), path: "/videos/watch" });
   const [, navigate] = useLocation();
-  // Robust "back": return to the previous in-app screen when there is history
-  // (the feed is usually opened from the drawer or a link), otherwise fall back
-  // to the marketplace home. window.history.back() drives wouter via popstate,
-  // and sidesteps any base-path edge cases that could make navigate("/") no-op.
+  // Prefer returning to the Promotional Videos discovery grid (preserving
+  // filter/search). Fall back to history / home when opened from elsewhere.
   const handleBack = useCallback(() => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate("/");
-    }
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const sort = params?.get("sort");
+    const q = params?.get("q");
+    const discover = new URLSearchParams();
+    if (sort && sort !== "all") discover.set("sort", sort);
+    if (q) discover.set("q", q);
+    const qs = discover.toString();
+    navigate(qs ? `/videos?${qs}` : "/videos");
   }, [navigate]);
   const { token } = useAuth();
   const purchasesDisabled = isAndroidApp();
@@ -1818,6 +1819,16 @@ export default function VideoFeed() {
       ? null
       : (new URLSearchParams(window.location.search).get("country")?.trim() || null),
   );
+  const feedSortRef = useRef<string>(
+    typeof window === "undefined"
+      ? "all"
+      : (new URLSearchParams(window.location.search).get("sort")?.trim().toLowerCase() || "all"),
+  );
+  const feedSearchRef = useRef<string>(
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("q")?.trim() || ""),
+  );
   const initialSelectionAppliedRef = useRef(selectedVideoIdRef.current === null);
 
   // ── AI recommendation state ──────────────────────────────────────────────
@@ -1825,8 +1836,20 @@ export default function VideoFeed() {
   //          send them to the API as ?exclude=... to prevent repeats.
   // sessionSeed: random number sent as ?seed=... so the ranking formula
   //              returns a different ordering each time the app is opened.
+  // When opened from the discovery grid, reuse the grid seed so neighbors match.
   const seenIdsRef = useRef<Set<number>>(new Set());
-  const sessionSeedRef = useRef<number>(Math.floor(Math.random() * 1_000_000) + 1);
+  const sessionSeedRef = useRef<number>(
+    (() => {
+      if (typeof window === "undefined") return Math.floor(Math.random() * 1_000_000) + 1;
+      const fromQuery = parseInt(new URLSearchParams(window.location.search).get("seed") ?? "", 10);
+      if (Number.isFinite(fromQuery) && fromQuery > 0) return fromQuery;
+      try {
+        const stored = parseInt(sessionStorage.getItem("fm_video_discover_seed") ?? "", 10);
+        if (Number.isFinite(stored) && stored > 0) return stored;
+      } catch { /* ok */ }
+      return Math.floor(Math.random() * 1_000_000) + 1;
+    })(),
+  );
 
   const buildFeedUrl = useCallback((p: number, replaceAll = false) => {
     const seed = sessionSeedRef.current;
@@ -1835,7 +1858,10 @@ export default function VideoFeed() {
     const excludeList = (!replaceAll && seenIdsRef.current.size > 0)
       ? [...seenIdsRef.current].join(",")
       : "";
-    let url = `/api/videos/feed?page=${p}&limit=10&seed=${seed}`;
+    let url = `/api/videos/feed?page=${p}&limit=10&seed=${seed}&sort=${encodeURIComponent(feedSortRef.current || "all")}`;
+    if (feedSearchRef.current) {
+      url += `&q=${encodeURIComponent(feedSearchRef.current)}`;
+    }
     if (selectedCountryRef.current) {
       url += `&country=${encodeURIComponent(selectedCountryRef.current)}`;
     }
@@ -1941,7 +1967,9 @@ export default function VideoFeed() {
         const countrySuffix = selectedCountryRef.current
           ? `&country=${encodeURIComponent(selectedCountryRef.current)}`
           : "";
-        const res = await fetch(`/api/videos/feed?page=1&limit=10&seed=0${countrySuffix}`, { headers });
+        const sortSuffix = `&sort=${encodeURIComponent(feedSortRef.current || "all")}`;
+        const qSuffix = feedSearchRef.current ? `&q=${encodeURIComponent(feedSearchRef.current)}` : "";
+        const res = await fetch(`/api/videos/feed?page=1&limit=10&seed=0${sortSuffix}${qSuffix}${countrySuffix}`, { headers });
         if (!res.ok) return;
         const data = await res.json();
         if (requestGeneration !== feedGenerationRef.current) return;

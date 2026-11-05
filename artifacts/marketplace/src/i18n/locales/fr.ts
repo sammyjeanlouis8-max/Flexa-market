@@ -1106,6 +1106,7 @@ export default {
     loginRequired: "Connectez-vous pour accéder à vos paramètres.",
     backToSettings: "Retour aux Paramètres",
     verified: "Vérifié",
+    addProduct: "Ajouter un produit",
     groupAccount: "Compte",
     groupActivity: "Activité",
     groupSettings: "Paramètres",

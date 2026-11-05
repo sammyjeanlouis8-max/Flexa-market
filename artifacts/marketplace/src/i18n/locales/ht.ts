@@ -1110,6 +1110,7 @@ export default {
     loginRequired: "Konekte pou ou ka itilize paramèt yo.",
     backToSettings: "Retounen nan Paramèt",
     verified: "Verifye",
+    addProduct: "Ajoute yon pwodwi",
     groupAccount: "Kont",
     groupActivity: "Aktivite",
     groupSettings: "Paramèt",

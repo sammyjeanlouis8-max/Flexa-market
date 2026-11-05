@@ -1110,6 +1110,7 @@ export default {
     loginRequired: "Sign in to access your settings.",
     backToSettings: "Back to Settings",
     verified: "Verified",
+    addProduct: "Add Product",
     groupAccount: "Account",
     groupActivity: "Activity",
     groupSettings: "Settings",

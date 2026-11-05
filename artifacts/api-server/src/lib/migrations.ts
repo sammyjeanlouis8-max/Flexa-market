@@ -2876,6 +2876,22 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE client_message_id IS NOT NULL`,
   });
 
+  // ── Marketplace chat: idempotent sends + reply-to ──
+  migrations.push({
+    name: "messages.client_message_id",
+    sql: `ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_id text`,
+  });
+  migrations.push({
+    name: "messages.reply_to_message_id",
+    sql: `ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to_message_id integer`,
+  });
+  migrations.push({
+    name: "messages.client_message_id_uniq",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS messages_client_msg_uidx
+      ON messages (conversation_id, sender_id, client_message_id)
+      WHERE client_message_id IS NOT NULL`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

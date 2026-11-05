@@ -31,6 +31,15 @@ import {
   updatePendingVoice,
   type PendingVoiceMessage,
 } from "@/lib/voiceOutbox";
+import {
+  listPendingMessages,
+  savePendingMessage,
+  updatePendingMessage,
+  removePendingMessage,
+  newClientMessageId,
+  type PendingChatMessage,
+} from "@/lib/messageOutbox";
+import { compressChatImage } from "@/lib/compressChatImage";
 import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T, FLEXA } from "./chatTheme";
 
 let _animInjected = false;
@@ -239,8 +248,13 @@ const AudioBubble = React.memo(function AudioBubble({
   const [duration, setDuration] = useState(0);
   const [fracSnap, setFracSnap] = useState(0); // low-freq React state for time display
   const [playbackError, setPlaybackError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<1 | 1.5 | 2>(1);
 
   const N = VOICE_BARS.length;
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   // ── colours ──────────────────────────────────────────────────────────────
   const PLAYED_COLOR = isMe ? (theme.isDark ? "#86efac" : "#2a76d8") : "#2a76d8";
@@ -445,8 +459,24 @@ const AudioBubble = React.memo(function AudioBubble({
           />
         </div>
 
-        {/* Time + metadata inline */}
+        {/* Time + speed + metadata */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaybackRate((r) => (r === 1 ? 1.5 : r === 1.5 ? 2 : 1));
+            }}
+            aria-label={t("messages.playbackSpeed", { defaultValue: "Playback speed" })}
+            style={{
+              border: "none", cursor: "pointer", borderRadius: 8,
+              padding: "2px 5px", fontSize: 10, fontWeight: 800,
+              background: isMe ? (theme.isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)") : (theme.isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)"),
+              color: timeColor, minWidth: 28, minHeight: 22,
+            }}
+          >
+            {playbackRate === 1 ? "1x" : playbackRate === 1.5 ? "1.5x" : "2x"}
+          </button>
           <Mic style={{
             width: 11, height: 11, flexShrink: 0,
             color: micColor,
@@ -945,6 +975,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   const [voiceFinalizing, setVoiceFinalizing] = useState(false);
   const [sendingVoiceId, setSendingVoiceId] = useState<string | null>(null);
   const [pendingVoices, setPendingVoices] = useState<PendingVoiceMessage[]>([]);
+  const [pendingTexts, setPendingTexts] = useState<PendingChatMessage[]>([]);
   const [translations, setTranslations] = useState<Map<number, { translatedText: string; detectedLanguage: string }>>(new Map());
   const [translatingIds, setTranslatingIds] = useState<Set<number>>(new Set());
   const autoTranslatedRef = useRef<Set<number>>(new Set());
@@ -1184,24 +1215,118 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
 
   const doSend = useCallback((body: {
     content?: string; messageType?: MsgType; mediaUrl?: string; imageUrl?: string;
-  }) => {
+    clientMessageId?: string; replyToMessageId?: number;
+  }, opts?: { onFail?: (err: string) => void; onSuccess?: () => void }) => {
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     if (user) socket.emitStopTyping(convId, user.id);
     sendMsg.mutate({ id: convId, data: body as any }, {
       onSuccess: () => {
+        opts?.onSuccess?.();
         queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
         queryClient.invalidateQueries({ queryKey: getGetConversationsQueryKey() });
         setTimeout(() => scrollToBottom(true), 100);
       },
+      onError: (err: any) => {
+        opts?.onFail?.(err?.message ?? "Send failed");
+      },
     });
   }, [convId, queryClient, sendMsg, socket, user]);
 
-  const sendText = () => {
+  const flushPendingTexts = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const items = await listPendingMessages(convId).catch(() => [] as PendingChatMessage[]);
+    setPendingTexts(items);
+    for (const item of items) {
+      if (item.messageType !== "text") continue;
+      try {
+        await updatePendingMessage(item.id, { status: "sending", attempts: item.attempts + 1 });
+        await new Promise<void>((resolve, reject) => {
+          sendMsg.mutate(
+            {
+              id: convId,
+              data: {
+                content: item.content,
+                messageType: "text",
+                clientMessageId: item.id,
+              } as any,
+            },
+            {
+              onSuccess: () => resolve(),
+              onError: (e: any) => reject(e),
+            },
+          );
+        });
+        await removePendingMessage(item.id);
+        setPendingTexts((cur) => cur.filter((p) => p.id !== item.id));
+        queryClient.invalidateQueries({ queryKey: getGetMessagesQueryKey(convId) });
+      } catch (e: any) {
+        await updatePendingMessage(item.id, {
+          status: "failed",
+          lastError: e?.message ?? "Waiting for connection",
+        });
+        setPendingTexts((cur) =>
+          cur.map((p) =>
+            p.id === item.id
+              ? { ...p, status: "failed", lastError: e?.message ?? "Waiting for connection" }
+              : p,
+          ),
+        );
+      }
+    }
+  }, [convId, queryClient, sendMsg]);
+
+  useEffect(() => {
+    listPendingMessages(convId)
+      .then(setPendingTexts)
+      .catch(() => {});
+    void flushPendingTexts();
+    const onOnline = () => void flushPendingTexts();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onOnline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onOnline);
+    };
+  }, [convId, flushPendingTexts]);
+
+  const sendText = async () => {
     if (!text.trim() || isRestricted) return;
     const content = text.trim();
+    const clientMessageId = newClientMessageId();
     setText("");
     setShowEmojiPanel(false);
-    doSend({ content, messageType: "text" });
+
+    // Persist first so refresh / offline never loses the draft send
+    try {
+      const queued = await savePendingMessage({
+        id: clientMessageId,
+        conversationId: convId,
+        messageType: "text",
+        content,
+      });
+      setPendingTexts((cur) => [...cur.filter((p) => p.id !== queued.id), queued]);
+      setTimeout(() => scrollToBottom(true), 40);
+    } catch {
+      // IndexedDB unavailable — still attempt live send
+    }
+
+    if (!navigator.onLine) return;
+
+    doSend(
+      { content, messageType: "text", clientMessageId },
+      {
+        onSuccess: () => {
+          void removePendingMessage(clientMessageId);
+          setPendingTexts((cur) => cur.filter((p) => p.id !== clientMessageId));
+        },
+        onFail: (err) => {
+          void updatePendingMessage(clientMessageId, { status: "failed", lastError: err });
+          setPendingTexts((cur) =>
+            cur.map((p) => (p.id === clientMessageId ? { ...p, status: "failed", lastError: err } : p)),
+          );
+        },
+      },
+    );
   };
 
   const stopRecordingTimer = () => {
@@ -1504,8 +1629,21 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     try {
       for (const file of files) {
         const isVideo = file.type.startsWith("video/");
-        const url = await uploadMedia(file, file.type, tkn);
-        doSend({ messageType: isVideo ? "video" : "image", mediaUrl: url, content: "" });
+        const clientMessageId = newClientMessageId();
+        let uploadBlob: Blob = file;
+        let contentType = file.type || "application/octet-stream";
+        if (!isVideo) {
+          const compressed = await compressChatImage(file);
+          uploadBlob = compressed.blob;
+          contentType = compressed.contentType;
+        }
+        const url = await uploadMedia(uploadBlob, contentType, tkn);
+        doSend({
+          messageType: isVideo ? "video" : "image",
+          mediaUrl: url,
+          content: "",
+          clientMessageId,
+        });
       }
     } catch { alert(t("messages.uploadFailed")); }
     finally { setUploading(false); }
@@ -1548,7 +1686,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
   }, [stopRecordingMeter]);
 
   const msgList: ChatMessage[] = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
-  const timeline = buildChatTimeline(msgList, pendingVoices);
+  type TimelinePending = PendingVoiceMessage | (PendingChatMessage & { __text: true });
+  const pendingForTimeline: TimelinePending[] = [
+    ...pendingVoices,
+    ...pendingTexts.map((p) => ({ ...p, __text: true as const })),
+  ];
+  const timeline = buildChatTimeline(msgList, pendingForTimeline);
   // Find the last message sent by me (for status icon)
   let lastSentByMeId: number | null = null;
   for (let i = timeline.length - 1; i >= 0; i--) {
@@ -1600,38 +1743,31 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
     });
   }, [convId, queryClient]);
 
-  // ── iOS safe-area top inset (inline — more reliable than CSS class in WKWebView)
-  // max(env(safe-area-inset-top), var(--sat)) can silently return 0 in some
-  // WKWebView builds. Reading the JS-set CSS variable directly and applying it
-  // as an inline numeric value is guaranteed to win over any CSS rule.
-  const threadHeaderTopPad = (() => {
-    if (typeof document === "undefined") return 8;
-    // Priority 1: injected by the native React Native WebView before page load
+  // Compact header: CSS owns safe-area (env / --sat). Native WebView may set
+  // __flexaNativeSafeTop — only then do we pad inline. Never use UA heuristics
+  // (they doubled the green gap under Safari's Dynamic Island).
+  const nativeSafeTop = (() => {
+    if (typeof window === "undefined") return 0;
     const native = (window as any).__flexaNativeSafeTop;
-    if (typeof native === "number" && native > 0) return native + 8;
-    // Priority 2: --sat set synchronously in index.html bootstrap
-    const v = document.documentElement.style.getPropertyValue("--sat") ||
-              getComputedStyle(document.documentElement).getPropertyValue("--sat");
-    const sat = parseInt(v, 10);
-    if (!isNaN(sat) && sat > 0) return sat + 8;
-    // Priority 3: FlexaMarket WebView UA or standard iOS UA
-    if (/FlexaMarket|iPhone|iPad|iPod/.test(navigator.userAgent)) {
-      return (window.screen.height >= 812 ? 59 : 20) + 8;
-    }
-    return 8;
+    return typeof native === "number" && native > 0 ? native : 0;
   })();
 
   return (
     <ChatViewport background={c.pageBg}>
 
-      {/* ── Thread header — paddingTop applied inline so WKWebView can't ignore it */}
-      <div className="chat-thread-header" style={{
-        display: "flex", alignItems: "center", gap: 11,
-        paddingTop: threadHeaderTopPad,
-        paddingBottom: "11px", paddingLeft: "13px", paddingRight: "13px",
-        borderBottom: `1px solid ${c.headerBorder}`,
-        background: c.headerBg, flexShrink: 0, overflow: "hidden",
-      }}>
+      {/* ── Compact sticky thread header ── */}
+      <div
+        className="chat-thread-header chat-header-safe"
+        style={{
+          borderBottom: `1px solid ${c.headerBorder}`,
+          background: c.headerBg, flexShrink: 0, overflow: "hidden",
+          ...(nativeSafeTop > 0 ? { paddingTop: nativeSafeTop } : null),
+        }}
+      >
+        <div
+          className="chat-thread-header-row"
+          style={{ gap: 10, paddingLeft: 10, paddingRight: 10 }}
+        >
         {/* Back button — always visible.
             Uses window.history.back() to pop the sentinel we pushed on mount.
             The popstate handler then calls setLocation("/messages"), which
@@ -1640,6 +1776,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
         <button
           type="button"
           onClick={onBack ?? (() => window.history.back())}
+          aria-label={t("messages.back")}
+          className="chat-touch-btn"
           style={{
             width: 40, height: 40, borderRadius: "50%", background: "transparent",
             border: "none", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1648,7 +1786,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             userSelect: "none",
           } as React.CSSProperties}
         >
-          <ArrowLeft style={{ width: 21, height: 21 }} />
+          <ArrowLeft style={{ width: 20, height: 20 }} />
         </button>
 
       {conv && (<>
@@ -1657,7 +1795,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           <Link href={`/profile/${conv.otherUserId}`} style={{ flexShrink: 0 }}>
             <div style={{ position: "relative", cursor: "pointer" }}>
               <div style={{
-                width: 44, height: 44, borderRadius: "50%",
+                width: 40, height: 40, borderRadius: "50%",
                 overflow: "hidden", flexShrink: 0,
                 background: FLEXA.greenMid,
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -1702,26 +1840,17 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 />
               )}
             </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
-              {conv.otherUserIsVerified && conv.myRole === "buyer" && (
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  padding: "1px 8px", borderRadius: 999,
-                  background: "rgba(134,239,172,0.18)",
-                  color: "#BBF7D0", fontSize: 10, fontWeight: 700,
-                }}>
-                  <Check style={{ width: 10, height: 10 }} />
-                  {t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
-                </span>
-              )}
-              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.3, color: otherOnline ? "#86EFAC" : "rgba(255,255,255,0.55)" }}>
-                {otherOnline
-                  ? t("messages.online")
-                  : otherLastSeen
-                    ? formatLastSeen(otherLastSeen, t)
-                    : ""}
-              </p>
-            </div>
+            <p style={{
+              margin: "2px 0 0", fontSize: 11, lineHeight: 1.2,
+              color: otherOnline ? "#86EFAC" : "rgba(255,255,255,0.55)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {otherOnline
+                ? t("messages.online")
+                : otherLastSeen
+                  ? formatLastSeen(otherLastSeen, t)
+                  : ""}
+            </p>
           </Link>
 
           {/* Actions — theme + overflow menu (no fake call buttons) */}
@@ -1850,36 +1979,29 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             )}
           </div>
         </>)}
+        </div>
       </div>
 
-      {/* Product context card — real listing data only */}
+      {/* Compact product context — real listing data only */}
       {conv?.listingId && (
         <div style={{
           flexShrink: 0,
-          padding: "8px 12px",
+          padding: "6px 10px",
           background: c.msgAreaBg,
           borderBottom: `1px solid ${c.listBorder}`,
         }}>
           <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 12px",
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "6px 10px",
             background: c.contextBg,
             border: `1px solid ${c.contextBorder}`,
-            borderRadius: 14,
-            boxShadow: c.isDark ? "none" : "0 4px 14px rgba(15, 23, 42, 0.06)",
+            borderRadius: 12,
             color: c.contextText,
           }}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{
-                margin: 0, fontSize: 11, fontWeight: 700,
-                color: FLEXA.orange, display: "flex", alignItems: "center", gap: 5,
-              }}>
-                <ShoppingBag style={{ width: 12, height: 12 }} />
-                {t("messages.productContext")}
-              </p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: 10, overflow: "hidden",
+                  width: 36, height: 36, borderRadius: 8, overflow: "hidden",
                   flexShrink: 0, background: c.isDark ? "#334155" : "#f1f3ed",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
@@ -1990,7 +2112,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
           </div>
         )}
 
-        {(msgList.length > 0 || pendingVoices.length > 0) && (
+        {(msgList.length > 0 || pendingVoices.length > 0 || pendingTexts.length > 0) && (
           <div style={{ display: "flex", flexDirection: "column", padding: "18px 14px 12px", maxWidth: 680, margin: "0 auto", boxSizing: "border-box", overflowX: "hidden" }}>
             <div style={{ flex: 1 }} />
             {timeline.map((entry, idx) => {
@@ -1999,13 +2121,46 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               const startsDay = entry.day != null && entry.day !== prev?.day;
               const isFirstInGroup = !sameChatGroup(prev, entry, Number(user?.id));
               const isLastInGroup = !sameChatGroup(entry, next, Number(user?.id));
+              const isTextPending = entry.kind === "pending" && "__text" in entry.item;
 
               return (
                 <React.Fragment key={entry.key}>
                   {startsDay && <ChatDateDivider createdAt={entry.createdAt} isDark={c.isDark} />}
                   <div style={{ marginTop: startsDay || idx === 0 ? 0 : isFirstInGroup ? 8 : 2 }}>
-                    {entry.kind === "pending" ? (
-                      <PendingVoiceBubble item={entry.item} theme={c}
+                    {entry.kind === "pending" && isTextPending ? (
+                      <div className="msg-bubble-anim" style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{
+                          maxWidth: "85%", borderRadius: "12px 12px 4px 12px",
+                          background: c.bubbleOut, padding: "8px 12px",
+                          opacity: 0.9, border: (c as any).bubbleOutBorder ? `1px solid ${(c as any).bubbleOutBorder}` : undefined,
+                        }}>
+                          <p style={{ margin: 0, fontSize: 14, color: c.textOut, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                            {(entry.item as PendingChatMessage).content}
+                          </p>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 4 }}>
+                            <span style={{ fontSize: 10, color: c.timeOut }}>
+                              {(entry.item as PendingChatMessage).status === "failed" || !navigator.onLine
+                                ? t("messages.waitingConnection", { defaultValue: "Waiting for connection" })
+                                : t("messages.sending", { defaultValue: "Sending…" })}
+                            </span>
+                            {((entry.item as PendingChatMessage).status === "failed" || !navigator.onLine) && (
+                              <button
+                                type="button"
+                                onClick={() => void flushPendingTexts()}
+                                style={{
+                                  border: "none", background: "transparent", cursor: "pointer",
+                                  fontSize: 10, fontWeight: 700, color: c.timeOut, textDecoration: "underline",
+                                  minHeight: 28, padding: "0 4px",
+                                }}
+                              >
+                                {t("messages.voiceRetry")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : entry.kind === "pending" ? (
+                      <PendingVoiceBubble item={entry.item as PendingVoiceMessage} theme={c}
                         isSending={sendingVoiceId === entry.item.id}
                         onRetry={() => void flushPendingVoices()} />
                     ) : (

@@ -227,7 +227,8 @@ export function emitNewSupportThread(data: object): void {
 
 export function emitMsgDeleted(convId: number, msgId: number): void {
   if (!io) return;
-  io.to(`conv_${convId}`).emit("msg_deleted", { convId, msgId });
+  // Must match join-conv room naming: `conv:${id}`
+  io.to(`conv:${convId}`).emit("msg_deleted", { convId, msgId });
 }
 
 export { io };

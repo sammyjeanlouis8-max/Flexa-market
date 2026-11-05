@@ -33,6 +33,10 @@ export const messagesTable = pgTable("messages", {
   mediaUrl: text("media_url"),
   mediaDuration: integer("media_duration"),
   imageUrl: text("image_url"),
+  /** Client-generated idempotency key for offline / retry-safe sends */
+  clientMessageId: text("client_message_id"),
+  /** Optional reply-to parent message */
+  replyToMessageId: integer("reply_to_message_id"),
   isRead: boolean("is_read").notNull().default(false),
   isListened: boolean("is_listened").notNull().default(false),
   isDeleted: boolean("is_deleted").notNull().default(false),

@@ -406,7 +406,17 @@ main {
    * the JS-detected fallback (React Native WebView where env() = 0).
    */
   .chat-header-safe {
+    /* Single safe-area source — never add a JS heuristic on top of env() */
     padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
+  }
+
+  .chat-thread-header-row {
+    height: 56px;
+    min-height: 56px;
+    max-height: 56px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
   }
 
   /* Admin console sticky header — keep controls below iPhone status bar / notch */

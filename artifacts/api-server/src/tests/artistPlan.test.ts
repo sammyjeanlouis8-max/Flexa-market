@@ -6,12 +6,17 @@ import {
   getArtistPlanState,
   getNextArtistPlanExpiry,
 } from "../lib/artistPlan";
+import { MUSIC_COMMERCE_ENABLED } from "../lib/musicCommerce";
 import { consumeUploadProxyToken, issueUploadProxyToken } from "../lib/uploadProxyTokens";
 
 const NOW = new Date("2026-08-19T12:00:00.000Z");
 
 describe("Artist Plan upload eligibility", () => {
-  it.each([0, 1])("allows a free artist with %i uploaded tracks", (songCount) => {
+  it("keeps music commerce disabled so uploads stay free", () => {
+    expect(MUSIC_COMMERCE_ENABLED).toBe(false);
+  });
+
+  it.each([0, 1, 2, 25])("allows uploads for any song count while commerce is free (%i tracks)", (songCount) => {
     const state = getArtistPlanState({
       subscriptionPlan: "basic",
       subscriptionExpiresAt: null,
@@ -20,20 +25,10 @@ describe("Artist Plan upload eligibility", () => {
     });
     expect(state.canUpload).toBe(true);
     expect(state.isArtistPlan).toBe(false);
-    expect(state.freeSongLimit).toBe(2);
+    expect(state.freeSongLimit).toBe(Number.MAX_SAFE_INTEGER);
   });
 
-  it("requires the plan at the free two-track allowance", () => {
-    const state = getArtistPlanState({
-      subscriptionPlan: "basic",
-      subscriptionExpiresAt: null,
-      songCount: 2,
-      now: NOW,
-    });
-    expect(state.canUpload).toBe(false);
-  });
-
-  it("allows uploads above the free allowance for an active Artist Plan", () => {
+  it("still recognizes an active Artist Plan when present", () => {
     const state = getArtistPlanState({
       subscriptionPlan: "artist",
       subscriptionExpiresAt: "2027-08-19T12:00:00.000Z",
@@ -44,7 +39,7 @@ describe("Artist Plan upload eligibility", () => {
     expect(state.canUpload).toBe(true);
   });
 
-  it("treats an expired Artist Plan as inactive", () => {
+  it("treats an expired Artist Plan as inactive but still allows free uploads", () => {
     const state = getArtistPlanState({
       subscriptionPlan: "artist",
       subscriptionExpiresAt: "2026-08-18T12:00:00.000Z",
@@ -52,7 +47,7 @@ describe("Artist Plan upload eligibility", () => {
       now: NOW,
     });
     expect(state.isArtistPlan).toBe(false);
-    expect(state.canUpload).toBe(false);
+    expect(state.canUpload).toBe(true);
   });
 });
 

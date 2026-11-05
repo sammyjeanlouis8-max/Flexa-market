@@ -1,3 +1,5 @@
+import { musicUploadsAreFree } from "./musicCommerce";
+
 export const FREE_SONG_LIMIT = 2;
 export const ARTIST_PLAN_PRICE_USD = 50;
 export const ARTIST_PLAN_PRICE_CENTS = ARTIST_PLAN_PRICE_USD * 100;
@@ -29,11 +31,15 @@ export function getArtistPlanState(input: ArtistPlanStateInput): ArtistPlanState
   const isArtistPlan = input.subscriptionPlan === "artist" && expiryIsValid;
   const songCount = Math.max(0, Math.trunc(Number(input.songCount) || 0));
 
+  // Commerce off → every authenticated artist can upload without a paid plan.
+  // Historical artist-plan rows remain intact for a future re-enable.
+  const canUpload = musicUploadsAreFree() || isArtistPlan || songCount < FREE_SONG_LIMIT;
+
   return {
     isArtistPlan,
-    canUpload: isArtistPlan || songCount < FREE_SONG_LIMIT,
+    canUpload,
     songCount,
-    freeSongLimit: FREE_SONG_LIMIT,
+    freeSongLimit: musicUploadsAreFree() ? Number.MAX_SAFE_INTEGER : FREE_SONG_LIMIT,
     expiresAt: expiresAt && Number.isFinite(expiresAt.getTime())
       ? expiresAt.toISOString()
       : null,

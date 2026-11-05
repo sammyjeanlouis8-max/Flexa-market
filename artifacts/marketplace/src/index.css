@@ -352,6 +352,17 @@ main {
   max-width: 100%;
 }
 
+/* Premium side menu: keep drawer panels from overflowing on narrow phones */
+.premium-side-menu {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .premium-side-menu {
+    transition: none !important;
+  }
+}
+
 /* ── Mobile-first full-screen chat ─────────────────────────────────────────
    On phones, the MessageThread takes over the entire viewport using
    position:fixed so it is completely immune to parent flex/overflow chains.

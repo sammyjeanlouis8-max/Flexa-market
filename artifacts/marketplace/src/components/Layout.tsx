@@ -2,14 +2,11 @@ import { ReactNode, Suspense, lazy, useState, useEffect, useRef, useCallback, ty
 import { Link, useLocation } from "wouter";
 import { useBroadcast } from "@/contexts/broadcast";
 import {
-  Home, Search, Plus, MessageCircle, User, Moon, Sun,
+  Home, Search, Plus, MessageCircle, User,
   MoreHorizontal, Heart, ShoppingBag, Tag, Briefcase, Menu, LayoutGrid,
-  HelpCircle, Settings, X, ChevronRight, Wallet, ArrowLeft, Globe, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin,
+  HelpCircle, Settings, Wallet, ArrowLeft, Crown, TrendingUp, LogOut, ShieldCheck, Film, Zap, Truck, ShoppingCart, Landmark, Calculator, Sparkles, Tv, Music2, Gift, Coins, MapPin, Package, Store, Bell, Lock, MapPinned, Award,
 } from "lucide-react";
 import { useCart } from "@/contexts/cart";
-import { SUPPORTED_LANGUAGES, setLanguage, type SupportedLanguage } from "@/i18n";
-import { apiPatch } from "@/lib/api";
-import { useTheme } from "@/components/theme-provider";
 import LanguagePickerModal from "@/components/LanguagePickerModal";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
@@ -23,6 +20,7 @@ import NotificationsDropdown from "@/components/NotificationsDropdown";
 import UserMenu from "@/components/UserMenu";
 import GuestMenu from "@/components/GuestMenu";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import PremiumSideMenu, { DarkModeToggle, useDriverStatus } from "@/components/PremiumSideMenu";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import AndroidInlineRoute from "@/components/AndroidInlineRoute";
 import { OPEN_PUSH_CONVERSATION } from "@/lib/pushNavigation";
@@ -244,445 +242,6 @@ function HeaderSearch({ marketStyle = false }: { marketStyle?: boolean }) {
   );
 }
 
-// ─── Mobile "More" drawer ─────────────────────────────────────────────────────
-type DrawerItem =
-  | { kind?: "nav";   icon: React.ComponentType<{ className?: string }>; label: string; href: string }
-  | { kind: "lang";   icon: React.ComponentType<{ className?: string }>; label: string; href?: never }
-  | { kind: "loan";   icon: React.ComponentType<{ className?: string }>; label: string; subtitle: string; href: string }
-  | { kind: "delivery"; icon: React.ComponentType<{ className?: string }>; label: string; href: string; variant: "available" | "apply" }
-  | { kind: "commerce"; icon: React.ComponentType<{ className?: string }>; label: string; href: string; variant: "orders" | "sales" }
-  | { kind: "promo";  icon: React.ComponentType<{ className?: string }>; label: string; href: string; balance: number; realBalance: number };
-
-function DarkModeToggle({ className }: { className?: string }) {
-  const { theme, setTheme } = useTheme();
-  const { user } = useAuth();
-  const { t } = useTranslation();
-  const isDark = theme === "dark";
-
-  const toggle = () => {
-    const next = isDark ? "light" : "dark";
-    setTheme(next);
-    if (user) {
-      apiPatch("/auth/theme", { theme: next }).catch(() => {});
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      data-testid="btn-dark-mode-toggle"
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-all ${className ?? ""}`}
-    >
-      {isDark
-        ? <Sun className="h-4 w-4 shrink-0 text-amber-500" />
-        : <Moon className="h-4 w-4 shrink-0" />}
-      <span className="flex-1 text-left">{t("userMenu.darkMode")}</span>
-      <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 transition-colors duration-200 ${isDark ? "bg-primary border-primary" : "bg-muted border-border"}`}>
-        <span className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 ${isDark ? "translate-x-4" : "translate-x-0"}`} />
-      </span>
-    </button>
-  );
-}
-
-type DriverStatus = "loading" | "none" | "pending" | "approved" | "rejected" | "suspended";
-
-function useDriverStatus(user: ReturnType<typeof useAuth>["user"]): DriverStatus {
-  const [status, setStatus] = useState<DriverStatus>("loading");
-  useEffect(() => {
-    if (!user) { setStatus("none"); return; }
-    const token = localStorage.getItem("flexamarket_token");
-    if (!token) { setStatus("none"); return; }
-    let cancelled = false;
-    fetch("/api/delivery/application", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        if (data.driver?.status === "active") { setStatus("approved"); return; }
-        const s = data.application?.status;
-        if (s === "pending") { setStatus("pending"); return; }
-        if (s === "approved") { setStatus("approved"); return; }
-        if (s === "rejected") { setStatus("rejected"); return; }
-        if (s === "suspended") { setStatus("suspended"); return; }
-        setStatus("none");
-      })
-      .catch(() => { if (!cancelled) setStatus("none"); });
-    return () => { cancelled = true; };
-  }, [user?.id, user?.country]);
-  return status;
-}
-
-function useWalletBalances(userId: number | string | undefined): { promo: number; real: number } {
-  const [bal, setBal] = useState({ promo: 0, real: 0 });
-  useEffect(() => {
-    if (!userId) return;
-    const token = localStorage.getItem("flexamarket_token");
-    if (!token) return;
-    let cancelled = false;
-    fetch("/api/wallet/balance", { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        if (!cancelled) setBal({ promo: d?.promoBalance ?? 0, real: d?.balanceUsd ?? 0 });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [userId]);
-  return bal;
-}
-
-function MobileMoreDrawer({ open, onClose, onNavigate, showDelivery }: { open: boolean; onClose: () => void; onNavigate: (href: string) => void; showDelivery: boolean }) {
-  const { user, logout } = useAuth();
-  const { t, i18n } = useTranslation();
-  const [showLangPicker, setShowLangPicker] = useState(false);
-  const driverStatus = useDriverStatus(user);
-  const walletBal = useWalletBalances(user?.id);
-
-  const currentLang = SUPPORTED_LANGUAGES.find(l => l.code === i18n.language);
-
-  const go = (href: string) => { onClose(); onNavigate(href); };
-
-  const isDrawerAdmin = !!(user?.isAdmin || user?.isSuperAdmin || (user?.role && user.role !== "user"));
-  const canSeeModeratorPanel = !!(user && (user.isAdmin || user.isSuperAdmin || user.role === "moderator"));
-  const canSeeLoan = !isNativeMobileApp() && !!(user && (user.isSuperAdmin || ["Haiti", "Dominican Republic"].includes(user.country ?? "")));
-
-  const sections: Array<{ heading: string; items: DrawerItem[]; highlight?: boolean }> = [
-    {
-      heading: t("nav.videosSection"),
-      highlight: true,
-      items: [
-        { icon: Film,   label: t("nav.videos"),    href: "/videos" },
-        { icon: Tv,     label: "Flexa TV",         href: "/tv" },
-        { icon: Music2, label: "Flexa Music",      href: "/music" },
-        ...(user ? [
-          { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts" } as DrawerItem,
-          { kind: "promo" as const, icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), href: "/wallet", balance: walletBal.promo, realBalance: walletBal.real },
-          { icon: Coins, label: t("nav.commissionPromo"), href: "/commission-promo" } as DrawerItem,
-        ] : []),
-      ] as DrawerItem[],
-    },
-    ...(user ? [{
-      heading: t("nav.ordersSalesSection"),
-      items: [
-        { kind: "commerce", variant: "orders", icon: ShoppingBag, label: t("nav.orders"), href: "/orders" },
-        { kind: "commerce", variant: "sales", icon: TrendingUp, label: t("nav.sales"), href: "/sales" },
-      ] as DrawerItem[],
-    }] : []),
-    ...(user && showDelivery ? [
-      {
-        heading: t("nav.livrezonSection"),
-        items: (() => {
-          const applyLabel =
-            driverStatus === "approved"  ? t("nav.driverApproved") :
-            driverStatus === "pending"   ? t("nav.driverPending") :
-            driverStatus === "rejected"  ? t("nav.driverRejected") :
-            driverStatus === "suspended" ? t("nav.driverSuspended") :
-            t("nav.applyDriver");
-          return [
-            { kind: "delivery", variant: "available", icon: Truck, label: t("nav.deliveryAvailable"), href: "/delivery/deliveries" },
-            { kind: "delivery", variant: "apply", icon: Truck, label: applyLabel, href: "/delivery/apply" },
-          ] as DrawerItem[];
-        })(),
-      },
-    ] : []),
-    ...(isDrawerAdmin ? [
-      {
-        heading: t("nav.adminSection"),
-        items: [
-          { icon: ShieldCheck, label: t("nav.adminDashboard"), href: "/admin" },
-          ...(canSeeModeratorPanel ? [{ icon: ShieldCheck, label: t("nav.moderatorPanel", { defaultValue: "Panèl Moderator" }), href: "/admin?tab=moderation" }] : []),
-        ] as DrawerItem[],
-      },
-    ] : []),
-    ...(user ? [
-      {
-        heading: t("nav.account"),
-        items: [
-          { icon: User,        label: t("nav.profile"),       href: "/settings" },
-          { icon: Heart,       label: t("nav.saved"),         href: "/saved" },
-          { icon: Tag,         label: t("nav.offers"),        href: "/offers" },
-          { icon: Wallet,      label: t("nav.wallet"),        href: "/wallet" },
-          { icon: Crown, label: t("nav.subscription"), href: "/subscription" },
-          { icon: Settings,    label: t("nav.settings"),      href: "/settings" },
-        ] as DrawerItem[],
-      },
-    ] : [
-      {
-        heading: t("nav.account"),
-        items: [
-          { icon: User, label: t("auth.login"), href: "/auth/login" },
-        ] as DrawerItem[],
-      },
-    ]),
-    ...(canSeeLoan ? [{
-      heading: t("nav.financialSupport", { defaultValue: "Financial support" }),
-      items: [
-        { icon: TrendingUp, label: t("nav.creditScore"), href: "/credit-score" },
-        { kind: "loan" as const, icon: Landmark, label: t("nav.loanApply"), subtitle: t("nav.loanSubtitle"), href: "/loans" },
-      ] as DrawerItem[],
-    }] : []),
-    {
-      heading: t("nav.discover"),
-      items: [
-        { icon: Sparkles,   label: "FlexaBot AI",    href: "/chatbot" },
-        { icon: Briefcase,  label: t("nav.jobs"),    href: "/jobs" },
-        { icon: HelpCircle, label: t("nav.support"), href: "/support" },
-        { kind: "lang" as const, icon: Globe, label: t("userMenu.language") },
-      ] as DrawerItem[],
-    },
-  ];
-
-  if (!open) return null;
-
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40 z-[60] md:hidden"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Left slide-out drawer (menu opens from top-left hamburger) */}
-      <div
-        className="mobile-menu-sheet fixed top-0 left-0 bottom-0 z-[70] w-[min(86vw,20rem)] max-w-[100vw] overflow-x-hidden md:hidden bg-card shadow-2xl border-r border-border flex flex-col"
-        style={{
-          boxSizing: "border-box",
-          overscrollBehavior: "contain",
-          touchAction: "pan-y",
-          paddingTop: "env(safe-area-inset-top, 0px)",
-        }}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("nav.menu")}
-      >
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border bg-[hsl(152,65%,18%)] text-white shrink-0">
-          <div className="min-w-0">
-            <p className="text-sm font-bold truncate">Flexa Market</p>
-            <p className="text-[10px] text-white/80 truncate">{t("nav.menu")}</p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/10 text-white shrink-0"
-            aria-label="Close menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Menu items */}
-        <div
-          className="px-3 pt-3 space-y-4 flex-1 overflow-y-auto"
-          style={{
-            paddingBottom: "max(2rem, calc(env(safe-area-inset-bottom, 0px) + 1.5rem))",
-          }}
-        >
-          {sections.map(section => (
-            <div key={section.heading} className="min-w-0 max-w-full">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground px-1 mb-1.5">
-                {section.heading.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "")}
-              </p>
-              <div className={`grid min-w-0 w-full gap-1.5 ${section.highlight ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-1"}`}>
-                {section.items.map((item, idx) => {
-                  if (item.kind === "promo") {
-                    const totalBal = (item.balance ?? 0) + (item.realBalance ?? 0);
-                    return (
-                      <button
-                        key="promo-account"
-                        type="button"
-                        onClick={() => go(item.href)}
-                        className="col-span-2 w-full text-left rounded-xl border border-border bg-muted/40 hover:bg-muted/70 active:scale-[0.99] transition-all"
-                      >
-                        <div className="flex items-center gap-3 px-3 py-2.5">
-                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 text-primary">
-                            <Gift className="h-4 w-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <span className="block text-sm font-semibold text-foreground leading-tight">
-                              {item.label}
-                            </span>
-                            <span className="block text-[11px] text-muted-foreground leading-tight mt-0.5">
-                              {item.realBalance > 0
-                                ? `$${item.realBalance.toFixed(2)} · promo $${item.balance.toFixed(2)}`
-                                : t("nav.promoBalanceAvail", { defaultValue: "Available balance" })}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-sm font-semibold tabular-nums text-foreground">
-                              ${totalBal.toFixed(2)}
-                            </span>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  }
-                  if (item.kind === "loan") {
-                    return (
-                      <button
-                        key="loan-apply"
-                        type="button"
-                        onClick={() => go(item.href)}
-                        className="col-span-2 w-full text-left rounded-xl border border-border bg-card hover:bg-accent/50 active:scale-[0.99] transition-all"
-                      >
-                        <div className="flex items-center gap-3 px-3 py-2.5">
-                          <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-lg bg-primary/10 text-primary">
-                            <item.icon className="h-[18px] w-[18px]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-semibold text-foreground">{item.label}</span>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
-                                NEW
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">{item.subtitle}</p>
-                          </div>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-                        </div>
-                      </button>
-                    );
-                  }
-                  if (item.kind === "delivery") {
-                    const isAvailable = item.variant === "available";
-                    return (
-                      <button
-                        key={item.href}
-                        type="button"
-                        onClick={() => go(item.href)}
-                        className="w-full min-w-0 rounded-xl border border-border bg-card px-3 py-2.5 text-left hover:bg-accent/50 active:scale-[0.99] transition-all"
-                        data-testid={isAvailable ? "drawer-deliveries-available" : "drawer-driver-application"}
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <div className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                            isAvailable ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-primary/10 text-primary"
-                          }`}>
-                            <item.icon className="h-4 w-4" />
-                          </div>
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.label}</span>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" />
-                        </div>
-                      </button>
-                    );
-                  }
-                  if (item.kind === "commerce") {
-                    const isOrders = item.variant === "orders";
-                    return (
-                      <button
-                        key={item.href}
-                        type="button"
-                        onClick={() => go(item.href)}
-                        className="w-full min-w-0 rounded-xl border border-border bg-card px-3 py-2.5 text-left hover:bg-accent/50 active:scale-[0.99] transition-all"
-                        data-testid={isOrders ? "drawer-orders" : "drawer-sales"}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                            <item.icon className="h-4 w-4" />
-                          </div>
-                          <span className="flex-1 text-sm font-medium text-foreground">{item.label}</span>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
-                        </div>
-                      </button>
-                    );
-                  }
-                  if (item.kind === "lang") {
-                    return (
-                      <div key="lang-item" className="col-span-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowLangPicker(p => !p)}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent hover:bg-accent transition-colors text-left"
-                          data-testid="drawer-lang-toggle"
-                        >
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                            <item.icon className="h-4 w-4" />
-                          </div>
-                          <span className="flex-1 text-sm font-medium">{item.label}</span>
-                          <span className="text-xs text-muted-foreground mr-1 flex items-center gap-1">
-                            <span>{currentLang?.flag}</span>
-                            <span>{currentLang?.name}</span>
-                          </span>
-                          <ChevronRight className={`h-4 w-4 text-muted-foreground/50 transition-transform duration-200 ${showLangPicker ? "rotate-90" : ""}`} />
-                        </button>
-
-                        {showLangPicker && (
-                          <div className="mt-1 ml-3 border-l-2 border-border pl-3 space-y-0.5">
-                            {SUPPORTED_LANGUAGES.map(lang => (
-                              <button
-                                key={lang.code}
-                                type="button"
-                                onClick={() => { setLanguage(lang.code as SupportedLanguage); apiPatch("/auth/language", { language: lang.code }).catch(() => {}); setShowLangPicker(false); onClose(); }}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
-                                  i18n.language === lang.code
-                                    ? "bg-primary/10 text-primary font-semibold"
-                                    : "hover:bg-accent text-foreground"
-                                }`}
-                                data-testid={`drawer-lang-${lang.code}`}
-                              >
-                                <span className="text-lg leading-none">{lang.flag}</span>
-                                <span className="flex-1 text-sm font-medium">{lang.name}</span>
-                                {i18n.language === lang.code && (
-                                  <span className="text-primary text-xs font-bold">✓</span>
-                                )}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-                  const isHighlightItem = section.highlight;
-                  return (
-                    <button
-                      key={item.href ?? idx}
-                      type="button"
-                      onClick={() => go(item.href!)}
-                      className={`w-full min-w-0 flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-colors text-left active:scale-[0.99] ${
-                        isHighlightItem
-                          ? "border border-border bg-card hover:bg-accent/50"
-                          : "hover:bg-accent"
-                      }`}
-                      data-testid={item.href === "/videos" ? "drawer-promo-videos" : undefined}
-                    >
-                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                        isHighlightItem ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      }`}>
-                        <item.icon className="h-4 w-4" />
-                      </div>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{item.label}</span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-
-          {/* Dark Mode toggle */}
-          <div className="border-t border-border pt-3">
-            <DarkModeToggle className="py-3" />
-          </div>
-
-          {/* Logout — only when logged in */}
-          {user && (
-            <div className="border-t border-border pt-3">
-              <button
-                type="button"
-                onClick={() => { logout(); onClose(); }}
-                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-destructive/10 text-destructive transition-colors text-left"
-                data-testid="drawer-logout"
-              >
-                <LogOut className="h-5 w-5 shrink-0" />
-                <span className="flex-1 text-sm font-medium">{t("userMenu.logout")}</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ─── Back-button helpers ───────────────────────────────────────────────────────
 function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/listings/")) return t("page.listingDetail");
@@ -842,73 +401,98 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
   const desktopSections: SidebarSection[] = [
     {
+      heading: t("nav.homeDiscoverSection", { defaultValue: "Home & Discover" }),
       items: [
-        { href: "/",         icon: Home,          label: t("nav.home"),     key: "home" },
-        { href: "/search",   icon: Search,        label: t("nav.search"),   key: "search" },
-        { href: "/sell",     icon: Plus,          label: t("nav.sell"),     key: "sell", highlight: true },
+        { href: "/", icon: Home, label: t("nav.home"), key: "home" },
+        { href: "/search", icon: Search, label: t("nav.categories", { defaultValue: "Categories" }), key: "search" },
+        { href: "/sell", icon: Plus, label: t("nav.sell"), key: "sell", highlight: true },
         { href: "/messages", icon: MessageCircle, label: t("nav.messages"), key: "messages", badge: unread },
+        { href: "/offers", icon: Tag, label: t("nav.offersPromos", { defaultValue: "Offers & Promotions" }), key: "offers" },
+        { href: "/search?boosted=true", icon: Sparkles, label: t("nav.flexaPicks", { defaultValue: "Flexa Picks" }), key: "flexa-picks" },
+        { href: "/videos", icon: Film, label: t("nav.videos"), key: "videos" },
       ],
     },
-    {
-      heading: t("nav.videosSection"),
-      highlight: true,
+    ...(user ? [{
+      heading: t("nav.boutiqueSection", { defaultValue: "Shop & Products" }),
       items: [
-        { href: "/videos", icon: Film,   label: t("nav.videos"), key: "videos"      },
-        { href: "/tv",     icon: Tv,     label: "Flexa TV",      key: "flexa-tv"    },
-        { href: "/music",  icon: Music2, label: "Flexa Music",   key: "flexa-music" },
+        { href: `/profile/${user.id}`, icon: Store, label: t("salesDashboard.myShop", { defaultValue: "My Shop" }), key: "my-shop" },
+        { href: `/profile/${user.id}`, icon: Package, label: t("accountCenter.myListings", { defaultValue: "My Products" }), key: "my-products" },
+        { href: "/settings/videos", icon: Film, label: t("accountCenter.myVideos", { defaultValue: "My Videos" }), key: "my-videos" },
+        { href: "/settings", icon: Settings, label: t("nav.shopSettings", { defaultValue: "Shop settings" }), key: "shop-settings" },
+      ],
+    }] : []),
+    ...(user ? [{
+      heading: t("nav.ordersSalesSection"),
+      items: [
+        { href: "/orders", icon: ShoppingBag, label: t("nav.myOrders", { defaultValue: t("nav.orders") }), key: "orders" },
+        { href: "/sales", icon: TrendingUp, label: t("nav.salesStats", { defaultValue: t("nav.sales") }), key: "sales" },
+      ],
+    }] : []),
+    ...(showDelivery ? [{
+      heading: t("nav.deliveryServicesSection", { defaultValue: t("nav.livrezonSection") }),
+      items: [
+        { href: "/delivery/deliveries", icon: Truck, label: t("nav.deliveryAvailable"), key: "deliveries" },
+        { href: "/delivery/apply", icon: Truck, label: driverApplyLabel, key: "driver-apply" },
+        ...(driverStatusDesktop === "approved"
+          ? [{ href: "/driver/dashboard", icon: MapPinned, label: t("driverDash.myDeliveries", { defaultValue: "My Deliveries" }), key: "my-deliveries" }]
+          : []),
+        { href: "/track", icon: Search, label: t("nav.orderTracking", { defaultValue: "Order tracking" }), key: "tracking" },
+      ],
+    }] : []),
+    ...(user ? [{
+      heading: t("nav.myAccountSection", { defaultValue: t("nav.account") }),
+      items: [
+        { href: "/settings", icon: User, label: t("nav.profile"), key: "profile" },
+        { href: "/saved", icon: Heart, label: t("nav.saved"), key: "saved" },
+        { href: "/wallet", icon: Wallet, label: t("nav.walletLabel", { defaultValue: "Wallet" }), key: "wallet" },
+        { href: "/wallet", icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
+        { href: "/subscription", icon: Crown, label: t("nav.subscription"), key: "subscription" },
+        { href: "/settings/security", icon: Lock, label: t("accountCenter.securityLogin", { defaultValue: "Security & Login" }), key: "security" },
+        { href: "/settings/notifications", icon: Bell, label: t("accountCenter.notifications", { defaultValue: "Notifications" }), key: "notifications" },
+      ],
+    }] : []),
+    {
+      heading: t("nav.flexaServicesSection", { defaultValue: "Flexa Services" }),
+      items: [
+        { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
+        { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [
-          { href: "/my-boosts", icon: Zap,  label: t("nav.myBoosts"), key: "my-boosts" },
-          { href: "/wallet",    icon: Gift, label: t("nav.promoAccount", { defaultValue: "Promo Account" }), key: "promo-account" },
+          { href: "/my-boosts", icon: Zap, label: t("nav.myBoosts"), key: "my-boosts" },
           { href: "/commission-promo", icon: Coins, label: t("nav.commissionPromo"), key: "commission-promo" },
+          { href: "/leaderboard", icon: Award, label: t("nav.referralProgram", { defaultValue: "Referral Program" }), key: "referral" },
         ] : []),
+        { href: "/jobs", icon: Briefcase, label: t("nav.jobsOpportunities", { defaultValue: t("nav.jobs") }), key: "jobs" },
+        { href: "/chatbot", icon: Sparkles, label: "FlexaBot AI", key: "chatbot" },
+        { href: "/support", icon: HelpCircle, label: t("nav.supportHelp", { defaultValue: t("nav.support") }), key: "support" },
       ],
     },
+    ...(canSeeLoan ? [{
+      heading: t("nav.financialSupport", { defaultValue: "Financial support" }),
+      items: [
+        { href: "/credit-score", icon: TrendingUp, label: t("nav.creditScore"), key: "credit-score" },
+        { href: "/loans", icon: Landmark, label: t("nav.loanApply"), key: "loans" },
+      ],
+    }] : []),
     ...(isAdmin ? [{
       heading: t("nav.adminSection"),
       items: [
         { href: "/admin", icon: ShieldCheck, label: t("nav.adminDashboard"), key: "admin", adminHighlight: true },
-        ...(canSeeModeratorPanel ? [{ href: "/admin?tab=moderation", icon: ShieldCheck, label: t("nav.moderatorPanel", { defaultValue: "Panèl Moderator" }), key: "moderator" }] : []),
+        ...(canSeeModeratorPanel ? [{ href: "/admin?tab=moderation", icon: ShieldCheck, label: t("nav.moderatorPanel", { defaultValue: "Moderator Panel" }), key: "moderator" }] : []),
       ],
     }] : []),
-    ...(user ? [{
-      heading: t("nav.account"),
-      items: [
-        { href: "/settings",      icon: User,        label: t("nav.profile"),      key: "profile" },
-        { href: "/saved",         icon: Heart,       label: t("nav.saved"),        key: "saved" },
-        { href: "/offers",        icon: Tag,         label: t("nav.offers"),       key: "offers" },
-        { href: "/orders",        icon: ShoppingBag, label: t("nav.orders"),       key: "orders" },
-        { href: "/sales",         icon: TrendingUp,  label: t("nav.sales"),        key: "sales" },
-        { href: "/wallet",        icon: Wallet,      label: t("nav.wallet"),       key: "wallet" },
-        { href: "/subscription", icon: Crown, label: t("nav.subscription"), key: "subscription" },
-        { href: "/settings",      icon: Settings,    label: t("nav.settings"),     key: "settings" },
-      ],
-    }] : []),
-    ...(showDelivery ? [{
-      heading: t("nav.livrezonSection"),
-      items: [
-        { href: "/delivery/deliveries", icon: Truck, label: t("nav.deliveryAvailable"), key: "deliveries" },
-        { href: "/delivery/apply",      icon: Truck, label: driverApplyLabel,            key: "driver-apply" },
-      ],
-    }] : []),
-    ...(canSeeLoan ? [{
-      heading: t("nav.financialSupport", { defaultValue: "Financial support" }),
-      items: [
-        { href: "/credit-score", icon: TrendingUp, label: t("nav.creditScore"), key: "credit-score" } as any,
-        { href: "/loans",        icon: Landmark,   label: t("nav.loanApply"),   key: "loans" } as any,
-      ],
-    }] : []),
-    {
-      heading: t("nav.discover"),
-      items: [
-        { href: "/chatbot", icon: Sparkles,   label: "FlexaBot AI",    key: "chatbot" },
-        { href: "/jobs",    icon: Briefcase,  label: t("nav.jobs"),    key: "jobs" },
-        { href: "/support", icon: HelpCircle, label: t("nav.support"), key: "support" },
-      ],
-    },
   ];
 
-  const isActive = (href: string) =>
-    href === "/" ? location === "/" : location.startsWith(href);
+  const isActive = (href: string) => {
+    if (href === "/") return location === "/";
+    const [path, query] = href.split("?");
+    if (path === "/search" && query?.includes("boosted=true")) {
+      return location.startsWith("/search") && typeof window !== "undefined" && window.location.search.includes("boosted=true");
+    }
+    if (path === "/search") {
+      return location.startsWith("/search") && (typeof window === "undefined" || !window.location.search.includes("boosted=true"));
+    }
+    return location === path || location.startsWith(`${path}/`) || location.startsWith(`${path}?`);
+  };
 
   const moreActive = ["/settings", "/saved", "/orders", "/sales", "/offers", "/jobs", "/support", "/wallet", "/admin", "/videos"].some(p =>
     location.startsWith(p)
@@ -1318,8 +902,8 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         />
       )}
 
-      {/* ── Mobile More Drawer ── */}
-      <MobileMoreDrawer
+      {/* ── Premium side menu drawer (hamburger / All) ── */}
+      <PremiumSideMenu
         open={moreOpen}
         showDelivery={showDelivery}
         onClose={() => setMoreOpen(false)}
@@ -1328,17 +912,17 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Desktop sidebar ── */}
       <nav
-        className={`${isVideoFeed ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-card border-r border-border flex-col py-4 px-3 gap-0 z-40 overflow-y-auto`}
+        className={`${isVideoFeed ? "hidden" : "hidden md:flex"} fixed left-0 top-16 bottom-0 w-56 bg-background border-r border-border flex-col py-3 px-2.5 gap-0 z-40 overflow-y-auto`}
         aria-label="Sidebar navigation"
       >
         {desktopSections.map((section, si) => (
-          <div key={si} className={si > 0 ? "mt-3" : ""}>
+          <div key={si} className={si > 0 ? "mt-2.5" : ""}>
             {section.heading && (
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/70">
+              <p className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[hsl(152,55%,28%)] dark:text-[hsl(152,40%,62%)]">
                 {section.heading.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\uFE0F]+\s*/u, "")}
               </p>
             )}
-            <div className="space-y-0.5">
+            <div className="rounded-xl border border-border/70 bg-card/60 overflow-hidden divide-y divide-border/50">
               {section.items.map((tab) => {
                 const { href, icon: Icon, label, key } = tab;
                 const highlight = tab.highlight;
@@ -1351,19 +935,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                     <button
                       type="button"
                       data-testid={`nav-desktop-${key}`}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                      className={cn(
+                        "relative w-full flex items-center gap-2.5 px-2.5 py-2 text-[13px] font-medium transition-all",
                         highlight
-                          ? "bg-primary text-white hover:opacity-90"
+                          ? "bg-[hsl(152,65%,22%)] text-white hover:opacity-95"
                           : adminHighlight
                           ? active
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover:bg-accent hover:text-foreground border border-border/70"
+                            ? "bg-[hsl(152,45%,92%)] text-[hsl(152,65%,18%)] font-semibold dark:bg-[hsl(152,40%,16%)] dark:text-[hsl(152,60%,78%)]"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
                           : active
-                          ? "bg-primary/10 text-primary font-semibold"
-                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                      }`}
+                          ? "bg-[hsl(152,45%,92%)] text-[hsl(152,65%,18%)] font-semibold dark:bg-[hsl(152,40%,16%)] dark:text-[hsl(152,60%,78%)]"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
+                      {active && !highlight && (
+                        <span aria-hidden className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[hsl(152,65%,28%)]" />
+                      )}
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
                       <span className="flex-1 text-left truncate">{label}</span>
                       {adminHighlight && !active && (
                         <span className="text-[10px] font-semibold bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 leading-none shrink-0">

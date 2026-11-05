@@ -159,6 +159,33 @@ export default function ListingDetail() {
   const [pdpTab, setPdpTab] = useState<"details" | "specs" | "reviews" | "qa">("details");
   const [pdpSearchQ, setPdpSearchQ] = useState("");
   const [galleryFullscreen, setGalleryFullscreen] = useState(false);
+  const pdpTabsRef = useRef<HTMLDivElement>(null);
+  const pdpTabPanelRef = useRef<HTMLDivElement>(null);
+
+  /** Switch PDP tab and bring the panel into view under the sticky tab bar. */
+  const handlePdpTabClick = (tabId: "details" | "specs" | "reviews" | "qa") => {
+    setPdpTab(tabId);
+    // After the panel swaps, scroll so tabs sit under the green header and
+    // the section content is not left under Related Products or clipped.
+    requestAnimationFrame(() => {
+      const tabsEl = pdpTabsRef.current;
+      if (!tabsEl) return;
+      const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+      const scrollParent = tabsEl.closest(".app-main-scroll") as HTMLElement | null;
+      // Mobile: only .app-main-scroll scrolls (header is outside → sticky top-0).
+      // Desktop: document scrolls with sticky header → offset by header height.
+      if (scrollParent && !isDesktop) {
+        const parentTop = scrollParent.getBoundingClientRect().top;
+        const tabsTop = tabsEl.getBoundingClientRect().top;
+        const nextTop = scrollParent.scrollTop + (tabsTop - parentTop);
+        scrollParent.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+        return;
+      }
+      const stickyOffset = isDesktop ? 64 : 0;
+      const nextTop = window.scrollY + tabsEl.getBoundingClientRect().top - stickyOffset;
+      window.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    });
+  };
 
   // Reset mute state whenever the user swipes to a different media item.
   // Guarantees every boost video starts muted (browsers require muted for autoplay).
@@ -1637,7 +1664,7 @@ export default function ListingDetail() {
             </button>
             <button
               type="button"
-              onClick={() => setPdpTab("reviews")}
+              onClick={() => handlePdpTabClick("reviews")}
               className="flex items-center gap-1 text-[#0066c0] hover:underline"
               data-testid="pdp-rating-link"
             >
@@ -2053,8 +2080,18 @@ export default function ListingDetail() {
       {/* ══════════ BELOW-FOLD SECTIONS ══════════ */}
       <div className="pb-8 lg:max-w-7xl lg:mx-auto lg:px-4">
 
-        {/* ── PDP TABS ── */}
-        <div className="sticky top-14 md:top-16 z-30 bg-white border-b border-border" data-testid="pdp-tabs">
+        {/* Sticky scope ends before Related Products so the tab bar unsticks
+            and never floats over the related grid. */}
+        <div data-testid="pdp-details-sticky-scope">
+
+        {/* ── PDP TABS ──
+            Mobile scrolls inside .app-main-scroll (header is outside) → top-0.
+            Desktop (md+) uses document scroll with a sticky header → top-16. */}
+        <div
+          ref={pdpTabsRef}
+          className="sticky top-0 md:top-16 z-30 bg-white border-b border-border scroll-mt-0 md:scroll-mt-16"
+          data-testid="pdp-tabs"
+        >
           <div className="flex overflow-x-auto scrollbar-none" role="tablist">
             {([
               { id: "details" as const, label: t("listing.description", { defaultValue: "Product Details" }) },
@@ -2067,13 +2104,14 @@ export default function ListingDetail() {
                 type="button"
                 role="tab"
                 aria-selected={pdpTab === tab.id}
-                onClick={() => setPdpTab(tab.id)}
+                onClick={() => handlePdpTabClick(tab.id)}
                 className={cn(
                   "flex-shrink-0 px-4 py-3 text-[13px] font-semibold border-b-2 transition-colors whitespace-nowrap",
                   pdpTab === tab.id
                     ? "border-[#F97316] text-[#F97316]"
                     : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
+                data-testid={`pdp-tab-${tab.id}`}
               >
                 {tab.label}
               </button>
@@ -2130,6 +2168,13 @@ export default function ListingDetail() {
             </Button>
           )}
         </div>
+
+        {/* ── TAB PANELS ── */}
+        <div
+          ref={pdpTabPanelRef}
+          className="scroll-mt-[3.25rem] md:scroll-mt-[7.5rem]"
+          data-testid="pdp-tab-panel"
+        >
 
         {/* ── TAB: DETAILS ── */}
         {pdpTab === "details" && (
@@ -2403,7 +2448,11 @@ export default function ListingDetail() {
           </div>
         )}
 
-        {/* ── RELATED PRODUCTS (same category, real listings only) ── */}
+        </div>{/* end pdp-tab-panel */}
+        </div>{/* end pdp-details-sticky-scope — sticky tabs stop here */}
+
+        {/* ── RELATED PRODUCTS (same category, real listings only) ──
+            Outside sticky scope so the tab bar cannot cover this grid. */}
         {relatedListings.length > 0 && (
           <div className="px-4 pt-4 pb-2" data-testid="pdp-related">
             <h2 className="text-[15px] font-bold mb-3">

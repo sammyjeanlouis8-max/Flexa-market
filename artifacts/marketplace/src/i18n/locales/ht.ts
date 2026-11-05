@@ -5468,6 +5468,7 @@ export default {
     seeAll: "Tout wè",
     mixedFor: "Mixé pou {{name}}",
     allSongs: "Tout Chante",
+    library: "Bibliyotèk",
     basedOn: "Baze sou · {{title}}",
     private: "Privé",
     public: "Piblik",

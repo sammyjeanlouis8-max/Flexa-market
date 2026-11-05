@@ -712,9 +712,13 @@ router.patch("/auth/theme", requireAuth, async (req, res): Promise<void> => {
 /** PATCH /api/auth/language — save the user's preferred language to their profile */
 router.patch("/auth/language", requireAuth, async (req, res): Promise<void> => {
   const lang = req.body?.language;
-  const allowed = ["en", "fr", "ht"];
+  // Keep in sync with marketplace PERSISTABLE_LANGUAGES / SUPPORTED_LANGUAGES.
+  const allowed = [
+    "en", "fr", "ht", "es", "pt", "de", "hi", "fil", "ha", "zu",
+    "af", "it", "nl", "sv", "no", "ar", "ja", "ko", "sw",
+  ];
   if (!lang || !allowed.includes(lang)) {
-    res.status(400).json({ error: "Invalid language. Must be en, fr, or ht." });
+    res.status(400).json({ error: "Invalid language." });
     return;
   }
   const [updated] = await db

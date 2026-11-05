@@ -77,7 +77,7 @@ function Kpi({
   compare?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1 border border-border bg-background px-3 py-3">
+    <div className="flex flex-col gap-1 rounded-xl border border-border bg-card px-3 py-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -153,7 +153,7 @@ export default function AdminAnalyticsDashboard({
         <p className="text-[10px] text-muted-foreground">{t("adminAnalytics.realDataOnly")}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-px overflow-hidden border border-border bg-border sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi
           title={t("adminAnalytics.today")}
           value={s.visitsToday}
@@ -197,22 +197,22 @@ export default function AdminAnalyticsDashboard({
               <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="visitFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
+                    <stop offset="0%" stopColor="var(--flexa-green, #146c43)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--flexa-green, #146c43)" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={32} />
                 <Tooltip
-                  contentStyle={{ fontSize: 12, borderRadius: 0, border: "1px solid hsl(var(--border))" }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ""}
                   formatter={(value: number) => [value.toLocaleString(), t("adminAnalytics.visitors")]}
                 />
                 <Area
                   type="monotone"
                   dataKey="visits"
-                  stroke="hsl(var(--primary))"
+                  stroke="var(--flexa-green, #146c43)"
                   fill="url(#visitFill)"
                   strokeWidth={2}
                   isAnimationActive={false}

@@ -400,6 +400,22 @@ main {
   .admin-console-shell {
     max-width: 100%;
     overflow-x: hidden;
+    /* Flexa Market control-center identity (scoped — does not rewrite global marketplace theme) */
+    /* Align with marketplace chrome / chat brand: hsl(152,65%,18%) */
+    --flexa-green: hsl(152, 65%, 18%);
+    --flexa-green-deep: hsl(152, 65%, 14%);
+    --flexa-green-soft: color-mix(in srgb, hsl(152, 65%, 28%) 12%, white);
+    --flexa-orange: #f97316;
+    --flexa-orange-deep: #ea6a0c;
+  }
+
+  .dark .admin-console-shell {
+    --flexa-green-soft: color-mix(in srgb, var(--flexa-green) 22%, transparent);
+  }
+
+  .admin-console-shell [data-sidebar="sidebar"] {
+    --sidebar-primary: 152 65% 22%;
+    --sidebar-primary-foreground: 0 0% 100%;
   }
 
   /* Message scroll area — fills remaining space between header and input */

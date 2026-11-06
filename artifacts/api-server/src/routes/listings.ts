@@ -2230,6 +2230,7 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
   const [cat] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, updated!.categoryId));
   res.json({
     ...await formatListing(updated!, seller, cat ?? null, null),
+    txId: insertedTxId,
     discountAmount,
     promoCodeApplied: appliedPromoCode?.code ?? null,
   });

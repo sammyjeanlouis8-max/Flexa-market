@@ -80,6 +80,8 @@ const WalletHistory      = lazy(() => import("@/pages/WalletHistory"));
 const FlexCardRepay      = lazy(() => import("@/pages/FlexCardRepay"));
 const AgentDashboard     = lazy(() => import("@/pages/AgentDashboard"));
 const CheckoutSuccess    = lazy(() => import("@/pages/CheckoutSuccess"));
+const PremiumCheckout    = lazy(() => import("@/pages/checkout/PremiumCheckout"));
+const DevCheckoutPreview = lazy(() => import("@/pages/checkout/DevCheckoutPreview"));
 const StripeOnboardReturn = lazy(() => import("@/pages/StripeOnboardReturn"));
 const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
@@ -220,6 +222,7 @@ function LayoutRoutes() {
           <Route path="/" component={Home} />
           <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
+          <Route path="/dev/premium-checkout-preview" component={DevCheckoutPreview} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}
@@ -282,6 +285,8 @@ function LayoutRoutes() {
           <Route path="/chatbot" component={Chatbot} />
           <Route path="/calculator" component={CalculatorPage} />
           <Route path="/checkout/success" component={CheckoutSuccess} />
+          <Route path="/checkout/:listingId/:step" component={PremiumCheckout} />
+          <Route path="/checkout/:listingId" component={PremiumCheckout} />
           <Route path="/kyc" component={KYCVerification} />
           <Route path="/settings/stripe-return" component={StripeOnboardReturn} />
           <Route path="/settings/stripe-refresh" component={StripeOnboardReturn} />

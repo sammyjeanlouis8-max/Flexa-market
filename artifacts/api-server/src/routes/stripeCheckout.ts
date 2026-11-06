@@ -196,8 +196,8 @@ router.post("/stripe/checkout", requireAuth, async (req: any, res) => {
       payment_method_types: ["card"],
       mode: "payment",
       line_items: lineItems,
-      success_url: `${BASE_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/listings/${listing.id}`,
+      success_url: `${BASE_URL}/checkout/${listing.id}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/checkout/${listing.id}/payment`,
       metadata: {
         listingId: String(listing.id),
         buyerUserId: String(req.userId),

@@ -13,7 +13,7 @@
  */
 
 import { Router } from "express";
-import { db, promoWalletTable, walletTransactionsTable, notificationsTable, usersTable } from "@workspace/db";
+import { db, promoWalletTable, walletTransactionsTable, notificationsTable, usersTable, reportsTable } from "@workspace/db";
 import { sql as dsql, eq } from "drizzle-orm";
 import { Readable } from "node:stream";
 import { requireAdmin, requireAuth, optionalAuth, requireCardNotBlocked } from "../middlewares/auth";
@@ -374,24 +374,58 @@ function toClientTrack(row: Record<string, unknown>) {
   };
 }
 
-// GET /api/music — list tracks
-router.get("/music", async (req, res) => {
+function isStaffUser(user: Express.Request["user"] | null | undefined): boolean {
+  return Boolean(user?.isAdmin || user?.isSuperAdmin || user?.role === "admin");
+}
+
+function truthyFlag(v: unknown): boolean {
+  return v === true || v === 1 || v === "1" || v === "true" || v === "TRUE";
+}
+
+/** Public visibility filter; owners/admins may also see their private tracks. */
+function visibilitySql(req: Express.Request, alias = "mt"): string {
+  if (isStaffUser(req.user)) return "TRUE";
+  const uid = req.userId;
+  const publicClause = `(${alias}.visibility IS NULL OR ${alias}.visibility = 'public')`;
+  if (!uid) return publicClause;
+  return `(${publicClause} OR ${alias}.artist_user_id = ${uid} OR ${alias}.created_by = ${uid})`;
+}
+
+async function findSoftDuplicateTrack(
+  userId: number,
+  title: string,
+  artist: string,
+): Promise<number | null> {
+  const [row] = await q<{ id: number }>(
+    `SELECT id FROM music_tracks
+     WHERE artist_user_id = ${userId}
+       AND is_active = TRUE
+       AND TRIM(title) ILIKE TRIM(${nullOr(title.trim())})
+       AND TRIM(artist) ILIKE TRIM(${nullOr(artist.trim())})
+     ORDER BY id ASC
+     LIMIT 1`,
+  );
+  return row?.id ?? null;
+}
+
+// GET /api/music — list tracks (public + own/admin private)
+router.get("/music", optionalAuth, async (req, res) => {
   try {
     const { genre, artist, search, featured, limit = "50", offset = "0" } = req.query as Record<string, string>;
-    let where = "WHERE is_active = TRUE";
-    if (genre)    where += ` AND genre = '${esc(genre)}'`;
-    if (featured === "1") where += " AND is_featured = TRUE";
-    if (artist)   where += ` AND artist ILIKE '%${esc(artist)}%'`;
+    let where = `WHERE mt.is_active = TRUE AND ${visibilitySql(req)}`;
+    if (genre)    where += ` AND mt.genre = '${esc(genre)}'`;
+    if (featured === "1") where += " AND mt.is_featured = TRUE";
+    if (artist)   where += ` AND mt.artist ILIKE '%${esc(artist)}%'`;
     if (search) {
       const s = esc(search);
-      where += ` AND (title ILIKE '%${s}%' OR artist ILIKE '%${s}%' OR album ILIKE '%${s}%')`;
+      where += ` AND (mt.title ILIKE '%${s}%' OR mt.artist ILIKE '%${s}%' OR mt.album ILIKE '%${s}%')`;
     }
     const rows = await q(
       `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key, mt.audio_url, mt.storage_key,
               mt.duration_seconds, mt.type, mt.monetization_type, mt.price_usd,
               mt.is_featured, mt.play_count, mt.valid_impressions, mt.is_artist_verified,
               mt.total_impressions, mt.estimated_revenue_usd, mt.artist_user_id, mt.created_at,
-              mt.lyrics,
+              mt.lyrics, mt.visibility,
               u.name AS uploader_name
        FROM music_tracks mt
        LEFT JOIN users u ON u.id = mt.artist_user_id
@@ -841,6 +875,9 @@ router.post("/music/register", requireAuth, async (req, res) => {
   if (!title?.trim())   return res.status(400).json({ error: "Title required" });
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
   if (!storageKey?.trim()) return res.status(400).json({ error: "Wasabi storageKey required" });
+  if (!truthyFlag(req.body?.copyrightDeclared ?? req.body?.copyright_declared)) {
+    return res.status(400).json({ error: "COPYRIGHT_DECLARATION_REQUIRED" });
+  }
 
   // Duration guard: max 60 minutes (3600 s) for non-admin uploads
   const durationSeconds = req.body.duration_seconds ? Number(req.body.duration_seconds) : null;
@@ -853,14 +890,20 @@ router.post("/music/register", requireAuth, async (req, res) => {
     price_usd: priceUsdRaw,
   } = req.body as Record<string, string | undefined>;
   const priceUsd = priceUsdRaw ? Number(priceUsdRaw) : null;
+  const forceDuplicate = truthyFlag(req.body?.forceDuplicate ?? req.body?.force_duplicate);
 
-  const isAdmin = Boolean(req.user?.isAdmin || req.user?.isSuperAdmin || req.user?.role === "admin");
   try {
+    if (!forceDuplicate && req.user?.id) {
+      const existingId = await findSoftDuplicateTrack(req.user.id, title.trim(), artist.trim());
+      if (existingId) {
+        return res.status(409).json({ error: "POSSIBLE_DUPLICATE", existingId });
+      }
+    }
     const row = await insertArtistTrackWithAdmission(req.user,
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
           type, monetization_type, price_usd, lyrics,
-          is_active, is_featured, created_by, artist_user_id)
+          is_active, is_featured, created_by, artist_user_id, copyright_declared)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
@@ -869,7 +912,7 @@ router.post("/music/register", requireAuth, async (req, res) => {
           ${nullOr(type)}, ${nullOr(monetization_type)}, ${priceUsd !== null ? priceUsd : "NULL"},
           ${nullOr(lyrics?.trim() || null)},
           TRUE, FALSE,
-          ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
+          ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)}, TRUE)
        RETURNING *`,
       {
         audioStorageKey: storageKey,
@@ -949,6 +992,16 @@ router.post("/music/upload", requireAuth, upload.fields([
   if (!title?.trim())       return fail(4, "validation", new Error("Titre obligatwa"), 400);
   if (!artist?.trim())      return fail(4, "validation", new Error("Non atis obligatwa"), 400);
   if (!req.files?.audio?.[0]) return fail(4, "validation", new Error("Fichye odyo obligatwa — multipart field 'audio' manke"), 400);
+  if (!truthyFlag(req.body?.copyrightDeclared ?? req.body?.copyright_declared)) {
+    return fail(4, "validation", new Error("COPYRIGHT_DECLARATION_REQUIRED"), 400);
+  }
+  const forceDuplicate = truthyFlag(req.body?.forceDuplicate ?? req.body?.force_duplicate);
+  if (!forceDuplicate) {
+    const existingId = await findSoftDuplicateTrack(req.user.id, title.trim(), artist.trim());
+    if (existingId) {
+      return res.status(409).json({ error: "POSSIBLE_DUPLICATE", existingId, uploadId });
+    }
+  }
   const audioFile = (req.files as any).audio[0];
   log(4, "validation", {
     title: title.trim(), artist: artist.trim(), type,
@@ -1011,14 +1064,14 @@ router.post("/music/upload", requireAuth, upload.fields([
     const row = await insertArtistTrackWithAdmission(req.user,
       `INSERT INTO music_tracks
          (title, artist, album, genre, audio_url, cover_url, storage_key, cover_storage_key,
-          type, lyrics, is_active, is_featured, created_by, artist_user_id)
+          type, lyrics, is_active, is_featured, created_by, artist_user_id, copyright_declared)
        VALUES
          (${nullOr(title.trim())}, ${nullOr(artist.trim())},
           ${nullOr(album?.trim() || null)}, ${nullOr(genre?.trim() || null)},
           ${nullOr(audioResult.url)}, ${nullOr(coverResult?.url || null)},
           ${nullOr(audioResult.key)}, ${nullOr(coverResult?.key || null)},
           ${nullOr(type)}, ${nullOr(lyrics?.trim() || null)}, TRUE, FALSE,
-          ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)})
+          ${nullOr(req.user?.id)}, ${nullOr(req.user?.id)}, TRUE)
        RETURNING *`,
     );
     track = row;
@@ -1736,9 +1789,12 @@ router.get("/music/stream/*key", async (req, res) => {
 
 // GET /api/music/stream-url/:trackId — returns the current stream URL for a track
 // Useful for mobile/native players that need to set the URL before playback.
-router.get("/music/stream-url/:trackId", async (req, res) => {
+router.get("/music/stream-url/:trackId", optionalAuth, async (req, res) => {
   try {
-    const [track] = await q(`SELECT storage_key, audio_url FROM music_tracks WHERE id = ${Number(req.params.trackId)} AND is_active = TRUE`);
+    const [track] = await q(
+      `SELECT mt.storage_key, mt.audio_url FROM music_tracks mt
+       WHERE mt.id = ${Number(req.params.trackId)} AND mt.is_active = TRUE AND ${visibilitySql(req)}`,
+    );
     if (!track) return res.status(404).json({ error: "Track not found" });
     const key = (track.storage_key as string | null) ?? extractKey(track.audio_url as string);
     if (!key) return res.status(404).json({ error: "No storage key for this track" });
@@ -1843,7 +1899,7 @@ router.get("/music/:id/comments", async (req, res) => {
   if (!trackId) return res.status(400).json({ error: "Invalid track" });
   try {
     const rows = await q(`
-      SELECT mc.id, mc.content, mc.created_at,
+      SELECT mc.id, mc.content, mc.created_at, mc.timestamp_seconds,
              u.id          AS user_id,
              u.name        AS user_name,
              u.avatar      AS user_avatar,
@@ -1862,22 +1918,34 @@ router.get("/music/:id/comments", async (req, res) => {
 router.post("/music/:id/comments", requireAuth, async (req, res) => {
   const trackId = Number(req.params.id);
   if (!trackId) return res.status(400).json({ error: "Invalid track" });
-  const { content } = req.body as { content?: string };
+  const { content, timestamp_seconds: tsRaw } = req.body as {
+    content?: string;
+    timestamp_seconds?: number | string;
+  };
   if (!content?.trim())          return res.status(400).json({ error: "Comment cannot be empty" });
   if (content.trim().length > 500) return res.status(400).json({ error: "Comment too long (max 500)" });
+  let timestampSeconds: number | null = null;
+  if (tsRaw !== undefined && tsRaw !== null && tsRaw !== "") {
+    const n = Number(tsRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      return res.status(400).json({ error: "timestamp_seconds must be a number >= 0" });
+    }
+    timestampSeconds = Math.floor(n);
+  }
   try {
     const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE`);
     if (!track) return res.status(404).json({ error: "Track not found" });
     const [row] = await q(`
-      INSERT INTO music_comments (track_id, user_id, content)
-      VALUES (${trackId}, ${req.userId}, ${nullOr(content.trim())})
-      RETURNING id, content, created_at
+      INSERT INTO music_comments (track_id, user_id, content, timestamp_seconds)
+      VALUES (${trackId}, ${req.userId}, ${nullOr(content.trim())}, ${timestampSeconds === null ? "NULL" : timestampSeconds})
+      RETURNING id, content, created_at, timestamp_seconds
     `);
     const [actor] = await q(
       `SELECT name, avatar, is_verified FROM users WHERE id = ${req.userId}`
     );
     res.status(201).json({
       id: row.id, content: row.content, created_at: row.created_at,
+      timestamp_seconds: row.timestamp_seconds ?? null,
       user_id: req.userId,
       user_name: actor?.name ?? "Utilisateur",
       user_avatar: actor?.avatar ?? null,
@@ -1956,9 +2024,474 @@ router.post("/music/cleanup-orphan", requireAuth, (_req, res) => {
   res.status(410).json({ error: "Cloudinary cleanup is retired. Music uploads use Wasabi only." });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 2–5: impressions, play, trending, history, playlists, artist, reposts
+// Named single-segment routes MUST stay above GET /music/:id.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// POST /api/music/impression — valid listen ≥ 30s → buffered for flush
+router.post("/music/impression", async (req, res) => {
+  try {
+    const { trackId, sessionId, listeningSeconds } = req.body as {
+      trackId?: number | string;
+      sessionId?: string;
+      listeningSeconds?: number | string;
+    };
+    const tid = Number(trackId);
+    const secs = Number(listeningSeconds);
+    if (!Number.isInteger(tid) || tid <= 0) {
+      return res.json({ ok: false, reason: "invalid_track" });
+    }
+    if (!sessionId || typeof sessionId !== "string" || sessionId.length < 8) {
+      return res.json({ ok: false, reason: "invalid_session" });
+    }
+    if (!Number.isFinite(secs) || secs < MIN_LISTEN_SEC) {
+      return res.json({ ok: false, reason: "too_short" });
+    }
+    const ua = String(req.headers["user-agent"] ?? "");
+    if (isBot(ua)) {
+      return res.json({ ok: false, reason: "bot" });
+    }
+
+    const dedupKey = `${sessionId}:${tid}`;
+    const now = Date.now();
+    const existing = sessionDedup.get(dedupKey);
+    if (existing && existing > now) {
+      return res.json({ ok: false, reason: "dedup" });
+    }
+
+    const ip = String(req.ip || req.socket?.remoteAddress || "unknown");
+    const ipKey = hashIp(ip);
+    let bucket = ipRateLimit.get(ipKey);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + HOUR_MS };
+      ipRateLimit.set(ipKey, bucket);
+    }
+    if (bucket.count >= MAX_IP_IMPRESSIONS_PER_HOUR) {
+      return res.json({ ok: false, reason: "rate_limit" });
+    }
+
+    const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${tid} AND is_active = TRUE`);
+    if (!track) return res.json({ ok: false, reason: "not_found" });
+
+    sessionDedup.set(dedupKey, now + DEDUP_WINDOW_MS);
+    bucket.count += 1;
+    impressionBuffer.set(tid, (impressionBuffer.get(tid) ?? 0) + 1);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, reason: err?.message ?? "error" });
+  }
+});
+
+// GET /api/music/trending — top tracks by play_count
+router.get("/music/trending", optionalAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Number((req.query as any).limit) || 50, 200);
+    const offset = Math.max(Number((req.query as any).offset) || 0, 0);
+    const rows = await q(
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+              mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+              mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
+              mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
+              mt.artist_user_id, mt.created_at, mt.lyrics, mt.visibility,
+              u.name AS uploader_name
+       FROM music_tracks mt
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE mt.is_active = TRUE AND ${visibilitySql(req)}
+       ORDER BY mt.play_count DESC, mt.created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+    );
+    res.json({ tracks: rows.map(toClientTrack) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/history — recent listening history for current user
+router.get("/music/history", requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Number((req.query as any).limit) || 50, 200);
+    const offset = Math.max(Number((req.query as any).offset) || 0, 0);
+    const rows = await q(
+      `SELECT h.id AS history_id, h.played_at, h.position_seconds,
+              mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+              mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+              mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
+              mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
+              mt.artist_user_id, mt.created_at, mt.lyrics, mt.visibility,
+              u.name AS uploader_name
+       FROM music_listening_history h
+       JOIN music_tracks mt ON mt.id = h.track_id
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE h.user_id = ${req.userId}
+       ORDER BY h.played_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+    );
+    res.json({
+      history: rows.map((r: any) => ({
+        history_id: r.history_id,
+        played_at: r.played_at,
+        position_seconds: r.position_seconds,
+        track: toClientTrack(r),
+      })),
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// ── User playlists (owner = created_by) ───────────────────────────────────────
+
+router.get("/music/playlists", requireAuth, async (req, res) => {
+  try {
+    const rows = await q(
+      `SELECT p.*, COUNT(pt.track_id)::int AS track_count
+       FROM music_playlists p
+       LEFT JOIN music_playlist_tracks pt ON pt.playlist_id = p.id
+       WHERE p.created_by = ${req.userId} OR p.is_public = TRUE
+       GROUP BY p.id
+       ORDER BY p.updated_at DESC, p.created_at DESC
+       LIMIT 200`,
+    );
+    res.json({ playlists: rows });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.post("/music/playlists", requireAuth, async (req, res) => {
+  try {
+    const { title, description, is_public } = req.body as {
+      title?: string;
+      description?: string;
+      is_public?: boolean | string;
+    };
+    if (!title?.trim()) return res.status(400).json({ error: "Title required" });
+    const isPublic = is_public === undefined ? true : truthyFlag(is_public);
+    const [pl] = await q(
+      `INSERT INTO music_playlists (title, description, is_public, created_by)
+       VALUES (${nullOr(title.trim())}, ${nullOr(description?.trim() || null)}, ${isPublic ? "TRUE" : "FALSE"}, ${req.userId})
+       RETURNING *`,
+    );
+    res.status(201).json({ playlist: pl });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.get("/music/playlists/:id", optionalAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid playlist" });
+    const [pl] = await q(`SELECT * FROM music_playlists WHERE id = ${id}`);
+    if (!pl) return res.status(404).json({ error: "Playlist not found" });
+    const isOwner = pl.created_by === req.userId;
+    if (!pl.is_public && !isOwner && !isStaffUser(req.user)) {
+      return res.status(403).json({ error: "Playlist is private" });
+    }
+    const tracks = await q(
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+              mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+              mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
+              mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
+              mt.artist_user_id, mt.created_at, mt.lyrics, mt.visibility,
+              u.name AS uploader_name, pt.position
+       FROM music_playlist_tracks pt
+       JOIN music_tracks mt ON mt.id = pt.track_id
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE pt.playlist_id = ${id} AND mt.is_active = TRUE AND ${visibilitySql(req)}
+       ORDER BY pt.position ASC, pt.added_at ASC`,
+    );
+    res.json({ playlist: pl, tracks: tracks.map(toClientTrack) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.put("/music/playlists/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid playlist" });
+    const [pl] = await q(`SELECT * FROM music_playlists WHERE id = ${id}`);
+    if (!pl) return res.status(404).json({ error: "Playlist not found" });
+    if (pl.created_by !== req.userId && !isStaffUser(req.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    const { title, description, is_public } = req.body as {
+      title?: string;
+      description?: string;
+      is_public?: boolean | string;
+    };
+    const sets: string[] = ["updated_at = NOW()"];
+    if (title !== undefined) sets.push(`title = ${nullOr(String(title).trim())}`);
+    if (description !== undefined) sets.push(`description = ${nullOr(String(description).trim() || null)}`);
+    if (is_public !== undefined) sets.push(`is_public = ${truthyFlag(is_public) ? "TRUE" : "FALSE"}`);
+    await q(`UPDATE music_playlists SET ${sets.join(", ")} WHERE id = ${id}`);
+    const [updated] = await q(`SELECT * FROM music_playlists WHERE id = ${id}`);
+    res.json({ playlist: updated });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.delete("/music/playlists/:id", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid playlist" });
+    const [pl] = await q(`SELECT created_by FROM music_playlists WHERE id = ${id}`);
+    if (!pl) return res.status(404).json({ error: "Playlist not found" });
+    if (pl.created_by !== req.userId && !isStaffUser(req.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    await q(`DELETE FROM music_playlists WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.post("/music/playlists/:id/tracks", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const trackId = Number((req.body as any)?.trackId ?? (req.body as any)?.track_id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid playlist" });
+    if (!Number.isInteger(trackId) || trackId <= 0) return res.status(400).json({ error: "trackId required" });
+    const [pl] = await q(`SELECT created_by FROM music_playlists WHERE id = ${id}`);
+    if (!pl) return res.status(404).json({ error: "Playlist not found" });
+    if (pl.created_by !== req.userId && !isStaffUser(req.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    const [posRow] = await q<{ next: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM music_playlist_tracks WHERE playlist_id = ${id}`,
+    );
+    await q(
+      `INSERT INTO music_playlist_tracks (playlist_id, track_id, position)
+       VALUES (${id}, ${trackId}, ${posRow?.next ?? 0})
+       ON CONFLICT (playlist_id, track_id) DO NOTHING`,
+    );
+    await q(`UPDATE music_playlists SET updated_at = NOW() WHERE id = ${id}`);
+    res.status(201).json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+router.delete("/music/playlists/:id/tracks/:trackId", requireAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const trackId = Number(req.params.trackId);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid playlist" });
+    if (!Number.isInteger(trackId) || trackId <= 0) return res.status(400).json({ error: "Invalid track" });
+    const [pl] = await q(`SELECT created_by FROM music_playlists WHERE id = ${id}`);
+    if (!pl) return res.status(404).json({ error: "Playlist not found" });
+    if (pl.created_by !== req.userId && !isStaffUser(req.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    await q(`DELETE FROM music_playlist_tracks WHERE playlist_id = ${id} AND track_id = ${trackId}`);
+    await q(`UPDATE music_playlists SET updated_at = NOW() WHERE id = ${id}`);
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/artist/stats — current artist's aggregate stats
+router.get("/music/artist/stats", requireAuth, async (req, res) => {
+  try {
+    const [row] = await q<{
+      song_count: number;
+      total_plays: number;
+      valid_impressions: number;
+      estimated_revenue_usd: number;
+    }>(
+      `SELECT COUNT(*)::int AS song_count,
+              COALESCE(SUM(play_count), 0)::int AS total_plays,
+              COALESCE(SUM(valid_impressions), 0)::int AS valid_impressions,
+              COALESCE(SUM(estimated_revenue_usd), 0)::float AS estimated_revenue_usd
+       FROM music_tracks
+       WHERE artist_user_id = ${req.userId}`,
+    );
+    res.json({
+      songCount: row?.song_count ?? 0,
+      totalPlays: row?.total_plays ?? 0,
+      validImpressions: row?.valid_impressions ?? 0,
+      estimatedRevenueUsd: row?.estimated_revenue_usd ?? 0,
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/artist/earnings — unpaid / paid totals
+router.get("/music/artist/earnings", requireAuth, async (req, res) => {
+  try {
+    const [row] = await q<{ unpaid: number; paid: number }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN is_paid_out = FALSE THEN amount_usd ELSE 0 END), 0)::float AS unpaid,
+         COALESCE(SUM(CASE WHEN is_paid_out = TRUE  THEN amount_usd ELSE 0 END), 0)::float AS paid
+       FROM music_earnings
+       WHERE artist_id = ${req.userId}`,
+    );
+    res.json({
+      unpaidUsd: row?.unpaid ?? 0,
+      paidUsd: row?.paid ?? 0,
+      minWithdrawUsd: MIN_WITHDRAW_USD,
+    });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/artist/withdraw — credit unpaid earnings to promo wallet
+router.post("/music/artist/withdraw", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId!;
+    const [bal] = await q<{ unpaid: number }>(
+      `SELECT COALESCE(SUM(amount_usd), 0)::float AS unpaid
+       FROM music_earnings
+       WHERE artist_id = ${userId} AND is_paid_out = FALSE`,
+    );
+    const unpaid = bal?.unpaid ?? 0;
+    if (unpaid < MIN_WITHDRAW_USD) {
+      return res.status(400).json({
+        error: "BELOW_MIN_WITHDRAW",
+        unpaidUsd: unpaid,
+        minWithdrawUsd: MIN_WITHDRAW_USD,
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.execute(dsql`
+        UPDATE music_earnings
+        SET is_paid_out = TRUE, paid_out_at = NOW()
+        WHERE artist_id = ${userId} AND is_paid_out = FALSE
+      `);
+      const wallets = await tx
+        .select()
+        .from(promoWalletTable)
+        .where(eq(promoWalletTable.userId, userId))
+        .limit(1);
+      if (!wallets.length) {
+        await tx.insert(promoWalletTable).values({
+          userId,
+          balanceUsd: unpaid,
+          updatedAt: new Date(),
+        } as any);
+      } else {
+        await tx.update(promoWalletTable)
+          .set({
+            balanceUsd: dsql`${promoWalletTable.balanceUsd} + ${unpaid}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(promoWalletTable.userId, userId));
+      }
+      await tx.insert(walletTransactionsTable).values({
+        userId,
+        type: "music_withdraw",
+        amountUsd: unpaid,
+        status: "completed",
+        note: `Music earnings withdrawal $${unpaid.toFixed(2)}`,
+      } as any);
+    });
+
+    res.json({ ok: true, withdrawnUsd: unpaid });
+  } catch (err: any) {
+    logger.error({ err, userId: req.userId }, "Music withdraw failed");
+    res.status(500).json({ error: err?.message ?? "Withdraw failed" });
+  }
+});
+
+// GET /api/music/artist/:userId — public artist profile + tracks
+router.get("/music/artist/:userId", optionalAuth, async (req, res) => {
+  try {
+    const artistId = Number(req.params.userId);
+    if (!Number.isInteger(artistId) || artistId <= 0) {
+      return res.status(400).json({ error: "Invalid artist id" });
+    }
+    const [user] = await q(
+      `SELECT id, name, avatar, is_verified, bio, follower_count
+       FROM users WHERE id = ${artistId}`,
+    );
+    if (!user) return res.status(404).json({ error: "Artist not found" });
+    const tracks = await q(
+      `SELECT mt.id, mt.title, mt.artist, mt.album, mt.genre, mt.cover_url, mt.cover_storage_key,
+              mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
+              mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
+              mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
+              mt.artist_user_id, mt.created_at, mt.lyrics, mt.visibility,
+              u.name AS uploader_name
+       FROM music_tracks mt
+       LEFT JOIN users u ON u.id = mt.artist_user_id
+       WHERE mt.artist_user_id = ${artistId}
+         AND mt.is_active = TRUE
+         AND ${visibilitySql(req)}
+       ORDER BY mt.play_count DESC, mt.created_at DESC
+       LIMIT 100`,
+    );
+    res.json({ artist: user, tracks: tracks.map(toClientTrack) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/play — increment play_count; record listening history
+router.post("/music/:id/play", optionalAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid track" });
+    const [track] = await q(
+      `SELECT id, play_count FROM music_tracks mt
+       WHERE mt.id = ${id} AND mt.is_active = TRUE AND ${visibilitySql(req)}`,
+    );
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    const [updated] = await q<{ play_count: number }>(
+      `UPDATE music_tracks SET play_count = play_count + 1, updated_at = NOW()
+       WHERE id = ${id}
+       RETURNING play_count`,
+    );
+    if (req.userId) {
+      const position = Number((req.body as any)?.position_seconds ?? (req.body as any)?.positionSeconds);
+      await q(
+        `INSERT INTO music_listening_history (user_id, track_id, position_seconds)
+         VALUES (${req.userId}, ${id}, ${Number.isFinite(position) ? position : "NULL"})`,
+      );
+    }
+    res.json({ play_count: updated?.play_count ?? (Number(track.play_count) + 1) });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/repost — toggle repost
+router.post("/music/:id/repost", requireAuth, async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  try {
+    const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${trackId} AND is_active = TRUE`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    const [existing] = await q(
+      `SELECT 1 FROM music_reposts WHERE track_id = ${trackId} AND user_id = ${req.userId}`,
+    );
+    if (existing) {
+      await q(`DELETE FROM music_reposts WHERE track_id = ${trackId} AND user_id = ${req.userId}`);
+    } else {
+      await q(
+        `INSERT INTO music_reposts (track_id, user_id) VALUES (${trackId}, ${req.userId}) ON CONFLICT DO NOTHING`,
+      );
+    }
+    const [row] = await q(`SELECT COUNT(*)::int AS count FROM music_reposts WHERE track_id = ${trackId}`);
+    res.json({ reposted: !existing, count: row?.count ?? 0 });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// GET /api/music/:id/reposts — count
+router.get("/music/:id/reposts", async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  try {
+    const [row] = await q(`SELECT COUNT(*)::int AS count FROM music_reposts WHERE track_id = ${trackId}`);
+    res.json({ count: row?.count ?? 0 });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
+// POST /api/music/:id/report — report a track
+router.post("/music/:id/report", requireAuth, async (req, res) => {
+  const trackId = Number(req.params.id);
+  if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  const reason = String((req.body as any)?.reason ?? "").trim();
+  if (!reason) return res.status(400).json({ error: "reason required" });
+  try {
+    const [track] = await q(`SELECT id FROM music_tracks WHERE id = ${trackId}`);
+    if (!track) return res.status(404).json({ error: "Track not found" });
+    await db.insert(reportsTable).values({
+      reporterId: req.userId!,
+      targetType: "music_track",
+      targetId: trackId,
+      reason,
+    });
+    res.status(201).json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err?.message }); }
+});
+
 // GET /api/music/:id — public track payload for share links and MusicPublicPlayer.
 // It is deliberately last so every named /music endpoint is matched first.
-router.get("/music/:id", async (req, res) => {
+router.get("/music/:id", optionalAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) {
@@ -1969,11 +2502,11 @@ router.get("/music/:id", async (req, res) => {
               mt.audio_url, mt.storage_key, mt.duration_seconds, mt.type, mt.monetization_type,
               mt.price_usd, mt.is_featured, mt.play_count, mt.valid_impressions,
               mt.is_artist_verified, mt.total_impressions, mt.estimated_revenue_usd,
-              mt.artist_user_id, mt.created_at, mt.lyrics, u.name AS uploader_name
+              mt.artist_user_id, mt.created_at, mt.lyrics, mt.visibility, u.name AS uploader_name
        FROM music_tracks mt
        LEFT JOIN users u ON u.id = mt.artist_user_id
-       WHERE mt.id = ${id} AND mt.is_active = TRUE
-       LIMIT 1`
+       WHERE mt.id = ${id} AND mt.is_active = TRUE AND ${visibilitySql(req)}
+       LIMIT 1`,
     );
     if (!track) return res.status(404).json({ error: "Track not found" });
     res.json({ track: toClientTrack(track) });

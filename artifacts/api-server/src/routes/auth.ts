@@ -669,24 +669,31 @@ const SUPPORTED_COUNTRIES = new Set(Object.values(IP_COUNTRY_MAP));
 router.get("/auth/detect-country", async (req, res): Promise<void> => {
   const ip = getClientIp(req);
   if (!ip || ip === "unknown" || ip.startsWith("127.") || ip.startsWith("::1") || ip.startsWith("10.") || ip.startsWith("172.") || ip.startsWith("192.168.")) {
-    res.json({ country: null, detected: false, reason: "private_ip" });
+    res.json({ country: null, city: null, detected: false, reason: "private_ip" });
     return;
   }
   try {
-    const response = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,proxy,hosting`, { signal: AbortSignal.timeout(3000) });
-    if (!response.ok) { res.json({ country: null, detected: false, reason: "api_error" }); return; }
+    const response = await fetch(
+      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,regionName,proxy,hosting`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    if (!response.ok) { res.json({ country: null, city: null, detected: false, reason: "api_error" }); return; }
     const data = await response.json() as any;
-    if (data.status !== "success") { res.json({ country: null, detected: false, reason: "lookup_failed" }); return; }
+    if (data.status !== "success") { res.json({ country: null, city: null, detected: false, reason: "lookup_failed" }); return; }
     const mappedCountry = IP_COUNTRY_MAP[data.country] ?? null;
     const isVpnOrProxy = !!(data.proxy || data.hosting);
+    const city = typeof data.city === "string" && data.city.trim() ? data.city.trim() : null;
+    const region = typeof data.regionName === "string" && data.regionName.trim() ? data.regionName.trim() : null;
     res.json({
       country: SUPPORTED_COUNTRIES.has(mappedCountry ?? "") ? mappedCountry : null,
+      city,
+      region,
       detectedCountry: data.country,
       detected: true,
       isVpnOrProxy,
     });
   } catch {
-    res.json({ country: null, detected: false, reason: "timeout" });
+    res.json({ country: null, city: null, detected: false, reason: "timeout" });
   }
 });
 

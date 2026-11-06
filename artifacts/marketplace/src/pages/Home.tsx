@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
 import TodaysDealCard from "@/components/TodaysDealCard";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
@@ -198,9 +199,17 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const [q, setQ] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [scope, setScope] = useState<Scope>("city");
+  // Guests without GPS use country-wide discovery; logged-in shoppers keep city-first.
+  const [scope, setScope] = useState<Scope>(() => (typeof window !== "undefined" && !localStorage.getItem("flexamarket_token") ? "country" : "city"));
   const [adminCountry, setAdminCountry] = useState<string | null>(null);
   const { user, refreshUser } = useAuth();
+  const {
+    country: shoppingCountry,
+    city: shoppingCity,
+    guestLocation,
+    setGuestCountry,
+    setGuestCity,
+  } = useShoppingLocation();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -235,8 +244,8 @@ export default function Home() {
     setDeliveryMenuCountry(isAdmin ? effectiveAdminCountry : undefined);
     return () => setDeliveryMenuCountry(undefined);
   }, [isAdmin, effectiveAdminCountry, setDeliveryMenuCountry]);
-  // Country comes from profile only — GPS handles it server-side for logged-in users
-  const activeCountry = user?.country ?? undefined;
+  // Logged-in shoppers use profile country; guests use detected/manual shopping destination
+  const activeCountry = user?.country ?? shoppingCountry;
 
   // ── Location detection state ──
   const [locationMode, setLocationModeState] = useState<LocationMode>("auto");
@@ -272,7 +281,10 @@ export default function Home() {
         // Without this, city-scoped queries return 0 if no local results exist.
         ...(isAdmin
           ? effectiveAdminCountry ? { country: effectiveAdminCountry } : {}
-          : !activeCategory && scope !== "country" ? { scope } : {}),
+          : {
+              ...(activeCountry ? { country: activeCountry } : {}),
+              ...(!activeCategory && scope !== "country" ? { scope } : {}),
+            }),
       });
       const frozenPromaxParams = serializePromaxPageParam(pageParam);
       if (frozenPromaxParams.hourKey) params.set("hourKey", frozenPromaxParams.hourKey);
@@ -401,12 +413,15 @@ export default function Home() {
 
   // ── Load persisted locationMode when user is ready ──
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      if (shoppingCity) setDetectedCity(shoppingCity);
+      return;
+    }
     setLocationModeState(loadLocationMode(user.id));
     // Seed detectedCity from cached position if available
     const cached = loadCachedPosition(user.id);
     if (cached?.city) setDetectedCity(cached.city);
-  }, [user?.id]);
+  }, [user?.id, shoppingCity]);
 
   // ── Persist mode helper ──
   const setLocationMode = useCallback((mode: LocationMode) => {
@@ -543,6 +558,11 @@ export default function Home() {
     setShowCityPicker(false);
     setDetectedCity(city);
     setLocationMode("manual");
+    if (!user?.id) {
+      setGuestCity(city);
+      queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
+      return;
+    }
     try {
       await apiFetch("/api/me/location", {
         method: "PATCH",
@@ -551,7 +571,7 @@ export default function Home() {
       await refreshUser?.();
       queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
     } catch {}
-  }, [setLocationMode, refreshUser, queryClient]);
+  }, [setLocationMode, refreshUser, queryClient, user?.id, setGuestCity]);
 
   // ── Switch back to auto GPS mode ──
   const switchToAutoMode = useCallback(() => {
@@ -573,8 +593,9 @@ export default function Home() {
 
   const userCountry = activeCountry;
   const countryFlag = userCountry ? COUNTRY_FLAGS[userCountry] : null;
-  // Display city: prefer freshly detected > user profile location > country fallback
-  const displayCity = detectedCity ?? user?.location ?? null;
+  // Display city: prefer freshly detected > profile/guest shopping city > country fallback
+  const displayCity = detectedCity ?? user?.location ?? shoppingCity ?? null;
+  const needsGuestCountry = !user && !isAdmin && !activeCountry;
 
   return (
     <div className="w-full fm-home-amazon">
@@ -604,7 +625,7 @@ export default function Home() {
         {(displayCity || userCountry) && (
           <button
             type="button"
-            onClick={() => user && !isAdmin && setShowCityPicker(true)}
+            onClick={() => !isAdmin && setShowCityPicker(true)}
             className="flex items-center gap-1.5 text-[12px] text-white/95 w-full text-left"
             data-testid="button-deliver-to"
           >
@@ -718,28 +739,37 @@ export default function Home() {
         )}
 
         {/* === NO COUNTRY → BLOCKING overlay with inline country picker === */}
-        {user && !isAdmin && !user.country && (
+        {((user && !isAdmin && !user.country) || needsGuestCountry) && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-4 pb-6 sm:pb-0">
             <div className="w-full max-w-sm bg-background rounded-2xl shadow-2xl p-6 space-y-5">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">🌍</span>
                 <div>
                   <p className="text-base font-bold text-foreground">
-                    {t("home.selectCountryTitle", "Chwazi peyi ou")}
+                    {t("home.selectCountryTitle", "Choose your country")}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {t("home.selectCountryDesc", "Ou bezwen chwazi peyi ou pou wè pwodwi nan zòn ou.")}
+                    {t("home.selectCountryDesc", "Select a shopping country to see products available near you.")}
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto">
                 {SUPPORTED_COUNTRIES.map(c => (
                   <button
                     key={c}
                     type="button"
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
                     onClick={async () => {
+                      if (!user) {
+                        setGuestCountry(c);
+                        queryClient.invalidateQueries({ queryKey: ["listings-infinite"] });
+                        queryClient.invalidateQueries({ predicate: (q) => {
+                          const key = String(q.queryKey?.[0] ?? "");
+                          return key.includes("/api/listings") || key.includes("/api/videos");
+                        }});
+                        return;
+                      }
                       try {
                         await apiFetch("/api/me/country", {
                           method: "PATCH",
@@ -764,7 +794,7 @@ export default function Home() {
         )}
 
         {/* === LOCATION BANNER (auto GPS / manual city) === */}
-        {user && !isAdmin && activeCountry && (
+        {!isAdmin && activeCountry && (user || guestLocation) && (
           <div className="space-y-2">
             {/* Main banner row */}
             <div className="flex items-center justify-between bg-primary/8 border border-primary/15 rounded-xl px-4 py-2.5 gap-2">
@@ -869,12 +899,19 @@ export default function Home() {
         )}
 
         {/* === GEO SCOPE FILTER CHIPS === */}
-        {user && !isAdmin && (
+        {!isAdmin && activeCountry && (
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
             {(["nearby", "city", "country"] as Scope[]).map(s => (
               <button
                 key={s}
-                onClick={() => setScope(s)}
+                onClick={() => {
+                  // Nearby needs GPS — guests without coords browse country-wide instead
+                  if (!user && s === "nearby") {
+                    setScope("country");
+                    return;
+                  }
+                  setScope(s);
+                }}
                 className={cn(
                   "flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all whitespace-nowrap",
                   scope === s
@@ -1086,7 +1123,7 @@ export default function Home() {
                   }),
                 );
               })()}
-              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : null} />
+              <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
                 listings.map((listing) => (
                   <div key={listing.id} data-promax-group={key} className="min-w-0">

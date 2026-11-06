@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
+import { useAuthRequired } from "@/components/auth/AuthRequiredModal";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -130,6 +131,7 @@ export default function ListingCard({
 }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
+  const { requireAuth } = useAuthRequired();
   const { t } = useTranslation();
   const { toast } = useToast();
   const { addItem, isInCart } = useCart();
@@ -164,7 +166,14 @@ export default function ListingCard({
   const handleLike = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!user) { setLocation("/auth/login"); return; }
+    if (!user) {
+      requireAuth({
+        action: "favorite",
+        next: `/listings/${listing.id}`,
+        listingId: listing.id,
+      });
+      return;
+    }
     if (isOwner) return;
     if (liked) {
       markUnfavorited(listing.id);
@@ -518,8 +527,22 @@ export default function ListingCard({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (!user) { setLocation("/auth/login"); return; }
                 if (!listing.sellerId) return;
+                if (!user) {
+                  requireAuth({
+                    action: "addToCart",
+                    next: `/listings/${listing.id}`,
+                    listingId: listing.id,
+                    sellerId: listing.sellerId,
+                    title: listing.title,
+                    price: listing.price,
+                    currency: listing.currency ?? null,
+                    image: listing.images?.[0] ?? null,
+                    country: listing.country ?? null,
+                    quantity: 1,
+                  });
+                  return;
+                }
                 if (isInCart(listing.id)) {
                   toast({ title: t("cart.alreadyInCart", { defaultValue: "Already in cart" }) });
                   return;

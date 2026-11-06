@@ -22,6 +22,8 @@ import { useGetListing, useGetListings, useAddFavorite, useRemoveFavorite, useCr
 import ListingCard from "@/components/ListingCard";
 import { useAuth } from "@/contexts/auth";
 import { useCart } from "@/contexts/cart";
+import { useAuthRequired } from "@/components/auth/AuthRequiredModal";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import CommentsSection from "@/components/CommentsSection";
@@ -78,6 +80,8 @@ export default function ListingDetail() {
   const id = parseInt(params?.id ?? "0", 10);
   const [, setLocation] = useLocation();
   const { user, token } = useAuth();
+  const { requireAuth } = useAuthRequired();
+  const { country: shoppingCountry } = useShoppingLocation();
   const { addItem, removeItem, isInCart, updateQuantity, items: cartItems } = useCart();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -307,9 +311,23 @@ export default function ListingDetail() {
   });
 
   const relatedCategory = listing?.categorySlug || listing?.category;
+  const relatedCountry = user?.country ?? shoppingCountry;
   const { data: relatedData } = useGetListings(
-    { category: relatedCategory || undefined, limit: 8 },
-    { query: { enabled: !!relatedCategory, queryKey: getGetListingsQueryKey({ category: relatedCategory || undefined, limit: 8 }) } },
+    {
+      category: relatedCategory || undefined,
+      limit: 8,
+      ...(relatedCountry ? { country: relatedCountry } : {}),
+    },
+    {
+      query: {
+        enabled: !!relatedCategory,
+        queryKey: getGetListingsQueryKey({
+          category: relatedCategory || undefined,
+          limit: 8,
+          ...(relatedCountry ? { country: relatedCountry } : {}),
+        }),
+      },
+    },
   );
   const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
 
@@ -373,6 +391,22 @@ export default function ListingDetail() {
     return () => clearTimeout(timer);
   }, [listing?.id, trackView]);
 
+  const createConv = useCreateConversation();
+  const createOffer = useCreateOffer();
+  const deleteListing = useDeleteListing();
+
+  // Resume Contact Seller after guest auth (?contact=1)
+  useEffect(() => {
+    if (!listing?.id || !user) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("contact") !== "1") return;
+    window.history.replaceState(null, "", `/listings/${id}`);
+    createConv.mutate({ data: { listingId: id, sellerId: listing.sellerId } }, {
+      onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
+      onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
+    });
+  }, [listing?.id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-open checkout panel when arriving from the video "Achte" CTA (?buy=1)
   useEffect(() => {
     if (!listing?.id) return;
@@ -380,11 +414,26 @@ export default function ListingDetail() {
     if (sp.get("buy") !== "1") return;
     // Remove the flag from the URL without a full reload
     window.history.replaceState(null, "", `/listings/${id}`);
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({
+          action: "buyNow",
+          next: `/listings/${id}`,
+          listingId: id,
+          sellerId: listing.sellerId,
+          title: listing.title,
+          price: listing.price,
+          currency: (listing as any).currency ?? "USD",
+          image: (listing as any).images?.[0] ?? null,
+          country: (listing as any).country ?? null,
+        });
+      }
+      return;
+    }
     setPayStep("promo");
     setPayDone(false);
     setBuyNowOpen(true);
-  }, [listing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [listing?.id, user, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-open checkout with agreed offer price when arriving from an accepted offer
   // URL shape: /listings/:id?offerPay=<offerId>&offerAmount=<agreedPrice>
@@ -398,16 +447,18 @@ export default function ListingDetail() {
     const parsedAmt = parseFloat(oa);
     if (isNaN(parsedId) || isNaN(parsedAmt) || parsedAmt <= 0) return;
     window.history.replaceState(null, "", `/listings/${id}`);
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({ action: "buyNow", next: `/listings/${id}`, listingId: id });
+      }
+      return;
+    }
     setOfferIdForPurchase(parsedId);
     setOfferPriceOverride(parsedAmt);
     setPayStep("promo");
     setPayDone(false);
     setBuyNowOpen(true);
-  }, [listing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const createConv = useCreateConversation();
-  const createOffer = useCreateOffer();
-  const deleteListing = useDeleteListing();
+  }, [listing?.id, user, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch commission quote when the buy dialog opens — buyer sees the
   // "platform fee included" disclosure with the price breakdown. Declared
@@ -811,7 +862,12 @@ export default function ListingDetail() {
   };
 
   const handleFav = () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({ action: "favorite", next: `/listings/${id}`, listingId: id });
+      }
+      return null;
+    }
     const isFav = (listing as any).isFavorited;
     if (isFav) {
       removeFav.mutate({ listingId: id }, {
@@ -825,7 +881,18 @@ export default function ListingDetail() {
   };
 
   const handleChat = () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({
+          action: "contactSeller",
+          next: `/listings/${id}`,
+          listingId: id,
+          sellerId: listing.sellerId,
+          title: t("authGate.signInToContact", { defaultValue: "Sign in to contact this seller." }),
+        });
+      }
+      return null;
+    }
     createConv.mutate({ data: { listingId: id, sellerId: listing.sellerId } }, {
       onSuccess: (conv) => setLocation(`/messages/${(conv as any).id}`),
       onError: () => toast({ title: "Error", description: "Could not start conversation", variant: "destructive" }),
@@ -883,7 +950,12 @@ export default function ListingDetail() {
   };
 
   const handleOffer = () => {
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return null; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({ action: "generic", next: `/listings/${id}`, listingId: id });
+      }
+      return null;
+    }
     const raw = offerAmount.trim();
     if (!raw) {
       toast({ title: t("offer.enterValidAmount"), variant: "destructive" });
@@ -1305,8 +1377,24 @@ export default function ListingDetail() {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
     const qty = Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty));
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({
+          action: "addToCart",
+          next: `/listings/${id}`,
+          listingId: id,
+          sellerId: listing.sellerId,
+          title: listing.title,
+          price: listing.price,
+          currency: (listing as any).currency ?? "USD",
+          image: (listing as any).images?.[0] ?? null,
+          country: (listing as any).country ?? null,
+          quantity: qty,
+        });
+      }
+      return;
+    }
     const inCart = isInCart(id);
     if (inCart) {
       const existingQty = cartItems.find((i) => i.listingId === id)?.quantity ?? 1;
@@ -1337,7 +1425,23 @@ export default function ListingDetail() {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
-    if (!user) { if (!isLoading) setLocation("/auth/login"); return; }
+    if (!user) {
+      if (!isLoading) {
+        requireAuth({
+          action: "buyNow",
+          next: `/listings/${id}`,
+          listingId: id,
+          sellerId: listing.sellerId,
+          title: listing.title,
+          price: listing.price,
+          currency: (listing as any).currency ?? "USD",
+          image: (listing as any).images?.[0] ?? null,
+          country: (listing as any).country ?? null,
+          quantity: Math.min(Math.max(1, buyQty), Math.max(1, maxBuyQty)),
+        });
+      }
+      return;
+    }
     setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
   };
 
@@ -1791,7 +1895,7 @@ export default function ListingDetail() {
           {bnplSettings && (bnplSettings.affirmEnabled || bnplSettings.klarnaEnabled) && (
             <button
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => { if (!user) { if (!isLoading) setLocation("/auth/login"); return; } setPayStep("promo"); setPayDone(false); setBuyNowOpen(true); }}
+              onClick={handleBuyNowClick}
             >
               <span>{t("tr.payToday")} <strong className="text-foreground">${(effectiveListingPriceUsd / 3).toFixed(2)}</strong> {t("tr.payTodayWith")}</span>
               {bnplSettings.affirmEnabled && <span className="font-black text-[#00d647]">Affirm</span>}

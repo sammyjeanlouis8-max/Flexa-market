@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCart, CartItem } from "@/contexts/cart";
 import { useAuth } from "@/contexts/auth";
+import { useAuthRequired } from "@/components/auth/AuthRequiredModal";
 import { formatPrice } from "@/lib/currency";
 import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedCheckoutAddress";
 
@@ -389,6 +390,7 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
 export default function Cart() {
   const { t } = useTranslation();
   const { user, isLoading } = useAuth();
+  const { requireAuth } = useAuthRequired();
   const [, setLocation] = useLocation();
   const { items, removeItem, clearCart, updateQuantity } = useCart();
   const token = typeof window !== "undefined" ? localStorage.getItem("flexamarket_token") : null;
@@ -406,9 +408,23 @@ export default function Cart() {
   const [deliveryFees, setDeliveryFees] = useState<GroupDeliveryFee[]>([]);
   const [deliveryFeesLoading, setDeliveryFeesLoading] = useState(false);
 
+  // Guests may view a local cart; checkout requires authentication.
   useEffect(() => {
-    if (!user && !isLoading) setLocation("/auth/login");
-  }, [user, isLoading, setLocation]);
+    if (isLoading || user) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("checkout") === "1") {
+      requireAuth({ action: "checkout", next: "/cart?checkout=1" });
+    }
+  }, [user, isLoading, requireAuth]);
+
+  useEffect(() => {
+    if (!user || isLoading) return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("checkout") === "1" && items.length > 0) {
+      window.history.replaceState(null, "", "/cart");
+      setShowCheckout(true);
+    }
+  }, [user, isLoading, items.length]);
 
   useEffect(() => {
     setSelected(prev => {
@@ -438,8 +454,6 @@ export default function Cart() {
     refreshDeliveryFees(buyerCity, selectedItems);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buyerCity, selected.size, items.length]);
-
-  if (!user) return null;
 
   // Show success screen after successful checkout
   if (successOrders) {
@@ -803,8 +817,19 @@ export default function Cart() {
           <div className="px-4 pb-2.5 max-w-lg mx-auto">
             <button
               type="button"
-              onClick={() => selectedItems.length > 0 && setShowCheckout(true)}
-              disabled={selectedItems.length === 0 || deliveryFeesLoading}
+              onClick={() => {
+                if (selectedItems.length === 0) return;
+                if (!user) {
+                  requireAuth({
+                    action: "checkout",
+                    next: "/cart?checkout=1",
+                    title: t("authGate.signInToContinue", { defaultValue: "Sign in to continue" }),
+                  });
+                  return;
+                }
+                setShowCheckout(true);
+              }}
+              disabled={selectedItems.length === 0 || (!!user && deliveryFeesLoading)}
               data-testid="button-proceed-checkout"
               className="w-full flex items-center justify-center gap-2 px-4 h-11 rounded-xl font-bold text-sm transition-all active:scale-[0.98] disabled:opacity-60"
               style={selectedItems.length === 0 || deliveryFeesLoading ? {
@@ -834,7 +859,7 @@ export default function Cart() {
       )}
 
       {/* Keep cart dialogs above the body-level checkout bar. */}
-      {showCheckout && createPortal(
+      {showCheckout && user && createPortal(
         <CheckoutModal
           selectedItems={selectedItems}
           total={total}

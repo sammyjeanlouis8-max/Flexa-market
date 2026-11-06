@@ -9,8 +9,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { FavoritesProvider } from "@/contexts/favorites";
 import { CartProvider } from "@/contexts/cart";
+import { ShoppingLocationProvider } from "@/contexts/shopping-location";
 import { BroadcastProvider } from "@/contexts/broadcast";
 import { MusicUploadProvider } from "@/contexts/MusicUpload";
+import { AuthRequiredProvider } from "@/components/auth/AuthRequiredModal";
+import AuthIntentResume from "@/components/auth/AuthIntentResume";
 import Layout from "@/components/Layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import DeliveryCodeAlert from "@/components/DeliveryCodeAlert";
@@ -448,12 +451,15 @@ function App() {
       <TooltipProvider>
         <ThemeProvider storageKey="flexamarket_theme" defaultTheme="light">
           <AuthProvider>
+            <ShoppingLocationProvider>
+            <AuthRequiredProvider>
             <VideoUploadCenter />
             <CartProvider>
             <FavoritesProvider>
               <BroadcastProvider>
                 <MusicUploadProvider>
                   <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                    <AuthIntentResume />
                     <Router />
                     <GlobalBroadcastPlayer />
                     <GlobalMusicPlayer />
@@ -463,6 +469,8 @@ function App() {
               <Toaster />
             </FavoritesProvider>
             </CartProvider>
+            </AuthRequiredProvider>
+            </ShoppingLocationProvider>
           </AuthProvider>
         </ThemeProvider>
       </TooltipProvider>

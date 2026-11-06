@@ -67,6 +67,10 @@ function BrowserMusicUpload() {
   const [progress,  setProgress]  = useState(0);
   const [done,      setDone]      = useState(false);
   const [error,     setError]     = useState("");
+  const [copyrightDeclared, setCopyrightDeclared] = useState(false);
+  /** Kept after Wasabi upload so register can be retried without re-uploading */
+  const pendingRegisterRef = useRef<Record<string, unknown> | null>(null);
+  const [canRetryRegister, setCanRetryRegister] = useState(false);
 
   const audioInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +115,51 @@ function BrowserMusicUpload() {
     if (coverInputRef.current) coverInputRef.current.value = "";
   };
 
+  const registerTrack = useCallback(async (
+    body: Record<string, unknown>,
+    authHeader: Record<string, string>,
+  ) => {
+    pendingRegisterRef.current = { ...body };
+    setCanRetryRegister(true);
+    const regRes = await fetch("/api/music/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader },
+      body: JSON.stringify(body),
+    });
+    if (!regRes.ok) {
+      const d = await regRes.json().catch(() => ({}));
+      if (regRes.status === 409 && d.error === "POSSIBLE_DUPLICATE") {
+        const force = window.confirm(t("music.forceDuplicate"));
+        if (force) {
+          return registerTrack({ ...body, forceDuplicate: true }, authHeader);
+        }
+        throw new Error(t("music.forceDuplicate"));
+      }
+      throw new Error(d.error ?? "Register failed");
+    }
+    pendingRegisterRef.current = null;
+    setCanRetryRegister(false);
+  }, [t]);
+
+  const retryRegister = useCallback(async () => {
+    const body = pendingRegisterRef.current;
+    if (!body) return;
+    setError("");
+    setUploading(true);
+    setProgress(95);
+    try {
+      const token = localStorage.getItem("flexamarket_token");
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : ({} as Record<string, string>);
+      await registerTrack(body, authHeader);
+      setProgress(100);
+      setDone(true);
+    } catch (err: any) {
+      setError(err.message ?? t("upload.errGeneric"));
+    } finally {
+      setUploading(false);
+    }
+  }, [registerTrack, t]);
+
   // ── Submit ───────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +168,7 @@ function BrowserMusicUpload() {
     if (!title.trim())  { setError(t("upload.errTitle"));  return; }
     if (!artist.trim()) { setError(t("upload.errArtist")); return; }
     if (!audioFile)     { setError(t("upload.errAudio"));  return; }
+    if (!copyrightDeclared) { setError(t("music.copyrightRequired")); return; }
     if (audioDuration !== null && audioDuration > MAX_DURATION_SECONDS) {
       setError(t("upload.errDurationMax"));
       return;
@@ -126,6 +176,8 @@ function BrowserMusicUpload() {
 
     setUploading(true);
     setProgress(5);
+    setCanRetryRegister(false);
+    pendingRegisterRef.current = null;
 
     try {
       const token = localStorage.getItem("flexamarket_token");
@@ -227,18 +279,14 @@ function BrowserMusicUpload() {
       setProgress(95);
 
       // ── Step 4: Register in DB ───────────────────────────────────────────────
-      const regRes = await fetch("/api/music/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({
-          title: title.trim(), artist: artist.trim(),
-          album: album.trim() || "", genre: genre || "", type: "free",
-          storageKey: audioResult.storageKey, audioUrl: audioResult.url,
-          coverStorageKey: coverResult?.storageKey ?? null, coverUrl: coverResult?.url ?? null,
-          duration_seconds: audioDuration !== null ? String(audioDuration) : undefined,
-        }),
-      });
-      if (!regRes.ok) { const d = await regRes.json().catch(()=>({})); throw new Error(d.error ?? "Register failed"); }
+      await registerTrack({
+        title: title.trim(), artist: artist.trim(),
+        album: album.trim() || "", genre: genre || "", type: "free",
+        storageKey: audioResult.storageKey, audioUrl: audioResult.url,
+        coverStorageKey: coverResult?.storageKey ?? null, coverUrl: coverResult?.url ?? null,
+        duration_seconds: audioDuration !== null ? String(audioDuration) : undefined,
+        copyrightDeclared: true,
+      }, authHeader);
 
       setProgress(100);
       setDone(true);
@@ -247,7 +295,7 @@ function BrowserMusicUpload() {
     } finally {
       setUploading(false);
     }
-  }, [title, artist, album, genre, audioFile, audioDuration, coverFile, t]);
+  }, [title, artist, album, genre, audioFile, audioDuration, coverFile, copyrightDeclared, registerTrack, t]);
 
   // ── Success screen ───────────────────────────────────────────────────────────
   if (done) {
@@ -318,9 +366,17 @@ function BrowserMusicUpload() {
 
         {/* ── Error ── */}
         {error && (
-          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5">
-            <AlertCircle size={15} className="text-red-500 shrink-0" />
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <div className="flex flex-col gap-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={15} className="text-red-500 shrink-0" />
+              <p className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</p>
+            </div>
+            {canRetryRegister && !uploading && (
+              <button type="button" onClick={() => void retryRegister()}
+                className="self-start text-xs font-bold px-3 py-1.5 rounded-lg bg-violet-600 text-white">
+                {t("messages.retry", "Retry")}
+              </button>
+            )}
           </div>
         )}
 
@@ -465,6 +521,17 @@ function BrowserMusicUpload() {
           </div>
         </div>
 
+        {/* ── Copyright confirmation ── */}
+        <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 px-3.5 py-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={copyrightDeclared}
+            onChange={(e) => setCopyrightDeclared(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border accent-violet-600"
+          />
+          <span className="text-sm leading-snug">{t("music.copyrightConfirm")}</span>
+        </label>
+
         {/* ── Progress bar ── */}
         {uploading && (
           <div className="space-y-2">
@@ -481,7 +548,7 @@ function BrowserMusicUpload() {
         {/* ── Submit ── */}
         <button
           type="submit"
-          disabled={uploading}
+          disabled={uploading || !copyrightDeclared}
           className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white font-black text-base flex items-center justify-center gap-2 shadow-xl shadow-violet-500/25 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {uploading

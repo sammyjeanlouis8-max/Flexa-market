@@ -135,6 +135,7 @@ const BNPLPage                       = lazy(() => import("@/pages/BNPLPage"));
 const Leaderboard                    = lazy(() => import("@/pages/Leaderboard"));
 const FlexaTV                        = lazy(() => import("@/pages/FlexaTV"));
 const FlexaMusic                     = lazy(() => import("@/pages/FlexaMusic"));
+const MusicArtist                    = lazy(() => import("@/pages/MusicArtist"));
 const MusicPublicPlayer              = lazy(() => import("@/pages/MusicPublicPlayer"));
 const AdminMusic                     = lazy(() => import("@/pages/AdminMusic"));
 const AdminTransactions              = lazy(() => import("@/pages/AdminTransactions"));
@@ -334,6 +335,7 @@ function LayoutRoutes() {
           <Route path="/leaderboard" component={Leaderboard} />
           <Route path="/tv" component={FlexaTV} />
           <Route path="/music" component={FlexaMusic} />
+          <Route path="/music/artist/:userId" component={MusicArtist} />
           <Route path="/music/upload" component={FlexaMusicUpload} />
           <Route path="/music/earnings" component={FlexaMusicEarnings} />
           <Route path="/admin/music" component={AdminMusic} />

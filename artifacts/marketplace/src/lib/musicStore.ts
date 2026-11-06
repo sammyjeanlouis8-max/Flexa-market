@@ -26,6 +26,113 @@ export interface MusicTrack {
 /** Repeat: off → all → one → off */
 export type MusicRepeatMode = "off" | "all" | "one";
 
+/** localStorage key for queue / position restore across reloads */
+export const MUSIC_PLAYBACK_KEY = "flexa_music_playback_v1";
+
+type PersistedPlayback = {
+  queue: MusicTrack[];
+  queueIdx: number;
+  track: MusicTrack | null;
+  currentTime: number;
+  shuffle: boolean;
+  repeat: MusicRepeatMode;
+};
+
+let _lastPersistAt = 0;
+/** Debounce play API: once per track start (same id ignored until another track plays). */
+let _lastRecordedPlayId: number | null = null;
+
+function slimTrack(t: MusicTrack): MusicTrack {
+  return {
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    cover_url: t.cover_url ?? null,
+    audio_url: t.audio_url ?? null,
+  };
+}
+
+function persistPlayback(force = false): void {
+  if (typeof window === "undefined") return;
+  const now = Date.now();
+  if (!force && now - _lastPersistAt < 2000) return;
+  _lastPersistAt = now;
+  try {
+    const data: PersistedPlayback = {
+      queue: _s.queue.map(slimTrack),
+      queueIdx: _s.queueIdx,
+      track: _s.track ? slimTrack(_s.track) : null,
+      currentTime: _s.currentTime,
+      shuffle: _s.shuffle,
+      repeat: _s.repeat,
+    };
+    localStorage.setItem(MUSIC_PLAYBACK_KEY, JSON.stringify(data));
+  } catch { /* quota / private mode */ }
+}
+
+function restorePlayback(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(MUSIC_PLAYBACK_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw) as PersistedPlayback;
+    if (!data || !Array.isArray(data.queue)) return;
+    const track = data.track && typeof data.track.id === "number" ? slimTrack(data.track) : null;
+    const queue = data.queue.filter((t) => t && typeof t.id === "number").map(slimTrack);
+    const repeat: MusicRepeatMode =
+      data.repeat === "all" || data.repeat === "one" ? data.repeat : "off";
+    Object.assign(_s, {
+      queue,
+      queueIdx: Math.max(0, Math.min(data.queueIdx ?? 0, Math.max(0, queue.length - 1))),
+      track,
+      currentTime: typeof data.currentTime === "number" ? data.currentTime : 0,
+      shuffle: !!data.shuffle,
+      repeat,
+      playing: false,
+      plTitle: track?.title ?? "",
+      plCover: track?.cover_url ?? null,
+    });
+    // Restore audio element position but do NOT autoplay
+    if (track?.audio_url) {
+      try {
+        gAudio.src = track.audio_url;
+        const seekTo = typeof data.currentTime === "number" ? data.currentTime : 0;
+        const applySeek = () => {
+          try { gAudio.currentTime = seekTo; } catch { /* ignore */ }
+        };
+        if (gAudio.readyState >= 1) applySeek();
+        else gAudio.addEventListener("loadedmetadata", applySeek, { once: true });
+        gAudio.load();
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore corrupt */ }
+}
+
+/**
+ * Fire-and-forget play count + listening history.
+ * Debounced per track id until a different track starts.
+ */
+export function musicRecordPlay(trackId: number): void {
+  if (!Number.isFinite(trackId) || trackId <= 0) return;
+  if (_lastRecordedPlayId === trackId) return;
+  _lastRecordedPlayId = trackId;
+  if (typeof window === "undefined") return;
+  try {
+    const token =
+      localStorage.getItem("flexamarket_token")
+      ?? sessionStorage.getItem("flexamarket_token")
+      ?? "";
+    void fetch(`/api/music/${trackId}/play`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({}),
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+
 interface MusicStoreState {
   track: MusicTrack | null;
   playing: boolean;
@@ -108,6 +215,8 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 function playQueueTrack(next: MusicTrack, idx: number): void {
+  // Allow re-recording when the same track is started again after another track.
+  if (_lastRecordedPlayId !== next.id) _lastRecordedPlayId = null;
   patchMusicState({
     track: next,
     queueIdx: idx,
@@ -117,6 +226,7 @@ function playQueueTrack(next: MusicTrack, idx: number): void {
     plTitle: next.title,
     plCover: next.cover_url ?? null,
   });
+  persistPlayback(true);
   if (shouldDeferToNativeMusic()) {
     // Native TrackPlayer owns audio; keep HTML element silent as UI fallback.
     try {
@@ -129,6 +239,7 @@ function playQueueTrack(next: MusicTrack, idx: number): void {
     _playbackIntent = true;
     patchMusicState({ playing: true });
     syncMediaSession(next, true);
+    musicRecordPlay(next.id);
     return;
   }
   gAudio.src = next.audio_url ?? "";
@@ -137,6 +248,17 @@ function playQueueTrack(next: MusicTrack, idx: number): void {
   gAudio.load();
   musicRequestPlay().catch(() => {});
   syncMediaSession(next);
+  musicRecordPlay(next.id);
+}
+
+/** Play a specific index in a new queue (artist page, playlists, history). */
+export function musicPlayQueue(tracks: MusicTrack[], idx = 0): void {
+  if (!tracks?.length) return;
+  const i = Math.max(0, Math.min(idx, tracks.length - 1));
+  const next = tracks[i];
+  if (!next) return;
+  patchMusicState({ queue: tracks, queueIdx: i });
+  playQueueTrack(next, i);
 }
 
 // ── FlexaMusic mount flag — prevents double "ended" handling ─────────────────
@@ -276,12 +398,14 @@ export function musicToggleShuffle(): void {
     const idx = _s.track ? Math.max(0, restored.findIndex(t => t.id === _s.track!.id)) : 0;
     patchMusicState({ shuffle: false, queue: restored, queueIdx: idx });
   }
+  persistPlayback(true);
 }
 
 export function musicCycleRepeat(): MusicRepeatMode {
   const order: MusicRepeatMode[] = ["off", "all", "one"];
   const next = order[(order.indexOf(_s.repeat) + 1) % order.length];
   patchMusicState({ repeat: next });
+  persistPlayback(true);
   return next;
 }
 
@@ -334,6 +458,7 @@ if (typeof window !== "undefined") {
     _s.currentTime = gAudio.currentTime;
     _fns.forEach(f => f());
     syncPositionState(); // keeps iOS lock-screen scrubber in sync
+    persistPlayback(false); // throttle ~2s via MUSIC_PLAYBACK_KEY
   });
   gAudio.addEventListener("durationchange", () => {
     const d = gAudio.duration;
@@ -348,6 +473,7 @@ if (typeof window !== "undefined") {
     _interruptedBySystem = false;
     _s.playing = true; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+    if (_s.track?.id) musicRecordPlay(_s.track.id);
   });
   gAudio.addEventListener("playing", () => {
     _playbackIntent = true;
@@ -355,6 +481,7 @@ if (typeof window !== "undefined") {
     _s.playing = true; _fns.forEach(f => f());
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
     syncPositionState();
+    if (_s.track?.id) musicRecordPlay(_s.track.id);
   });
   gAudio.addEventListener("pause", () => {
     if (_playbackIntent && _s.track && !gAudio.ended) {
@@ -460,4 +587,7 @@ if (typeof window !== "undefined") {
       musicSeek(Math.max(gAudio.currentTime - (d.seekOffset ?? 10), 0));
     });
   }
+
+  // Restore last queue / position (no autoplay)
+  restorePlayback();
 }

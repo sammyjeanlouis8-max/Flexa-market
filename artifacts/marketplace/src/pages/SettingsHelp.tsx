@@ -58,19 +58,15 @@ export default function SettingsHelp() {
             <MessageSquare className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <p className="font-semibold">{t("support.title", { defaultValue: "Sipò" })}</p>
-            <p className="text-sm text-muted-foreground">
-              {t("support.intro", {
-                defaultValue: "Voye yon mesaj bay ekip FLEXA MARKET la. N ap reponn ou pi vit posib.",
-              })}
-            </p>
+            <p className="font-semibold">{t("support.title")}</p>
+            <p className="text-sm text-muted-foreground">{t("support.intro")}</p>
           </div>
           <Button
             onClick={() => setLocation("/support")}
             data-testid="button-open-support"
             size="sm"
           >
-            {t("support.openChat", { defaultValue: "Louvri chat" })}
+            {t("support.openChat")}
           </Button>
         </div>
       </Card>

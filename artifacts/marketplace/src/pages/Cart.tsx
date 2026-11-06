@@ -80,6 +80,7 @@ function CheckoutModal({
   onSuccess: (orders: CheckoutOrder[], deliveryTotal: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const savedAddress = readSavedCheckoutAddress(user?.id);
   const [name, setName] = useState(savedAddress.name ?? user?.name ?? "");
   const [phone, setPhone] = useState(savedAddress.phone ?? user?.phone ?? "");
@@ -100,7 +101,7 @@ function CheckoutModal({
   const handleConfirm = async () => {
     if (submitLock.current || loading) return;
     if (!name.trim() || !phone.trim() || !city.trim()) {
-      setError("Full name, phone, and city are required"); return;
+      setError(t("cart.requiredFields")); return;
     }
     submitLock.current = true;
     setLoading(true);
@@ -123,7 +124,7 @@ function CheckoutModal({
       const data = await res.json();
       if (!res.ok) {
         if (data.code === "DOMINICAN_ITEM_CHECKOUT_REQUIRED") setRequiresItemCheckout(true);
-        setError(data.error ?? "Something went wrong. Try again."); return;
+        setError(data.error ?? t("common.tryAgain")); return;
       }
       saveCheckoutAddress(user?.id, {
         name: name.trim(),
@@ -134,7 +135,7 @@ function CheckoutModal({
       });
       onSuccess(data.orders ?? [], data.deliveryTotal ?? 0);
     } catch {
-      setError("Network error — check your connection and try again");
+      setError(t("cart.networkError"));
     } finally {
       setLoading(false);
       submitLock.current = false;
@@ -150,10 +151,15 @@ function CheckoutModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-4 pb-3" style={{ borderBottom: `1px solid ${border}` }}>
           <div>
-            <p className="font-black text-gray-900 text-[15px]">Confirm order</p>
-            <p className="text-xs text-gray-500 mt-0.5">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} · {groups.length} seller{groups.length === 1 ? "" : "s"} · ${grandTotal.toFixed(2)}</p>
+            <p className="font-black text-gray-900 text-[15px]">{t("cart.confirmOrder")}</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {t(selectedItems.length === 1 && groups.length === 1 ? "cart.itemsSellers" : "cart.itemsSellers_plural", {
+                items: selectedItems.length,
+                sellers: groups.length,
+              })} · ${grandTotal.toFixed(2)}
+            </p>
           </div>
-          <button type="button" onClick={onClose} disabled={loading} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9" }} aria-label="Close checkout">
+          <button type="button" onClick={onClose} disabled={loading} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "#f1f5f9" }} aria-label={t("cart.closeCheckout")}>
             <X className="h-4 w-4 text-gray-600" />
           </button>
         </div>
@@ -161,9 +167,10 @@ function CheckoutModal({
         <div className="px-5 py-4 space-y-4">
           {/* Seller groups summary */}
           <div className="space-y-2">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">Order summary</p>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">{t("cart.orderSummary")}</p>
             {groups.map(({ sellerId, items }) => {
               const df = deliveryFees.find(d => d.sellerId === sellerId);
+              const groupTotal = items.reduce((s, i) => s + i.price * (i.quantity ?? 1), 0);
               return (
                 <div key={sellerId} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#f8fafc", border: `1px solid ${border}` }}>
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "#fff7ed" }}>
@@ -171,7 +178,7 @@ function CheckoutModal({
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-gray-900 truncate">{items.map(i => i.title).join(", ")}</p>
-                    <p className="text-[10px] text-gray-500">{items.length} atik · ${items.reduce((s, i) => s + i.price * (i.quantity ?? 1), 0).toFixed(2)}</p>
+                    <p className="text-[10px] text-gray-500">{t("cart.atikCount", { count: items.length, amount: groupTotal.toFixed(2) })}</p>
                     {df && df.pickupCity && (
                       <p className="text-[10px] text-blue-600 mt-0.5 flex items-center gap-1">
                         <MapPin className="h-2.5 w-2.5" /> {df.pickupCity}
@@ -180,10 +187,10 @@ function CheckoutModal({
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                      <Bike className="h-3 w-3" /> 1 moto
+                      <Bike className="h-3 w-3" /> {t("cart.motorcycle")}
                     </div>
                     {df && (
-                      <p className="text-[10px] font-bold text-amber-600 mt-1">+${df.feeUsd.toFixed(2)} liv.</p>
+                      <p className="text-[10px] font-bold text-amber-600 mt-1">{t("cart.shipFee", { amount: df.feeUsd.toFixed(2) })}</p>
                     )}
                   </div>
                 </div>
@@ -193,21 +200,21 @@ function CheckoutModal({
 
           {/* Shipping form */}
           <div className="space-y-2.5">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">Delivery address</p>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide">{t("cart.deliveryAddress")}</p>
             {[
-              { label: "Full name", value: name, set: setName, icon: <User className="h-4 w-4" />, required: true },
-              { label: "Phone", value: phone, set: setPhone, icon: <Phone className="h-4 w-4" />, required: true },
-              { label: "City", value: city, set: setCity, icon: <MapPin className="h-4 w-4" />, required: true },
-              { label: "Street (optional)", value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: false },
-              { label: "Region (optional)", value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: false },
+              { key: "fullName", label: t("cart.fullName"), value: name, set: setName, icon: <User className="h-4 w-4" />, required: true, autoComplete: "name" },
+              { key: "phone", label: t("cart.phone"), value: phone, set: setPhone, icon: <Phone className="h-4 w-4" />, required: true, autoComplete: "tel" },
+              { key: "city", label: t("cart.city"), value: city, set: setCity, icon: <MapPin className="h-4 w-4" />, required: true, autoComplete: "address-level2" },
+              { key: "street", label: t("cart.streetOptional"), value: street, set: setStreet, icon: <MapPin className="h-4 w-4" />, required: false, autoComplete: "street-address" },
+              { key: "region", label: t("cart.regionOptional"), value: region, set: setRegion, icon: <MapPin className="h-4 w-4" />, required: false, autoComplete: "address-level1" },
             ].map(f => (
-              <div key={f.label} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl" style={{ border: `1.5px solid ${f.required && !f.value.trim() && error ? "#fca5a5" : border}`, background: "#f8fafc" }}>
+              <div key={f.key} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl" style={{ border: `1.5px solid ${f.required && !f.value.trim() && error ? "#fca5a5" : border}`, background: "#f8fafc" }}>
                 <span className="text-gray-400">{f.icon}</span>
                 <input
                   value={f.value}
                   onChange={e => f.set(e.target.value)}
                   placeholder={f.label}
-                  autoComplete={f.label === "Phone" ? "tel" : f.label === "Full name" ? "name" : "address-level2"}
+                  autoComplete={f.autoComplete}
                   className="flex-1 bg-transparent text-sm outline-none text-gray-900 placeholder-gray-400"
                 />
               </div>
@@ -216,9 +223,9 @@ function CheckoutModal({
 
           {/* Price breakdown */}
           <div className="rounded-xl p-3.5 space-y-2" style={{ background: "#f8fafc", border: `1px solid ${border}` }}>
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide mb-2">Price summary</p>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-wide mb-2">{t("cart.priceSummary")}</p>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Products ({selectedItems.length})</span>
+              <span className="text-gray-600">{t("cart.productsCount", { count: selectedItems.length })}</span>
               <span className="font-bold text-gray-900 tabular-nums">${total.toFixed(2)}</span>
             </div>
             {groups.map(({ sellerId, items }) => {
@@ -228,7 +235,7 @@ function CheckoutModal({
                 <div key={sellerId} className="flex justify-between text-sm">
                   <span className="text-gray-500 text-xs flex items-center gap-1">
                     <Bike className="h-3 w-3 text-blue-500" />
-                    Livrezon · {items[0]?.title?.slice(0, 18)}{items[0]?.title?.length > 18 ? "…" : ""}
+                    {t("cart.deliveryLabel")} · {items[0]?.title?.slice(0, 18)}{items[0]?.title?.length > 18 ? "…" : ""}
                     {df.loading && <Loader2 className="h-3 w-3 animate-spin" />}
                   </span>
                   <span className="font-bold text-blue-600">+${df.feeUsd.toFixed(2)}</span>
@@ -237,16 +244,16 @@ function CheckoutModal({
             })}
             {cartReferralFee > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500 text-xs">Referral fee</span>
+                <span className="text-gray-500 text-xs">{t("cart.referralFee")}</span>
                 <span className="font-bold text-orange-500 tabular-nums">+${cartReferralFee.toFixed(2)}</span>
               </div>
             )}
             <div className="border-t pt-2 mt-1 flex justify-between" style={{ borderColor: border }}>
-              <span className="font-black text-gray-900 text-sm">Estimated total</span>
+              <span className="font-black text-gray-900 text-sm">{t("cart.estimatedTotal")}</span>
               <span className="font-black text-lg tabular-nums" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
             </div>
             <p className="text-[10px] text-muted-foreground leading-snug pt-1">
-              Final amount is recalculated on the server from live prices, inventory, and delivery fees. Card payments use Stripe Checkout on the product page when required.
+              {t("cart.finalAmountNote")}
             </p>
           </div>
 
@@ -254,7 +261,7 @@ function CheckoutModal({
           <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ background: "#eff6ff", border: "1px solid #bfdbfe" }}>
             <Truck className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
             <p className="text-xs text-blue-800 leading-relaxed">
-              Cart checkout pays with your Flexa Market wallet. Each seller ships separately; delivery fees are estimated from your city. Orders appear under My Orders after confirmation.
+              {t("cart.walletCheckoutNote")}
             </p>
           </div>
 
@@ -286,8 +293,8 @@ function CheckoutModal({
               }}
             >
               {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Processing…</span>
-                : `Place order — $${grandTotal.toFixed(2)} (Wallet)`
+                ? <span className="flex items-center justify-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> {t("cart.processing")}</span>
+                : t("cart.placeOrderWallet", { amount: grandTotal.toFixed(2) })
               }
             </button>
           </div>
@@ -299,6 +306,7 @@ function CheckoutModal({
 
 /* ── Success screen ── */
 function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrder[]; deliveryTotal: number; onDone: () => void }) {
+  const { t } = useTranslation();
   const [, setLocation] = useLocation();
   const purple = "#f97316";
   const groups = useMemo(() => {
@@ -319,11 +327,16 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
       <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, #d1fae5, #a7f3d0)" }}>
         <CheckCircle className="h-8 w-8 text-emerald-600" />
       </div>
-      <p className="font-black text-xl text-gray-900 mb-1">Order confirmed</p>
-      <p className="text-sm text-gray-500 mb-2">{orders.length} order{orders.length === 1 ? "" : "s"} created · {groups.length} seller{groups.length === 1 ? "" : "s"}</p>
+      <p className="font-black text-xl text-gray-900 mb-1">{t("cart.orderConfirmed")}</p>
+      <p className="text-sm text-gray-500 mb-2">
+        {t(orders.length === 1 && groups.length === 1 ? "cart.itemsSellers" : "cart.itemsSellers_plural", {
+          items: orders.length,
+          sellers: groups.length,
+        })}
+      </p>
       {deliveryTotal > 0 && (
         <p className="text-xs text-blue-700 font-semibold mb-5 bg-blue-50 px-3 py-1.5 rounded-full">
-          Delivery ${deliveryTotal.toFixed(2)} · {groups.length} motorcycle run{groups.length === 1 ? "" : "s"}
+          {t("cart.deliveryLabel")} ${deliveryTotal.toFixed(2)} · {groups.length} {t("cart.motorcycle")}
         </p>
       )}
 
@@ -336,28 +349,28 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-gray-900 truncate">{o.title}</p>
               <p className="text-xs text-gray-500 tabular-nums">
-                Order #{o.txId} · ${o.amount.toFixed(2)}
-                {(o.deliveryFee ?? 0) > 0 && <span className="text-blue-500"> + ship ${(o.deliveryFee ?? 0).toFixed(2)}</span>}
+                #{o.txId} · ${o.amount.toFixed(2)}
+                {(o.deliveryFee ?? 0) > 0 && <span className="text-blue-500"> {t("cart.shipFee", { amount: (o.deliveryFee ?? 0).toFixed(2) })}</span>}
               </p>
             </div>
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">Paid</span>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">{t("cart.paid")}</span>
           </div>
         ))}
       </div>
 
       <div className="w-full max-w-sm rounded-xl p-3.5 mb-5 space-y-2 text-left" style={{ background: "#fff", border: "1px solid #e2e8f0" }}>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Products</span>
+          <span className="text-gray-500">{t("cart.products")}</span>
           <span className="font-bold tabular-nums">${productTotal.toFixed(2)}</span>
         </div>
         {deliveryTotal > 0 && (
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">Delivery</span>
+            <span className="text-gray-500">{t("cart.deliveryLabel")}</span>
             <span className="font-bold text-blue-600 tabular-nums">${deliveryTotal.toFixed(2)}</span>
           </div>
         )}
         <div className="border-t pt-2 flex justify-between">
-          <span className="font-black text-gray-900">Total paid</span>
+          <span className="font-black text-gray-900">{t("cart.totalPaid")}</span>
           <span className="font-black text-lg tabular-nums" style={{ color: purple }}>${grandTotal.toFixed(2)}</span>
         </div>
       </div>
@@ -369,7 +382,7 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
           className="flex-1 h-11 rounded-xl font-bold text-sm text-white"
           style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
         >
-          View orders
+          {t("cart.viewOrders")}
         </button>
         <button
           type="button"
@@ -377,7 +390,7 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
           className="flex-1 h-11 rounded-xl font-bold text-sm text-gray-700"
           style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}
         >
-          Continue shopping
+          {t("cart.continueShopping")}
         </button>
       </div>
     </div>
@@ -581,12 +594,16 @@ export default function Cart() {
           {groups.map(({ sellerId, items: groupItems }, gi) => {
             const df = deliveryFees.find(d => d.sellerId === sellerId);
             const shippingLabel = df?.loading
-              ? "Estimating delivery…"
+              ? t("cart.estimatingDelivery")
               : df?.pickupCity
-                ? `${df.pickupCity}${!df.loading && df.feeUsd > 0 ? ` · $${df.feeUsd.toFixed(2)}` : df && !df.loading && df.feeUsd === 0 ? " · Free delivery" : ""}`
+                ? (!df.loading && df.feeUsd > 0
+                  ? t("cart.cityFee", { city: df.pickupCity, amount: df.feeUsd.toFixed(2) })
+                  : !df.loading && df.feeUsd === 0
+                    ? t("cart.cityFree", { city: df.pickupCity })
+                    : df.pickupCity)
                 : buyerCity
-                  ? "Delivery fee pending"
-                  : "Add city at checkout for delivery estimate";
+                  ? t("cart.deliveryFeePending")
+                  : t("cart.addCityForEstimate");
             return (
               <div key={sellerId} className="mb-1.5">
                 {/* Seller header */}
@@ -617,7 +634,7 @@ export default function Cart() {
                       }}
                     >
                       <div className="flex gap-2.5 items-start">
-                        <button type="button" onClick={() => toggleItem(item.listingId)} className="mt-1 flex-shrink-0" aria-label={isSel ? "Deselect item" : "Select item"}>
+                        <button type="button" onClick={() => toggleItem(item.listingId)} className="mt-1 flex-shrink-0" aria-label={isSel ? t("cart.deselectItem") : t("cart.selectItem")}>
                           {isSel
                             ? <CheckSquare className="h-5 w-5" style={{ color: purple }} />
                             : <Square className="h-5 w-5" style={{ color: muted }} />
@@ -645,7 +662,7 @@ export default function Cart() {
                               onClick={() => handleRemove(item.listingId)}
                               className="w-8 h-8 flex items-center justify-center rounded-lg flex-shrink-0"
                               style={{ background: "rgba(239,68,68,0.08)" }}
-                              aria-label="Remove from cart"
+                              aria-label={t("cart.removeFromCart")}
                               data-testid={`button-remove-cart-${item.listingId}`}
                             >
                               <Trash2 className="h-3.5 w-3.5" style={{ color: "#ef4444" }} />
@@ -666,7 +683,7 @@ export default function Cart() {
                               {t("cart.itemTotal")} <span className="tabular-nums" style={{ color: "#0f172a" }}>${(item.price * qty).toFixed(2)}</span>
                             </span>
                             <div className="relative">
-                              <label className="sr-only" htmlFor={`cart-qty-${item.listingId}`}>Quantity</label>
+                              <label className="sr-only" htmlFor={`cart-qty-${item.listingId}`}>{t("cart.quantity")}</label>
                               <select
                                 id={`cart-qty-${item.listingId}`}
                                 value={qty}
@@ -710,8 +727,8 @@ export default function Cart() {
             <Tag className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: "#f97316" }} />
             <span className="text-xs leading-snug" style={{ color: "#9a3412" }}>
               {promoNote
-                ? "Promo codes are verified on the product checkout / payment step. Wallet cart totals use live server prices — no client-side discounts are applied here."
-                : `${t("cart.promoPlaceholder")} — tap for details`}
+                ? t("cart.promoDetailsNote")
+                : t("cart.promoTapDetails", { placeholder: t("cart.promoPlaceholder") })}
             </span>
             <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" style={{ color: "#f97316" }} />
           </button>
@@ -721,10 +738,10 @@ export default function Cart() {
               <Shield className="h-3 w-3" style={{ color: "#16a34a" }} /> {t("cart.securePayment")}
             </div>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: muted }}>
-              <Truck className="h-3 w-3" style={{ color: "#3b82f6" }} /> Delivery estimate
+              <Truck className="h-3 w-3" style={{ color: "#3b82f6" }} /> {t("cart.deliveryEstimateBadge")}
             </div>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold" style={{ color: muted }}>
-              <CreditCard className="h-3 w-3" style={{ color: "#f97316" }} /> Wallet checkout
+              <CreditCard className="h-3 w-3" style={{ color: "#f97316" }} /> {t("cart.walletCheckoutBadge")}
             </div>
           </div>
 
@@ -736,7 +753,7 @@ export default function Cart() {
               style={{ background: "#f1f5f9", border: `1px solid ${border}` }}
               data-testid="button-continue-shopping"
             >
-              Continue shopping
+              {t("cart.continueShopping")}
             </button>
           </div>
         </div>
@@ -763,15 +780,15 @@ export default function Cart() {
               </div>
               {sellerCount > 1 && (
                 <div className="flex justify-between text-sm">
-                  <span style={{ color: muted }}>{sellerCount} sellers · separate delivery</span>
-                  <span className="text-[11px] font-bold text-blue-600">per seller</span>
+                  <span style={{ color: muted }}>{t("cart.separateDelivery", { count: sellerCount })}</span>
+                  <span className="text-[11px] font-bold text-blue-600">{t("cart.perSeller")}</span>
                 </div>
               )}
               {deliveryFees.length > 0 && deliveryFees.map(df => (
                 <div key={df.sellerId} className="flex justify-between text-sm">
                   <span style={{ color: muted }} className="flex items-center gap-1">
                     <Bike className="h-3 w-3 text-blue-500" />
-                    Delivery · Seller {df.sellerId}
+                    {t("cart.deliverySeller", { id: df.sellerId })}
                     {df.loading && <Loader2 className="h-3 w-3 animate-spin" />}
                   </span>
                   <span className="font-bold text-blue-600 tabular-nums">
@@ -797,7 +814,7 @@ export default function Cart() {
           >
             {sellerCount > 1 && (
               <span className="text-[10px] font-bold px-2 py-1 rounded-md" style={{ background: "#eff6ff", color: "#2563eb" }}>
-                {sellerCount} sellers
+                {t("cart.sellersCount", { count: sellerCount })}
               </span>
             )}
             <div className="flex items-center gap-1.5 ml-auto">
@@ -844,7 +861,7 @@ export default function Cart() {
                 <span>{t("cart.selectToCheckout")}</span>
               ) : deliveryFeesLoading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Estimating delivery…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t("cart.estimatingDelivery")}
                 </span>
               ) : (
                 <>

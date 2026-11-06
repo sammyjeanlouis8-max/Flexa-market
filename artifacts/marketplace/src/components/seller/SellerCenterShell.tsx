@@ -37,7 +37,7 @@ export default function SellerCenterShell({
     { href: "/sales", label: t("nav.dashboard", { defaultValue: "Dashboard" }), icon: LayoutDashboard },
     {
       href: "/sell",
-      label: t("sell.addProduct", { defaultValue: "Add Product" }),
+      label: t("sell.addProduct"),
       icon: PlusCircle,
       match: (loc) => loc.startsWith("/sell"),
     },
@@ -106,7 +106,7 @@ export default function SellerCenterShell({
             <div className="min-w-0 leading-tight">
               <p className="font-bold text-[13px] md:text-[15px] truncate">Flexa Market</p>
               <p className="text-[10px] md:text-[11px] text-white/80 truncate">
-                {t("sell.sellerCenter", { defaultValue: "Seller Center" })}
+                {t("sell.sellerCenter")}
               </p>
             </div>
           </Link>
@@ -182,7 +182,7 @@ export default function SellerCenterShell({
             style={{ background: GREEN_DARK }}
           >
             <div className="flex items-center justify-between px-3 h-14 border-b border-white/10 text-white">
-              <span className="font-bold text-sm">{t("sell.sellerCenter", { defaultValue: "Seller Center" })}</span>
+              <span className="font-bold text-sm">{t("sell.sellerCenter")}</span>
               <button type="button" className="p-2 rounded-lg hover:bg-white/10" onClick={() => setMobileNavOpen(false)}>
                 <X className="h-5 w-5" />
               </button>

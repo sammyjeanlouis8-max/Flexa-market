@@ -1,5 +1,6 @@
 import { type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link } from "wouter";
+import { useTranslation } from "react-i18next";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { PUBLIC_LANGUAGES } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export default function AuthShell({
   className,
   compact = false,
 }: AuthShellProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -76,11 +78,10 @@ export default function AuthShell({
           <div className="relative z-10 mt-7 flex items-end gap-3 sm:mt-9 sm:gap-5 lg:mt-14 lg:items-center">
             <div className="min-w-0 flex-1 pb-1 lg:pb-0">
               <h1 className="auth-brand-title text-[1.65rem] font-bold leading-[1.15] tracking-tight text-white sm:text-[2.1rem] lg:text-[2.65rem] xl:text-[3rem]">
-                Buy &amp; sell with confidence{" "}
-                <span className="text-[var(--auth-accent)]">worldwide.</span>
+                {t("auth.brandTitle")}
               </h1>
               <p className="mt-2.5 max-w-[22rem] text-[13px] leading-relaxed text-white/75 sm:mt-3 sm:max-w-md sm:text-[15px]">
-                One secure account for shoppers, sellers, drivers, and admins.
+                {t("auth.brandSubtitle")}
               </p>
             </div>
             <div className="auth-globe-wrap relative shrink-0 self-center">

@@ -2145,7 +2145,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: 24, textAlign: "center" }}>
               <MessageCircle style={{ width: 36, height: 36, color: c.emptyIcon }} />
               <p style={{ color: c.listSub, fontSize: 14, margin: 0, maxWidth: 250 }}>
-                {t("messages.loadError", "Nou pa ka chaje mesaj yo kounye a.")}
+                {t("messages.loadError")}
               </p>
               <button
                 type="button"
@@ -2173,7 +2173,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 fontSize: 12, textDecoration: "underline", cursor: messagesFetching ? "wait" : "pointer",
               }}
             >
-              {t("messages.refresh", "Pwoblèm koneksyon — chaje ankò")}
+              {t("messages.refresh")}
             </button>
           </div>
         )}
@@ -2214,8 +2214,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 4 }}>
                             <span style={{ fontSize: 10, color: c.timeOut }}>
                               {(entry.item as PendingChatMessage).status === "failed" || !navigator.onLine
-                                ? t("messages.waitingConnection", { defaultValue: "Waiting for connection" })
-                                : t("messages.sending", { defaultValue: "Sending…" })}
+                                ? t("messages.waitingConnection")
+                                : t("messages.sending")}
                             </span>
                             {((entry.item as PendingChatMessage).status === "failed" || !navigator.onLine) && (
                               <button
@@ -2375,7 +2375,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               <button
                 type="button"
                 onClick={() => stopVoiceRecording(true)}
-                aria-label={t("messages.deleteRecording", "Efase recording la")}
+                aria-label={t("messages.deleteRecording")}
                 style={{
                   justifySelf: "start", width: 44, height: 44, borderRadius: "50%",
                   background: "none", border: "none", color: composerActionColor,
@@ -2389,8 +2389,8 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 type="button"
                 onClick={toggleRecordingPause}
                 aria-label={recordingPaused
-                  ? t("messages.resumeRecording", "Kontinye recording la")
-                  : t("messages.pauseRecording", "Mete recording la sou poz")}
+                  ? t("messages.resumeRecording")
+                  : t("messages.pauseRecording")}
                 style={{
                   justifySelf: "center", width: 58, height: 58, borderRadius: "50%",
                   background: "none", border: `2px solid ${composerActionColor}`,
@@ -2411,7 +2411,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               <button
                 type="button"
                 onClick={() => stopVoiceRecording(false)}
-                aria-label={t("messages.sendVoice", "Voye recording la")}
+                aria-label={t("messages.sendVoice")}
                 style={{
                   justifySelf: "end", width: 58, height: 58, borderRadius: "50%",
                   background: composerActionColor, border: "none", color: "#FFFFFF",
@@ -2436,7 +2436,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              aria-label={t("messages.attach", "Ajoute foto oswa videyo")}
+              aria-label={t("messages.attach")}
               style={{
                 flexShrink: 0,
                 width: isAndroidMobile ? 36 : 38,
@@ -2510,7 +2510,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: composerActionColor,
                   }}
-                  aria-label={t("messages.sticker", "Sticker ak emoji")}
+                  aria-label={t("messages.sticker")}
                 >
                   <Smile style={{ width: 22, height: 22, strokeWidth: 1.8 }} />
                 </button>
@@ -2520,7 +2520,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                       type="button"
                       onClick={() => cameraInputRef.current?.click()}
                       disabled={uploading}
-                      aria-label={t("messages.camera", "Pran yon foto")}
+                      aria-label={t("messages.camera")}
                       style={{
                         width: 34, height: 34, borderRadius: "50%",
                         background: "none", border: "none", cursor: "pointer",
@@ -2534,7 +2534,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
-                      aria-label={t("messages.attach", "Chwazi foto oswa videyo")}
+                      aria-label={t("messages.attach")}
                       style={{
                         width: 34, height: 34, borderRadius: "50%",
                         background: "none", border: "none", cursor: "pointer",

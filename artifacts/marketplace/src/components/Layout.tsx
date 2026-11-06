@@ -79,9 +79,10 @@ function useUnreadMessageCount(): number {
 
 // ─── Cart icon button with badge ─────────────────────────────────────────────
 function CartIconButton({ light = false }: { light?: boolean }) {
+  const { t } = useTranslation();
   const { count } = useCart();
   return (
-    <Link href="/cart" aria-label="Panye mwen">
+    <Link href="/cart" aria-label={t("nav.cart")}>
       <button
         className={cn(
           "relative p-2 rounded-xl transition-colors",
@@ -614,7 +615,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                     "md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors",
                     isMarketGreenHeader ? "hover:bg-white/10 text-white" : "hover:bg-accent text-foreground",
                   )}
-                  aria-label="Retounen"
+                  aria-label={t("common.back")}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>
@@ -644,7 +645,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                       Flexa Market
                     </span>
                     <span className={cn("hidden sm:block text-[10px] leading-tight truncate", isMarketGreenHeader ? "text-white/80" : "text-muted-foreground")}>
-                      Buy · Sell · Delivery
+                      {t("nav.taglineShort")}
                     </span>
                   </div>
                 </Link>

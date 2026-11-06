@@ -47,18 +47,32 @@ the browser and inside the marketplace WebView. Audio uses a singleton
 **Do not claim floating PiP over other iOS apps** — Apple does not grant that
 to ordinary music clients.
 
-## Next native step (Expo development build)
+## Native bridge (implemented — needs EAS / dev-client build)
 
-To meet App Store / Play background guarantees:
+Scaffolding is in-tree; **a new Expo/dev-client build is required** before
+lock-screen / background guarantees apply (Expo Go cannot load TrackPlayer).
 
-1. Add Expo modules with a development build (not Expo Go):
-   - `expo-av` or `react-native-track-player`
-   - iOS: `UIBackgroundModes` → `audio`
-   - Android: MediaPlayback foreground service + notification
-2. Bridge the existing `musicStore` queue / position into the native player
-3. Keep Wasabi signed URLs server-side; never ship Wasabi keys to the client
-4. Conflict policy: pause music when a marketplace video starts; resume per
-   OS interruption rules after phone calls
+| Piece | Location |
+|---|---|
+| iOS `audio` background mode + Android media FGS permissions | `artifacts/mobile/app.json` |
+| Deps: `react-native-track-player` ^4.1.2, `expo-av` ~16.0.0 | `artifacts/mobile/package.json` |
+| TrackPlayer setup / helpers | `artifacts/mobile/native/musicPlayback.ts` |
+| Remote event service | `artifacts/mobile/native/musicPlaybackService.ts` (+ `index.js` register) |
+| WebView postMessage protocol | `artifacts/mobile/native/musicBridge.ts` |
+| App shell wiring | `artifacts/mobile/App.tsx`, `webviewPolicy.ts` |
+| SPA bridge + store hooks | `musicNativeBridge.ts`, `musicStore.ts` |
+| Video conflict (pause music) | `VideoFeed.tsx` |
+
+Protocol: `{ type: 'flexa-music', action: 'play'|'pause'|'seek'|'load'|'queue'|'stop', ... }`.
+Native replies via `window.__flexaMusicNative` / `flexa-music-native` events.
+Capability flag: `window.__flexaNativeMusic = true` after successful setup.
+
+Still required on device:
+
+1. Fresh EAS or local native rebuild (see `docs/FLEXA_MUSIC_DEVICE_QA.md`)
+2. Keep Wasabi signed URLs server-side; never ship Wasabi keys to the client
+3. Resume-after-call polish per OS interruption rules
+4. Optional Expo config plugin for TrackPlayer notification channels
 
 ## Already present (backend / social)
 
@@ -71,7 +85,8 @@ uploads via Wasabi proxy, verified badges — reuse these; do not rebuild.
 - Creator analytics dashboard expansion
 - Copyright report / takedown workflow UX
 - Adaptive bitrate transcoding pipeline hardening
-- Device-lab verification of background audio on physical iOS + Android
+- Device-lab verification of background audio on physical iOS + Android (checklist: `docs/FLEXA_MUSIC_DEVICE_QA.md`)
+- Optional config plugin + richer native→web position sync while TrackPlayer owns audio
 
 ## Re-enabling commerce later
 

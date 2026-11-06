@@ -4,6 +4,16 @@
  * route changes — music keeps playing when the user navigates away from /music.
  */
 
+import {
+  isNativeMusicBridgeAvailable,
+  nativeMusicPause,
+  nativeMusicPlay,
+  nativeMusicQueue,
+  nativeMusicSeek,
+  nativeMusicStop,
+  shouldDeferToNativeMusic,
+} from "@/lib/musicNativeBridge";
+
 export interface MusicTrack {
   id: number;
   title: string;
@@ -107,6 +117,20 @@ function playQueueTrack(next: MusicTrack, idx: number): void {
     plTitle: next.title,
     plCover: next.cover_url ?? null,
   });
+  if (shouldDeferToNativeMusic()) {
+    // Native TrackPlayer owns audio; keep HTML element silent as UI fallback.
+    try {
+      gAudio.pause();
+      gAudio.removeAttribute("src");
+      gAudio.load();
+    } catch { /* ignore */ }
+    if (_s.queue.length > 1) nativeMusicQueue(_s.queue.slice(idx));
+    else nativeMusicPlay(next);
+    _playbackIntent = true;
+    patchMusicState({ playing: true });
+    syncMediaSession(next, true);
+    return;
+  }
   gAudio.src = next.audio_url ?? "";
   gAudio.muted = _s.muted;
   gAudio.playbackRate = _s.playbackRate;
@@ -147,17 +171,31 @@ function syncPositionState(): void {
 // ── Global controls (work regardless of whether FlexaMusic is mounted) ────────
 export function musicRequestPlay(): Promise<void> {
   _playbackIntent = true;
+  if (shouldDeferToNativeMusic() && _s.track) {
+    nativeMusicPlay(_s.track);
+    try { gAudio.pause(); } catch { /* ignore */ }
+    patchMusicState({ playing: true });
+    syncMediaSession(_s.track, true);
+    return Promise.resolve();
+  }
   return gAudio.play();
 }
 
 export function musicRequestPause(): void {
   _playbackIntent = false;
   _interruptedBySystem = false;
+  if (isNativeMusicBridgeAvailable()) nativeMusicPause();
   gAudio.pause();
+  patchMusicState({ playing: false });
 }
 
 export function musicTogglePlay(): void {
   if (!_s.track) return;
+  if (shouldDeferToNativeMusic()) {
+    if (_s.playing) musicRequestPause();
+    else musicRequestPlay().catch(() => {});
+    return;
+  }
   if (gAudio.paused) musicRequestPlay().catch(() => {});
   else musicRequestPause();
 }
@@ -204,11 +242,17 @@ export function musicPlayPrev(): void {
 
 export function musicStop(): void {
   musicRequestPause();
+  if (isNativeMusicBridgeAvailable()) nativeMusicStop();
   clearSleepTimer();
   patchMusicState({ track: null, playing: false, currentTime: 0, duration: 0, error: null });
 }
 
 export function musicSeek(t: number): void {
+  if (shouldDeferToNativeMusic()) {
+    nativeMusicSeek(t);
+    patchMusicState({ currentTime: t });
+    return;
+  }
   gAudio.currentTime = t;
   patchMusicState({ currentTime: t });
 }
@@ -357,6 +401,9 @@ if (typeof window !== "undefined") {
   // while readyState is transiently zero during a range refill.
   window.setInterval(() => {
     if (!_s.track) return;
+    // When TrackPlayer owns audio, HTMLAudio is intentionally paused — do not
+    // reconcile playing=false from the silent element.
+    if (shouldDeferToNativeMusic()) return;
     const actuallyPlaying = !gAudio.paused && !gAudio.ended;
     const nextTime = Number.isFinite(gAudio.currentTime) ? gAudio.currentTime : _s.currentTime;
     if (_s.playing === actuallyPlaying && (!actuallyPlaying || _s.currentTime === nextTime)) return;

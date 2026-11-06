@@ -41,9 +41,13 @@ test("MonCash checkout stays in the WebView without trusting lookalike hosts", (
 
 test("native marker keeps a stable suffix and origin-gated bridge", () => {
   assert.equal(ANDROID_UA_SUFFIX, "FlexaMarketAndroid/1.0");
-  const script = platformBridgeScript("android", true);
+  const script = platformBridgeScript("android", true, true);
   assert.match(script, /__flexaPlatform="android"/);
   assert.match(script, /__flexaBackgroundUploadsV1=true/);
+  assert.match(script, /__flexaNativeMusic=true/);
   assert.match(script, /location\.protocol==="https:"/);
   assert.match(script, /location\.hostname==="flexamarket\.com"/);
+  const withoutMusic = platformBridgeScript("ios", false, false);
+  assert.doesNotMatch(withoutMusic, /__flexaNativeMusic/);
+  assert.match(withoutMusic, /__flexaPlatform="ios"/);
 });

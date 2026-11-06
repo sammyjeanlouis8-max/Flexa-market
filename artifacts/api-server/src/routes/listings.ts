@@ -428,6 +428,8 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     }
   }
   const impressionsByBoost = new Map(impressionRows.map((row) => [row.boostId, row.impressionCount]));
+  const guestCountry =
+    !req.userId && typeof country === "string" && country.trim() ? country.trim() : null;
   const promaxViewer = req.user ? {
     // Admin visibility is controlled by enforceAdminCountryScope above, not
     // by the admin's shopper profile country. For a selected admin country,
@@ -436,7 +438,9 @@ router.get("/listings", optionalAuth, async (req, res): Promise<void> => {
     location: isAdmin ? null : req.user.location,
     gender: isAdmin ? null : (req.user as any).gender,
     dateOfBirth: isAdmin ? null : (req.user as any).dateOfBirth,
-  } : null;
+  } : guestCountry
+    ? { country: guestCountry, location: null, gender: null, dateOfBirth: null }
+    : null;
   const requestedDemotions = new Set(
     typeof promaxDemotedIds === "string"
       ? promaxDemotedIds.split(",").map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0)

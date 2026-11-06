@@ -440,7 +440,12 @@ export default function Messages({ embedded = false, onClose, initialConversatio
     });
   }, [socket, queryClient]);
 
-  useEffect(() => { if (!authLoading && !user) setLocation("/auth/login"); }, [authLoading, user, setLocation]);
+  useEffect(() => {
+    if (authLoading || user) return;
+    // Soft-gate: keep next so login returns to inbox / deep-linked thread
+    const next = window.location.pathname + window.location.search;
+    setLocation(`/auth/login?next=${encodeURIComponent(next.startsWith("/") ? next : "/messages")}`);
+  }, [authLoading, user, setLocation]);
 
   const allConvs = (convs as Conversation[] | undefined) ?? [];
 

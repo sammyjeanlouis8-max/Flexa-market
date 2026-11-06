@@ -15,6 +15,7 @@ import { SUPPORTED_COUNTRIES, COUNTRY_FLAGS } from "@/lib/countries";
 import { PHONE_COUNTRIES, getPhoneCountry, ISO_TO_COUNTRY, COUNTRY_TO_ISO } from "@/lib/phoneCountries";
 import { Gift } from "lucide-react";
 import AuthShell, { AuthPrimaryButton } from "@/components/auth/AuthShell";
+import { spaNavigate } from "@/lib/spaNavigate";
 
 function buildSchema(t: (key: string) => string) {
   return z
@@ -130,7 +131,13 @@ export default function Register() {
             title: t("auth.welcomeToFlexa"),
             description: promoCode.trim() ? t("auth.referralBonus") : t("auth.accountReady"),
           });
-          setLocation("/");
+          const params = new URLSearchParams(window.location.search);
+          const next = params.get("next");
+          if (next && next.startsWith("/") && !next.startsWith("//")) {
+            spaNavigate(next, { replace: true });
+          } else {
+            setLocation("/");
+          }
         },
         onError: (e: any) => {
           const data = e?.data ?? {};

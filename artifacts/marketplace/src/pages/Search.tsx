@@ -12,6 +12,7 @@ import { MobileSelect } from "@/components/ui/mobile-select";
 import { Slider } from "@/components/ui/slider";
 import { useGetListings, useGetCategories } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
+import { useShoppingLocation } from "@/contexts/shopping-location";
 import ListingCard from "@/components/ListingCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -365,7 +366,8 @@ export default function SearchPage() {
 
   const { data: categories } = useGetCategories();
 
-  const userCountry = user?.country;
+  const { country: shoppingCountry } = useShoppingLocation();
+  const userCountry = user?.country ?? shoppingCountry;
   const isAdmin = !!(user?.isAdmin || user?.isSuperAdmin);
   const isSuperAdmin = !!(user?.isSuperAdmin);
   const adminScopeCountriesListSearch: string[] = (() => {
@@ -397,7 +399,11 @@ export default function SearchPage() {
       maxPrice: priceRange[1] < SEARCH_DEFAULT_MAX_PRICE ? priceRange[1] : undefined,
       city: debouncedCity || undefined,
       ...(boostedOnly ? { boosted: true } : {}),
-      ...(isAdmin && effectiveAdminCountry != null ? { country: effectiveAdminCountry } : {}),
+      ...(isAdmin && effectiveAdminCountry != null
+        ? { country: effectiveAdminCountry }
+        : userCountry
+          ? { country: userCountry }
+          : {}),
       page,
       limit: 20,
     },
@@ -406,7 +412,7 @@ export default function SearchPage() {
         queryKey: [
           "listings", debouncedQ, category, subcategory, condition,
           priceRange, debouncedCity, page, user?.id,
-          isAdmin ? effectiveAdminCountry : null,
+          isAdmin ? effectiveAdminCountry : userCountry ?? null,
           boostedOnly,
         ],
       },

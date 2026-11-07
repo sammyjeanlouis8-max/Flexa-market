@@ -115,7 +115,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: Outfit, "Source Sans 3", sans-serif;
+  font-family: Outfit, "DM Sans", sans-serif;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -125,7 +125,7 @@
 }
 
 .bl-hero-title {
-  font-family: Outfit, "Source Sans 3", sans-serif;
+  font-family: Outfit, "DM Sans", sans-serif;
   font-size: 1.35rem;
   font-weight: 800;
   line-height: 1.15;

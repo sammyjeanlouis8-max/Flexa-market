@@ -1724,6 +1724,7 @@ export default {
       max2min: "Videyo max 2 minit",
       imageHint: "JPG, PNG oswa WebP",
       adTitle: "Tit anons",
+      adTitlePh: "Toyota Corolla 2020 – Ann Vann!",
       adDescription: "Deskripsyon",
       adDescriptionPh: "Dekri ofri a an kèk mo...",
       needImage: "Chwazi yon imaj",

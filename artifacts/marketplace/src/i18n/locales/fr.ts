@@ -1723,6 +1723,7 @@ export default {
       max2min: "Vidéo max 2 minutes",
       imageHint: "JPG, PNG ou WebP",
       adTitle: "Titre de l'annonce",
+      adTitlePh: "Toyota Corolla 2020 – À vendre !",
       adDescription: "Description",
       adDescriptionPh: "Décrivez l'offre en quelques mots...",
       needImage: "Choisissez une image",

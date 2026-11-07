@@ -1173,3 +1173,12 @@ main {
 .fm-checkout-glow {
   animation: fm-checkout-glow 2.8s ease-in-out infinite;
 }
+@keyframes fm-checkout-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="checkout-product-backdrop"] [style*="fm-checkout-float"] {
+    animation: none !important;
+  }
+}

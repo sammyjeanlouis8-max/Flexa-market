@@ -27,12 +27,19 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  overlayClassName?: string;
+  overlayContent?: React.ReactNode;
+};
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onOpenAutoFocus, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, onOpenAutoFocus, overlayClassName, overlayContent, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay className={overlayClassName}>
+      {overlayContent}
+    </DialogOverlay>
     <DialogPrimitive.Content
       ref={ref}
       // Prevent Radix from auto-focusing the first focusable element on open,

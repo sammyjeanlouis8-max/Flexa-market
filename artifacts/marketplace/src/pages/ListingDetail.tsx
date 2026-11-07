@@ -48,6 +48,7 @@ import {
   PromoHero,
   RadioDot,
 } from "@/components/checkout/CheckoutPrimitives";
+import { CheckoutProductBackdrop } from "@/components/checkout/CheckoutProductBackdrop";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -329,7 +330,7 @@ export default function ListingDetail() {
   const { data: relatedData } = useGetListings(
     {
       category: relatedCategory || undefined,
-      limit: 8,
+      limit: 18,
       ...(relatedCountry ? { country: relatedCountry } : {}),
     },
     {
@@ -337,13 +338,14 @@ export default function ListingDetail() {
         enabled: !!relatedCategory,
         queryKey: getGetListingsQueryKey({
           category: relatedCategory || undefined,
-          limit: 8,
+          limit: 18,
           ...(relatedCountry ? { country: relatedCountry } : {}),
         }),
       },
     },
   );
-  const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
+  const relatedListingsAll = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 18);
+  const relatedListings = relatedListingsAll.slice(0, 6);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -493,6 +495,20 @@ export default function ListingDetail() {
     if (listingCurrencyCode === "DOP") return dopToUsd(effectiveListingPrice);
     return effectiveListingPrice;
   }, [effectiveListingPrice, listingCurrencyCode, exchangeRateData]);
+  const checkoutBackdropItems = useMemo(() => ([
+    {
+      id: `current-${id}`,
+      title: listing?.title,
+      image: ((listing as any)?.images?.[0] as string | undefined) ?? null,
+      price: listing ? effectiveListingPriceUsd : null,
+    },
+    ...relatedListingsAll.map((item: any) => ({
+      id: item.id,
+      title: item.title as string | undefined,
+      image: (item.images?.[0] as string | undefined) ?? null,
+      price: typeof item.price === "number" ? item.price : null,
+    })),
+  ].filter((i) => !!i.image)), [id, listing, relatedListingsAll, effectiveListingPriceUsd]);
   useEffect(() => {
     if (!buyNowOpen || !token || !listingIdForQuote) { setQuote(null); return; }
     let cancelled = false;
@@ -3037,8 +3053,11 @@ export default function ListingDetail() {
 
       {/* Buy Now Dialog — dark glass checkout redesign */}
       <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); } }}>
-        <DialogContent className={cn(
-          "fm-checkout-dark max-w-md w-[calc(100%-1.25rem)] max-h-[90vh] overflow-y-auto p-4 rounded-[1.35rem] gap-3 text-[#F4F7FF]",
+        <DialogContent
+          overlayClassName="bg-black/35 overflow-hidden"
+          overlayContent={<CheckoutProductBackdrop items={checkoutBackdropItems} />}
+          className={cn(
+          "fm-checkout-dark max-w-md w-[calc(100%-1.25rem)] max-h-[90vh] overflow-y-auto p-4 rounded-[1.35rem] gap-3 text-[#F4F7FF] z-[51]",
           "[&>button]:text-[#8B9BB8] [&>button]:hover:text-white [&>button]:hover:bg-white/10",
         )}>
           {payDone ? (

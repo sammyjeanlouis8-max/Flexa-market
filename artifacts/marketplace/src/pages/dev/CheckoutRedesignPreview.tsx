@@ -10,6 +10,7 @@ import {
   PromoHero,
   RadioDot,
 } from "@/components/checkout/CheckoutPrimitives";
+import { CheckoutProductBackdrop } from "@/components/checkout/CheckoutProductBackdrop";
 import { cn } from "@/lib/utils";
 
 type Step = "promo" | "address" | "delivery" | "select" | "review" | "processing" | "success";
@@ -19,6 +20,21 @@ const STEPS = [
   { key: "address", num: 2, label: "Address" },
   { key: "delivery", num: 3, label: "Delivery" },
   { key: "select", num: 4, label: "Payment" },
+];
+
+const PREVIEW_PRODUCTS = [
+  { id: 1, title: "Wireless Headphones", image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80", price: 4 },
+  { id: 2, title: "Smart Watch", image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80", price: 89 },
+  { id: 3, title: "Sneakers", image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&q=80", price: 64 },
+  { id: 4, title: "Camera Lens", image: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&q=80", price: 210 },
+  { id: 5, title: "Backpack", image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=400&q=80", price: 42 },
+  { id: 6, title: "Perfume", image: "https://images.unsplash.com/photo-1541643600914-78b084683601?w=400&q=80", price: 55 },
+  { id: 7, title: "Laptop Stand", image: "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=400&q=80", price: 28 },
+  { id: 8, title: "Sunglasses", image: "https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400&q=80", price: 36 },
+  { id: 9, title: "Coffee Maker", image: "https://images.unsplash.com/photo-1517668808822-9ebb02f2a0e6?w=400&q=80", price: 72 },
+  { id: 10, title: "Gaming Mouse", image: "https://images.unsplash.com/photo-1527814050087-3793815479db?w=400&q=80", price: 49 },
+  { id: 11, title: "Plant Pot", image: "https://images.unsplash.com/photo-1485955900006-10f4d324d411?w=400&q=80", price: 18 },
+  { id: 12, title: "Desk Lamp", image: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=400&q=80", price: 33 },
 ];
 
 /**
@@ -36,7 +52,9 @@ export default function CheckoutRedesignPreview() {
   const total = subtotal + deliveryFee;
 
   return (
-    <div className="min-h-screen bg-[#030712] px-3 py-6 flex flex-col items-center">
+    <div className="relative min-h-screen overflow-hidden bg-[#030712]">
+      <CheckoutProductBackdrop items={PREVIEW_PRODUCTS} />
+      <div className="relative z-10 px-3 py-6 flex flex-col items-center min-h-screen">
       <div className="w-full max-w-md mb-4 flex flex-wrap gap-2">
         {(["promo", "address", "delivery", "select", "review", "processing", "success"] as Step[]).map((s) => (
           <button
@@ -44,8 +62,8 @@ export default function CheckoutRedesignPreview() {
             type="button"
             onClick={() => setStep(s)}
             className={cn(
-              "px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize",
-              step === s ? "bg-[#2F6BFF] text-white" : "bg-white/10 text-white/70",
+              "px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize backdrop-blur-md",
+              step === s ? "bg-[#2F6BFF] text-white" : "bg-black/40 text-white/80 border border-white/10",
             )}
           >
             {s}
@@ -56,7 +74,7 @@ export default function CheckoutRedesignPreview() {
       <div
         className={cn(
           "fm-checkout-dark w-full max-w-md rounded-[1.35rem] p-4 max-h-[90vh] overflow-y-auto",
-          "border border-[rgba(120,160,255,0.16)]",
+          "border border-[rgba(120,160,255,0.16)] shadow-[0_24px_80px_rgba(0,0,0,0.55)]",
         )}
         data-testid="checkout-redesign-preview"
       >
@@ -213,11 +231,12 @@ export default function CheckoutRedesignPreview() {
         )}
       </div>
 
-      <p className="mt-4 text-xs text-white/40 text-center max-w-sm">
-        Dev preview for Buy Now dark-glass checkout. Production wiring lives in ListingDetail Buy Now dialog.
+      <p className="mt-4 text-xs text-white/50 text-center max-w-sm drop-shadow">
+        Dev preview for Buy Now dark-glass checkout. Related products fill the dark space behind the card.
       </p>
       {/* keep icons referenced for tree-shaking clarity */}
       <span className="hidden"><Gift /><Users /></span>
+      </div>
     </div>
   );
 }

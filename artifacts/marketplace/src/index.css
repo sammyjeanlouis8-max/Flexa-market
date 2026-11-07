@@ -3,6 +3,12 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+/* Scoped page styles — imported here so @tailwindcss/vite includes them in
+   the production CSS bundle (component-level CSS imports are dropped). */
+@import "./pages/boost-listing.css";
+@import "./pages/booster/booster.css";
+@import "./pages/commissionPromo.css";
+
 @custom-variant dark (&:is(.dark *));
 
 /* Home-only mobile density: two products per row on typical phones.

@@ -1,7 +1,6 @@
 /* Flexa Market — Boost Listing (scoped senior redesign)
-   Warm ember system — distinct from Booster Pro purple. */
-
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap");
+   Warm ember system — distinct from Booster Pro purple.
+   Must be imported from index.css so Tailwind v4 Vite keeps it in the prod CSS bundle. */
 
 .boost-listing {
   --bl-ember: #ea580c;
@@ -24,7 +23,7 @@
     radial-gradient(900px 420px at 100% 0%, rgba(244, 63, 94, 0.1), transparent 50%),
     linear-gradient(180deg, #fffaf5 0%, #fafaf9 42%, #f5f5f4 100%);
   color: var(--bl-ink);
-  font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  font-family: "DM Sans", Outfit, "Segoe UI", system-ui, sans-serif;
   padding-bottom: 1.5rem;
 }
 

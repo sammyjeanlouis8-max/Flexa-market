@@ -87,7 +87,7 @@ export default function BoosterAudiences() {
       <div className="bp-card mb-4">
         <div className="font-bold text-sm mb-2">{t("booster.audiences.new")}</div>
         <label className="bp-label">{t("booster.audiences.name")}</label>
-        <input className="bp-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Kliyan Port-au-Prince" data-testid="booster-audience-name" />
+        <input className="bp-input" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("booster.audiences.namePh")} data-testid="booster-audience-name" />
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="bp-label">{t("booster.audience.department")}</label>

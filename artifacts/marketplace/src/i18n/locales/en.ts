@@ -1797,6 +1797,7 @@ export default {
       subtitle: "Reuse the same targeting without rebuilding it.",
       new: "New audience",
       name: "Name",
+      namePh: "Port-au-Prince customers",
       save: "Save",
       saved: "Audience saved",
       saveFailed: "Could not save",

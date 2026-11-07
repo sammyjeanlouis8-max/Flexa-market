@@ -1788,6 +1788,7 @@ export default {
       subtitle: "Rekòmanse menm sib la san rekòmanse chak fwa.",
       new: "Nouvo odyans",
       name: "Non",
+      namePh: "Kliyan Port-au-Prince",
       save: "Sove",
       saved: "Odyans sove",
       saveFailed: "Pa t kapab sove",

@@ -1787,6 +1787,7 @@ export default {
       subtitle: "Réutilisez le même ciblage sans tout refaire.",
       new: "Nouvelle audience",
       name: "Nom",
+      namePh: "Clients Port-au-Prince",
       save: "Enregistrer",
       saved: "Audience enregistrée",
       saveFailed: "Échec de l'enregistrement",

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { useAuth } from "@/contexts/auth";
 
 export interface CartItem {
   listingId: number;
@@ -44,6 +45,7 @@ function readStorage(): CartItem[] {
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>(() =>
     readStorage().map(i => ({ ...i, quantity: i.quantity ?? 1 }))
   );
@@ -54,12 +56,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [items]);
 
+  // Drop any of the signed-in user's own listings that may linger in localStorage.
+  useEffect(() => {
+    if (!user?.id) return;
+    setItems(prev => {
+      const next = prev.filter(i => i.sellerId !== user.id);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [user?.id]);
+
   const addItem = useCallback((item: CartItem) => {
+    // Never allow a seller to cart their own listing (client-side hard guard).
+    if (user?.id && item.sellerId === user.id) return;
     setItems(prev => {
       if (prev.some(i => i.listingId === item.listingId)) return prev;
+      if (user?.id && item.sellerId === user.id) return prev;
       return [...prev, { ...item, quantity: item.quantity ?? 1 }];
     });
-  }, []);
+  }, [user?.id]);
 
   const removeItem = useCallback((listingId: number) => {
     setItems(prev => prev.filter(i => i.listingId !== listingId));

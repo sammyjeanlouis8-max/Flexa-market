@@ -253,8 +253,51 @@ export default function BoostPage() {
   const [abvUploadPercent, setAbvUploadPercent] = useState(0);
   const [abvSuccess, setAbvSuccess]     = useState(false);
   const abvFileInputRef                 = useRef<HTMLInputElement | null>(null);
-  const MAX_VIDEO_SECONDS = 300;
+  const MAX_VIDEO_SECONDS = 120; // Booster Pro Max hard cap
   const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
+
+  // Apply Booster Pro Max draft handoff (audience / budget / video) once.
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("boosterPro") !== "1") return;
+      const audRaw = sessionStorage.getItem("bp_handoff_audience");
+      const budgetRaw = sessionStorage.getItem("bp_handoff_budget");
+      const planRaw = sessionStorage.getItem("bp_handoff_plan");
+      const videoRaw = sessionStorage.getItem("bp_handoff_video");
+      if (audRaw) {
+        const a = JSON.parse(audRaw) as Record<string, unknown>;
+        if (typeof a.audienceType === "string") setAudienceType(a.audienceType as "advantage_plus" | "custom");
+        if (typeof a.state === "string") setAudState(a.state);
+        if (Array.isArray(a.cities)) setAudCities(a.cities.filter((c): c is string => typeof c === "string"));
+        if (typeof a.radiusKm === "number") setAudRadiusKm(a.radiusKm);
+        if (typeof a.ageMin === "number") setAgeMin(a.ageMin);
+        if (typeof a.ageMax === "number") setAgeMax(a.ageMax);
+        if (a.gender === "all" || a.gender === "male" || a.gender === "female") setGender(a.gender);
+        if (a.objective === "auto" || a.objective === "messages" || a.objective === "views") setObjective(a.objective);
+      }
+      if (budgetRaw && Number.isFinite(Number(budgetRaw))) {
+        const b = Number(budgetRaw);
+        setBudget(b);
+        setCustomBudgetMode(!BUDGET_PRESETS.includes(b as any));
+        setCustomBudgetInput(String(b));
+      }
+      if (planRaw === "1day" || planRaw === "3day" || planRaw === "7day") {
+        setPlan(planRaw);
+      }
+      if (videoRaw) setVideoUrl(videoRaw);
+      setStep("pay");
+      sessionStorage.removeItem("bp_handoff_audience");
+      sessionStorage.removeItem("bp_handoff_budget");
+      sessionStorage.removeItem("bp_handoff_plan");
+      sessionStorage.removeItem("bp_handoff_video");
+      sessionStorage.removeItem("bp_handoff_media_type");
+      params.delete("boosterPro");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("boosterPro");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    } catch { /* non-critical */ }
+  }, []);
 
   const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

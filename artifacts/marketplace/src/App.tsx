@@ -86,7 +86,13 @@ const SubscriptionPage   = lazy(() => import("@/pages/Subscription"));
 const VideoPost          = lazy(() => import("@/pages/VideoPost"));
 const VideoFeed          = lazy(() => import("@/pages/VideoFeed"));
 const VideoDiscover      = lazy(() => import("@/pages/VideoDiscover"));
-const MyBoosts           = lazy(() => import("@/pages/MyBoosts"));
+const BoosterCreate      = lazy(() => import("@/booster/pages/CreateBoost"));
+const BoosterAudience    = lazy(() => import("@/booster/pages/AudienceTargeting"));
+const BoosterBudget      = lazy(() => import("@/booster/pages/BudgetDuration"));
+const BoosterReview      = lazy(() => import("@/booster/pages/ReviewConfirm"));
+const BoosterCampaigns   = lazy(() => import("@/booster/pages/MyBoostsPro"));
+const BoosterAnalytics   = lazy(() => import("@/booster/pages/BoostAnalytics"));
+const BoosterAudiences   = lazy(() => import("@/booster/pages/SavedAudiences"));
 const PrivacyPolicy      = lazy(() => import("@/pages/PrivacyPolicy"));
 const TermsOfService     = lazy(() => import("@/pages/TermsOfService"));
 const About              = lazy(() => import("@/pages/About"));
@@ -228,7 +234,15 @@ function LayoutRoutes() {
           </Route>
           <Route path="/videos/watch" component={VideoFeed} />
           <Route path="/videos" component={VideoDiscover} />
-          <Route path="/my-boosts" component={MyBoosts} />
+          <Route path="/my-boosts" component={BoosterCampaigns} />
+          <Route path="/booster" component={BoosterCreate} />
+          <Route path="/booster/create" component={BoosterCreate} />
+          <Route path="/booster/audience" component={BoosterAudience} />
+          <Route path="/booster/budget" component={BoosterBudget} />
+          <Route path="/booster/review" component={BoosterReview} />
+          <Route path="/booster/campaigns" component={BoosterCampaigns} />
+          <Route path="/booster/analytics" component={BoosterAnalytics} />
+          <Route path="/booster/audiences" component={BoosterAudiences} />
           <Route path="/listings/:id/video" component={VideoPost} />
           <Route path="/listings/:id" component={ListingDetail} />
           <Route path="/sell" component={Sell} />

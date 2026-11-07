@@ -2,48 +2,45 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import { Volume2, VolumeX, SkipForward, Loader2 } from "lucide-react";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { useAuth } from "@/contexts/auth";
+import { trackBoosterEvent } from "@/booster/trackEvent";
 
 /**
- * Video Booster overlay — floating player, no dark background.
+ * Professional Booster Pro Max ad player.
  *
- * Layout: fixed top-of-screen card (video + controls).
- *   - No full-screen dark overlay: page content visible below the player.
- *   - Video plays at natural aspect ratio (object-contain).
- *   - Sound locked ON; browser-forced mute unmutes on first user interaction.
- *   - No pause: video plays uninterrupted until skip or end.
- *   - Skip/countdown always visible BELOW the video.
+ * - Skip countdown tracks actual media playback time (not wall clock).
+ * - Paused / buffering time does not advance the countdown.
+ * - Image interruptive ads use a 10s display countdown.
+ * - Autoplay attempts sound when prior unlock permits; otherwise muted + Unmute.
+ * - Never traps users on media errors.
  */
 
 const SKIP_AFTER_SEC = 10;
 const AD_INTERVAL_MS = 5 * 60_000;
-const STORAGE_KEY    = "flexamarket_boost_last_shown";
+const STORAGE_KEY = "flexamarket_boost_last_shown";
 
-// ─── Public helpers ───────────────────────────────────────────────────────────
 export function shouldShowBoostAd(): boolean {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return true;
     return Date.now() - Number(raw) >= AD_INTERVAL_MS;
-  } catch { return true; }
+  } catch {
+    return true;
+  }
 }
 
 export function markBoostAdShown(): void {
-  try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* private */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, String(Date.now()));
+  } catch { /* private */ }
 }
 
-// ─── URL helper ──────────────────────────────────────────────────────────────
 function toFetchableUrl(stored: string): string {
   const value = stored.trim();
   if (/^https?:\/\//i.test(value)) return value;
-  // The boost API already resolves modern Wasabi assets to this same-origin,
-  // Range-capable route. Rewriting it as an object-storage path turns
-  // `/api/storage/video-stream?...` into a 404 and leaves iPhone with a black
-  // player surface.
   if (value.startsWith("/api/")) return value;
-  // Preserve non-storage same-origin paths. Only legacy `/objects/...` values
-  // need converting to the object proxy below.
   if (value.startsWith("/") && !value.startsWith("/objects/")) return value;
   const trimmed = value.startsWith("/objects/")
     ? value.slice("/objects/".length)
@@ -51,21 +48,21 @@ function toFetchableUrl(stored: string): string {
   return `/api/storage/objects/${trimmed}`;
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
 interface BoostListing {
   id: number;
   title: string;
   price: number;
   thumbnail: string | null;
-  boostVideoUrl: string;
+  boostVideoUrl: string | null;
   sellerName: string | null;
   boostCtaType: string | null;
   boostExternalLink: string | null;
   boostWhatsappNumber: string | null;
   boostCtaText: string | null;
-  /** "hidden" for video-only ghost listings — no product page exists */
   status?: string | null;
   isVideoOnly?: boolean;
+  mediaType?: "image" | "video" | null;
+  boostId?: number | null;
 }
 
 interface Props {
@@ -73,68 +70,134 @@ interface Props {
   onClose: () => void;
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
 export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const { t } = useTranslation();
+  const { token, user } = useAuth();
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const skipHandledRef = useRef(false);
+  const playedMsRef = useRef(0);
+  const lastTickRef = useRef<number | null>(null);
+  const tenSecTrackedRef = useRef(false);
+  const startTrackedRef = useRef(false);
+  const impressionTrackedRef = useRef(false);
+
+  const isImageAd = listing.mediaType === "image"
+    || (!listing.boostVideoUrl && !!listing.thumbnail);
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
-  const skipReady = countdown === 0;
-  const [soundLocked, setSoundLocked] = useState(false); // true = iOS forced muted start
+  const skipReady = countdown <= 0;
   const [muted, setMuted] = useState(true);
-  const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
+  const [videoPct, setVideoPct] = useState(0);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [loading, setLoading] = useState(!isImageAd);
+  const [showUnmute, setShowUnmute] = useState(false);
 
-  // ── Video progress bar ────────────────────────────────────────────────────
+  const track = useCallback((eventType: Parameters<typeof trackBoosterEvent>[0]["eventType"]) => {
+    void trackBoosterEvent({
+      listingId: listing.id,
+      boostId: listing.boostId,
+      eventType,
+      placement: "overlay",
+      token,
+      country: user?.country,
+      state: user?.state,
+      city: user?.location,
+    });
+  }, [listing.id, listing.boostId, token, user?.country, user?.state, user?.location]);
+
+  // Impression once on mount
   useEffect(() => {
+    if (impressionTrackedRef.current) return;
+    impressionTrackedRef.current = true;
+    track("impression");
+  }, [track]);
+
+  // Image ad: wall-clock display countdown (interruptive placement only)
+  useEffect(() => {
+    if (!isImageAd) return;
+    const started = performance.now();
+    const id = window.setInterval(() => {
+      const elapsed = (performance.now() - started) / 1000;
+      const left = Math.max(0, Math.ceil(SKIP_AFTER_SEC - elapsed));
+      setCountdown(left);
+      if (elapsed >= SKIP_AFTER_SEC && !tenSecTrackedRef.current) {
+        tenSecTrackedRef.current = true;
+        track("ten_sec_view");
+      }
+      if (left <= 0) window.clearInterval(id);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [isImageAd, track]);
+
+  // Video: progress bar + playback-time countdown
+  useEffect(() => {
+    if (isImageAd) return;
     const vid = videoRef.current;
     if (!vid) return;
+
     const onTime = () => {
       if (vid.duration && isFinite(vid.duration) && vid.duration > 0) {
         setVideoPct((vid.currentTime / vid.duration) * 100);
       }
     };
+
+    const tick = () => {
+      if (vid.paused || vid.ended || vid.readyState < 2) {
+        lastTickRef.current = null;
+        return;
+      }
+      const now = performance.now();
+      if (lastTickRef.current != null) {
+        playedMsRef.current += now - lastTickRef.current;
+      }
+      lastTickRef.current = now;
+      const playedSec = playedMsRef.current / 1000;
+      const left = Math.max(0, Math.ceil(SKIP_AFTER_SEC - playedSec));
+      setCountdown(left);
+      if (playedSec >= SKIP_AFTER_SEC && !tenSecTrackedRef.current) {
+        tenSecTrackedRef.current = true;
+        track("ten_sec_view");
+      }
+    };
+
+    const onPlaying = () => {
+      setLoading(false);
+      setVideoFailed(false);
+      lastTickRef.current = performance.now();
+      if (!startTrackedRef.current) {
+        startTrackedRef.current = true;
+        track("video_start");
+      }
+    };
+    const onPause = () => { lastTickRef.current = null; };
+    const onWaiting = () => { lastTickRef.current = null; setLoading(true); };
+    const onCanPlay = () => setLoading(false);
+
+    const interval = window.setInterval(tick, 200);
     vid.addEventListener("timeupdate", onTime);
     vid.addEventListener("loadedmetadata", onTime);
+    vid.addEventListener("playing", onPlaying);
+    vid.addEventListener("pause", onPause);
+    vid.addEventListener("waiting", onWaiting);
+    vid.addEventListener("canplay", onCanPlay);
     return () => {
+      window.clearInterval(interval);
       vid.removeEventListener("timeupdate", onTime);
       vid.removeEventListener("loadedmetadata", onTime);
+      vid.removeEventListener("playing", onPlaying);
+      vid.removeEventListener("pause", onPause);
+      vid.removeEventListener("waiting", onWaiting);
+      vid.removeEventListener("canplay", onCanPlay);
     };
-  }, []);
+  }, [isImageAd, track]);
 
-  // ── Countdown — runs from mount, independent of play state ────────────────
+  // Autoplay with sound preference
   useEffect(() => {
-    if (countdown === 0) return;
-    const id = window.setInterval(() => {
-      setCountdown(c => {
-        if (c <= 1) { window.clearInterval(id); return 0; }
-        return c - 1;
-      });
-    }, 1_000);
-    return () => window.clearInterval(id);
-  }, []); // run once on mount
-
-  // ── Autoplay with sound ON ────────────────────────────────────────────────
-  // Boost ads always START muted to avoid unwanted background audio.
-  // The user taps the speaker icon (or anywhere) to enable sound.
-  // Once unlocked, subsequent ads in the same session start with sound.
-  useEffect(() => {
+    if (isImageAd) return;
     const vid = videoRef.current;
     if (!vid) return;
     let cancelled = false;
-
-    // Turn sound on, persist the unlock session-wide, and clear listeners.
-    const unlockAudio = () => {
-      const v = videoRef.current;
-      if (v) { v.muted = false; setMuted(false); v.play().catch(() => {}); }
-      setSoundLocked(false);
-      setAudioUnlocked(true);
-      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
-      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
-      window.removeEventListener("click",       unlockAudio, { capture: true });
-    };
 
     const attemptPlay = async (withSound: boolean) => {
       vid.muted = !withSound;
@@ -143,301 +206,310 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         await vid.play();
         if (cancelled) return;
         if (withSound) {
-          // Sound is on — remember it so the next ad needs no gesture.
-          setSoundLocked(false);
           setAudioUnlocked(true);
+          setShowUnmute(false);
         } else {
-          // Browser forced a muted start. Arm the first-gesture unlock so any
-          // tap turns sound on. Only show the visible hint if audio has NEVER
-          // been unlocked this session — once unlocked, later ads recover sound
-          // silently with no repeated prompt.
-          if (!isAudioUnlocked()) setSoundLocked(true);
-          window.addEventListener("touchstart",  unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("pointerdown", unlockAudio, { capture: true, once: true, passive: true });
-          window.addEventListener("click",       unlockAudio, { capture: true, once: true });
+          setShowUnmute(true);
         }
       } catch {
         if (cancelled) return;
-        if (withSound) await attemptPlay(false); // graceful fallback to muted
+        if (withSound) await attemptPlay(false);
+        else {
+          setShowUnmute(true);
+          setLoading(false);
+        }
       }
     };
 
-    attemptPlay(false); // always start muted — user taps to enable sound
+    if (isAudioUnlocked()) {
+      void attemptPlay(true);
+    } else {
+      void attemptPlay(false);
+    }
 
-    // If audio gets unlocked elsewhere (e.g. the video feed) while this ad plays.
     const onUnlocked = (e: Event) => {
       if ((e as CustomEvent<boolean>).detail && videoRef.current) {
         videoRef.current.muted = false;
         setMuted(false);
+        setShowUnmute(false);
         videoRef.current.play().catch(() => {});
-        setSoundLocked(false);
       }
     };
     window.addEventListener("flexa:audio-unlocked", onUnlocked);
-
     return () => {
       cancelled = true;
       window.removeEventListener("flexa:audio-unlocked", onUnlocked);
-      window.removeEventListener("touchstart",  unlockAudio, { capture: true });
-      window.removeEventListener("pointerdown", unlockAudio, { capture: true });
-      window.removeEventListener("click",       unlockAudio, { capture: true });
     };
-  }, []);
+  }, [isImageAd]);
 
-  // ── Resume when scrolled back into view ───────────────────────────────────
-  useEffect(() => {
-    const vid = videoRef.current;
-    if (!vid || typeof IntersectionObserver === "undefined") return;
-    const obs = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) vid.play().catch(() => {}); else vid.pause(); },
-      { threshold: 0.3 }
-    );
-    obs.observe(vid);
-    return () => obs.disconnect();
-  }, []);
-
-  // ── Skip ──────────────────────────────────────────────────────────────────
-  const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => {
+  const toggleMute = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    const vid = videoRef.current;
+    if (!vid) return;
+    const next = !vid.muted;
+    vid.muted = next;
+    setMuted(next);
+    setShowUnmute(next);
+    if (!next) {
+      setAudioUnlocked(true);
+      vid.play().catch(() => {});
+    }
+  }, []);
+
+  const finish = useCallback((reason: "skip" | "complete" | "error" | "cta") => {
     if (skipHandledRef.current) return;
     skipHandledRef.current = true;
     videoRef.current?.pause();
+    if (reason === "skip") track("skip");
+    if (reason === "complete") track("video_complete");
+    if (reason === "cta") track("click");
     onClose();
-  }, [onClose]);
+  }, [onClose, track]);
+
+  const handleSkip = useCallback((e: React.MouseEvent | React.TouchEvent | React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!skipReady) return;
+    finish("skip");
+  }, [skipReady, finish]);
 
   const retryVideo = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      finish("error");
+      return;
+    }
     setVideoFailed(false);
+    setLoading(true);
     video.load();
-    video.play().catch(() => setVideoFailed(true));
-  }, []);
+    video.play().catch(() => {
+      setVideoFailed(true);
+      setLoading(false);
+    });
+  }, [finish]);
 
-  // ── CTA ───────────────────────────────────────────────────────────────────
-  // Video-only boosts (status="hidden") have no product page — never navigate
-  // to /listings/:id for them. Only open external link or WhatsApp if set.
   const isVideoOnly = listing.isVideoOnly || listing.status === "hidden";
   const hasExternalCta =
-    (listing.boostCtaType === "link" && !!listing.boostExternalLink) ||
-    (listing.boostCtaType === "whatsapp" && !!listing.boostWhatsappNumber);
+    (listing.boostCtaType === "link" && !!listing.boostExternalLink)
+    || (listing.boostCtaType === "whatsapp" && !!listing.boostWhatsappNumber);
 
   const handleCta = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    videoRef.current?.pause();
     const type = listing.boostCtaType;
     if (type === "link" && listing.boostExternalLink) {
       window.open(listing.boostExternalLink, "_blank", "noopener,noreferrer");
-      onClose();
+      finish("cta");
     } else if (type === "whatsapp" && listing.boostWhatsappNumber) {
       window.open(`https://wa.me/${listing.boostWhatsappNumber.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
-      onClose();
+      finish("cta");
     } else if (!isVideoOnly) {
-      // Only navigate to product page for real listings
       setLocation(`/listings/${listing.id}?buy=1`);
-      onClose();
+      finish("cta");
     } else {
-      // Video-only, no external CTA → just close the overlay
-      onClose();
+      finish("cta");
     }
-  }, [listing, onClose, setLocation, isVideoOnly]);
+  }, [listing, finish, setLocation, isVideoOnly]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  // Split layout: video pinned to TOP, controls bar pinned to BOTTOM.
-  // Marketplace content stays visible in the middle.
-  // Escape app-shell's isolated stacking context so both fixed layers stay
-  // above body-level purchase bars and outside the shell's overflow clipping.
+  const ctaLabel = listing.boostCtaText
+    || (listing.boostCtaType === "link"
+      ? t("boostAd.visitLink", "Learn More")
+      : listing.boostCtaType === "whatsapp"
+        ? t("boostAd.chatWhatsApp", "WhatsApp")
+        : t("boostAd.viewListing", "Learn More"));
+
   return createPortal(
     <>
-      {/* ── VIDEO — fixed top of screen ─────────────────────────────────── */}
       <div
-        className="fixed top-0 left-0 right-0 z-[100]"
+        className="fixed inset-0 z-[99] bg-black/55"
+        aria-hidden
+        onClick={() => { /* block backdrop skip before ready */ }}
+      />
+      <div
+        className="fixed inset-x-0 top-0 z-[100] mx-auto w-full max-w-3xl"
         style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"
         aria-label={t("boostAd.sponsored")}
         data-testid="boost-video-overlay"
       >
-        <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
-          {/* A listing image remains visible while the first decoded video frame arrives. */}
+        <div
+          className="relative w-full overflow-hidden bg-black shadow-2xl"
+          style={{ maxHeight: "min(62vh, 520px)" }}
+        >
           {listing.thumbnail && (
             <img
               src={listing.thumbnail}
               alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full object-contain"
+              aria-hidden
+              className="absolute inset-0 h-full w-full object-contain opacity-40"
             />
           )}
-          {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
-          <video
-            ref={videoRef}
-            src={toFetchableUrl(listing.boostVideoUrl)}
-            autoPlay
-            muted={muted}
-            playsInline
-            preload="auto"
-            loop={false}
-            onEnded={onClose}
-            onLoadedData={() => setVideoFailed(false)}
-            onError={() => setVideoFailed(true)}
-            className="w-full"
-            style={{
-              display: "block",
-              maxHeight: "55vh",
-              objectFit: "contain",
-              pointerEvents: "none",
-              willChange: "transform",
-            }}
-            data-testid="video-boost-ad"
-          />
 
-          {/* Do not leave people staring at an unexplained black rectangle if a
-              legacy/broken asset is unavailable. Modern normalized videos reach
-              the player through the Range stream route above. */}
+          {isImageAd ? (
+            <img
+              src={listing.thumbnail || listing.boostVideoUrl || ""}
+              alt={listing.title}
+              className="relative z-[1] mx-auto block max-h-[min(62vh,520px)] w-full object-contain"
+              onLoad={() => setLoading(false)}
+              onError={() => { setVideoFailed(true); setLoading(false); }}
+            />
+          ) : (
+            <video
+              ref={videoRef}
+              src={listing.boostVideoUrl ? toFetchableUrl(listing.boostVideoUrl) : undefined}
+              autoPlay
+              muted={muted}
+              playsInline
+              preload="auto"
+              loop={false}
+              onEnded={() => finish("complete")}
+              onLoadedData={() => { setVideoFailed(false); setLoading(false); }}
+              onError={() => { setVideoFailed(true); setLoading(false); }}
+              className="relative z-[1] mx-auto block w-full"
+              style={{
+                maxHeight: "min(62vh, 520px)",
+                objectFit: "contain",
+                pointerEvents: "none",
+              }}
+              data-testid="video-boost-ad"
+            />
+          )}
+
+          {loading && !videoFailed && (
+            <div className="absolute inset-0 z-[2] flex items-center justify-center bg-black/40">
+              <Loader2 className="h-8 w-8 animate-spin text-white" />
+            </div>
+          )}
+
           {videoFailed && (
             <button
               type="button"
-              onClick={retryVideo}
-              onTouchEnd={retryVideo}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
-              aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
+              onClick={(e) => {
+                if (isImageAd) finish("error");
+                else retryVideo(e);
+              }}
+              className="absolute inset-0 z-[3] flex flex-col items-center justify-center gap-3 bg-black/70 text-white"
             >
               <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
-                {t("boostAd.retryVideo", "Eseye videyo a ankò")}
+                {isImageAd
+                  ? t("boostAd.closeAd", "Fèmen anons")
+                  : t("boostAd.retryVideo", "Eseye videyo a ankò")}
               </span>
+              {!isImageAd && (
+                <button
+                  type="button"
+                  className="text-xs underline opacity-80"
+                  onClick={(e) => { e.stopPropagation(); finish("error"); }}
+                >
+                  {t("boostAd.skipOnError", "Kontinye san anons")}
+                </button>
+              )}
             </button>
           )}
 
-          {/* SPONSORED badge — overlaid top-left on the video */}
-          <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-            <span className="bg-yellow-400 text-black text-xs font-bold uppercase px-2 py-1 rounded">
-              {t("boostAd.sponsored")}
-            </span>
-            {listing.sellerName && (
-              <span
-                className="text-white text-xs font-medium"
-                style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
-              >
-                {t("boostAd.sponsoredBy", { name: listing.sellerName })}
+          {/* Top chrome */}
+          <div className="pointer-events-none absolute left-3 right-3 top-3 z-[4] flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="rounded bg-yellow-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-black">
+                {t("boostAd.sponsored", "Sponsored")}
               </span>
-            )}
+              {listing.sellerName && (
+                <span className="truncate text-xs font-semibold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}>
+                  {listing.sellerName}
+                </span>
+              )}
+            </div>
+
+            <div className="pointer-events-auto flex items-center gap-2">
+              {!isImageAd && (
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white"
+                  aria-label={muted ? "Unmute" : "Mute"}
+                  data-testid="button-boost-mute"
+                >
+                  {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </button>
+              )}
+              {skipReady ? (
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  onPointerUp={handleSkip}
+                  onTouchEnd={handleSkip}
+                  className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black shadow"
+                  style={{ touchAction: "manipulation" }}
+                  data-testid="button-boost-skip"
+                >
+                  {t("boostAd.skip", "Skip Ad")} <SkipForward className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <div
+                  className="rounded-full bg-black/55 px-3 py-1.5 text-xs font-bold text-white"
+                  data-testid="text-boost-skip-countdown"
+                  aria-label={t("boostAd.skipIn", { seconds: countdown })}
+                >
+                  {t("boostAd.skipIn", { seconds: countdown, defaultValue: `Skip in ${countdown}s` })}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ── Video progress bar — thin strip at the very bottom of the video ── */}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 pointer-events-none"
-            aria-hidden="true"
-          >
-            <div
-              className="h-full bg-white rounded-r-full transition-none"
-              style={{ width: `${videoPct}%` }}
-            />
-          </div>
-
-          {/* Sound-locked hint — center of video, disappears on first touch */}
-          {soundLocked && (
-            <div
-              className="absolute inset-0 flex items-center justify-center pointer-events-none"
-              aria-live="polite"
+          {showUnmute && !isImageAd && (
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="absolute left-1/2 top-1/2 z-[4] flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white"
+              data-testid="button-boost-unmute-hint"
             >
-              <div
-                className="flex items-center gap-2 bg-black/70 rounded-full px-4 py-2"
-                style={{ animation: "pulse 1.8s ease-in-out infinite" }}
-              >
-                <svg viewBox="0 0 24 24" className="w-5 h-5 text-white fill-current">
-                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-                </svg>
-                <span className="text-white text-sm font-semibold">{t("tr.tapForSound")}</span>
-              </div>
+              <Volume2 className="h-4 w-4" />
+              {t("tr.tapForSound", "Unmute")}
+            </button>
+          )}
+
+          {!isImageAd && (
+            <div className="absolute bottom-0 left-0 right-0 z-[4] h-1 bg-white/20" aria-hidden>
+              <div className="h-full bg-white" style={{ width: `${videoPct}%` }} />
             </div>
           )}
         </div>
-      </div>
 
-      {/* ── CONTROLS BAR — fixed bottom of screen ───────────────────────── */}
-      {/* CTA first, then Skip/countdown below — both pinned to bottom */}
-      <div
-        data-testid="boost-controls-bar"
-        className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)", touchAction: "manipulation" }}
-      >
-        {/* CTA button — hidden for video-only boosts with no external action */}
-        {(!isVideoOnly || hasExternalCta) && (
-          <button
-            type="button"
-            onClick={handleCta}
-            onTouchEnd={e => { e.preventDefault(); handleCta(e); }}
-            className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
-            data-testid="button-boost-view-listing"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              {listing.thumbnail && (
-                <img
-                  src={listing.thumbnail}
-                  alt=""
-                  loading="eager"
-                  className="h-10 w-10 rounded object-cover flex-shrink-0"
-                />
-              )}
-              <div className="text-left min-w-0">
-                <div className="text-sm font-bold truncate">{listing.title}</div>
-                {listing.price > 0 && (
-                  <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
-                )}
-              </div>
-            </div>
-            <span className="text-sm whitespace-nowrap shrink-0">
-              {listing.boostCtaType === "link"
-                ? <>{t("boostAd.visitLink")} →</>
-                : listing.boostCtaType === "whatsapp"
-                  ? <>{t("boostAd.chatWhatsApp")} →</>
-                  : <>{t("boostAd.viewListing")} →</>}
-            </span>
-          </button>
-        )}
-
-        {/* Skip / countdown — right-aligned, below CTA */}
-        <div className="flex items-center justify-end mt-3 mb-1">
-          {skipReady ? (
+        {/* Bottom CTA bar */}
+        <div
+          data-testid="boost-controls-bar"
+          className="bg-[#0f1c3f] px-4 pt-3"
+          style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)", touchAction: "manipulation" }}
+        >
+          {(!isVideoOnly || hasExternalCta) && (
             <button
               type="button"
-              onClick={handleSkip}
-              onPointerUp={handleSkip}
-              onTouchEnd={handleSkip}
-              className="relative z-10 bg-white text-black rounded-full px-5 py-2 text-sm font-bold hover:bg-white/90 active:scale-95 flex items-center gap-1.5 transition-all"
-              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-              data-testid="button-boost-skip"
+              onClick={handleCta}
+              onTouchEnd={(e) => { e.preventDefault(); handleCta(e); }}
+              className="flex w-full items-center justify-between gap-3 rounded-xl bg-[#2563eb] px-4 py-3 font-bold text-white shadow-lg transition active:scale-[0.98]"
+              data-testid="button-boost-view-listing"
             >
-              {t("boostAd.skip")} <X className="h-4 w-4" />
+              <div className="flex min-w-0 items-center gap-3">
+                {listing.thumbnail && (
+                  <img src={listing.thumbnail} alt="" className="h-10 w-10 shrink-0 rounded object-cover" />
+                )}
+                <div className="min-w-0 text-left">
+                  <div className="truncate text-sm font-bold">{listing.title}</div>
+                  {listing.price > 0 && (
+                    <div className="text-xs opacity-90">${listing.price.toFixed(2)}</div>
+                  )}
+                </div>
+              </div>
+              <span className="shrink-0 text-sm whitespace-nowrap">{ctaLabel} →</span>
             </button>
-          ) : (
-            <div
-              className="relative bg-white/20 rounded-full w-11 h-11 flex items-center justify-center"
-              data-testid="text-boost-skip-countdown"
-              aria-label={t("boostAd.skipIn", { seconds: countdown })}
-            >
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" />
-                <circle
-                  cx="22" cy="22" r="19"
-                  fill="none"
-                  stroke="white"
-                  strokeWidth="2.5"
-                  strokeDasharray={`${2 * Math.PI * 19}`}
-                  strokeDashoffset={`${2 * Math.PI * 19 * (1 - countdown / SKIP_AFTER_SEC)}`}
-                  strokeLinecap="round"
-                  style={{ transition: "stroke-dashoffset 1s linear" }}
-                />
-              </svg>
-              <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
-            </div>
           )}
         </div>
       </div>
     </>,
-    document.body
+    document.body,
   );
 }

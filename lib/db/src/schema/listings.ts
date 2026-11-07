@@ -166,12 +166,22 @@ export const boostsTable = pgTable("boosts", {
   paymentRef: text("payment_ref"),
   impressions: integer("impressions").notNull().default(0),
   clicks: integer("clicks").notNull().default(0),
+  videoStarts: integer("video_starts").notNull().default(0),
+  videoCompletions: integer("video_completions").notNull().default(0),
+  tenSecViews: integer("ten_sec_views").notNull().default(0),
+  skips: integer("skips").notNull().default(0),
+  messages: integer("messages").notNull().default(0),
+  // active | paused | completed | cancelled — lifecycle independent of payment_status
+  lifecycleStatus: text("lifecycle_status").notNull().default("active"),
+  pausedAt: timestamp("paused_at", { withTimezone: true }),
+  mediaType: text("media_type").default("video"), // image | video
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   uniqBoostPaymentRef: uniqueIndex("boosts_payment_ref_unique_idx")
     .on(t.paymentRef)
     .where(sql`${t.paymentRef} is not null`),
+  boostsUserLifecycleIdx: index("boosts_user_lifecycle_idx").on(t.userId, t.lifecycleStatus),
 }));
 
 export type Boost = typeof boostsTable.$inferSelect;

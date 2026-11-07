@@ -10,7 +10,16 @@ export const PLAN_META: Record<Plan, { days: number; basePrice: number }> = {
   "7day": { days: 7, basePrice: 10.00 },
 };
 
-export const VALID_RADIUS_KM = [5, 10, 20, 50, 100] as const;
+/** Discrete presets kept for backward-compatible clients. */
+export const VALID_RADIUS_KM = [5, 10, 20, 25, 50, 100] as const;
+/** Continuous radius range for Booster Pro slider (inclusive). */
+export const MIN_RADIUS_KM = 5;
+export const MAX_RADIUS_KM = 100;
+
+export function isValidRadiusKm(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+    && value >= MIN_RADIUS_KM && value <= MAX_RADIUS_KM;
+}
 
 export const EUROPE_COUNTRIES = new Set<string>([
   "France", "Germany", "Spain", "Italy", "Portugal", "Belgium", "Netherlands",
@@ -97,19 +106,27 @@ export function validateAudience(
   // Legacy single-city field (kept for backward compat).
   const city = cities && cities.length > 0 ? cities[0] : null;
 
-  if (country === "Haiti") {
+  // Advantage+ may omit department/city — the delivery engine optimizes reach.
+  // Manual/custom Haiti targeting still requires a valid department.
+  const audienceTypeEarly = VALID_AUDIENCE_TYPES.includes(a.audienceType as AudienceType)
+    ? (a.audienceType as AudienceType)
+    : "advantage_plus";
+  if (country === "Haiti" && audienceTypeEarly === "custom") {
     if (!state) return { ok: false, error: "Department required for Haiti" };
     if (!HAITI_DEPARTMENTS.includes(state as typeof HAITI_DEPARTMENTS[number])) {
       return { ok: false, error: "Invalid Haitian department" };
     }
+  } else if (country === "Haiti" && state
+    && !HAITI_DEPARTMENTS.includes(state as typeof HAITI_DEPARTMENTS[number])) {
+    return { ok: false, error: "Invalid Haitian department" };
   }
 
-  if (radiusKm !== null && !VALID_RADIUS_KM.includes(radiusKm as typeof VALID_RADIUS_KM[number])) {
-    return { ok: false, error: "Invalid radius" };
+  if (radiusKm !== null && !isValidRadiusKm(radiusKm)) {
+    return { ok: false, error: `Radius must be between ${MIN_RADIUS_KM} and ${MAX_RADIUS_KM} km` };
   }
 
   // New Facebook-like fields (all optional)
-  const audienceType = VALID_AUDIENCE_TYPES.includes(a.audienceType as AudienceType) ? (a.audienceType as AudienceType) : "advantage_plus";
+  const audienceType = audienceTypeEarly;
   const ageMinRaw = typeof a.ageMin === "number" ? a.ageMin : parseInt(String(a.ageMin ?? "18"), 10);
   const ageMaxRaw = typeof a.ageMax === "number" ? a.ageMax : parseInt(String(a.ageMax ?? "65"), 10);
   const ageMin = Number.isFinite(ageMinRaw) ? Math.max(18, Math.min(65, ageMinRaw)) : 18;

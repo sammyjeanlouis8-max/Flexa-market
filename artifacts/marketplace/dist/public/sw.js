@@ -66,7 +66,12 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
+  let target;
+  try {
+    target = new URL(event.notification.data?.url || "/", self.location.origin);
+    if (target.origin !== self.location.origin || target.username || target.password) return;
+  } catch (_) { return; }
+  const targetUrl = target.href;
   event.waitUntil((async () => {
     const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     // If a tab on our origin is already open, focus it and navigate.
@@ -75,10 +80,29 @@ self.addEventListener("notificationclick", (event) => {
         const u = new URL(client.url);
         if (u.origin === self.location.origin) {
           await client.focus();
+          // Ask the SPA to open the exact thread without reloading the page.
+          // Wait for its acknowledgement; a tab still booting may not have a
+          // listener yet, in which case a direct URL is the reliable fallback.
+          const accepted = await new Promise((resolve) => {
+            const channel = new MessageChannel();
+            const finish = (value) => {
+              clearTimeout(timer);
+              channel.port1.close();
+              resolve(value);
+            };
+            const timer = setTimeout(() => finish(false), 1000);
+            channel.port1.onmessage = (message) => finish(message.data?.accepted === true);
+            try {
+              client.postMessage({ type: "FLEXA_OPEN_PUSH_URL", url: targetUrl }, [channel.port2]);
+            } catch (_) { finish(false); }
+          });
+          if (accepted) return;
           if ("navigate" in client) {
-            try { await client.navigate(targetUrl); } catch (_) { /* cross-origin nav blocked */ }
+            try {
+              const navigated = await client.navigate(targetUrl);
+              if (navigated) return;
+            } catch (_) { /* try another tab or open a new window */ }
           }
-          return;
         }
       } catch (_) { /* ignore malformed URLs */ }
     }

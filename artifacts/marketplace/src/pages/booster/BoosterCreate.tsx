@@ -355,7 +355,7 @@ export default function BoosterCreate() {
             className="bp-input"
             value={adTitle}
             onChange={(e) => setAdTitle(e.target.value)}
-            placeholder="Toyota Corolla 2020 – Ann Vann!"
+            placeholder={t("booster.create.adTitlePh")}
             data-testid="booster-ad-title"
           />
           <label className="bp-label">{t("booster.create.adDescription")}</label>

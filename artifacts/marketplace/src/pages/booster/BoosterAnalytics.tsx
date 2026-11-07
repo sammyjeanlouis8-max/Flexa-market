@@ -15,7 +15,9 @@ export default function BoosterAnalytics() {
 
   useEffect(() => {
     if (!token) { setLoading(false); return; }
-    fetch("/api/booster/analytics", { headers: { Authorization: `Bearer ${token}` } })
+    const boostId = new URLSearchParams(window.location.search).get("boostId");
+    const qs = boostId ? `?boostId=${encodeURIComponent(boostId)}` : "";
+    fetch(`/api/booster/analytics${qs}`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => r.json())
       .then((d) => {
         setTotals(d.totals || totals);

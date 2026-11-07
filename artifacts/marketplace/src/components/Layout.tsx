@@ -125,6 +125,7 @@ interface BoostAdListing {
   boostImageUrl?: string | null;
   adFormat?: string | null;
   sellerName: string | null;
+  sellerId?: number | null;
   boostCtaType: string | null;
   boostExternalLink: string | null;
   boostWhatsappNumber: string | null;

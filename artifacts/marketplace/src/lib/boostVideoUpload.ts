@@ -111,6 +111,7 @@ export async function uploadNormalizedBoostVideo(
       totalChunks,
       totalBytes: file.size,
       contentType,
+      purpose: "boost",
     }),
   });
   if (!initResponse.ok) {

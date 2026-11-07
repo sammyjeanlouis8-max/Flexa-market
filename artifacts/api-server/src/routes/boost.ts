@@ -551,6 +551,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       boostImageUrl: row.boostImageUrl ?? null,
       adFormat,
       sellerName: row.sellerName,
+      sellerId: row.sellerId,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,
       boostWhatsappNumber: row.boostWhatsappNumber ?? null,

@@ -255,6 +255,10 @@ const PROCESSING_RECOVERY_SCAN_LIMIT = 24;
 const MAX_CONCURRENT_VIDEO_NORMALIZATIONS = 2;
 const MAX_QUEUED_VIDEO_NORMALIZATIONS = 24;
 const MAX_MARKETPLACE_VIDEO_SECONDS = 5 * 60;
+/** Promotional / Booster Pro campaigns: 120 seconds max. */
+const MAX_BOOST_PROMO_VIDEO_SECONDS = 120;
+/** Per-session duration caps (purpose from chunk-init). Survives for process lifetime of the upload. */
+const uploadMaxSecondsById = new Map<string, number>();
 const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
@@ -401,9 +405,10 @@ async function processChunkUpload(
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
 
     stage = "validation";
+    const maxSeconds = uploadMaxSecondsById.get(uploadId) ?? MAX_MARKETPLACE_VIDEO_SECONDS;
     const durationSeconds = await assertVideoDurationAtMost(
       sourcePath,
-      MAX_MARKETPLACE_VIDEO_SECONDS,
+      maxSeconds,
       conversionAbort.signal,
     );
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
@@ -651,6 +656,10 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
 
   const uploadId = randomUUID();
   const expiresAt = new Date(Date.now() + CHUNK_SESSION_TTL_MS);
+  const purpose = String(req.body?.purpose ?? "").trim().toLowerCase();
+  const maxSeconds = purpose === "boost"
+    ? MAX_BOOST_PROMO_VIDEO_SECONDS
+    : MAX_MARKETPLACE_VIDEO_SECONDS;
   try {
     await createBoostVideoUpload({
       id: uploadId,
@@ -660,6 +669,7 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
       totalBytes,
       expiresAt,
     });
+    uploadMaxSecondsById.set(uploadId, maxSeconds);
     res.json({
       uploadId,
       // Retained only as an opaque, pre-completion compatibility placeholder.
@@ -667,6 +677,7 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
       objectPath: `/objects/uploads/${uploadId}`,
       totalChunks,
       totalBytes,
+      maxSeconds,
       expiresAt: expiresAt.toISOString(),
     });
   } catch (error) {

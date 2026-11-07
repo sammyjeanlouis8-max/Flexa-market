@@ -175,6 +175,7 @@ router.get("/booster/campaigns", requireAuth, async (req, res): Promise<void> =>
     const expired = r.expiresAt <= now || (!!r.boostExpiresAt && r.boostExpiresAt <= now);
     let status = r.campaignStatus || "pending";
     if (r.paymentStatus === "draft" || status === "draft") status = "draft";
+    else if (status === "paused" && r.paymentStatus === "paid" && !expired) status = "paused";
     else if (r.paymentStatus === "paid" && !expired) status = "active";
     else if (r.paymentStatus === "paid" && expired) status = "completed";
     return {
@@ -269,6 +270,20 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
   const listingIdIn = req.body?.listingId ? parseInt(String(req.body.listingId), 10) : null;
   const startDate = String(req.body?.startDate ?? "").trim();
   const endDate = String(req.body?.endDate ?? "").trim();
+  const rawCta = String(req.body?.ctaType ?? "none").trim().toLowerCase();
+  const ctaType = (["buy_now", "message", "whatsapp", "none", "link"] as const).includes(rawCta as any)
+    ? rawCta
+    : "none";
+  const whatsappNumber = String(req.body?.whatsappNumber ?? "").replace(/\D/g, "").slice(0, 20) || null;
+  const externalLink = String(req.body?.externalLink ?? "").trim().slice(0, 500) || null;
+  const ctaText = String(req.body?.ctaText ?? "").trim().slice(0, 80) || null;
+
+  if (ctaType === "whatsapp" && mode === "launch" && !whatsappNumber) {
+    res.status(400).json({ error: "WhatsApp number required for WhatsApp CTA" }); return;
+  }
+  if (ctaType === "buy_now" && mode === "launch" && !listingIdIn) {
+    res.status(400).json({ error: "Buy Now requires an attached product" }); return;
+  }
 
   if (!adTitle) { res.status(400).json({ error: "Ad title required" }); return; }
   if (adFormat === "video" && !videoUrlRaw && mode === "launch") {
@@ -343,6 +358,10 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
         boostVideoUrl: videoUrl,
         boostImageUrl: imageUrl,
         boostAdFormat: adFormat,
+        boostCtaType: ctaType,
+        boostWhatsappNumber: whatsappNumber,
+        boostExternalLink: externalLink,
+        boostCtaText: ctaText,
       })
       .returning({ id: listingsTable.id });
     listingId = created.id;
@@ -389,11 +408,14 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
     await db
       .update(listingsTable)
       .set({
-        title: adTitle,
-        description: adDescription || adTitle,
+        ...(listingIdIn ? {} : { title: adTitle, description: adDescription || adTitle }),
         boostVideoUrl: videoUrl,
         boostImageUrl: imageUrl,
         boostAdFormat: adFormat,
+        boostCtaType: ctaType,
+        boostWhatsappNumber: whatsappNumber,
+        boostExternalLink: externalLink,
+        boostCtaText: ctaText,
       })
       .where(eq(listingsTable.id, listingId!));
 
@@ -455,14 +477,17 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
     await db
       .update(listingsTable)
       .set({
-        title: adTitle,
-        description: adDescription || adTitle,
+        ...(listingIdIn ? {} : { title: adTitle, description: adDescription || adTitle }),
         isBoosted: true,
         boostStartAt: startsAt,
         boostExpiresAt: expiresAt,
         boostVideoUrl: videoUrl,
         boostImageUrl: imageUrl,
         boostAdFormat: adFormat,
+        boostCtaType: ctaType,
+        boostWhatsappNumber: whatsappNumber,
+        boostExternalLink: externalLink,
+        boostCtaText: ctaText,
         boostAudienceCountry: audience.country,
         boostAudienceState: audience.state ?? null,
         boostAudienceCity: audience.city ?? null,
@@ -492,6 +517,40 @@ router.post("/booster/campaigns", requireAuth, requireNotRestricted, requireCard
     logger.error({ err }, "booster/campaigns launch failed");
     res.status(500).json({ error: "Failed to launch campaign" });
   }
+});
+
+/** Pause / resume an owned active campaign (no refund). */
+router.post("/booster/campaigns/:id/pause", requireAuth, async (req, res): Promise<void> => {
+  const boostId = parseInt(String(req.params.id), 10);
+  const userId = req.userId!;
+  if (!boostId) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [boost] = await db.select().from(boostsTable).where(and(eq(boostsTable.id, boostId), eq(boostsTable.userId, userId)));
+  if (!boost) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (boost.paymentStatus !== "paid") { res.status(400).json({ error: "Only paid campaigns can be paused" }); return; }
+  await db.update(boostsTable).set({ campaignStatus: "paused" }).where(eq(boostsTable.id, boostId));
+  await db.update(listingsTable).set({ isBoosted: false }).where(eq(listingsTable.id, boost.listingId));
+  res.json({ ok: true, status: "paused" });
+});
+
+router.post("/booster/campaigns/:id/resume", requireAuth, async (req, res): Promise<void> => {
+  const boostId = parseInt(String(req.params.id), 10);
+  const userId = req.userId!;
+  if (!boostId) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [boost] = await db.select().from(boostsTable).where(and(eq(boostsTable.id, boostId), eq(boostsTable.userId, userId)));
+  if (!boost) { res.status(404).json({ error: "Campaign not found" }); return; }
+  if (boost.campaignStatus !== "paused" || boost.paymentStatus !== "paid") {
+    res.status(400).json({ error: "Only paused paid campaigns can be resumed" }); return;
+  }
+  if (boost.expiresAt <= new Date()) {
+    res.status(400).json({ error: "Campaign already expired" }); return;
+  }
+  await db.update(boostsTable).set({ campaignStatus: "active" }).where(eq(boostsTable.id, boostId));
+  await db.update(listingsTable).set({
+    isBoosted: true,
+    boostExpiresAt: boost.expiresAt,
+    boostStartAt: boost.startsAt ?? new Date(),
+  }).where(eq(listingsTable.id, boost.listingId));
+  res.json({ ok: true, status: "active" });
 });
 
 /** Track view / click / skip events */

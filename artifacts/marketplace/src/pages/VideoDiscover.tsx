@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft, BadgeCheck, Eye, Film, Loader2, Play, Plus, Search, ShoppingCart, Zap,
+  Users, TrendingUp, BarChart3,
 } from "lucide-react";
 import { useSEO } from "@/hooks/useSEO";
 import { useAuth } from "@/contexts/auth";
@@ -93,6 +94,7 @@ export default function VideoDiscover() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalHint, setTotalHint] = useState(0);
   const [durations, setDurations] = useState<Record<number, number>>({});
+  const [activeCampaignCount, setActiveCampaignCount] = useState(0);
 
   const seedRef = useRef<number>(0);
   if (seedRef.current === 0) {
@@ -143,6 +145,20 @@ export default function VideoDiscover() {
     debounceRef.current = setTimeout(() => setDebouncedQ(query.trim()), 280);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
+
+  useEffect(() => {
+    if (!token) { setActiveCampaignCount(0); return; }
+    let cancelled = false;
+    fetch("/api/booster/campaigns", { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d.campaigns) ? d.campaigns : [];
+        setActiveCampaignCount(list.filter((c: { status?: string }) => c.status === "active").length);
+      })
+      .catch(() => { if (!cancelled) setActiveCampaignCount(0); });
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     try {
@@ -347,6 +363,58 @@ export default function VideoDiscover() {
       </div>
 
       <div className="mx-auto max-w-5xl px-3 pb-28 pt-3">
+        {!purchasesDisabled && (
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { icon: Eye, label: t("videoFeed.quickMoreViews", { defaultValue: "More Views" }) },
+                { icon: Users, label: t("videoFeed.quickMoreCustomers", { defaultValue: "More Customers" }) },
+                { icon: TrendingUp, label: t("videoFeed.quickGrow", { defaultValue: "Grow Your Business" }) },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="rounded-2xl border border-border/70 bg-white dark:bg-card px-2 py-3 text-center">
+                  <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/40">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="text-[11px] font-bold leading-tight text-foreground">{label}</div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(user ? "/booster/create" : "/auth/login")}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-3.5 text-sm font-black text-white shadow-md hover:bg-violet-800"
+              data-testid="button-create-promo-video"
+            >
+              <Plus className="h-4 w-4" />
+              {t("videoFeed.createPromo", { defaultValue: "Create Promotional Video" })}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(user ? "/booster" : "/auth/login")}
+              className="flex w-full items-center justify-between rounded-2xl border border-border/70 bg-white px-4 py-3 text-left dark:bg-card"
+              data-testid="button-my-video-campaigns"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black text-foreground truncate">
+                    {t("videoFeed.myCampaigns", { defaultValue: "My Video Campaigns" })}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {t("videoFeed.activeCount", {
+                      defaultValue: "{{count}} Active",
+                      count: activeCampaignCount,
+                    })}
+                  </div>
+                </div>
+              </div>
+              <Zap className="h-4 w-4 text-violet-600 shrink-0" />
+            </button>
+          </div>
+        )}
+
         {loading && videos.length === 0 ? (
           <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
             <Loader2 className="h-7 w-7 animate-spin" />
@@ -402,8 +470,8 @@ export default function VideoDiscover() {
                         <Play className="h-5 w-5 fill-white text-white ml-0.5" />
                       </span>
                     </span>
-                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-[hsl(152,65%,18%)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
-                      {t("videoFeed.promoBadge")}
+                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-violet-700 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">
+                      {t("boostAd.sponsored", { defaultValue: t("videoFeed.promoBadge") })}
                     </span>
                   </button>
 
@@ -470,11 +538,11 @@ export default function VideoDiscover() {
             <button
               type="button"
               onClick={() => navigate("/booster/create")}
-              className="mt-4 inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-4 py-3 text-sm font-black text-white"
+              className="mt-4 inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-violet-700 px-4 py-3 text-sm font-black text-white hover:bg-violet-800"
               data-testid="button-boost-video"
             >
               <Zap className="h-4 w-4" />
-              {t("videoFeed.boostSectionCta", { defaultValue: "Boost a video" })}
+              {t("videoFeed.boostSectionCta", { defaultValue: "Boost your video to appear here" })}
             </button>
           </div>
         )}
@@ -484,8 +552,8 @@ export default function VideoDiscover() {
         <button
           type="button"
           onClick={() => navigate("/booster/create")}
-          className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(152,65%,18%)] text-white shadow-xl md:bottom-8"
-          aria-label={t("videoFeed.addBoost")}
+          className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-violet-700 text-white shadow-xl md:bottom-8 hover:bg-violet-800"
+          aria-label={t("videoFeed.createPromo", { defaultValue: "Create Promotional Video" })}
           data-testid="fab-boost-video"
         >
           <Plus className="h-7 w-7" />

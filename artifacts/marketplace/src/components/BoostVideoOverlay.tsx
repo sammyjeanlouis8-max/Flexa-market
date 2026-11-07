@@ -61,6 +61,7 @@ interface BoostListing {
   boostImageUrl?: string | null;
   adFormat?: "video" | "image" | string | null;
   sellerName: string | null;
+  sellerId?: number | null;
   boostCtaType: string | null;
   boostExternalLink: string | null;
   boostWhatsappNumber: string | null;
@@ -259,32 +260,70 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
 
   // ── CTA ───────────────────────────────────────────────────────────────────
   // Video-only boosts (status="hidden") have no product page — never navigate
-  // to /listings/:id for them. Only open external link or WhatsApp if set.
+  // to /listings/:id for them unless CTA is buy_now on a real product.
   const isVideoOnly = listing.isVideoOnly || listing.status === "hidden";
-  const hasExternalCta =
-    (listing.boostCtaType === "link" && !!listing.boostExternalLink) ||
-    (listing.boostCtaType === "whatsapp" && !!listing.boostWhatsappNumber);
+  const ctaType = listing.boostCtaType;
+  const hasCta =
+    ctaType === "buy_now" && !isVideoOnly
+    || ctaType === "message"
+    || (ctaType === "whatsapp" && !!listing.boostWhatsappNumber)
+    || (ctaType === "link" && !!listing.boostExternalLink)
+    || (!ctaType && !isVideoOnly); // legacy: default view listing
 
-  const handleCta = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handleCta = useCallback(async (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
     videoRef.current?.pause();
     trackBoostEvent(listing.id, "click");
     const type = listing.boostCtaType;
+    if (type === "none") {
+      onClose();
+      return;
+    }
     if (type === "link" && listing.boostExternalLink) {
       window.open(listing.boostExternalLink, "_blank", "noopener,noreferrer");
       onClose();
-    } else if (type === "whatsapp" && listing.boostWhatsappNumber) {
+      return;
+    }
+    if (type === "whatsapp" && listing.boostWhatsappNumber) {
       window.open(`https://wa.me/${listing.boostWhatsappNumber.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
       onClose();
-    } else if (!isVideoOnly) {
-      // Only navigate to product page for real listings
+      return;
+    }
+    if (type === "message" && listing.sellerId) {
+      try {
+        const token =
+          localStorage.getItem("flexamarket_token")
+          || localStorage.getItem("token")
+          || sessionStorage.getItem("token");
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const response = await fetch("/api/conversations", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            listingId: listing.id,
+            sellerId: listing.sellerId,
+            source: "boost_ad",
+          }),
+        });
+        if (response.ok) {
+          const conversation = await response.json();
+          setLocation(`/messages/${conversation.id}`);
+          onClose();
+          return;
+        }
+      } catch { /* fall through */ }
+      setLocation(`/messages?listingId=${listing.id}&sellerId=${listing.sellerId}`);
+      onClose();
+      return;
+    }
+    if ((type === "buy_now" || !type) && !isVideoOnly) {
       setLocation(`/listings/${listing.id}?buy=1`);
       onClose();
-    } else {
-      // Video-only, no external CTA → just close the overlay
-      onClose();
+      return;
     }
+    onClose();
   }, [listing, onClose, setLocation, isVideoOnly]);
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -429,12 +468,12 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         className="fixed bottom-0 left-0 right-0 z-[100] bg-gray-900 px-4 pt-3"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom, 12px), 12px)", touchAction: "manipulation" }}
       >
-        {/* CTA button — hidden for video-only boosts with no external action */}
-        {(!isVideoOnly || hasExternalCta) && (
+        {/* CTA button — hidden when advertiser chose No Button or video-only with no action */}
+        {hasCta && ctaType !== "none" && (
           <button
             type="button"
-            onClick={handleCta}
-            onTouchEnd={e => { e.preventDefault(); handleCta(e); }}
+            onClick={(e) => { void handleCta(e); }}
+            onTouchEnd={(e) => { e.preventDefault(); void handleCta(e); }}
             className="w-full bg-primary hover:bg-primary/90 active:scale-[0.98] text-primary-foreground font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-between gap-3 transition-all"
             data-testid="button-boost-view-listing"
           >
@@ -455,11 +494,17 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               </div>
             </div>
             <span className="text-sm whitespace-nowrap shrink-0">
-              {listing.boostCtaType === "link"
-                ? <>{t("boostAd.visitLink")} →</>
-                : listing.boostCtaType === "whatsapp"
-                  ? <>{t("boostAd.chatWhatsApp")} →</>
-                  : <>{t("boostAd.viewListing")} →</>}
+              {listing.boostCtaText
+                ? <>{listing.boostCtaText} →</>
+                : listing.boostCtaType === "link"
+                  ? <>{t("boostAd.visitLink")} →</>
+                  : listing.boostCtaType === "whatsapp"
+                    ? <>{t("boostAd.chatWhatsApp")} →</>
+                    : listing.boostCtaType === "message"
+                      ? <>{t("booster.cta.message", { defaultValue: "Message on Flexa" })} →</>
+                      : listing.boostCtaType === "buy_now"
+                        ? <>{t("buttons.buyNow", { defaultValue: "Buy Now" })} →</>
+                        : <>{t("boostAd.viewListing")} →</>}
             </span>
           </button>
         )}

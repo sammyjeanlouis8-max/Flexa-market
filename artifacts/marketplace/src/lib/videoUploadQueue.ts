@@ -131,7 +131,12 @@ async function execute(job: StoredJob, signal: AbortSignal) {
     const response = await request("chunk-init", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...auth(job) },
-      body: JSON.stringify({ totalChunks: Math.ceil(job.totalBytes / CHUNK_BYTES), totalBytes: job.totalBytes, contentType: job.contentType }),
+      body: JSON.stringify({
+        totalChunks: Math.ceil(job.totalBytes / CHUNK_BYTES),
+        totalBytes: job.totalBytes,
+        contentType: job.contentType,
+        purpose: job.purpose,
+      }),
     }, signal);
     const session = await response.json();
     assertCurrentRun(job, signal);

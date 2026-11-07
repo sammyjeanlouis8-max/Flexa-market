@@ -1,173 +1,270 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
-import { Film, Image as ImageIcon, Loader2, Sparkles, SlidersHorizontal } from "lucide-react";
+import {
+  Film, Loader2, Package, Plus, Search, ShoppingBag, Video, MessageCircle,
+  Phone, Ban, Check, ImagePlus, X,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useUpload } from "@workspace/object-storage-web";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
+import { isAndroidApp } from "@/lib/androidPurchasePolicy";
+import { BoostAudiencePanel } from "@/components/boost/BoostAudiencePanel";
+import { formatPrice } from "@/lib/currency";
+import { cn } from "@/lib/utils";
 import BoosterLayout from "./BoosterLayout";
 
 const MAX_VIDEO_SECONDS = 120;
-const BUDGET_PRESETS = [2, 5, 10, 20];
-const STEPS = ["create", "audience", "budget", "review"] as const;
+const MIN_BUDGET = 2;
+const DURATION_DAYS = [1, 3, 7, 14, 30] as const;
+const STEPS = ["create", "audience", "action", "budget", "review"] as const;
 type Step = (typeof STEPS)[number];
+type AdType = "existing" | "new" | "video_only";
+type CtaType = "buy_now" | "message" | "whatsapp" | "none";
 
-type Meta = {
-  haitiDepartments: string[];
-  communesByDepartment: Record<string, string[]>;
-  radiusKm: number[];
+type UserListing = {
+  id: number;
+  title: string;
+  price: number;
+  currency?: string | null;
+  description?: string | null;
+  images?: string[];
+  boostVideoUrl?: string | null;
+  listingVideoUrl?: string | null;
+  status?: string;
 };
+
+type Category = { id: number; name: string };
+
+function daysFromToday(n: number): { start: string; end: string } {
+  const start = new Date();
+  const end = new Date();
+  end.setDate(end.getDate() + n);
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
 
 export default function BoosterCreate() {
   const { t } = useTranslation();
   const { token, user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const { uploadFile } = useUpload();
+  const purchasesDisabled = isAndroidApp();
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<Step>("create");
-  const [meta, setMeta] = useState<Meta | null>(null);
-  const [adFormat, setAdFormat] = useState<"video" | "image">("video");
+  const [adType, setAdType] = useState<AdType | null>(null);
+
+  // Existing product
+  const [listings, setListings] = useState<UserListing[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+  const [listingQuery, setListingQuery] = useState("");
+  const [selectedListing, setSelectedListing] = useState<UserListing | null>(null);
+
+  // New product
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState<number | null>(null);
+  const [newDesc, setNewDesc] = useState("");
+  const [newCondition, setNewCondition] = useState<"new" | "used">("new");
+  const [newImages, setNewImages] = useState<{ preview: string; url: string | null }[]>([]);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [creatingProduct, setCreatingProduct] = useState(false);
+  const [createdListingId, setCreatedListingId] = useState<number | null>(null);
+
+  // Video-only title/desc
   const [adTitle, setAdTitle] = useState("");
   const [adDescription, setAdDescription] = useState("");
+
+  // Video
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
 
+  // Audience — always account country (never GPS/IP)
+  const accountCountry = user?.country || "Haiti";
   const [audienceType, setAudienceType] = useState<"advantage_plus" | "custom">("advantage_plus");
-  const [department, setDepartment] = useState("Ouest");
-  const [cities, setCities] = useState<string[]>(["Port-au-Prince"]);
+  const [department, setDepartment] = useState(accountCountry === "Haiti" ? "Ouest" : "");
+  const [cities, setCities] = useState<string[]>(accountCountry === "Haiti" ? ["Port-au-Prince"] : []);
   const [radiusKm, setRadiusKm] = useState(25);
-  const [savedAudienceId, setSavedAudienceId] = useState<number | "">("");
-  const [savedAudiences, setSavedAudiences] = useState<Array<{ id: number; name: string; state: string | null; cities: string[]; radiusKm: number | null }>>([]);
+  const [ageMin, setAgeMin] = useState(18);
+  const [ageMax, setAgeMax] = useState(65);
+  const [gender, setGender] = useState<"all" | "male" | "female">("all");
 
-  const [budget, setBudget] = useState(10);
+  // CTA
+  const [ctaType, setCtaType] = useState<CtaType>("buy_now");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+
+  // Budget
+  const [budget, setBudget] = useState(MIN_BUDGET);
   const [customBudget, setCustomBudget] = useState("");
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().slice(0, 10);
-  });
-  const [estimate, setEstimate] = useState<{ reach: number; impressions: number } | null>(null);
+  const [durationDays, setDurationDays] = useState<number>(3);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (!token) return;
-    fetch("/api/booster/meta", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => setMeta(d))
-      .catch(() => {});
-    fetch("/api/booster/audiences", { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => r.json())
-      .then((d) => setSavedAudiences(d.audiences || []))
-      .catch(() => {});
-  }, [token]);
+  const { start: startDate, end: endDate } = useMemo(() => daysFromToday(durationDays), [durationDays]);
+  const dailySpend = budget / Math.max(1, durationDays);
 
-  const communes = meta?.communesByDepartment?.[department] || [];
-  const days = useMemo(() => {
-    const a = new Date(startDate).getTime();
-    const b = new Date(endDate).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
-    return Math.max(1, Math.ceil((b - a) / 86_400_000));
-  }, [startDate, endDate]);
+  const hasProduct = adType === "existing" || adType === "new";
+  const listingId = adType === "existing"
+    ? selectedListing?.id ?? null
+    : adType === "new"
+      ? createdListingId
+      : null;
+
+  const resolvedTitle = useMemo(() => {
+    if (adType === "existing" && selectedListing) return selectedListing.title;
+    if (adType === "new" && newTitle.trim()) return newTitle.trim();
+    return adTitle.trim();
+  }, [adType, selectedListing, newTitle, adTitle]);
+
+  const resolvedPrice = useMemo(() => {
+    if (adType === "existing" && selectedListing) return selectedListing.price;
+    if (adType === "new") {
+      const n = parseFloat(newPrice);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  }, [adType, selectedListing, newPrice]);
+
+  const resolvedImages = useMemo(() => {
+    if (adType === "existing" && selectedListing?.images) return selectedListing.images;
+    if (adType === "new") return newImages.map((i) => i.url).filter(Boolean) as string[];
+    return [];
+  }, [adType, selectedListing, newImages]);
+
+  const filteredListings = useMemo(() => {
+    const q = listingQuery.trim().toLowerCase();
+    const base = listings.filter((l) => l.status !== "hidden" && l.status !== "deleted");
+    if (!q) return base;
+    return base.filter((l) => l.title.toLowerCase().includes(q));
+  }, [listings, listingQuery]);
+
+  const libraryVideos = useMemo(() => {
+    return listings
+      .map((l) => ({
+        id: l.id,
+        title: l.title,
+        url: l.boostVideoUrl || l.listingVideoUrl || null,
+        thumb: l.images?.[0] || null,
+      }))
+      .filter((v) => !!v.url);
+  }, [listings]);
+
+  // Load seller listings when choosing existing / for library
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    if (adType !== "existing" && adType !== "video_only" && adType !== "new") return;
+    if (listings.length > 0) return;
+    setListingsLoading(true);
+    fetch(`/api/users/${user.id}/listings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setListings(Array.isArray(d) ? d : (d.listings ?? [])))
+      .catch(() => setListings([]))
+      .finally(() => setListingsLoading(false));
+  }, [adType, token, user?.id, listings.length]);
 
   useEffect(() => {
-    if (!token || days < 1) return;
-    const plan = days <= 1 ? "1day" : days <= 3 ? "3day" : "7day";
-    const timer = setTimeout(() => {
-      fetch("/api/boost/estimate", {
+    if (adType !== "new" || categories.length > 0) return;
+    fetch("/api/categories")
+      .then((r) => r.json())
+      .then((cats) => {
+        const list = Array.isArray(cats) ? cats : cats.categories || [];
+        setCategories(list);
+        if (list[0]?.id) setNewCategoryId(list[0].id);
+      })
+      .catch(() => {});
+  }, [adType, categories.length]);
+
+  // Buy Now only when product attached — auto-downgrade otherwise
+  useEffect(() => {
+    if (!hasProduct && ctaType === "buy_now") setCtaType("none");
+  }, [hasProduct, ctaType]);
+
+  const onPickImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const toAdd = Array.from(files).slice(0, 5 - newImages.length);
+    setImageUploading(true);
+    for (const file of toAdd) {
+      if (!file.type.startsWith("image/")) continue;
+      const preview = URL.createObjectURL(file);
+      setNewImages((prev) => [...prev, { preview, url: null }]);
+      try {
+        const res = await uploadFile(file) as { objectPath?: string; url?: string } | null;
+        const url = res?.objectPath
+          ? (res.objectPath.startsWith("/") ? res.objectPath : `/api/storage/objects/${res.objectPath}`)
+          : res?.url ?? null;
+        setNewImages((prev) => {
+          const idx = prev.findIndex((it) => it.preview === preview);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = { preview, url };
+          return next;
+        });
+      } catch {
+        setNewImages((prev) => prev.filter((it) => it.preview !== preview));
+        URL.revokeObjectURL(preview);
+        toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
+      }
+    }
+    setImageUploading(false);
+  };
+
+  const createProduct = async (): Promise<number | null> => {
+    if (createdListingId) return createdListingId;
+    const price = parseFloat(newPrice);
+    const urls = newImages.map((i) => i.url).filter(Boolean) as string[];
+    if (!newTitle.trim() || !Number.isFinite(price) || price <= 0 || urls.length === 0 || newDesc.trim().length < 20) {
+      toast({
+        title: t("boostWizard.errorGeneric", { defaultValue: "Please complete the product form" }),
+        variant: "destructive",
+      });
+      return null;
+    }
+    setCreatingProduct(true);
+    try {
+      const res = await fetch("/api/listings", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          plan,
-          budget,
-          audience: {
-            country: user?.country || "Haiti",
-            state: department,
-            cities,
-            radiusKm,
-            audienceType,
-          },
+          title: newTitle.trim(),
+          description: newDesc.trim(),
+          price,
+          categoryId: newCategoryId ?? 1,
+          condition: newCondition,
+          location: user?.location || accountCountry,
+          country: accountCountry,
+          images: urls,
         }),
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          if (typeof d.estimatedReach === "number") {
-            setEstimate({
-              reach: d.estimatedReach,
-              impressions: Math.round(d.estimatedReach * 2),
-            });
-          }
-        })
-        .catch(() => {});
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [token, budget, days, department, cities, radiusKm, audienceType, user?.country]);
-
-  const applySaved = (id: number) => {
-    setSavedAudienceId(id);
-    const a = savedAudiences.find((x) => x.id === id);
-    if (!a) return;
-    if (a.state) setDepartment(a.state);
-    if (a.cities?.length) setCities(a.cities);
-    if (a.radiusKm) setRadiusKm(a.radiusKm);
-    setAudienceType("custom");
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast({ title: data.error || t("booster.create.launchFailed"), variant: "destructive" });
+        return null;
+      }
+      setCreatedListingId(data.id);
+      setAdTitle(newTitle.trim());
+      return data.id as number;
+    } catch {
+      toast({ title: t("booster.create.launchFailed"), variant: "destructive" });
+      return null;
+    } finally {
+      setCreatingProduct(false);
+    }
   };
 
-  const uploadImage = async (file: File): Promise<string> => {
-    const presignRes = await fetch("/api/storage/uploads/request-url", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: file.name,
-        size: file.size,
-        contentType: file.type || "image/jpeg",
-      }),
-    });
-    if (!presignRes.ok) throw new Error("presign failed");
-    const data = await presignRes.json();
-    const putUrl = data.uploadURL || data.uploadUrl;
-    if (!putUrl) throw new Error("no upload url");
-    const putRes = await fetch(putUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "image/jpeg" },
-      body: file,
-    });
-    if (!putRes.ok) throw new Error("put failed");
-    if (typeof data.url === "string" && (data.url.startsWith("http") || data.url.startsWith("/api/storage/"))) {
-      return data.url;
-    }
-    const objectPath = String(data.objectPath || "");
-    return `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
-  };
-
-  const onPickMedia = async (file: File) => {
-    if (adFormat === "image") {
-      if (!file.type.startsWith("image/")) {
-        toast({ title: t("booster.create.needImage"), variant: "destructive" });
-        return;
-      }
-      setUploading(true);
-      try {
-        const url = await uploadImage(file);
-        setImageUrl(url);
-        setMediaPreview(url);
-      } catch {
-        toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
-      } finally {
-        setUploading(false);
-      }
-      return;
-    }
-
+  const onPickVideo = async (file: File) => {
     if (!file.type.startsWith("video/")) {
       toast({ title: t("booster.create.needVideo"), variant: "destructive" });
       return;
@@ -191,14 +288,20 @@ export default function BoosterCreate() {
     }
     setMediaPreview(objectUrl);
     setUploading(true);
+    setUploadPercent(5);
     try {
-      if (!user?.id) throw new Error("auth");
+      if (!user?.id || !token) throw new Error("auth");
+      const progressTimer = setInterval(() => {
+        setUploadPercent((p) => (p < 90 ? p + 7 : p));
+      }, 400);
       const url = await startVideoUpload(file, token, {
         ownerId: user.id,
         purpose: "boost",
       });
+      clearInterval(progressTimer);
       if (!url) throw new Error("no url");
       setVideoUrl(url);
+      setUploadPercent(100);
       toast({ title: t("booster.create.videoReady") });
     } catch {
       toast({ title: t("booster.create.uploadFailed"), variant: "destructive" });
@@ -208,24 +311,51 @@ export default function BoosterCreate() {
     }
   };
 
+  const selectLibraryVideo = (url: string, titleHint?: string) => {
+    setVideoUrl(url);
+    setMediaPreview(url);
+    if (!adTitle.trim() && titleHint) setAdTitle(titleHint);
+  };
+
   const canNext = () => {
     if (step === "create") {
-      if (!adTitle.trim()) return false;
-      if (adFormat === "video") return !!videoUrl;
-      return !!imageUrl;
+      if (!adType) return false;
+      if (!videoUrl) return false;
+      if (adType === "existing") return !!selectedListing;
+      if (adType === "new") {
+        return !!newTitle.trim() && !!newPrice && newImages.some((i) => i.url) && newDesc.trim().length >= 20;
+      }
+      return !!adTitle.trim();
     }
-    if (step === "audience") return !!department;
-    if (step === "budget") return budget >= 2 && days >= 1;
+    if (step === "audience") return true;
+    if (step === "action") {
+      if (ctaType === "whatsapp") return whatsappNumber.replace(/\D/g, "").length >= 8;
+      if (ctaType === "buy_now") return hasProduct;
+      return true;
+    }
+    if (step === "budget") return budget >= MIN_BUDGET && durationDays >= 1;
     return true;
   };
 
-  const goNext = () => {
+  const goNext = async () => {
+    if (step === "create" && adType === "new" && !createdListingId) {
+      const id = await createProduct();
+      if (!id) return;
+    }
     const i = STEPS.indexOf(step);
     if (i < STEPS.length - 1) setStep(STEPS[i + 1]);
   };
+
   const goBack = () => {
     const i = STEPS.indexOf(step);
     if (i > 0) setStep(STEPS[i - 1]);
+  };
+
+  const ctaLabel = (type: CtaType) => {
+    if (type === "buy_now") return t("buttons.buyNow", { defaultValue: "Buy Now" });
+    if (type === "message") return t("booster.cta.message", { defaultValue: "Message on Flexa" });
+    if (type === "whatsapp") return t("booster.cta.whatsapp", { defaultValue: "WhatsApp" });
+    return t("booster.cta.none", { defaultValue: "No Button" });
   };
 
   const submit = async (mode: "draft" | "launch") => {
@@ -233,8 +363,21 @@ export default function BoosterCreate() {
       navigate("/auth/login");
       return;
     }
+    if (purchasesDisabled) return;
+    if (mode === "launch" && ctaType === "buy_now" && !listingId) {
+      toast({
+        title: t("booster.cta.buyNowNeedsProduct", { defaultValue: "Buy Now requires a product" }),
+        variant: "destructive",
+      });
+      return;
+    }
     setBusy(true);
     try {
+      let finalListingId = listingId;
+      if (adType === "new" && !finalListingId) {
+        finalListingId = await createProduct();
+        if (!finalListingId) return;
+      }
       const res = await fetch("/api/booster/campaigns", {
         method: "POST",
         headers: {
@@ -243,23 +386,27 @@ export default function BoosterCreate() {
         },
         body: JSON.stringify({
           mode,
-          adFormat,
-          adTitle: adTitle.trim(),
-          adDescription: adDescription.trim(),
+          adFormat: "video",
+          adTitle: resolvedTitle || "Promotional Video",
+          adDescription: adType === "new" ? newDesc.trim() : adDescription.trim(),
           videoUrl,
-          imageUrl,
+          imageUrl: resolvedImages[0] || null,
+          listingId: finalListingId,
           budget,
           startDate,
           endDate,
+          ctaType,
+          whatsappNumber: ctaType === "whatsapp" ? whatsappNumber.replace(/\D/g, "") : null,
+          ctaText: ctaLabel(ctaType),
           audience: {
-            country: user?.country || "Haiti",
-            state: department,
+            country: accountCountry,
+            state: department || null,
             cities,
             radiusKm,
             audienceType,
-            audienceName: savedAudienceId
-              ? savedAudiences.find((a) => a.id === savedAudienceId)?.name
-              : undefined,
+            ageMin,
+            ageMax,
+            gender,
           },
         }),
       });
@@ -269,6 +416,9 @@ export default function BoosterCreate() {
           title: data.error || t("booster.create.launchFailed"),
           variant: "destructive",
         });
+        if (data.code === "INSUFFICIENT_WALLET") {
+          navigate("/wallet");
+        }
         return;
       }
       toast({
@@ -282,188 +432,349 @@ export default function BoosterCreate() {
     }
   };
 
+  if (purchasesDisabled) {
+    return (
+      <BoosterLayout title={t("booster.create.title")} subtitle={t("androidPurchasePolicy.unavailable")}>
+        <div className="bp-card text-sm text-slate-600">{t("androidPurchasePolicy.unavailable")}</div>
+      </BoosterLayout>
+    );
+  }
+
   return (
     <BoosterLayout
-      title={t("booster.create.title")}
-      subtitle={t("booster.create.subtitle")}
+      title={t("booster.create.title", { defaultValue: "Create Promotional Video" })}
+      subtitle={t("booster.create.subtitle", { defaultValue: "Promote a product or video with Flexa Boost." })}
     >
-      <div className="bp-steps">
+      <div className="bp-steps" role="list">
         {STEPS.map((s, i) => (
           <span
             key={s}
+            role="listitem"
             className={`bp-step-pill${step === s ? " on" : STEPS.indexOf(step) > i ? " done" : ""}`}
           >
-            {i + 1}. {t(`booster.steps.${s}`)}
+            {i + 1}. {t(`booster.steps.${s}`, {
+              defaultValue: s === "action" ? "Action" : s.charAt(0).toUpperCase() + s.slice(1),
+            })}
           </span>
         ))}
       </div>
 
+      {/* ── CREATE ─────────────────────────────────────────────── */}
       {step === "create" && (
-        <div className="bp-card space-y-3">
-          <div className="bp-format-grid">
-            <button
-              type="button"
-              className={`bp-format${adFormat === "image" ? " on" : ""}`}
-              onClick={() => { setAdFormat("image"); setVideoUrl(null); }}
-              data-testid="booster-format-image"
-            >
-              <ImageIcon className="h-5 w-5 text-violet-600 mb-2" />
-              <div className="font-bold">{t("booster.create.imageAd")}</div>
-              <div className="text-xs text-slate-500 mt-1">{t("booster.create.imageAdDesc")}</div>
-            </button>
-            <button
-              type="button"
-              className={`bp-format${adFormat === "video" ? " on" : ""}`}
-              onClick={() => { setAdFormat("video"); setImageUrl(null); }}
-              data-testid="booster-format-video"
-            >
-              <Film className="h-5 w-5 text-violet-600 mb-2" />
-              <div className="font-bold">{t("booster.create.videoAd")}</div>
-              <div className="text-xs text-slate-500 mt-1">{t("booster.create.videoAdDesc")}</div>
-            </button>
-          </div>
-
-          <label className="bp-upload" data-testid="booster-upload">
-            <input
-              type="file"
-              accept={adFormat === "video" ? "video/*" : "image/*"}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onPickMedia(f);
-              }}
-            />
-            {uploading ? (
-              <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
-            ) : mediaPreview ? (
-              adFormat === "video" ? (
-                <video src={mediaPreview} className="mx-auto max-h-48 rounded-lg" controls muted />
-              ) : (
-                <img src={mediaPreview} alt="" className="mx-auto max-h-48 rounded-lg" />
-              )
-            ) : (
-              <>
-                <div className="font-bold text-violet-700">{t("booster.create.uploadMedia")}</div>
-                <div className="text-xs text-slate-500 mt-1">
-                  {adFormat === "video" ? t("booster.create.max2min") : t("booster.create.imageHint")}
-                </div>
-              </>
-            )}
-          </label>
-
-          <label className="bp-label">{t("booster.create.adTitle")}</label>
-          <input
-            className="bp-input"
-            value={adTitle}
-            onChange={(e) => setAdTitle(e.target.value)}
-            placeholder="Toyota Corolla 2020 – Ann Vann!"
-            data-testid="booster-ad-title"
-          />
-          <label className="bp-label">{t("booster.create.adDescription")}</label>
-          <textarea
-            className="bp-textarea"
-            value={adDescription}
-            onChange={(e) => setAdDescription(e.target.value)}
-            placeholder={t("booster.create.adDescriptionPh")}
-            data-testid="booster-ad-description"
-          />
-        </div>
-      )}
-
-      {step === "audience" && (
-        <div className="bp-card">
-          <div className="bp-format-grid mb-3">
-            <button
-              type="button"
-              className={`bp-format${audienceType === "advantage_plus" ? " on" : ""}`}
-              onClick={() => setAudienceType("advantage_plus")}
-            >
-              <Sparkles className="h-4 w-4 text-violet-600 mb-1" />
-              <div className="font-bold text-sm">{t("booster.audience.advantage")}</div>
-            </button>
-            <button
-              type="button"
-              className={`bp-format${audienceType === "custom" ? " on" : ""}`}
-              onClick={() => setAudienceType("custom")}
-            >
-              <SlidersHorizontal className="h-4 w-4 text-violet-600 mb-1" />
-              <div className="font-bold text-sm">{t("booster.audience.manual")}</div>
-            </button>
-          </div>
-
-          <label className="bp-label">{t("booster.audience.location")}</label>
-          <input className="bp-input" value={user?.country || "Haiti"} readOnly />
-
-          <label className="bp-label">{t("booster.audience.department")}</label>
-          <div className="bp-chip-row">
-            {(meta?.haitiDepartments || ["Ouest", "Artibonite"]).map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={`bp-chip${department === d ? " on" : ""}`}
-                onClick={() => { setDepartment(d); setCities([]); }}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-
-          <label className="bp-label">{t("booster.audience.cities")}</label>
-          <div className="bp-chip-row">
-            {communes.slice(0, 16).map((c) => {
-              const on = cities.includes(c);
-              return (
+        <div className="space-y-3">
+          <div className="bp-card space-y-3">
+            <h2 className="text-sm font-extrabold text-slate-800">
+              {t("booster.create.chooseType", { defaultValue: "Choose ad type" })}
+            </h2>
+            <div className="bp-adtype-grid">
+              {([
+                ["existing", Package, t("booster.create.promoteExisting", { defaultValue: "Promote Existing Product" }), t("booster.create.promoteExistingDesc", { defaultValue: "Select a product you already sell." })],
+                ["new", Plus, t("booster.create.createPromote", { defaultValue: "Create & Promote Product" }), t("booster.create.createPromoteDesc", { defaultValue: "Add a new product, then promote it." })],
+                ["video_only", Film, t("booster.create.videoOnly", { defaultValue: "Promote Video Only" }), t("booster.create.videoOnlyDesc", { defaultValue: "Services, events, brands — no product required." })],
+              ] as const).map(([id, Icon, label, desc]) => (
                 <button
-                  key={c}
+                  key={id}
                   type="button"
-                  className={`bp-chip${on ? " on" : ""}`}
-                  onClick={() =>
-                    setCities((prev) => (on ? prev.filter((x) => x !== c) : [...prev, c].slice(0, 8)))
-                  }
+                  className={cn("bp-adtype", adType === id && "on")}
+                  onClick={() => {
+                    setAdType(id);
+                    if (id === "video_only" && ctaType === "buy_now") setCtaType("none");
+                    if ((id === "existing" || id === "new") && ctaType === "none") setCtaType("buy_now");
+                  }}
+                  data-testid={`booster-adtype-${id}`}
                 >
-                  {c}
+                  <Icon className="h-5 w-5 text-violet-600 mb-1.5" />
+                  <div className="font-bold text-sm leading-snug">{label}</div>
+                  <div className="text-[11px] text-slate-500 mt-1 leading-snug">{desc}</div>
+                  {adType === id && (
+                    <span className="bp-adtype-check"><Check className="h-3.5 w-3.5" /></span>
+                  )}
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
 
-          <label className="bp-label">{t("booster.audience.radius")} — {radiusKm} km</label>
-          <input
-            type="range"
-            min={5}
-            max={100}
-            step={5}
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value))}
-            className="w-full accent-violet-600"
-          />
+          {adType === "existing" && (
+            <div className="bp-card space-y-3">
+              <label className="bp-label">{t("booster.create.selectProduct", { defaultValue: "Select your product" })}</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  className="bp-input pl-9!"
+                  style={{ paddingLeft: "2.25rem" }}
+                  value={listingQuery}
+                  onChange={(e) => setListingQuery(e.target.value)}
+                  placeholder={t("booster.create.searchProducts", { defaultValue: "Search your products…" })}
+                />
+              </div>
+              {listingsLoading ? (
+                <div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" /></div>
+              ) : filteredListings.length === 0 ? (
+                <p className="text-sm text-slate-500 py-4 text-center">
+                  {t("booster.create.noProducts", { defaultValue: "No products found on your account." })}
+                </p>
+              ) : (
+                <div className="bp-product-list">
+                  {filteredListings.map((l) => {
+                    const on = selectedListing?.id === l.id;
+                    return (
+                      <button
+                        key={l.id}
+                        type="button"
+                        className={cn("bp-product-row", on && "on")}
+                        onClick={() => {
+                          setSelectedListing(l);
+                          setAdTitle(l.title);
+                          setAdDescription(l.description || "");
+                          if (l.boostVideoUrl || l.listingVideoUrl) {
+                            selectLibraryVideo((l.boostVideoUrl || l.listingVideoUrl)!, l.title);
+                          }
+                        }}
+                        data-testid={`booster-product-${l.id}`}
+                      >
+                        {l.images?.[0] ? (
+                          <img src={l.images[0]} alt="" className="bp-product-thumb" />
+                        ) : (
+                          <div className="bp-product-thumb empty"><Package className="h-4 w-4" /></div>
+                        )}
+                        <div className="min-w-0 text-left flex-1">
+                          <div className="font-bold text-sm truncate">{l.title}</div>
+                          <div className="text-xs text-violet-700 font-semibold">
+                            {formatPrice(l.price, accountCountry, l.currency ?? "USD")}
+                          </div>
+                        </div>
+                        {on && <Check className="h-4 w-4 text-violet-600 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-          {savedAudiences.length > 0 && (
-            <>
-              <label className="bp-label">{t("booster.audience.saved")}</label>
-              <select
-                className="bp-select"
-                value={savedAudienceId}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (!v) { setSavedAudienceId(""); return; }
-                  applySaved(Number(v));
-                }}
-              >
-                <option value="">{t("booster.audience.chooseSaved")}</option>
-                {savedAudiences.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
+          {adType === "new" && (
+            <div className="bp-card space-y-3">
+              <label className="bp-label">{t("booster.create.productImages", { defaultValue: "Product images" })}</label>
+              <div className="flex flex-wrap gap-2">
+                {newImages.map((img, idx) => (
+                  <div key={img.preview} className="relative h-20 w-20 rounded-xl overflow-hidden border border-slate-200">
+                    <img src={img.preview} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      className="absolute top-1 right-1 h-6 w-6 rounded-full bg-black/60 text-white grid place-items-center"
+                      onClick={() => {
+                        URL.revokeObjectURL(img.preview);
+                        setNewImages((prev) => prev.filter((_, i) => i !== idx));
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
                 ))}
+                {newImages.length < 5 && (
+                  <label className="h-20 w-20 rounded-xl border border-dashed border-violet-300 grid place-items-center text-violet-600 cursor-pointer">
+                    {imageUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void onPickImages(e.target.files)} />
+                  </label>
+                )}
+              </div>
+              <label className="bp-label">{t("booster.create.adTitle")}</label>
+              <input className="bp-input" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} data-testid="booster-new-title" />
+              <label className="bp-label">{t("sell.price", { defaultValue: "Price" })} (USD)</label>
+              <input className="bp-input" type="number" min={0.01} step={0.01} value={newPrice} onChange={(e) => setNewPrice(e.target.value)} data-testid="booster-new-price" />
+              <label className="bp-label">{t("sell.category", { defaultValue: "Category" })}</label>
+              <select className="bp-select" value={newCategoryId ?? ""} onChange={(e) => setNewCategoryId(Number(e.target.value) || null)}>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-            </>
+              <label className="bp-label">{t("sell.condition", { defaultValue: "Condition" })}</label>
+              <div className="bp-chip-row">
+                {(["new", "used"] as const).map((c) => (
+                  <button key={c} type="button" className={`bp-chip${newCondition === c ? " on" : ""}`} onClick={() => setNewCondition(c)}>
+                    {c === "new" ? t("condition.new", { defaultValue: "New" }) : t("condition.used", { defaultValue: "Used" })}
+                  </button>
+                ))}
+              </div>
+              <label className="bp-label">{t("booster.create.adDescription")}</label>
+              <textarea className="bp-textarea" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} data-testid="booster-new-desc" />
+              <p className="text-[11px] text-slate-500">{t("booster.create.descMin", { defaultValue: "Minimum 20 characters." })}</p>
+            </div>
+          )}
+
+          {adType === "video_only" && (
+            <div className="bp-card space-y-3">
+              <label className="bp-label">{t("booster.create.adTitle")}</label>
+              <input
+                className="bp-input"
+                value={adTitle}
+                onChange={(e) => setAdTitle(e.target.value)}
+                placeholder={t("booster.create.videoOnlyTitlePh", { defaultValue: "Event, service, or brand name" })}
+                data-testid="booster-ad-title"
+              />
+              <label className="bp-label">{t("booster.create.adDescription")}</label>
+              <textarea
+                className="bp-textarea"
+                value={adDescription}
+                onChange={(e) => setAdDescription(e.target.value)}
+                placeholder={t("booster.create.adDescriptionPh")}
+              />
+            </div>
+          )}
+
+          {adType && (
+            <div className="bp-card space-y-3">
+              <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <Video className="h-4 w-4 text-violet-600" />
+                {t("booster.create.uploadMedia")}
+              </h2>
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void onPickVideo(f);
+                }}
+              />
+              <button
+                type="button"
+                className="bp-upload"
+                onClick={() => videoInputRef.current?.click()}
+                data-testid="booster-upload"
+              >
+                {uploading ? (
+                  <div className="space-y-2">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
+                    <div className="text-xs font-semibold text-violet-700">{uploadPercent}%</div>
+                    <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto">
+                      <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
+                    </div>
+                  </div>
+                ) : mediaPreview ? (
+                  <div className="space-y-2">
+                    <video src={mediaPreview} className="mx-auto max-h-52 rounded-lg w-full bg-black" controls playsInline muted />
+                    <div className="text-xs text-violet-700 font-semibold">
+                      {t("boostWizard.step3Change", { defaultValue: "Change Video" })}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-bold text-violet-700">{t("booster.create.uploadMedia")}</div>
+                    <div className="text-xs text-slate-500 mt-1">{t("booster.create.max2min")}</div>
+                  </>
+                )}
+              </button>
+
+              {libraryVideos.length > 0 && (
+                <div>
+                  <label className="bp-label">
+                    {t("booster.create.reuseVideo", { defaultValue: "Or reuse a video from your account" })}
+                  </label>
+                  <div className="bp-chip-row">
+                    {libraryVideos.slice(0, 8).map((v) => (
+                      <button
+                        key={`${v.id}-${v.url}`}
+                        type="button"
+                        className={`bp-chip${videoUrl === v.url ? " on" : ""}`}
+                        onClick={() => selectLibraryVideo(v.url!, v.title)}
+                      >
+                        {v.title.slice(0, 28)}{v.title.length > 28 ? "…" : ""}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
 
+      {/* ── AUDIENCE ───────────────────────────────────────────── */}
+      {step === "audience" && (
+        <div className="bp-card flexa-boost">
+          <BoostAudiencePanel
+            country={accountCountry}
+            audienceType={audienceType}
+            onAudienceType={setAudienceType}
+            audState={department}
+            setAudState={setDepartment}
+            audCities={cities}
+            setAudCities={setCities}
+            audRadiusKm={radiusKm}
+            setAudRadiusKm={setRadiusKm}
+            ageMin={ageMin}
+            ageMax={ageMax}
+            setAgeMin={setAgeMin}
+            setAgeMax={setAgeMax}
+            gender={gender}
+            setGender={setGender}
+            estimatedLabel={t("booster.audience.noReachEstimate", {
+              defaultValue: "Audience estimates appear only when reliable data is available.",
+            })}
+          />
+        </div>
+      )}
+
+      {/* ── ACTION / CTA ───────────────────────────────────────── */}
+      {step === "action" && (
+        <div className="bp-card space-y-3">
+          <h2 className="text-sm font-extrabold text-slate-800">
+            {t("booster.cta.title", { defaultValue: "Call to action" })}
+          </h2>
+          <p className="text-xs text-slate-500">
+            {t("booster.cta.subtitle", { defaultValue: "Optional. Choose one primary button for your ad." })}
+          </p>
+          <div className="bp-cta-grid">
+            {([
+              ["buy_now", ShoppingBag, t("buttons.buyNow", { defaultValue: "Buy Now" }), !hasProduct],
+              ["message", MessageCircle, t("booster.cta.message", { defaultValue: "Message on Flexa" }), false],
+              ["whatsapp", Phone, t("booster.cta.whatsapp", { defaultValue: "WhatsApp" }), false],
+              ["none", Ban, t("booster.cta.none", { defaultValue: "No Button" }), false],
+            ] as const).map(([id, Icon, label, disabled]) => (
+              <button
+                key={id}
+                type="button"
+                disabled={disabled}
+                className={cn("bp-cta-option", ctaType === id && "on", disabled && "disabled")}
+                onClick={() => setCtaType(id)}
+                data-testid={`booster-cta-${id}`}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+                {disabled && (
+                  <span className="text-[10px] text-slate-400 block mt-1">
+                    {t("booster.cta.buyNowNeedsProduct", { defaultValue: "Requires a product" })}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          {ctaType === "whatsapp" && (
+            <div>
+              <label className="bp-label">{t("booster.cta.whatsappNumber", { defaultValue: "WhatsApp business number" })}</label>
+              <input
+                className="bp-input"
+                inputMode="tel"
+                placeholder="+509 XXXX XXXX"
+                value={whatsappNumber}
+                onChange={(e) => setWhatsappNumber(e.target.value)}
+                data-testid="booster-whatsapp"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                {t("booster.cta.whatsappHint", { defaultValue: "Include country code. Digits only after save." })}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── BUDGET ─────────────────────────────────────────────── */}
       {step === "budget" && (
-        <div className="bp-card">
-          <label className="bp-label">{t("booster.budget.total")}</label>
+        <div className="bp-card space-y-3">
+          <label className="bp-label">{t("booster.budget.total")} (USD)</label>
           <div className="bp-chip-row mb-2">
-            {BUDGET_PRESETS.map((b) => (
+            {[2, 5, 10, 20, 50].map((b) => (
               <button
                 key={b}
                 type="button"
@@ -485,7 +796,7 @@ export default function BoosterCreate() {
             <input
               className="bp-input"
               type="number"
-              min={2}
+              min={MIN_BUDGET}
               step={0.01}
               value={customBudget}
               onChange={(e) => {
@@ -495,69 +806,95 @@ export default function BoosterCreate() {
               }}
             />
           )}
+          <p className="text-[11px] text-slate-500">
+            {t("booster.budget.minNote", { defaultValue: "Minimum campaign budget: $2 USD." })}
+          </p>
 
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div>
-              <label className="bp-label">{t("booster.budget.start")}</label>
-              <input className="bp-input" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </div>
-            <div>
-              <label className="bp-label">{t("booster.budget.end")}</label>
-              <input className="bp-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </div>
+          <label className="bp-label">{t("booster.budget.duration", { defaultValue: "Duration" })}</label>
+          <div className="bp-chip-row">
+            {DURATION_DAYS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`bp-chip${durationDays === d ? " on" : ""}`}
+                onClick={() => setDurationDays(d)}
+                data-testid={`booster-days-${d}`}
+              >
+                {d} {t("booster.budget.days")}
+              </button>
+            ))}
           </div>
-          <p className="text-xs text-slate-500 mt-2">{days} {t("booster.budget.days")}</p>
 
-          <div className="mt-4 rounded-xl bg-violet-50 border border-violet-100 p-3">
-            <div className="font-bold text-sm text-violet-900">{t("booster.budget.estimated")}</div>
-            <div className="text-sm mt-1">
-              {t("booster.budget.reach")}:{" "}
-              <strong>
-                {estimate
-                  ? `${estimate.reach.toLocaleString()} – ${Math.round(estimate.reach * 1.4).toLocaleString()}`
-                  : "—"}
-              </strong>
-            </div>
-            <div className="text-sm">
-              {t("booster.budget.impressions")}:{" "}
-              <strong>
-                {estimate
-                  ? `${estimate.impressions.toLocaleString()} – ${Math.round(estimate.impressions * 1.5).toLocaleString()}`
-                  : "—"}
-              </strong>
-            </div>
+          <div className="rounded-xl bg-violet-50 border border-violet-100 p-3 space-y-1.5 text-sm">
+            <div className="flex justify-between"><span>{t("booster.budget.total")}</span><strong>${budget.toFixed(2)} USD</strong></div>
+            <div className="flex justify-between"><span>{t("booster.budget.daily", { defaultValue: "Est. daily spend" })}</span><strong>${dailySpend.toFixed(2)}</strong></div>
+            <div className="flex justify-between"><span>{t("booster.review.duration")}</span><strong>{startDate} → {endDate}</strong></div>
+            <p className="text-[11px] text-slate-500 pt-1">
+              {t("booster.budget.noGuarantee", { defaultValue: "Budgets do not guarantee views, clicks, or sales." })}
+            </p>
           </div>
         </div>
       )}
 
+      {/* ── REVIEW ─────────────────────────────────────────────── */}
       {step === "review" && (
         <div className="bp-card grid gap-4 md:grid-cols-2">
           <div className="bp-preview-card">
-            {adFormat === "video" && mediaPreview ? (
-              <video src={mediaPreview} className="bp-preview-media" muted controls playsInline />
-            ) : imageUrl || mediaPreview ? (
-              <img src={imageUrl || mediaPreview || ""} alt="" className="bp-preview-media" />
+            <div className="absolute top-2 left-2 z-10">
+              <span className="bp-sponsored-pill">{t("boostAd.sponsored")}</span>
+            </div>
+            {mediaPreview || videoUrl ? (
+              <video
+                src={mediaPreview || videoUrl || ""}
+                className="bp-preview-media"
+                controls
+                playsInline
+                muted
+                poster={resolvedImages[0]}
+              />
             ) : (
               <div className="bp-preview-media" />
             )}
             <div className="bp-preview-meta">
-              <div className="font-bold">{adTitle || "—"}</div>
-              <div className="opacity-80 text-xs mt-1 line-clamp-2">{adDescription}</div>
+              <div className="font-bold">{resolvedTitle || "—"}</div>
+              {hasProduct && resolvedPrice > 0 && (
+                <div className="text-violet-200 text-sm font-semibold mt-0.5">
+                  {formatPrice(resolvedPrice, accountCountry, "USD")}
+                </div>
+              )}
+              {user?.name ? (
+                <div className="opacity-80 text-xs mt-1">{user.name}</div>
+              ) : null}
+              {ctaType !== "none" && (
+                <div className="mt-2 inline-flex items-center rounded-lg bg-white text-violet-800 text-xs font-bold px-3 py-1.5">
+                  {ctaLabel(ctaType)}
+                </div>
+              )}
             </div>
           </div>
           <div className="space-y-2 text-sm">
-            <div><strong>{t("booster.review.type")}:</strong> {adFormat === "video" ? t("booster.create.videoAd") : t("booster.create.imageAd")}</div>
-            <div><strong>{t("booster.review.audience")}:</strong> {department}{cities.length ? ` · ${cities.join(", ")}` : ""} · {radiusKm}km</div>
-            <div><strong>{t("booster.review.budget")}:</strong> ${budget.toFixed(2)}</div>
-            <div><strong>{t("booster.review.duration")}:</strong> {startDate} → {endDate} ({days}d)</div>
+            <div><strong>{t("booster.review.type")}:</strong>{" "}
+              {adType === "existing"
+                ? t("booster.create.promoteExisting", { defaultValue: "Promote Existing Product" })
+                : adType === "new"
+                  ? t("booster.create.createPromote", { defaultValue: "Create & Promote Product" })
+                  : t("booster.create.videoOnly", { defaultValue: "Promote Video Only" })}
+            </div>
+            <div><strong>{t("booster.review.audience")}:</strong> {accountCountry}{department ? ` · ${department}` : ""}{cities.length ? ` · ${cities.slice(0, 3).join(", ")}` : ""}</div>
+            <div><strong>{t("booster.cta.title", { defaultValue: "CTA" })}:</strong> {ctaLabel(ctaType)}</div>
+            <div><strong>{t("booster.review.budget")}:</strong> ${budget.toFixed(2)} USD</div>
+            <div><strong>{t("booster.review.duration")}:</strong> {durationDays}d ({startDate} → {endDate})</div>
             <div className="text-xs text-slate-500 pt-2">{t("booster.review.walletNote")}</div>
+            <button type="button" className="bp-btn bp-btn-ghost mt-2" onClick={() => setStep("create")}>
+              {t("common.edit", { defaultValue: "Edit" })}
+            </button>
           </div>
         </div>
       )}
 
       <div className="bp-actions">
         {step !== "create" && (
-          <button type="button" className="bp-btn bp-btn-ghost" onClick={goBack} disabled={busy}>
+          <button type="button" className="bp-btn bp-btn-ghost" onClick={goBack} disabled={busy || creatingProduct}>
             {t("booster.back")}
           </button>
         )}
@@ -565,11 +902,11 @@ export default function BoosterCreate() {
           <button
             type="button"
             className="bp-btn bp-btn-primary"
-            disabled={!canNext()}
-            onClick={goNext}
+            disabled={!canNext() || creatingProduct || uploading}
+            onClick={() => void goNext()}
             data-testid="booster-next"
           >
-            {t("booster.next")}
+            {creatingProduct ? <Loader2 className="h-4 w-4 animate-spin" /> : t("booster.next")}
           </button>
         ) : (
           <>
@@ -583,7 +920,7 @@ export default function BoosterCreate() {
               onClick={() => void submit("launch")}
               data-testid="booster-launch"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("booster.create.launch")}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("booster.create.payPublish", { defaultValue: "Pay & Publish" })}
             </button>
           </>
         )}

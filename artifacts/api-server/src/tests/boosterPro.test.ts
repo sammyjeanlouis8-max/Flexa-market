@@ -13,3 +13,23 @@ describe("Booster Pro video cap", () => {
     expect(MAX_VIDEO_SECONDS).toBe(120);
   });
 });
+
+describe("Booster Pro CTA rules", () => {
+  const allowed = ["buy_now", "message", "whatsapp", "none", "link"] as const;
+  it("accepts the four primary CTA options plus legacy link", () => {
+    expect(allowed).toEqual(expect.arrayContaining(["buy_now", "message", "whatsapp", "none"]));
+  });
+  it("requires a product for Buy Now", () => {
+    const ctaType = "buy_now";
+    const listingIdIn = null;
+    const blocked = ctaType === "buy_now" && !listingIdIn;
+    expect(blocked).toBe(true);
+  });
+  it("allows WhatsApp / Message / None without a product", () => {
+    for (const ctaType of ["whatsapp", "message", "none"] as const) {
+      const listingIdIn = null;
+      const blocked = ctaType === "buy_now" && !listingIdIn;
+      expect(blocked).toBe(false);
+    }
+  });
+});

@@ -407,18 +407,18 @@ export default function ListingDetail() {
     });
   }, [listing?.id, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-open checkout panel when arriving from the video "Achte" CTA (?buy=1)
+  // Auto-open premium checkout when arriving from the video "Achte" CTA (?buy=1)
   useEffect(() => {
     if (!listing?.id) return;
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("buy") !== "1") return;
-    // Remove the flag from the URL without a full reload
     window.history.replaceState(null, "", `/listings/${id}`);
+    const checkoutPath = `/checkout/${id}/promo`;
     if (!user) {
       if (!isLoading) {
         requireAuth({
           action: "buyNow",
-          next: `/listings/${id}`,
+          next: checkoutPath,
           listingId: id,
           sellerId: listing.sellerId,
           title: listing.title,
@@ -430,12 +430,10 @@ export default function ListingDetail() {
       }
       return;
     }
-    setPayStep("promo");
-    setPayDone(false);
-    setBuyNowOpen(true);
+    setLocation(checkoutPath);
   }, [listing?.id, user, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-open checkout with agreed offer price when arriving from an accepted offer
+  // Auto-open premium checkout with agreed offer price when arriving from an accepted offer
   // URL shape: /listings/:id?offerPay=<offerId>&offerAmount=<agreedPrice>
   useEffect(() => {
     if (!listing?.id) return;
@@ -447,17 +445,14 @@ export default function ListingDetail() {
     const parsedAmt = parseFloat(oa);
     if (isNaN(parsedId) || isNaN(parsedAmt) || parsedAmt <= 0) return;
     window.history.replaceState(null, "", `/listings/${id}`);
+    const checkoutPath = `/checkout/${id}/promo?offerId=${parsedId}&offerAmount=${parsedAmt}`;
     if (!user) {
       if (!isLoading) {
-        requireAuth({ action: "buyNow", next: `/listings/${id}`, listingId: id });
+        requireAuth({ action: "buyNow", next: checkoutPath, listingId: id });
       }
       return;
     }
-    setOfferIdForPurchase(parsedId);
-    setOfferPriceOverride(parsedAmt);
-    setPayStep("promo");
-    setPayDone(false);
-    setBuyNowOpen(true);
+    setLocation(checkoutPath);
   }, [listing?.id, user, isLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch commission quote when the buy dialog opens — buyer sees the
@@ -1425,11 +1420,12 @@ export default function ListingDetail() {
       toast({ title: t("checkout.soldBadge"), variant: "destructive" });
       return;
     }
+    const checkoutPath = `/checkout/${id}/promo`;
     if (!user) {
       if (!isLoading) {
         requireAuth({
           action: "buyNow",
-          next: `/listings/${id}`,
+          next: checkoutPath,
           listingId: id,
           sellerId: listing.sellerId,
           title: listing.title,
@@ -1442,7 +1438,7 @@ export default function ListingDetail() {
       }
       return;
     }
-    setPayStep("promo"); setPayDone(false); setBuyNowOpen(true);
+    setLocation(checkoutPath);
   };
 
   const renderThumb = (item: (typeof mediaItems)[number], i: number, sizeClass: string) => (

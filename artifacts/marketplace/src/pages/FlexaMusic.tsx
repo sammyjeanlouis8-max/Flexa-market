@@ -14,6 +14,7 @@ import {
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
   Pencil, Trash2, ShoppingBag, Send, Radio, Home, Library,
   Repeat, Repeat1, Timer, Share2, ListMusic, AlignLeft, Cast, SlidersHorizontal,
+  Repeat2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
@@ -207,10 +208,39 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportBusy, setReportBusy] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [repostBusy, setRepostBusy] = useState(false);
   const isOwner = !!(currentUserId && track.artist_user_id && currentUserId === track.artist_user_id);
   const purchasesDisabled = isAndroidApp();
 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
+
+  const toggleRepost = async () => {
+    if (repostBusy) return;
+    setRepostBusy(true);
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      if (!token) {
+        window.alert(t("music.loginToComment"));
+        return;
+      }
+      const r = await fetch(`/api/music/${track.id}/repost`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!r.ok) throw new Error("repost failed");
+      const d = await r.json();
+      setReposted(!!d.reposted);
+      onClose();
+    } catch {
+      window.alert(t("music.reportFailed"));
+    } finally {
+      setRepostBusy(false);
+    }
+  };
 
   const submitReport = async () => {
     const reason = reportReason.trim();
@@ -300,6 +330,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
         {/* Options */}
         {[
           { icon: liked ? <Heart size={19} fill="currentColor" /> : <Heart size={19} />, label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
+          { icon: <Repeat2 size={19} />, label: repostBusy ? "…" : (reposted ? t("music.unrepost", "Remove repost") : t("music.repost", "Repost")), action: () => { void toggleRepost(); } },
           ...(isPaidLocked ? [] : [{ icon: <Download size={19} />, label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
           { icon: <Send size={19} />, label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/api/og/music/${track.id}`;

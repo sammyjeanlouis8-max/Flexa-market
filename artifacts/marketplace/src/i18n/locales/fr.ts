@@ -5701,6 +5701,8 @@ export default {
     emptyHistory: "Aucun historique d'écoute",
     emptyLiked: "Aucune chanson aimée",
     forceDuplicate: "Un titre similaire existe peut-être déjà. Envoyer quand même ?",
+    repost: "Republier",
+    unrepost: "Retirer la republication",
     visibility: "Visibilité",
 },
   upload: {

@@ -81,6 +81,28 @@ function isBot(ua: string): boolean {
   if (!ua || ua.length < 10) return true;
   return BOT_UA_PATTERNS.some(p => p.test(ua));
 }
+
+/** Simple per-user sliding window rate limits for mutating music routes. */
+const musicCommentLog = new Map<number | string, number[]>();
+const musicPlayLog = new Map<number | string, number[]>();
+const musicUploadLog = new Map<number | string, number[]>();
+
+function allowWithinWindow(
+  store: Map<number | string, number[]>,
+  key: number | string,
+  max: number,
+  windowMs: number,
+): boolean {
+  const now = Date.now();
+  const times = (store.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (times.length >= max) {
+    store.set(key, times);
+    return false;
+  }
+  times.push(now);
+  store.set(key, times);
+  return true;
+}
 function hashIp(ip: string): string {
   return createHash("sha256").update(ip + "flexa-music-salt").digest("hex").slice(0, 16);
 }
@@ -872,6 +894,9 @@ router.post("/music/register", requireAuth, async (req, res) => {
     storageKey, coverStorageKey,
   } = req.body as Record<string, string | undefined>;
 
+  if (!allowWithinWindow(musicUploadLog, req.userId!, 15, HOUR_MS)) {
+    return res.status(429).json({ error: "RATE_LIMIT", message: "Too many uploads. Try again later." });
+  }
   if (!title?.trim())   return res.status(400).json({ error: "Title required" });
   if (!artist?.trim())  return res.status(400).json({ error: "Artist required" });
   if (!storageKey?.trim()) return res.status(400).json({ error: "Wasabi storageKey required" });
@@ -971,6 +996,9 @@ router.post("/music/upload", requireAuth, upload.fields([
   // ── Step 3: Authentication ────────────────────────────────────────────────
   if (!req.user?.id) return fail(3, "authentication", new Error("Non authentifye — konekte anvan ou telechaje"), 401);
   log(3, "authentication", { userId: req.user.id, role: req.user.role });
+  if (!allowWithinWindow(musicUploadLog, req.user.id, 15, HOUR_MS)) {
+    return res.status(429).json({ error: "RATE_LIMIT", message: "Too many uploads. Try again later.", uploadId });
+  }
 
   // ── Step 3b: Artist Plan upload limit (non-admin only) ───────────────────
   if (!req.user.isAdmin && !req.user.isSuperAdmin && req.user.role !== "admin") {
@@ -1918,6 +1946,9 @@ router.get("/music/:id/comments", async (req, res) => {
 router.post("/music/:id/comments", requireAuth, async (req, res) => {
   const trackId = Number(req.params.id);
   if (!trackId) return res.status(400).json({ error: "Invalid track" });
+  if (!allowWithinWindow(musicCommentLog, req.userId!, 20, HOUR_MS)) {
+    return res.status(429).json({ error: "RATE_LIMIT", message: "Too many comments. Try again later." });
+  }
   const { content, timestamp_seconds: tsRaw } = req.body as {
     content?: string;
     timestamp_seconds?: number | string;
@@ -2417,6 +2448,10 @@ router.post("/music/:id/play", optionalAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid track" });
+    const playKey = req.userId ? `u:${req.userId}:${id}` : `ip:${hashIp(String(req.ip || req.headers["x-forwarded-for"] || "anon"))}:${id}`;
+    if (!allowWithinWindow(musicPlayLog, playKey, 30, HOUR_MS)) {
+      return res.status(429).json({ error: "RATE_LIMIT", message: "Too many play events." });
+    }
     const [track] = await q(
       `SELECT id, play_count FROM music_tracks mt
        WHERE mt.id = ${id} AND mt.is_active = TRUE AND ${visibilitySql(req)}`,

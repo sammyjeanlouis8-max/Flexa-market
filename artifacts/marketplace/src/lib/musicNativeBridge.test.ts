@@ -41,7 +41,7 @@ describe("resolveNativeStreamUrl", () => {
         cover_url: null,
         audio_url: null,
       }),
-    ).toBe("https://flexa.test/api/music/stream-url?id=42");
+    ).toBe("https://flexa.test/api/music/stream-url/42");
   });
 
   it("returns null when neither url nor id is available", () => {

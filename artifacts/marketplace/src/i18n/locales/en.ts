@@ -5856,6 +5856,8 @@ export default {
     emptyLiked: "No liked songs yet",
     forceDuplicate: "A similar track may already exist. Upload anyway?",
     visibility: "Visibility",
+    repost: "Repost",
+    unrepost: "Remove repost",
 },
   upload: {
     title: "Upload Music",

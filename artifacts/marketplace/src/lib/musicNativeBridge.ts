@@ -77,7 +77,7 @@ export function resolveNativeStreamUrl(track: MusicTrack | NativeMusicTrackPaylo
     return direct;
   }
   if (track.id != null && typeof window !== "undefined") {
-    return `${window.location.origin}/api/music/stream-url?id=${encodeURIComponent(String(track.id))}`;
+    return `${window.location.origin}/api/music/stream-url/${encodeURIComponent(String(track.id))}`;
   }
   return null;
 }

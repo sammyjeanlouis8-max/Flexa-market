@@ -5838,6 +5838,8 @@ export default {
     emptyHistory: "Pa gen istwa koute ankò",
     emptyLiked: "Pa gen chante ou renmen ankò",
     forceDuplicate: "Yon chante ki sanble ka deja egziste. Telechaje kanmenm?",
+    repost: "Reposte",
+    unrepost: "Retire repost la",
     visibility: "Vizibilite",
 },
   upload: {

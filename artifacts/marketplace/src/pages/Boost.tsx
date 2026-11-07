@@ -3,8 +3,9 @@ import { useRoute, useLocation } from "wouter";
 import {
   Zap, Check, CreditCard, ArrowLeft, Clock, Eye,
   Copy, CheckCheck, AlertCircle, Shield, Info,
-  Video, X, Upload, Loader2,
+  Video, X, Upload, Loader2, Gift, Target, MessageCircle,
 } from "lucide-react";
+import "./boost-listing.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -819,33 +820,32 @@ export default function BoostPage() {
     // Success screen after attaching/replacing the video
     if (abvSuccess) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gradient-to-b from-green-50 to-background dark:from-green-950/20 dark:to-background">
-          <div className="w-full max-w-sm text-center space-y-6">
-            <div className="relative mx-auto h-24 w-24">
-              <div className="absolute inset-0 rounded-full bg-green-200 dark:bg-green-900/40 animate-ping opacity-40" />
-              <div className="relative h-24 w-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/30">
-                <CheckCheck className="h-11 w-11 text-white" />
+        <div className="boost-listing">
+          <div className="bl-terminal">
+            <div className="w-full max-w-sm text-center space-y-5">
+              <div className="bl-orb">
+                <div className="ping" />
+                <div className="core"><CheckCheck className="h-11 w-11" /></div>
               </div>
+              <div>
+                <h1>{t("boost.videoAdded", { defaultValue: "Videyo Ajoute!" })}</h1>
+                <p className="sub">
+                  {t("boost.videoAddedDesc", { defaultValue: "Videyo promo ou a ap parèt nan feed la imedyatman." })}
+                </p>
+              </div>
+              <div className="bl-active-banner" style={{ textAlign: "left" }}>
+                <div className="mark"><Check className="h-3.5 w-3.5" /></div>
+                <p style={{ margin: 0 }}>
+                  {t("boost.videoLiveDesc", { defaultValue: "Listing ou a kounye a ap parèt nan video feed la" })}
+                </p>
+              </div>
+              <button type="button" className="bl-cta" onClick={() => setLocation("/booster")}>
+                {t("myBoosts.title", { defaultValue: "Mes Boosts" })}
+              </button>
+              <Button variant="ghost" className="w-full" onClick={() => setLocation(`/listings/${listingId}`)}>
+                {t("boost.viewListing", { defaultValue: "Wè lis la" })}
+              </Button>
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-foreground mb-2">
-                {t("boost.videoAdded", { defaultValue: "Videyo Ajoute!" })}
-              </h1>
-              <p className="text-muted-foreground text-sm">
-                {t("boost.videoAddedDesc", { defaultValue: "Videyo promo ou a ap parèt nan feed la imedyatman." })}
-              </p>
-            </div>
-            <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-2xl p-4">
-              <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-                ✓ {t("boost.videoLiveDesc", { defaultValue: "Listing ou a kounye a ap parèt nan video feed la" })}
-              </p>
-            </div>
-            <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation("/booster")}>
-              {t("myBoosts.title", { defaultValue: "Mes Boosts" })}
-            </Button>
-            <Button variant="ghost" className="w-full" onClick={() => setLocation(`/listings/${listingId}`)}>
-              {t("boost.viewListing", { defaultValue: "Wè lis la" })}
-            </Button>
           </div>
         </div>
       );
@@ -853,57 +853,50 @@ export default function BoostPage() {
 
     // Main panel: show active-boost status and video upload/replace
     return (
-      <div className="max-w-lg mx-auto px-4 py-6">
-        {/* Gradient header — matches the normal boost page */}
-        <div className="-mx-4 -mt-6 mb-6 relative bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 overflow-hidden">
-          <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "radial-gradient(ellipse at 10% 60%, rgba(255,255,255,0.18) 0%, transparent 55%)" }} />
-          <div className="relative px-4 pt-4 pb-5">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/20 shrink-0 rounded-full"
-                onClick={() => setLocation(`/listings/${listingId}`)}
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div className="flex-1 min-w-0">
-                <h1 className="text-lg font-extrabold text-white flex items-center gap-2 leading-tight">
-                  <Zap className="h-4 w-4 text-yellow-200 fill-yellow-200 shrink-0" />
-                  {t("boost.boostListing", { defaultValue: "Boost Listing" })}
-                </h1>
-                {listing && (
-                  <p className="text-xs text-white/75 truncate mt-0.5">{(listing as any).title}</p>
-                )}
-              </div>
-              {daysLeft !== null && (
-                <div className="shrink-0 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-3 py-1.5 text-center">
-                  <p className="text-[10px] text-white/70 leading-none mb-0.5">
-                    {daysLeft === 0
-                      ? t("myBoosts.expiresIn", { defaultValue: "Jodi a" })
-                      : daysLeft === 1
-                      ? t("myBoosts.daysLeft", { n: 1, defaultValue: "1 jou" })
-                      : t("myBoosts.daysLeftPlural", { n: daysLeft, defaultValue: `${daysLeft} jou` })}
-                  </p>
-                  <p className="text-sm font-black text-white tabular-nums">
-                    {t("myBoosts.activeLabel", { defaultValue: "Aktif" })}
-                  </p>
-                </div>
+      <div className="boost-listing">
+      <div className="bl-shell">
+        <div className="bl-hero">
+          <div className="bl-hero-inner">
+            <button
+              type="button"
+              className="bl-hero-back"
+              onClick={() => setLocation(`/listings/${listingId}`)}
+              aria-label="Back"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div className="bl-hero-copy">
+              <p className="bl-hero-kicker">Flexa Market</p>
+              <h1 className="bl-hero-title">
+                <Zap className="h-5 w-5" />
+                {t("boost.boostListing", { defaultValue: "Boost Listing" })}
+              </h1>
+              {listing && (
+                <p className="bl-hero-listing">{(listing as any).title}</p>
               )}
             </div>
+            {daysLeft !== null && (
+              <div className="bl-hero-budget">
+                <span>
+                  {daysLeft === 0
+                    ? t("myBoosts.expiresIn", { defaultValue: "Jodi a" })
+                    : daysLeft === 1
+                    ? t("myBoosts.daysLeft", { n: 1, defaultValue: "1 jou" })
+                    : t("myBoosts.daysLeftPlural", { n: daysLeft, defaultValue: `${daysLeft} jou` })}
+                </span>
+                <strong>{t("myBoosts.activeLabel", { defaultValue: "Aktif" })}</strong>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Active boost banner */}
-        <div className="mb-4 rounded-xl bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-4 py-3 flex items-start gap-3">
-          <div className="h-7 w-7 rounded-full bg-green-200 dark:bg-green-800 flex items-center justify-center shrink-0 mt-0.5">
-            <Zap className="h-3.5 w-3.5 text-green-700 dark:text-green-300 fill-current" />
+        <div className="bl-active-banner">
+          <div className="mark">
+            <Zap className="h-3.5 w-3.5 fill-current" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-green-800 dark:text-green-300">
-              {t("boost.alreadyActive", { defaultValue: "Boost la deja aktif" })}
-            </p>
-            <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+            <strong>{t("boost.alreadyActive", { defaultValue: "Boost la deja aktif" })}</strong>
+            <p>
               {t("boost.alreadyActiveDesc", { defaultValue: "Anons ou a deja ap parèt. Ajoute oswa ranplase videyo promo a san nouvo peman." })}
             </p>
           </div>
@@ -997,7 +990,7 @@ export default function BoostPage() {
           ) : (
             <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
-                {t("boost.videoHelp", { defaultValue: "Max 5 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
+                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Montre kòm overlay lè moun ap navige nan feed la." })}
               </p>
               <Button
                 type="button"
@@ -1030,6 +1023,7 @@ export default function BoostPage() {
           onChange={handleAbvVideoSelected}
         />
       </div>
+      </div>
     );
   }
 
@@ -1050,34 +1044,33 @@ export default function BoostPage() {
   // ── Admin free-boost success screen ─────────────────────────────────────────
   if (adminFreeSuccess) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gradient-to-b from-green-50 to-background dark:from-green-950/20 dark:to-background">
-        <div className="w-full max-w-sm text-center space-y-6">
-          <div className="relative mx-auto h-24 w-24">
-            <div className="absolute inset-0 rounded-full bg-green-200 dark:bg-green-900/40 animate-ping opacity-40" />
-            <div className="relative h-24 w-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/30">
-              <CheckCheck className="h-11 w-11 text-white" />
+      <div className="boost-listing">
+        <div className="bl-terminal">
+          <div className="w-full max-w-sm text-center space-y-5">
+            <div className="bl-orb">
+              <div className="ping" />
+              <div className="core"><CheckCheck className="h-11 w-11" /></div>
             </div>
+            <div>
+              <h1>{t("boost.liveTitle", { defaultValue: "Boost Active!" })}</h1>
+              <p className="sub">
+                {t("boost.adminFreeDesc", {
+                  defaultValue: "Listing boosted for {{days}} day(s) — active immediately.",
+                  days: adminFreeDays,
+                })}
+              </p>
+            </div>
+            <div className="bl-active-banner" style={{ textAlign: "left" }}>
+              <div className="mark"><Check className="h-3.5 w-3.5" /></div>
+              <p style={{ margin: 0 }}>Listing ou a kounye a ap parèt nan video feed la</p>
+            </div>
+            <button type="button" className="bl-cta" onClick={() => setLocation(`/listings/${listingId}`)} data-testid="button-view-listing">
+              {t("boost.viewListing", { defaultValue: "View listing" })}
+            </button>
+            <Button variant="ghost" className="w-full" onClick={() => setLocation("/admin")}>
+              {t("boost.backAdmin", { defaultValue: "Back to admin" })}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-foreground mb-2">{t("boost.liveTitle", { defaultValue: "Boost Active!" })}</h1>
-            <p className="text-muted-foreground">
-              {t("boost.adminFreeDesc", {
-                defaultValue: "Listing boosted for {{days}} day(s) — active immediately.",
-                days: adminFreeDays,
-              })}
-            </p>
-          </div>
-          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-2xl p-4">
-            <p className="text-sm text-green-700 dark:text-green-400 font-medium">
-              ✓ Listing ou a kounye a ap parèt nan video feed la
-            </p>
-          </div>
-          <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation(`/listings/${listingId}`)} data-testid="button-view-listing">
-            {t("boost.viewListing", { defaultValue: "View listing" })}
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={() => setLocation("/admin")}>
-            {t("boost.backAdmin", { defaultValue: "Back to admin" })}
-          </Button>
         </div>
       </div>
     );
@@ -1087,46 +1080,44 @@ export default function BoostPage() {
   // Shown after wallet or Stripe card payment activates the boost immediately.
   if (step === "activated") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gradient-to-b from-green-50 to-background dark:from-green-950/20 dark:to-background">
-        <div className="w-full max-w-sm text-center space-y-6">
-          <div className="relative mx-auto h-24 w-24">
-            <div className="absolute inset-0 rounded-full bg-green-200 dark:bg-green-900/40 animate-ping opacity-40" />
-            <div className="relative h-24 w-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/30">
-              <CheckCheck className="h-11 w-11 text-white" />
+      <div className="boost-listing">
+        <div className="bl-terminal">
+          <div className="w-full max-w-sm text-center space-y-5">
+            <div className="bl-orb">
+              <div className="ping" />
+              <div className="core"><CheckCheck className="h-11 w-11" /></div>
             </div>
+            <div>
+              <h1>{t("boost.liveTitle", { defaultValue: "Boost Active!" })}</h1>
+              <p className="sub">
+                {t("boost.liveDesc", {
+                  defaultValue: "Your listing is now live as a boosted ad. It will appear at the top of search results and the video feed.",
+                })}
+              </p>
+            </div>
+            <div className="bl-card p-4 text-left space-y-2.5">
+              <p className="text-sm font-bold text-green-800 dark:text-green-300 flex items-center gap-2">
+                <CheckCheck className="h-4 w-4 shrink-0" />
+                {t("boost.boostBenefits", { defaultValue: "What you get:" })}
+              </p>
+              {[
+                t("boost.benefit1", { defaultValue: "Your listing appears at the top of search results." }),
+                t("boost.benefit2", { defaultValue: "Visible in the video feed to buyers in your area." }),
+                t("boost.benefit3", { defaultValue: `Plan active for ${plan?.replace("day", "") ?? "?"} days.` }),
+              ].map((txt, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className="h-5 w-5 rounded-full bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">✓</div>
+                  <p className="text-sm text-green-700 dark:text-green-400">{txt}</p>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="bl-cta" onClick={() => setLocation(`/listings/${listingId}`)}>
+              {t("boost.viewMyListing", { defaultValue: "View My Listing" })}
+            </button>
+            <Button variant="ghost" className="w-full" onClick={() => setLocation("/")}>
+              {t("boost.backHome", { defaultValue: "Back to Home" })}
+            </Button>
           </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-foreground mb-2">
-              {t("boost.liveTitle", { defaultValue: "Boost Active!" })}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {t("boost.liveDesc", {
-                defaultValue: "Your listing is now live as a boosted ad. It will appear at the top of search results and the video feed.",
-              })}
-            </p>
-          </div>
-          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-2xl p-4 text-left space-y-2">
-            <p className="text-sm font-bold text-green-800 dark:text-green-300 flex items-center gap-2">
-              <CheckCheck className="h-4 w-4 shrink-0" />
-              {t("boost.boostBenefits", { defaultValue: "What you get:" })}
-            </p>
-            {[
-              t("boost.benefit1", { defaultValue: "Your listing appears at the top of search results." }),
-              t("boost.benefit2", { defaultValue: "Visible in the video feed to buyers in your area." }),
-              t("boost.benefit3", { defaultValue: `Plan active for ${plan?.replace("day", "") ?? "?"} days.` }),
-            ].map((txt, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <div className="h-5 w-5 rounded-full bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">✓</div>
-                <p className="text-sm text-green-700 dark:text-green-400">{txt}</p>
-              </div>
-            ))}
-          </div>
-          <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation(`/listings/${listingId}`)}>
-            {t("boost.viewMyListing", { defaultValue: "View My Listing" })}
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={() => setLocation("/")}>
-            {t("boost.backHome", { defaultValue: "Back to Home" })}
-          </Button>
         </div>
       </div>
     );
@@ -1137,53 +1128,51 @@ export default function BoostPage() {
   // The boost is NOT yet active; an admin must verify the payment first.
   if (step === "success") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-gradient-to-b from-amber-50 to-background dark:from-amber-950/20 dark:to-background">
-        <div className="w-full max-w-sm text-center space-y-6">
-          <div className="relative mx-auto h-24 w-24">
-            <div className="relative h-24 w-24 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-xl shadow-amber-400/30">
-              <Clock className="h-11 w-11 text-white" />
+      <div className="boost-listing">
+        <div className="bl-terminal pending">
+          <div className="w-full max-w-sm text-center space-y-5">
+            <div className="bl-orb amber">
+              <div className="core"><Clock className="h-11 w-11" /></div>
             </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-foreground mb-2">
-              {t("boost.pendingReviewTitle", { defaultValue: "Payment Under Review" })}
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {t("boost.pendingReviewDesc", {
-                defaultValue: "Your payment reference has been received. An admin will verify it and activate your boost shortly.",
-              })}
-            </p>
-          </div>
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-left space-y-2.5">
-            <p className="text-sm font-bold text-amber-800 dark:text-amber-300 flex items-center gap-2">
-              <Info className="h-4 w-4 shrink-0" />
-              {t("boost.whatHappensNext", { defaultValue: "What happens next?" })}
-            </p>
-            {[
-              t("boost.pendingStep1", { defaultValue: "Admin verifies your payment reference." }),
-              t("boost.pendingStep2", { defaultValue: "Once confirmed your listing goes live as a boosted ad." }),
-            ].map((txt, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <div className="h-5 w-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</div>
-                <p className="text-sm text-amber-700 dark:text-amber-400">{txt}</p>
-              </div>
-            ))}
-            <div className="flex items-start gap-2.5">
-              <div className="h-5 w-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</div>
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                {t("boost.pendingStep3", { defaultValue: "Your plan" })} <strong className="text-amber-800 dark:text-amber-300">{getPlanLabel(plan)}</strong> {t("boost.pendingStep3b", { defaultValue: "starts from that moment." })}
+            <div>
+              <h1>{t("boost.pendingReviewTitle", { defaultValue: "Payment Under Review" })}</h1>
+              <p className="sub">
+                {t("boost.pendingReviewDesc", {
+                  defaultValue: "Your payment reference has been received. An admin will verify it and activate your boost shortly.",
+                })}
               </p>
             </div>
+            <div className="bl-card p-4 text-left space-y-2.5">
+              <p className="text-sm font-bold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                <Info className="h-4 w-4 shrink-0" />
+                {t("boost.whatHappensNext", { defaultValue: "What happens next?" })}
+              </p>
+              {[
+                t("boost.pendingStep1", { defaultValue: "Admin verifies your payment reference." }),
+                t("boost.pendingStep2", { defaultValue: "Once confirmed your listing goes live as a boosted ad." }),
+              ].map((txt, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <div className="h-5 w-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">{i + 1}</div>
+                  <p className="text-sm text-amber-700 dark:text-amber-400">{txt}</p>
+                </div>
+              ))}
+              <div className="flex items-start gap-2.5">
+                <div className="h-5 w-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</div>
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  {t("boost.pendingStep3", { defaultValue: "Your plan" })} <strong className="text-amber-800 dark:text-amber-300">{getPlanLabel(plan)}</strong> {t("boost.pendingStep3b", { defaultValue: "starts from that moment." })}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t("boost.pendingReviewNote", { defaultValue: "You will receive a notification once your boost is activated." })}
+            </p>
+            <button type="button" className="bl-cta" onClick={() => setLocation(`/listings/${listingId}`)} data-testid="button-view-listing">
+              {t("boost.viewListing")}
+            </button>
+            <Button variant="ghost" className="w-full" onClick={() => setLocation("/")}>
+              {t("boost.backHome")}
+            </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {t("boost.pendingReviewNote", { defaultValue: "You will receive a notification once your boost is activated." })}
-          </p>
-          <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation(`/listings/${listingId}`)} data-testid="button-view-listing">
-            {t("boost.viewListing")}
-          </Button>
-          <Button variant="ghost" className="w-full" onClick={() => setLocation("/")}>
-            {t("boost.backHome")}
-          </Button>
         </div>
       </div>
     );
@@ -1191,216 +1180,173 @@ export default function BoostPage() {
 
   // ── Main page ───────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="boost-listing">
+    <div className="bl-shell">
       {/* ── Return-to-app banner ──────────────────────────────────────────── */}
       {showReturnApp && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-950/20 px-4 py-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-lg">📱</span>
-            <p className="text-sm font-medium text-orange-800 dark:text-orange-300 truncate">
-              Tap to return to Flexa Market app.
-            </p>
-          </div>
+        <div className="bl-banner">
+          <p className="truncate">Tap to return to Flexa Market app.</p>
           <button
-            className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 active:bg-orange-700 transition-colors"
+            type="button"
             onClick={() => { window.location.href = "flexamarket://"; }}
           >
             Open App
           </button>
         </div>
       )}
+
       {/* ── Gradient Hero Header ── */}
-      <div className="-mx-4 -mt-6 mb-6 relative bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{backgroundImage:"radial-gradient(ellipse at 10% 60%, rgba(255,255,255,0.18) 0%, transparent 55%)"}} />
-        <div className="relative px-4 pt-4 pb-5">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-white hover:bg-white/20 shrink-0 rounded-full"
-              onClick={() => {
-                if (step === "audience") setLocation(`/listings/${listingId}`);
-                else if (step === "budget") setStep("audience");
-                else if (step === "pay") setStep("budget");
-                else setLocation(`/listings/${listingId}`);
-              }}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-lg font-extrabold text-white flex items-center gap-2 leading-tight">
-                <Zap className="h-4 w-4 text-yellow-200 fill-yellow-200 shrink-0" />
-                {t("boost.boostListing")}
-              </h1>
-              {listing && (
-                <p className="text-xs text-white/75 truncate mt-0.5">{(listing as any).title}</p>
-              )}
-              {/* Listing price chip with local → USD converter */}
-              {listing && (listing as any).price > 0 && (() => {
-                const lCurrency: string = (listing as any).currency ?? "USD";
-                const lPrice: number = (listing as any).price;
-                const localStr = formatPrice(lPrice, (listing as any).country, lCurrency);
-                let usdEq: string | null = null;
-                if (lCurrency === "HTG" && exchangeRate) {
-                  usdEq = `≈ $${htgToUsd(lPrice, exchangeRate.displayRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
-                } else if (lCurrency === "DOP") {
-                  usdEq = `≈ $${dopToUsd(lPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
-                }
-                return (
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-sm border border-white/30 rounded-full px-2 py-0.5 text-[11px] font-bold text-white">
-                      🏷️ {localStr}
-                    </span>
-                    {usdEq && (
-                      <span className="inline-flex items-center gap-1 bg-white/15 border border-white/20 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/80">
-                        {usdEq}
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-            {step !== "audience" && (
-              <div className="shrink-0 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl px-3 py-1.5 text-center">
-                <p className="text-[10px] text-white/70 leading-none mb-0.5">Total</p>
-                <p className="text-sm font-black text-white tabular-nums">${budget.toFixed(2)}</p>
-              </div>
+      <div className="bl-hero">
+        <div className="bl-hero-inner">
+          <button
+            type="button"
+            className="bl-hero-back"
+            aria-label="Back"
+            onClick={() => {
+              if (step === "audience") setLocation(`/listings/${listingId}`);
+              else if (step === "budget") setStep("audience");
+              else if (step === "pay") setStep("budget");
+              else setLocation(`/listings/${listingId}`);
+            }}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="bl-hero-copy">
+            <p className="bl-hero-kicker">Flexa Market</p>
+            <h1 className="bl-hero-title">
+              <Zap className="h-5 w-5" />
+              {t("boost.boostListing")}
+            </h1>
+            {listing && (
+              <p className="bl-hero-listing">{(listing as any).title}</p>
             )}
+            {listing && (listing as any).price > 0 && (() => {
+              const lCurrency: string = (listing as any).currency ?? "USD";
+              const lPrice: number = (listing as any).price;
+              const localStr = formatPrice(lPrice, (listing as any).country, lCurrency);
+              let usdEq: string | null = null;
+              if (lCurrency === "HTG" && exchangeRate) {
+                usdEq = `≈ $${htgToUsd(lPrice, exchangeRate.displayRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+              } else if (lCurrency === "DOP") {
+                usdEq = `≈ $${dopToUsd(lPrice).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+              }
+              return (
+                <div className="bl-hero-chips">
+                  <span className="bl-chip">{localStr}</span>
+                  {usdEq && <span className="bl-chip soft">{usdEq}</span>}
+                </div>
+              );
+            })()}
           </div>
+          {step !== "audience" && (
+            <div className="bl-hero-budget">
+              <span>Total</span>
+              <strong>${budget.toFixed(2)}</strong>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ── Admin control panel ──────────────────────────────────────────────── */}
       {isAdmin && (
-        <div className="mb-6 rounded-xl border-2 border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-4" data-testid="admin-boost-panel">
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <span className="text-sm font-bold text-amber-800 dark:text-amber-300">Admin Boost Control</span>
+        <div className="bl-admin" data-testid="admin-boost-panel">
+          <div className="bl-admin-head">
+            <Shield className="h-4 w-4 flex-shrink-0" />
+            <span>Admin Boost Control</span>
           </div>
 
-          {/* Mode selector */}
-          <div className="flex gap-2">
+          <div className="bl-admin-modes">
             <button
               type="button"
               onClick={() => setAdminMode("free")}
-              className={`flex-1 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${
-                adminMode === "free"
-                  ? "border-green-500 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
-                  : "border-border bg-card text-muted-foreground hover:border-green-400"
-              }`}
+              className={cn("bl-admin-mode", adminMode === "free" && "on-free")}
               data-testid="admin-boost-mode-free"
             >
-              🎁 {t("boost.adminFreeMode", { defaultValue: "Free Boost" })}
+              <Gift className="h-4 w-4" />
+              {t("boost.adminFreeMode", { defaultValue: "Free Boost" })}
             </button>
             <button
               type="button"
               onClick={() => setAdminMode("paid")}
-              className={`flex-1 py-2 rounded-lg border-2 text-sm font-semibold transition-all ${
-                adminMode === "paid"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/40"
-              }`}
+              className={cn("bl-admin-mode", adminMode === "paid" && "on-paid")}
               data-testid="admin-boost-mode-paid"
             >
-              💳 {t("boost.adminPaidMode", { defaultValue: "Paid (All Methods)" })}
+              <CreditCard className="h-4 w-4" />
+              {t("boost.adminPaidMode", { defaultValue: "Paid (All Methods)" })}
             </button>
           </div>
 
           {adminMode === "free" && (
-            <div className="space-y-2">
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+            <div>
+              <p className="bl-admin-note">
                 {t("boost.adminFreeNote", { defaultValue: "Boost activates immediately with no payment required." })}
               </p>
-              {/* Quota badge */}
               {quotaData && (
                 quotaData.isSuperAdmin ? (
-                  <div className="flex items-center gap-1.5 bg-green-100 dark:bg-green-900/30 rounded-lg px-3 py-1.5">
-                    <span className="text-xs font-bold text-green-700 dark:text-green-400">♾ Boost gratis san limit (Super Admin)</span>
-                  </div>
+                  <div className="bl-quota unlimited">∞ Boost gratis san limit (Super Admin)</div>
                 ) : (
-                  <div className={`flex items-center justify-between rounded-lg px-3 py-1.5 ${quotaData.used >= (quotaData.limit ?? 3) ? "bg-red-100 dark:bg-red-900/30" : "bg-blue-100 dark:bg-blue-900/30"}`}>
-                    <span className="text-xs font-semibold text-blue-800 dark:text-blue-300">
-                      Boost gratis mwa sa
-                    </span>
-                    <span className={`text-xs font-black tabular-nums ${quotaData.used >= (quotaData.limit ?? 3) ? "text-red-600 dark:text-red-400" : "text-blue-700 dark:text-blue-300"}`}>
-                      {quotaData.used}/{quotaData.limit}
-                    </span>
+                  <div className={cn("bl-quota", quotaData.used >= (quotaData.limit ?? 3) ? "warn" : "ok")}>
+                    <span>Boost gratis mwa sa</span>
+                    <span className="tabular-nums font-black">{quotaData.used}/{quotaData.limit}</span>
                   </div>
                 )
               )}
-              <p className="text-xs text-amber-600 dark:text-amber-500">
+              <p className="bl-admin-note" style={{ marginTop: "0.55rem" }}>
                 {t("boost.adminFreeWizardHint", { defaultValue: "Swiv étap yo anba a pou konfigire audience, dire, ak vidyo promo ou." })}
               </p>
             </div>
           )}
 
           {adminMode === "paid" && (
-            <p className="text-xs text-amber-700 dark:text-amber-400">
+            <p className="bl-admin-note">
               {t("boost.adminPaidNote", { defaultValue: "All payment methods unlocked. Payment still goes through pending review before activation." })}
             </p>
           )}
         </div>
       )}
 
-      {/* Stepper + step content — shown for all modes */}
-      {(
-        <div className="mb-6">
-          {/* Progress bar */}
-          <div className="relative h-1.5 bg-muted rounded-full mb-4 overflow-hidden">
-            <div
-              className="absolute inset-y-0 left-0 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
-              style={{ width: step === "audience" ? "33%" : step === "budget" ? "66%" : "100%" }}
-            />
-          </div>
-          {/* Step pills */}
-          <div className="flex items-center gap-1.5">
-            {(["audience", "budget", "pay"] as const).map((s, i) => {
-              const active = step === s;
-              const done = (["audience", "budget", "pay"].indexOf(step) > i);
-              const labels = {
-                audience: t("boost.stepAudience"),
-                budget: t("boost.stepBudget"),
-                pay: (isAdmin && adminMode === "free")
-                  ? t("boost.stepConfirm", { defaultValue: "Konfime" })
-                  : t("boost.stepPay"),
-              };
-              return (
-                <div key={s} className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all",
-                  active
-                    ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
-                    : done
-                      ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                      : "bg-muted text-muted-foreground"
-                )}>
-                  <span className={cn(
-                    "h-4 w-4 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
-                    active ? "bg-white/25" : done ? "bg-green-500 text-white" : "bg-border"
-                  )}>
-                    {done ? <Check className="h-2.5 w-2.5" /> : i + 1}
-                  </span>
-                  {labels[s]}
-                </div>
-              );
-            })}
-          </div>
+      {/* Stepper */}
+      <div className="bl-stepper">
+        <div className="bl-progress">
+          <i style={{ width: step === "audience" ? "33%" : step === "budget" ? "66%" : "100%" }} />
         </div>
-      )}
+        <div className="bl-steps">
+          {(["audience", "budget", "pay"] as const).map((s, i) => {
+            const active = step === s;
+            const done = (["audience", "budget", "pay"].indexOf(step) > i);
+            const labels = {
+              audience: t("boost.stepAudience"),
+              budget: t("boost.stepBudget"),
+              pay: (isAdmin && adminMode === "free")
+                ? t("boost.stepConfirm", { defaultValue: "Konfime" })
+                : t("boost.stepPay"),
+            };
+            return (
+              <div key={s} className={cn("bl-step", active && "on", done && "done")}>
+                <span className="n">
+                  {done ? <Check className="h-2.5 w-2.5" /> : i + 1}
+                </span>
+                {labels[s]}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── Step 1: Audience targeting — Meta Ads style ─────────────────────── */}
       {step === "audience" && (
-        <div className="md:grid md:grid-cols-3 md:gap-6 space-y-0">
+        <div className="bl-step-panel md:grid md:grid-cols-3 md:gap-6 space-y-0">
 
           {/* ── LEFT: Main form ── */}
-          <div className="md:col-span-2 space-y-0 divide-y divide-border">
+          <div className="md:col-span-2 space-y-0">
 
             {/* ── Super-admin: audience country override ── */}
             {isSuperAdmin && (
-              <div className="py-5 first:pt-0">
-                <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50/60 dark:bg-purple-950/20 p-4 space-y-3">
+              <div className="bl-section first:pt-0">
+                <div className="bl-card p-4 space-y-3" style={{ borderColor: "color-mix(in srgb, #ea580c 28%, var(--bl-border))" }}>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold bg-purple-500 text-white rounded-full px-1.5 py-0.5 leading-none">ADMIN</span>
-                    <p className="text-xs font-semibold text-purple-700 dark:text-purple-300">
+                    <span className="text-[10px] font-bold bg-orange-500 text-white rounded-full px-1.5 py-0.5 leading-none">ADMIN</span>
+                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">
                       {t("boost.audienceCountry")}
                     </p>
                   </div>
@@ -1437,48 +1383,38 @@ export default function BoostPage() {
             )}
 
             {/* Objective */}
-            <div className="py-5 first:pt-0">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+            <div className="bl-section first:pt-0">
+              <p className="bl-section-label">
                 {t("boost.objective", { defaultValue: "Objektif" })}
               </p>
-              <div className="space-y-2">
+              <div className="bl-choice-stack">
                 {([
-                  { id: "auto"     as const, icon: "🎯", label: t("boost.objAuto",     { defaultValue: "Otomatik" }),          sub: t("boost.objAutoSub",     { defaultValue: "FLEXA MARKET chwazi pi bon rezilta pou ou" }) },
-                  { id: "messages" as const, icon: "💬", label: t("boost.objMessages", { defaultValue: "Resevwa plis mesaj" }), sub: t("boost.objMessagesSub", { defaultValue: "Sible moun ki ka voye ou mesaj rapidman" }) },
-                  { id: "views"    as const, icon: "👁️", label: t("boost.objViews",    { defaultValue: "Jwenn plis vi" }),      sub: t("boost.objViewsSub",    { defaultValue: "Montre lis ou a bay plis moun" }) },
+                  { id: "auto" as const, Icon: Target, label: t("boost.objAuto", { defaultValue: "Otomatik" }), sub: t("boost.objAutoSub", { defaultValue: "FLEXA MARKET chwazi pi bon rezilta pou ou" }) },
+                  { id: "messages" as const, Icon: MessageCircle, label: t("boost.objMessages", { defaultValue: "Resevwa plis mesaj" }), sub: t("boost.objMessagesSub", { defaultValue: "Sible moun ki ka voye ou mesaj rapidman" }) },
+                  { id: "views" as const, Icon: Eye, label: t("boost.objViews", { defaultValue: "Jwenn plis vi" }), sub: t("boost.objViewsSub", { defaultValue: "Montre lis ou a bay plis moun" }) },
                 ] as const).map(o => (
                   <button
                     key={o.id}
                     type="button"
                     onClick={() => setObjective(o.id)}
                     data-testid={`button-objective-${o.id}`}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-all",
-                      objective === o.id
-                        ? "border-primary/60 bg-primary/5 shadow-sm"
-                        : "border-border bg-card hover:border-muted-foreground/30 hover:bg-muted/30"
-                    )}
+                    className={cn("bl-choice", objective === o.id && "on")}
                   >
-                    <span className="text-lg shrink-0">{o.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground leading-tight">{o.label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{o.sub}</p>
+                    <span className="bl-choice-icon"><o.Icon className="h-4 w-4" /></span>
+                    <div className="bl-choice-body">
+                      <strong>{o.label}</strong>
+                      <span>{o.sub}</span>
                     </div>
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors",
-                      objective === o.id ? "border-primary bg-primary" : "border-muted-foreground/40"
-                    )}>
-                      {objective === o.id && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
+                    <div className="bl-radio"><i /></div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Audience type */}
-            <div className="py-5">
+            <div className="bl-section">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <p className="bl-section-label" style={{ marginBottom: 0 }}>
                   {t("boost.audienceLabel", { defaultValue: "Audience" })}
                 </p>
                 <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -1486,60 +1422,40 @@ export default function BoostPage() {
                 </span>
               </div>
 
-              {/* Advantage+ row */}
+              <div className="bl-choice-stack">
               <button
                 type="button"
                 onClick={() => setAudienceType("advantage_plus")}
                 data-testid="button-audience-type-advantage"
-                className={cn(
-                  "w-full flex items-start gap-3 px-4 py-3.5 rounded-t-xl border text-left transition-all",
-                  audienceType === "advantage_plus"
-                    ? "border-primary/60 bg-primary/5 border-b-primary/20"
-                    : "border-border bg-card hover:bg-muted/20"
-                )}
+                className={cn("bl-choice", audienceType === "advantage_plus" && "on")}
               >
-                <div className={cn(
-                  "w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-colors",
-                  audienceType === "advantage_plus" ? "border-primary bg-primary" : "border-muted-foreground/40"
-                )}>
-                  {audienceType === "advantage_plus" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-foreground">{t("boost.advantagePlus", { defaultValue: "Audience Advantage+" })}</p>
-                    <span className="text-xs font-bold bg-primary/10 text-primary px-1.5 py-0.5 rounded">AI</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                <div className="bl-radio"><i /></div>
+                <div className="bl-choice-body">
+                  <strong className="inline-flex items-center gap-2">
+                    {t("boost.advantagePlus", { defaultValue: "Audience Advantage+" })}
+                    <span className="text-[10px] font-bold bg-orange-500/15 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded">AI</span>
+                  </strong>
+                  <span>
                     {t("boost.advantagePlusSub", { defaultValue: "Sistèm otomatikman ajiste audience ou pou jwenn pi bon rezilta" })}
-                  </p>
+                  </span>
                 </div>
               </button>
 
-              {/* Custom row */}
               <button
                 type="button"
                 onClick={() => setAudienceType("custom")}
                 data-testid="button-audience-type-custom"
-                className={cn(
-                  "w-full flex items-start gap-3 px-4 py-3.5 rounded-b-xl border border-t-0 text-left transition-all",
-                  audienceType === "custom"
-                    ? "border-primary/60 bg-primary/5"
-                    : "border-border bg-card hover:bg-muted/20"
-                )}
+                className={cn("bl-choice", audienceType === "custom" && "on")}
               >
-                <div className={cn(
-                  "w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center transition-colors",
-                  audienceType === "custom" ? "border-primary bg-primary" : "border-muted-foreground/40"
-                )}>
-                  {audienceType === "custom" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground">{t("boost.customAudience", { defaultValue: "Moun ou chwazi pou sible" })}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
+                <div className="bl-radio"><i /></div>
+                <div className="bl-choice-body">
+                  <strong>{t("boost.customAudience", { defaultValue: "Moun ou chwazi pou sible" })}</strong>
+                  <span>
                     {t("boost.customAudienceSub", { defaultValue: "Konfigire laj, sèks, ak lokasyon moun ou vle rive" })}
-                  </p>
+                  </span>
                 </div>
               </button>
+              </div>
 
               {/* Custom audience details — shown inline when custom selected */}
               {audienceType === "custom" && (
@@ -1757,11 +1673,11 @@ export default function BoostPage() {
             </div>
 
             {/* Audience details preview */}
-            <div className="py-5">
-              <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
+            <div className="bl-section">
+              <p className="bl-section-label">
                 {t("boost.audienceDetails", { defaultValue: "Detay Audience" })}
               </p>
-              <div className="rounded-xl border border-border bg-muted/30 divide-y divide-border/60">
+              <div className="bl-details">
                 {[
                   { label: t("boost.audienceCountry"), value: effectiveAudienceCountry || user?.country || "—" },
                   { label: t("boost.audienceLabel", { defaultValue: "Type" }),
@@ -1776,21 +1692,21 @@ export default function BoostPage() {
                   { label: t("boost.objective", { defaultValue: "Objektif" }),
                     value: objective === "auto" ? t("boost.objAuto", { defaultValue: "Otomatik" }) : objective === "messages" ? t("boost.objMessages", { defaultValue: "Plis mesaj" }) : t("boost.objViews", { defaultValue: "Plis vi" }) },
                 ].map(row => (
-                  <div key={row.label} className="flex items-center justify-between px-3 py-2">
-                    <span className="text-xs text-muted-foreground">{row.label}</span>
-                    <span className="text-xs font-semibold text-foreground text-right max-w-[55%] truncate">{row.value}</span>
+                  <div key={row.label}>
+                    <span>{row.label}</span>
+                    <span>{row.value}</span>
                   </div>
                 ))}
               </div>
             </div>
 
             {/* ── Promo video (optional) ── */}
-            <div className="py-5" data-testid="boost-video-section">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shrink-0">
-                  <Video className="h-3.5 w-3.5 text-white" />
+            <div className="bl-section" data-testid="boost-video-section">
+              <div className="bl-section-head">
+                <div className="bl-icon-tile video">
+                  <Video className="h-3.5 w-3.5" />
                 </div>
-                <p className="text-sm font-bold text-foreground">
+                <p className="bl-section-title">
                   {t("boost.videoLabel", { defaultValue: "Videyo Promo" })}
                 </p>
                 <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
@@ -1801,12 +1717,12 @@ export default function BoostPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground mb-3">
-                {t("boost.videoHelp", { defaultValue: "Max 5 minit. Montre kòm overlay lè moun ap navige nan feed la." })}
+                {t("boost.videoHelp", { defaultValue: "Max 2 minutes. Montre kòm overlay lè moun ap navige nan feed la." })}
               </p>
               {videoUrl ? (
                 <div className="flex items-center justify-between gap-3 bg-muted rounded-xl px-3 py-2.5">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Video className="h-4 w-4 text-primary flex-shrink-0" />
+                    <Video className="h-4 w-4 text-orange-600 flex-shrink-0" />
                     <span className="text-sm font-medium truncate" data-testid="text-video-attached">
                       {t("boost.videoAttached", { defaultValue: "Videyo ajoute ✓" })}
                     </span>
@@ -1816,10 +1732,16 @@ export default function BoostPage() {
                   </button>
                 </div>
               ) : (
-                <Button type="button" variant="outline" className="w-full" onClick={() => videoFileInputRef.current?.click()} disabled={videoUploading} data-testid="button-video-pick">
-                  <Upload className="h-4 w-4 mr-2" />
+                <button
+                  type="button"
+                  className="bl-upload"
+                  onClick={() => videoFileInputRef.current?.click()}
+                  disabled={videoUploading}
+                  data-testid="button-video-pick"
+                >
+                  <Upload className="h-4 w-4" />
                   {videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje…" }) : t("boost.videoPick", { defaultValue: "Chwazi videyo" })}
-                </Button>
+                </button>
               )}
               <VideoUploadChooser purpose="boost" onUse={setVideoUrl} />
             </div>
@@ -1873,31 +1795,32 @@ export default function BoostPage() {
 
           {/* CTA — full width below both columns */}
           <div className="md:col-span-3 pt-2">
-            <Button
-              className="w-full h-12 text-base font-bold"
+            <button
+              type="button"
+              className="bl-cta"
               onClick={handleAudienceNext}
               data-testid="button-audience-next"
             >
               {t("boost.continueToBudget")}
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
       {/* ── Step 2: Budget + Plan — Meta Ads Payment style ───────────────────── */}
       {step === "budget" && (
-        <div className="md:grid md:grid-cols-3 md:gap-6">
+        <div className="bl-step-panel md:grid md:grid-cols-3 md:gap-6">
 
           {/* ── LEFT: Plan + Budget + Payment ── */}
-          <div className="md:col-span-2 space-y-0 divide-y divide-border">
+          <div className="md:col-span-2 space-y-0">
 
             {/* Duration / Plan */}
-            <div className="py-5 first:pt-0">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0">
-                  <Zap className="h-3.5 w-3.5 text-white fill-white" />
+            <div className="bl-section first:pt-0">
+              <div className="bl-section-head">
+                <div className="bl-icon-tile ember">
+                  <Zap className="h-3.5 w-3.5 fill-white" />
                 </div>
-                <p className="text-sm font-bold text-foreground">
+                <p className="bl-section-title">
                   {t("boost.chooseDuration", { defaultValue: "Dire Boost" })}
                 </p>
               </div>
@@ -2286,23 +2209,27 @@ export default function BoostPage() {
 
               {/* CTA */}
               {(isAdmin && adminMode === "free") ? (
-                <Button
-                  className="w-full h-11 text-sm font-bold bg-green-600 hover:bg-green-700 border-0 text-white"
+                <button
+                  type="button"
+                  className="bl-cta success"
                   onClick={() => setStep("pay")}
                   data-testid="button-proceed-to-confirm"
                 >
-                  <Zap className="h-4 w-4 mr-1.5" />
-                  {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
-                </Button>
+                  <span className="inline-flex items-center justify-center gap-1.5">
+                    <Zap className="h-4 w-4" />
+                    {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
+                  </span>
+                </button>
               ) : (
-                <Button
-                  className="w-full h-11 text-sm font-bold"
+                <button
+                  type="button"
+                  className="bl-cta"
                   onClick={handleInitiate}
                   disabled={loading || videoUploading}
                   data-testid="button-proceed-to-pay"
                 >
                   {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : t("boost.publishAd", { amount: budget.toFixed(2) })}
-                </Button>
+                </button>
               )}
               <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                 <Shield className="h-3 w-3" />
@@ -2314,23 +2241,27 @@ export default function BoostPage() {
           {/* Mobile CTA (below both columns) */}
           <div className="md:hidden mt-6">
             {(isAdmin && adminMode === "free") ? (
-              <Button
-                className="w-full h-12 text-base font-bold bg-green-600 hover:bg-green-700 border-0 text-white"
+              <button
+                type="button"
+                className="bl-cta success"
                 onClick={() => setStep("pay")}
                 data-testid="button-proceed-to-confirm-mobile"
               >
-                <Zap className="h-4 w-4 mr-1.5" />
-                {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
-              </Button>
+                <span className="inline-flex items-center justify-center gap-1.5">
+                  <Zap className="h-4 w-4" />
+                  {t("boost.continueToConfirm", { defaultValue: "Ale nan Konfirmasyon →" })}
+                </span>
+              </button>
             ) : (
-              <Button
-                className="w-full h-12 text-base font-bold"
+              <button
+                type="button"
+                className="bl-cta"
                 onClick={handleInitiate}
                 disabled={loading || videoUploading}
                 data-testid="button-proceed-to-pay-mobile"
               >
                 {loading ? t("boost.processing") : videoUploading ? t("boost.videoUploading", { defaultValue: "Ap telechaje videyo…" }) : `${t("boost.continue")} — $${budget.toFixed(2)}`}
-              </Button>
+              </button>
             )}
             <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground mt-2">
               <Shield className="h-3 w-3" />
@@ -2343,7 +2274,7 @@ export default function BoostPage() {
 
       {/* ── Admin Free Boost: Step 3 — Confirm & Activate ───────────────────── */}
       {step === "pay" && isAdmin && adminMode === "free" && (
-        <div className="space-y-5">
+        <div className="bl-step-panel space-y-5">
 
           {/* Header */}
           <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-300 dark:border-green-800">
@@ -2454,18 +2385,22 @@ export default function BoostPage() {
           </div>
 
           {/* Boost Now button */}
-          <Button
-            className="w-full h-13 text-base font-bold bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 border-0 text-white shadow-lg shadow-green-500/25"
+          <button
+            type="button"
+            className="bl-cta success"
             onClick={handleAdminFreeBoost}
             disabled={adminFreeLoading || (!!quotaData && !quotaData.isSuperAdmin && quotaData.used >= (quotaData.limit ?? 3))}
             data-testid="button-admin-free-boost"
           >
             {adminFreeLoading ? (
-              <>{t("boost.boosting", { defaultValue: "Ap aktive…" })}</>
+              t("boost.boosting", { defaultValue: "Ap aktive…" })
             ) : (
-              <><Zap className="h-5 w-5 mr-2 fill-white" />{t("boost.adminBoostNow", { defaultValue: "Aktive Boost Gratis Kounye a" })}</>
+              <span className="inline-flex items-center justify-center gap-2">
+                <Zap className="h-5 w-5 fill-white" />
+                {t("boost.adminBoostNow", { defaultValue: "Aktive Boost Gratis Kounye a" })}
+              </span>
             )}
-          </Button>
+          </button>
 
           <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <Shield className="h-3 w-3" />
@@ -2752,6 +2687,7 @@ export default function BoostPage() {
         </div>
       )}
 
+    </div>
     </div>
   );
 }

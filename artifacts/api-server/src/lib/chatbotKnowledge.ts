@@ -42,6 +42,40 @@ export const FLEXA_DEEP_LINKS = {
 
 export const KNOWLEDGE_CORPUS: KnowledgeSnippet[] = [
   {
+    id: "help-greeting",
+    topics: [
+      "help", "ede", "edem", "aide", "ayuda", "ajuda", "hello", "hi", "bonjou", "bonjour", "hola",
+      "ou ka ede", "can you help", "help me", "assiste",
+    ],
+    title: "How FlexaBot can help",
+    body: "FlexaBot helps with Flexa Market topics: orders, wallet, sending money, FM card, notifications, selling, boosts, and human support. Ask a specific question for a precise answer.",
+    answers: {
+      ht: "Wi, mwen ka ede w! Mwen se FlexaBot, asistan FLEXA MARKET.\nMwen ka ede w ak: lòd, pòtfèy, voye lajan, kat FM, notifikasyon, vann, boost, ak sipò.\nDi m kisa ou bezwen — mwen reponn an kreyòl. Pou yon ajan moun: /support.",
+      fr: "Oui, je peux vous aider ! Je suis FlexaBot, l’assistant FLEXA MARKET.\nJe peux vous aider pour: commandes, portefeuille, envoi d’argent, carte FM, notifications, vente, boost et support.\nDites-moi ce dont vous avez besoin. Agent humain: /support.",
+      en: "Yes — I can help! I’m FlexaBot, your FLEXA MARKET assistant.\nI can help with: orders, wallet, sending money, FM card, notifications, selling, boosts, and support.\nTell me what you need. Human agent: /support.",
+      es: "¡Sí, puedo ayudarte! Soy FlexaBot, el asistente de FLEXA MARKET.\nPuedo ayudar con: pedidos, billetera, envío de dinero, tarjeta FM, notificaciones, venta, boost y soporte.\nDime qué necesitas. Agente humano: /support.",
+      pt: "Sim, posso ajudar! Sou o FlexaBot, assistente da FLEXA MARKET.\nPosso ajudar com: pedidos, carteira, envio de dinheiro, cartão FM, notificações, venda, boost e suporte.\nDiga o que precisa. Agente humano: /support.",
+    },
+    deepLink: FLEXA_DEEP_LINKS.faq,
+  },
+  {
+    id: "speak-creole",
+    topics: [
+      "kreyol", "kreyòl", "creole", "ou pale", "parles", "hablas", "speak creole", "pale kreyol",
+      "en français", "en kreyol", "an kreyol", "speak french", "speak spanish",
+    ],
+    title: "Language support",
+    body: "FlexaBot replies in the user’s language: Haitian Creole, French, English, Spanish, or Portuguese.",
+    answers: {
+      ht: "Wi — mwen pale kreyòl! Ou ka ekri m nan kreyòl, franse, angle, panyòl oswa pòtigè; mwen reponn nan menm lang lan.\nKisa ou bezwen sou FLEXA MARKET?",
+      fr: "Oui — je parle aussi créole haïtien, français, anglais, espagnol et portugais. Écrivez dans votre langue et je répondrai dans la même.\nQue puis-je faire pour vous sur FLEXA MARKET ?",
+      en: "Yes — I speak Haitian Creole, French, English, Spanish, and Portuguese. Write in your language and I’ll reply in the same one.\nWhat do you need on FLEXA MARKET?",
+      es: "Sí — hablo criollo haitiano, francés, inglés, español y portugués. Escribe en tu idioma y responderé en el mismo.\n¿Qué necesitas en FLEXA MARKET?",
+      pt: "Sim — falo crioulo haitiano, francês, inglês, espanhol e português. Escreva no seu idioma e eu respondo no mesmo.\nO que você precisa na FLEXA MARKET?",
+    },
+    deepLink: FLEXA_DEEP_LINKS.support,
+  },
+  {
     id: "what-is-flexa",
     topics: ["general", "about", "flexa", "flexa market", "kisa", "what is"],
     title: "What is Flexa Market",

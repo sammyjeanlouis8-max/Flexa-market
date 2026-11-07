@@ -346,7 +346,7 @@ export default function Chatbot() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: "include",
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, preferredLang: lang }),
       });
 
       const data = await resp.json().catch(() => ({}));

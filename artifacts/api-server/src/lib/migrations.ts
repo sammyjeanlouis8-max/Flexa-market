@@ -3082,6 +3082,114 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE client_message_id IS NOT NULL`,
   });
 
+  // ── Booster Pro Max: saved audiences, ad events, lifecycle counters ──
+  migrations.push({
+    name: "boosts.lifecycle_status",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS lifecycle_status text NOT NULL DEFAULT 'active'`,
+  });
+  migrations.push({
+    name: "boosts.paused_at",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS paused_at timestamptz`,
+  });
+  migrations.push({
+    name: "boosts.media_type",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS media_type text DEFAULT 'video'`,
+  });
+  migrations.push({
+    name: "boosts.video_starts",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS video_starts integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.video_completions",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS video_completions integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.ten_sec_views",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS ten_sec_views integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.skips",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS skips integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.messages_count",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS messages integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.user_lifecycle_idx",
+    sql: `CREATE INDEX IF NOT EXISTS boosts_user_lifecycle_idx ON boosts(user_id, lifecycle_status)`,
+  });
+  migrations.push({
+    name: "saved_audiences.create",
+    sql: `CREATE TABLE IF NOT EXISTS saved_audiences (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      audience_type TEXT NOT NULL DEFAULT 'custom',
+      country TEXT NOT NULL,
+      state TEXT,
+      city TEXT,
+      cities TEXT[],
+      neighborhood TEXT,
+      radius_km INTEGER,
+      age_min INTEGER DEFAULT 18,
+      age_max INTEGER DEFAULT 65,
+      gender TEXT DEFAULT 'all',
+      interests TEXT[],
+      objective TEXT DEFAULT 'auto',
+      center_latitude REAL,
+      center_longitude REAL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "saved_audiences.user_idx",
+    sql: `CREATE INDEX IF NOT EXISTS saved_audiences_user_idx ON saved_audiences(user_id)`,
+  });
+  migrations.push({
+    name: "saved_audiences.user_active_idx",
+    sql: `CREATE INDEX IF NOT EXISTS saved_audiences_user_active_idx ON saved_audiences(user_id, is_active)`,
+  });
+  migrations.push({
+    name: "boost_ad_events.create",
+    sql: `CREATE TABLE IF NOT EXISTS boost_ad_events (
+      id SERIAL PRIMARY KEY,
+      boost_id INTEGER NOT NULL REFERENCES boosts(id) ON DELETE CASCADE,
+      listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+      viewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      event_type TEXT NOT NULL,
+      placement TEXT NOT NULL DEFAULT 'overlay',
+      country TEXT,
+      state TEXT,
+      city TEXT,
+      idempotency_key TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "boost_ad_events.boost_type_idx",
+    sql: `CREATE INDEX IF NOT EXISTS boost_ad_events_boost_type_idx ON boost_ad_events(boost_id, event_type)`,
+  });
+  migrations.push({
+    name: "boost_ad_events.boost_created_idx",
+    sql: `CREATE INDEX IF NOT EXISTS boost_ad_events_boost_created_idx ON boost_ad_events(boost_id, created_at)`,
+  });
+  migrations.push({
+    name: "boost_ad_events.listing_idx",
+    sql: `CREATE INDEX IF NOT EXISTS boost_ad_events_listing_idx ON boost_ad_events(listing_id)`,
+  });
+  migrations.push({
+    name: "boost_ad_events.idempotency_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS boost_ad_events_idempotency_uidx
+      ON boost_ad_events(boost_id, event_type, idempotency_key)`,
+  });
+  migrations.push({
+    name: "boost_video_uploads.purpose",
+    sql: `ALTER TABLE boost_video_uploads ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'boost'`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

@@ -14,6 +14,7 @@ import { handleCheckoutCompleted } from "./stripeCheckout";
 import { logger } from "../lib/logger";
 import { extractWasabiKey } from "../lib/s3";
 import { verifyAndCanonicalizeBoostVideoUrl } from "../lib/boostVideoAsset";
+import { viewerWithinAudienceRadius } from "../lib/haitiGeo";
 
 /**
  * Resolve a stored boostVideoUrl to a playable URL.
@@ -428,7 +429,11 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     ? (adminScopeCountry ?? req.user?.country ?? null)
     : (req.user?.country ?? null);
   const viewerState   = req.user?.state    ?? null;
+  // Privacy: registration city/location is NOT used as live physical location for radius.
+  // City-name targeting may still use profile location as an audience attribute the user set.
   const viewerCity    = req.user?.location ?? null;
+  const viewerLat = typeof req.user?.latitude === "number" ? req.user.latitude : null;
+  const viewerLng = typeof req.user?.longitude === "number" ? req.user.longitude : null;
   const viewerId = req.userId ?? -1;
 
   const now = new Date();
@@ -446,6 +451,22 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
     // NULL boostStartAt is treated as "already started" for backward-compat with
     // boosts that were activated before the boostStartAt column was added.
     sql`(${listingsTable.boostStartAt} IS NULL OR ${listingsTable.boostStartAt} <= ${now.toISOString()})`,
+    // Exclude campaigns paused via Booster Pro lifecycle controls.
+    sql`NOT EXISTS (
+      SELECT 1 FROM boosts b
+      WHERE b.listing_id = ${listingsTable.id}
+        AND b.payment_status = 'paid'
+        AND b.lifecycle_status = 'paused'
+        AND b.expires_at > ${now.toISOString()}
+        AND NOT EXISTS (
+          SELECT 1 FROM boosts b2
+          WHERE b2.listing_id = b.listing_id
+            AND b2.payment_status = 'paid'
+            AND b2.lifecycle_status = 'active'
+            AND b2.expires_at > ${now.toISOString()}
+            AND b2.created_at > b.created_at
+        )
+    )`,
     ne(listingsTable.sellerId, viewerId),
     ...(req.userId ? [sql`NOT EXISTS (SELECT 1 FROM user_blocks ub WHERE ub.blocker_id = ${req.userId} AND ub.blocked_id = ${listingsTable.sellerId})`] : []),
     ...(req.userId ? [sql`NOT EXISTS (
@@ -474,16 +495,22 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
           sql`lower(${listingsTable.boostAudienceState}) = ${viewerState.toLowerCase()}`,
         )]
       : []),
-    // City isolation: same inclusive logic.
+    // City isolation: match single city OR any city in boost_audience_cities[].
+    // Inclusive when boost has no city target.
     ...(!skipCountryFilter && viewerCity
-      ? [or(
-          isNull(listingsTable.boostAudienceCity),
-          sql`lower(${listingsTable.boostAudienceCity}) = ${viewerCity.toLowerCase()}`,
-        )]
+      ? [sql`(
+          ${listingsTable.boostAudienceCity} IS NULL
+          AND (${listingsTable.boostAudienceCities} IS NULL OR cardinality(${listingsTable.boostAudienceCities}) = 0)
+          OR lower(${listingsTable.boostAudienceCity}) = ${viewerCity.toLowerCase()}
+          OR EXISTS (
+            SELECT 1 FROM unnest(coalesce(${listingsTable.boostAudienceCities}, ARRAY[]::text[])) AS c(city)
+            WHERE lower(c.city) = ${viewerCity.toLowerCase()}
+          )
+        )`]
       : []),
   ];
 
-  const [row] = await db
+  const candidates = await db
     .select({
       id: listingsTable.id,
       title: listingsTable.title,
@@ -497,12 +524,28 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       boostWhatsappNumber: listingsTable.boostWhatsappNumber,
       boostCtaText: listingsTable.boostCtaText,
       status: listingsTable.status,
+      boostAudienceCities: listingsTable.boostAudienceCities,
+      boostAudienceCity: listingsTable.boostAudienceCity,
+      boostAudienceRadiusKm: listingsTable.boostAudienceRadiusKm,
     })
     .from(listingsTable)
     .leftJoin(usersTable, eq(listingsTable.sellerId, usersTable.id))
     .where(and(...conds))
     .orderBy(sql`random()`)
-    .limit(1);
+    .limit(12);
+
+  // Radius uses authorized profile coordinates only — never invents location from city text.
+  const row = candidates.find((c) => {
+    const cities = (c.boostAudienceCities?.length
+      ? c.boostAudienceCities
+      : c.boostAudienceCity ? [c.boostAudienceCity] : []) as string[];
+    return viewerWithinAudienceRadius({
+      viewerLat,
+      viewerLng,
+      cities,
+      radiusKm: c.boostAudienceRadiusKm,
+    });
+  }) ?? null;
 
   if (!row) {
     res.set("Cache-Control", "no-store");
@@ -528,6 +571,7 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       // knows not to show a "View Product" CTA that leads to a dead page.
       status: row.status,
       isVideoOnly: row.status === "hidden",
+      mediaType: resolvedBoostVideoUrl ? "video" : "image",
     },
   });
 });
@@ -571,14 +615,34 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   // Super-admins may target ALL countries globally.
   const isAllCountries = !!(req.user?.isSuperAdmin) && rawCountry === "ALL";
   const country = rawCountry;
-  const state = (!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null;
-  const city  = (!isAllCountries && typeof req.body.audienceCity === "string" && req.body.audienceCity.trim())
-    ? req.body.audienceCity.trim()
-    : (!isAllCountries ? (req.user!.location ?? null) : null);
-  const gender = ["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all";
-  const ageMin = Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18;
-  const ageMax = Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65;
-  const plan: Plan = "7day";
+
+  // Booster Pro may send a full audience object; fall back to legacy single-city fields.
+  const proAudience = req.body?.audience && typeof req.body.audience === "object"
+    ? req.body.audience as Record<string, unknown>
+    : null;
+  const audienceCheck = proAudience
+    ? validateAudience({ ...proAudience, country }, isAdmin ? country : req.user?.country)
+    : null;
+  const audienceOk = audienceCheck?.ok ? audienceCheck.audience : null;
+
+  const state = audienceOk?.state
+    ?? ((!isAllCountries && country === "Haiti") ? (req.user!.state ?? "Ouest") : null);
+  const cities = audienceOk?.cities
+    ?? (typeof req.body.audienceCity === "string" && req.body.audienceCity.trim()
+      ? [req.body.audienceCity.trim()]
+      : null);
+  const city = audienceOk?.city
+    ?? (cities?.[0] ?? (!isAllCountries ? (req.user!.location ?? null) : null));
+  const radiusKm = audienceOk?.radiusKm ?? null;
+  const audienceType = audienceOk?.audienceType ?? "advantage_plus";
+  const gender = audienceOk?.gender
+    ?? (["all", "male", "female"].includes(req.body.audienceGender) ? req.body.audienceGender : "all");
+  const ageMin = audienceOk?.ageMin
+    ?? (Number.isFinite(Number(req.body.audienceAgeMin)) ? Math.max(13, Math.min(79, Number(req.body.audienceAgeMin))) : 18);
+  const ageMax = audienceOk?.ageMax
+    ?? (Number.isFinite(Number(req.body.audienceAgeMax)) ? Math.max(ageMin + 1, Math.min(80, Number(req.body.audienceAgeMax))) : 65);
+  const requestedPlan = req.body.plan as Plan | undefined;
+  const plan: Plan = VALID_PLANS.includes(requestedPlan as Plan) ? (requestedPlan as Plan) : "7day";
   const planMeta = PLAN_META[plan];
   const rawBudget = req.body.budget;
   const budgetCheck = validateBudget(rawBudget ?? planMeta.basePrice, plan);
@@ -586,7 +650,7 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
   const dailyBudget = dailyBudgetFromTotal(budget, plan);
   const expiresAt = new Date(Date.now() + planMeta.days * 24 * 60 * 60 * 1000);
   const reach = estimateReach(budget, plan, {
-    country, state, city, audienceType: "advantage_plus", ageMin, ageMax, gender, objective: "auto",
+    country, state, city, cities, radiusKm, audienceType, ageMin, ageMax, gender, objective: "auto",
   });
   if (budgetCheck.ok && budgetCheck.largeBudget) {
     logger.warn({ userId: req.userId, budget, threshold: LARGE_BOOST_BUDGET_USD }, "Large video-only booster budget");
@@ -623,18 +687,20 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     dailyBudget,
     durationDays: planMeta.days,
     estimatedReach: reach,
-    audienceType: "advantage_plus",
+    audienceType,
     audienceName: null,
     audienceCountry: country,
     audienceState: state,
     audienceCity: city,
-    audienceCities: city ? [city] : null,
-    audienceNeighborhood: null,
-    audienceRadiusKm: null,
+    audienceCities: cities ?? (city ? [city] : null),
+    audienceNeighborhood: audienceOk?.neighborhood ?? null,
+    audienceRadiusKm: radiusKm,
     audienceAgeMin: ageMin,
     audienceAgeMax: ageMax,
     audienceGender: gender,
     objective: "auto",
+    mediaType: "video",
+    lifecycleStatus: "active",
     paymentMethod: "wallet",
     paymentStatus: "pending",
     expiresAt,
@@ -667,13 +733,14 @@ router.post("/boost/video-only", requireAuth, requireNotRestricted, requireCardN
     boostExpiresAt: expiresAt,
     boostAudienceCountry: country,
     boostAudienceState: state,
-    boostAudienceCities: city ? [city] : null,
+    boostAudienceCities: cities ?? (city ? [city] : null),
     boostAudienceCity: city,
+    boostAudienceRadiusKm: radiusKm,
+    boostAudienceType: audienceType,
     boostAudienceAgeMin: ageMin,
     boostAudienceAgeMax: ageMax,
     boostAudienceGender: gender,
     boostAudienceObjective: "auto",
-    boostAudienceType: "advantage_plus",
     boostDailyBudget: dailyBudget,
   }).where(eq(listingsTable.id, listing.id));
 

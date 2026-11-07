@@ -18,6 +18,8 @@ export const boostVideoUploadsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "cascade" }),
     contentType: text("content_type").notNull(),
+    /** boost | listing — controls max duration during normalization. */
+    purpose: text("purpose").notNull().default("boost"),
     totalChunks: integer("total_chunks").notNull(),
     totalBytes: integer("total_bytes").notNull(),
     status: text("status").notNull().default("uploading"),

@@ -254,7 +254,10 @@ const PROCESSING_RECOVERY_INTERVAL_MS = 60 * 1000;
 const PROCESSING_RECOVERY_SCAN_LIMIT = 24;
 const MAX_CONCURRENT_VIDEO_NORMALIZATIONS = 2;
 const MAX_QUEUED_VIDEO_NORMALIZATIONS = 24;
-const MAX_MARKETPLACE_VIDEO_SECONDS = 5 * 60;
+const MAX_LISTING_VIDEO_SECONDS = 5 * 60;
+/** Booster Pro ads: hard cap 120 seconds per product requirements. */
+const MAX_BOOST_VIDEO_SECONDS = 120;
+const MAX_MARKETPLACE_VIDEO_SECONDS = MAX_LISTING_VIDEO_SECONDS;
 const CHUNK_ROOT = join(tmpdir(), "flexa-boost-video-processing");
 mkdirSync(CHUNK_ROOT, { recursive: true });
 
@@ -401,9 +404,12 @@ async function processChunkUpload(
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
 
     stage = "validation";
+    const maxSeconds = session.purpose === "listing"
+      ? MAX_LISTING_VIDEO_SECONDS
+      : MAX_BOOST_VIDEO_SECONDS;
     const durationSeconds = await assertVideoDurationAtMost(
       sourcePath,
-      MAX_MARKETPLACE_VIDEO_SECONDS,
+      maxSeconds,
       conversionAbort.signal,
     );
     if (!await heartbeatBoostVideoProcessing(uploadId, processingToken)) return;
@@ -623,6 +629,8 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
   const totalChunks = Number(req.body?.totalChunks);
   const totalBytes = Number(req.body?.totalBytes);
   const contentType = String(req.body?.contentType ?? "").split(";")[0].trim().toLowerCase();
+  const rawPurpose = String(req.body?.purpose ?? "boost").trim().toLowerCase();
+  const purpose: "boost" | "listing" = rawPurpose === "listing" ? "listing" : "boost";
   const expectedChunks = Math.ceil(totalBytes / CHUNK_SIZE_BYTES);
   if (
     !Number.isInteger(totalChunks) ||
@@ -659,6 +667,7 @@ router.post("/storage/uploads/chunk-init", requireAuth, async (req: Request, res
       totalChunks,
       totalBytes,
       expiresAt,
+      purpose,
     });
     res.json({
       uploadId,

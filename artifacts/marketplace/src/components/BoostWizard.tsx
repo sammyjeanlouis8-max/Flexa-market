@@ -29,7 +29,7 @@ interface UserListing { id: number; title: string; price: number; images: string
 interface Category { id: number; name: string; }
 interface Props { open: boolean; onClose: () => void; }
 
-const MAX_VIDEO_SECONDS = 300;
+const MAX_VIDEO_SECONDS = 120;
 const MAX_VIDEO_BYTES = 300 * 1024 * 1024; // matches Wasabi/server normalization cap
 const MIN_BUDGET = 2;
 const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;

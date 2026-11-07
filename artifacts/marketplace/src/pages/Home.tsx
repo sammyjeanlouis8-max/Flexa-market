@@ -352,6 +352,10 @@ export default function Home() {
     l => !activeCategory || l.categorySlug === activeCategory
   );
   const personalizedSearches = personalizedData?.searches ?? [];
+  const personalizedIds = useMemo(
+    () => new Set(personalizedListings.map((l) => l.id)),
+    [personalizedListings],
+  );
   const promaxGroups = useMemo(() => {
     const groupKeys = ["booster_vip", "booster_ordinary", "vip", "ordinary"] as const;
     const seen = new Set<number>();
@@ -393,7 +397,17 @@ export default function Home() {
       }),
     [allListings, activeCategory, activeCountry, isAdmin],
   );
-  const heroListing = boostedListings[0] ?? todaysDeals.slots[0] ?? allListings[0] ?? null;
+  // Prefer a For You match for the hero when this account has search history,
+  // so two people in the same house see different top products.
+  const heroListing =
+    personalizedListings[0]
+    ?? boostedListings[0]
+    ?? todaysDeals.slots[0]
+    ?? allListings[0]
+    ?? null;
+  const heroIsForYou = Boolean(
+    personalizedListings[0] && heroListing && personalizedListings[0].id === heroListing.id,
+  );
 
   const recordedBoostImpressionsRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -974,16 +988,20 @@ export default function Home() {
           </div>
         )}
 
-        {/* === HERO — real listing only (boosted preferred) === */}
+        {/* === HERO — For You match preferred, else boosted / deal === */}
         {heroListing && (
           <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(152,65%,18%)] to-[hsl(152,50%,28%)] text-white shadow-md">
             <div className="flex items-stretch min-h-[148px]">
               <div className="flex-1 p-4 flex flex-col justify-center gap-2 min-w-0">
-                {heroListing.isBoosted && (
+                {heroIsForYou ? (
+                  <span className="inline-flex w-fit text-[10px] font-bold uppercase tracking-wide bg-white/20 text-white px-2 py-0.5 rounded-full">
+                    {t("home.forYou", { defaultValue: "For You" })}
+                  </span>
+                ) : heroListing.isBoosted ? (
                   <span className="inline-flex w-fit text-[10px] font-bold uppercase tracking-wide bg-[#F97316] text-white px-2 py-0.5 rounded-full">
                     {t("home.boostedBadge", { defaultValue: "Boosted" })}
                   </span>
-                )}
+                ) : null}
                 <h2 className="text-lg sm:text-xl font-bold leading-tight line-clamp-2">
                   {heroListing.title}
                 </h2>
@@ -1048,6 +1066,54 @@ export default function Home() {
           </section>
         )}
 
+        {/* === FOR YOU — per-account search personalization near top of Home === */}
+        {user && !isAdmin && personalizedListings.length > 0 && (
+          <section data-testid="for-you-section" aria-label={t("home.forYou", { defaultValue: "For You" })}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <Search className="h-4 w-4 text-primary" />
+                  <h2 className="text-base font-bold text-foreground">
+                    {t("home.forYou", { defaultValue: "For You" })}
+                  </h2>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t("home.basedOnSearchesDesc")}
+                </p>
+              </div>
+              <button
+                onClick={() => setLocation("/search")}
+                className="flex items-center gap-0.5 text-xs text-primary font-semibold flex-shrink-0"
+              >
+                {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
+              </button>
+            </div>
+            {personalizedSearches.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none mb-3">
+                {personalizedSearches.map(term => (
+                  <button
+                    key={term}
+                    onClick={() => setLocation(`/search?q=${encodeURIComponent(term)}`)}
+                    className="flex-shrink-0 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold border border-primary/20 hover:bg-primary/20 transition-colors whitespace-nowrap"
+                  >
+                    {term}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div
+              className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3"
+              data-testid="for-you-grid"
+            >
+              {personalizedListings.slice(0, 10).map((l, index) => (
+                <div key={`for-you-${l.id}`} className="min-w-0" data-for-you="true">
+                  <ListingCard listing={l} priority={index < 4} showAddToCart />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* === TODAY'S DEALS / PICKS — professional two-column product grid === */}
         {todaysDeals.slots.length > 0 && (
           <section
@@ -1089,14 +1155,14 @@ export default function Home() {
           </section>
         )}
 
-        {/* === FEATURED PRODUCTS (2-col mobile) === */}
+        {/* === FEATURED PRODUCTS (2-col mobile) — shared PROMAX order === */}
         <div className="flex items-center justify-between">
           <h2 className="text-base font-bold text-foreground">
             {t("home.featuredProducts", { defaultValue: "Featured Products" })}
           </h2>
         </div>
 
-        {/* === PROMAX GROUPS — server-owned hourly order, strict/no mixing === */}
+        {/* === PROMAX GROUPS — server-owned hourly order; skip For You dupes above === */}
         {feedLoading ? (
           <div className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3">
             {[...Array(10)].map((_, i) => (
@@ -1104,7 +1170,7 @@ export default function Home() {
             ))}
           </div>
         ) : (
-          promaxGroups.some(group => group.listings.length > 0) && (
+          promaxGroups.some(group => group.listings.some((l) => !personalizedIds.has(l.id))) && (
             <div
               className="home-product-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-3"
               aria-label="Marketplace products"
@@ -1112,72 +1178,31 @@ export default function Home() {
               {(() => {
                 let aboveFoldIndex = 0;
                 return promaxGroups.slice(0, 2).flatMap(({ key, listings }) =>
-                  listings.map((listing) => {
-                    const priority = aboveFoldIndex < 4;
-                    aboveFoldIndex += 1;
-                    return (
-                      <div key={listing.id} data-promax-group={key} className="min-w-0">
-                        <ListingCard listing={listing} priority={priority} showAddToCart />
-                      </div>
-                    );
-                  }),
+                  listings
+                    .filter((listing) => !personalizedIds.has(listing.id))
+                    .map((listing) => {
+                      const priority = aboveFoldIndex < 4;
+                      aboveFoldIndex += 1;
+                      return (
+                        <div key={listing.id} data-promax-group={key} className="min-w-0">
+                          <ListingCard listing={listing} priority={priority} showAddToCart />
+                        </div>
+                      );
+                    }),
                 );
               })()}
               <VideoPromoSection countryFilter={isAdmin ? effectiveAdminCountry : (activeCountry ?? null)} />
               {promaxGroups.slice(2).flatMap(({ key, listings }) =>
-                listings.map((listing) => (
-                  <div key={listing.id} data-promax-group={key} className="min-w-0">
-                    <ListingCard listing={listing} showAddToCart />
-                  </div>
-                )),
+                listings
+                  .filter((listing) => !personalizedIds.has(listing.id))
+                  .map((listing) => (
+                    <div key={listing.id} data-promax-group={key} className="min-w-0">
+                      <ListingCard listing={listing} showAddToCart />
+                    </div>
+                  )),
               )}
             </div>
           )
-        )}
-
-        {/* === PERSONALISED SECTION — only for logged-in non-admin users who have search history === */}
-        {user && !isAdmin && personalizedListings.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <Search className="h-4 w-4 text-primary" />
-                <h2 className="text-base font-bold text-foreground">
-                  {t("home.basedOnSearches")}
-                </h2>
-              </div>
-              <button
-                onClick={() => setLocation("/search")}
-                className="flex items-center gap-0.5 text-xs text-primary font-semibold"
-              >
-                {t("buttons.seeAll")} <ChevronRight className="h-3 w-3" />
-              </button>
-            </div>
-            {/* Search term chips */}
-            {personalizedSearches.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none mb-3">
-                {personalizedSearches.map(term => (
-                  <button
-                    key={term}
-                    onClick={() => setLocation(`/search?q=${encodeURIComponent(term)}`)}
-                    className="flex-shrink-0 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold border border-primary/20 hover:bg-primary/20 transition-colors whitespace-nowrap"
-                  >
-                    🔍 {term}
-                  </button>
-                ))}
-              </div>
-            )}
-            {/* Horizontal listing carousel */}
-            <div
-              className="flex gap-3 overflow-x-auto pb-1 -mx-4 px-4"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-            >
-              {personalizedListings.slice(0, 12).map(l => (
-                <div key={l.id} className="flex-shrink-0 w-44 sm:w-52">
-                  <ListingCard listing={l} compact />
-                </div>
-              ))}
-            </div>
-          </section>
         )}
 
         {/* Infinite pagination stays in normal document flow; no reserved rows. */}

@@ -1119,3 +1119,57 @@ main {
     background: #ffffff !important;
   }
 }
+
+/* ── Flexa Market dark glass checkout (Buy Now wizard) ───────────────────── */
+.fm-checkout-dark {
+  --background: 222 55% 6%;
+  --foreground: 214 100% 97%;
+  --card: 222 40% 12%;
+  --card-foreground: 214 100% 97%;
+  --card-border: 217 60% 30%;
+  --popover: 222 40% 10%;
+  --popover-foreground: 214 100% 97%;
+  --primary: 221 100% 59%;
+  --primary-foreground: 0 0% 100%;
+  --muted: 222 35% 14%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 221 60% 18%;
+  --accent-foreground: 214 100% 97%;
+  --border: 217 40% 22%;
+  --input: 217 40% 18%;
+  --ring: 221 100% 59%;
+  --destructive: 0 72% 51%;
+  color: #f4f7ff;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(47, 107, 255, 0.28), transparent 55%),
+    radial-gradient(ellipse 70% 45% at 95% 15%, rgba(168, 85, 247, 0.22), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(47, 107, 255, 0.12), transparent 55%),
+    #060b1a !important;
+  border: 1px solid rgba(120, 160, 255, 0.16) !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(47, 107, 255, 0.08) inset;
+}
+.fm-checkout-dark [data-slot="dialog-close"],
+.fm-checkout-dark > button.absolute {
+  color: #8b9bb8 !important;
+  opacity: 1 !important;
+}
+.fm-checkout-dark > button.absolute:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.fm-checkout-dark input,
+.fm-checkout-dark textarea {
+  color: #f4f7ff !important;
+  caret-color: #4c8dff;
+}
+.fm-checkout-dark input::placeholder,
+.fm-checkout-dark textarea::placeholder {
+  color: #6b7c99 !important;
+}
+@keyframes fm-checkout-glow {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+.fm-checkout-glow {
+  animation: fm-checkout-glow 2.8s ease-in-out infinite;
+}

@@ -39,6 +39,7 @@ const DriverSelfieMobile = lazy(() => import("@/pages/DriverSelfieMobile"));
 const Home               = lazy(() => import("@/pages/Home"));
 const BoostedDealPreview = lazy(() => import("@/pages/dev/BoostedDealPreview"));
 const FlexaControlPreview = lazy(() => import("@/pages/dev/FlexaControlPreview"));
+const CheckoutRedesignPreview = lazy(() => import("@/pages/dev/CheckoutRedesignPreview"));
 const Search             = lazy(() => import("@/pages/Search"));
 const ListingDetail      = lazy(() => import("@/pages/ListingDetail"));
 const Sell               = lazy(() => import("@/pages/Sell"));
@@ -220,6 +221,7 @@ function LayoutRoutes() {
           <Route path="/" component={Home} />
           <Route path="/dev/boosted-deal-preview" component={BoostedDealPreview} />
           <Route path="/dev/flexa-control-preview" component={FlexaControlPreview} />
+          <Route path="/dev/checkout-redesign-preview" component={CheckoutRedesignPreview} />
           <Route path="/search" component={Search} />
           <Route path="/listings/create">
             {() => { setLocation("/sell"); return null; }}

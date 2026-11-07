@@ -4,16 +4,21 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
-  ChevronLeft, MessageSquare, Send, Shield, Plus, Lock,
+  ChevronLeft, MessageSquare, Send, Plus, Lock,
   Check, CheckCheck, Bot, Loader2, CheckCircle2, Star,
+  Headphones,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useSocket } from "@/hooks/useSocket";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+const OFFICIAL_LOGO = "/flexa-logo-v2.png";
+const BRAND_GREEN = "hsl(152,65%,18%)";
+const BRAND_GREEN_SOFT = "hsl(152,40%,94%)";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -353,96 +358,106 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Bot header */}
-      <div className="p-3 border-b border-border bg-gradient-to-r from-primary/5 to-primary/10 flex items-center gap-2 flex-shrink-0">
-        <div className="h-8 w-8 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">
-          <Bot className="h-4 w-4 text-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">FLEXA Bot</p>
-          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
-            En liy · Repons imedya
+    <div className="flex h-full min-h-0 flex-col bg-[#F4F7F5]" data-testid="flexabot-chat">
+      {/* FlexaBot header */}
+      <div
+        className="flex shrink-0 items-center gap-2.5 border-b px-3 py-2.5 text-white"
+        style={{ background: BRAND_GREEN }}
+      >
+        <img src={OFFICIAL_LOGO} alt="Flexa Market" className="h-8 w-8 rounded-full bg-white/10 p-0.5" width={32} height={32} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold leading-tight">FlexaBot</p>
+          <p className="flex items-center gap-1 text-[10px] text-white/80">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" />
+            AI · Online · Instant answers
           </p>
         </div>
         {escalated && (
-          <Badge className="bg-green-600 hover:bg-green-600 text-white text-[10px]">
-            <CheckCircle2 className="h-3 w-3 mr-1" />
-            Transfere
+          <Badge className="bg-white/20 text-[10px] text-white hover:bg-white/20">
+            <CheckCircle2 className="mr-1 h-3 w-3" />
+            Transferred
           </Badge>
         )}
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 flex flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
         <div className="flex-1" />
-        <div className="space-y-2">
-        {msgs.map((m) => (
-          <div key={m.id} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-            {m.role === "bot" ? (
-              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot className="h-3.5 w-3.5 text-primary" />
-              </div>
-            ) : (
-              <Avatar className="h-7 w-7 flex-shrink-0 mt-0.5">
-                <AvatarFallback>{(user.name?.[0] ?? "U").toUpperCase()}</AvatarFallback>
-              </Avatar>
-            )}
-            <div className={`max-w-[78%] flex flex-col ${m.role === "user" ? "items-end" : ""}`}>
-              <div className="flex items-center gap-1.5 mb-0.5 text-[10px] text-muted-foreground">
-                <span className="font-medium">{m.role === "bot" ? "Bot" : (user.name ?? "Ou")}</span>
-                {m.role === "bot" && (
-                  <Badge className="text-[8px] h-3.5 px-1 bg-primary/70 hover:bg-primary/70">IA</Badge>
-                )}
-                <span>{formatTimeAgo(m.ts)}</span>
-              </div>
-              <div
-                className={`px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${
-                  m.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-slate-100 dark:bg-slate-800 rounded-bl-sm"
-                }`}
-              >
-                {m.content}
+        <div className="space-y-2.5">
+          {msgs.map((m) => (
+            <div key={m.id} className={cn("flex gap-2", m.role === "user" && "flex-row-reverse")}>
+              {m.role === "bot" ? (
+                <div
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                  style={{ background: BRAND_GREEN_SOFT }}
+                >
+                  <Bot className="h-4 w-4" style={{ color: BRAND_GREEN }} />
+                </div>
+              ) : (
+                <Avatar className="mt-0.5 h-8 w-8 shrink-0">
+                  <AvatarFallback className="text-xs font-semibold" style={{ background: BRAND_GREEN, color: "#fff" }}>
+                    {(user.name?.[0] ?? "U").toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+              <div className={cn("flex max-w-[80%] flex-col", m.role === "user" && "items-end")}>
+                <div className="mb-0.5 flex items-center gap-1.5 px-0.5 text-[10px] text-slate-500">
+                  <span className="font-semibold">{m.role === "bot" ? "FlexaBot" : (user.name ?? "You")}</span>
+                  {m.role === "bot" && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: BRAND_GREEN }}>
+                      AI
+                    </span>
+                  )}
+                  <span>{formatTimeAgo(m.ts)}</span>
+                </div>
+                <div
+                  className={cn(
+                    "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm",
+                    m.role === "user"
+                      ? "rounded-br-md text-white"
+                      : "rounded-bl-md border border-slate-200/80 bg-white text-slate-800",
+                  )}
+                  style={m.role === "user" ? { background: BRAND_GREEN } : undefined}
+                >
+                  {m.content}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
 
-        {/* Bot typing indicator */}
-        {botTyping && (
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Bot className="h-3.5 w-3.5 text-primary" />
+          {botTyping && (
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: BRAND_GREEN_SOFT }}>
+                <Bot className="h-4 w-4" style={{ color: BRAND_GREEN }} />
+              </div>
+              <div className="flex h-9 items-center gap-1 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+              </div>
             </div>
-            <div className="px-3 py-2 rounded-2xl rounded-bl-sm bg-slate-100 dark:bg-slate-800 flex gap-0.5 items-center h-9">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+          )}
+
+          {escalating && !escalated && (
+            <div className="flex items-center gap-2 pl-10 text-xs text-slate-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Connecting you to a support agent…
             </div>
-          </div>
-        )}
+          )}
 
-        {escalating && !escalated && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground pl-9">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Koneksyon ak ajan...
-          </div>
-        )}
-
-        <div ref={bottomRef} />
+          <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* Quick replies */}
       {quickReplies && quickReplies.length > 0 && !escalating && !escalated && (
-        <div className="px-3 pb-2 flex flex-wrap gap-1.5 flex-shrink-0">
+        <div className="flex shrink-0 flex-wrap gap-1.5 px-3 pb-2">
           {quickReplies.map((qr) => (
             <button
               key={qr.id}
+              type="button"
               onClick={() => handleQuickReply(qr)}
-              className="px-3 py-1.5 rounded-full border border-primary/30 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/15 transition-colors"
+              className="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{ borderColor: "hsla(152,65%,18%,0.25)", color: BRAND_GREEN, background: BRAND_GREEN_SOFT }}
               data-testid={`bot-quick-${qr.id}`}
             >
               {qr.label}
@@ -451,19 +466,22 @@ function BotChatView({ user, onEscalate }: BotChatViewProps) {
         </div>
       )}
 
-      {/* Input bar */}
-      <div className="border-t border-border p-3 flex gap-2 flex-shrink-0">
+      <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white px-3 py-2.5 pb-[max(0.65rem,env(safe-area-inset-bottom))]">
         <Input
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), handleSend())}
-          placeholder={escalated ? "Transfere bay ajan..." : "Ekri yon mesaj..."}
+          placeholder={escalated ? "Transferred to agent…" : "Write a message…"}
           disabled={botTyping || escalating || escalated}
+          className="rounded-full border-slate-200 bg-slate-50"
           data-testid="bot-input"
         />
         <Button
           onClick={handleSend}
           disabled={!inputText.trim() || botTyping || escalating || escalated}
+          size="icon"
+          className="shrink-0 rounded-full text-white"
+          style={{ background: BRAND_GREEN }}
           data-testid="bot-send"
         >
           <Send className="h-4 w-4" />
@@ -687,20 +705,22 @@ export default function Support() {
   };
 
   if (!user) return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-6 px-6 py-16">
-      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-        <MessageSquare className="h-8 w-8 text-primary" />
-      </div>
-      <div className="text-center max-w-sm">
-        <h1 className="text-2xl font-bold text-foreground mb-2">{t("support.guestTitle", { defaultValue: "Sipò FLEXA MARKET" })}</h1>
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {t("support.guestDesc", { defaultValue: "Bezwen èd? Ekip sipò nou disponib 7 jou sou 7. Konekte pou ouvri yon tikè oswa chatte ak yon ajan." })}
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-6 bg-[#F4F7F5] px-6 py-16">
+      <img src={OFFICIAL_LOGO} alt="Flexa Market" className="h-14 w-14" width={56} height={56} />
+      <div className="max-w-sm text-center">
+        <h1 className="mb-2 text-2xl font-bold text-slate-900">{t("support.guestTitle", { defaultValue: "Flexa Market Support" })}</h1>
+        <p className="text-sm leading-relaxed text-slate-600">
+          {t("support.guestDesc", { defaultValue: "Need help? Our support team is available 7 days a week. Sign in to open a ticket or chat with an agent." })}
         </p>
       </div>
       <div className="w-full max-w-sm space-y-3">
         <Link href="/auth/login">
-          <button className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors">
-            {t("support.guestLogin", { defaultValue: "Konekte pou kontakte sipò" })}
+          <button
+            type="button"
+            className="w-full rounded-xl py-3 text-sm font-semibold text-white transition-colors"
+            style={{ background: BRAND_GREEN }}
+          >
+            {t("support.guestLogin", { defaultValue: "Sign in to contact support" })}
           </button>
         </Link>
         <Link href="/contact">
@@ -729,125 +749,165 @@ export default function Support() {
   ) : activeId && detail ? (
     <>
       {/* Thread detail header */}
-      <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-shrink-0 bg-muted/20">
+      <div
+        className="flex shrink-0 items-center gap-3 border-b px-3 py-2.5 text-white"
+        style={{ background: BRAND_GREEN }}
+      >
         <button
-          className="md:hidden w-8 h-8 rounded-full flex items-center justify-center hover:bg-accent transition-colors"
+          type="button"
+          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 md:hidden"
           onClick={() => { setActiveId(null); setShowBot(false); }}
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-5 w-5" />
         </button>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm truncate">{detail.subject}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${detail.status === "open" ? "bg-green-500" : "bg-muted-foreground"}`} />
+        <img src={OFFICIAL_LOGO} alt="" className="hidden h-8 w-8 rounded-full bg-white/10 p-0.5 md:block" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold">{detail.subject}</p>
+          <p className="flex items-center gap-1.5 text-[11px] text-white/80">
+            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", detail.status === "closed" ? "bg-white/50" : "bg-emerald-300")} />
+            {detail.ticketRef ? `#${detail.ticketRef}` : `#${detail.id}`}
+            {" · "}
             {detail.status === "closed"
-              ? t("support.closed", { defaultValue: "Fèmen" })
-              : t("support.open", { defaultValue: "Ouvè" })}
-            {detail.assignedAdminName && ` · ${detail.assignedAdminName}`}
+              ? t("support.closed", { defaultValue: "Closed" })
+              : t("support.open", { defaultValue: "Open" })}
+            {detail.assignedAdminName ? ` · ${detail.assignedAdminName}` : ""}
           </p>
         </div>
         {detail.status === "closed" && (
-          <Badge variant="secondary" className="text-xs gap-0.5 flex-shrink-0">
+          <Badge className="shrink-0 gap-0.5 bg-white/15 text-xs text-white hover:bg-white/15">
             <Lock className="h-2.5 w-2.5" />
-            {t("support.closed", { defaultValue: "Fèmen" })}
+            Closed
           </Badge>
         )}
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
-        <div className="flex-1" />
-        <div className="space-y-3">
-        {detail.messages.map((m) => {
-          const isBot = m.senderRole === "bot";
-          const mine = m.senderId === user.id && !isBot;
-          return (
-            <div
-              key={m.id}
-              className={`flex gap-2.5 ${mine ? "flex-row-reverse" : ""}`}
-              data-testid={`msg-${m.id}`}
-            >
-              <Avatar className="h-8 w-8 flex-shrink-0 mt-0.5">
-                {isBot ? (
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    <Bot className="h-3.5 w-3.5" />
-                  </AvatarFallback>
-                ) : (
-                  <>
-                    <AvatarImage src={m.senderAvatar ?? undefined} />
-                    <AvatarFallback className={m.isAdminReply ? "bg-purple-600 text-white" : "bg-muted"}>
-                      {m.isAdminReply ? <Shield className="h-3.5 w-3.5" /> : m.senderName[0]}
-                    </AvatarFallback>
-                  </>
-                )}
-              </Avatar>
-              <div className={`max-w-[75%] flex flex-col gap-0.5 ${mine ? "items-end" : ""}`}>
-                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-1">
-                  <span className="font-semibold">{isBot ? "Bot" : m.senderName}</span>
-                  {isBot && <Badge className="text-[8px] h-3.5 px-1 bg-primary/70 hover:bg-primary/70">IA</Badge>}
-                  {!isBot && m.isAdminReply && <Badge className="text-[8px] h-3.5 px-1 bg-purple-600 hover:bg-purple-600">{t("support.staff", { defaultValue: "Sipò" })}</Badge>}
-                  <span>{formatTimeAgo(m.createdAt)}</span>
-                  {mine && (m.isRead
-                    ? <CheckCheck className="h-3 w-3 text-blue-500" />
-                    : <Check className="h-3 w-3 text-muted-foreground" />)}
-                </div>
-                <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm ${
-                  isBot ? "bg-muted rounded-tl-sm"
-                  : mine ? "bg-primary text-primary-foreground rounded-tr-sm"
-                  : m.isAdminReply ? "bg-purple-100 dark:bg-purple-950/60 rounded-tl-sm"
-                  : "bg-muted rounded-tl-sm"
-                }`}>
-                  {m.content}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {typingAdmin && (
-          <div className="flex items-center gap-2.5 pl-10">
-            <div className="flex gap-1 items-center px-3 py-2 rounded-2xl bg-muted">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
-            </div>
-            <span className="text-xs text-muted-foreground italic">{t("support.typing")}</span>
-          </div>
-        )}
-        <div ref={bottomRef} />
-        </div>{/* end space-y-3 */}
-      </div>
-
       {detail.estimatedResponseLabel && detail.status !== "closed" ? (
-        <div className="mx-3 mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-          <p className="font-semibold">Estimated response time</p>
-          <p>{detail.estimatedResponseLabel}</p>
-          {detail.assignedAdminName ? (
-            <p className="mt-1">Agent: {detail.assignedAdminName}</p>
-          ) : null}
+        <div
+          className="mx-3 mt-3 rounded-xl border px-3 py-2 text-xs"
+          style={{ borderColor: "hsla(152,65%,18%,0.2)", background: BRAND_GREEN_SOFT, color: BRAND_GREEN }}
+        >
+          <p className="font-bold">Estimated response time</p>
+          <p className="opacity-90">{detail.estimatedResponseLabel}</p>
+          {detail.assignedAdminName ? <p className="mt-0.5 opacity-90">Agent: {detail.assignedAdminName}</p> : null}
         </div>
       ) : null}
 
+      {/* Messages */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
+        <div className="flex-1" />
+        <div className="space-y-3">
+          {detail.messages.map((m) => {
+            const isBot = m.senderRole === "bot";
+            const mine = m.senderId === user.id && !isBot;
+            const isAgent = !mine && (m.isAdminReply || isBot);
+            return (
+              <div
+                key={m.id}
+                className={cn("flex gap-2.5", mine && "flex-row-reverse")}
+                data-testid={`msg-${m.id}`}
+              >
+                <Avatar className="mt-0.5 h-8 w-8 shrink-0">
+                  {isBot ? (
+                    <AvatarFallback style={{ background: BRAND_GREEN_SOFT, color: BRAND_GREEN }}>
+                      <Bot className="h-3.5 w-3.5" />
+                    </AvatarFallback>
+                  ) : (
+                    <>
+                      <AvatarImage src={m.senderAvatar ?? undefined} />
+                      <AvatarFallback
+                        className="text-xs font-semibold text-white"
+                        style={{ background: m.isAdminReply ? BRAND_GREEN : "#64748b" }}
+                      >
+                        {m.isAdminReply ? <Headphones className="h-3.5 w-3.5" /> : m.senderName[0]}
+                      </AvatarFallback>
+                    </>
+                  )}
+                </Avatar>
+                <div className={cn("flex max-w-[78%] flex-col gap-0.5", mine && "items-end")}>
+                  <div className="flex items-center gap-1.5 px-1 text-[10px] text-slate-500">
+                    <span className="font-semibold">{isBot ? "FlexaBot" : m.senderName}</span>
+                    {isBot && (
+                      <span className="rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: BRAND_GREEN }}>
+                        AI
+                      </span>
+                    )}
+                    {!isBot && m.isAdminReply && (
+                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800">
+                        Support Agent
+                      </span>
+                    )}
+                    <span>{formatTimeAgo(m.createdAt)}</span>
+                    {mine && (m.isRead
+                      ? <CheckCheck className="h-3 w-3 text-emerald-600" />
+                      : <Check className="h-3 w-3 text-slate-400" />)}
+                  </div>
+                  <div
+                    className={cn(
+                      "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words shadow-sm",
+                      mine && "rounded-br-md text-white",
+                      isBot && "rounded-bl-md border border-slate-200 bg-white text-slate-800",
+                      !mine && m.isAdminReply && "rounded-bl-md text-white",
+                      !mine && !isAgent && "rounded-bl-md bg-slate-100 text-slate-800",
+                    )}
+                    style={
+                      mine || (!mine && m.isAdminReply)
+                        ? { background: BRAND_GREEN }
+                        : undefined
+                    }
+                  >
+                    {m.mediaUrl && (m.messageType === "image") ? (
+                      <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="mb-1 block overflow-hidden rounded-lg">
+                        <img src={m.mediaUrl} alt={m.mediaName || "attachment"} className="max-h-48 max-w-full object-cover" />
+                      </a>
+                    ) : null}
+                    {m.content}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {typingAdmin && (
+            <div className="flex items-center gap-2.5 pl-10">
+              <div className="flex items-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
+              </div>
+              <span className="text-xs italic text-slate-500">{t("support.typing")}</span>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
       {/* Input */}
       {detail.status !== "closed" ? (
-        <div className="border-t border-border px-4 py-3 flex gap-2 flex-shrink-0 bg-background pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="flex shrink-0 gap-2 border-t border-slate-200 bg-white px-3 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Input
             value={text}
             onChange={(e) => { setText(e.target.value); handleTyping(); }}
             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
             onBlur={() => { if (activeId && user) socket.emitSupportStopTyping(activeId, user.id); }}
-            placeholder={t("support.typeMessage", { defaultValue: "Ekri yon repons..." })}
+            placeholder={t("support.typeMessage", { defaultValue: "Write a reply…" })}
             disabled={sending}
-            className="rounded-full bg-muted border-0 focus-visible:ring-1"
+            className="rounded-full border-slate-200 bg-slate-50 focus-visible:ring-1"
             data-testid="input-reply"
           />
-          <Button onClick={send} disabled={!text.trim() || sending} size="icon" className="rounded-full shrink-0" data-testid="button-send">
+          <Button
+            onClick={send}
+            disabled={!text.trim() || sending}
+            size="icon"
+            className="shrink-0 rounded-full text-white"
+            style={{ background: BRAND_GREEN }}
+            data-testid="button-send"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </div>
       ) : (
-        <div className="border-t border-border px-4 py-3 flex-shrink-0 space-y-2">
-          <p className="text-center text-xs text-muted-foreground">
-            {t("support.closedNotice", { defaultValue: "Konvèsasyon sa a fèmen. Ouvri yon nouvo demand si w bezwen plis èd." })}
+        <div className="shrink-0 space-y-2 border-t border-slate-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <p className="text-center text-xs text-slate-500">
+            {t("support.closedNotice", { defaultValue: "This conversation is closed. Open a new request if you need more help." })}
           </p>
           {detail.rating == null ? (
             <div className="flex flex-col items-center gap-1.5">
@@ -860,7 +920,7 @@ export default function Support() {
                     key={n}
                     type="button"
                     disabled={ratingBusy}
-                    className="rounded-full p-1.5 hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50"
+                    className="rounded-full p-1.5 hover:bg-amber-100 disabled:opacity-50"
                     aria-label={`Rate ${n}`}
                     onClick={async () => {
                       if (!activeId || ratingBusy) return;
@@ -897,54 +957,62 @@ export default function Support() {
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
     </div>
   ) : (
-    /* Desktop welcome splash — only shown when no thread selected */
-    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
-      <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-        <MessageSquare className="h-8 w-8 text-primary" />
-      </div>
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
+      <img src={OFFICIAL_LOGO} alt="Flexa Market" className="h-14 w-14" width={56} height={56} />
       <div>
-        <p className="font-semibold text-base mb-1">{t("support.welcomeTitle")}</p>
-        <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">{t("support.welcomeText")}</p>
+        <p className="mb-1 text-base font-bold text-slate-900">{t("support.welcomeTitle", { defaultValue: "Flexa Market Support" })}</p>
+        <p className="max-w-xs text-sm leading-relaxed text-slate-500">
+          {t("support.welcomeText", { defaultValue: "Chat with FlexaBot or open a ticket for a human agent." })}
+        </p>
       </div>
-      <Button onClick={openBot} data-testid="button-start-bot-empty" className="rounded-full px-6">
-        <Bot className="h-4 w-4 mr-2" />
-        {t("support.startBot")}
+      <Button
+        onClick={openBot}
+        data-testid="button-start-bot-empty"
+        className="rounded-full px-6 text-white"
+        style={{ background: BRAND_GREEN }}
+      >
+        <Bot className="mr-2 h-4 w-4" />
+        {t("support.startBot", { defaultValue: "Chat with FlexaBot" })}
       </Button>
     </div>
   );
 
   // ── Thread list sidebar ─────────────────────────────────────────────────────
   const threadList = (
-    <div className="flex flex-col h-full">
-      {/* Sidebar header */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          {t("support.yourThreads", { defaultValue: "Demand ou yo" })}
+    <div className="flex h-full min-h-0 flex-col bg-white">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          {t("support.yourThreads", { defaultValue: "Your tickets" })}
         </p>
         <button
+          type="button"
           onClick={openBot}
-          className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+          className="flex items-center gap-1.5 text-xs font-bold transition-colors"
+          style={{ color: BRAND_GREEN }}
           data-testid="button-new-thread-inline"
         >
           <Plus className="h-3.5 w-3.5" />
-          {t("support.newThread", { defaultValue: "Nouvo" })}
+          {t("support.newThread", { defaultValue: "New" })}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Bot entry — always at top */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <button
+          type="button"
           onClick={openBot}
-          className={`w-full text-left px-4 py-3.5 border-b border-border/60 hover:bg-accent transition-colors flex items-center gap-3 ${showBot ? "bg-accent" : ""}`}
+          className={cn(
+            "flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition-colors hover:bg-slate-50",
+            showBot && "bg-emerald-50/80",
+          )}
           data-testid="button-new-bot-session"
         >
-          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 relative">
-            <Bot className="h-5 w-5 text-primary" />
-            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-green-500 border-2 border-background" />
+          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: BRAND_GREEN_SOFT }}>
+            <Bot className="h-5 w-5" style={{ color: BRAND_GREEN }} />
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">{t("support.newRequest")}</p>
-            <p className="text-xs text-muted-foreground truncate">{t("support.talkToBot")}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-slate-900">FlexaBot AI</p>
+            <p className="truncate text-xs text-slate-500">{t("support.talkToBot", { defaultValue: "Get instant help or talk to an agent" })}</p>
           </div>
         </button>
 
@@ -957,18 +1025,27 @@ export default function Support() {
         {threads.map((th) => (
           <button
             key={th.id}
+            type="button"
             onClick={() => setActiveId(th.id)}
-            className={`w-full text-left px-4 py-3.5 border-b border-border/60 hover:bg-accent transition-colors flex items-start gap-3 ${activeId === th.id && !showBot ? "bg-accent" : ""}`}
+            className={cn(
+              "flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition-colors hover:bg-slate-50",
+              activeId === th.id && !showBot && "bg-emerald-50/80",
+            )}
             data-testid={`thread-item-${th.id}`}
           >
-            {/* Status indicator avatar */}
-            <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${th.status !== "closed" ? "bg-primary/10" : "bg-muted"}`}>
-              <MessageSquare className={`h-4.5 w-4.5 ${th.status !== "closed" ? "text-primary" : "text-muted-foreground"}`} style={{ width: "18px", height: "18px" }} />
+            <div
+              className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+              style={{ background: th.status !== "closed" ? BRAND_GREEN_SOFT : "#F1F5F9" }}
+            >
+              <MessageSquare
+                className="h-[18px] w-[18px]"
+                style={{ color: th.status !== "closed" ? BRAND_GREEN : "#94A3B8" }}
+              />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-mono text-[10px] text-muted-foreground">#{th.ticketRef || th.id}</p>
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <span className="font-semibold text-sm truncate">{th.subject}</span>
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[10px] text-slate-500">#{th.ticketRef || th.id}</p>
+              <div className="mb-0.5 flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold text-slate-900">{th.subject}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   {th.unreadByUser > 0 && (
                     <span className="h-5 min-w-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
@@ -991,66 +1068,75 @@ export default function Support() {
   );
 
   return (
-    <div className="max-w-5xl mx-auto pb-24">
-
-      {/* ── Page header — only visible when showing list on mobile ── */}
-      <div className={`px-4 pt-4 pb-3 flex items-center gap-3 ${mobileShowChat ? "md:flex hidden" : "flex"}`}>
-        <button
-          onClick={() => setLocation("/settings")}
-          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-accent transition-colors text-muted-foreground"
-          data-testid="button-back-settings"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-base font-bold flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" />
-            {t("support.title", { defaultValue: "Sipò" })}
-          </h1>
+    <div className="flex h-dvh max-h-dvh w-full flex-col overflow-hidden bg-[#F4F7F5]" data-testid="smart-support-customer">
+      {/* Brand header — replaces marketplace chrome */}
+      <header className="shrink-0 text-white" style={{ background: BRAND_GREEN }} data-testid="support-brand-header">
+        <div className="flex items-center gap-2 px-3 py-2.5">
+          {mobileShowChat ? (
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10 md:hidden"
+              onClick={() => { setActiveId(null); setShowBot(false); }}
+              aria-label="Back"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setLocation("/settings")}
+              className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10"
+              data-testid="button-back-settings"
+              aria-label="Back"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+          <img src={OFFICIAL_LOGO} alt="Flexa Market" className="h-8 w-8 rounded-full bg-white/10 p-0.5" width={32} height={32} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-bold leading-tight">
+              {mobileShowChat
+                ? (showBot ? "FlexaBot" : (detail?.subject ?? "Support"))
+                : "Flexa Market Support"}
+            </p>
+            <p className="truncate text-[10px] text-white/75">
+              {mobileShowChat && detail?.ticketRef
+                ? `#${detail.ticketRef}`
+                : "Help & live assistance"}
+            </p>
+          </div>
+          {!mobileShowChat && (
+            <Button
+              size="sm"
+              onClick={openBot}
+              className="h-8 rounded-full bg-white/15 px-3 text-xs text-white hover:bg-white/25"
+              data-testid="button-new-thread"
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              New
+            </Button>
+          )}
         </div>
-        <Button size="sm" onClick={openBot} className="rounded-full text-xs h-8 px-3" data-testid="button-new-thread">
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          {t("support.newThread", { defaultValue: "Nouvo" })}
-        </Button>
-      </div>
-
-      {/* ── Mobile back header — only when chat is open on mobile ── */}
-      {mobileShowChat && (
-        <div className="md:hidden px-4 pt-4 pb-2 flex items-center gap-3">
-          <button
-            onClick={() => { setActiveId(null); setShowBot(false); }}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-accent transition-colors text-muted-foreground"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="font-semibold text-sm">
-            {showBot ? t("support.newRequest") : detail?.subject ?? "..."}
-          </span>
-        </div>
-      )}
+      </header>
 
       {error && (
-        <div className="mx-4 mb-3 p-3 bg-destructive/10 text-destructive rounded-xl text-sm" data-testid="support-error">
+        <div className="mx-3 mt-2 rounded-xl bg-red-50 p-3 text-sm text-red-700" data-testid="support-error">
           {error}
-          <button className="ml-2 underline text-xs" onClick={() => setError(null)}>{t("support.close")}</button>
+          <button type="button" className="ml-2 text-xs underline" onClick={() => setError(null)}>
+            {t("support.close", { defaultValue: "Close" })}
+          </button>
         </div>
       )}
 
-      {/* ── Two-column layout ─────────────────────────────────────────── */}
-      <div className="md:grid md:grid-cols-[300px_1fr] md:gap-4 md:px-4">
-
-        {/* Thread list — hidden on mobile when chat open */}
-        <Card className={`overflow-hidden flex flex-col rounded-none md:rounded-xl border-x-0 md:border-x md:h-[calc(100vh-180px)] ${mobileShowChat ? "hidden md:flex" : "flex"}`}>
+      {/* Two-column: inbox | conversation */}
+      <div className="grid min-h-0 flex-1 md:grid-cols-[320px_1fr]">
+        <div className={cn("min-h-0 border-r border-slate-200", mobileShowChat ? "hidden md:flex md:flex-col" : "flex flex-col")}>
           {threadList}
-        </Card>
-
-        {/* Right chat panel — hidden on mobile when list shown */}
-        <Card className={`overflow-hidden flex flex-col rounded-none md:rounded-xl border-x-0 md:border-x md:h-[calc(100vh-180px)] ${mobileShowChat ? "flex h-[calc(100vh-130px)]" : "hidden md:flex"}`}>
+        </div>
+        <div className={cn("min-h-0", mobileShowChat ? "flex flex-col" : "hidden md:flex md:flex-col")}>
           {rightPanel}
-        </Card>
-
+        </div>
       </div>
-
     </div>
   );
 }

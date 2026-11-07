@@ -139,13 +139,13 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
       listingTitle: r.conv.conversationType === "agent_recharge"
         ? "💼 Agent Recharge"
         : isSystemNotifications
-          ? "System Notifications"
+          ? "Message System"
           : (r.listing?.title ?? "Deleted listing"),
       listingImage: r.listing?.images?.[0] ?? null,
       listingPrice: r.listing?.price ?? 0,
       otherUserId,
       otherUserName: isSystemNotifications
-        ? "System Notifications"
+        ? "Message System"
         : publicDisplayName(otherUser?.name),
       otherUserAvatar: isSystemNotifications
         ? (otherUser?.avatar || "/flexa-logo-v2.png")

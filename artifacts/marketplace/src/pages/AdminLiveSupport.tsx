@@ -33,6 +33,10 @@ import {
   UserPlus,
   Users,
   Zap,
+  Languages,
+  FileText,
+  Image as ImageIcon,
+  Wand2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useTheme } from "@/components/theme-provider";
@@ -62,18 +66,23 @@ import { COUNTRY_FLAGS } from "@/lib/countries";
 
 type SupportThread = {
   id: number;
+  ticketRef?: string;
   subject: string;
-  status: "open" | "closed";
+  status: "open" | "in_progress" | "waiting_customer" | "closed";
   priority?: "normal" | "high" | "urgent";
+  category?: string;
   userId: number;
   userName: string;
   userAvatar: string | null;
   country: string | null;
   assignedAdminId: number | null;
   assignedAdminName: string | null;
+  assignedAdminAvatar?: string | null;
   lastMessage: string | null;
   lastMessageAt: string | null;
   unreadByAdmin: number;
+  estimatedResponseLabel?: string | null;
+  relatedOrderId?: number | null;
   rating?: number | null;
   createdAt: string;
 };
@@ -88,9 +97,40 @@ type SupportMessage = {
   senderId: number;
   senderName: string;
   senderAvatar: string | null;
+  messageType?: string;
+  mediaUrl?: string | null;
+  mediaName?: string | null;
   isRead: boolean;
   createdAt: string;
   clientMessageId?: string | null;
+};
+
+type SupportAnalytics = {
+  total: number;
+  open: number;
+  pendingFirstResponse?: number;
+  activeTickets?: number;
+  waitingForCustomer?: number;
+  resolved?: number;
+  overdue?: number;
+  agentsOnline?: number;
+  avgResponseMin: number | null;
+  estimatedResponseLabel?: string;
+  customerSatisfaction?: { average: number | null; responses: number };
+};
+
+type CustomerContext = {
+  customer: {
+    id: number;
+    name: string;
+    avatar: string | null;
+    country: string | null;
+    createdAt: string | null;
+    isVerified: boolean;
+    email: string | null;
+  };
+  previousTickets: Array<{ id: number; ticketRef: string; subject: string; status: string; rating: number | null }>;
+  orders: Array<{ id: number; orderRef: string; status: string; total: number; listingTitle: string | null; deepLink: string }>;
 };
 
 type ThreadDetail = SupportThread & { messages: SupportMessage[] };
@@ -200,6 +240,12 @@ export default function AdminLiveSupport() {
   const [loading, setLoading] = useState(true);
   const [mobilePane, setMobilePane] = useState<"inbox" | "chat">("inbox");
   const [typingName, setTypingName] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<SupportAnalytics | null>(null);
+  const [customerCtx, setCustomerCtx] = useState<CustomerContext | null>(null);
+  const [copilotBusy, setCopilotBusy] = useState(false);
+  const [copilotSuggestion, setCopilotSuggestion] = useState<string | null>(null);
+  const [agentAvailable, setAgentAvailable] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myTypingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -214,8 +260,11 @@ export default function AdminLiveSupport() {
 
   const loadThreads = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ all: "1", status: inboxFilter === "resolved" ? "closed" : "open" });
-      if (inboxFilter === "all") params.set("status", "all");
+      const params = new URLSearchParams({ all: "1" });
+      if (inboxFilter === "resolved") params.set("status", "closed");
+      else if (inboxFilter === "waiting") params.set("status", "waiting_customer");
+      else if (inboxFilter === "active") params.set("status", "in_progress");
+      // "all" / unassigned / mine — no status filter (API returns mixed open states)
       if (q.trim()) params.set("q", q.trim());
       const data: SupportThread[] = await authFetch(`/api/support/threads?${params}`);
       setThreads(data ?? []);
@@ -226,14 +275,27 @@ export default function AdminLiveSupport() {
     }
   }, [inboxFilter, q, toast, t]);
 
+  const loadAnalytics = useCallback(async () => {
+    try {
+      const data = await authFetch("/api/admin/support/analytics");
+      setAnalytics(data);
+    } catch {
+      /* non-blocking */
+    }
+  }, []);
+
   const loadDetail = useCallback(async (id: number) => {
     try {
       const data: ThreadDetail = await authFetch(`/api/support/threads/${id}`);
       setDetail(data);
       setActiveId(id);
       setChatTab("conversation");
+      setCopilotSuggestion(null);
       setThreads((prev) => prev.map((th) => (th.id === id ? { ...th, unreadByAdmin: 0 } : th)));
       setMobilePane("chat");
+      authFetch(`/api/support/threads/${id}/customer`)
+        .then((ctx: CustomerContext) => setCustomerCtx(ctx))
+        .catch(() => setCustomerCtx(null));
     } catch (e: any) {
       toast({ title: t("liveSupport.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" });
     }
@@ -241,14 +303,16 @@ export default function AdminLiveSupport() {
 
   useEffect(() => {
     loadThreads();
-  }, [loadThreads]);
+    loadAnalytics();
+  }, [loadThreads, loadAnalytics]);
 
   useEffect(() => {
     if (initialThread) loadDetail(initialThread);
   }, [initialThread, loadDetail]);
 
   useEffect(() => {
-    socket.joinSupportAdmin();
+    if (user?.id) socket.joinSupportAdmin(user.id);
+    else socket.joinSupportAdmin();
     const unsubNew = socket.onNewSupportThread(() => {
       loadThreads();
       toast({ title: t("liveSupport.newTicket", { defaultValue: "New support request" }) });
@@ -304,7 +368,7 @@ export default function AdminLiveSupport() {
       unsubMsg?.();
       unsubUpd?.();
     };
-  }, [socket, loadThreads, activeId, toast, t]);
+  }, [socket, loadThreads, activeId, toast, t, user?.id]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -338,16 +402,16 @@ export default function AdminLiveSupport() {
 
   const filtered = useMemo(() => {
     let list = threads;
-    if (inboxFilter === "unassigned") list = list.filter((th) => !th.assignedAdminId && th.status === "open");
-    else if (inboxFilter === "mine") list = list.filter((th) => th.assignedAdminId === user?.id);
-    else if (inboxFilter === "waiting") list = list.filter((th) => th.status === "open" && th.unreadByAdmin > 0);
-    else if (inboxFilter === "active") list = list.filter((th) => th.status === "open" && !!th.assignedAdminId);
+    if (inboxFilter === "unassigned") list = list.filter((th) => !th.assignedAdminId && th.status !== "closed");
+    else if (inboxFilter === "mine") list = list.filter((th) => th.assignedAdminId === user?.id && th.status !== "closed");
+    else if (inboxFilter === "waiting") list = list.filter((th) => th.status === "waiting_customer" || (th.status !== "closed" && th.unreadByAdmin > 0));
+    else if (inboxFilter === "active") list = list.filter((th) => th.status === "in_progress" || (th.status !== "closed" && !!th.assignedAdminId));
     else if (inboxFilter === "resolved") list = list.filter((th) => th.status === "closed");
     return list;
   }, [threads, inboxFilter, user?.id]);
 
   const openCount = useMemo(
-    () => threads.filter((th) => th.status === "open").length,
+    () => threads.filter((th) => th.status !== "closed").length,
     [threads],
   );
 
@@ -428,6 +492,15 @@ export default function AdminLiveSupport() {
     })();
   };
 
+  const appendMessage = (msg: SupportMessage) => {
+    setDetail((prev) => {
+      if (!prev) return prev;
+      if (prev.messages.some((m) => m.id === msg.id)) return prev;
+      return { ...prev, messages: [...prev.messages, msg] };
+    });
+    stickBottom.current = true;
+  };
+
   const send = async () => {
     if (!activeId || !reply.trim() || sending) return;
     setSending(true);
@@ -441,12 +514,100 @@ export default function AdminLiveSupport() {
         clientMessageId,
       });
       setReply("");
-      setDetail((prev) => {
-        if (!prev) return prev;
-        if (prev.messages.some((m) => m.id === msg.id)) return prev;
-        return { ...prev, messages: [...prev.messages, msg] };
+      setCopilotSuggestion(null);
+      appendMessage(msg);
+    } catch (e: any) {
+      toast({ title: t("liveSupport.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const runCopilot = async (action: string) => {
+    if (!detail || copilotBusy) return;
+    setCopilotBusy(true);
+    try {
+      const data = await authFetch("/api/support/copilot", "POST", {
+        action,
+        draft: reply || undefined,
+        ticketSubject: detail.subject,
+        messages: detail.messages
+          .filter((m) => !m.isInternal)
+          .slice(-30)
+          .map((m) => ({
+            role: m.senderRole === "bot" ? "bot" : m.isAdminReply ? "agent" : "customer",
+            content: m.content,
+          })),
       });
-      stickBottom.current = true;
+      setCopilotSuggestion(String(data.suggestion || ""));
+      if (action === "grammar" || action === "translate" || action === "suggest_reply") {
+        // Keep as suggestion — agent must approve (click Use)
+      }
+      if (action === "internal_note") {
+        setInternalMode(true);
+        setReply(String(data.suggestion || ""));
+        setCopilotSuggestion(null);
+      }
+    } catch (e: any) {
+      toast({ title: t("liveSupport.copilotError", { defaultValue: "AI Copilot unavailable" }), description: e.message, variant: "destructive" });
+    } finally {
+      setCopilotBusy(false);
+    }
+  };
+
+  const toggleAvailability = async () => {
+    const next = !agentAvailable;
+    try {
+      await authFetch("/api/support/availability", "POST", { available: next });
+      setAgentAvailable(next);
+      loadAnalytics();
+    } catch (e: any) {
+      toast({ title: t("liveSupport.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" });
+    }
+  };
+
+  const uploadAttachment = async (file: File) => {
+    if (!activeId || sending) return;
+    if (file.type.startsWith("audio/")) {
+      toast({
+        title: t("liveSupport.noVoice", { defaultValue: "Voice messages are not supported" }),
+        variant: "destructive",
+      });
+      return;
+    }
+    const messageType = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("video/")
+        ? "video"
+        : "document";
+    setSending(true);
+    try {
+      const token = localStorage.getItem("flexamarket_token");
+      const req = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+      });
+      if (!req.ok) throw new Error("Upload request failed");
+      const { uploadURL, objectPath } = await req.json();
+      const put = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream", "Content-Length": String(file.size) },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Upload failed");
+      const putJson = await put.json().catch(() => ({}));
+      const mediaUrl = putJson?.url || putJson?.objectPath || objectPath;
+      const msg: SupportMessage = await authFetch(`/api/support/threads/${activeId}/messages`, "POST", {
+        content: file.name,
+        messageType,
+        mediaUrl,
+        mediaName: file.name,
+        mediaMime: file.type,
+        mediaSize: file.size,
+        clientMessageId: newClientMsgId(),
+      });
+      appendMessage(msg);
     } catch (e: any) {
       toast({ title: t("liveSupport.error", { defaultValue: "Error" }), description: e.message, variant: "destructive" });
     } finally {
@@ -486,17 +647,31 @@ export default function AdminLiveSupport() {
         <div className="min-w-0">
           <p className="truncate font-bold text-foreground">{detail.userName}</p>
           <p className="text-xs text-muted-foreground">
-            {detail.country ? `${COUNTRY_FLAGS[detail.country] ?? ""} ${detail.country}` : "—"}
+            {(detail as any).userCountry || detail.country
+              ? `${COUNTRY_FLAGS[(detail as any).userCountry || detail.country!] ?? ""} ${(detail as any).userCountry || detail.country}`
+              : "—"}
           </p>
+          {(detail as any).userVerified ? (
+            <p className="text-[11px] font-semibold text-emerald-600">Verified user</p>
+          ) : null}
         </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card p-3 space-y-3 text-sm">
         <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Ticket</p>
+          <p className="mt-1 font-mono text-xs font-bold">#{detail.ticketRef || detail.id}</p>
+          <p className="text-[11px] text-muted-foreground">{new Date(detail.createdAt).toLocaleString()}</p>
+        </div>
+        <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {t("liveSupport.subject", { defaultValue: "Subject" })}
           </p>
           <p className="mt-0.5 font-medium">{detail.subject}</p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Category</p>
+          <p className="mt-1 font-medium capitalize">{detail.category || "other"}</p>
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -515,21 +690,35 @@ export default function AdminLiveSupport() {
         </div>
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
-          <p className="mt-1 font-medium">
-            {detail.status === "open" ? (
-              <span className="text-emerald-600">{t("liveSupport.open", { defaultValue: "Open" })}</span>
-            ) : (
+          <p className="mt-1 font-medium capitalize">
+            {detail.status === "closed" ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
                 <CheckCircle2 className="h-3.5 w-3.5" /> {t("liveSupport.resolved", { defaultValue: "Resolved" })}
               </span>
+            ) : (
+              <span className="text-emerald-600">{detail.status.replace("_", " ")}</span>
             )}
           </p>
         </div>
+        {detail.estimatedResponseLabel ? (
+          <div className="rounded-lg bg-emerald-50 px-2.5 py-2 text-xs text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+            <p className="font-semibold">Estimated response</p>
+            <p>{detail.estimatedResponseLabel}</p>
+          </div>
+        ) : null}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {t("liveSupport.assigned", { defaultValue: "Assigned agent" })}
           </p>
-          <p className="mt-1 font-medium">{detail.assignedAdminName ?? "—"}</p>
+          <div className="mt-1 flex items-center gap-2">
+            {detail.assignedAdminAvatar ? (
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={detail.assignedAdminAvatar} />
+                <AvatarFallback>{detail.assignedAdminName?.[0] ?? "A"}</AvatarFallback>
+              </Avatar>
+            ) : null}
+            <p className="font-medium">{detail.assignedAdminName ?? "—"}</p>
+          </div>
         </div>
         {detail.rating != null && (
           <div>
@@ -540,17 +729,94 @@ export default function AdminLiveSupport() {
             </p>
           </div>
         )}
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Ticket</p>
-          <p className="mt-1 font-mono text-xs">#{detail.id}</p>
-          <p className="text-[11px] text-muted-foreground">{new Date(detail.createdAt).toLocaleString()}</p>
-        </div>
       </div>
+
+      {/* AI Copilot */}
+      <div className="rounded-xl border border-emerald-200/70 bg-card p-3 space-y-2" data-testid="ai-copilot-panel">
+        <div className="flex items-center gap-2">
+          <Wand2 className="h-4 w-4 text-emerald-700" />
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-200">AI Copilot</p>
+        </div>
+        <p className="text-[11px] text-muted-foreground">Suggestions only — approve before sending.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { id: "suggest_reply", label: "Suggest reply", icon: MessageSquare },
+            { id: "grammar", label: "Grammar", icon: FileText },
+            { id: "translate", label: "Translate", icon: Languages },
+            { id: "summarize", label: "Summary", icon: Bot },
+            { id: "troubleshoot", label: "Steps", icon: Zap },
+            { id: "internal_note", label: "Note", icon: Lock },
+          ].map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              disabled={copilotBusy}
+              onClick={() => void runCopilot(a.id)}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+            >
+              <a.icon className="h-3 w-3" />
+              {a.label}
+            </button>
+          ))}
+        </div>
+        {copilotBusy ? <p className="text-xs text-muted-foreground">Thinking…</p> : null}
+        {copilotSuggestion ? (
+          <div className="rounded-lg border border-border bg-muted/40 p-2.5 text-xs space-y-2">
+            <p className="whitespace-pre-wrap text-foreground/90">{copilotSuggestion}</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  setInternalMode(false);
+                  setReply(copilotSuggestion);
+                  setCopilotSuggestion(null);
+                }}
+              >
+                Use suggestion
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setCopilotSuggestion(null)}>
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Orders */}
+      {customerCtx?.orders?.length ? (
+        <div className="rounded-xl border border-border bg-card p-3 space-y-2 text-sm">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Recent orders</p>
+          <ul className="space-y-2">
+            {customerCtx.orders.slice(0, 5).map((o) => (
+              <li key={o.id} className="rounded-lg border border-border/70 px-2.5 py-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-semibold">{o.orderRef}</span>
+                  <span className="capitalize text-muted-foreground">{o.status}</span>
+                </div>
+                <p className="mt-0.5 line-clamp-1 text-foreground/90">{o.listingTitle || "Order"}</p>
+                <Link href={o.deepLink} className="mt-1 inline-block font-semibold text-emerald-700 hover:underline">
+                  Open order
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <Button asChild size="sm" variant="outline" className="w-full">
         <Link href={`/admin/users?search=${encodeURIComponent(detail.userName)}`}>
           {t("liveSupport.viewAccount", { defaultValue: "View account" })}
         </Link>
+      </Button>
+      <Button
+        size="sm"
+        className="w-full bg-[hsl(152,65%,18%)] text-white hover:bg-[hsl(152,65%,14%)]"
+        onClick={() => void (detail.status === "closed" ? reopen() : resolve())}
+      >
+        {detail.status === "closed"
+          ? t("liveSupport.reopen", { defaultValue: "Reopen ticket" })
+          : t("liveSupport.markResolved", { defaultValue: "Mark as resolved" })}
       </Button>
     </div>
   ) : null;
@@ -753,6 +1019,7 @@ export default function AdminLiveSupport() {
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-bold text-foreground">{th.userName}</p>
+                        <p className="truncate font-mono text-[10px] text-muted-foreground">#{th.ticketRef || th.id}</p>
                         <p className="truncate text-[12px] font-semibold text-foreground/90">{th.subject}</p>
                         <p className="truncate text-[11px] text-muted-foreground">{th.lastMessage ?? "—"}</p>
                       </div>
@@ -1017,6 +1284,20 @@ export default function AdminLiveSupport() {
                                   )}
                               </div>
                             )}
+                            {m.mediaUrl && (m.messageType === "image" || (!m.messageType && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(m.mediaUrl))) ? (
+                              <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg">
+                                <img src={m.mediaUrl} alt={m.mediaName || "attachment"} className="max-h-48 max-w-full object-cover" />
+                              </a>
+                            ) : null}
+                            {m.mediaUrl && m.messageType === "video" ? (
+                              <video src={m.mediaUrl} controls className="max-h-48 max-w-full rounded-lg" />
+                            ) : null}
+                            {m.mediaUrl && m.messageType === "document" ? (
+                              <a href={m.mediaUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
+                                <FileText className="h-3.5 w-3.5" />
+                                {m.mediaName || "Document"}
+                              </a>
+                            ) : null}
                             <p className="whitespace-pre-wrap break-words">{m.content}</p>
                           </div>
                           <div
@@ -1078,10 +1359,23 @@ export default function AdminLiveSupport() {
                       type="button"
                       className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
                       aria-label="Attach"
-                      title={t("liveSupport.attachSoon", { defaultValue: "Attachments coming soon" })}
+                      title={t("liveSupport.attach", { defaultValue: "Attach photo, video, or document" })}
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={sending || !activeId}
                     >
                       <Paperclip className="h-4 w-4" />
                     </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*,.pdf,.doc,.docx,.txt,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void uploadAttachment(f);
+                      }}
+                    />
                     <div className="relative min-w-0 flex-1">
                       <Textarea
                         rows={1}
@@ -1203,6 +1497,43 @@ export default function AdminLiveSupport() {
           )}
         </div>
       </header>
+
+      {analytics ? (
+        <div className="shrink-0 border-b border-border bg-muted/30 px-3 py-2" data-testid="live-support-stats">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-6">
+            {[
+              { label: "Total", value: analytics.total },
+              { label: "Open", value: analytics.open },
+              { label: "Active", value: analytics.activeTickets ?? 0 },
+              { label: "Waiting", value: analytics.waitingForCustomer ?? 0 },
+              { label: "Agents online", value: analytics.agentsOnline ?? 0 },
+              { label: "ETA", value: analytics.estimatedResponseLabel?.replace("Approximately ", "") ?? "—" },
+            ].map((s) => (
+              <div key={s.label} className="rounded-lg border border-border/70 bg-card px-2.5 py-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{s.label}</p>
+                <p className="truncate text-sm font-bold text-foreground">{s.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void toggleAvailability()}
+              className={cn(
+                "rounded-full px-3 py-1 text-[11px] font-semibold",
+                agentAvailable ? "bg-emerald-600 text-white" : "bg-muted text-muted-foreground",
+              )}
+            >
+              {agentAvailable ? "Available for support" : "Unavailable"}
+            </button>
+            {analytics.customerSatisfaction?.average != null ? (
+              <span className="text-[11px] text-muted-foreground">
+                CSAT {analytics.customerSatisfaction.average}/5 ({analytics.customerSatisfaction.responses})
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Desktop / tablet layouts */}
       <div className="hidden min-h-0 flex-1 md:grid md:grid-cols-[320px_1fr] xl:grid-cols-[320px_minmax(0,1fr)_300px]">

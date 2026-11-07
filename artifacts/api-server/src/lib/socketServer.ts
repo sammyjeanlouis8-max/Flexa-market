@@ -81,9 +81,14 @@ export function initSocketServer(httpServer: HttpServer): SocketIOServer {
       socket.leave(`support:${threadId}`);
     });
 
-    socket.on("join-support-admin", () => {
+    socket.on("join-support-admin", (userId?: number) => {
+      if (typeof userId === "number" && userId > 0) {
+        socket.data.userId = userId;
+        if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
+        onlineUsers.get(userId)!.add(socket.id);
+      }
       socket.join("support-admin");
-      logger.info({ socketId: socket.id }, "[socket] joined support-admin room");
+      logger.info({ socketId: socket.id, userId: socket.data.userId }, "[socket] joined support-admin room");
     });
 
     socket.on("leave-support-admin", () => {

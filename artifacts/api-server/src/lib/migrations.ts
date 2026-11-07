@@ -2926,6 +2926,118 @@ export async function runStartupMigrations(): Promise<void> {
 
   migrations.push(...CARD_CANCELLATION_MIGRATIONS);
 
+  // ── Smart Support platform extensions ──
+  migrations.push({
+    name: "support_threads.ticket_ref",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS ticket_ref text`,
+  });
+  migrations.push({
+    name: "support_threads.ticket_ref_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS support_threads_ticket_ref_uidx ON support_threads(ticket_ref) WHERE ticket_ref IS NOT NULL`,
+  });
+  migrations.push({
+    name: "support_threads.category",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'other'`,
+  });
+  migrations.push({
+    name: "support_threads.estimated_response_minutes",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS estimated_response_minutes integer`,
+  });
+  migrations.push({
+    name: "support_threads.estimated_response_label",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS estimated_response_label text`,
+  });
+  migrations.push({
+    name: "support_threads.related_order_id",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS related_order_id integer`,
+  });
+  migrations.push({
+    name: "support_threads.ai_summary",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS ai_summary text`,
+  });
+  migrations.push({
+    name: "support_threads.feedback",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS feedback text`,
+  });
+  migrations.push({
+    name: "support_threads.customer_report",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS customer_report text`,
+  });
+  migrations.push({
+    name: "support_threads.confirmation_email_sent_at",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS confirmation_email_sent_at timestamptz`,
+  });
+  migrations.push({
+    name: "support_threads.confirmation_message_sent_at",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS confirmation_message_sent_at timestamptz`,
+  });
+  migrations.push({
+    name: "support_threads.first_admin_reply_at",
+    sql: `ALTER TABLE support_threads ADD COLUMN IF NOT EXISTS first_admin_reply_at timestamptz`,
+  });
+  migrations.push({
+    name: "support_messages.message_type",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS message_type text NOT NULL DEFAULT 'text'`,
+  });
+  migrations.push({
+    name: "support_messages.media_url",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_url text`,
+  });
+  migrations.push({
+    name: "support_messages.media_name",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_name text`,
+  });
+  migrations.push({
+    name: "support_messages.media_mime",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_mime text`,
+  });
+  migrations.push({
+    name: "support_messages.media_size",
+    sql: `ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS media_size integer`,
+  });
+  migrations.push({
+    name: "support_knowledge.table",
+    sql: `CREATE TABLE IF NOT EXISTS support_knowledge (
+      id SERIAL PRIMARY KEY,
+      slug TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '',
+      deep_link TEXT,
+      language TEXT NOT NULL DEFAULT 'en',
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      updated_by_id INTEGER,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "support_knowledge.slug_uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS support_knowledge_slug_uidx ON support_knowledge(slug)`,
+  });
+  migrations.push({
+    name: "support_notification_log.table",
+    sql: `CREATE TABLE IF NOT EXISTS support_notification_log (
+      id SERIAL PRIMARY KEY,
+      thread_id INTEGER NOT NULL REFERENCES support_threads(id),
+      channel TEXT NOT NULL,
+      event_key TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+  });
+  migrations.push({
+    name: "support_notification_log.uidx",
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS support_notif_log_uidx ON support_notification_log(thread_id, channel, event_key)`,
+  });
+  migrations.push({
+    name: "support_threads.backfill_ticket_ref",
+    sql: `UPDATE support_threads
+      SET ticket_ref = 'FM-' || EXTRACT(YEAR FROM created_at)::int || '-' || LPAD(id::text, 6, '0')
+      WHERE ticket_ref IS NULL`,
+  });
+
+
+
   // ── Live support: priority, CSAT rating, internal notes, idempotent sends ──
   migrations.push({
     name: "support_threads.priority",

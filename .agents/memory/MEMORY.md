@@ -19,3 +19,6 @@
 - [Android push + EAS CI](android-push-eas.md) — Expo hook wired in App.tsx with onLoadEnd re-inject; pnpm CI needs corepack+--no-frozen-lockfile; google-play-key.json not in repo so no --auto-submit; Apple upload limit ~3/day resets midnight Pacific.
 - [Flexa API codegen](flexa-api-codegen.md) — Orval output can duplicate runtime/type exports; keep OpenAPI minItems and generated Zod validation synchronized.
 - [Flexa staff RBAC](flexa-staff-rbac.md) — canonical role outranks legacy isAdmin; finance/superadmin use dedicated guards, staff scope fails closed through country/department/city.
+
+## Deploy target
+Production is DigitalOcean App Platform only (`deploy.yml` + DO API). Do not use or reconnect Vercel. Remove any leftover `vercel.json` if reintroduced. Vercel GitHub status checks are account-level noise — disconnect the Vercel GitHub App in repo Settings → Integrations.

@@ -22,6 +22,7 @@ import {
   T,
   FLEXA,
 } from "./messages/chatTheme";
+import { publicDisplayName } from "@/lib/publicDisplayName";
 
 const MessageThread = lazy(() =>
   import("./messages/MessageThread").then((m) => ({ default: m.MessageThread }))
@@ -262,12 +263,12 @@ function ConvList({
               <Avatar className="h-10 w-10" style={{ cursor: isSystem ? "default" : "pointer" }}>
                 <AvatarImage src={conv.otherUserAvatar ?? undefined} className="object-cover" />
                 <AvatarFallback style={{
-                  background: isSystem ? FLEXA.green : avatarHue(conv.otherUserName || "?"),
+                  background: isSystem ? FLEXA.green : avatarHue(publicDisplayName(conv.otherUserName, "?")),
                   color: "#fff",
                   fontWeight: 700,
                   fontSize: 14,
                 }}>
-                  {isSystem ? "F" : ((conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?")}
+                  {isSystem ? "F" : (publicDisplayName(conv.otherUserName, "?").charAt(0).toUpperCase() || "?")}
                 </AvatarFallback>
               </Avatar>
               {online && (
@@ -288,7 +289,9 @@ function ConvList({
                   display: "inline-flex", alignItems: "center", gap: 4, minWidth: 0,
                 }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {isSystem ? "System Notifications" : conv.otherUserName}
+                    {isSystem
+                      ? "System Notifications"
+                      : publicDisplayName(conv.otherUserName, t("common.user", { defaultValue: "User" }))}
                   </span>
                   {(isSystem || conv.otherUserIsVerified) && (
                     <span

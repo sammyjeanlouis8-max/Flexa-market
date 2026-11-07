@@ -7,6 +7,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
 import { useTranslation } from "react-i18next";
 import { orderNotificationDestination } from "@/lib/order-notification-destination";
+import { publicDisplayName } from "@/lib/publicDisplayName";
 import { cn } from "@/lib/utils";
 
 interface Notification {
@@ -146,7 +147,7 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
       case "subscription_grace_expired": return t("notifications.subscriptionGraceExpired");
       case "subscription_welcome": return t("notifications.subscriptionWelcome", { plan: n.message ?? "Premium" });
       case "exchange_rate_changed": return n.message ?? t("notifications.defaultNotif");
-      case "new_listing": return n.message ?? `${n.actorName} ajoute yon nouvo pwodwi.`;
+      case "new_listing": return n.message ?? `${publicDisplayName(n.actorName, "Someone")} ajoute yon nouvo pwodwi.`;
       case "listing_approved":
       case "moderation_approved": return t("notifications.listingApproved");
       case "listing_rejected":
@@ -319,7 +320,9 @@ export default function NotificationsDropdown({ light = false }: { light?: boole
                   <div className="relative flex-shrink-0">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src={n.actorAvatar ?? undefined} />
-                      <AvatarFallback className="text-xs bg-primary text-primary-foreground font-bold">{n.actorName[0]}</AvatarFallback>
+                      <AvatarFallback className="text-xs bg-primary text-primary-foreground font-bold">
+                        {publicDisplayName(n.actorName, "U").charAt(0).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                     <span className="absolute -bottom-0.5 -right-0.5 text-sm leading-none">
                       {notifEmoji(n.type)}

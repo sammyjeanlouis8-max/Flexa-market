@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, notificationsTable, usersTable, listingsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
+import { publicDisplayName } from "../lib/publicDisplayName";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.get("/notifications", requireAuth, async (req, res): Promise<void> => {
     commentId: r.commentId,
     message: r.message ?? null,
     createdAt: r.createdAt.toISOString(),
-    actorName: r.actorName ?? "Someone",
+    actorName: publicDisplayName(r.actorName, "Someone"),
     actorAvatar: r.actorAvatar,
     listingTitle: r.listingTitle,
     listingImage: (r.listingImage as string[] | null)?.[0] ?? null,

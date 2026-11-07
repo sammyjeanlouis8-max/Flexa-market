@@ -40,6 +40,7 @@ import {
   type PendingChatMessage,
 } from "@/lib/messageOutbox";
 import { compressChatImage } from "@/lib/compressChatImage";
+import { publicDisplayName } from "@/lib/publicDisplayName";
 import { type ChatTheme, type ChatMessage, type Conversation, type MsgType, T, FLEXA } from "./chatTheme";
 
 let _animInjected = false;
@@ -700,15 +701,23 @@ function MsgBubble({
         onPointerCancel={cancelLongPress}
         onContextMenu={e => { e.preventDefault(); setShowMenu(true); }}
       >
-        {/* Admin badge */}
-        {!isMe && msg.senderIsAdmin && (
-          <div style={{ padding: "4px 8px 0", display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: "#22D3EE",
-              background: "rgba(34,211,238,0.10)", borderRadius: 4, padding: "1px 5px",
-              border: "1px solid rgba(34,211,238,0.25)", display: "inline-flex", alignItems: "center", gap: 3,
-            }}>
-              🛡 ADM-{String(msg.senderId).padStart(4, "0")}
+        {/* Sender profile name — never internal IDs like ADM-0001 */}
+        {!isMe && (
+          <div style={{ padding: "5px 8px 0", display: "flex", alignItems: "center", gap: 4 }}>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                color: c.isDark ? "#4ADE80" : "#15803D",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: "100%",
+              }}
+              data-testid="message-sender-name"
+            >
+              {publicDisplayName(msg.senderName, t("common.user", { defaultValue: "User" }))}
             </span>
           </div>
         )}
@@ -1878,12 +1887,12 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                 {conv.otherUserAvatar ? (
                   <img
                     src={conv.otherUserAvatar}
-                    alt={conv.otherUserName}
+                    alt={publicDisplayName(conv.otherUserName, t("common.user", { defaultValue: "User" }))}
                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                   />
                 ) : (
                   <span style={{ color: "#fff", fontWeight: 700, fontSize: 16 }}>
-                    {(conv.otherUserName ?? "?")[0]?.toUpperCase() ?? "?"}
+                    {publicDisplayName(conv.otherUserName, "?").charAt(0).toUpperCase() || "?"}
                   </span>
                 )}
               </div>
@@ -1906,7 +1915,9 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
               textOverflow: "ellipsis", whiteSpace: "nowrap",
               display: "flex", alignItems: "center", gap: 5,
             }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{conv.otherUserName}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {publicDisplayName(conv.otherUserName, t("common.user", { defaultValue: "User" }))}
+              </span>
               {conv.otherUserIsVerified && (
                 <BadgeCheck
                   aria-label={t("messages.certifiedSeller", { defaultValue: "Verified seller" })}
@@ -2006,7 +2017,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                     const ok = window.confirm(
                       t("messages.confirmBlock", {
                         defaultValue: "Block {{name}}? You will no longer be able to message each other.",
-                        name: conv.otherUserName,
+                        name: publicDisplayName(conv.otherUserName, t("common.user", { defaultValue: "User" })),
                       }),
                     );
                     if (!ok) return;
@@ -2044,7 +2055,7 @@ export function MessageThread({ convId, theme, onToggleTheme, onBack }: {
                   <div style={{ padding: "4px 6px 6px" }}>
                     <AdminBlockButton
                       targetUserId={conv.otherUserId}
-                      targetUserName={conv.otherUserName}
+                      targetUserName={publicDisplayName(conv.otherUserName, t("common.user", { defaultValue: "User" }))}
                       variant="icon"
                     />
                   </div>

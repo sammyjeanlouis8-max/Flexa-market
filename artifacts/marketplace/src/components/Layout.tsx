@@ -516,8 +516,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   // Mes Boosts — immersive campaign page (no site footer / bottom nav chrome).
   const isMyBoostsPage = /^\/my-boosts\/?$/.test(location);
-  // Commission Promo — standalone full-page screen (owns its header; no bottom nav / site footer).
-  const isCommissionPromoPage = /^\/commission-promo\/?$/.test(location);
   // Cover regular navigation and Android's inline posting screen.
   const isSellPage = showInlineSell || /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
   const isPaymentOperations =
@@ -580,17 +578,6 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     return (
       <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
         <div className="app-shell seller-center-shell w-full min-w-0 max-w-full overflow-x-hidden bg-[#F3F4F6] flex flex-col min-h-dvh">
-          {children}
-        </div>
-      </DeliveryMenuCountryContext.Provider>
-    );
-  }
-
-  // Commission Promo — standalone screen; page owns header/scroll/safe-areas (no marketplace footer/nav).
-  if (isCommissionPromoPage) {
-    return (
-      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-        <div className="app-shell commission-promo-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col min-h-dvh bg-[hsl(152,65%,18%)]">
           {children}
         </div>
       </DeliveryMenuCountryContext.Provider>
@@ -782,7 +769,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       <main className={
         isMessages || isVideoFeed
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
-          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || isCommissionPromoPage ? "" : "pb-safe-nav"} md:pl-56`
+          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
       }
         style={isSellPage ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))" } : undefined}
       >
@@ -813,7 +800,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || isCommissionPromoPage ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { detectLang } from "../lib/chatbotLanguage";
-import { retrieveKnowledge, formatKnowledgeBlock } from "../lib/chatbotKnowledge";
+import {
+  retrieveKnowledge,
+  formatKnowledgeBlock,
+  composeKnowledgeAnswer,
+} from "../lib/chatbotKnowledge";
 import {
   classifyIntent,
   sanitizeUserQuery,
@@ -52,6 +56,27 @@ describe("verified knowledge retrieval", () => {
   it("handles unknown topics without fake facts", () => {
     const block = formatKnowledgeBlock(retrieveKnowledge("xyzzy quantum banana teleport"));
     expect(block).toMatch(/none matched|VERIFIED_KNOWLEDGE/);
+  });
+  it("answers Creole questions about sharing FM card / money", () => {
+    const hits = retrieveKnowledge("komanm ka pataje kob sou kat fm mw ak yon lot moun?");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.some((h) => h.id === "send-money" || h.id === "fm-card" || h.id === "wallet")).toBe(true);
+    const answer = composeKnowledgeAnswer({ lang: "ht", snippets: hits });
+    expect(answer.content.toLowerCase()).not.toMatch(/indisponible|unavailable/);
+    expect(answer.content).toMatch(/wallet|transfer|pòtfèy|voye|nimewo kont/i);
+  });
+  it("answers notification management questions", () => {
+    const hits = retrieveKnowledge("Comment gérer mes notifications sur FLEXA ?");
+    expect(hits.some((h) => h.id === "notifications")).toBe(true);
+    const answer = composeKnowledgeAnswer({ lang: "fr", snippets: hits });
+    expect(answer.content).toContain("/settings/notifications");
+    expect(answer.content.toLowerCase()).not.toMatch(/indisponible|unavailable/);
+  });
+  it("still helps when nothing matches (no unavailable message)", () => {
+    const answer = composeKnowledgeAnswer({ lang: "en", snippets: [] });
+    expect(answer.fromKnowledge).toBe(true);
+    expect(answer.content.toLowerCase()).not.toMatch(/unavailable|indisponible/);
+    expect(answer.deepLinks).toContain("/faq");
   });
 });
 

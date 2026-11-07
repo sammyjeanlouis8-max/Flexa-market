@@ -9,6 +9,7 @@ import {
   Bot, Send, Sparkles, Trash2, User as UserIcon, MessageSquare, Loader2,
   CreditCard, Wallet, Users, ArrowUpRight, ArrowDownToLine, Clock,
   Bell, HelpCircle, Truck, Music, Zap, Building2, Briefcase, Globe,
+  ChevronLeft,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { isLoanAllowed } from "@/lib/loanPolicy";
@@ -459,7 +460,22 @@ export default function Chatbot() {
   return (
     <div className="mx-auto flex h-dvh max-w-3xl flex-col overflow-hidden bg-[#F4F7F5]" data-testid="flexabot-page">
       <header className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5 text-white" style={{ background: BRAND_GREEN }}>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                window.history.back();
+              } else {
+                setLocation("/");
+              }
+            }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10"
+            aria-label={t("common.back", { defaultValue: "Back" })}
+            data-testid="button-chatbot-back"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
           <img src="/flexa-logo-v2.png" alt="Flexa Market" className="h-8 w-8 rounded-full bg-white/10 p-0.5" width={32} height={32} />
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-bold leading-tight">FlexaBot</h1>

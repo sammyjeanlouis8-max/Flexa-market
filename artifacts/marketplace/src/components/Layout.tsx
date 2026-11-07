@@ -269,6 +269,7 @@ function getPageTitle(loc: string, t: (key: string) => string): string {
   if (loc.startsWith("/support")) return t("page.support");
   if (loc.startsWith("/boost")) return t("page.boost");
   if (loc.startsWith("/checkout")) return t("page.checkout");
+  if (loc.startsWith("/commission-promo")) return t("nav.commissionPromo");
   if (loc.startsWith("/subscription")) return t("page.subscription");
   if (loc.startsWith("/sell")) return t("page.sell");
   if (loc.startsWith("/search")) return t("page.search");
@@ -509,11 +510,12 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isListingDetail = /^\/listings\/[^/]+/.test(location);
   // Amazon-style dark green chrome on home + product detail (mobile)
   const isMarketGreenHeader = isHomePage || isListingDetail;
+  // Commission Promo — navy app chrome matching the referral earnings page.
+  const isCommissionPromoPage = /^\/commission-promo\/?$/.test(location);
+  const isNavyAppHeader = isCommissionPromoPage;
   const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   // Mes Boosts — immersive campaign page (no site footer / bottom nav chrome).
   const isMyBoostsPage = /^\/my-boosts\/?$/.test(location);
-  // Commission Promo — standalone full-page screen (owns its header; no bottom nav / site footer).
-  const isCommissionPromoPage = /^\/commission-promo\/?$/.test(location);
   // Cover regular navigation and Android's inline posting screen.
   const isSellPage = showInlineSell || /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
   const isPaymentOperations =
@@ -582,20 +584,9 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     );
   }
 
-  // Commission Promo — standalone screen; page owns header/scroll/safe-areas (no marketplace footer/nav).
-  if (isCommissionPromoPage) {
-    return (
-      <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-        <div className="app-shell commission-promo-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col min-h-dvh bg-[hsl(152,65%,18%)]">
-          {children}
-        </div>
-      </DeliveryMenuCountryContext.Provider>
-    );
-  }
-
   return (
     <DeliveryMenuCountryContext.Provider value={setDeliveryMenuCountry}>
-    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden bg-background flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"}`}>
+    <div className={`app-shell w-full min-w-0 max-w-full overflow-x-hidden flex flex-col ${isMessages || isVideoFeed ? "h-dvh overflow-clip" : "min-h-dvh"} ${isCommissionPromoPage ? "bg-[#0B1B3A]" : "bg-background"}`}>
 
       {/* ── Top header ── */}
       {/* Safe-area top inset is applied once via .mobile-app-header CSS
@@ -606,23 +597,27 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             "mobile-app-header sticky top-0 z-50 border-b shadow-sm md:pl-56",
             isMarketGreenHeader
               ? "bg-[hsl(152,65%,18%)] border-[hsl(152,65%,14%)] text-white"
-              : "bg-card border-border",
+              : isNavyAppHeader
+                ? "bg-[#0B1B3A] border-[#0B1B3A] text-white"
+                : "bg-card border-border",
           )}
         >
           <div className="mobile-app-header-row w-full max-w-7xl mx-auto flex items-center gap-2 md:h-16 md:px-3 md:max-h-none">
             {/* Hamburger — mobile menu (top left). Opens left drawer with all role menus. */}
-            <button
-              type="button"
-              data-testid="nav-hamburger"
-              onClick={() => setMoreOpen(true)}
-              className={cn(
-                "md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                isMarketGreenHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
-              )}
-              aria-label={t("nav.menu")}
-            >
-              <Menu className="h-6 w-6" />
-            </button>
+            {!isCommissionPromoPage && (
+              <button
+                type="button"
+                data-testid="nav-hamburger"
+                onClick={() => setMoreOpen(true)}
+                className={cn(
+                  "md:hidden shrink-0 -ml-1 w-10 h-10 flex items-center justify-center rounded-full transition-colors",
+                  isMarketGreenHeader || isNavyAppHeader ? "text-white hover:bg-white/10" : "text-foreground hover:bg-accent",
+                )}
+                aria-label={t("nav.menu")}
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+            )}
 
             {showBackButton ? (
               <>
@@ -631,17 +626,23 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
                   onClick={handleBack}
                   className={cn(
                     "md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors",
-                    isMarketGreenHeader ? "hover:bg-white/10 text-white" : "hover:bg-accent text-foreground",
+                    isMarketGreenHeader || isNavyAppHeader ? "hover:bg-white/10 text-white" : "hover:bg-accent text-foreground",
                   )}
                   aria-label={t("common.back")}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </button>
-                {/* On PDP keep brand visible instead of long page title */}
-                {isListingDetail ? (
-                  <Link href="/" className="md:hidden flex items-center gap-1.5 min-w-0 flex-1">
+                {/* On PDP / Commission Promo keep brand visible instead of long page title */}
+                {isListingDetail || isCommissionPromoPage ? (
+                  <Link href="/" className="md:hidden flex items-center gap-1.5 min-w-0 flex-1 text-white">
                     <img src="/flexa-logo-v2.png" alt="" className="h-8 w-auto" width="32" height="32" />
-                    <span className="font-bold text-[13px] truncate text-white">Flexa Market</span>
+                    {isCommissionPromoPage ? (
+                      <span className="font-bold text-[13px] truncate">
+                        Flexa <span className="text-[#F97316]">Market</span>
+                      </span>
+                    ) : (
+                      <span className="font-bold text-[13px] truncate text-white">Flexa Market</span>
+                    )}
                   </Link>
                 ) : pageTitle ? (
                   <span className="md:hidden flex-1 text-base font-bold truncate">{pageTitle}</span>
@@ -689,27 +690,29 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
             )}
 
             {/* Account */}
-            <Link
-              href={profileHref}
-              className={cn(
-                "shrink-0 rounded-xl transition-colors flex items-center gap-1.5",
-                isMarketGreenHeader ? "text-white hover:bg-white/10 p-2" : "text-foreground hover:bg-muted p-2",
-              )}
-              aria-label={t("nav.account", { defaultValue: "Account" })}
-              data-testid="header-account-icon"
-            >
-              <User className="h-5 w-5 shrink-0" />
-              <span className="hidden xl:block text-[12px] font-semibold leading-tight max-w-[90px]">
-                {user
-                  ? t("nav.account", { defaultValue: "Account" })
-                  : t("nav.signIn", { defaultValue: "Sign In" })}
-              </span>
-            </Link>
-            {user && <NotificationsDropdown light={isMarketGreenHeader} />}
-            <CartIconButton light={isMarketGreenHeader} />
+            {!isCommissionPromoPage && (
+              <Link
+                href={profileHref}
+                className={cn(
+                  "shrink-0 rounded-xl transition-colors flex items-center gap-1.5",
+                  isMarketGreenHeader || isNavyAppHeader ? "text-white hover:bg-white/10 p-2" : "text-foreground hover:bg-muted p-2",
+                )}
+                aria-label={t("nav.account", { defaultValue: "Account" })}
+                data-testid="header-account-icon"
+              >
+                <User className="h-5 w-5 shrink-0" />
+                <span className="hidden xl:block text-[12px] font-semibold leading-tight max-w-[90px]">
+                  {user
+                    ? t("nav.account", { defaultValue: "Account" })
+                    : t("nav.signIn", { defaultValue: "Sign In" })}
+                </span>
+              </Link>
+            )}
+            {user && <NotificationsDropdown light={isMarketGreenHeader || isNavyAppHeader} />}
+            <CartIconButton light={isMarketGreenHeader || isNavyAppHeader} />
             <CommandPalette />
-            <LanguageSwitcher className={cn("header-language-switcher shrink-0 hidden md:inline-flex", isMarketGreenHeader && "text-white")} />
-            <div className={cn("hidden md:block", isMarketGreenHeader && "[&_button]:text-white [&_button:hover]:bg-white/10")}>
+            <LanguageSwitcher className={cn("header-language-switcher shrink-0 hidden md:inline-flex", (isMarketGreenHeader || isNavyAppHeader) && "text-white")} />
+            <div className={cn("hidden md:block", (isMarketGreenHeader || isNavyAppHeader) && "[&_button]:text-white [&_button:hover]:bg-white/10")}>
               {user ? <UserMenu onNavigate={handleMobileTab} /> : <GuestMenu />}
             </div>
           </div>
@@ -766,7 +769,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
       <main className={
         isMessages || isVideoFeed
           ? `app-main-immersive flex-1 overflow-clip flex flex-col min-h-0${isMessageThread ? " message-thread-main" : ""}${isVideoFeed ? "" : " md:pl-56"}`
-          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || isCommissionPromoPage ? "" : "pb-safe-nav"} md:pl-56`
+          : `app-main-scroll flex-1 min-h-0 ${isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "" : "pb-safe-nav"} md:pl-56`
       }
         style={isSellPage ? { paddingBottom: "max(env(safe-area-inset-bottom, 0px), var(--flexa-android-bottom, 0px))" } : undefined}
       >
@@ -797,7 +800,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
 
       {/* ── Mobile bottom nav (5 tabs) — hidden inside an active conversation ── */}
       <nav
-        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage || isCommissionPromoPage ? "hidden" : ""}`}
+        className={`mobile-bottom-nav fixed bottom-0 left-0 right-0 bg-card border-t border-border md:hidden z-50 ${isMessageThread || isVideoFeed || isListingDetail || isPaymentOperations || isSubscriptionPage || isMyBoostsPage || isSellPage ? "hidden" : ""}`}
         aria-label="Main navigation"
         data-testid="mobile-bottom-nav"
       >

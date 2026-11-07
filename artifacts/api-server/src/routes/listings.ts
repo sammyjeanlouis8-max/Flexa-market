@@ -2232,6 +2232,7 @@ router.post("/listings/:id/purchase", requireAuth, async (req, res): Promise<voi
     ...await formatListing(updated!, seller, cat ?? null, null),
     discountAmount,
     promoCodeApplied: appliedPromoCode?.code ?? null,
+    transactionId: insertedTxId ?? null,
   });
 });
 

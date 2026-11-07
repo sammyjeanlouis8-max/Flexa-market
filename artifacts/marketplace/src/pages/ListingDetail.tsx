@@ -38,6 +38,17 @@ import { readSavedCheckoutAddress, saveCheckoutAddress } from "@/lib/savedChecko
 
 import { listingCarriersForCountry } from "@/lib/listingCarriers";
 import { listingImageProps } from "@/lib/listingImage";
+import {
+  CheckoutOutlineButton,
+  CheckoutPrimaryButton,
+  CheckoutStepper,
+  GlassCard,
+  PaymentSuccessPanel,
+  ProcessingPaymentPanel,
+  PromoHero,
+  RadioDot,
+} from "@/components/checkout/CheckoutPrimitives";
+import { CheckoutProductBackdrop } from "@/components/checkout/CheckoutProductBackdrop";
 
 function isLocalDeliveryCountry(country: string | null | undefined) {
   return country === "Haiti" || country === "Dominican Republic";
@@ -117,7 +128,11 @@ export default function ListingDetail() {
   // Offer price override — set when arriving from Offers page with an accepted offer
   const [offerPriceOverride, setOfferPriceOverride] = useState<number | null>(null);
   const [offerIdForPurchase, setOfferIdForPurchase] = useState<number | null>(null);
-  const [payStep, setPayStep] = useState<"promo" | "address" | "delivery" | "select" | "usdt" | "moncash" | "natcash" | "wallet" | "friend">("promo");
+  const [payStep, setPayStep] = useState<"promo" | "address" | "delivery" | "select" | "review" | "processing" | "usdt" | "moncash" | "natcash" | "wallet" | "friend">("promo");
+  const [selectedPayMethod, setSelectedPayMethod] = useState<"stripe" | "wallet" | "klarna" | "afterpay_clearpay" | "affirm" | "usdt" | "friend" | null>(null);
+  const [addressEditMode, setAddressEditMode] = useState(false);
+  const [lastPaidMethod, setLastPaidMethod] = useState<string>("Stripe");
+  const [lastTransactionId, setLastTransactionId] = useState<string>("");
   const [walletPayLoading, setWalletPayLoading] = useState(false);
   const [friendQuery, setFriendQuery] = useState("");
   const [friendSearching, setFriendSearching] = useState(false);
@@ -221,7 +236,7 @@ export default function ListingDetail() {
   const [promoValidating, setPromoValidating] = useState(false);
   const [promoValidation, setPromoValidation] = useState<{ valid: boolean; code: string; discountAmount: number; finalPrice: number; description: string | null } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
-  const [purchaseResult, setPurchaseResult] = useState<{ bonusEarned: number; discountAmount: number; promoCodeApplied: string | null } | null>(null);
+  const [purchaseResult, setPurchaseResult] = useState<{ bonusEarned: number; discountAmount: number; promoCodeApplied: string | null; transactionId?: number | null } | null>(null);
 
   // Delivery method is set by the seller on the listing, not chosen by the buyer
   const [deliveryMethod, setDeliveryMethod] = useState<string>("motorcycle");
@@ -315,7 +330,7 @@ export default function ListingDetail() {
   const { data: relatedData } = useGetListings(
     {
       category: relatedCategory || undefined,
-      limit: 8,
+      limit: 18,
       ...(relatedCountry ? { country: relatedCountry } : {}),
     },
     {
@@ -323,13 +338,14 @@ export default function ListingDetail() {
         enabled: !!relatedCategory,
         queryKey: getGetListingsQueryKey({
           category: relatedCategory || undefined,
-          limit: 8,
+          limit: 18,
           ...(relatedCountry ? { country: relatedCountry } : {}),
         }),
       },
     },
   );
-  const relatedListings = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 6);
+  const relatedListingsAll = (relatedData?.listings ?? []).filter((l: { id: number }) => l.id !== id).slice(0, 18);
+  const relatedListings = relatedListingsAll.slice(0, 6);
 
   // Map listing condition to schema.org itemCondition values
   const schemaCondition: Record<string, string> = {
@@ -479,6 +495,20 @@ export default function ListingDetail() {
     if (listingCurrencyCode === "DOP") return dopToUsd(effectiveListingPrice);
     return effectiveListingPrice;
   }, [effectiveListingPrice, listingCurrencyCode, exchangeRateData]);
+  const checkoutBackdropItems = useMemo(() => ([
+    {
+      id: `current-${id}`,
+      title: listing?.title,
+      image: ((listing as any)?.images?.[0] as string | undefined) ?? null,
+      price: listing ? effectiveListingPriceUsd : null,
+    },
+    ...relatedListingsAll.map((item: any) => ({
+      id: item.id,
+      title: item.title as string | undefined,
+      image: (item.images?.[0] as string | undefined) ?? null,
+      price: typeof item.price === "number" ? item.price : null,
+    })),
+  ].filter((i) => !!i.image)), [id, listing, relatedListingsAll, effectiveListingPriceUsd]);
   useEffect(() => {
     if (!buyNowOpen || !token || !listingIdForQuote) { setQuote(null); return; }
     let cancelled = false;
@@ -1141,6 +1171,7 @@ export default function ListingDetail() {
 
   const submitPurchase = async (paymentMethod: string, paymentRef: string) => {
     setPayLoading(true);
+    setPayStep("processing");
     try {
       const res = await fetch(`/api/listings/${id}/purchase`, {
         method: "POST",
@@ -1173,12 +1204,25 @@ export default function ListingDetail() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast({ title: "Payment failed", description: data?.error || "Please try again", variant: "destructive" });
+        setPayStep("review");
         return;
       }
+      const methodLabels: Record<string, string> = {
+        wallet: "FM Card",
+        card: "Stripe",
+        stripe: "Stripe",
+        usdt: "USDT",
+        moncash: "MonCash",
+        natcash: "NatCash",
+      };
+      setLastPaidMethod(methodLabels[paymentMethod] ?? paymentMethod);
+      const txId = data?.transactionId ?? data?.id ?? null;
+      setLastTransactionId(txId ? `FM-${txId}` : `FM-${String(Date.now()).slice(-7)}`);
       setPurchaseResult({
         bonusEarned: data?.bonusEarned ?? 0,
         discountAmount: data?.discountAmount ?? 0,
         promoCodeApplied: data?.promoCodeApplied ?? null,
+        transactionId: typeof txId === "number" ? txId : null,
       });
       // Flag for smart tip prompt (fires after 5 min if still no driver)
       if (isLocalDelivery && deliveryFeeUsd > 0) {
@@ -1191,6 +1235,7 @@ export default function ListingDetail() {
       queryClient.invalidateQueries({ queryKey: getGetListingQueryKey(id) });
     } catch {
       toast({ title: "Network error", description: "Please try again", variant: "destructive" });
+      setPayStep("review");
     } finally {
       setPayLoading(false);
     }
@@ -1199,6 +1244,8 @@ export default function ListingDetail() {
   const handleStripeCheckout = async () => {
     if (!token) { setLocation("/auth/login"); return; }
     setStripeLoading(true);
+    setPayStep("processing");
+    setLastPaidMethod("Stripe");
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -1227,6 +1274,7 @@ export default function ListingDetail() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast({ title: "Payment error", description: data?.error || "Could not start checkout", variant: "destructive" });
+        setPayStep("review");
         return;
       }
       if (data.url) {
@@ -1234,9 +1282,11 @@ export default function ListingDetail() {
         window.location.href = data.url;
       } else {
         toast({ title: "Payment error", description: "No checkout URL received", variant: "destructive" });
+        setPayStep("review");
       }
     } catch {
       toast({ title: "Network error", description: "Please try again", variant: "destructive" });
+      setPayStep("review");
     } finally {
       setStripeLoading(false);
     }
@@ -1323,7 +1373,7 @@ export default function ListingDetail() {
   const handleWalletPayment = async () => {
     if (!token) { setLocation("/auth/login"); return; }
     const effectivePrice = listing ? effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) : 0;
-    const referralFeeForWallet = quote?.referralFee ?? 0;
+    const referralFeeForWallet = (quote as any)?.referralFee ?? 0;
     const walletRequired = effectivePrice + effectiveDeliveryFee + effectiveTip + referralFeeForWallet;
     if (walletTotal < walletRequired - 0.001) {
       const desc = effectiveDeliveryFee > 0
@@ -1333,9 +1383,33 @@ export default function ListingDetail() {
       return;
     }
     setWalletPayLoading(true);
+    setLastPaidMethod("FM Card");
     await submitPurchase("wallet", `WALLET-${Date.now()}`);
     setWalletPayLoading(false);
   };
+
+  const checkoutGrandTotal =
+    effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + ((quote as any)?.referralFee ?? 0);
+
+  const confirmSelectedPayment = () => {
+    if (selectedPayMethod === "stripe") { void handleStripeCheckout(); return; }
+    if (selectedPayMethod === "wallet") { void handleWalletPayment(); return; }
+    if (selectedPayMethod === "usdt") { setPayStep("usdt"); return; }
+    if (selectedPayMethod === "friend") {
+      setFriendQuery(""); setFriendResults([]); setFriendRequestSent(false); setPayStep("friend");
+      return;
+    }
+    if (selectedPayMethod === "klarna" || selectedPayMethod === "afterpay_clearpay" || selectedPayMethod === "affirm") {
+      void handleBnplCheckout(selectedPayMethod);
+    }
+  };
+
+  const addressIsComplete =
+    shipName.trim().length >= 2 &&
+    shipPhone.replace(/\D/g, "").length >= 6 &&
+    shipStreet.trim().length >= 3 &&
+    shipCity.trim().length >= 2 &&
+    shipRegion.trim().length >= 2;
 
   // MonCash / NatCash buyers send the funds outside the app and confirm
   // here. We accept an optional transaction id; when blank we synthesise
@@ -2977,721 +3051,587 @@ export default function ListingDetail() {
         </div>
       )}
 
-      {/* Buy Now Dialog */}
-      <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); } }}>
-        <DialogContent className="max-w-md w-[calc(100%-2rem)] max-h-[88vh] overflow-y-auto p-4 rounded-2xl">
+      {/* Buy Now Dialog — dark glass checkout redesign */}
+      <Dialog open={buyNowOpen} onOpenChange={v => { setBuyNowOpen(v); if (!v) { setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setTipUsd(0); setDeliverySpeedTier("rapid"); setSelectedPayMethod(null); setAddressEditMode(false); } }}>
+        <DialogContent
+          overlayClassName="bg-black/35 overflow-hidden"
+          overlayContent={<CheckoutProductBackdrop items={checkoutBackdropItems} />}
+          className={cn(
+          "fm-checkout-dark max-w-md w-[calc(100%-1.25rem)] max-h-[90vh] overflow-y-auto p-4 rounded-[1.35rem] gap-3 text-[#F4F7FF] z-[51]",
+          "[&>button]:text-[#8B9BB8] [&>button]:hover:text-white [&>button]:hover:bg-white/10",
+        )}>
           {payDone ? (
-            /* Enhanced Success */
-            <div className="text-center py-6 space-y-4">
-              <div className="mx-auto w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <span className="text-4xl">✓</span>
-              </div>
-              <div>
-                <h2 className="text-xl font-extrabold">{t("payment.usdtSuccess")}</h2>
-                <p className="text-muted-foreground text-sm mt-1">{t("payment.usdtSuccessDesc")}</p>
-              </div>
-              {/* Savings + Bonus summary */}
-              {purchaseResult && (purchaseResult.discountAmount > 0 || purchaseResult.bonusEarned > 0) && (
-                <div className="space-y-2 text-left">
-                  {purchaseResult.discountAmount > 0 && (
-                    <div className="flex items-center gap-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl px-4 py-3">
-                      <Ticket className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                      <div>
-                        <p className="text-sm font-bold text-green-700 dark:text-green-400">Ou ekonomize ${purchaseResult.discountAmount.toFixed(2)}!</p>
-                        {purchaseResult.promoCodeApplied && (
-                          <p className="text-xs text-green-600 dark:text-green-500">Kòd: {purchaseResult.promoCodeApplied}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  {purchaseResult.bonusEarned > 0 && (
-                    <div className="flex items-center gap-3 bg-primary/5 border border-primary/20 rounded-xl px-4 py-3">
-                      <Gift className="h-5 w-5 text-primary shrink-0" />
-                      <div>
-                        <p className="text-sm font-bold text-primary">+${purchaseResult.bonusEarned.toFixed(2)} kredi bonis!</p>
-                        <p className="text-xs text-muted-foreground">Ajoute nan pòtfèy FLEXA MARKET ou</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              <Button className="w-full" onClick={() => { setBuyNowOpen(false); setPayDone(false); setPayStep("select"); clearPromo(); setPurchaseResult(null); }}>{t("buttons.done")}</Button>
-            </div>
+            <PaymentSuccessPanel
+              amount={checkoutGrandTotal.toFixed(2)}
+              methodLabel={lastPaidMethod}
+              transactionId={lastTransactionId || (purchaseResult?.transactionId ? `FM-${purchaseResult.transactionId}` : `FM-${String(Date.now()).slice(-7)}`)}
+              discountAmount={purchaseResult?.discountAmount}
+              bonusEarned={purchaseResult?.bonusEarned}
+              promoCode={purchaseResult?.promoCodeApplied}
+              onViewOrder={() => { setBuyNowOpen(false); setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); setLocation(purchaseResult?.transactionId ? `/orders/${purchaseResult.transactionId}` : "/orders"); }}
+              onContinue={() => { setBuyNowOpen(false); setPayDone(false); setPayStep("promo"); clearPromo(); setPurchaseResult(null); }}
+            />
+          ) : payStep === "processing" || walletPayLoading || stripeLoading || payLoading ? (
+            <ProcessingPaymentPanel verifyingDone={payLoading || walletPayLoading || stripeLoading} confirmingActive={payLoading || walletPayLoading} />
           ) : (
             <>
-              {/* ── 4-step checkout wizard header ── */}
-              {(["promo","address","delivery","select"] as const).includes(payStep as "promo"|"address"|"delivery"|"select") && (
-                <div className="pb-2">
-                  <div className="flex items-center">
-                    {([
-                      { step: "promo",    num: 1, label: t("listing.checkoutStepPromo") },
-                      { step: "address",  num: 2, label: t("listing.checkoutStepAddress") },
-                      { step: "delivery", num: 3, label: t("listing.checkoutStepDelivery") },
-                      { step: "select",   num: 4, label: t("listing.checkoutStepPayment") },
-                    ] as const).map((s, i) => {
-                      const ord: Record<string,number> = { promo: 1, address: 2, delivery: 3, select: 4 };
-                      const cur = ord[payStep] ?? 0;
-                      const done = s.num < cur; const active = s.num === cur;
-                      return (
-                        <div key={s.step} className="flex items-center flex-1">
-                          <div className="flex flex-col items-center gap-0.5 shrink-0">
-                            <div className={cn("w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all",
-                              done ? "bg-primary text-white" : active ? "bg-primary text-white ring-2 ring-primary/30 ring-offset-1" : "bg-muted text-muted-foreground")}>
-                              {done ? "✓" : s.num}
-                            </div>
-                            <span className={cn("text-[8px] font-bold text-center leading-tight w-10",
-                              active ? "text-primary" : done ? "text-foreground/70" : "text-muted-foreground")}>{s.label}</span>
-                          </div>
-                          {i < 3 && <div className={cn("flex-1 h-0.5 mb-3 mx-0.5 transition-all", done ? "bg-primary" : "bg-muted")} />}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+              {(["promo","address","delivery","select","review"] as const).includes(payStep as any) && (
+                <CheckoutStepper
+                  current={payStep === "review" ? "select" : payStep}
+                  steps={[
+                    { key: "promo", num: 1, label: t("listing.checkoutStepPromo") },
+                    { key: "address", num: 2, label: t("listing.checkoutStepAddress") },
+                    { key: "delivery", num: 3, label: t("listing.checkoutStepDelivery") },
+                    { key: "select", num: 4, label: t("listing.checkoutStepPayment") },
+                  ]}
+                />
               )}
 
-              {/* ══ STEP 1: KAT PROMO ══ */}
+              {/* ══ STEP 1: PROMO ══ */}
               {payStep === "promo" && (
                 <div className="space-y-3">
-                  <DialogHeader className="px-0 pb-0">
-                    <DialogTitle className="flex items-center gap-2 text-base"><span>🎟</span> {t("listing.checkoutStepPromo")}</DialogTitle>
-                  </DialogHeader>
-                  <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
-                    <p className="text-sm font-bold">{t("listing.promoQuestion")}</p>
+                  <PromoHero />
+                  <GlassCard className="p-3 space-y-2">
+                    <p className="text-sm font-bold text-white">{t("listing.promoQuestion")}</p>
                     {promoValidation ? (
-                      <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/30 border border-green-300 dark:border-green-700 rounded-lg px-3 py-2">
-                        <Ticket className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                      <div className="flex items-center gap-2 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2.5">
+                        <Ticket className="h-4 w-4 text-emerald-400 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-green-700 dark:text-green-400">{promoValidation.code} — {t("listing.promoSaved", { amount: promoValidation.discountAmount.toFixed(2) })}</p>
+                          <p className="text-sm font-bold text-emerald-300">{promoValidation.code} — {t("listing.promoSaved", { amount: promoValidation.discountAmount.toFixed(2) })}</p>
                         </div>
-                        <button onClick={clearPromo} className="text-xs text-muted-foreground hover:text-foreground shrink-0 p-1">✕</button>
+                        <button type="button" onClick={clearPromo} className="text-xs text-[#8B9BB8] hover:text-white shrink-0 p-1">✕</button>
                       </div>
                     ) : (
                       <div className="space-y-1.5">
                         <div className="flex gap-2">
                           <div className="relative flex-1 min-w-0">
-                            <Ticket className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                            <Input placeholder="Eg. FLEXA10, SAVE20..." value={promoCode}
+                            <Ticket className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8B9BB8] pointer-events-none" />
+                            <Input
+                              placeholder="e.g. FLEXA10"
+                              value={promoCode}
                               onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(null); }}
                               onKeyDown={e => e.key === "Enter" && validatePromoCode()}
-                              className="pl-8 text-sm font-mono h-9" data-testid="input-promo-code" />
+                              className="pl-8 text-sm font-mono h-10 rounded-xl bg-white/5 border-white/15 text-white placeholder:text-[#6B7C99]"
+                              data-testid="input-promo-code"
+                            />
                           </div>
-                          <Button size="sm" onClick={validatePromoCode} disabled={!promoCode.trim() || promoValidating} className="shrink-0 h-9 px-3" data-testid="button-apply-promo">
+                          <Button
+                            size="sm"
+                            onClick={validatePromoCode}
+                            disabled={!promoCode.trim() || promoValidating}
+                            className="shrink-0 h-10 px-4 rounded-xl bg-[#2F6BFF] hover:bg-[#4C8DFF] text-white font-bold"
+                            data-testid="button-apply-promo"
+                          >
                             {promoValidating ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : t("listing.promoApply")}
                           </Button>
                         </div>
-                        {promoError && <p className="text-xs text-destructive">{promoError}</p>}
+                        {promoError && <p className="text-xs text-red-400">{promoError}</p>}
                       </div>
                     )}
-                  </div>
+                  </GlassCard>
+
                   {!promoValidation && (
-                    <div className="space-y-1.5">
-                      <p className="text-[10px] font-black uppercase tracking-wide text-muted-foreground">{t("listing.promoAvailableTitle")}</p>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8B9BB8]">{t("listing.promoAvailableTitle")}</p>
                       {[
-                        { code: "FLEXA10", badge: t("listing.promoFlexa10Badge"), desc: t("listing.promoFlexa10Desc"), color: "orange" as const },
-                        { code: "LIVRES",  badge: t("listing.promoLivresBadge"),  desc: t("listing.promoLivresDesc"),  color: "green" as const },
-                        { code: "NEWUSER", badge: t("listing.promoNewuserBadge"), desc: t("listing.promoNewuserDesc"), color: "blue" as const },
+                        { code: "FLEXA10", badge: t("listing.promoFlexa10Badge"), desc: t("listing.promoFlexa10Desc"), color: "gold" as const, popular: true },
+                        { code: "LIVRES",  badge: t("listing.promoLivresBadge"),  desc: t("listing.promoLivresDesc"),  color: "green" as const, popular: false },
+                        { code: "NEWUSER", badge: t("listing.promoNewuserBadge"), desc: t("listing.promoNewuserDesc"), color: "purple" as const, popular: false },
                       ].map(p => (
-                        <button key={p.code} type="button" onClick={() => { setPromoCode(p.code); setPromoError(null); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-all text-left">
-                          <div className={cn("px-1.5 py-0.5 rounded text-[9px] font-black shrink-0 whitespace-nowrap",
-                            p.color === "orange" ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400" :
-                            p.color === "green"  ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" :
-                                                   "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                          )}>{p.badge}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold">{p.code}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{p.desc}</p>
+                        <GlassCard
+                          key={p.code}
+                          onClick={() => { setPromoCode(p.code); setPromoError(null); }}
+                          className={cn("px-3 py-3 relative overflow-hidden", p.popular && "border-[#F5B942]/35")}
+                        >
+                          {p.popular && (
+                            <span className="absolute top-2 right-2 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[#F5B942]/20 text-[#F5B942]">Popular</span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "px-2 py-1 rounded-lg text-[10px] font-black shrink-0 whitespace-nowrap border",
+                              p.color === "gold" && "bg-amber-500/15 text-amber-300 border-amber-400/25",
+                              p.color === "green" && "bg-emerald-500/15 text-emerald-300 border-emerald-400/25",
+                              p.color === "purple" && "bg-violet-500/15 text-violet-300 border-violet-400/25",
+                            )}>{p.badge}</div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-white">{p.code}</p>
+                              <p className="text-[11px] text-[#8B9BB8] truncate">{p.desc}</p>
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-[#8B9BB8] shrink-0" />
                           </div>
-                          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        </button>
+                        </GlassCard>
                       ))}
-                      <p className="text-[10px] text-muted-foreground px-0.5">{t("listing.promoOnceWarning")}</p>
+                      <p className="text-[10px] text-[#8B9BB8] px-0.5">{t("listing.promoOnceWarning")}</p>
                     </div>
                   )}
-                  <div className="rounded-lg border border-amber-200 dark:border-amber-700/50 bg-amber-50/50 dark:bg-amber-950/20 px-2.5 py-2 flex items-center gap-2">
-                    <span className="text-sm shrink-0">🚚</span>
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400 flex-1 leading-snug">{t("tr.shippingFeePre")} <strong>{t("tr.shippingFeeBold")}</strong> {t("tr.shippingFeePost")}</p>
+
+                  <div className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-3 py-2.5 flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-amber-300 shrink-0" />
+                    <p className="text-[11px] text-amber-200/90 flex-1 leading-snug">{t("tr.shippingFeePre")} <strong className="text-amber-100">{t("tr.shippingFeeBold")}</strong> {t("tr.shippingFeePost")}</p>
                   </div>
-                  <div className="rounded-lg border border-border bg-card px-3 py-2.5 flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[10px] text-muted-foreground">{t("listing.productPriceLabel")}</p>
-                      <p className="text-base font-black">${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)}
-                        {promoValidation && <span className="text-sm font-normal text-green-600 dark:text-green-400 ml-1">(-${promoValidation.discountAmount.toFixed(2)})</span>}
-                      </p>
-                      {offerPriceOverride !== null && (
-                        <p className="text-[10px] text-green-600 dark:text-green-400 font-semibold mt-0.5">{t("listing.yourOfferPrice")}</p>
-                      )}
+
+                  <div className="pt-1 space-y-2">
+                    <div className="flex items-end justify-between px-0.5">
+                      <div>
+                        <p className="text-[10px] text-[#8B9BB8]">{t("listing.productPriceLabel")}</p>
+                        <p className="text-xl font-black text-white tabular-nums">
+                          ${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)}
+                          {promoValidation && <span className="text-sm font-normal text-emerald-400 ml-1.5">(-${promoValidation.discountAmount.toFixed(2)})</span>}
+                        </p>
+                      </div>
                     </div>
-                    <Button size="sm" className="font-bold shrink-0 h-9" onClick={() => setPayStep("address")}>{t("listing.continueBtn")} <ChevronRight className="h-4 w-4 ml-1" /></Button>
+                    <CheckoutPrimaryButton onClick={() => { setPayStep("address"); if (!addressIsComplete) setAddressEditMode(true); }} testId="button-promo-continue">
+                      {t("listing.continueBtn")}
+                    </CheckoutPrimaryButton>
+                    <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-xs text-[#8B9BB8] hover:text-white py-1">{t("buttons.cancel")}</button>
                   </div>
-                  <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1">{t("buttons.cancel")}</button>
                 </div>
               )}
 
-              {/* ══ STEP 2: ADRÈS ══ */}
+              {/* ══ STEP 2: ADDRESS ══ */}
               {payStep === "address" && (
-                <div className="space-y-0">
-                  <DialogHeader className="px-0 pb-3">
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setPayStep("promo")} className="p-1.5 rounded-lg hover:bg-muted shrink-0 transition-colors"><ChevronLeft className="h-5 w-5" /></button>
-                      <DialogTitle className="text-base font-bold">{t("listing.checkoutStepAddress")}</DialogTitle>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPayStep("promo")} className="p-1.5 rounded-xl hover:bg-white/10 shrink-0 transition-colors"><ChevronLeft className="h-5 w-5" /></button>
+                    <DialogTitle className="text-base font-bold text-white">{t("listing.checkoutStepAddress")}</DialogTitle>
+                  </div>
+
+                  {addressIsComplete && !addressEditMode ? (
+                    <div className="space-y-2.5">
+                      <GlassCard selected className="p-3.5">
+                        <div className="flex items-start gap-3">
+                          <RadioDot selected />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-bold text-white">Home</p>
+                              <button type="button" onClick={() => setAddressEditMode(true)} className="text-xs font-semibold text-[#4C8DFF] hover:underline">{t("buttons.edit", { defaultValue: "Edit" })}</button>
+                            </div>
+                            <p className="text-sm text-white/90 mt-0.5">{shipName}</p>
+                            <p className="text-xs text-[#8B9BB8] mt-0.5">{shipStreet}, {shipCity}, {shipRegion}</p>
+                            <p className="text-xs text-[#8B9BB8]">{shipPhone}</p>
+                          </div>
+                        </div>
+                      </GlassCard>
+                      <CheckoutOutlineButton onClick={() => { setAddressEditMode(true); }} className="border-dashed">
+                        <MapPin className="h-4 w-4" /> {t("listing.addNewAddress", { defaultValue: "Add New Address" })}
+                      </CheckoutOutlineButton>
+                      <CheckoutPrimaryButton onClick={() => setPayStep("delivery")} testId="button-shipping-continue">
+                        {t("listing.continueBtn")}
+                      </CheckoutPrimaryButton>
                     </div>
-                  </DialogHeader>
+                  ) : (
+                    <div className="space-y-3">
+                      <GlassCard className="overflow-hidden divide-y divide-white/10 !p-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#8B9BB8] px-4 pt-3 pb-2">{t("listing.contactInfo")}</p>
+                        <div className="px-4 py-3">
+                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.fullName")} <span className="text-red-400">*</span></label>
+                          <input type="text" value={shipName} onChange={e => setShipName(e.target.value)} placeholder="ex: Jean Pierre" data-testid="input-ship-name" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                        </div>
+                        <div className="px-4 py-3">
+                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.phoneLabel")} <span className="text-red-400">*</span></label>
+                          <input type="tel" value={shipPhone} onChange={e => setShipPhone(e.target.value)} placeholder="ex: +509 1234-5678" data-testid="input-ship-phone" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                        </div>
+                        <div className="px-4 py-3">
+                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.emailLabel")} <span className="text-[#8B9BB8] font-normal">{t("listing.optionalLabel")}</span></label>
+                          <input type="email" value={shipEmail} onChange={e => setShipEmail(e.target.value)} placeholder="ex: jean@gmail.com" data-testid="input-ship-email" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                        </div>
+                      </GlassCard>
 
-                  <div className="space-y-4">
-                    {/* ── Contact Info ── */}
-                    <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">{t("listing.contactInfo")}</p>
-
-                      {/* Full Name */}
-                      <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.fullName")} <span className="text-destructive">*</span></label>
-                        <input
-                          type="text"
-                          value={shipName}
-                          onChange={e => setShipName(e.target.value)}
-                          placeholder="ex: Jean Pierre"
-                          data-testid="input-ship-name"
-                          className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                        />
-                      </div>
-
-                      {/* Phone */}
-                      <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.phoneLabel")} <span className="text-destructive">*</span></label>
-                        <input
-                          type="tel"
-                          value={shipPhone}
-                          onChange={e => setShipPhone(e.target.value)}
-                          placeholder="ex: +509 1234-5678"
-                          data-testid="input-ship-phone"
-                          className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                        />
-                      </div>
-
-                      {/* Email */}
-                      <div className="px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.emailLabel")} <span className="text-muted-foreground font-normal">{t("listing.optionalLabel")}</span></label>
-                        <input
-                          type="email"
-                          value={shipEmail}
-                          onChange={e => setShipEmail(e.target.value)}
-                          placeholder="ex: jean@gmail.com"
-                          data-testid="input-ship-email"
-                          className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                        />
-                      </div>
-                    </div>
-
-                    {/* ── Delivery Address ── */}
-                    <div className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground px-4 pt-3 pb-2">{t("listing.checkoutDeliveryAddress")}</p>
-
-                      {/* Street — with autocomplete */}
-                      <div className="relative px-4 py-3">
-                        <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
-                          {t("listing.streetAddress")} <span className="text-destructive">*</span>
-                          {suggestLoading && <span className="ml-2 text-[10px] text-primary font-normal normal-case">Ap chèche…</span>}
-                        </label>
-                        <input
-                          type="text"
-                          value={shipStreet}
-                          onChange={e => handleStreetChange(e.target.value)}
-                          onFocus={() => streetSuggestions.length > 0 && setShowSuggestions(true)}
-                          onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-                          placeholder="ex: 12 Rue des Miracles"
-                          data-testid="input-ship-street"
-                          className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                          autoComplete="off"
-                        />
-                        {/* Dropdown suggestions */}
-                        {showSuggestions && streetSuggestions.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden mt-1 mx-1">
-                            {streetSuggestions.map((s, i) => {
-                              const parts = s.display_name.split(",");
-                              const main = parts.slice(0, 2).join(",").trim();
-                              const sub  = parts.slice(2, 4).join(",").trim();
-                              return (
-                                <button key={i} type="button"
-                                  onMouseDown={() => applySuggestion(s)}
-                                  className="w-full flex items-start gap-3 px-4 py-3 hover:bg-muted text-left transition-colors border-b border-border/60 last:border-0">
-                                  <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium text-foreground truncate">{main}</p>
-                                    {sub && <p className="text-xs text-muted-foreground truncate">{sub}</p>}
-                                  </div>
-                                </button>
-                              );
-                            })}
+                      <GlassCard className="overflow-hidden divide-y divide-white/10 !p-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#8B9BB8] px-4 pt-3 pb-2">{t("listing.checkoutDeliveryAddress")}</p>
+                        <div className="relative px-4 py-3">
+                          <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">
+                            {t("listing.streetAddress")} <span className="text-red-400">*</span>
+                            {suggestLoading && <span className="ml-2 text-[10px] text-[#4C8DFF] font-normal normal-case">Ap chèche…</span>}
+                          </label>
+                          <input type="text" value={shipStreet} onChange={e => handleStreetChange(e.target.value)} onFocus={() => streetSuggestions.length > 0 && setShowSuggestions(true)} onBlur={() => setTimeout(() => setShowSuggestions(false), 180)} placeholder="ex: 12 Rue des Miracles" data-testid="input-ship-street" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" autoComplete="off" />
+                          {showSuggestions && streetSuggestions.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full z-50 bg-[#0B1228] border border-white/15 rounded-xl shadow-xl overflow-hidden mt-1 mx-1">
+                              {streetSuggestions.map((s, i) => {
+                                const parts = s.display_name.split(",");
+                                const main = parts.slice(0, 2).join(",").trim();
+                                const sub  = parts.slice(2, 4).join(",").trim();
+                                return (
+                                  <button key={i} type="button" onMouseDown={() => applySuggestion(s)} className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/5 text-left transition-colors border-b border-white/10 last:border-0">
+                                    <MapPin className="h-4 w-4 text-[#4C8DFF] mt-0.5 shrink-0" />
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium text-white truncate">{main}</p>
+                                      {sub && <p className="text-xs text-[#8B9BB8] truncate">{sub}</p>}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 divide-x divide-white/10">
+                          <div className="px-4 py-3">
+                            <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.cityLabel")} <span className="text-red-400">*</span></label>
+                            <input type="text" value={shipCity} onChange={e => setShipCity(e.target.value)} placeholder="ex: Pòtoprens" data-testid="input-ship-city" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                          </div>
+                          <div className="px-4 py-3">
+                            <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.regionLabel")} <span className="text-red-400">*</span></label>
+                            <input type="text" value={shipRegion} onChange={e => setShipRegion(e.target.value)} placeholder="ex: Ouest" data-testid="input-ship-region" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
+                          </div>
+                        </div>
+                        {!isLocalDelivery && (
+                          <div className="px-4 py-3">
+                            <label className="text-[11px] font-semibold text-[#8B9BB8] uppercase tracking-wide block mb-1">{t("listing.zipLabel")} <span className="text-[#8B9BB8] font-normal">{t("listing.optionalLabel")}</span></label>
+                            <input type="text" value={shipZip} onChange={e => setShipZip(e.target.value)} placeholder="ex: 10001" data-testid="input-ship-zip" className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-[#6B7C99] text-white" />
                           </div>
                         )}
-                      </div>
+                      </GlassCard>
 
-                      {/* City + Region */}
-                      <div className="grid grid-cols-2 divide-x divide-border">
-                        <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.cityLabel")} <span className="text-destructive">*</span></label>
-                          <input
-                            type="text"
-                            value={shipCity}
-                            onChange={e => setShipCity(e.target.value)}
-                            placeholder="ex: Pòtoprens"
-                            data-testid="input-ship-city"
-                            className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                          />
-                        </div>
-                        <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.regionLabel")} <span className="text-destructive">*</span></label>
-                          <input
-                            type="text"
-                            value={shipRegion}
-                            onChange={e => setShipRegion(e.target.value)}
-                            placeholder="ex: Ouest"
-                            data-testid="input-ship-region"
-                            className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                          />
-                        </div>
-                      </div>
-
-                      {/* ZIP — international only */}
-                      {!isLocalDelivery && (
-                        <div className="px-4 py-3">
-                          <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide block mb-1">{t("listing.zipLabel")} <span className="text-muted-foreground font-normal">{t("listing.optionalLabel")}</span></label>
-                          <input
-                            type="text"
-                            value={shipZip}
-                            onChange={e => setShipZip(e.target.value)}
-                            placeholder="ex: 10001"
-                            data-testid="input-ship-zip"
-                            className="w-full text-sm bg-transparent border-0 outline-none placeholder:text-muted-foreground/50 text-foreground"
-                          />
-                        </div>
-                      )}
+                      <CheckoutPrimaryButton
+                        testId="button-shipping-continue"
+                        onClick={() => {
+                          if (shipName.trim().length < 2) { toast({ title: t("checkout.enterFullName") }); return; }
+                          if (shipPhone.replace(/\D/g, "").length < 6) { toast({ title: t("checkout.enterPhone") }); return; }
+                          if (shipStreet.trim().length < 3) { toast({ title: t("checkout.enterStreet") }); return; }
+                          if (shipCity.trim().length < 2) { toast({ title: t("checkout.enterCity"), description: t("checkout.deliveryRequired") }); return; }
+                          if (shipRegion.trim().length < 2) { toast({ title: t("checkout.enterRegion") }); return; }
+                          if (shipEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shipEmail.trim())) { toast({ title: t("checkout.invalidEmail") }); return; }
+                          setAddressEditMode(false);
+                          setPayStep("delivery");
+                        }}
+                      >
+                        {t("listing.continueBtn")}
+                      </CheckoutPrimaryButton>
+                      <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-[#8B9BB8] hover:text-white py-1">{t("buttons.cancel")}</button>
                     </div>
-
-                    {/* ── CTA ── */}
-                    <Button className="w-full h-12 font-bold text-base rounded-xl" data-testid="button-shipping-continue"
-                      onClick={() => {
-                        if (shipName.trim().length < 2) { toast({ title: t("checkout.enterFullName") }); return; }
-                        if (shipPhone.replace(/\D/g, "").length < 6) { toast({ title: t("checkout.enterPhone") }); return; }
-                        if (shipStreet.trim().length < 3) { toast({ title: t("checkout.enterStreet") }); return; }
-                        if (shipCity.trim().length < 2) { toast({ title: t("checkout.enterCity"), description: t("checkout.deliveryRequired") }); return; }
-                        if (shipRegion.trim().length < 2) { toast({ title: t("checkout.enterRegion") }); return; }
-                        if (shipEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shipEmail.trim())) { toast({ title: t("checkout.invalidEmail") }); return; }
-                        setPayStep("delivery");
-                      }}>
-                      {t("buttons.confirm")} <ChevronRight className="h-5 w-5 ml-1" />
-                    </Button>
-                    <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-muted-foreground hover:text-foreground py-1">{t("buttons.cancel")}</button>
-                  </div>
+                  )}
                 </div>
               )}
 
-              {/* ══ STEP 3: LIVREZON + TIP ══ */}
+              {/* ══ STEP 3: DELIVERY ══ */}
               {payStep === "delivery" && (
                 <div className="space-y-3">
-                  <DialogHeader className="px-0 pb-0">
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setPayStep("address")} className="p-1 rounded-lg hover:bg-muted shrink-0"><ChevronLeft className="h-5 w-5" /></button>
-                      <DialogTitle>{t("listing.deliveryHeader")}</DialogTitle>
-                    </div>
-                  </DialogHeader>
-                  {/* Delivery tier picker */}
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPayStep("address")} className="p-1.5 rounded-xl hover:bg-white/10 shrink-0"><ChevronLeft className="h-5 w-5" /></button>
+                    <DialogTitle className="text-base font-bold text-white">{t("listing.deliveryHeader")}</DialogTitle>
+                  </div>
+
                   {isLocalDelivery ? (
-                    <div className="rounded-xl border border-border bg-muted/10 overflow-hidden">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-muted-foreground px-3 pt-2.5 pb-1.5">🚚 {t("listing.deliveryOptions")}</p>
+                    <div className="space-y-2">
                       {([
                         { key: "regular" as const, labelKey: "listing.deliveryStandard", subKey: "listing.deliveryStandardSub", emoji: "🚛", fixedFee: 10 },
                         { key: "rapid"   as const, labelKey: "listing.deliveryRapid",    subKey: "listing.deliveryRapidSub",    emoji: "⚡", fixedFee: 15, popular: true },
                         { key: "express" as const, labelKey: "listing.deliveryExpress",  subKey: "listing.deliveryExpressSub",  emoji: "🚀", fixedFee: 25 },
                         { key: "pickup"  as const, labelKey: "listing.deliveryPickup",   subKey: "listing.deliveryPickupSub",   emoji: "🏪", fixedFee: 0,  free: true },
                         { key: "custom"  as const, labelKey: "listing.deliveryCustom",   subKey: "listing.deliveryCustomSub",   emoji: "✏️", fixedFee: 0 },
-                      ]).map((opt, idx) => {
+                      ]).map((opt) => {
                         const finalFee = (opt.key === "pickup" || opt.key === "custom") ? 0 : opt.fixedFee;
                         const selected = deliverySpeedTier === opt.key;
                         return (
-                          <button key={opt.key} type="button" onClick={() => setDeliverySpeedTier(opt.key)}
-                            className={cn("w-full flex items-center gap-3 px-3 py-3 text-left transition-all",
-                              idx > 0 && "border-t border-border/60",
-                              selected ? "bg-primary/8 dark:bg-primary/10" : "hover:bg-muted/40")}>
-                            <div className={cn("w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-all",
-                              selected ? "border-primary" : "border-muted-foreground/40")}>
-                              {selected && <div className="w-2 h-2 rounded-full bg-primary" />}
-                            </div>
-                            <span className="text-base shrink-0">{opt.emoji}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className={cn("text-sm font-semibold", selected && "text-primary")}>
-                                  {opt.key === "custom" ? t("listing.deliveryCustomLabel") : t(opt.labelKey)}
-                                </span>
-                                {(opt as any).popular && <span className="text-[10px] font-black uppercase px-1.5 py-0.5 rounded-md bg-primary text-white">{t("listing.deliveryPopular")}</span>}
+                          <GlassCard key={opt.key} selected={selected} onClick={() => setDeliverySpeedTier(opt.key)} className="px-3.5 py-3">
+                            <div className="flex items-center gap-3">
+                              <RadioDot selected={selected} />
+                              <span className="text-base shrink-0">{opt.emoji}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("text-sm font-semibold", selected ? "text-white" : "text-white/90")}>
+                                    {opt.key === "custom" ? t("listing.deliveryCustomLabel") : t(opt.labelKey)}
+                                  </span>
+                                  {(opt as any).popular && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-[#2F6BFF] text-white">Popular</span>}
+                                </div>
+                                <p className="text-xs text-[#8B9BB8]">{opt.key === "custom" ? t("listing.deliveryCustomHint") : t(opt.subKey)}</p>
                               </div>
-                              <p className="text-xs text-muted-foreground">
-                                {opt.key === "custom" ? t("listing.deliveryCustomHint") : t(opt.subKey)}
-                              </p>
+                              <div className="text-right shrink-0">
+                                {(opt as any).free ? (
+                                  <span className="text-sm font-bold text-emerald-400">{t("listing.deliveryFree")}</span>
+                                ) : opt.key === "custom" ? (
+                                  <span className="text-xs text-[#8B9BB8]">✏️</span>
+                                ) : (
+                                  <span className={cn("text-sm font-bold", selected ? "text-[#4C8DFF]" : "text-white")}>${finalFee.toFixed(2)}</span>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-right shrink-0">
-                              {opt.free ? (
-                                <span className="text-sm font-bold text-green-600 dark:text-green-400">{t("listing.deliveryFree")}</span>
-                              ) : opt.key === "custom" ? (
-                                <span className="text-xs text-muted-foreground italic">✏️</span>
-                              ) : (
-                                <span className={cn("text-sm font-bold", selected ? "text-primary" : "text-foreground")}>${finalFee.toFixed(2)}</span>
-                              )}
-                            </div>
-                          </button>
+                          </GlassCard>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t(isDominicanSellerDelivery ? "sell.deliverySelf" : "listing.shippingCarrier")}</p>
+                    <GlassCard className="p-3 space-y-2">
+                      <p className="text-xs font-semibold text-[#8B9BB8] uppercase tracking-wide">{t(isDominicanSellerDelivery ? "sell.deliverySelf" : "listing.shippingCarrier")}</p>
                       <div className="flex flex-wrap gap-2">
                         {(isDominicanSellerDelivery ? ["self_delivery"] : isDominicanDelivery ? dominicanCarriers : (listing as any)?.shippingCarriers?.length ? (listing as any).shippingCarriers : ["UPS", "FedEx", "DHL", "USPS", "Other"]).map((c: string) => (
                           <button key={c} type="button" onClick={() => setSelectedCarrier(c)}
-                            className={cn("px-3 py-1.5 rounded-lg border-2 text-sm font-medium transition-all",
-                              selectedCarrier === c ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-muted-foreground"
+                            className={cn("px-3 py-1.5 rounded-xl border-2 text-sm font-medium transition-all",
+                              selectedCarrier === c ? "border-[#2F6BFF] bg-[#2F6BFF]/15 text-[#4C8DFF]" : "border-white/15 hover:border-white/30 text-white/80"
                             )} data-testid={`button-carrier-${c.toLowerCase()}`}>{c === "self_delivery" ? t("sell.deliverySelf") : c}</button>
                         ))}
                       </div>
-                    </div>
+                    </GlassCard>
                   )}
-                  {/* Custom delivery price input */}
+
                   {isLocalDelivery && deliverySpeedTier === "custom" && (
-                    <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3 space-y-2">
-                      <p className="text-xs font-bold text-primary flex items-center gap-1.5">✏️ {t("listing.customDeliveryTitle")}</p>
-                      <p className="text-[11px] text-muted-foreground">{t("listing.customDeliveryDesc")}</p>
-                      {/* Quick-pick buttons */}
+                    <GlassCard className="p-3 space-y-2 border-[#2F6BFF]/40">
+                      <p className="text-xs font-bold text-[#4C8DFF]">✏️ {t("listing.customDeliveryTitle")}</p>
+                      <p className="text-[11px] text-[#8B9BB8]">{t("listing.customDeliveryDesc")}</p>
                       <div className="flex gap-2">
                         {[10, 15, 25].map(amt => (
-                          <button
-                            key={amt}
-                            type="button"
-                            onClick={() => { setCustomDeliveryInput(String(amt)); setDeliveryFeeUsd(amt); }}
-                            className={cn(
-                              "flex-1 h-9 rounded-lg border-2 text-sm font-bold transition-all",
-                              deliveryFeeUsd === amt
-                                ? "border-primary bg-primary text-white"
-                                : "border-primary/30 text-primary hover:bg-primary/10",
-                            )}
-                          >
-                            ${amt}
-                          </button>
+                          <button key={amt} type="button" onClick={() => { setCustomDeliveryInput(String(amt)); setDeliveryFeeUsd(amt); }}
+                            className={cn("flex-1 h-9 rounded-xl border-2 text-sm font-bold transition-all",
+                              deliveryFeeUsd === amt ? "border-[#2F6BFF] bg-[#2F6BFF] text-white" : "border-[#2F6BFF]/30 text-[#4C8DFF] hover:bg-[#2F6BFF]/10")}>${amt}</button>
                         ))}
                       </div>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">$</span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min="0"
-                          step="1"
-                          value={customDeliveryInput}
-                          onChange={e => {
-                            setCustomDeliveryInput(e.target.value);
-                            const v = parseFloat(e.target.value);
-                            setDeliveryFeeUsd(!isNaN(v) && v >= 0 ? parseFloat(v.toFixed(2)) : 0);
-                          }}
-                          className="w-full h-10 pl-7 pr-3 rounded-xl border-2 border-primary/30 focus:border-primary bg-background text-sm font-mono focus:outline-none"
-                          placeholder={t("listing.customDeliveryPlaceholder")}
-                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-[#8B9BB8]">$</span>
+                        <input type="number" inputMode="decimal" min="0" step="1" value={customDeliveryInput}
+                          onChange={e => { setCustomDeliveryInput(e.target.value); const v = parseFloat(e.target.value); setDeliveryFeeUsd(!isNaN(v) && v >= 0 ? parseFloat(v.toFixed(2)) : 0); }}
+                          className="w-full h-10 pl-7 pr-3 rounded-xl border-2 border-[#2F6BFF]/30 focus:border-[#2F6BFF] bg-white/5 text-sm font-mono focus:outline-none text-white"
+                          placeholder={t("listing.customDeliveryPlaceholder")} />
                       </div>
-                    </div>
+                    </GlassCard>
                   )}
+
                   {deliveryFeeIsEstimate && effectiveDeliveryFee > 0 && (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-500 px-1">{t("listing.deliveryEstimate")}</p>
+                    <p className="text-[11px] text-amber-300 px-1">{t("listing.deliveryEstimate")}</p>
                   )}
-                  {/* Driver tip — local only, not for pickup or custom */}
+
                   {isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && baseFeeUsd > 0 && (
-                    <div className="rounded-xl border border-rose-200 dark:border-rose-800/50 bg-gradient-to-br from-rose-50/70 to-pink-50/40 dark:from-rose-950/20 dark:to-pink-950/10 p-3 space-y-2">
+                    <GlassCard className="p-3 space-y-2 border-rose-400/25 bg-rose-500/5">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-bold flex items-center gap-1">💝 Ankouraje chofè a ak yon tip <span className="text-[10px] font-normal text-muted-foreground">(opsyonèl)</span></p>
-                          <p className="text-[10px] text-muted-foreground">100% ale jwenn chofè ou dirèkteman</p>
+                          <p className="text-xs font-bold flex items-center gap-1">💝 Ankouraje chofè a ak yon tip <span className="text-[10px] font-normal text-[#8B9BB8]">(opsyonèl)</span></p>
+                          <p className="text-[10px] text-[#8B9BB8]">100% ale jwenn chofè ou dirèkteman</p>
                         </div>
-                        {tipUsd > 0 && <span className="text-sm font-black text-rose-500 dark:text-rose-400">+${tipUsd.toFixed(2)}</span>}
+                        {tipUsd > 0 && <span className="text-sm font-black text-rose-300">+${tipUsd.toFixed(2)}</span>}
                       </div>
                       <div className="flex gap-1.5">
                         {[1, 2, 5, 10].map(amt => (
-                          <button key={amt} type="button"
-                            onClick={() => { setTipUsd(amt); setShowCustomTip(false); setCustomTipInput(""); }}
-                            className={cn("flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all duration-150 active:scale-95",
-                              tipUsd === amt && !showCustomTip
-                                ? "border-rose-400 bg-rose-400/15 text-rose-700 dark:text-rose-400 shadow-sm"
-                                : "border-border bg-background hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/20"
-                            )}>${amt}</button>
+                          <button key={amt} type="button" onClick={() => { setTipUsd(amt); setShowCustomTip(false); setCustomTipInput(""); }}
+                            className={cn("flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all",
+                              tipUsd === amt && !showCustomTip ? "border-rose-400 bg-rose-400/15 text-rose-200" : "border-white/15 bg-white/5 hover:border-rose-300/50")}>${amt}</button>
                         ))}
                         <button type="button" onClick={() => { setShowCustomTip(true); setTipUsd(0); }}
-                          className={cn("flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all duration-150 active:scale-95",
-                            showCustomTip ? "border-rose-400 bg-rose-400/15 text-rose-700 dark:text-rose-400" : "border-border bg-background hover:border-rose-300"
-                          )}>{t("listing.tipOther")}</button>
+                          className={cn("flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all",
+                            showCustomTip ? "border-rose-400 bg-rose-400/15 text-rose-200" : "border-white/15 bg-white/5")}>{t("listing.tipOther")}</button>
                       </div>
                       {showCustomTip && (
-                        <div className="flex gap-2 items-center animate-in slide-in-from-top-1 duration-150">
+                        <div className="flex gap-2 items-center">
                           <div className="relative flex-1">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground">$</span>
-                            <input type="number" inputMode="decimal" min="0.5" max="50" step="0.5" placeholder="0.00"
-                              value={customTipInput} onChange={e => setCustomTipInput(e.target.value)}
-                              className="w-full border-2 border-rose-300 dark:border-rose-700 focus:border-rose-500 rounded-xl pl-7 pr-3 py-2 text-sm font-bold bg-background focus:outline-none" autoFocus />
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-[#8B9BB8]">$</span>
+                            <input type="number" inputMode="decimal" min="0.5" max="50" step="0.5" placeholder="0.00" value={customTipInput} onChange={e => setCustomTipInput(e.target.value)}
+                              className="w-full border-2 border-rose-400/40 focus:border-rose-400 rounded-xl pl-7 pr-3 py-2 text-sm font-bold bg-white/5 focus:outline-none text-white" autoFocus />
                           </div>
-                          <button type="button"
-                            onClick={() => { const v = parseFloat(customTipInput); if (!isNaN(v) && v >= 0.5 && v <= 50) setTipUsd(parseFloat(v.toFixed(2))); }}
-                            className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-500 text-white hover:bg-rose-600 active:scale-95 transition-all">OK</button>
+                          <button type="button" onClick={() => { const v = parseFloat(customTipInput); if (!isNaN(v) && v >= 0.5 && v <= 50) setTipUsd(parseFloat(v.toFixed(2))); }}
+                            className="px-3 py-2 rounded-xl text-xs font-bold bg-rose-500 text-white">OK</button>
                         </div>
                       )}
-                      <p className="text-[10px] text-muted-foreground italic text-center">
-                        {tipUsd >= 5 ? t("listing.tipMsg5") : tipUsd > 0 ? t("listing.tipMsg1") : t("listing.tipMsg0")}
-                      </p>
-                    </div>
+                    </GlassCard>
                   )}
-                  {isLocalDelivery && listingCity && baseFeeUsd === 0 && !deliveryFeeLoading && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && (
-                    <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/50 rounded-xl px-3 py-2.5">
-                      <span className="text-lg shrink-0">🚚</span>
-                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                        {shipCity.trim().length < 2 ? t("listing.returnToAddress") : t("listing.cityNotFound")}
-                        {" "}{t("listing.deliveryNotFree")}
-                      </p>
-                    </div>
-                  )}
-                  {/* Live price summary */}
-                  <div className="rounded-xl border border-border bg-card p-3.5 space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">{t("listing.priceSummary")}</p>
+
+                  <GlassCard className="p-3.5 space-y-2">
+                    <p className="text-[11px] font-black uppercase tracking-wide text-[#8B9BB8]">{t("listing.priceSummary")}</p>
                     <div className="space-y-1.5 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">🛍 {t("listing.productPrice")}</span>
-                        <span className="font-semibold">${effectiveListingPriceUsd.toFixed(2)}</span>
-                      </div>
+                      <div className="flex items-center justify-between"><span className="text-[#8B9BB8]">🛍 {t("listing.productPrice")}</span><span className="font-semibold text-white">${effectiveListingPriceUsd.toFixed(2)}</span></div>
                       {(promoValidation?.discountAmount ?? 0) > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">🎟 {t("listing.deliveryDiscountLabel")} ({promoValidation!.code})</span>
-                          <span className="font-semibold text-green-600 dark:text-green-400">−${promoValidation!.discountAmount.toFixed(2)}</span>
-                        </div>
+                        <div className="flex items-center justify-between"><span className="text-[#8B9BB8]">🎟 {t("listing.deliveryDiscountLabel")} ({promoValidation!.code})</span><span className="font-semibold text-emerald-400">−${promoValidation!.discountAmount.toFixed(2)}</span></div>
                       )}
                       <div className="flex items-center justify-between">
-                         <span className="text-muted-foreground">
-                           🚚 {t("listing.checkoutDelivery")}
-                           {isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && ` (${t(`listing.delivery${deliverySpeedTier === "rapid" ? "Rapid" : deliverySpeedTier === "express" ? "Express" : "Standard"}`)})`}
-                           {isLocalDelivery && deliverySpeedTier === "custom" && ` (${t("listing.deliveryProposed")})`}
-                           {!isLocalDelivery && selectedCarrier && ` (${isDominicanSellerDelivery ? t("sell.deliverySelf") : selectedCarrier})`}
-                         </span>
-                        {deliverySpeedTier === "pickup" ? (
-                          <span className="font-semibold text-green-600 dark:text-green-400">{t("listing.deliveryFree")}</span>
-                        ) : deliverySpeedTier === "custom" ? (
-                          deliveryFeeUsd > 0
-                            ? <span className="font-semibold text-blue-600 dark:text-blue-400">+${deliveryFeeUsd.toFixed(2)}</span>
-                            : <span className="text-muted-foreground text-xs italic">{t("listing.enterPricePlaceholder")}</span>
-                        ) : deliveryFeeLoading ? (
-                          <span className="text-muted-foreground text-xs italic">{t("listing.calculating")}</span>
-                        ) : effectiveDeliveryFee > 0 ? (
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">+${effectiveDeliveryFee.toFixed(2)}</span>
-                        ) : (
-                          <span className="text-amber-500 text-xs">⚠️ {t("listing.checkoutCityUnknown")}</span>
-                        )}
+                        <span className="text-[#8B9BB8]">🚚 {t("listing.checkoutDelivery")}</span>
+                        {deliverySpeedTier === "pickup" ? <span className="font-semibold text-emerald-400">{t("listing.deliveryFree")}</span>
+                          : deliveryFeeLoading ? <span className="text-[#8B9BB8] text-xs italic">{t("listing.calculating")}</span>
+                          : effectiveDeliveryFee > 0 ? <span className="font-semibold text-[#4C8DFF]">+${effectiveDeliveryFee.toFixed(2)}</span>
+                          : <span className="text-amber-300 text-xs">⚠️ {t("listing.checkoutCityUnknown")}</span>}
                       </div>
-                      {effectiveTip > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">{t("listing.tipLabel")}</span>
-                          <span className="font-semibold text-rose-500">+${effectiveTip.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {(quote?.referralFee ?? 0) > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground flex items-center gap-1">🔗 {t("listing.referralFeeLabel", "Frè referans")}</span>
-                          <span className="font-semibold text-orange-500">+${(quote!.referralFee as number).toFixed(2)}</span>
-                        </div>
-                      )}
+                      {effectiveTip > 0 && <div className="flex items-center justify-between"><span className="text-[#8B9BB8]">{t("listing.tipLabel")}</span><span className="font-semibold text-rose-300">+${effectiveTip.toFixed(2)}</span></div>}
+                      {((quote as any)?.referralFee ?? 0) > 0 && <div className="flex items-center justify-between"><span className="text-[#8B9BB8]">🔗 {t("listing.referralFeeLabel", "Frè referans")}</span><span className="font-semibold text-orange-300">+${((quote as any).referralFee as number).toFixed(2)}</span></div>}
                     </div>
-                    <div className="border-t border-border pt-2 flex items-center justify-between">
-                      <span className="font-black text-sm">💰 {t("listing.checkoutCurrentTotal")}</span>
-                      <span className="text-xl font-black text-primary">
-                        {(deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && isLocalDelivery && effectiveDeliveryFee === 0 && !deliveryFeeLoading)
-                          ? `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + (quote?.referralFee ?? 0)).toFixed(2)} + liv.`
-                          : `$${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)).toFixed(2)}`}
-                      </span>
+                    <div className="border-t border-white/10 pt-2 flex items-center justify-between">
+                      <span className="font-black text-sm text-white">💰 {t("listing.checkoutCurrentTotal")}</span>
+                      <span className="text-xl font-black text-[#4C8DFF]">${checkoutGrandTotal.toFixed(2)}</span>
                     </div>
-                  </div>
-                  <Button className="w-full font-bold"
+                  </GlassCard>
+
+                  <CheckoutPrimaryButton
                     disabled={deliveryFeeLoading || (isLocalDelivery && deliverySpeedTier !== "pickup" && deliverySpeedTier !== "custom" && deliveryFeeUsd === 0) || (isLocalDelivery && deliverySpeedTier === "custom" && deliveryFeeUsd === 0) || (!isLocalDelivery && !selectedCarrier)}
-                    onClick={() => setPayStep("select")}>
-                    {deliveryFeeLoading ? t("listing.calcDeliveryFee") : <>{t("listing.continueBtn")} <ChevronRight className="h-4 w-4 ml-1" /></>}
-                  </Button>
-                  <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-muted-foreground hover:text-foreground">{t("buttons.cancel")}</button>
+                    onClick={() => setPayStep("select")}
+                  >
+                    {deliveryFeeLoading ? t("listing.calcDeliveryFee") : t("listing.continueBtn")}
+                  </CheckoutPrimaryButton>
+                  <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-[#8B9BB8] hover:text-white">{t("buttons.cancel")}</button>
                 </div>
               )}
 
-              {/* ══ STEP 4: PEMAN ══ */}
+              {/* ══ STEP 4: PAYMENT METHOD ══ */}
               {payStep === "select" && (
-                <>
-                  <DialogHeader className="px-0 pb-1">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setPayStep("delivery")} className="p-1 rounded hover:bg-muted" data-testid="button-back-shipping"><ChevronLeft className="h-4 w-4" /></button>
-                      <DialogTitle>{t("payment.title")} · {formatPrice(effectiveListingPrice, country, (listing as any).currency)}</DialogTitle>
-                    </div>
-                  </DialogHeader>
-                  <p className="text-sm text-muted-foreground">{listing.title}</p>
-                  {quote && (
-                    <div className="mt-2">
-                      <CommissionBreakdown quote={quote} audience="buyer" showDeliveryRow={isLocalDelivery}
-                        tipUsd={effectiveTip}
-                        deliveryTierName={isLocalDelivery ? (deliverySpeedTier === "pickup" ? "Pickup" : deliverySpeedTier === "express" ? "Express" : deliverySpeedTier === "rapid" ? "Rapid" : "Standard") : undefined} />
-                    </div>
-                  )}
-                  <div className="space-y-3 mt-3">
-                    {/* ── Kat FM (FIRST) ── */}
-                    {user && (
-                      <button onClick={handleWalletPayment}
-                        disabled={walletPayLoading || walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)) - 0.001}
-                        className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-violet-400 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/20 hover:border-violet-500 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                        data-testid="button-pay-wallet">
-                        <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                          {walletPayLoading ? <div className="h-5 w-5 border-2 border-violet-600 border-t-transparent rounded-full animate-spin" /> : <span className="text-lg">💳</span>}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPayStep("delivery")} className="p-1.5 rounded-xl hover:bg-white/10" data-testid="button-back-shipping"><ChevronLeft className="h-4 w-4" /></button>
+                    <DialogTitle className="text-base font-bold text-white">{t("payment.title")}</DialogTitle>
+                  </div>
+                  <p className="text-sm text-[#8B9BB8]">{listing.title}</p>
+
+                  <div className="space-y-2.5">
+                    <GlassCard selected={selectedPayMethod === "stripe"} onClick={() => setSelectedPayMethod("stripe")} className="p-4" testId="button-pay-card">
+                      <div className="flex items-center gap-3">
+                        <RadioDot selected={selectedPayMethod === "stripe"} />
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center shrink-0">
+                          <CreditCard className="h-5 w-5 text-[#4C8DFF]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold">{t("listing.fmCard")}</p>
-                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-violet-200 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 uppercase tracking-wide">{t("listing.autoLabel")}</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                             {walletData ? `${t("listing.checkoutBalance")}: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} ${t("listing.checkoutPromo")}` : ""} = $${walletTotal.toFixed(2)}` : t("listing.loadingBalance")}
-                          </p>
-                          <p className="text-[10px] text-violet-600 dark:text-violet-400 mt-0.5">{t("listing.directDeduction")}</p>
-                          {walletTotal < (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)) - 0.001 && walletData && (
-                            <p className="text-xs text-destructive mt-0.5">
-                              {t("listing.insufficientBalance", { amount: (effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0) + effectiveDeliveryFee + effectiveTip + (quote?.referralFee ?? 0)).toFixed(2) })}
-                              {effectiveDeliveryFee > 0 ? ` (atik $${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)} + liv. $${effectiveDeliveryFee.toFixed(2)}${(quote?.referralFee ?? 0) > 0 ? ` + referans $0.50` : ""})` : ""}
-                            </p>
-                          )}
+                          <p className="font-semibold text-white">{t("payment.cardPayment")}</p>
+                          <p className="text-xs text-[#8B9BB8]">{t("payment.cardSubtitle")}</p>
                         </div>
-                      </button>
-                    )}
-                    {/* ── Card / Stripe (SECOND) ── */}
-                    <button onClick={handleStripeCheckout} disabled={stripeLoading}
-                      className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                      data-testid="button-pay-card">
-                      <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                        {stripeLoading ? <div className="h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /> : <CreditCard className="h-5 w-5 text-blue-600" />}
                       </div>
-                      <div>
-                        <p className="font-semibold">{stripeLoading ? t("listing.redirectingStripe") : t("payment.cardPayment")}</p>
-                        <p className="text-xs text-muted-foreground">{t("payment.cardSubtitle")}</p>
-                      </div>
-                    </button>
+                    </GlassCard>
 
-                    {/* ── BNPL Section — Buy Now Pay Later ── */}
+                    {user && (
+                      <GlassCard
+                        selected={selectedPayMethod === "wallet"}
+                        onClick={() => setSelectedPayMethod("wallet")}
+                        className="p-4"
+                        testId="button-pay-wallet"
+                      >
+                        <div className="flex items-center gap-3">
+                          <RadioDot selected={selectedPayMethod === "wallet"} />
+                          <div className="w-10 h-10 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0"><span className="text-lg">💳</span></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-white">{t("listing.fmCard")}</p>
+                              <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300">
+                                Balance: ${walletTotal.toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#8B9BB8]">
+                              {walletData ? `${t("listing.checkoutBalance")}: $${walletReal.toFixed(2)}${walletPromo > 0 ? ` + $${walletPromo.toFixed(2)} ${t("listing.checkoutPromo")}` : ""}` : t("listing.loadingBalance")}
+                            </p>
+                            {walletTotal < checkoutGrandTotal - 0.001 && walletData && (
+                              <p className="text-xs text-red-400 mt-0.5">{t("listing.insufficientBalance", { amount: checkoutGrandTotal.toFixed(2) })}</p>
+                            )}
+                          </div>
+                        </div>
+                      </GlassCard>
+                    )}
+
                     {(() => {
                       const totalAmt = quote?.buyerTotal ?? effectiveListingPriceUsd;
                       const inst4 = (totalAmt / 4).toFixed(2);
                       const anyBnplEnabled = bnplSettings && (bnplSettings.klarnaEnabled || bnplSettings.affirmEnabled || bnplSettings.afterpayEnabled);
                       if (!anyBnplEnabled) return null;
                       return (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 my-1">
-                            <div className="flex-1 h-px bg-border" />
-                             <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-1">{t("listing.checkoutInstallments")}</span>
-                            <div className="flex-1 h-px bg-border" />
-                          </div>
-                          {/* Eligibility badge */}
-                          {bnplEligible === false && (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                              <span className="text-amber-600 text-sm">⚠️</span>
-                               <p className="text-xs text-amber-800 dark:text-amber-300">{t("listing.checkoutBnplIneligible")}</p>
-                            </div>
-                          )}
-                          {bnplEligible === true && (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
-                              <span className="text-green-600 text-sm">✅</span>
-                               <p className="text-xs text-green-800 dark:text-green-300 font-semibold">{t("listing.checkoutBnplEligible")}</p>
-                            </div>
-                          )}
-                          {/* Klarna */}
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center gap-2"><div className="flex-1 h-px bg-white/10" /><span className="text-[10px] font-black text-[#8B9BB8] uppercase tracking-widest px-1">{t("listing.checkoutInstallments")}</span><div className="flex-1 h-px bg-white/10" /></div>
                           {bnplSettings?.klarnaEnabled && (
-                            <button onClick={() => handleBnplCheckout("klarna")}
-                              disabled={!!bnplLoading || bnplEligible === false}
-                              className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-pink-200 dark:border-pink-900 bg-pink-50 dark:bg-pink-950/20 hover:border-pink-400 hover:bg-pink-100 dark:hover:bg-pink-950/40 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                              data-testid="button-pay-klarna">
-                              <div className="w-10 h-10 rounded-lg bg-pink-100 dark:bg-pink-900/40 flex items-center justify-center flex-shrink-0 font-black text-pink-700 text-base">K</div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-pink-800 dark:text-pink-300">Klarna</p>
-                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-pink-200 dark:bg-pink-900/60 text-pink-700 dark:text-pink-300 uppercase tracking-wide">{t("listing.checkoutNoInterest")}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p>
-                                 <p className="text-[10px] text-pink-600 dark:text-pink-400 mt-0.5">{t("listing.checkoutEqualPayments", { total: totalAmt.toFixed(2) })}</p>
+                            <GlassCard selected={selectedPayMethod === "klarna"} onClick={() => setSelectedPayMethod("klarna")} className="p-3.5" testId="button-pay-klarna">
+                              <div className="flex items-center gap-3">
+                                <RadioDot selected={selectedPayMethod === "klarna"} />
+                                <div className="w-9 h-9 rounded-lg bg-pink-500/20 flex items-center justify-center font-black text-pink-300">K</div>
+                                <div className="flex-1"><p className="font-semibold text-pink-200">Klarna</p><p className="text-xs text-[#8B9BB8]">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p></div>
                               </div>
-                              {bnplLoading === "klarna" && <div className="h-5 w-5 border-2 border-pink-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
-                            </button>
+                            </GlassCard>
                           )}
-                          {/* Afterpay */}
                           {bnplSettings?.afterpayEnabled && (
-                            <button onClick={() => handleBnplCheckout("afterpay_clearpay")}
-                              disabled={!!bnplLoading || bnplEligible === false}
-                              className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-teal-200 dark:border-teal-900 bg-teal-50 dark:bg-teal-950/20 hover:border-teal-400 hover:bg-teal-100 dark:hover:bg-teal-950/40 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                              data-testid="button-pay-afterpay">
-                              <div className="w-10 h-10 rounded-lg bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center flex-shrink-0 font-black text-teal-700 text-base">A</div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-teal-800 dark:text-teal-300">Afterpay</p>
-                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-teal-200 dark:bg-teal-900/60 text-teal-700 dark:text-teal-300 uppercase tracking-wide">{t("listing.checkoutFourPayments")}</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p>
-                                 <p className="text-[10px] text-teal-600 dark:text-teal-400 mt-0.5">{t("listing.checkoutClearpayAvailability")}</p>
+                            <GlassCard selected={selectedPayMethod === "afterpay_clearpay"} onClick={() => setSelectedPayMethod("afterpay_clearpay")} className="p-3.5" testId="button-pay-afterpay">
+                              <div className="flex items-center gap-3">
+                                <RadioDot selected={selectedPayMethod === "afterpay_clearpay"} />
+                                <div className="w-9 h-9 rounded-lg bg-teal-500/20 flex items-center justify-center font-black text-teal-300">A</div>
+                                <div className="flex-1"><p className="font-semibold text-teal-200">Afterpay</p><p className="text-xs text-[#8B9BB8]">{t("tr.payInFourPlan", { amount: `$${inst4}` })}</p></div>
                               </div>
-                              {bnplLoading === "afterpay_clearpay" && <div className="h-5 w-5 border-2 border-teal-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
-                            </button>
+                            </GlassCard>
                           )}
-                          {/* Affirm */}
                           {bnplSettings?.affirmEnabled && (
-                            <button onClick={() => handleBnplCheckout("affirm")}
-                              disabled={!!bnplLoading || bnplEligible === false}
-                              className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 hover:border-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                              data-testid="button-pay-affirm">
-                              <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center flex-shrink-0 font-black text-indigo-700 text-sm">Aff</div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="font-semibold text-indigo-800 dark:text-indigo-300">Affirm</p>
-                                   <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-indigo-200 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">{t("listing.checkoutMonthly")}</span>
-                                </div>
-                                 <p className="text-xs text-muted-foreground">{t("listing.checkoutAffirmDescription", { total: totalAmt.toFixed(2) })}</p>
-                                 <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5">{t("listing.checkoutAffirmAvailability")}</p>
+                            <GlassCard selected={selectedPayMethod === "affirm"} onClick={() => setSelectedPayMethod("affirm")} className="p-3.5" testId="button-pay-affirm">
+                              <div className="flex items-center gap-3">
+                                <RadioDot selected={selectedPayMethod === "affirm"} />
+                                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center font-black text-indigo-300 text-xs">Aff</div>
+                                <div className="flex-1"><p className="font-semibold text-indigo-200">Affirm</p><p className="text-xs text-[#8B9BB8]">{t("listing.checkoutAffirmDescription", { total: totalAmt.toFixed(2) })}</p></div>
                               </div>
-                              {bnplLoading === "affirm" && <div className="h-5 w-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
-                            </button>
+                            </GlassCard>
                           )}
                         </div>
                       );
                     })()}
 
-                    <button onClick={() => usdtWalletAddress.trim() ? setPayStep("usdt") : undefined}
-                      disabled={!usdtWalletAddress.trim()}
-                      className={cn("w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left", usdtWalletAddress.trim() ? "border-border hover:border-primary hover:bg-primary/5" : "border-border opacity-50 cursor-not-allowed")}
-                      data-testid="button-pay-usdt">
-                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                        <span className="text-green-500 dark:text-green-400 font-black text-sm">₮</span>
+                    <GlassCard
+                      selected={selectedPayMethod === "usdt"}
+                      onClick={() => usdtWalletAddress.trim() && setSelectedPayMethod("usdt")}
+                      className={cn("p-4", !usdtWalletAddress.trim() && "opacity-45 pointer-events-none")}
+                      testId="button-pay-usdt"
+                    >
+                      <div className="flex items-center gap-3">
+                        <RadioDot selected={selectedPayMethod === "usdt"} />
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0"><span className="text-emerald-400 font-black text-sm">₮</span></div>
+                        <div><p className="font-semibold text-white">{t("payment.usdtPayment")}</p><p className="text-xs text-[#8B9BB8]">{usdtWalletAddress.trim() ? t("payment.usdtSubtitle") : t("listing.checkoutUnavailableMethod")}</p></div>
                       </div>
-                      <div>
-                        <p className="font-semibold">{t("payment.usdtPayment")}</p>
-                         <p className="text-xs text-muted-foreground">{usdtWalletAddress.trim() ? t("payment.usdtSubtitle") : t("listing.checkoutUnavailableMethod")}</p>
-                      </div>
-                    </button>
+                    </GlassCard>
 
-                    {/* ── Zanmi Peye ── */}
                     {user && (
-                      <button onClick={() => { setFriendQuery(""); setFriendResults([]); setFriendRequestSent(false); setPayStep("friend"); }}
-                        className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-all text-left"
-                        data-testid="button-pay-friend">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
-                          <Users className="h-5 w-5 text-emerald-600" />
+                      <GlassCard selected={selectedPayMethod === "friend"} onClick={() => setSelectedPayMethod("friend")} className="p-4" testId="button-pay-friend">
+                        <div className="flex items-center gap-3">
+                          <RadioDot selected={selectedPayMethod === "friend"} />
+                          <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center shrink-0"><Users className="h-5 w-5 text-emerald-400" /></div>
+                          <div><p className="font-semibold text-white">{t("friendPay.title")}</p><p className="text-xs text-[#8B9BB8]">{t("friendPay.subtitle")}</p></div>
                         </div>
-                        <div>
-                          <p className="font-semibold">{t("friendPay.title")}</p>
-                          <p className="text-xs text-muted-foreground">{t("friendPay.subtitle")}</p>
-                        </div>
-                      </button>
+                      </GlassCard>
                     )}
                   </div>
-                  <button onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-muted-foreground mt-2 hover:text-foreground">{t("buttons.cancel")}</button>
-                </>
+
+                  <div className="pt-1 space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-sm text-[#8B9BB8]">Total to Pay</span>
+                      <span className="text-lg font-black text-white tabular-nums">${checkoutGrandTotal.toFixed(2)}</span>
+                    </div>
+                    <CheckoutPrimaryButton
+                      disabled={!selectedPayMethod || (selectedPayMethod === "wallet" && walletTotal < checkoutGrandTotal - 0.001)}
+                      onClick={() => setPayStep("review")}
+                      testId="button-continue-review"
+                    >
+                      Continue to Review
+                    </CheckoutPrimaryButton>
+                    <button type="button" onClick={() => setBuyNowOpen(false)} className="w-full text-center text-sm text-[#8B9BB8] hover:text-white mt-1">{t("buttons.cancel")}</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ══ REVIEW & CONFIRM ══ */}
+              {payStep === "review" && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setPayStep("select")} className="p-1.5 rounded-xl hover:bg-white/10"><ChevronLeft className="h-5 w-5" /></button>
+                    <DialogTitle className="text-base font-bold text-white">Review & Confirm</DialogTitle>
+                  </div>
+
+                  <GlassCard className="p-3 flex items-center gap-3">
+                    {((listing as any).images?.[0]) ? (
+                      <img src={(listing as any).images[0]} alt="" className="w-14 h-14 rounded-xl object-cover bg-white/5" />
+                    ) : (
+                      <div className="w-14 h-14 rounded-xl bg-white/10 flex items-center justify-center"><ImageIcon className="h-5 w-5 text-[#8B9BB8]" /></div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-white text-sm truncate">{listing.title}</p>
+                      <p className="text-xs text-[#8B9BB8] mt-0.5">Qty: 1</p>
+                    </div>
+                    <p className="font-bold text-white tabular-nums">${effectiveListingPriceUsd.toFixed(2)}</p>
+                  </GlassCard>
+
+                  {[
+                    { label: "Address", value: `${shipName} · ${shipStreet}, ${shipCity}`, edit: () => setPayStep("address") },
+                    { label: "Delivery", value: isLocalDelivery ? t(`listing.delivery${deliverySpeedTier === "rapid" ? "Rapid" : deliverySpeedTier === "express" ? "Express" : deliverySpeedTier === "pickup" ? "Pickup" : deliverySpeedTier === "custom" ? "Custom" : "Standard"}`) : (selectedCarrier ?? "—"), edit: () => setPayStep("delivery") },
+                    { label: "Payment", value: selectedPayMethod === "wallet" ? t("listing.fmCard") : selectedPayMethod === "stripe" ? "Stripe" : selectedPayMethod === "usdt" ? "USDT" : selectedPayMethod === "friend" ? t("friendPay.title") : selectedPayMethod ?? "—", edit: () => setPayStep("select") },
+                  ].map(row => (
+                    <GlassCard key={row.label} className="px-3.5 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-wide text-[#8B9BB8]">{row.label}</p>
+                        <p className="text-sm text-white truncate mt-0.5">{row.value}</p>
+                      </div>
+                      <button type="button" onClick={row.edit} className="text-xs font-bold text-[#4C8DFF] shrink-0">Edit</button>
+                    </GlassCard>
+                  ))}
+
+                  <GlassCard className="p-3.5 space-y-2">
+                    <div className="flex justify-between text-sm"><span className="text-[#8B9BB8]">Subtotal</span><span className="text-white">${(effectiveListingPriceUsd - (promoValidation?.discountAmount ?? 0)).toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-[#8B9BB8]">Delivery</span><span className="text-white">${effectiveDeliveryFee.toFixed(2)}</span></div>
+                    {effectiveTip > 0 && <div className="flex justify-between text-sm"><span className="text-[#8B9BB8]">Tip</span><span className="text-white">${effectiveTip.toFixed(2)}</span></div>}
+                    <div className="border-t border-white/10 pt-2 flex justify-between"><span className="font-bold text-white">Total to Pay</span><span className="text-xl font-black text-[#4C8DFF]">${checkoutGrandTotal.toFixed(2)}</span></div>
+                  </GlassCard>
+
+                  <CheckoutPrimaryButton lock onClick={confirmSelectedPayment} testId="button-pay-confirm" disabled={!selectedPayMethod}>
+                    Pay ${checkoutGrandTotal.toFixed(2)}
+                  </CheckoutPrimaryButton>
+                </div>
               )}
 
               {/* ══ USDT ══ */}
@@ -3699,35 +3639,35 @@ export default function ListingDetail() {
                 <>
                   <DialogHeader>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setPayStep("select")} className="p-1 rounded hover:bg-muted"><ChevronLeft className="h-4 w-4" /></button>
-                      <DialogTitle>{t("payment.usdtPayment")}</DialogTitle>
+                      <button type="button" onClick={() => setPayStep("review")} className="p-1 rounded hover:bg-white/10"><ChevronLeft className="h-4 w-4" /></button>
+                      <DialogTitle className="text-white">{t("payment.usdtPayment")}</DialogTitle>
                     </div>
                   </DialogHeader>
                   <div className="space-y-4 mt-1">
                     <div className="text-center">
-                      <p className="text-3xl font-black text-primary">{effectiveListingPriceUsd.toFixed(2)} USDT</p>
-                      <p className="text-xs text-muted-foreground mt-1">TRC-20 Network (TRON)</p>
+                      <p className="text-3xl font-black text-[#4C8DFF]">{effectiveListingPriceUsd.toFixed(2)} USDT</p>
+                      <p className="text-xs text-[#8B9BB8] mt-1">TRC-20 Network (TRON)</p>
                     </div>
                     {quote && <CommissionBreakdown quote={quote} audience="buyer" />}
                     {usdtWalletAddress.trim() ? (
-                      <div className="bg-muted rounded-xl p-4 space-y-2">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("payment.walletAddress")}</p>
-                        <p className="font-mono text-xs break-all select-all bg-background border border-border rounded-lg px-3 py-2">{usdtWalletAddress}</p>
-                        <button onClick={() => { navigator.clipboard.writeText(usdtWalletAddress); toast({ title: t("payment.walletCopied") }); }} className="text-xs text-primary hover:underline" data-testid="button-copy-wallet">{t("payment.copyAddress")}</button>
-                      </div>
+                      <GlassCard className="p-4 space-y-2">
+                        <p className="text-xs text-[#8B9BB8] font-medium uppercase tracking-wide">{t("payment.walletAddress")}</p>
+                        <p className="font-mono text-xs break-all select-all bg-white/5 border border-white/10 rounded-lg px-3 py-2">{usdtWalletAddress}</p>
+                        <button type="button" onClick={() => { navigator.clipboard.writeText(usdtWalletAddress); toast({ title: t("payment.walletCopied") }); }} className="text-xs text-[#4C8DFF] hover:underline" data-testid="button-copy-wallet">{t("payment.copyAddress")}</button>
+                      </GlassCard>
                     ) : (
-                      <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3 flex items-center gap-2">
-                        <span className="text-destructive text-lg">⚠</span>
-                        <p className="text-sm text-destructive">USDT payments are currently unavailable. Please choose another payment method.</p>
+                      <div className="bg-red-500/10 border border-red-400/30 rounded-xl p-3 flex items-center gap-2">
+                        <span className="text-red-400 text-lg">⚠</span>
+                        <p className="text-sm text-red-300">USDT payments are currently unavailable. Please choose another payment method.</p>
                       </div>
                     )}
-                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
-                      <p className="text-xs text-amber-800 dark:text-amber-300">⚠️ {t("payment.usdtWarning", { amount: effectiveListingPriceUsd.toFixed(2) })}</p>
+                    <div className="bg-amber-500/10 border border-amber-400/25 rounded-xl p-3">
+                      <p className="text-xs text-amber-200">⚠️ {t("payment.usdtWarning", { amount: effectiveListingPriceUsd.toFixed(2) })}</p>
                     </div>
-                    <Input placeholder="Paste your USDT transaction hash (TRC-20)" value={usdtTxHash} onChange={e => setUsdtTxHash(e.target.value)} data-testid="input-usdt-hash" />
-                    <Button className="w-full font-bold" onClick={handleConfirmUsdt} disabled={payLoading || !usdtWalletAddress.trim()} data-testid="button-confirm-usdt">
+                    <Input placeholder="Paste your USDT transaction hash (TRC-20)" value={usdtTxHash} onChange={e => setUsdtTxHash(e.target.value)} data-testid="input-usdt-hash" className="bg-white/5 border-white/15 text-white" />
+                    <CheckoutPrimaryButton onClick={handleConfirmUsdt} disabled={payLoading || !usdtWalletAddress.trim()} testId="button-confirm-usdt">
                       {payLoading ? "Verifying…" : t("payment.iSentPayment")}
-                    </Button>
+                    </CheckoutPrimaryButton>
                   </div>
                 </>
               )}
@@ -3737,46 +3677,47 @@ export default function ListingDetail() {
                 <>
                   <DialogHeader>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setPayStep("select")} className="p-1 rounded hover:bg-muted" data-testid="button-back-mobile-money"><ChevronLeft className="h-4 w-4" /></button>
-                      <DialogTitle>{payStep === "moncash" ? t("payment.moncashPayment") : t("payment.natcashPayment")}</DialogTitle>
+                      <button type="button" onClick={() => setPayStep("select")} className="p-1 rounded hover:bg-white/10" data-testid="button-back-mobile-money"><ChevronLeft className="h-4 w-4" /></button>
+                      <DialogTitle className="text-white">{payStep === "moncash" ? t("payment.moncashPayment") : t("payment.natcashPayment")}</DialogTitle>
                     </div>
                   </DialogHeader>
                   <div className="space-y-4 mt-1">
                     <div className="text-center">
-                      <p className="text-3xl font-black text-primary">{formatPrice(effectiveListingPrice, country, (listing as any).currency)}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{payStep === "moncash" ? t("payment.moncashSubtitle") : t("payment.natcashSubtitle")}</p>
+                      <p className="text-3xl font-black text-[#4C8DFF]">{formatPrice(effectiveListingPrice, country, (listing as any).currency)}</p>
+                      <p className="text-xs text-[#8B9BB8] mt-1">{payStep === "moncash" ? t("payment.moncashSubtitle") : t("payment.natcashSubtitle")}</p>
                     </div>
                     {quote && <CommissionBreakdown quote={quote} audience="buyer" />}
-                    <div className="bg-muted rounded-xl p-4 space-y-2">
+                    <GlassCard className="p-4 space-y-2">
                       <div className="flex items-center justify-between flex-wrap gap-1">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{t("payment.sendToNumber")}</p>
+                        <p className="text-xs text-[#8B9BB8] font-medium uppercase tracking-wide">{t("payment.sendToNumber")}</p>
                         {payStep === "moncash" && moncashIsDirectToSeller && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">
                             <BadgeCheck className="h-3 w-3" /> Dirèk nan men vendè
                           </span>
                         )}
                       </div>
-                      <p className="font-mono text-base font-bold text-foreground select-all bg-background border border-border rounded-lg px-3 py-2 text-center">
+                      <p className="font-mono text-base font-bold text-white select-all bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-center">
                         {payStep === "moncash" ? MONCASH_NUMBER : NATCASH_NUMBER}
                       </p>
                       {payStep === "moncash" && moncashIsDirectToSeller && (
-                        <p className="text-[11px] text-green-700 dark:text-green-400 text-center">📱 Nimewo MonCash vendè a verifye — voye lajan dirèkteman ba li</p>
+                        <p className="text-[11px] text-emerald-300 text-center">📱 Nimewo MonCash vendè a verifye — voye lajan dirèkteman ba li</p>
                       )}
-                      <button onClick={() => { const num = payStep === "moncash" ? MONCASH_NUMBER : NATCASH_NUMBER; navigator.clipboard.writeText(num); toast({ title: t("payment.numberCopied") }); }}
-                        className="text-xs text-primary hover:underline inline-flex items-center gap-1" data-testid="button-copy-mobile-number">
+                      <button type="button" onClick={() => { const num = payStep === "moncash" ? MONCASH_NUMBER : NATCASH_NUMBER; navigator.clipboard.writeText(num); toast({ title: t("payment.numberCopied") }); }}
+                        className="text-xs text-[#4C8DFF] hover:underline inline-flex items-center gap-1" data-testid="button-copy-mobile-number">
                         <Copy className="h-3 w-3" /> {t("payment.copyNumber")}
                       </button>
+                    </GlassCard>
+                    <div className="bg-amber-500/10 border border-amber-400/25 rounded-xl p-3">
+                      <p className="text-xs text-amber-200">💡 {t("payment.mobileMoneyHint")}</p>
                     </div>
-                    <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
-                      <p className="text-xs text-amber-800 dark:text-amber-300">💡 {t("payment.mobileMoneyHint")}</p>
-                    </div>
-                    <Input placeholder={t("payment.transactionId")} value={mobileMoneyTxId} onChange={e => setMobileMoneyTxId(e.target.value)} data-testid="input-mobile-money-txid" />
-                    <Button className="w-full font-bold"
+                    <Input placeholder={t("payment.transactionId")} value={mobileMoneyTxId} onChange={e => setMobileMoneyTxId(e.target.value)} data-testid="input-mobile-money-txid" className="bg-white/5 border-white/15 text-white" />
+                    <CheckoutPrimaryButton
                       onClick={() => handleConfirmMobileMoney(payStep === "moncash" ? "moncash" : "natcash")}
                       disabled={payLoading}
-                      data-testid={payStep === "moncash" ? "button-confirm-moncash" : "button-confirm-natcash"}>
+                      testId={payStep === "moncash" ? "button-confirm-moncash" : "button-confirm-natcash"}
+                    >
                       {payLoading ? t("payment.processing") : t("payment.iSentMobileMoney")}
-                    </Button>
+                    </CheckoutPrimaryButton>
                   </div>
                 </>
               )}
@@ -3786,64 +3727,65 @@ export default function ListingDetail() {
                 <>
                   <DialogHeader>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setPayStep("select")} className="p-1 rounded hover:bg-muted">
+                      <button type="button" onClick={() => setPayStep("review")} className="p-1 rounded hover:bg-white/10">
                         <ChevronLeft className="h-4 w-4" />
                       </button>
-                      <DialogTitle>{t("friendPay.title")}</DialogTitle>
+                      <DialogTitle className="text-white">{t("friendPay.title")}</DialogTitle>
                     </div>
                   </DialogHeader>
                   <div className="space-y-4 mt-2">
                     {!friendRequestSent ? (
                       <>
-                        <p className="text-sm text-muted-foreground">{t("friendPay.subtitle")}</p>
+                        <p className="text-sm text-[#8B9BB8]">{t("friendPay.subtitle")}</p>
                         <div className="flex gap-2">
                           <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8B9BB8]" />
                             <Input
                               value={friendQuery}
                               onChange={e => setFriendQuery(e.target.value)}
                               onKeyDown={e => e.key === "Enter" && searchFriendUsers()}
                               placeholder={t("friendPay.searchPlaceholder")}
-                              className="pl-9 rounded-xl"
+                              className="pl-9 rounded-xl bg-white/5 border-white/15 text-white"
                             />
                           </div>
-                          <Button onClick={searchFriendUsers} disabled={friendSearching} className="rounded-xl">
+                          <Button onClick={searchFriendUsers} disabled={friendSearching} className="rounded-xl bg-[#2F6BFF]">
                             {friendSearching ? <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : t("walletTransfer.search")}
                           </Button>
                         </div>
                         {friendResults.length > 0 && (
                           <div className="space-y-2 max-h-64 overflow-y-auto">
                             {friendResults.map(u => (
-                              <button
+                              <GlassCard
                                 key={u.id}
-                                type="button"
                                 onClick={() => { setFriendRecipient(u); setFriendConfirmOpen(true); }}
-                                className="w-full flex items-center gap-3 p-3 bg-card border border-border rounded-2xl hover:border-primary/50 hover:bg-accent transition-all text-left"
+                                className="p-3"
                               >
-                                <Avatar className="h-10 w-10">
-                                  <AvatarImage src={u.avatar ?? undefined} />
-                                  <AvatarFallback className="bg-primary/10 text-primary font-bold">{u.name?.[0]}</AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1">
-                                  <p className="font-semibold text-sm">{u.name}</p>
-                                  {u.country && <p className="text-xs text-muted-foreground">{u.country}</p>}
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="h-10 w-10">
+                                    <AvatarImage src={u.avatar ?? undefined} />
+                                    <AvatarFallback className="bg-[#2F6BFF]/20 text-[#4C8DFF] font-bold">{u.name?.[0]}</AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1">
+                                    <p className="font-semibold text-sm text-white">{u.name}</p>
+                                    {u.country && <p className="text-xs text-[#8B9BB8]">{u.country}</p>}
+                                  </div>
+                                  <ChevronRight className="h-4 w-4 text-[#8B9BB8]" />
                                 </div>
-                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                              </button>
+                              </GlassCard>
                             ))}
                           </div>
                         )}
                       </>
                     ) : (
                       <div className="text-center py-6">
-                        <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <CheckCircle2 className="h-8 w-8 text-green-600" />
+                        <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <CheckCircle2 className="h-8 w-8 text-emerald-400" />
                         </div>
-                        <h3 className="font-black text-lg mb-1">{t("friendPay.requestSent")}</h3>
-                        <p className="text-sm text-muted-foreground">{friendRecipient?.name}</p>
-                        <Button variant="outline" className="mt-4" onClick={() => setBuyNowOpen(false)}>
+                        <h3 className="font-black text-lg mb-1 text-white">{t("friendPay.requestSent")}</h3>
+                        <p className="text-sm text-[#8B9BB8]">{friendRecipient?.name}</p>
+                        <CheckoutOutlineButton className="mt-4" onClick={() => setBuyNowOpen(false)}>
                           {t("buttons.close", { defaultValue: "Fèmen" })}
-                        </Button>
+                        </CheckoutOutlineButton>
                       </div>
                     )}
                   </div>

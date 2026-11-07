@@ -217,7 +217,7 @@ export default function SellerAnalytics() {
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </Link>
-              <Link href="/my-boosts" className="flex items-center gap-3 px-4 py-3.5 hover:bg-accent">
+              <Link href="/booster" className="flex items-center gap-3 px-4 py-3.5 hover:bg-accent">
                 <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 flex items-center justify-center">
                   <Megaphone className="h-5 w-5" />
                 </div>
@@ -300,7 +300,7 @@ export default function SellerAnalytics() {
             <Card className="p-8 text-center text-sm text-muted-foreground rounded-2xl">
               {t("accountCenter.noBoosts")}
               <div className="mt-3">
-                <Link href="/my-boosts"><Button size="sm">{t("myBoosts.boostCta")}</Button></Link>
+                <Link href="/booster"><Button size="sm">{t("myBoosts.boostCta")}</Button></Link>
               </div>
             </Card>
           ) : data.boosts.map((b) => (

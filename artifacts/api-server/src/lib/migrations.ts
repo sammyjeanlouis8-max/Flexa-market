@@ -3082,6 +3082,71 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE client_message_id IS NOT NULL`,
   });
 
+  // ── Booster Pro: image ads, analytics counters, drafts, saved audiences ──
+  migrations.push({
+    name: "listings.boost_image_url",
+    sql: `ALTER TABLE listings ADD COLUMN IF NOT EXISTS boost_image_url text`,
+  });
+  migrations.push({
+    name: "listings.boost_ad_format",
+    sql: `ALTER TABLE listings ADD COLUMN IF NOT EXISTS boost_ad_format text`,
+  });
+  migrations.push({
+    name: "boosts.skips",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS skips integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.video_views",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS video_views integer NOT NULL DEFAULT 0`,
+  });
+  migrations.push({
+    name: "boosts.campaign_status",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS campaign_status text NOT NULL DEFAULT 'pending'`,
+  });
+  migrations.push({
+    name: "boosts.ad_format",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS ad_format text DEFAULT 'video'`,
+  });
+  migrations.push({
+    name: "boosts.ad_title",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS ad_title text`,
+  });
+  migrations.push({
+    name: "boosts.ad_description",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS ad_description text`,
+  });
+  migrations.push({
+    name: "boosts.starts_at",
+    sql: `ALTER TABLE boosts ADD COLUMN IF NOT EXISTS starts_at timestamptz`,
+  });
+  migrations.push({
+    name: "boost_saved_audiences",
+    sql: `
+      CREATE TABLE IF NOT EXISTS boost_saved_audiences (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name text NOT NULL,
+        audience_type text NOT NULL DEFAULT 'custom',
+        country text NOT NULL,
+        state text,
+        cities text[],
+        neighborhood text,
+        radius_km integer,
+        age_min integer DEFAULT 18,
+        age_max integer DEFAULT 65,
+        gender text DEFAULT 'all',
+        objective text DEFAULT 'auto',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS boost_saved_audiences_user_id_idx ON boost_saved_audiences(user_id)
+    `,
+  });
+  migrations.push({
+    name: "boosts.campaign_status_backfill_paid",
+    sql: `UPDATE boosts SET campaign_status = 'active' WHERE payment_status = 'paid' AND (campaign_status IS NULL OR campaign_status = 'pending') AND expires_at > now()`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));

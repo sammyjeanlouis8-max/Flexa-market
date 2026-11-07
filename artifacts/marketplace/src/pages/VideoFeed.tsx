@@ -1791,8 +1791,7 @@ export default function VideoFeed() {
   });
   const openWizard = () => {
     if (purchasesDisabled) return;
-    try { sessionStorage.setItem("bw_open_vf", "1"); } catch { /* ok */ }
-    setWizardOpen(true);
+    navigate("/booster/create");
   };
   const closeWizard = () => {
     try { sessionStorage.removeItem("bw_open_vf"); } catch { /* ok */ }

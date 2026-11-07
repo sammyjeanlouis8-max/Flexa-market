@@ -53,7 +53,11 @@ const ROUTE_IMPORTERS: Record<string, () => Promise<unknown>> = {
   "/jobs": () => import("@/pages/Jobs"),
   "/support": () => import("@/pages/Support"),
   "/admin": () => import("@/pages/Admin"),
-  "/my-boosts": () => import("@/pages/MyBoosts"),
+  "/my-boosts": () => import("@/pages/booster/BoosterMyBoosts"),
+  "/booster": () => import("@/pages/booster/BoosterMyBoosts"),
+  "/booster/create": () => import("@/pages/booster/BoosterCreate"),
+  "/booster/analytics": () => import("@/pages/booster/BoosterAnalytics"),
+  "/booster/audiences": () => import("@/pages/booster/BoosterAudiences"),
 };
 
 function normalizePath(href: string): string {

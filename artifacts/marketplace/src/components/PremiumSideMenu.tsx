@@ -321,7 +321,7 @@ export default function PremiumSideMenu({ open, onClose, onNavigate, showDeliver
         { icon: Tv, label: "Flexa TV", href: "/tv", testId: "drawer-flexa-tv" },
         { icon: Music2, label: "Flexa Music", href: "/music", testId: "drawer-flexa-music" },
         ...(user ? [
-          { icon: Zap, label: t("nav.myBoosts"), href: "/my-boosts", testId: "drawer-my-boosts" } as NavItem,
+          { icon: Zap, label: t("nav.myBoosts"), href: "/booster", testId: "drawer-my-boosts" } as NavItem,
           { icon: Coins, label: t("nav.commissionPromo"), href: "/commission-promo", testId: "drawer-commission-promo" } as NavItem,
         ] : []),
         { icon: Briefcase, label: t("nav.jobsOpportunities", { defaultValue: t("nav.jobs") }), href: "/jobs", testId: "drawer-jobs" },

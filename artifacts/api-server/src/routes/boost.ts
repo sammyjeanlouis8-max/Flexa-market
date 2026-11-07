@@ -441,7 +441,8 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       eq(listingsTable.status, "hidden"),
     ) as any,
     sql`coalesce(${listingsTable.lifecycleStatus}, 'published') NOT IN ('suspended', 'archived', 'rejected')`,
-    isNotNull(listingsTable.boostVideoUrl),
+    // Video OR image creative (Booster Pro image ads)
+    or(isNotNull(listingsTable.boostVideoUrl), isNotNull(listingsTable.boostImageUrl)) as any,
     gt(listingsTable.boostExpiresAt, now),
     // NULL boostStartAt is treated as "already started" for backward-compat with
     // boosts that were activated before the boostStartAt column was added.
@@ -490,6 +491,8 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
       price: listingsTable.price,
       images: listingsTable.images,
       boostVideoUrl: listingsTable.boostVideoUrl,
+      boostImageUrl: listingsTable.boostImageUrl,
+      boostAdFormat: listingsTable.boostAdFormat,
       sellerId: listingsTable.sellerId,
       sellerName: usersTable.name,
       boostCtaType: listingsTable.boostCtaType,
@@ -512,13 +515,24 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
 
   res.set("Cache-Control", "no-store");
   const resolvedBoostVideoUrl = await resolveBoostVideoUrl(row.boostVideoUrl);
+  const adFormat =
+    row.boostAdFormat === "image" || (!resolvedBoostVideoUrl && row.boostImageUrl)
+      ? "image"
+      : "video";
+  // Image-only ads still need a video URL field for older clients — leave null.
+  if (adFormat === "video" && !resolvedBoostVideoUrl) {
+    res.json({ listing: null });
+    return;
+  }
   res.json({
     listing: {
       id: row.id,
       title: row.title,
       price: row.price,
-      thumbnail: row.images?.[0] ?? null,
+      thumbnail: row.boostImageUrl || row.images?.[0] || null,
       boostVideoUrl: resolvedBoostVideoUrl,
+      boostImageUrl: row.boostImageUrl ?? null,
+      adFormat,
       sellerName: row.sellerName,
       boostCtaType: row.boostCtaType ?? null,
       boostExternalLink: row.boostExternalLink ?? null,

@@ -57,7 +57,9 @@ interface BoostListing {
   title: string;
   price: number;
   thumbnail: string | null;
-  boostVideoUrl: string;
+  boostVideoUrl: string | null;
+  boostImageUrl?: string | null;
+  adFormat?: "video" | "image" | string | null;
   sellerName: string | null;
   boostCtaType: string | null;
   boostExternalLink: string | null;
@@ -66,6 +68,21 @@ interface BoostListing {
   /** "hidden" for video-only ghost listings — no product page exists */
   status?: string | null;
   isVideoOnly?: boolean;
+}
+
+function trackBoostEvent(listingId: number, type: "view" | "click" | "skip" | "video_view") {
+  try {
+    const tk = localStorage.getItem("flexamarket_token");
+    void fetch("/api/booster/events", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(tk ? { Authorization: `Bearer ${tk}` } : {}),
+      },
+      body: JSON.stringify({ listingId, type }),
+      keepalive: true,
+    });
+  } catch { /* non-critical */ }
 }
 
 interface Props {
@@ -79,6 +96,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [, setLocation] = useLocation();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const skipHandledRef = useRef(false);
+  const isImageAd =
+    listing.adFormat === "image" ||
+    (!listing.boostVideoUrl && !!listing.boostImageUrl);
 
   const [countdown, setCountdown] = useState(SKIP_AFTER_SEC);
   const skipReady = countdown === 0;
@@ -86,6 +106,10 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
   const [muted, setMuted] = useState(true);
   const [videoPct, setVideoPct] = useState(0); // 0–100 for the progress bar
   const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    trackBoostEvent(listing.id, isImageAd ? "view" : "video_view");
+  }, [listing.id, isImageAd]);
 
   // ── Video progress bar ────────────────────────────────────────────────────
   useEffect(() => {
@@ -203,8 +227,25 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     if (skipHandledRef.current) return;
     skipHandledRef.current = true;
     videoRef.current?.pause();
+    trackBoostEvent(listing.id, "skip");
     onClose();
-  }, [onClose]);
+  }, [onClose, listing.id]);
+
+  const toggleMute = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const vid = videoRef.current;
+    const next = !muted;
+    setMuted(next);
+    if (vid) {
+      vid.muted = next;
+      if (!next) {
+        setAudioUnlocked(true);
+        setSoundLocked(false);
+        vid.play().catch(() => {});
+      }
+    }
+  }, [muted]);
 
   const retryVideo = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
@@ -228,6 +269,7 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
     e.stopPropagation();
     e.preventDefault();
     videoRef.current?.pause();
+    trackBoostEvent(listing.id, "click");
     const type = listing.boostCtaType;
     if (type === "link" && listing.boostExternalLink) {
       window.open(listing.boostExternalLink, "_blank", "noopener,noreferrer");
@@ -262,53 +304,59 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
         data-testid="boost-video-overlay"
       >
         <div className="relative w-full bg-black" style={{ maxHeight: "55vh", overflow: "hidden" }}>
-          {/* A listing image remains visible while the first decoded video frame arrives. */}
-          {listing.thumbnail && (
+          {isImageAd ? (
             <img
-              src={listing.thumbnail}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full object-contain"
+              src={toFetchableUrl(listing.boostImageUrl || listing.thumbnail || "")}
+              alt={listing.title}
+              className="w-full"
+              style={{ display: "block", maxHeight: "55vh", objectFit: "contain" }}
+              data-testid="image-boost-ad"
             />
-          )}
-          {/* pointer-events:none on video is CRITICAL for iOS tap handling */}
-          <video
-            ref={videoRef}
-            src={toFetchableUrl(listing.boostVideoUrl)}
-            autoPlay
-            muted={muted}
-            playsInline
-            preload="auto"
-            loop={false}
-            onEnded={onClose}
-            onLoadedData={() => setVideoFailed(false)}
-            onError={() => setVideoFailed(true)}
-            className="w-full"
-            style={{
-              display: "block",
-              maxHeight: "55vh",
-              objectFit: "contain",
-              pointerEvents: "none",
-              willChange: "transform",
-            }}
-            data-testid="video-boost-ad"
-          />
-
-          {/* Do not leave people staring at an unexplained black rectangle if a
-              legacy/broken asset is unavailable. Modern normalized videos reach
-              the player through the Range stream route above. */}
-          {videoFailed && (
-            <button
-              type="button"
-              onClick={retryVideo}
-              onTouchEnd={retryVideo}
-              className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
-              aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
-            >
-              <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
-                {t("boostAd.retryVideo", "Eseye videyo a ankò")}
-              </span>
-            </button>
+          ) : (
+            <>
+              {listing.thumbnail && (
+                <img
+                  src={listing.thumbnail}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              )}
+              <video
+                ref={videoRef}
+                src={listing.boostVideoUrl ? toFetchableUrl(listing.boostVideoUrl) : undefined}
+                autoPlay
+                muted={muted}
+                playsInline
+                preload="auto"
+                loop={false}
+                onEnded={onClose}
+                onLoadedData={() => setVideoFailed(false)}
+                onError={() => setVideoFailed(true)}
+                className="w-full"
+                style={{
+                  display: "block",
+                  maxHeight: "55vh",
+                  objectFit: "contain",
+                  pointerEvents: "none",
+                  willChange: "transform",
+                }}
+                data-testid="video-boost-ad"
+              />
+              {videoFailed && (
+                <button
+                  type="button"
+                  onClick={retryVideo}
+                  onTouchEnd={retryVideo}
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/65 text-white"
+                  aria-label={t("boostAd.retryVideo", "Eseye videyo a ankò")}
+                >
+                  <span className="rounded-full border border-white/70 px-4 py-2 text-sm font-semibold">
+                    {t("boostAd.retryVideo", "Eseye videyo a ankò")}
+                  </span>
+                </button>
+              )}
+            </>
           )}
 
           {/* SPONSORED badge — overlaid top-left on the video */}
@@ -326,19 +374,36 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
             )}
           </div>
 
+          {/* Mute / Unmute — Booster Pro requirement */}
+          {!isImageAd && (
+            <button
+              type="button"
+              onClick={toggleMute}
+              onTouchEnd={toggleMute}
+              className="absolute top-3 right-3 z-10 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs font-bold flex items-center gap-1.5"
+              data-testid="button-boost-mute"
+              aria-label={muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
+            >
+              {muted ? "🔇" : "🔊"}
+              {muted ? t("boostAd.unmute", "Unmute") : t("boostAd.mute", "Mute")}
+            </button>
+          )}
+
           {/* ── Video progress bar — thin strip at the very bottom of the video ── */}
-          <div
-            className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 pointer-events-none"
-            aria-hidden="true"
-          >
+          {!isImageAd && (
             <div
-              className="h-full bg-white rounded-r-full transition-none"
-              style={{ width: `${videoPct}%` }}
-            />
-          </div>
+              className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 pointer-events-none"
+              aria-hidden="true"
+            >
+              <div
+                className="h-full bg-white rounded-r-full transition-none"
+                style={{ width: `${videoPct}%` }}
+              />
+            </div>
+          )}
 
           {/* Sound-locked hint — center of video, disappears on first touch */}
-          {soundLocked && (
+          {!isImageAd && soundLocked && (
             <div
               className="absolute inset-0 flex items-center justify-center pointer-events-none"
               aria-live="polite"
@@ -411,15 +476,15 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
               style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
               data-testid="button-boost-skip"
             >
-              {t("boostAd.skip")} <X className="h-4 w-4" />
+              {t("boostAd.skipAd", { defaultValue: t("boostAd.skip") })} <X className="h-4 w-4" />
             </button>
           ) : (
             <div
-              className="relative bg-white/20 rounded-full w-11 h-11 flex items-center justify-center"
+              className="relative bg-white/20 rounded-full px-3 h-11 flex items-center justify-center gap-2"
               data-testid="text-boost-skip-countdown"
               aria-label={t("boostAd.skipIn", { seconds: countdown })}
             >
-              <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 44 44">
+              <svg className="absolute left-1 w-9 h-9 -rotate-90" viewBox="0 0 44 44">
                 <circle cx="22" cy="22" r="19" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="2.5" />
                 <circle
                   cx="22" cy="22" r="19"
@@ -432,7 +497,9 @@ export default function BoostVideoOverlay({ listing, onClose }: Props) {
                   style={{ transition: "stroke-dashoffset 1s linear" }}
                 />
               </svg>
-              <span className="text-white text-xs font-bold relative z-10">{countdown}</span>
+              <span className="text-white text-xs font-bold relative z-10 pl-8 pr-1">
+                {t("boostAd.skipInLabel", { seconds: countdown, defaultValue: `Skip in ${countdown}s` })}
+              </span>
             </div>
           )}
         </div>

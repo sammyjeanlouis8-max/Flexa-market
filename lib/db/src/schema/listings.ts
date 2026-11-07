@@ -38,6 +38,10 @@ export const listingsTable = pgTable("listings", {
   // an overlay ad after a visitor browses for ~10s. Stored as a relative
   // object-storage path (e.g. /objects/...); served via /api/storage/objects/*.
   boostVideoUrl: text("boost_video_url"),
+  /** Optional image creative for Booster Pro image ads (served in overlay). */
+  boostImageUrl: text("boost_image_url"),
+  /** "video" | "image" — which creative the overlay prefers. */
+  boostAdFormat: text("boost_ad_format"),
   boostAudienceAgeMin: integer("boost_audience_age_min"),
   boostAudienceAgeMax: integer("boost_audience_age_max"),
   boostAudienceGender: text("boost_audience_gender"),
@@ -166,6 +170,14 @@ export const boostsTable = pgTable("boosts", {
   paymentRef: text("payment_ref"),
   impressions: integer("impressions").notNull().default(0),
   clicks: integer("clicks").notNull().default(0),
+  skips: integer("skips").notNull().default(0),
+  videoViews: integer("video_views").notNull().default(0),
+  /** draft | pending | active | completed | cancelled — Booster Pro lifecycle */
+  campaignStatus: text("campaign_status").notNull().default("pending"),
+  adFormat: text("ad_format").default("video"),
+  adTitle: text("ad_title"),
+  adDescription: text("ad_description"),
+  startsAt: timestamp("starts_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

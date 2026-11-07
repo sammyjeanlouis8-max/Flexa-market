@@ -9,7 +9,6 @@ import { useAuth } from "@/contexts/auth";
 import { formatPrice } from "@/lib/currency";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import PromoVideoPoster from "@/components/PromoVideoPoster";
-import BoostWizard from "@/components/BoostWizard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -93,7 +92,6 @@ export default function VideoDiscover() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalHint, setTotalHint] = useState(0);
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [durations, setDurations] = useState<Record<number, number>>({});
 
   const seedRef = useRef<number>(0);
@@ -363,7 +361,7 @@ export default function VideoDiscover() {
             {!purchasesDisabled && (
               <button
                 type="button"
-                onClick={() => setWizardOpen(true)}
+                onClick={() => navigate("/booster/create")}
                 className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-5 py-3 text-sm font-black text-white shadow-md"
               >
                 <Zap className="h-4 w-4" />
@@ -471,7 +469,7 @@ export default function VideoDiscover() {
             </p>
             <button
               type="button"
-              onClick={() => setWizardOpen(true)}
+              onClick={() => navigate("/booster/create")}
               className="mt-4 inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-xl bg-[hsl(152,65%,18%)] px-4 py-3 text-sm font-black text-white"
               data-testid="button-boost-video"
             >
@@ -485,7 +483,7 @@ export default function VideoDiscover() {
       {!purchasesDisabled && (
         <button
           type="button"
-          onClick={() => setWizardOpen(true)}
+          onClick={() => navigate("/booster/create")}
           className="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[hsl(152,65%,18%)] text-white shadow-xl md:bottom-8"
           aria-label={t("videoFeed.addBoost")}
           data-testid="fab-boost-video"
@@ -494,9 +492,6 @@ export default function VideoDiscover() {
         </button>
       )}
 
-      {wizardOpen && (
-        <BoostWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
-      )}
     </div>
   );
 }

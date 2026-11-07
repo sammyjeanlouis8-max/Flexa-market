@@ -40,7 +40,7 @@ const CATEGORIES: HelpCategory[] = [
     articles: [
       { titleKey: "help.artBoostProduct", href: "/faq#boost" },
       { titleKey: "help.artPromoVideo", href: "/faq#video" },
-      { titleKey: "help.artActiveBoosts", href: "/my-boosts" },
+      { titleKey: "help.artActiveBoosts", href: "/booster" },
       { titleKey: "help.artBoostDebug", href: "/faq#boost-debug" },
     ],
   },

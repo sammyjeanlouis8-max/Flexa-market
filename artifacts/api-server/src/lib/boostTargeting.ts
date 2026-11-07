@@ -10,7 +10,7 @@ export const PLAN_META: Record<Plan, { days: number; basePrice: number }> = {
   "7day": { days: 7, basePrice: 10.00 },
 };
 
-export const VALID_RADIUS_KM = [5, 10, 20, 50, 100] as const;
+export const VALID_RADIUS_KM = [5, 10, 20, 25, 50, 100] as const;
 
 export const EUROPE_COUNTRIES = new Set<string>([
   "France", "Germany", "Spain", "Italy", "Portugal", "Belgium", "Netherlands",

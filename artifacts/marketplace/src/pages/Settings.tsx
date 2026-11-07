@@ -99,7 +99,7 @@ export default function Settings() {
       icon: Megaphone,
       label: t("accountCenter.myBoosts"),
       sub: t("accountCenter.myBoostsSub"),
-      to: "/my-boosts",
+      to: "/booster",
       testid: "row-my-boosts",
       tone: "orange",
     },
@@ -213,7 +213,7 @@ export default function Settings() {
           <span className="text-[11px] font-semibold leading-tight">{t("accountCenter.quickVideos")}</span>
         </Link>
         <Link
-          href="/my-boosts"
+          href="/booster"
           className="min-h-[76px] rounded-2xl bg-orange-50 dark:bg-orange-950/30 text-orange-900 dark:text-orange-100 border border-orange-100 dark:border-orange-900 flex flex-col items-center justify-center gap-1.5 px-2 py-3 text-center"
           data-testid="button-settings-my-boosts"
         >

@@ -121,12 +121,16 @@ interface BoostAdListing {
   title: string;
   price: number;
   thumbnail: string | null;
-  boostVideoUrl: string;
+  boostVideoUrl: string | null;
+  boostImageUrl?: string | null;
+  adFormat?: string | null;
   sellerName: string | null;
   boostCtaType: string | null;
   boostExternalLink: string | null;
   boostWhatsappNumber: string | null;
   boostCtaText: string | null;
+  status?: string | null;
+  isVideoOnly?: boolean;
 }
 
 function useBoostAdTrigger(): { listing: BoostAdListing | null; dismiss: () => void } {
@@ -459,7 +463,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
         { href: "/tv", icon: Tv, label: "Flexa TV", key: "flexa-tv" },
         { href: "/music", icon: Music2, label: "Flexa Music", key: "flexa-music" },
         ...(user ? [
-          { href: "/my-boosts", icon: Zap, label: t("nav.myBoosts"), key: "my-boosts" },
+          { href: "/booster", icon: Zap, label: t("nav.myBoosts"), key: "my-boosts" },
           { href: "/commission-promo", icon: Coins, label: t("nav.commissionPromo"), key: "commission-promo" },
           { href: "/leaderboard", icon: Award, label: t("nav.referralProgram", { defaultValue: "Referral Program" }), key: "referral" },
         ] : []),
@@ -515,7 +519,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isNavyAppHeader = isCommissionPromoPage;
   const isSubscriptionPage = /^\/subscription\/?$/.test(location);
   // Mes Boosts — immersive campaign page (no site footer / bottom nav chrome).
-  const isMyBoostsPage = /^\/my-boosts\/?$/.test(location);
+  const isMyBoostsPage = /^\/(my-boosts|booster)(\/|$)/.test(location);
   // Cover regular navigation and Android's inline posting screen.
   const isSellPage = showInlineSell || /^\/sell\/?(?:\?.*)?$/.test(inlineRoute ?? location);
   const isPaymentOperations =

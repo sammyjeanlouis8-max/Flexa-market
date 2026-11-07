@@ -253,7 +253,7 @@ export default function BoostPage() {
   const [abvUploadPercent, setAbvUploadPercent] = useState(0);
   const [abvSuccess, setAbvSuccess]     = useState(false);
   const abvFileInputRef                 = useRef<HTMLInputElement | null>(null);
-  const MAX_VIDEO_SECONDS = 300;
+  const MAX_VIDEO_SECONDS = 120; // Booster Pro: max 2 minutes
   const MAX_VIDEO_BYTES   = MAX_BOOST_VIDEO_BYTES;
 
   const handleVideoSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -840,7 +840,7 @@ export default function BoostPage() {
                 ✓ {t("boost.videoLiveDesc", { defaultValue: "Listing ou a kounye a ap parèt nan video feed la" })}
               </p>
             </div>
-            <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation("/my-boosts")}>
+            <Button className="w-full h-12 font-bold text-base" onClick={() => setLocation("/booster")}>
               {t("myBoosts.title", { defaultValue: "Mes Boosts" })}
             </Button>
             <Button variant="ghost" className="w-full" onClick={() => setLocation(`/listings/${listingId}`)}>
@@ -1017,7 +1017,7 @@ export default function BoostPage() {
         </div>
 
         {/* Back to My Boosts */}
-        <Button variant="ghost" className="w-full" onClick={() => setLocation("/my-boosts")}>
+        <Button variant="ghost" className="w-full" onClick={() => setLocation("/booster")}>
           {t("myBoosts.title", { defaultValue: "Retounen nan Mes Boosts" })}
         </Button>
 

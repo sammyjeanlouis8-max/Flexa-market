@@ -72,7 +72,7 @@ export default function SettingsVideos() {
           <h1 className="text-lg font-bold truncate">{t("accountCenter.myVideos")}</h1>
           <p className="text-xs text-muted-foreground">{t("accountCenter.myVideosSub")}</p>
         </div>
-        <Link href="/my-boosts">
+        <Link href="/booster">
           <Button size="sm" className="h-9">
             <Plus className="h-4 w-4 mr-1" />
             {t("accountCenter.manageBoosts")}
@@ -97,7 +97,7 @@ export default function SettingsVideos() {
           <p className="text-sm font-medium">{t("accountCenter.noVideos")}</p>
           <p className="text-xs text-muted-foreground">{t("accountCenter.noVideosSub")}</p>
           <div className="flex flex-wrap gap-2 justify-center pt-1">
-            <Link href="/my-boosts"><Button size="sm">{t("myBoosts.boostCta")}</Button></Link>
+            <Link href="/booster"><Button size="sm">{t("myBoosts.boostCta")}</Button></Link>
             <Link href="/videos"><Button size="sm" variant="outline">{t("videoFeed.title")}</Button></Link>
           </div>
         </Card>

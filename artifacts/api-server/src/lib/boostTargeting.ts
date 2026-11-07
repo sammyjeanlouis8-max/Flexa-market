@@ -43,7 +43,10 @@ export type Gender = (typeof VALID_GENDERS)[number];
 
 export type Audience = {
   country: string;
+  /** Primary / legacy single state (first of `states` when multi). */
   state?: string | null;
+  /** Multiple departments / states selected for targeting. */
+  states?: string[] | null;
   city?: string | null;
   cities?: string[] | null;
   neighborhood?: string | null;
@@ -55,6 +58,30 @@ export type Audience = {
   objective?: Objective | null;
   audienceName?: string | null;
 };
+
+/** Encode multi-state selection into the legacy single `state` text column. */
+export function encodeAudienceStates(states: string[] | null | undefined, fallback?: string | null): string | null {
+  const cleaned = (states ?? [])
+    .map((s) => String(s || "").trim())
+    .filter(Boolean);
+  if (cleaned.length > 1) return cleaned.join(",");
+  if (cleaned.length === 1) return cleaned[0];
+  return fallback?.trim() || null;
+}
+
+/** Decode legacy single state or comma-separated multi-state column. */
+export function decodeAudienceStates(raw: string | null | undefined): string[] {
+  if (!raw || !raw.trim()) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+/** True when a viewer state matches a boost audience state column (single or multi). */
+export function audienceStateMatches(audienceState: string | null | undefined, viewerState: string): boolean {
+  if (!audienceState) return true;
+  const needle = viewerState.trim().toLowerCase();
+  if (!needle) return true;
+  return decodeAudienceStates(audienceState).some((s) => s.toLowerCase() === needle);
+}
 
 export type AudienceValidation =
   | { ok: true; audience: Audience }
@@ -76,12 +103,26 @@ export function validateAudience(
     return { ok: false, error: "Audience country must match your account country" };
   }
 
-  const state = typeof a.state === "string" ? a.state.trim() || null : null;
   const neighborhood = typeof a.neighborhood === "string" ? a.neighborhood.trim() || null : null;
   const radiusKm =
     typeof a.radiusKm === "number" && Number.isFinite(a.radiusKm)
       ? Math.round(a.radiusKm)
       : null;
+
+  // Multi-department / state selection (preferred) + legacy single `state`.
+  let states: string[] | null = null;
+  if (Array.isArray(a.states)) {
+    const cleaned = (a.states as unknown[])
+      .map((s) => (typeof s === "string" ? s.trim() : ""))
+      .filter((s) => s.length > 0)
+      .slice(0, 20);
+    if (cleaned.length > 0) states = Array.from(new Set(cleaned));
+  } else if (typeof a.state === "string" && a.state.trim()) {
+    // Support comma-encoded multi from clients that still send `state`.
+    const decoded = decodeAudienceStates(a.state);
+    if (decoded.length > 0) states = decoded;
+  }
+  const state = states && states.length > 0 ? states[0] : null;
 
   // Support both legacy single city and new multi-city array.
   let cities: string[] | null = null;
@@ -97,10 +138,17 @@ export function validateAudience(
   // Legacy single-city field (kept for backward compat).
   const city = cities && cities.length > 0 ? cities[0] : null;
 
-  if (country === "Haiti") {
-    if (!state) return { ok: false, error: "Department required for Haiti" };
-    if (!HAITI_DEPARTMENTS.includes(state as typeof HAITI_DEPARTMENTS[number])) {
-      return { ok: false, error: "Invalid Haitian department" };
+  // New Facebook-like fields (all optional)
+  const audienceType = VALID_AUDIENCE_TYPES.includes(a.audienceType as AudienceType) ? (a.audienceType as AudienceType) : "advantage_plus";
+
+  if (country === "Haiti" && audienceType === "custom") {
+    if (!states || states.length === 0) {
+      return { ok: false, error: "Please select at least one department to continue." };
+    }
+    for (const s of states) {
+      if (!HAITI_DEPARTMENTS.includes(s as typeof HAITI_DEPARTMENTS[number])) {
+        return { ok: false, error: "Invalid Haitian department" };
+      }
     }
   }
 
@@ -108,8 +156,6 @@ export function validateAudience(
     return { ok: false, error: "Invalid radius" };
   }
 
-  // New Facebook-like fields (all optional)
-  const audienceType = VALID_AUDIENCE_TYPES.includes(a.audienceType as AudienceType) ? (a.audienceType as AudienceType) : "advantage_plus";
   const ageMinRaw = typeof a.ageMin === "number" ? a.ageMin : parseInt(String(a.ageMin ?? "18"), 10);
   const ageMaxRaw = typeof a.ageMax === "number" ? a.ageMax : parseInt(String(a.ageMax ?? "65"), 10);
   const ageMin = Number.isFinite(ageMinRaw) ? Math.max(18, Math.min(65, ageMinRaw)) : 18;
@@ -118,7 +164,24 @@ export function validateAudience(
   const objective = VALID_OBJECTIVES.includes(a.objective as Objective) ? (a.objective as Objective) : "auto";
   const audienceName = typeof a.audienceName === "string" ? a.audienceName.trim().slice(0, 100) || null : null;
 
-  return { ok: true, audience: { country, state, city, cities, neighborhood, radiusKm, audienceType, ageMin, ageMax, gender, objective, audienceName } };
+  return {
+    ok: true,
+    audience: {
+      country,
+      state: encodeAudienceStates(states, state),
+      states,
+      city,
+      cities,
+      neighborhood,
+      radiusKm,
+      audienceType,
+      ageMin,
+      ageMax,
+      gender,
+      objective,
+      audienceName,
+    },
+  };
 }
 
 export function estimateReach(budget: number, plan: Plan, audience: Audience): number {
@@ -126,9 +189,10 @@ export function estimateReach(budget: number, plan: Plan, audience: Audience): n
   // ~667 impressions per dollar per day → $5 × 3 days ≈ 10 000 views (no geo filter)
   let base = Math.max(50, Math.floor(budget * 667 * days));
   const cityCount = audience.cities?.length ?? (audience.city ? 1 : 0);
+  const stateCount = audience.states?.length ?? (audience.state ? decodeAudienceStates(audience.state).length : 0);
   if (audience.neighborhood) base = Math.floor(base * 0.35);
   else if (cityCount > 0) base = Math.floor(base * Math.min(0.55 + cityCount * 0.04, 0.85));
-  else if (audience.state) base = Math.floor(base * 0.75);
+  else if (stateCount > 0) base = Math.floor(base * Math.min(0.55 + stateCount * 0.05, 0.95));
   return Math.max(50, base);
 }
 

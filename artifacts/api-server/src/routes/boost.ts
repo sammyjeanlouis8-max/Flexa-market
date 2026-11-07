@@ -145,6 +145,11 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     req.body.audience?.audienceType === "custom" ? "custom" : "advantage_plus";
   const bodyState =
     typeof req.body.audience?.state === "string" ? req.body.audience.state.trim() : "";
+  const bodyStates = Array.isArray(req.body.audience?.states)
+    ? (req.body.audience.states as unknown[])
+        .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        .map((s) => s.trim())
+    : [];
   const bodyCity =
     typeof req.body.audience?.city === "string" ? req.body.audience.city.trim() : "";
   const bodyCities = Array.isArray(req.body.audience?.cities)
@@ -152,10 +157,10 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     : [];
 
   const resolvedState = isAdmin
-    ? (bodyState || req.user?.state || null)
+    ? (bodyState || bodyStates[0] || req.user?.state || null)
     : audienceType === "custom"
-      ? (bodyState || req.user?.state || null)
-      : (req.user?.state || bodyState || null);
+      ? (bodyState || bodyStates[0] || req.user?.state || null)
+      : (req.user?.state || bodyState || bodyStates[0] || null);
 
   const resolvedCity = isAdmin
     ? (bodyCity || bodyCities[0] || req.user?.location || null)
@@ -168,6 +173,7 @@ router.post("/listings/:id/boost/initiate", requireAuth, requireNotRestricted, r
     audienceType,
     country: audienceCountry,
     state: resolvedState,
+    states: bodyStates.length > 0 ? bodyStates : (bodyState ? undefined : req.body.audience?.states),
     city: resolvedCity,
     cities: audienceType === "custom" && bodyCities.length > 0 ? bodyCities : req.body.audience?.cities,
   };
@@ -484,12 +490,17 @@ router.get("/boost/random-video", optionalAuth, async (req, res): Promise<void> 
           )`
         : sql`false`,
     ]),
-    // State isolation: only exclude when viewer has a known state AND boost targets
-    // a different state. If viewer has no state, we cannot confirm mismatch → show all.
+    // State isolation: support single department OR comma-separated multi-select.
+    // If viewer has no state, we cannot confirm mismatch → show all.
     ...(!skipCountryFilter && viewerState
       ? [or(
           isNull(listingsTable.boostAudienceState),
           sql`lower(${listingsTable.boostAudienceState}) = ${viewerState.toLowerCase()}`,
+          sql`EXISTS (
+            SELECT 1
+            FROM unnest(string_to_array(${listingsTable.boostAudienceState}, ',')) AS s(val)
+            WHERE lower(trim(s.val)) = ${viewerState.toLowerCase()}
+          )`,
         )]
       : []),
     // City isolation: same inclusive logic.

@@ -228,6 +228,54 @@
   border: 1px solid var(--fb-border);
   background: #eff6ff;
 }
+.fb-map-frame-invalid {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 1px #ef4444;
+}
+.fb-util-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.fb-util-btn {
+  flex: 1;
+  min-width: 7rem;
+  height: 2.35rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--fb-border);
+  background: #fff;
+  font-size: 0.78rem;
+  font-weight: 750;
+  color: #334155;
+  cursor: pointer;
+}
+.fb-util-btn:hover { border-color: var(--fb-purple); color: var(--fb-purple-deep); }
+.fb-inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.8rem;
+  font-weight: 650;
+  padding: 0.7rem 0.85rem;
+  line-height: 1.35;
+}
+.fb-field-invalid {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 1px #ef4444;
+}
+.fb-field-error {
+  color: #dc2626;
+  font-size: 0.75rem;
+  font-weight: 650;
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
 
 .fb-map-tools {
   display: grid;

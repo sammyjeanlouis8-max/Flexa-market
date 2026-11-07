@@ -31,7 +31,9 @@ import { probeVideoDuration } from "@/lib/probeVideoDuration";
 import { VideoUploadChooser } from "@/components/VideoUploadCenter";
 import { BoostProductCard } from "@/components/boost/BoostProductCard";
 import { BoostAdPreview } from "@/components/boost/BoostAdPreview";
-import { BoostAudiencePanel } from "@/components/boost/BoostAudiencePanel";
+import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
+import { scrollToInvalidField } from "@/lib/formValidation";
+import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
 
 const MIN_CAMPAIGN_BUDGET = 2;
 const BUDGET_PRESETS = [2, 5, 10, 20, 50, 100] as const;
@@ -209,11 +211,13 @@ export default function BoostPage() {
   const [adminCountry, setAdminCountry]         = useState<string>("");
   const [adminCity, setAdminCity]               = useState<string>("__all__");
 
-  const [audState, setAudState]                 = useState<string>("");
+  const [audStates, setAudStates]               = useState<string[]>([]);
   const [audCities, setAudCities]               = useState<string[]>([]);
   const [audCityInput, setAudCityInput]         = useState<string>("");
   const [audNeighborhood, setAudNeighborhood]   = useState<string>("");
   const [audRadiusKm, setAudRadiusKm]           = useState<number | null>(10);
+  const [geoError, setGeoError]                 = useState<string | null>(null);
+  const audiencePanelRef                        = useRef<BoostAudiencePanelHandle>(null);
 
   // New Facebook-like audience fields
   const [objective, setObjective]               = useState<"auto" | "messages" | "views">("auto");
@@ -443,7 +447,8 @@ export default function BoostPage() {
 
   const audience = useMemo(() => ({
     country: effectiveAudienceCountry || user?.country || "",
-    state: audState || null,
+    state: audStates[0] || null,
+    states: audStates.length > 0 ? audStates : null,
     cities: audCities.length > 0 ? audCities : null,
     city: ((adminCity && adminCity !== "__all__") ? adminCity : audCities[0]) ?? null,
     neighborhood: audNeighborhood.trim() || null,
@@ -455,7 +460,7 @@ export default function BoostPage() {
     gender,
     objective,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [effectiveAudienceCountry, user?.country, adminCity, audState, audCities, audNeighborhood, audRadiusKm, audienceType, audienceName, ageMin, ageMax, gender, objective]);
+  }), [effectiveAudienceCountry, user?.country, adminCity, audStates, audCities, audNeighborhood, audRadiusKm, audienceType, audienceName, ageMin, ageMax, gender, objective]);
 
   useEffect(() => {
     if (step !== "budget") return;
@@ -519,11 +524,17 @@ export default function BoostPage() {
       toast({ title: t("boost.completeProfile"), variant: "destructive" });
       return;
     }
-    // Department only required for custom audience in Haiti
-    if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && !audState) {
-      toast({ title: t("boost.selectDepartment"), variant: "destructive" });
+    // Department only required for custom audience in Haiti — inline, scroll to map
+    if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
+      const msg = t("boost.geoSelectDepartmentError", {
+        defaultValue: "Please select at least one department to continue.",
+      });
+      setGeoError(msg);
+      const el = audiencePanelRef.current?.getGeoSectionEl() ?? null;
+      scrollToInvalidField(el);
       return;
     }
+    setGeoError(null);
     setStep("budget");
   };
 
@@ -531,6 +542,15 @@ export default function BoostPage() {
     if (purchasesDisabled) return;
     if (videoUploading) {
       toast({ title: t("boost.videoStillUploading", { defaultValue: "Videyo a ap telechaje toujou. Tann li fini avant ou kontinye." }), variant: "destructive" });
+      return;
+    }
+    if (effectiveAudienceCountry === "Haiti" && audienceType === "custom" && audStates.length === 0) {
+      const msg = t("boost.geoSelectDepartmentError", {
+        defaultValue: "Please select at least one department to continue.",
+      });
+      setGeoError(msg);
+      setStep("audience");
+      setTimeout(() => scrollToInvalidField(audiencePanelRef.current?.getGeoSectionEl()), 50);
       return;
     }
     if (!(budget >= MIN_CAMPAIGN_BUDGET)) {
@@ -1361,7 +1381,7 @@ export default function BoostPage() {
               </div>
               <Select
                 value={adminCountry || user?.country || ""}
-                onValueChange={v => { setAdminCountry(v); setAdminCity("__all__"); setAudState(""); setAudCities([]); }}
+                onValueChange={v => { setAdminCountry(v); setAdminCity("__all__"); setAudStates([]); setAudCities([]); }}
               >
                 <SelectTrigger className="h-10">
                   <SelectValue />
@@ -1400,7 +1420,7 @@ export default function BoostPage() {
             </p>
             {videoUrl ? (
               <div className="space-y-2">
-                <video src={videoUrl} controls playsInline className="w-full max-h-48 rounded-xl bg-black" />
+                <AdaptiveVideoPlayer src={videoUrl} maxHeight={280} muted controls />
                 <div className="fb-video-progress"><i style={{ width: "100%" }} /></div>
                 <p className="text-xs font-semibold text-green-600">
                   {t("boost.videoUploadComplete", { defaultValue: "Upload complete 100%" })}
@@ -1433,11 +1453,12 @@ export default function BoostPage() {
           </div>
 
           <BoostAudiencePanel
+            ref={audiencePanelRef}
             country={effectiveAudienceCountry || user?.country || ""}
             audienceType={audienceType}
             onAudienceType={setAudienceType}
-            audState={audState}
-            setAudState={setAudState}
+            audStates={audStates}
+            setAudStates={setAudStates}
             audCities={audCities}
             setAudCities={setAudCities}
             audRadiusKm={audRadiusKm ?? 10}
@@ -1448,13 +1469,10 @@ export default function BoostPage() {
             setAgeMax={setAgeMax}
             gender={gender}
             setGender={setGender}
-            estimatedLabel={
-              plan === "7day" ? "≈ 200K–400K people"
-              : plan === "3day" ? "≈ 20K–50K people"
-              : audienceType === "advantage_plus" ? "≈ 5K–10K people"
-              : audCities.length > 0 ? "≈ 2K–5K people" : "≈ 3K–7K people"
-            }
-            estimatedSize={plan === "7day" || audCities.length >= 3 ? "large" : audienceType === "advantage_plus" ? "medium" : "small"}
+            geoError={geoError}
+            onGeoErrorClear={() => setGeoError(null)}
+            estimatedLabel={undefined}
+            estimatedSize={plan === "7day" || audStates.length >= 3 || audCities.length >= 3 ? "large" : audienceType === "advantage_plus" ? "medium" : "small"}
           />
 
           {listing && (
@@ -2036,10 +2054,12 @@ export default function BoostPage() {
                   {effectiveAudienceCountry || (listing as any)?.country || user?.country || "—"}
                 </span>
               </div>
-              {audState && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("boost.department")}</span>
-                  <span className="font-medium text-foreground">{audState}</span>
+              {audStates.length > 0 && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-muted-foreground shrink-0">{t("boost.department")}</span>
+                  <span className="font-medium text-foreground text-right">
+                    {audStates.join(", ")}
+                  </span>
                 </div>
               )}
               {adminCity && adminCity !== "__all__" && (

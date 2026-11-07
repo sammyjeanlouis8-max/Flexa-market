@@ -11,7 +11,9 @@ import { useUpload } from "@workspace/object-storage-web";
 import { startVideoUpload } from "@/lib/videoUploadQueue";
 import { MAX_BOOST_VIDEO_BYTES } from "@/lib/boostVideoUpload";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
-import { BoostAudiencePanel } from "@/components/boost/BoostAudiencePanel";
+import { BoostAudiencePanel, type BoostAudiencePanelHandle } from "@/components/boost/BoostAudiencePanel";
+import { AdaptiveVideoPlayer } from "@/components/media/AdaptiveVideoPlayer";
+import { scrollToInvalidField } from "@/lib/formValidation";
 import { formatPrice } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import BoosterLayout from "./BoosterLayout";
@@ -56,9 +58,15 @@ export default function BoosterCreate() {
   const { uploadFile } = useUpload();
   const purchasesDisabled = isAndroidApp();
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const audiencePanelRef = useRef<BoostAudiencePanelHandle>(null);
+  const createSectionRef = useRef<HTMLDivElement>(null);
+  const videoSectionRef = useRef<HTMLDivElement>(null);
+  const actionSectionRef = useRef<HTMLDivElement>(null);
+  const budgetSectionRef = useRef<HTMLDivElement>(null);
 
   const [step, setStep] = useState<Step>("create");
   const [adType, setAdType] = useState<AdType | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Existing product
   const [listings, setListings] = useState<UserListing[]>([]);
@@ -91,12 +99,13 @@ export default function BoosterCreate() {
   // Audience — always account country (never GPS/IP)
   const accountCountry = user?.country || "Haiti";
   const [audienceType, setAudienceType] = useState<"advantage_plus" | "custom">("advantage_plus");
-  const [department, setDepartment] = useState(accountCountry === "Haiti" ? "Ouest" : "");
-  const [cities, setCities] = useState<string[]>(accountCountry === "Haiti" ? ["Port-au-Prince"] : []);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
   const [radiusKm, setRadiusKm] = useState(25);
   const [ageMin, setAgeMin] = useState(18);
   const [ageMax, setAgeMax] = useState(65);
   const [gender, setGender] = useState<"all" | "male" | "female">("all");
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // CTA
   const [ctaType, setCtaType] = useState<CtaType>("buy_now");
@@ -317,6 +326,65 @@ export default function BoosterCreate() {
     if (!adTitle.trim() && titleHint) setAdTitle(titleHint);
   };
 
+  const validateStep = (s: Step): boolean => {
+    const next: Record<string, string> = {};
+    if (s === "create") {
+      if (!adType) next.adType = t("booster.create.chooseType", { defaultValue: "Choose ad type" });
+      if (adType === "existing" && !selectedListing) {
+        next.product = t("booster.create.selectProduct", { defaultValue: "Select your product" });
+      }
+      if (adType === "new") {
+        if (!newTitle.trim()) next.title = t("boostWizard.errorTitleRequired", { defaultValue: "Title is required" });
+        if (!newPrice || !(parseFloat(newPrice) > 0)) next.price = t("boostWizard.errorPriceTooLow", { defaultValue: "Enter a valid price" });
+        if (!newImages.some((i) => i.url)) next.images = t("boostWizard.errorImageRequired", { defaultValue: "Please select a category." }).replace("category", "image") || "Please upload a product image.";
+        if (newDesc.trim().length < 20) next.desc = t("booster.create.descMin", { defaultValue: "Minimum 20 characters." });
+      }
+      if (adType === "video_only" && !adTitle.trim()) {
+        next.title = t("booster.create.adTitle");
+      }
+      if (!videoUrl) {
+        next.video = t("boost.geoSelectVideoError", { defaultValue: "Please upload a video." });
+      }
+    }
+    if (s === "audience") {
+      if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
+        const msg = t("boost.geoSelectDepartmentError", {
+          defaultValue: "Please select at least one department to continue.",
+        });
+        next.geo = msg;
+        setGeoError(msg);
+      } else {
+        setGeoError(null);
+      }
+    }
+    if (s === "action") {
+      if (ctaType === "whatsapp" && whatsappNumber.replace(/\D/g, "").length < 8) {
+        next.whatsapp = t("booster.cta.whatsappHint", { defaultValue: "Include country code. Digits only after save." });
+      }
+      if (ctaType === "buy_now" && !hasProduct) {
+        next.cta = t("booster.cta.buyNowNeedsProduct", { defaultValue: "Buy Now requires a product" });
+      }
+    }
+    if (s === "budget") {
+      if (!(budget >= MIN_BUDGET)) {
+        next.budget = t("booster.budget.minNote", { defaultValue: "Minimum campaign budget: $2 USD." });
+      }
+    }
+    setFieldErrors(next);
+    if (Object.keys(next).length === 0) return true;
+
+    const order = ["adType", "product", "images", "title", "price", "desc", "video", "geo", "cta", "whatsapp", "budget"];
+    const first = order.find((k) => next[k]);
+    const el =
+      first === "geo" ? audiencePanelRef.current?.getGeoSectionEl()
+      : first === "video" ? videoSectionRef.current
+      : first === "whatsapp" || first === "cta" ? actionSectionRef.current
+      : first === "budget" ? budgetSectionRef.current
+      : createSectionRef.current;
+    scrollToInvalidField(el);
+    return false;
+  };
+
   const canNext = () => {
     if (step === "create") {
       if (!adType) return false;
@@ -338,6 +406,7 @@ export default function BoosterCreate() {
   };
 
   const goNext = async () => {
+    if (!validateStep(step)) return;
     if (step === "create" && adType === "new" && !createdListingId) {
       const id = await createProduct();
       if (!id) return;
@@ -364,12 +433,26 @@ export default function BoosterCreate() {
       return;
     }
     if (purchasesDisabled) return;
-    if (mode === "launch" && ctaType === "buy_now" && !listingId) {
-      toast({
-        title: t("booster.cta.buyNowNeedsProduct", { defaultValue: "Buy Now requires a product" }),
-        variant: "destructive",
-      });
-      return;
+    if (mode === "launch") {
+      if (ctaType === "buy_now" && !listingId) {
+        toast({
+          title: t("booster.cta.buyNowNeedsProduct", { defaultValue: "Buy Now requires a product" }),
+          variant: "destructive",
+        });
+        return;
+      }
+      if (accountCountry === "Haiti" && audienceType === "custom" && departments.length === 0) {
+        const msg = t("boost.geoSelectDepartmentError", {
+          defaultValue: "Please select at least one department to continue.",
+        });
+        setGeoError(msg);
+        setStep("audience");
+        setTimeout(() => scrollToInvalidField(audiencePanelRef.current?.getGeoSectionEl()), 50);
+        return;
+      }
+      if (!videoUrl || !(budget >= MIN_BUDGET)) {
+        return;
+      }
     }
     setBusy(true);
     try {
@@ -400,7 +483,8 @@ export default function BoosterCreate() {
           ctaText: ctaLabel(ctaType),
           audience: {
             country: accountCountry,
-            state: department || null,
+            state: departments[0] || null,
+            states: departments.length > 0 ? departments : null,
             cities,
             radiusKm,
             audienceType,
@@ -461,11 +545,12 @@ export default function BoosterCreate() {
 
       {/* ── CREATE ─────────────────────────────────────────────── */}
       {step === "create" && (
-        <div className="space-y-3">
-          <div className="bp-card space-y-3">
+        <div className="space-y-3" ref={createSectionRef}>
+          <div className={cn("bp-card space-y-3", fieldErrors.adType && "fb-field-invalid")}>
             <h2 className="text-sm font-extrabold text-slate-800">
               {t("booster.create.chooseType", { defaultValue: "Choose ad type" })}
             </h2>
+            {fieldErrors.adType && <p className="fb-field-error">{fieldErrors.adType}</p>}
             <div className="bp-adtype-grid">
               {([
                 ["existing", Package, t("booster.create.promoteExisting", { defaultValue: "Promote Existing Product" }), t("booster.create.promoteExistingDesc", { defaultValue: "Select a product you already sell." })],
@@ -621,11 +706,15 @@ export default function BoosterCreate() {
           )}
 
           {adType && (
-            <div className="bp-card space-y-3">
+            <div
+              className={cn("bp-card space-y-3", fieldErrors.video && "fb-field-invalid")}
+              ref={videoSectionRef}
+            >
               <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
                 <Video className="h-4 w-4 text-violet-600" />
                 {t("booster.create.uploadMedia")}
               </h2>
+              {fieldErrors.video && <p className="fb-field-error">{fieldErrors.video}</p>}
               <input
                 ref={videoInputRef}
                 type="file"
@@ -637,34 +726,37 @@ export default function BoosterCreate() {
                   if (f) void onPickVideo(f);
                 }}
               />
-              <button
-                type="button"
-                className="bp-upload"
-                onClick={() => videoInputRef.current?.click()}
-                data-testid="booster-upload"
-              >
-                {uploading ? (
-                  <div className="space-y-2">
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
-                    <div className="text-xs font-semibold text-violet-700">{uploadPercent}%</div>
-                    <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto">
-                      <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
-                    </div>
+              {uploading ? (
+                <div className="bp-upload">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
+                  <div className="text-xs font-semibold text-violet-700 mt-2">{uploadPercent}%</div>
+                  <div className="h-1.5 rounded-full bg-violet-100 overflow-hidden max-w-xs mx-auto mt-2">
+                    <div className="h-full bg-violet-600 transition-all" style={{ width: `${uploadPercent}%` }} />
                   </div>
-                ) : mediaPreview ? (
-                  <div className="space-y-2">
-                    <video src={mediaPreview} className="mx-auto max-h-52 rounded-lg w-full bg-black" controls playsInline muted />
-                    <div className="text-xs text-violet-700 font-semibold">
-                      {t("boostWizard.step3Change", { defaultValue: "Change Video" })}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="font-bold text-violet-700">{t("booster.create.uploadMedia")}</div>
-                    <div className="text-xs text-slate-500 mt-1">{t("booster.create.max2min")}</div>
-                  </>
-                )}
-              </button>
+                </div>
+              ) : mediaPreview ? (
+                <div className="space-y-2">
+                  <AdaptiveVideoPlayer src={mediaPreview} maxHeight={280} muted controls />
+                  <button
+                    type="button"
+                    className="bp-btn bp-btn-ghost w-full"
+                    onClick={() => videoInputRef.current?.click()}
+                    data-testid="booster-upload"
+                  >
+                    {t("boostWizard.step3Change", { defaultValue: "Change Video" })}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="bp-upload"
+                  onClick={() => videoInputRef.current?.click()}
+                  data-testid="booster-upload"
+                >
+                  <div className="font-bold text-violet-700">{t("booster.create.uploadMedia")}</div>
+                  <div className="text-xs text-slate-500 mt-1">{t("booster.create.max2min")}</div>
+                </button>
+              )}
 
               {libraryVideos.length > 0 && (
                 <div>
@@ -694,11 +786,12 @@ export default function BoosterCreate() {
       {step === "audience" && (
         <div className="bp-card flexa-boost">
           <BoostAudiencePanel
+            ref={audiencePanelRef}
             country={accountCountry}
             audienceType={audienceType}
             onAudienceType={setAudienceType}
-            audState={department}
-            setAudState={setDepartment}
+            audStates={departments}
+            setAudStates={setDepartments}
             audCities={cities}
             setAudCities={setCities}
             audRadiusKm={radiusKm}
@@ -709,6 +802,8 @@ export default function BoosterCreate() {
             setAgeMax={setAgeMax}
             gender={gender}
             setGender={setGender}
+            geoError={geoError}
+            onGeoErrorClear={() => { setGeoError(null); setFieldErrors((e) => ({ ...e, geo: "" })); }}
             estimatedLabel={t("booster.audience.noReachEstimate", {
               defaultValue: "Audience estimates appear only when reliable data is available.",
             })}
@@ -718,7 +813,7 @@ export default function BoosterCreate() {
 
       {/* ── ACTION / CTA ───────────────────────────────────────── */}
       {step === "action" && (
-        <div className="bp-card space-y-3">
+        <div className="bp-card space-y-3" ref={actionSectionRef}>
           <h2 className="text-sm font-extrabold text-slate-800">
             {t("booster.cta.title", { defaultValue: "Call to action" })}
           </h2>
@@ -771,8 +866,9 @@ export default function BoosterCreate() {
 
       {/* ── BUDGET ─────────────────────────────────────────────── */}
       {step === "budget" && (
-        <div className="bp-card space-y-3">
+        <div className={cn("bp-card space-y-3", fieldErrors.budget && "fb-field-invalid")} ref={budgetSectionRef}>
           <label className="bp-label">{t("booster.budget.total")} (USD)</label>
+          {fieldErrors.budget && <p className="fb-field-error">{fieldErrors.budget}</p>}
           <div className="bp-chip-row mb-2">
             {[2, 5, 10, 20, 50].map((b) => (
               <button
@@ -839,38 +935,58 @@ export default function BoosterCreate() {
       {/* ── REVIEW ─────────────────────────────────────────────── */}
       {step === "review" && (
         <div className="bp-card grid gap-4 md:grid-cols-2">
-          <div className="bp-preview-card">
-            <div className="absolute top-2 left-2 z-10">
-              <span className="bp-sponsored-pill">{t("boostAd.sponsored")}</span>
-            </div>
-            {mediaPreview || videoUrl ? (
-              <video
-                src={mediaPreview || videoUrl || ""}
-                className="bp-preview-media"
-                controls
-                playsInline
-                muted
-                poster={resolvedImages[0]}
-              />
-            ) : (
-              <div className="bp-preview-media" />
-            )}
-            <div className="bp-preview-meta">
-              <div className="font-bold">{resolvedTitle || "—"}</div>
-              {hasProduct && resolvedPrice > 0 && (
-                <div className="text-violet-200 text-sm font-semibold mt-0.5">
-                  {formatPrice(resolvedPrice, accountCountry, "USD")}
-                </div>
+          <div className="bp-preview-card" style={{ background: "#fff", color: "#0f172a" }}>
+            <div className="relative">
+              <div className="absolute top-2 left-2 z-10">
+                <span className="bp-sponsored-pill" style={{ background: "#dc2626" }}>{t("boostAd.sponsored")}</span>
+              </div>
+              {mediaPreview || videoUrl ? (
+                <AdaptiveVideoPlayer
+                  src={mediaPreview || videoUrl || ""}
+                  poster={resolvedImages[0]}
+                  maxHeight={320}
+                  muted
+                  controls
+                />
+              ) : (
+                <div className="bp-preview-media" />
               )}
-              {user?.name ? (
-                <div className="opacity-80 text-xs mt-1">{user.name}</div>
-              ) : null}
-              {ctaType !== "none" && (
-                <div className="mt-2 inline-flex items-center rounded-lg bg-white text-violet-800 text-xs font-bold px-3 py-1.5">
+            </div>
+            {hasProduct && (
+              <div className="flex items-start gap-3 p-3 border-t border-slate-100">
+                {resolvedImages[0] ? (
+                  <img src={resolvedImages[0]} alt="" className="h-14 w-14 rounded-lg object-cover shrink-0" />
+                ) : (
+                  <div className="h-14 w-14 rounded-lg bg-slate-100 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <div className="font-bold text-sm truncate">{resolvedTitle || "—"}</div>
+                  {resolvedPrice > 0 && (
+                    <div className="text-sm font-semibold text-violet-700">
+                      {formatPrice(resolvedPrice, accountCountry, "USD")}
+                    </div>
+                  )}
+                  {(adDescription || newDesc) && (
+                    <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">
+                      {(adType === "new" ? newDesc : adDescription).slice(0, 90)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            {!hasProduct && (
+              <div className="bp-preview-meta" style={{ color: "#0f172a" }}>
+                <div className="font-bold">{resolvedTitle || "—"}</div>
+                {user?.name ? <div className="opacity-70 text-xs mt-1">{user.name}</div> : null}
+              </div>
+            )}
+            {ctaType !== "none" && (
+              <div className="px-3 pb-3">
+                <div className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white text-sm font-bold px-3 py-2.5">
                   {ctaLabel(ctaType)}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
           <div className="space-y-2 text-sm">
             <div><strong>{t("booster.review.type")}:</strong>{" "}
@@ -880,10 +996,15 @@ export default function BoosterCreate() {
                   ? t("booster.create.createPromote", { defaultValue: "Create & Promote Product" })
                   : t("booster.create.videoOnly", { defaultValue: "Promote Video Only" })}
             </div>
-            <div><strong>{t("booster.review.audience")}:</strong> {accountCountry}{department ? ` · ${department}` : ""}{cities.length ? ` · ${cities.slice(0, 3).join(", ")}` : ""}</div>
+            <div>
+              <strong>{t("boost.targetAreas", { defaultValue: "Target Areas" })}:</strong>{" "}
+              {accountCountry}
+              {departments.length ? ` · ${departments.join(", ")}` : audienceType === "advantage_plus" ? " · Automatic" : ""}
+              {cities.length ? ` · ${cities.slice(0, 3).join(", ")}` : ""}
+            </div>
             <div><strong>{t("booster.cta.title", { defaultValue: "CTA" })}:</strong> {ctaLabel(ctaType)}</div>
-            <div><strong>{t("booster.review.budget")}:</strong> ${budget.toFixed(2)} USD</div>
-            <div><strong>{t("booster.review.duration")}:</strong> {durationDays}d ({startDate} → {endDate})</div>
+            <div><strong>{t("booster.review.budget")}:</strong> ${budget.toFixed(2)} ({durationDays} {t("booster.budget.days")})</div>
+            <div><strong>{t("booster.budget.daily", { defaultValue: "Est. daily spend" })}:</strong> ${dailySpend.toFixed(2)} / day</div>
             <div className="text-xs text-slate-500 pt-2">{t("booster.review.walletNote")}</div>
             <button type="button" className="bp-btn bp-btn-ghost mt-2" onClick={() => setStep("create")}>
               {t("common.edit", { defaultValue: "Edit" })}

@@ -3,7 +3,10 @@ import { usersTable } from "./users";
 
 /**
  * Tracks what each logged-in user has searched for so the home page can
- * surface personalized "baze sou rechèch ou" recommendations.
+ * surface personalized "For You" / "Pou ou" recommendations.
+ *
+ * History is strictly per account (userId). Two people in the same house
+ * with different logins keep separate histories and see different top products.
  *
  * Each (userId, query) pair is unique. Repeated searches increment the
  * searchCount and update lastSearchedAt instead of creating duplicate rows.

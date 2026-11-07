@@ -42,6 +42,11 @@ import {
   isWithinPromaxDailyBudget,
   matchesPromaxAudience,
 } from "../lib/promaxBoostGating";
+import {
+  escapeIlikePattern,
+  scoreSearchRelevance,
+  sortPersonalizedRank,
+} from "../lib/personalizedFeed";
 import { logger } from "../lib/logger";
 import { getAdminScopeCities, listingInAdminScope, parseAdminCountries } from "../lib/adminScope";
 
@@ -2462,6 +2467,7 @@ router.patch("/listings/:id/restock", requireAuth, requireNotRestricted, async (
  * Upsert a search term for the authenticated user.
  * Body: { query: string, category?: string }
  * Called silently from the Search page whenever the user types a meaningful query.
+ * History is per account (userId) — same house / Wi-Fi never merges two people.
  */
 router.post("/listings/search-history", requireAuth, async (req, res): Promise<void> => {
   try {
@@ -2471,12 +2477,16 @@ router.post("/listings/search-history", requireAuth, async (req, res): Promise<v
       return;
     }
     const q = query.trim().toLowerCase().slice(0, 120);
+    const categoryValue = typeof category === "string" && category.trim()
+      ? category.trim().slice(0, 80)
+      : null;
 
     await db
       .insert(searchHistoryTable)
       .values({
         userId: req.userId!,
         query: q,
+        category: categoryValue,
         searchCount: 1,
         lastSearchedAt: new Date(),
       })
@@ -2485,6 +2495,7 @@ router.post("/listings/search-history", requireAuth, async (req, res): Promise<v
         set: {
           searchCount: sql`${searchHistoryTable.searchCount} + 1`,
           lastSearchedAt: new Date(),
+          ...(categoryValue ? { category: categoryValue } : {}),
         },
       });
 
@@ -2515,33 +2526,42 @@ router.get("/listings/search-history", requireAuth, async (req, res): Promise<vo
 });
 
 /**
- * GET /listings/personalized
- * Returns up to 20 listings that match the user's top search terms.
+ * GET /listings/personalized  ("For You" / Pou ou)
+ * Returns up to 20 listings that match THIS user's top search terms, ranked by
+ * search relevance first so two household accounts with different histories see
+ * different products at the top of Home.
  * Falls back to an empty list if the user has no search history.
  */
 router.get("/listings/personalized", requireAuth, async (req, res): Promise<void> => {
   try {
-    // 1. Fetch user's top 5 search terms (most frequent first)
+    // 1. Fetch user's top 8 search terms with frequency weights (most frequent first)
     const historyRows = await db
-      .select({ query: searchHistoryTable.query })
+      .select({
+        query: searchHistoryTable.query,
+        searchCount: searchHistoryTable.searchCount,
+      })
       .from(searchHistoryTable)
       .where(eq(searchHistoryTable.userId, req.userId!))
       .orderBy(desc(searchHistoryTable.searchCount), desc(searchHistoryTable.lastSearchedAt))
-      .limit(5);
+      .limit(8);
 
     if (historyRows.length === 0) {
       res.json({ listings: [], searches: [] });
       return;
     }
 
-    const topTerms = historyRows.map(r => r.query);
+    const weightedTerms = historyRows.map((r) => ({
+      query: r.query,
+      weight: Math.max(1, Number(r.searchCount) || 1),
+    }));
+    const topTerms = weightedTerms.map((r) => r.query);
 
     // 2. Build OR conditions — title or description matches any top term
-    const termConditions = topTerms.map(term =>
+    const termConditions = topTerms.map((term) =>
       or(
-        ilike(listingsTable.title, `%${term}%`),
-        ilike(listingsTable.description, `%${term}%`)
-      )!
+        ilike(listingsTable.title, `%${escapeIlikePattern(term)}%`),
+        ilike(listingsTable.description, `%${escapeIlikePattern(term)}%`),
+      )!,
     );
 
     const baseConditions = [
@@ -2578,6 +2598,8 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
     const proximitySqlP = geoUserP ? buildProximitySql(geoUserP) : sql<number>`(0)::int`;
     const distanceSqlP  = geoUserP ? buildDistanceSql(geoUserP)  : sql<number | null>`NULL::real`;
 
+    // Over-fetch then re-rank in memory by THIS user's search relevance so
+    // shared household geo cannot make two accounts see the same top order.
     const rows = await db
       .select({
         listings: listingsTable,
@@ -2598,10 +2620,22 @@ router.get("/listings/personalized", requireAuth, async (req, res): Promise<void
         desc(proximitySqlP),
         desc(listingsTable.createdAt),
       )
-      .limit(20);
+      .limit(60);
+
+    const ranked = sortPersonalizedRank(
+      rows.map((r) => ({
+        row: r,
+        id: r.listings.id,
+        relevance: scoreSearchRelevance(r.listings.title, r.listings.description, weightedTerms),
+        isBoosted: Boolean(r.listings.isBoosted),
+        distanceKm: r.distanceKm == null ? null : Number(r.distanceKm),
+        proximity: Number(r.proximity ?? 0),
+        createdAt: r.listings.createdAt,
+      })),
+    ).slice(0, 20);
 
     res.json({
-      listings: await Promise.all(rows.map(r => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
+      listings: await Promise.all(ranked.map(({ row: r }) => formatListing(r.listings, r.users!, r.categories, r.subcategories, geoUserP, {
         distanceKm: r.distanceKm,
         proximityLevel: scoreToLevel(Number(r.proximity ?? 0)),
       }))),

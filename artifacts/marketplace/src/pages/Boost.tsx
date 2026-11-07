@@ -61,13 +61,13 @@ const PLANS = [
   },
 ] as const;
 
-const PERK_KEYS: Record<string, string> = {
-  featuredSection:  "Appears in Featured section",
-  prioritySearch:   "Priority in relevant search results",
-  everything1day:   "Everything in 1 Day",
-  highlightedBadge: "Sponsored listing badge",
-  everything3day:   "Everything in 3 Days",
-  topWeek:          "Extended sponsored placement",
+const PERK_I18N_KEYS: Record<string, string> = {
+  featuredSection:  "boost.perkFeaturedSection",
+  prioritySearch:   "boost.perkPrioritySearch",
+  everything1day:   "boost.perkEverything1day",
+  highlightedBadge: "boost.perkHighlightedBadge",
+  everything3day:   "boost.perkEverything3day",
+  topWeek:          "boost.perkTopWeek",
 };
 
 type Plan = (typeof PLANS)[number]["id"];
@@ -493,7 +493,14 @@ export default function BoostPage() {
 
   const walletSufficient = walletBalance >= budget - 0.001;
   const ALL_METHODS: { id: PayMethod; label: string; icon: string; sub: string }[] = [
-    { id: "wallet",  label: t("boost.walletMethod",  "Kont Promosyon"), icon: "💰", sub: `$${walletBalance.toFixed(2)} disponib${walletSufficient ? "" : " — pa ase"}` },
+    {
+      id: "wallet",
+      label: t("boost.walletMethod"),
+      icon: "💰",
+      sub: walletSufficient
+        ? t("wallet.walletAvailable", { amount: walletBalance.toFixed(2) })
+        : t("wallet.walletInsufficientShort", { amount: walletBalance.toFixed(2) }),
+    },
     { id: "card",    label: t("boost.cardMethod"),    icon: "💳", sub: t("boost.cardSub")    },
     { id: "sepa",    label: t("boost.sepaMethod"),    icon: "🏦", sub: t("boost.sepaSub")    },
     { id: "apple",   label: t("boost.appleMethod"),   icon: "",  sub: t("boost.appleSub")   },
@@ -1992,7 +1999,7 @@ export default function BoostPage() {
                         <div className="flex flex-wrap gap-x-3 mt-1.5">
                           {p.perks.slice(0, 2).map(k => (
                             <span key={k} className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Check className="h-2.5 w-2.5 text-green-500" />{PERK_KEYS[k]}
+                              <Check className="h-2.5 w-2.5 text-green-500" />{t(PERK_I18N_KEYS[k])}
                             </span>
                           ))}
                         </div>

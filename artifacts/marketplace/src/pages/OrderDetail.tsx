@@ -238,8 +238,10 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
             <Lock className="h-5 w-5 text-white" />
           </div>
           <div className="text-left">
-            <p className="font-black text-sm tracking-wide">{isBus ? "KÒD POU BAY MACHANN NAN" : "KÒD PIN LIVREZON"}</p>
-            <p className="text-[11px] text-white/70 mt-0.5">Klike pou wè kòd ou a</p>
+            <p className="font-black text-sm tracking-wide">
+              {isBus ? t("orderDetail.pinCodeForSeller") : t("orderDetail.pinDeliveryCode")}
+            </p>
+            <p className="text-[11px] text-white/70 mt-0.5">{t("orderDetail.pinTapToView")}</p>
           </div>
         </div>
         <div className="flex gap-1 shrink-0">
@@ -277,12 +279,12 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Title */}
                 <div>
                   <h2 className="text-xl font-black text-emerald-600 dark:text-emerald-400 tracking-wide uppercase">
-                    {isBus ? "KÒD KONFIRMASYON" : "ACHTE RESEVWA"}
+                    {isBus ? t("orderDetail.pinConfirmTitle") : t("orderDetail.pinPurchaseTitle")}
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
                     {isBus
-                      ? <>Men kòd sekrè ou a.<br />Bay machann nan kòd la pa mesaj lè ou resevwa atik la.</>
-                      : <>Ou te achte avèk siksès.<br />Men kòd konfimasyon w lan :</>}
+                      ? <>{t("orderDetail.pinBusIntro1")}<br />{t("orderDetail.pinBusIntro2")}</>
+                      : <>{t("orderDetail.pinPurchaseIntro1")}<br />{t("orderDetail.pinPurchaseIntro2")}</>}
                   </p>
                 </div>
 
@@ -300,12 +302,12 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                   <div className="bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-300/70 dark:border-amber-700/50 rounded-2xl p-4 flex items-start gap-3 text-left">
                     <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-black text-sm text-amber-800 dark:text-amber-300 uppercase tracking-wide">Kisa pou w fè ak kòd sa a?</p>
+                      <p className="font-black text-sm text-amber-800 dark:text-amber-300 uppercase tracking-wide">{t("orderDetail.pinWhatToDo")}</p>
                       <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
-                        Lè ou <span className="font-bold">resevwa atik la</span> nan men transpòtè a — voye kòd sa a bay <span className="font-bold">machann nan pa mesaj</span>. Li ap antre l nan app li pou libere lajan l imedyatman.
+                        {t("orderDetail.pinBusWhatToDoBody")}
                       </p>
                       <p className="text-[11px] text-amber-600 dark:text-amber-500 mt-1.5 font-semibold">
-                        <XCircle className="h-3 w-3 inline mr-1" /> Pa bay kòd la si ou pa resevwa atik la!
+                        <XCircle className="h-3 w-3 inline mr-1" /> {t("orderDetail.pinDontShareEarly")}
                       </p>
                     </div>
                   </div>
@@ -315,12 +317,10 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/40 rounded-2xl p-4 text-left">
                   <div className="flex items-center gap-2 mb-1.5">
                     <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <p className="font-black text-[11px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">SA KI PWOCHEN</p>
+                    <p className="font-black text-[11px] text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">{t("orderDetail.pinWhatsNext")}</p>
                   </div>
                   <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed">
-                    {isBus
-                      ? "Bay machann nan kòd la lè ou resevwa atik la. Li ap antre l pou libere lajan li imedyatman."
-                      : "Lajan an ap lage bay vandè a sèlman lè w konfime livrezon atik la. Ale nan lèd la pou w swiv estati a."}
+                    {isBus ? t("orderDetail.pinBusNext") : t("orderDetail.pinDeliveryNext")}
                   </p>
                 </div>
 
@@ -329,7 +329,7 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                   onClick={() => setStep(2)}
                   className="w-full bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[hsl(152,65%,18%)]/30"
                 >
-                  {isBus ? "Wè kòd pou machann nan →" : "Wè kòd PIN livrezon →"}
+                  {isBus ? t("orderDetail.pinSeeSellerCode") : t("orderDetail.pinSeeDeliveryCode")}
                 </button>
               </div>
             ) : (
@@ -345,12 +345,14 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Title */}
                 <div>
                   <h2 className="text-lg font-black text-[hsl(152,65%,18%)] dark:text-emerald-300 tracking-wide uppercase">
-                    {isBus || isSellerDelivery ? "KÒD POU BAY MACHANN NAN" : "KÒD PIN LIVREZON"}
+                    {isBus || isSellerDelivery ? t("orderDetail.pinCodeForSeller") : t("orderDetail.pinDeliveryCode")}
                   </h2>
                   <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-                    {isSellerDelivery ? t("sell.selfDeliveryCodePrompt") : isBus
-                      ? "Bay machann nan kòd sa a pa mesaj lè ou resevwa atik la. Li ap antre l nan app li pou libere lajan li imedyatman."
-                      : "Bay chofè Flexa Market la kòd sa a SÈLMAN lè li rive avèk pakè a."}
+                    {isSellerDelivery
+                      ? t("sell.selfDeliveryCodePrompt")
+                      : isBus
+                        ? t("orderDetail.pinBusSharePrompt")
+                        : t("orderDetail.pinDriverSharePrompt")}
                   </p>
                 </div>
 
@@ -366,28 +368,28 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                 {/* Copy */}
                 <button onClick={copy} className="flex items-center gap-1.5 mx-auto text-xs text-[hsl(152,65%,18%)] font-semibold py-1">
                   {copied
-                    ? <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> Kòd kopye</>
-                    : <><Copy className="h-4 w-4" /> Kopi kòd la</>}
+                    ? <><CheckCircle2 className="h-4 w-4 text-emerald-500" /> {t("orderDetail.pinCopied")}</>
+                    : <><Copy className="h-4 w-4" /> {t("orderDetail.pinCopy")}</>}
                 </button>
 
                 {/* Important info */}
                 <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-800/40 rounded-2xl p-4 text-left">
                   <div className="flex items-center gap-2 mb-1.5">
                     <Info className="h-5 w-5 text-blue-500 shrink-0" />
-                    <p className="font-black text-[11px] text-blue-700 dark:text-blue-400 uppercase tracking-wide">ENFÒMASYON ENPÒTAN</p>
+                    <p className="font-black text-[11px] text-blue-700 dark:text-blue-400 uppercase tracking-wide">{t("orderDetail.pinImportant")}</p>
                   </div>
                   <ul className="space-y-1 text-xs text-blue-800 dark:text-blue-300">
                     {isBus ? (
                       <>
-                        <li>• Bay <span className="font-bold">machann nan sèlman</span> kòd la — pa lòt moun.</li>
-                        <li>• Bay kòd la <span className="font-bold">sèlman lè ou resevwa atik la</span> nan men transpòtè a.</li>
-                        <li>• Si ou pa resevwa atik la, pa bay kòd la — kontakte sipò nou.</li>
+                        <li>• {t("orderDetail.pinBusTip1")}</li>
+                        <li>• {t("orderDetail.pinBusTip2")}</li>
+                        <li>• {t("orderDetail.pinBusTip3")}</li>
                       </>
                     ) : (
                       <>
-                        <li>• Bay kòd la bay <span className="font-bold">chofè Flexa Market asiyen an sèlman</span>.</li>
-                        <li>• Pa pataje kòd sa a ak lòt moun.</li>
-                        <li>• Li valab sèlman pou tranzaksyon sa a.</li>
+                        <li>• {t("orderDetail.pinDriverTip1")}</li>
+                        <li>• {t("orderDetail.pinDriverTip2")}</li>
+                        <li>• {t("orderDetail.pinDriverTip3")}</li>
                       </>
                     )}
                   </ul>
@@ -398,7 +400,7 @@ function VerificationCodeCard({ code, isBus = false, isSellerDelivery = false }:
                   onClick={close}
                   className="w-full bg-[hsl(152,65%,18%)] hover:bg-[hsl(152,65%,14%)] text-white font-black rounded-2xl py-3.5 text-sm transition-colors shadow-md shadow-[hsl(152,65%,18%)]/30"
                 >
-                  Fèmen
+                  {t("orderDetail.pinClose")}
                 </button>
               </div>
             )}
@@ -418,19 +420,34 @@ const TRACKING_STATUS_COLOR: Record<string, string> = {
   exception:        "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
-function frenchStatus(status: string | null | undefined, kind: "order" | "payment" | "shipping"): string {
-  const labels: Record<string, string> = {
-    pending: "En attente", ready_to_ship: "Confirmée", confirmed: "Confirmée",
-    processing: "En préparation", shipped: "Expédiée", delivered: "Livrée",
-    completed: "Terminée", cancelled: "Annulée", completed_payment: "Payé",
-    paid: "Payé", refunded: "Remboursé", partially_refunded: "Partiellement remboursé",
-    label_created: "Étiquette créée", in_transit: "En transit",
-    out_for_delivery: "En cours de livraison", exception: "Exception",
-    returned: "Colis retourné",
+function localizedStatus(
+  status: string | null | undefined,
+  kind: "order" | "payment" | "shipping",
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (kind === "payment" && status === "completed") return t("orderDetail.statusPaid");
+  if (kind === "shipping" && !status) return t("orderDetail.statusNotShipped");
+  const keyMap: Record<string, string> = {
+    pending: "orderDetail.statusPending",
+    ready_to_ship: "orderDetail.statusConfirmed",
+    confirmed: "orderDetail.statusConfirmed",
+    processing: "orderDetail.statusProcessing",
+    shipped: "orderDetail.statusShipped",
+    delivered: "orderDetail.statusDelivered",
+    completed: "orderDetail.statusCompleted",
+    cancelled: "orderDetail.statusCancelled",
+    completed_payment: "orderDetail.statusPaid",
+    paid: "orderDetail.statusPaid",
+    refunded: "orderDetail.statusRefunded",
+    partially_refunded: "orderDetail.statusPartialRefund",
+    label_created: "orderDetail.statusLabelCreated",
+    in_transit: "orderDetail.statusInTransit",
+    out_for_delivery: "orderDetail.statusOutForDelivery",
+    exception: "orderDetail.statusException",
+    returned: "orderDetail.statusReturned",
   };
-  if (kind === "payment" && status === "completed") return "Payé";
-  if (kind === "shipping" && !status) return "Non expédiée";
-  return labels[status ?? ""] ?? status ?? "Non disponible";
+  const key = keyMap[status ?? ""];
+  return key ? t(key) : (status ?? t("orderDetail.statusUnavailable"));
 }
 
 function DaysLeft({ isoDate, t }: { isoDate: string; t: (key: string) => string }) {
@@ -1154,13 +1171,13 @@ export default function OrderDetail() {
           )}
           {trackingData?.shipment && trackingData.events.length > 0 && (
             <div className="mt-5 border-t border-border pt-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Historique réel du transporteur</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">{t("orderDetail.carrierHistory")}</p>
               <ol className="space-y-3">
                 {trackingData.events.slice().reverse().map(event => (
                   <li key={event.id} className="flex gap-3 text-sm">
                     <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
                     <div className="min-w-0">
-                      <p className="font-semibold">{frenchStatus(event.eventStatus, "shipping")}</p>
+                      <p className="font-semibold">{localizedStatus(event.eventStatus, "shipping", t)}</p>
                       {event.eventDescription && <p className="text-muted-foreground">{event.eventDescription}</p>}
                       <p className="text-xs text-muted-foreground">
                         {event.location ? `${event.location} · ` : ""}{new Date(event.eventTimestamp).toLocaleString()}

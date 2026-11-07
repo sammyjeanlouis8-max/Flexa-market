@@ -378,7 +378,7 @@ function SuccessScreen({ orders, deliveryTotal, onDone }: { orders: CheckoutOrde
       <div className="flex gap-2.5 w-full max-w-sm">
         <button
           type="button"
-          onClick={() => setLocation("/orders/purchases")}
+          onClick={() => setLocation("/orders")}
           className="flex-1 h-11 rounded-xl font-bold text-sm text-white"
           style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
         >

@@ -74,9 +74,14 @@ export default function ProfilePage() {
 
   const profileAny = profile as any;
   useSEO({
-    title: profileAny?.displayName ? `${profileAny.displayName} — Profil Vandè` : "Profil Vandè",
+    title: profileAny?.displayName
+      ? t("profile.sellerProfileSeo", { name: profileAny.displayName })
+      : t("profile.sellerProfileTitle"),
     description: profileAny?.displayName
-      ? `Gade profil ${profileAny.displayName} sou FLEXA MARKET — ${listings?.length ?? 0} annons aktif, achte sekirize ann Ayiti.`
+      ? t("profile.sellerProfileDesc", {
+          name: profileAny.displayName,
+          count: listings?.length ?? 0,
+        })
       : undefined,
     path: id ? `/profile/${id}` : undefined,
   });
@@ -103,16 +108,16 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
+    <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4 sm:py-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       {/* Header */}
-      <div className="bg-card border border-border rounded-xl p-4 sm:p-5 mb-4">
+      <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 mb-4 shadow-sm dark:border-border dark:bg-card">
         <div className="flex items-start gap-3 sm:gap-4">
-          <Avatar className="h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0">
+          <Avatar className="h-14 w-14 sm:h-16 sm:w-16 flex-shrink-0 ring-2 ring-orange-100 dark:ring-orange-900/40">
             <AvatarImage src={p.avatar ?? undefined} />
             <AvatarFallback className="text-xl font-black bg-primary text-primary-foreground">{p.name[0]}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-extrabold text-foreground leading-tight break-words">{p.name}</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#0B1F3A] dark:text-foreground leading-tight break-words">{p.name}</h1>
             <div className="flex items-center gap-2 flex-wrap mt-0.5">
               {p.isVerified && <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />}
               {p.isAdmin && <Badge variant="default" className="text-xs">Admin</Badge>}
@@ -199,8 +204,8 @@ export default function ProfilePage() {
         </TabsList>
         <TabsContent value="listings">
           {(listings as any[])?.length === 0 ? (
-            <div className="text-center py-12 bg-card border border-border rounded-xl">
-              <Package className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
+            <div className="text-center py-8 rounded-2xl border border-dashed border-border bg-card/60">
+              <Package className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("profile.noListings")}</p>
             </div>
           ) : (
@@ -280,8 +285,8 @@ export default function ProfilePage() {
         </TabsContent>
         <TabsContent value="reviews">
           {(reviews as any[])?.length === 0 ? (
-            <div className="text-center py-12 bg-card border border-border rounded-xl">
-              <Star className="h-9 w-9 text-muted-foreground mx-auto mb-2" />
+            <div className="text-center py-8 rounded-2xl border border-dashed border-border bg-card/60">
+              <Star className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="font-semibold text-foreground">{t("profile.noReviews")}</p>
             </div>
           ) : (

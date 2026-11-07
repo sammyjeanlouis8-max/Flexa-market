@@ -344,6 +344,7 @@ function SafetyWarningModal({ jobTitle, onConfirm, onCancel, lang }: {
 // ── Employer verification banner ──────────────────────────────────────────────
 
 function EmployerVerifyBanner({ status, onApply }: { status: EmployerStatus | null; onApply: () => void }) {
+  const { t } = useTranslation();
   if (!status || status.isVerifiedEmployer || status.adminBypass) return null;
 
   if (status.status === "pending") {
@@ -351,8 +352,8 @@ function EmployerVerifyBanner({ status, onApply }: { status: EmployerStatus | nu
       <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/25 dark:border-amber-800 px-4 py-3 flex items-start gap-3">
         <Clock className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Aplikasyon ou an annatant revizyon</p>
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Super Admin ap revize dosye ou anvan 24-48h. Ou kapab chèche djòb pandan w ap tann.</p>
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">{t("jobs.pendingReviewTitle")}</p>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">{t("jobs.pendingReviewBody")}</p>
         </div>
       </div>
     );
@@ -363,9 +364,9 @@ function EmployerVerifyBanner({ status, onApply }: { status: EmployerStatus | nu
       <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/25 dark:border-red-800 px-4 py-3 flex items-start gap-3">
         <XCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-red-800 dark:text-red-300">Aplikasyon ou an te rejete</p>
-          <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">Ou ka soumèt yon nouvo aplikasyon ak enfòmasyon ki kòrèk.</p>
-          <Button size="sm" className="mt-2 h-7 text-xs" variant="destructive" onClick={onApply}>Re-aplike</Button>
+          <p className="text-sm font-semibold text-red-800 dark:text-red-300">{t("jobs.rejectedTitle")}</p>
+          <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">{t("jobs.rejectedBody")}</p>
+          <Button size="sm" className="mt-2 h-7 text-xs" variant="destructive" onClick={onApply}>{t("jobs.reapply")}</Button>
         </div>
       </div>
     );
@@ -377,6 +378,7 @@ function EmployerVerifyBanner({ status, onApply }: { status: EmployerStatus | nu
 // ── Employer KYC application form (3 steps + photo uploads) ───────────────────
 
 function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -396,7 +398,7 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
 
   const submit = async () => {
     if (!form.fullName.trim() || !form.phone.trim() || !form.address.trim()) {
-      toast({ title: "Non, telefòn, ak adrès obligatwa.", variant: "destructive" }); return;
+      toast({ title: t("jobs.requiredNamePhoneAddress"), variant: "destructive" }); return;
     }
     setSubmitting(true);
     try {
@@ -411,9 +413,9 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast({ title: err?.error ?? "Something went wrong. Try again.", variant: "destructive" }); return;
+        toast({ title: err?.error ?? t("jobs.applyFailed"), variant: "destructive" }); return;
       }
-      toast({ title: "Aplikasyon soumèt! Nou ap revize l anvan 24-48h." });
+      toast({ title: t("jobs.applySubmitted") });
       onDone();
     } finally {
       setSubmitting(false);
@@ -421,9 +423,9 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
   };
 
   const steps = [
-    { label: "Enfòmasyon", icon: UserIcon },
-    { label: "Foto ID", icon: Camera },
-    { label: "Selfie & Biznis", icon: ImageIcon },
+    { label: t("jobs.verifyStepInfo"), icon: UserIcon },
+    { label: t("jobs.verifyStepId"), icon: Camera },
+    { label: t("jobs.verifyStepSelfie"), icon: ImageIcon },
   ];
 
   return (
@@ -432,7 +434,7 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-emerald-500" />
-            Verifye Anplwayè
+            {t("jobs.verifyEmployerTitle")}
           </DialogTitle>
         </DialogHeader>
 
@@ -457,29 +459,29 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
 
         {step === 1 && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">Nou bezwen verifikasyon idantite ou pou pwoteje chèchè djòb yo.</p>
+            <p className="text-sm text-muted-foreground">{t("jobs.verifyIntro")}</p>
             <div>
-              <label className="text-sm font-medium block mb-1">Non konplè *</label>
+              <label className="text-sm font-medium block mb-1">{t("jobs.fullNameRequired")}</label>
               <Input value={form.fullName} onChange={e => setF("fullName", e.target.value)} placeholder="Jan Batis Pierre" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium block mb-1">Telefòn *</label>
+                <label className="text-sm font-medium block mb-1">{t("jobs.phoneRequired")}</label>
                 <Input value={form.phone} onChange={e => setF("phone", e.target.value)} placeholder="+509 3xxx-xxxx" />
               </div>
               <div>
-                <label className="text-sm font-medium block mb-1">WhatsApp</label>
+                <label className="text-sm font-medium block mb-1">{t("jobs.whatsapp")}</label>
                 <Input value={form.whatsapp} onChange={e => setF("whatsapp", e.target.value)} placeholder="+509..." />
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium block mb-1">Adrès *</label>
+              <label className="text-sm font-medium block mb-1">{t("jobs.addressRequired")}</label>
               <Input value={form.address} onChange={e => setF("address", e.target.value)} placeholder="Ri, Vil, Depatman" />
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" onClick={onCancel}>Anile</Button>
+              <Button variant="outline" onClick={onCancel}>{t("jobs.cancel")}</Button>
               <Button onClick={() => setStep(2)} disabled={!form.fullName.trim() || !form.phone.trim() || !form.address.trim()}>
-                Kontinye <ChevronRight className="h-4 w-4 ml-1" />
+                {t("jobs.continue")} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
           </div>
@@ -489,7 +491,7 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
           <div className="space-y-4">
             <div className="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl px-3 py-2.5 text-xs text-blue-700 dark:text-blue-400">
               <Shield className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              Foto ID ou ap rèstè konfidansyèl. Sèlman Super Admin ka wè yo.
+              {t("jobs.idConfidential")}
             </div>
             <PhotoUploadField
               label="Foto ID devan (CIN / Pasepò) *"
@@ -506,9 +508,9 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
               required
             />
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" onClick={() => setStep(1)}>Retounen</Button>
+              <Button variant="outline" onClick={() => setStep(1)}>{t("jobs.back")}</Button>
               <Button onClick={() => setStep(3)} disabled={!photos.idFront || !photos.idBack}>
-                Kontinye <ChevronRight className="h-4 w-4 ml-1" />
+                {t("jobs.continue")} <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
           </div>
@@ -539,12 +541,12 @@ function EmployerApplyForm({ onDone, onCancel }: { onDone: () => void; onCancel:
             </div>
             <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2.5 text-xs text-emerald-700 dark:text-emerald-400 flex items-start gap-2">
               <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              Admin ap revize enfòmasyon sa yo epi kontakte w si yo bezwen plis dokiman (24-48h).
+              {t("jobs.pendingReviewBody")}
             </div>
             <div className="flex gap-2 justify-end pt-1">
-              <Button variant="outline" onClick={() => setStep(2)}>Retounen</Button>
+              <Button variant="outline" onClick={() => setStep(2)}>{t("jobs.back")}</Button>
               <Button onClick={submit} disabled={submitting || !photos.idSelfie}>
-                {submitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Soumèt...</> : "Soumèt Aplikasyon"}
+                {submitting ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />{t("jobs.processing")}</> : t("jobs.submitApplication")}
               </Button>
             </div>
           </div>

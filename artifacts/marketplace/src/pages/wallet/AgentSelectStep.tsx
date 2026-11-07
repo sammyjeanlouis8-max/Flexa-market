@@ -6,7 +6,11 @@ import { Users, Loader2, ChevronRight, ArrowLeft } from "lucide-react";
 function BackButton({ onClick }: { onClick: () => void }) {
   const { t } = useTranslation();
   return (
-    <button onClick={onClick} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+    >
       <ArrowLeft className="h-4 w-4" /> {t("wallet.back")}
     </button>
   );
@@ -21,6 +25,7 @@ export function AgentSelectStep({
   onBack: () => void;
   onSelect: (agent: any) => void;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<{ agents: any[] }>({
     queryKey: ["/agents/public", { onlineOnly: false }],
     queryFn: async () => {
@@ -34,41 +39,60 @@ export function AgentSelectStep({
   });
 
   const agents = data?.agents ?? [];
-  const online = agents.filter(a => a.isOnline);
-  const offline = agents.filter(a => !a.isOnline);
+  const online = agents.filter((a) => a.isOnline);
+  const offline = agents.filter((a) => !a.isOnline);
   const sorted = [...online, ...offline];
+  const amount = Number.parseFloat(cashoutAmount || "0");
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 space-y-4">
+    <div className="mx-auto w-full max-w-lg px-4 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-4">
       <BackButton onClick={onBack} />
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <Users className="h-6 w-6 text-green-500" />
-          <h1 className="text-2xl font-black">Chwazi Ajan Otorize</h1>
+      <header className="space-y-1">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+            <Users className="h-5 w-5" />
+          </span>
+          <h1 className="text-[21px] sm:text-2xl font-bold tracking-tight text-[#0B1F3A] dark:text-foreground">
+            {t("wallet.agentSelectTitle", { defaultValue: "Choose an authorized agent" })}
+          </h1>
         </div>
-        <p className="text-sm text-muted-foreground">Retire <strong>${parseFloat(cashoutAmount || "0").toFixed(2)}</strong> — chwazi yon ajan ki disponib</p>
-      </div>
+        <p className="text-sm text-slate-500 dark:text-muted-foreground">
+          {t("wallet.agentSelectSubtitle", {
+            amount: Number.isFinite(amount) ? amount.toFixed(2) : "0.00",
+            defaultValue: "Withdraw ${{amount}} — pick an available agent",
+          })}
+        </p>
+      </header>
 
       {online.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs font-bold text-green-600">{online.length} ajan online kounye a</span>
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            {t("wallet.agentOnlineCount", {
+              count: online.length,
+              defaultValue: "{{count}} agent(s) online now",
+            })}
+          </span>
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16">
+        <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : sorted.length === 0 ? (
-        <div className="text-center py-16 space-y-3">
-          <Users className="h-12 w-12 text-muted-foreground mx-auto" />
-          <p className="font-bold">Pa gen ajan disponib nan peyi ou a</p>
-          <p className="text-sm text-muted-foreground">Eseye pita oswa chwazi yon lòt metòd retrait</p>
+        <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center space-y-2">
+          <Users className="mx-auto h-10 w-10 text-muted-foreground" />
+          <p className="font-bold text-[#0B1F3A] dark:text-foreground">
+            {t("wallet.agentNoAgents")}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {t("wallet.agentNoAgentsHint")}
+          </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {sorted.map(agent => {
+        <div className="space-y-2.5">
+          {sorted.map((agent) => {
             const fmNum = agent.fmWalletNumber ?? agent.accountNumber;
             const methods = agent.supportedMethods
               ? agent.supportedMethods.split(",").map((s: string) => s.trim()).filter(Boolean)
@@ -76,35 +100,38 @@ export function AgentSelectStep({
             return (
               <button
                 key={agent.id}
+                type="button"
                 onClick={() => onSelect(agent)}
-                className="w-full text-left rounded-2xl border-2 border-border bg-card hover:border-green-400/50 hover:bg-green-50/30 dark:hover:bg-green-950/10 transition-all p-4"
+                className="group w-full rounded-2xl border border-slate-200/90 bg-white p-4 text-left shadow-sm transition-colors hover:border-emerald-400/50 hover:bg-emerald-50/40 dark:border-border dark:bg-card dark:hover:bg-emerald-950/20"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-700 dark:text-green-400 font-black text-lg shrink-0">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-lg font-black text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                     {agent.fullName?.charAt(0) ?? "A"}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-bold text-foreground truncate">{agent.fullName}</p>
-                      <span className={cn(
-                        "text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0",
-                        agent.isOnline ? "bg-green-500/15 text-green-600 dark:text-green-400" : "bg-muted text-muted-foreground"
-                      )}>
-                        {agent.isOnline ? "🟢 ONLINE" : "⚫ OFFLINE"}
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-0.5 flex items-center gap-2">
+                      <p className="truncate font-bold text-foreground">{agent.fullName}</p>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold",
+                          agent.isOnline
+                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {agent.isOnline
+                          ? t("wallet.agentOnline", { defaultValue: "Online" })
+                          : t("wallet.agentOffline", { defaultValue: "Offline" })}
                       </span>
                     </div>
-                    {agent.businessName && <p className="text-xs text-muted-foreground truncate">{agent.businessName}</p>}
-                    <p className="text-xs text-muted-foreground">📍 {agent.city}</p>
-                    {fmNum && (
-                      <p className="text-xs font-mono text-primary mt-1">FM: {fmNum}</p>
+                    {agent.businessName && (
+                      <p className="truncate text-xs text-muted-foreground">{agent.businessName}</p>
                     )}
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {methods.slice(0, 3).map((m: string) => (
-                        <span key={m} className="text-[9px] font-semibold bg-muted px-1.5 py-0.5 rounded-full">{m}</span>
-                      ))}
-                    </div>
+                    <p className="text-xs text-muted-foreground">📍 {agent.city}</p>
+                    {fmNum && <p className="mt-1 font-mono text-xs text-primary">FM: {fmNum}</p>}
+                    <p className="mt-1 text-[11px] text-muted-foreground">{methods.join(" · ")}</p>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-emerald-600" />
                 </div>
               </button>
             );

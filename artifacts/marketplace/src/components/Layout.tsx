@@ -521,6 +521,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
   const isAdminConsole = /^\/admin(?:\/|$)/.test(location);
 
   // Pages where the footer should NOT render (full-screen / chat-like UIs)
+  // Transactional / immersive surfaces share the same chrome: no storefront footer.
   const noFooter = isSellPage || isAdminConsole || isMyBoostsPage || [
     /^\/messages/,
     /^\/auth\//,
@@ -528,7 +529,7 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/checkout/,
     /^\/settings(?:\/|$)/,
     /^\/order-label\//,
-    /^\/orders\/[^/]+\/?$/,
+    /^\/orders(?:\/|$)/,
     /^\/videos(?:\/watch)?\/?$/,
     /^\/wallet/,
     /^\/subscription\/?$/,
@@ -538,6 +539,9 @@ export default function Layout({ children, inlineRoutes }: { children: ReactNode
     /^\/delivery\/deliveries\/?$/,
     /^\/listings\/[^/]+/,
     /^\/profile\/\d+\/?$/,
+    /^\/boost(?:\/|$)/,
+    /^\/saved\/?$/,
+    /^\/offers\/?$/,
     /^\/tv(\/|$)/,
     /^\/admin\/tv(\/|$)/,
     /^\/admin\/music(\/|$)/,

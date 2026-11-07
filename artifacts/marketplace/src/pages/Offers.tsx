@@ -239,7 +239,7 @@ function OfferCard({ offer, isSent, userId }: { offer: Offer; isSent: boolean; u
               className="flex-1"
             >
               <Button size="sm" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold" data-testid={`button-pay-now-${offer.id}`}>
-                <CheckCircle className="h-4 w-4 mr-1.5" /> Peye kounye a · ${(offer.counterAmount ?? offer.amount).toFixed(2)}
+                <CheckCircle className="h-4 w-4 mr-1.5" /> {t("offers.payNow")} · ${(offer.counterAmount ?? offer.amount).toFixed(2)}
               </Button>
             </Link>
           )}

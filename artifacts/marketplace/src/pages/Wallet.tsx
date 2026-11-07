@@ -1356,7 +1356,7 @@ export default function WalletPage() {
   // =========================================================================
   if (step === "redeem_card") {
     return (
-      <div className="max-w-md mx-auto px-4 py-8 space-y-6">
+      <div className="mx-auto w-full max-w-lg px-4 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-5">
         <BackButton onClick={() => { goBack(); setRedeemCode(""); setRedeemSuccess(null); }} />
 
         {redeemSuccess ? (
@@ -1365,23 +1365,23 @@ export default function WalletPage() {
               <CheckCircle className="h-10 w-10 text-green-500" />
             </div>
             <div className="text-center space-y-1">
-              <h2 className="text-2xl font-black text-foreground">Rechaj Reyisi!</h2>
+              <h2 className="text-2xl font-black text-foreground">{t("wallet.redeemSuccessTitle")}</h2>
               <p className="text-4xl font-black text-green-500 mt-2">${redeemSuccess.amountUsd.toFixed(2)}</p>
-              <p className="text-sm text-muted-foreground">Krédite sou Wallet FM ou enstantane ⚡</p>
+              <p className="text-sm text-muted-foreground">{t("wallet.redeemSuccessSub")}</p>
             </div>
             <Button className="w-full h-12 font-bold text-base" onClick={() => resetToHome()}>
-              Retounen nan Wallet
+              {t("wallet.redeemBackWallet")}
             </Button>
           </div>
         ) : (
           <>
             <div className="space-y-1">
-              <h1 className="text-2xl font-black">Kòd Rechaj FM</h1>
-              <p className="text-sm text-muted-foreground">Gratte kart ou a epi antre kòd la anba a pou kredite wallet ou enstantane.</p>
+              <h1 className="text-[21px] sm:text-2xl font-bold tracking-tight text-[#0B1F3A] dark:text-foreground">{t("wallet.redeemTitle")}</h1>
+              <p className="text-sm text-slate-500 dark:text-muted-foreground">{t("wallet.redeemSubtitle")}</p>
             </div>
 
             {/* Card visual */}
-            <div className="rounded-2xl p-5 text-white relative overflow-hidden" style={{ background: "linear-gradient(135deg, #f97316 0%, #dc2626 50%, #7c3aed 100%)" }}>
+            <div className="rounded-2xl p-5 text-white relative overflow-hidden shadow-sm" style={{ background: "linear-gradient(135deg, #f97316 0%, #dc2626 50%, #7c3aed 100%)" }}>
               <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.3) 10px, rgba(255,255,255,0.3) 11px)" }} />
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -1392,16 +1392,16 @@ export default function WalletPage() {
                 </div>
                 <Gift className="h-6 w-6 opacity-70" />
               </div>
-              <p className="text-xs opacity-70 mb-1 font-semibold uppercase tracking-widest">Kòd PIN</p>
+              <p className="text-xs opacity-70 mb-1 font-semibold uppercase tracking-widest">{t("wallet.redeemPinLabel")}</p>
               <p className="font-mono text-2xl font-black tracking-[4px] text-white/90">
                 {redeemCode.toUpperCase() || "FM-XXXX-XXXX"}
               </p>
-              <p className="text-xs opacity-60 mt-3">Rechaj enstantane • 0% frè</p>
+              <p className="text-xs opacity-60 mt-3">{t("wallet.redeemInstant")}</p>
             </div>
 
             {/* Input */}
             <div className="space-y-3">
-              <label className="text-sm font-semibold">Antre Kòd PIN ou a</label>
+              <label className="text-sm font-semibold">{t("wallet.redeemEnterPin")}</label>
               <Input
                 type="text"
                 value={redeemCode}
@@ -1420,15 +1420,15 @@ export default function WalletPage() {
                 onClick={() => redeemMut.mutate(redeemCode.trim())}
               >
                 {redeemMut.isPending
-                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Ap verifye…</>
-                  : <><CheckCircle className="h-5 w-5 mr-2" />Itilize Kòd la</>
+                  ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("wallet.redeemVerifying")}</>
+                  : <><CheckCircle className="h-5 w-5 mr-2" />{t("wallet.redeemUseCode")}</>
                 }
               </Button>
             </div>
 
-            <div className="rounded-xl border border-border p-3 flex items-start gap-2">
+            <div className="rounded-xl border border-border bg-card p-3 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-              <p className="text-xs text-muted-foreground">Chak kòd pa ka itilize ke yon sèl fwa. Kòb la krédite enstantane sou wallet FM ou a san frè.</p>
+              <p className="text-xs text-muted-foreground">{t("wallet.redeemHint")}</p>
             </div>
           </>
         )}

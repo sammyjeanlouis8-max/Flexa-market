@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { detectLang } from "../lib/chatbotLanguage";
-import { retrieveKnowledge, formatKnowledgeBlock } from "../lib/chatbotKnowledge";
+import { detectLang, detectLangFromMessages } from "../lib/chatbotLanguage";
+import {
+  retrieveKnowledge,
+  formatKnowledgeBlock,
+  composeKnowledgeAnswer,
+} from "../lib/chatbotKnowledge";
 import {
   classifyIntent,
   sanitizeUserQuery,
@@ -12,6 +16,11 @@ describe("FlexaBot language detection", () => {
   it("detects Haitian Creole", () => {
     expect(detectLang("Kijan pou mwen swiv komann mwen?")).toBe("ht");
   });
+  it("detects short Creole help requests", () => {
+    expect(detectLang("ou ka edem")).toBe("ht");
+    expect(detectLang("ou pale kreyol")).toBe("ht");
+    expect(detectLang("banm ede sou pòtfèy mwen")).toBe("ht");
+  });
   it("detects French", () => {
     expect(detectLang("Comment puis-je voir mon paiement?")).toBe("fr");
   });
@@ -20,6 +29,28 @@ describe("FlexaBot language detection", () => {
   });
   it("defaults to English", () => {
     expect(detectLang("How do I track my order?")).toBe("en");
+  });
+  it("uses preferred lang when the message is ambiguous", () => {
+    expect(detectLang("ok", "ht")).toBe("ht");
+    expect(detectLang("ok", "fr")).toBe("fr");
+  });
+  it("keeps Creole across short follow-ups in a conversation", () => {
+    expect(
+      detectLangFromMessages(
+        [
+          { role: "user", content: "ou ka edem" },
+          { role: "assistant", content: "Wi, mwen ka ede w!" },
+          { role: "user", content: "ou pale kreyol" },
+        ],
+        "en",
+      ),
+    ).toBe("ht");
+  });
+  it("answers Creole greetings in Creole via knowledge fallback", () => {
+    const hits = retrieveKnowledge("ou ka edem");
+    const answer = composeKnowledgeAnswer({ lang: "ht", snippets: hits });
+    expect(answer.content.toLowerCase()).toMatch(/wi|mwen ka ede|kreyòl|kreyol/);
+    expect(answer.content.toLowerCase()).not.toMatch(/\bi can help with flexa market topics\b/);
   });
 });
 
@@ -52,6 +83,27 @@ describe("verified knowledge retrieval", () => {
   it("handles unknown topics without fake facts", () => {
     const block = formatKnowledgeBlock(retrieveKnowledge("xyzzy quantum banana teleport"));
     expect(block).toMatch(/none matched|VERIFIED_KNOWLEDGE/);
+  });
+  it("answers Creole questions about sharing FM card / money", () => {
+    const hits = retrieveKnowledge("komanm ka pataje kob sou kat fm mw ak yon lot moun?");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.some((h) => h.id === "send-money" || h.id === "fm-card" || h.id === "wallet")).toBe(true);
+    const answer = composeKnowledgeAnswer({ lang: "ht", snippets: hits });
+    expect(answer.content.toLowerCase()).not.toMatch(/indisponible|unavailable/);
+    expect(answer.content).toMatch(/wallet|transfer|pòtfèy|voye|nimewo kont/i);
+  });
+  it("answers notification management questions", () => {
+    const hits = retrieveKnowledge("Comment gérer mes notifications sur FLEXA ?");
+    expect(hits.some((h) => h.id === "notifications")).toBe(true);
+    const answer = composeKnowledgeAnswer({ lang: "fr", snippets: hits });
+    expect(answer.content).toContain("/settings/notifications");
+    expect(answer.content.toLowerCase()).not.toMatch(/indisponible|unavailable/);
+  });
+  it("still helps when nothing matches (no unavailable message)", () => {
+    const answer = composeKnowledgeAnswer({ lang: "en", snippets: [] });
+    expect(answer.fromKnowledge).toBe(true);
+    expect(answer.content.toLowerCase()).not.toMatch(/unavailable|indisponible/);
+    expect(answer.deepLinks).toContain("/faq");
   });
 });
 

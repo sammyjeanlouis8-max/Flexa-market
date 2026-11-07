@@ -9,6 +9,7 @@ import {
   Bot, Send, Sparkles, Trash2, User as UserIcon, MessageSquare, Loader2,
   CreditCard, Wallet, Users, ArrowUpRight, ArrowDownToLine, Clock,
   Bell, HelpCircle, Truck, Music, Zap, Building2, Briefcase, Globe,
+  ChevronLeft,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { isLoanAllowed } from "@/lib/loanPolicy";
@@ -345,7 +346,7 @@ export default function Chatbot() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: "include",
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, preferredLang: lang }),
       });
 
       const data = await resp.json().catch(() => ({}));
@@ -454,26 +455,40 @@ export default function Chatbot() {
     );
   }
 
+  const BRAND_GREEN = "hsl(152,65%,18%)";
+
   return (
-    <div className="container max-w-3xl mx-auto p-4 md:p-6 flex flex-col h-[calc(100vh-9rem)]">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-            <Sparkles className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold leading-tight">FlexaBot</h1>
-            <p className="text-xs text-muted-foreground">
-              {t("chatbot.subtitle", { defaultValue: "Your FLEXA MARKET assistant" })}
+    <div className="mx-auto flex h-dvh max-w-3xl flex-col overflow-hidden bg-[#F4F7F5]" data-testid="flexabot-page">
+      <header className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5 text-white" style={{ background: BRAND_GREEN }}>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.history.length > 1) {
+                window.history.back();
+              } else {
+                setLocation("/");
+              }
+            }}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/10"
+            aria-label={t("common.back", { defaultValue: "Back" })}
+            data-testid="button-chatbot-back"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <img src="/flexa-logo-v2.png" alt="Flexa Market" className="h-8 w-8 rounded-full bg-white/10 p-0.5" width={32} height={32} />
+          <div className="min-w-0">
+            <h1 className="truncate text-[15px] font-bold leading-tight">FlexaBot</h1>
+            <p className="truncate text-[10px] text-white/75">
+              {t("chatbot.subtitle", { defaultValue: "Your Flexa Market AI assistant" })}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Button
-            variant="outline"
             size="sm"
             onClick={() => setLocation("/support")}
-            className="hidden sm:flex items-center gap-1.5 text-xs h-8"
+            className="hidden h-8 items-center gap-1.5 bg-white/15 text-xs text-white hover:bg-white/25 sm:flex"
             data-testid="button-live-support"
           >
             <MessageSquare className="h-3.5 w-3.5" />
@@ -484,34 +499,35 @@ export default function Chatbot() {
               variant="ghost"
               size="sm"
               onClick={clearChat}
-              className="text-muted-foreground"
+              className="text-white/80 hover:bg-white/10 hover:text-white"
               data-testid="button-clear-chat"
             >
-              <Trash2 className="h-4 w-4 mr-1" />
+              <Trash2 className="mr-1 h-4 w-4" />
               {t("chatbot.clear", { defaultValue: "Clear" })}
             </Button>
           )}
         </div>
-      </div>
+      </header>
 
       {/* Escalation banner */}
       {showEscalate && (
-        <div className="mb-3 flex items-center justify-between gap-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3 animate-in fade-in duration-200">
+        <div className="mx-3 mt-2 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 animate-in fade-in duration-200">
           <div className="flex items-center gap-2.5">
-            <MessageSquare className="h-4 w-4 text-purple-600 flex-shrink-0" />
-            <p className="text-sm text-purple-800 dark:text-purple-200">
+            <MessageSquare className="h-4 w-4 shrink-0 text-emerald-800" />
+            <p className="text-sm text-emerald-900">
               {t("chatbot.botCantResolve")}
             </p>
           </div>
           <Button
             size="sm"
-            className="h-8 text-xs bg-purple-600 hover:bg-purple-700 text-white flex-shrink-0"
+            className="h-8 shrink-0 text-xs text-white"
+            style={{ background: BRAND_GREEN }}
             onClick={escalateToAgent}
             disabled={escalating}
             data-testid="button-escalate-agent"
           >
             {escalating ? (
-              <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />{t("chatbot.connecting")}</>
+              <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" />{t("chatbot.connecting")}</>
             ) : (
               t("chatbot.talkToAgent")
             )}
@@ -519,7 +535,7 @@ export default function Chatbot() {
         </div>
       )}
 
-      <Card className="flex-1 overflow-hidden flex flex-col">
+      <Card className="mx-0 flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 shadow-none md:mx-3 md:mb-3 md:rounded-xl md:border">
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col" data-testid="chat-messages">
           <div className="flex-1" />
           <div className="space-y-4">

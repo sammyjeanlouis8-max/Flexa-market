@@ -35,6 +35,8 @@ type DeliveredOrder = {
     status: string;
     driverUserId: number | null;
     driverInfo: { name: string | null } | null;
+    pickupPhotoUrl?: string | null;
+    dropoffPhotoUrl?: string | null;
   } | null;
 };
 
@@ -122,6 +124,9 @@ export default function OrderDelivered() {
   const ref = order.orderRef || orderRef(order.orderId);
   const canRateDriver = Boolean(order.fmDelivery?.id && order.fmDelivery.status === "delivered");
   const podPhotos = (order.carrierPodPhotos ?? []).filter((p) => p.url || p.photoUrl);
+  const proofPickup = order.fmDelivery?.pickupPhotoUrl?.trim() || null;
+  const proofDropoff = order.fmDelivery?.dropoffPhotoUrl?.trim() || null;
+  const hasFmProofPhotos = Boolean(proofPickup || proofDropoff);
 
   return (
     <div className="max-w-lg mx-auto px-4 py-5 pb-28 space-y-4" data-testid="order-delivered-page">
@@ -209,6 +214,53 @@ export default function OrderDelivered() {
             </span>
           </li>
         </ul>
+
+        {/* Local Flexa driver proof photos — shown once the company finishes delivery */}
+        {hasFmProofPhotos && (
+          <div className="pt-2 border-t border-border" data-testid="delivered-fm-proof-section">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+              {t("orderTracking.proofPhotos", { defaultValue: "Proof of delivery photos" })}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {proofDropoff && (
+                <a
+                  href={proofDropoff}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative block overflow-hidden rounded-lg border border-border"
+                  data-testid="delivered-dropoff-proof"
+                >
+                  <img
+                    src={proofDropoff}
+                    alt={t("orderTracking.dropoffProof", { defaultValue: "Handoff proof" })}
+                    className="h-28 w-full object-cover"
+                  />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
+                    {t("orderTracking.dropoffProof", { defaultValue: "Handoff proof" })}
+                  </span>
+                </a>
+              )}
+              {proofPickup && (
+                <a
+                  href={proofPickup}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative block overflow-hidden rounded-lg border border-border"
+                  data-testid="delivered-pickup-proof"
+                >
+                  <img
+                    src={proofPickup}
+                    alt={t("orderTracking.pickupProof", { defaultValue: "Pickup proof" })}
+                    className="h-28 w-full object-cover"
+                  />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
+                    {t("orderTracking.pickupProof", { defaultValue: "Pickup proof" })}
+                  </span>
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* International POD only when policy allows — never for Haiti PIN */}
         {!isHaitiPin && order.carrierPodEligible && (

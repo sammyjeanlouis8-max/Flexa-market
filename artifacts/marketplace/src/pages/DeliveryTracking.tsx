@@ -414,6 +414,43 @@ function DriverTrackingCard({
             <p className="text-xs opacity-70 mt-2 font-semibold">💰 Peman vandè a liberé nan FM Wallet</p>
           </div>
 
+          {/* Proof photos — primary evidence once the company finishes delivery */}
+          {(delivery.dropoffPhotoUrl || delivery.pickupPhotoUrl) && (
+            <div className="rounded-2xl border border-border bg-card p-4" data-testid="delivered-proof-photos">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">
+                📷 Foto Prèv Livrezon
+              </p>
+              <div className="flex gap-3">
+                {delivery.dropoffPhotoUrl && (
+                  <a
+                    href={delivery.dropoffPhotoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-2xl overflow-hidden border border-border relative block"
+                  >
+                    <img src={delivery.dropoffPhotoUrl} alt="Livrezon" className="w-full h-36 object-cover" />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1">
+                      <p className="text-[9px] font-black text-white uppercase tracking-wider">Remèt achtè</p>
+                    </div>
+                  </a>
+                )}
+                {delivery.pickupPhotoUrl && (
+                  <a
+                    href={delivery.pickupPhotoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 rounded-2xl overflow-hidden border border-border relative block"
+                  >
+                    <img src={delivery.pickupPhotoUrl} alt="Prise" className="w-full h-36 object-cover" />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1">
+                      <p className="text-[9px] font-black text-white uppercase tracking-wider">Prise chez machann</p>
+                    </div>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Tip CTA — shown to buyer only when driver is known */}
           {isBuyer && driver && (
             <button
@@ -878,24 +915,24 @@ function DriverTrackingCard({
         <StatusTimeline status={delivery.status} />
       </div>
 
-      {/* Photo evidence */}
-      {(delivery.pickupPhotoUrl || delivery.dropoffPhotoUrl) && (
+      {/* Photo evidence while delivery is still in progress (delivered state shows them above) */}
+      {!isDelivered && (delivery.pickupPhotoUrl || delivery.dropoffPhotoUrl) && (
         <div className="px-5 pb-3">
-          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">📷 Foto Prèv Chofe</p>
+          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2">📷 Foto Prèv Livrezon</p>
           <div className="flex gap-3">
-            {delivery.pickupPhotoUrl && (
-              <a href={delivery.pickupPhotoUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-2xl overflow-hidden border border-border relative block">
-                <img src={delivery.pickupPhotoUrl} alt="Prise" className="w-full h-28 object-cover" />
-                <div className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1">
-                  <p className="text-[9px] font-black text-white uppercase tracking-wider">Prise chez machann</p>
-                </div>
-              </a>
-            )}
             {delivery.dropoffPhotoUrl && (
               <a href={delivery.dropoffPhotoUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-2xl overflow-hidden border border-border relative block">
                 <img src={delivery.dropoffPhotoUrl} alt="Livrezon" className="w-full h-28 object-cover" />
                 <div className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1">
                   <p className="text-[9px] font-black text-white uppercase tracking-wider">Remèt achtè</p>
+                </div>
+              </a>
+            )}
+            {delivery.pickupPhotoUrl && (
+              <a href={delivery.pickupPhotoUrl} target="_blank" rel="noopener noreferrer" className="flex-1 rounded-2xl overflow-hidden border border-border relative block">
+                <img src={delivery.pickupPhotoUrl} alt="Prise" className="w-full h-28 object-cover" />
+                <div className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1">
+                  <p className="text-[9px] font-black text-white uppercase tracking-wider">Prise chez machann</p>
                 </div>
               </a>
             )}

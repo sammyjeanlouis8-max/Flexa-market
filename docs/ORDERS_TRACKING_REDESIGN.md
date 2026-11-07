@@ -16,14 +16,15 @@ Customer-facing order management UI aligned to the three-screen Flexa Market ref
 |--------|-------|--------|
 | My Orders | `/orders` | Filters All / Processing / Shipped / Delivered; clickable cards |
 | Order Details | `/orders/:id` | Vertical 5-stage timeline; Track live delivery when FM delivery exists |
-| Delivery Confirmation | `/orders/:id/delivered` | Success card; Haiti PIN verified (no doorstep photo); carrier POD only when eligible |
+| Delivery Confirmation | `/orders/:id/delivered` | Success card; Haiti PIN verified; Flexa driver proof photos when uploaded; carrier POD only when eligible |
 
 ## Delivery workflow rules (unchanged policy)
 
 Policy lives in `artifacts/api-server/src/lib/deliveryConfirmationPolicy.ts`.
 
 - Destination country + shipping service type only (never GPS / IP / account country).
-- Domestic Haiti (`haiti_pin`): hand-to-hand + PIN; no carrier POD photos.
+- Domestic Haiti (`haiti_pin`): hand-to-hand + PIN; no external carrier POD photos.
+- Flexa / company driver handoff photos (`pickupPhotoUrl` / `dropoffPhotoUrl`) are shown to the buyer on Order Details, Delivery Tracking, and Delivery Confirmation once uploaded — separate from carrier POD.
 - Eligible international carriers: official POD when the carrier integration returns it; otherwise “Delivery photo unavailable.”
 - Other local services keep their configured confirmation mode.
 

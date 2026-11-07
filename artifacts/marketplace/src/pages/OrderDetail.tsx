@@ -46,6 +46,8 @@ type FmDelivery = {
   acceptedAt: string | null;
   verificationCode: string | null;
   driverInfo: FmDriverInfo | null;
+  pickupPhotoUrl?: string | null;
+  dropoffPhotoUrl?: string | null;
 };
 
 type Order = {
@@ -1107,6 +1109,56 @@ export default function OrderDetail() {
           <CheckCircle2 className="h-5 w-5 mr-2" />
           {t("orderTracking.deliveryConfirmation", { defaultValue: "Delivery confirmation" })}
         </Button>
+      )}
+
+      {/* FM driver proof photos — visible to buyer/seller once the company uploaded them */}
+      {order.fmDelivery && (order.fmDelivery.dropoffPhotoUrl || order.fmDelivery.pickupPhotoUrl) && (
+        <div
+          className="rounded-2xl border border-border bg-card p-5"
+          data-testid="order-fm-proof-photos"
+        >
+          <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-3">
+            {t("orderTracking.proofPhotos", { defaultValue: "Proof of delivery photos" })}
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {order.fmDelivery.dropoffPhotoUrl && (
+              <a
+                href={order.fmDelivery.dropoffPhotoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative block overflow-hidden rounded-xl border border-border"
+                data-testid="order-dropoff-proof"
+              >
+                <img
+                  src={order.fmDelivery.dropoffPhotoUrl}
+                  alt={t("orderTracking.dropoffProof", { defaultValue: "Handoff proof" })}
+                  className="h-32 w-full object-cover"
+                />
+                <span className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
+                  {t("orderTracking.dropoffProof", { defaultValue: "Handoff proof" })}
+                </span>
+              </a>
+            )}
+            {order.fmDelivery.pickupPhotoUrl && (
+              <a
+                href={order.fmDelivery.pickupPhotoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative block overflow-hidden rounded-xl border border-border"
+                data-testid="order-pickup-proof"
+              >
+                <img
+                  src={order.fmDelivery.pickupPhotoUrl}
+                  alt={t("orderTracking.pickupProof", { defaultValue: "Pickup proof" })}
+                  className="h-32 w-full object-cover"
+                />
+                <span className="absolute bottom-0 inset-x-0 bg-black/55 px-2 py-1 text-[10px] font-bold text-white uppercase tracking-wider">
+                  {t("orderTracking.pickupProof", { defaultValue: "Pickup proof" })}
+                </span>
+              </a>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Carrier tracking (non-Haiti) ── */}

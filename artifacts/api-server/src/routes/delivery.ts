@@ -1193,8 +1193,8 @@ router.get("/delivery/my", requireAuth, async (req, res): Promise<void> => {
       failedPickupAt: deliveriesTable.failedPickupAt,
       transactionId: deliveriesTable.transactionId,
       createdAt: deliveriesTable.createdAt,
-      pickupPhotoUrl:  sql<string | null>`deliveries.pickup_photo_url`,
-      dropoffPhotoUrl: sql<string | null>`deliveries.dropoff_photo_url`,
+      pickupPhotoUrl:  deliveriesTable.pickupPhotoUrl,
+      dropoffPhotoUrl: deliveriesTable.dropoffPhotoUrl,
       sellerName: sellerUser.name,
       sellerPhone: sellerUser.phone,
       buyerName: buyerUser.name,
@@ -2796,8 +2796,8 @@ router.get("/delivery/tracking/:id", requireAuth, async (req, res): Promise<void
       returnFeeUsd: deliveriesTable.returnFeeUsd,
       holdAmountUsd: deliveriesTable.holdAmountUsd,
       failedPickupAt: deliveriesTable.failedPickupAt,
-      pickupPhotoUrl:  sql<string | null>`deliveries.pickup_photo_url`,
-      dropoffPhotoUrl: sql<string | null>`deliveries.dropoff_photo_url`,
+      pickupPhotoUrl:  deliveriesTable.pickupPhotoUrl,
+      dropoffPhotoUrl: deliveriesTable.dropoffPhotoUrl,
     })
     .from(deliveriesTable)
     .where(eq(deliveriesTable.id, deliveryId))
@@ -3835,8 +3835,8 @@ router.get("/admin/delivery/list", requireAdmin, async (req, res): Promise<void>
       currency: deliveriesTable.currency,
       createdAt: deliveriesTable.createdAt,
       sellerName: usersTable.name,
-      pickupPhotoUrl:  sql<string | null>`deliveries.pickup_photo_url`,
-      dropoffPhotoUrl: sql<string | null>`deliveries.dropoff_photo_url`,
+      pickupPhotoUrl:  deliveriesTable.pickupPhotoUrl,
+      dropoffPhotoUrl: deliveriesTable.dropoffPhotoUrl,
     })
     .from(deliveriesTable)
     .leftJoin(usersTable, eq(deliveriesTable.sellerId, usersTable.id))

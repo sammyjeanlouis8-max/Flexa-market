@@ -323,23 +323,26 @@ router.patch("/delivery/:id/photos", requireAuth, async (req, res): Promise<void
   if (!driver) { res.status(403).json({ error: "Not a driver" }); return; }
   if (delivery.driverUserId !== userId) { res.status(403).json({ error: "Not your delivery" }); return; }
 
-  const updates: Record<string, string> = {};
-  if (pickupPhotoUrl)  updates["pickup_photo_url"]  = String(pickupPhotoUrl);
-  if (dropoffPhotoUrl) updates["dropoff_photo_url"] = String(dropoffPhotoUrl);
-
-  if (Object.keys(updates).length === 0) {
+  const nextPickup = pickupPhotoUrl ? String(pickupPhotoUrl).trim() : "";
+  const nextDropoff = dropoffPhotoUrl ? String(dropoffPhotoUrl).trim() : "";
+  if (!nextPickup && !nextDropoff) {
     res.status(400).json({ error: "Provide pickupPhotoUrl or dropoffPhotoUrl" });
     return;
   }
 
-  if (updates["pickup_photo_url"]) {
-    await db.execute(sql`UPDATE deliveries SET pickup_photo_url = ${updates["pickup_photo_url"]} WHERE id = ${deliveryId}`);
-  }
-  if (updates["dropoff_photo_url"]) {
-    await db.execute(sql`UPDATE deliveries SET dropoff_photo_url = ${updates["dropoff_photo_url"]} WHERE id = ${deliveryId}`);
-  }
+  const patch: Partial<{ pickupPhotoUrl: string; dropoffPhotoUrl: string; updatedAt: Date }> = {
+    updatedAt: new Date(),
+  };
+  if (nextPickup) patch.pickupPhotoUrl = nextPickup;
+  if (nextDropoff) patch.dropoffPhotoUrl = nextDropoff;
 
-  res.json({ success: true });
+  await db.update(deliveriesTable).set(patch).where(eq(deliveriesTable.id, deliveryId));
+
+  res.json({
+    success: true,
+    pickupPhotoUrl: nextPickup || undefined,
+    dropoffPhotoUrl: nextDropoff || undefined,
+  });
 });
 
 export default router;

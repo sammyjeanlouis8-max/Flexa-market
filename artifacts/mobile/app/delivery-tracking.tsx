@@ -39,6 +39,8 @@ interface Delivery {
   returnCode: string | null;
   returnFeeUsd: number | null;
   buyerAbsentAt: string | null;
+  pickupPhotoUrl?: string | null;
+  dropoffPhotoUrl?: string | null;
 }
 
 interface Driver {
@@ -479,6 +481,37 @@ export default function DeliveryTrackingScreen() {
           </View>
         )}
 
+        {/* ── Proof photos (buyer sees company handoff evidence) ── */}
+        {(delivery.dropoffPhotoUrl || delivery.pickupPhotoUrl) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>FOTO PRÈV LIVREZON</Text>
+            <View style={styles.proofRow}>
+              {delivery.dropoffPhotoUrl ? (
+                <TouchableOpacity
+                  style={styles.proofCard}
+                  onPress={() => Linking.openURL(delivery.dropoffPhotoUrl!)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Foto prèv remèt"
+                >
+                  <Image source={{ uri: delivery.dropoffPhotoUrl }} style={styles.proofImage} contentFit="cover" />
+                  <Text style={styles.proofLabel}>Remèt achtè</Text>
+                </TouchableOpacity>
+              ) : null}
+              {delivery.pickupPhotoUrl ? (
+                <TouchableOpacity
+                  style={styles.proofCard}
+                  onPress={() => Linking.openURL(delivery.pickupPhotoUrl!)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Foto prèv prise"
+                >
+                  <Image source={{ uri: delivery.pickupPhotoUrl }} style={styles.proofImage} contentFit="cover" />
+                  <Text style={styles.proofLabel}>Prise chez machann</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        )}
+
         {/* ── Driver card ── */}
         {driver && !isDelivered && (
           <DriverCard driver={driver} isMoto={isMoto} />
@@ -636,6 +669,21 @@ const styles = StyleSheet.create({
   infoColorDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   infoLabel: { flex: 1, fontSize: 13, color: "#64748b" },
   infoValue: { fontSize: 13, fontWeight: "700", color: "#cbd5e1" },
+
+  // Proof photos
+  proofRow: { flexDirection: "row", gap: 10 },
+  proofCard: { flex: 1, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#334155", backgroundColor: "#0f172a" },
+  proofImage: { width: "100%", height: 120 },
+  proofLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#e2e8f0",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    backgroundColor: "rgba(15,23,42,0.92)",
+  },
 
   // Trust footer
   trustRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 20, paddingBottom: 8 },

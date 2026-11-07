@@ -885,6 +885,8 @@ async function loadFmDelivery(orderId: number) {
       driverUserId: deliveriesTable.driverUserId,
       acceptedAt: deliveriesTable.acceptedAt,
       verificationCode: deliveriesTable.verificationCode,
+      pickupPhotoUrl: deliveriesTable.pickupPhotoUrl,
+      dropoffPhotoUrl: deliveriesTable.dropoffPhotoUrl,
     })
     .from(deliveriesTable)
     .where(eq(deliveriesTable.transactionId as any, orderId))

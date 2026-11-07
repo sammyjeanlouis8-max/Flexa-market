@@ -167,6 +167,10 @@ export const deliveriesTable = pgTable("deliveries", {
   // Store-manager package-ready flag: set by the local manager before driver pickup
   packageReady: boolean("package_ready").notNull().default(false),
   packageReadyAt: timestamp("package_ready_at", { withTimezone: true }),
+  /** Driver-captured pickup proof photo (Wasabi/S3 URL). */
+  pickupPhotoUrl: text("pickup_photo_url"),
+  /** Driver-captured dropoff / handoff proof photo shown to the buyer after delivery. */
+  dropoffPhotoUrl: text("dropoff_photo_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

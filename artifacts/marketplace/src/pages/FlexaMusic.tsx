@@ -14,15 +14,17 @@ import {
   Music2, UploadCloud, BarChart2, CheckCircle, AlertCircle, Image as ImageIcon,
   Pencil, Trash2, ShoppingBag, Send, Radio, Home, Library,
   Repeat, Repeat1, Timer, Share2, ListMusic, AlignLeft, Cast, SlidersHorizontal,
+  Repeat2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/auth";
 import { useLocation } from "wouter";
 import { useMusicUpload } from "@/contexts/MusicUpload";
-import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek, musicToggleShuffle, musicCycleRepeat, musicSetSleepTimer, clearSleepTimer, musicSetPlaybackRate, musicShareTrack, type MusicRepeatMode } from "@/lib/musicStore";
+import { gAudio, getMusicState, patchMusicState, subscribeMusicState, setFlexaMusicMounted, musicPlayNext, musicPlayPrev, musicRequestPause, musicRequestPlay, musicSeek, musicToggleShuffle, musicCycleRepeat, musicSetSleepTimer, clearSleepTimer, musicSetPlaybackRate, musicShareTrack, musicRecordPlay, type MusicRepeatMode } from "@/lib/musicStore";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isNativeMobileApp } from "@/lib/nativeMobileApp";
 import { musicListeningIsFree, musicUploadsAreFree, MUSIC_COMMERCE_ENABLED } from "@/lib/musicCommerce";
+import MusicLibraryPanel from "@/components/music/MusicLibraryPanel";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type Track = {
@@ -62,9 +64,10 @@ type MusicComment = {
   user_name: string;
   user_avatar: string | null;
   user_is_verified: boolean;
+  timestamp_seconds?: number | null;
 };
 
-type View = "home" | "player" | "upload" | "artist-plan" | "paywall" | "artist";
+type View = "home" | "player" | "upload" | "artist-plan" | "paywall" | "artist" | "library";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const LIKED_KEY = "flexa_music_liked_v2";
@@ -202,10 +205,69 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
     canDownload?: boolean; }) {
   const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [repostBusy, setRepostBusy] = useState(false);
   const isOwner = !!(currentUserId && track.artist_user_id && currentUserId === track.artist_user_id);
   const purchasesDisabled = isAndroidApp();
 
   const isPaidLocked = track.monetization_type === "sale" && !canDownload;
+
+  const toggleRepost = async () => {
+    if (repostBusy) return;
+    setRepostBusy(true);
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      if (!token) {
+        window.alert(t("music.loginToComment"));
+        return;
+      }
+      const r = await fetch(`/api/music/${track.id}/repost`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!r.ok) throw new Error("repost failed");
+      const d = await r.json();
+      setReposted(!!d.reposted);
+      onClose();
+    } catch {
+      window.alert(t("music.reportFailed"));
+    } finally {
+      setRepostBusy(false);
+    }
+  };
+
+  const submitReport = async () => {
+    const reason = reportReason.trim();
+    if (!reason) return;
+    setReportBusy(true);
+    try {
+      const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
+      const r = await fetch(`/api/music/${track.id}/report`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ reason }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${r.status}`);
+      }
+      alert(t("music.reportSent"));
+      onClose();
+    } catch {
+      alert(t("music.reportFailed"));
+    } finally {
+      setReportBusy(false);
+    }
+  };
 
   return (
       <div className="fixed inset-0 z-[60] flex items-end" onClick={onClose}>
@@ -238,9 +300,37 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
             </button>
           </div>
         )}
+        {reporting ? (
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-white text-sm font-bold">{t("music.reportTrack")}</p>
+            <textarea
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              placeholder={t("music.reportReason")}
+              rows={3}
+              className="w-full rounded-xl px-3 py-2 text-sm text-white outline-none resize-none"
+              style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.12)" }}
+            />
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setReporting(false)}
+                className="flex-1 py-2.5 rounded-full text-xs font-bold text-white/60"
+                style={{ background: "rgba(255,255,255,0.08)" }}>
+                {t("music.confirmNo")}
+              </button>
+              <button type="button" onClick={() => void submitReport()}
+                disabled={!reportReason.trim() || reportBusy}
+                className="flex-1 py-2.5 rounded-full text-xs font-bold text-white disabled:opacity-40"
+                style={{ background: "#dc2626" }}>
+                {reportBusy ? <Loader2 size={14} className="animate-spin inline" /> : t("music.reportTrack")}
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Options */}
         {[
           { icon: liked ? <Heart size={19} fill="currentColor" /> : <Heart size={19} />, label: liked ? t("music.removeFromFavorites") : t("music.addToFavorites"), action: () => { onLike(); onClose(); } },
+          { icon: <Repeat2 size={19} />, label: repostBusy ? "…" : (reposted ? t("music.unrepost", "Remove repost") : t("music.repost", "Repost")), action: () => { void toggleRepost(); } },
           ...(isPaidLocked ? [] : [{ icon: <Download size={19} />, label: t("music.download"), action: () => { onDownload(); onClose(); } }]),
           { icon: <Send size={19} />, label: t("music.shareTrack"),  action: () => {
             const url = `${window.location.origin}/api/og/music/${track.id}`;
@@ -251,7 +341,7 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
             }
             onClose();
           }},
-          { icon: <AlertCircle size={19} />, label: t("music.reportTrack"), action: onClose },
+          { icon: <AlertCircle size={19} />, label: t("music.reportTrack"), action: () => setReporting(true) },
         ].map(({ icon, label, action, locked }: { icon: React.ReactNode; label: string; action: () => void; locked?: boolean }) => (
           <button key={label} onClick={locked ? undefined : action}
             disabled={!!locked}
@@ -290,6 +380,8 @@ function MoreSheet({ track, liked, onClose, onLike, onDownload, onBuy, isAdmin, 
               </button>
             )}
           </div>
+        )}
+        </>
         )}
         <div className="pb-safe" style={{ height: 24 }} />
       </div>
@@ -1025,6 +1117,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
   const [forSale, setForSale] = useState(false);
   const [priceUsd, setPriceUsd] = useState<number>(0.99);
   const [lyrics,  setLyrics]  = useState("");
+  const [copyrightDeclared, setCopyrightDeclared] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
@@ -1045,6 +1138,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
     e.preventDefault();
     if (!title.trim() || !artist.trim()) { setErrMsg(t("upload.errTitleArtist")); return; }
     if (!audioFile) { setErrMsg(t("upload.errAudio")); return; }
+    if (!copyrightDeclared) { setErrMsg(t("music.copyrightRequired")); return; }
 
     // Step 1: log file selection details
     console.log("[upload] step 1: file selected", {
@@ -1071,6 +1165,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
         priceUsd:          sellEnabled ? priceUsd : undefined,
         coverPreview:      coverPreview ?? undefined,
         lyrics:            lyrics.trim() || undefined,
+        copyrightDeclared: true,
       },
       (track) => onSuccess(track),
       onPlanRequired,
@@ -1281,6 +1376,15 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
           )}
         </div>}
 
+        {/* Copyright confirmation */}
+        <label className="flex items-start gap-3 rounded-xl px-4 py-3 cursor-pointer"
+          style={{ background: "#1a1a1a", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <input type="checkbox" checked={copyrightDeclared}
+            onChange={e => setCopyrightDeclared(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[#00D9FF]" />
+          <span className="text-sm text-white/80 leading-snug">{t("music.copyrightConfirm")}</span>
+        </label>
+
         {/* Info banner */}
         <div className="flex items-start gap-2 rounded-xl px-4 py-3"
           style={{ background: "rgba(0,217,255,0.08)", border: "1px solid rgba(0,217,255,0.2)" }}>
@@ -1291,8 +1395,8 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
         </div>
 
         {/* Submit */}
-        <button type="submit"
-          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all"
+        <button type="submit" disabled={!copyrightDeclared}
+          className="w-full rounded-2xl py-4 font-black text-base flex items-center justify-center gap-2 active:scale-[0.97] transition-all disabled:opacity-50"
           style={{ background: "linear-gradient(135deg,#00D9FF,#A020F0)", color: "#fff",
                    boxShadow: "0 8px 24px rgba(0,217,255,0.28)" }}>
           <UploadCloud size={18} /> {t("upload.submit")}
@@ -1307,7 +1411,7 @@ function UploadView({ onBack, onSuccess, onPlanRequired, songCount = 0 }: {
 }
 
 // ── Home View ─────────────────────────────────────────────────────────────────
-function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, onBuy, setLocation, autoFocusSearch, onFocusHandled, searchLoading }:
+function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, currentTrackPlaying, onPlay, onPlayList, onToggleLike, onSearch, onUpload, onEdit, onDelete, onBuy, setLocation, autoFocusSearch, onFocusHandled, searchLoading, onOpenLibrary }:
   { tracks: Track[]; liked: Set<number>; user: any; isAdmin: boolean;
     purchasedIds: Set<number>;
     currentTrackId?: number; currentTrackPlaying?: boolean;
@@ -1322,10 +1426,12 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     setLocation: (p: string) => void;
     autoFocusSearch?: boolean;
     onFocusHandled?: () => void;
-    searchLoading?: boolean; }) {
+    searchLoading?: boolean;
+    onOpenLibrary?: () => void; }) {
   const { t } = useTranslation();
   const artistToolsAvailable = !isNativeMobileApp();
   const [search, setSearch] = useState("");
+  const [genreFilter, setGenreFilter] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1344,23 +1450,38 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
     return () => clearTimeout(id);
   }, [search]);
 
-  const recommended  = tracks.filter(t => t.is_featured || liked.has(t.id) || t.play_count > 100).slice(0, 10);
-  const recFallback  = recommended.length >= 3 ? recommended : tracks.slice(0, 10);
+  const genreOptions = useMemo(
+    () => [...new Set(tracks.map(t => t.genre).filter(Boolean))] as string[],
+    [tracks],
+  );
+
+  const displayTracks = useMemo(
+    () => (genreFilter ? tracks.filter(t => t.genre === genreFilter) : tracks),
+    [tracks, genreFilter],
+  );
+
+  const recommended  = displayTracks.filter(t => t.is_featured || liked.has(t.id) || t.play_count > 100).slice(0, 10);
+  const recFallback  = recommended.length >= 3 ? recommended : displayTracks.slice(0, 10);
+
+  const trendingTracks = useMemo(
+    () => [...displayTracks].filter(t => t.play_count > 0).sort((a, b) => (b.play_count ?? 0) - (a.play_count ?? 0)).slice(0, 10),
+    [displayTracks],
+  );
 
   const mixes = useMemo((): Mix[] => {
-    const genres = [...new Set(tracks.map(t => t.genre).filter(Boolean))] as string[];
-    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+    const genres = genreOptions;
+    const shuffled = [...displayTracks].sort(() => Math.random() - 0.5);
     return [
       { id:"mix1", label:"MIX 1", subtitle: genres[0] ?? "Tout", tracks: shuffled.slice(0, 20), cover: shuffled[0]?.cover_url ?? null, gradient: MIX_GRADIENTS[0] },
-      { id:"mix2", label:"MIX 2", subtitle: genres[1] ?? "Featured", tracks: tracks.filter(t => t.is_featured).length > 0 ? tracks.filter(t => t.is_featured) : tracks.slice(5,20), cover: tracks.find(t=>t.is_featured)?.cover_url ?? null, gradient: MIX_GRADIENTS[1] },
-      { id:"mix3", label:"MIX 3", subtitle: genres[2] ?? "Latest", tracks: genres[2] ? tracks.filter(t => t.genre===genres[2]) : [...tracks].reverse().slice(0,20), cover: null, gradient: MIX_GRADIENTS[2] },
+      { id:"mix2", label:"MIX 2", subtitle: genres[1] ?? "Featured", tracks: displayTracks.filter(t => t.is_featured).length > 0 ? displayTracks.filter(t => t.is_featured) : displayTracks.slice(5,20), cover: displayTracks.find(t=>t.is_featured)?.cover_url ?? null, gradient: MIX_GRADIENTS[1] },
+      { id:"mix3", label:"MIX 3", subtitle: genres[2] ?? "Latest", tracks: genres[2] ? displayTracks.filter(t => t.genre===genres[2]) : [...displayTracks].reverse().slice(0,20), cover: null, gradient: MIX_GRADIENTS[2] },
     ];
-  }, [tracks]);
+  }, [displayTracks, genreOptions]);
 
   /** Group tracks by their `album` field (1+ tracks) */
   const albums = useMemo(() => {
     const map = new Map<string, Track[]>();
-    tracks.forEach(t => {
+    displayTracks.forEach(t => {
       const k = t.album?.trim();
       if (!k) return;
       if (!map.has(k)) map.set(k, []);
@@ -1371,7 +1492,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
       tracks: ts,
       cover: ts[0]?.cover_url ?? null,
     }));
-  }, [tracks]);
+  }, [displayTracks]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1448,6 +1569,31 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             </button>
           )}
         </div>
+        {/* Genre chips — client-side filter for home lists */}
+        {genreOptions.length > 0 && !search.trim() && (
+          <div className="flex gap-2 overflow-x-auto mt-3 pb-1 scrollbar-hide">
+            <button type="button" onClick={() => setGenreFilter(null)}
+              className="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold"
+              style={{
+                background: !genreFilter ? "rgba(0,217,255,0.22)" : "rgba(255,255,255,0.06)",
+                color: !genreFilter ? "#00D9FF" : "rgba(255,255,255,0.65)",
+                border: !genreFilter ? "1px solid rgba(0,217,255,0.4)" : "1px solid transparent",
+              }}>
+              {t("music.allGenres")}
+            </button>
+            {genreOptions.map(g => (
+              <button key={g} type="button" onClick={() => setGenreFilter(g)}
+                className="shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold"
+                style={{
+                  background: genreFilter === g ? "rgba(0,217,255,0.22)" : "rgba(255,255,255,0.06)",
+                  color: genreFilter === g ? "#00D9FF" : "rgba(255,255,255,0.65)",
+                  border: genreFilter === g ? "1px solid rgba(0,217,255,0.4)" : "1px solid transparent",
+                }}>
+                {g}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {search.trim() ? (
@@ -1612,18 +1758,15 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
             </div>
           </div>
 
-          {/* ── Top 10 Cette Semaine ── */}
-          {tracks.filter(t => t.play_count > 0).length >= 3 && (
+          {/* ── Tendances / Trending (sorted by play_count) ── */}
+          {trendingTracks.length >= 3 && (
             <div className="mb-6">
               <div className="flex items-center justify-between px-4 mb-3">
-              <p className="music-section-title flex items-center gap-2"><BarChart2 size={18} className="text-[#ff795f]" /> {t("music.charts")}</p>
+              <p className="music-section-title flex items-center gap-2"><BarChart2 size={18} className="text-[#ff795f]" /> {t("music.trending")}</p>
               </div>
               <div className="px-4">
-                {tracks
-                  .filter(t => t.play_count > 0)
-                  .slice(0, 10)
-                  .map((track, idx) => (
-                    <button key={track.id} onClick={() => onPlay(track, tracks, tracks.indexOf(track))}
+                {trendingTracks.map((track, idx) => (
+                    <button key={track.id} onClick={() => onPlay(track, trendingTracks, idx)}
                       className="music-track-row flex items-center gap-3 w-full py-2 px-1 rounded-xl active:bg-white/5 text-left">
                       <span className="font-black text-sm tabular-nums w-5 text-center shrink-0"
                         style={{ color: idx === 0 ? "#fbbf24" : idx === 1 ? "#9ca3af" : idx === 2 ? "#b45309" : "rgba(255,255,255,0.25)" }}>
@@ -1663,11 +1806,11 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           <div id="music-library" className="px-4">
             <p className="music-section-title mb-3">{t("music.allSongs")}</p>
             <div className="space-y-0">
-              {tracks.map((track, idx) => {
+              {displayTracks.map((track, idx) => {
                 const isLiked = liked.has(track.id);
                 return (
                   <div key={track.id} className="music-track-row flex items-center gap-2 py-2 rounded-xl px-1 active:bg-white/5 transition-colors">
-                    <button onClick={() => onPlay(track, tracks, idx)}
+                    <button onClick={() => onPlay(track, displayTracks, idx)}
                       className="flex items-center gap-3 flex-1 min-w-0 text-left">
                       <div className="relative shrink-0">
                         <CoverArt src={track.cover_url} title={track.title} size={46} radius={6} />
@@ -1762,7 +1905,7 @@ function HomeView({ tracks, liked, user, isAdmin, purchasedIds, currentTrackId, 
           <MessageCircle size={19} />
           <span>{t("nav.messages")}</span>
         </button>
-        <button className="music-bottom-nav-item" onClick={() => document.getElementById("music-library")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+        <button className="music-bottom-nav-item" onClick={() => onOpenLibrary?.()}>
           <Library size={19} />
           <span>{t("music.library")}</span>
         </button>
@@ -1893,10 +2036,12 @@ function MusicLikeButton({ trackId, initialLiked, onToggle }: {
 // ══════════════════════════════════════════════════════════════════════════════
 // MUSIC COMMENTS SECTION — self-contained, lazy-loads on first open
 // ══════════════════════════════════════════════════════════════════════════════
-function MusicCommentsSection({ trackId, user, isAdmin }: {
+function MusicCommentsSection({ trackId, user, isAdmin, currentTime }: {
   trackId: number | null;
   user: any;
   isAdmin: boolean;
+  /** Optional playback position attached when posting a comment */
+  currentTime?: number;
 }) {
   const { t } = useTranslation();
   const [open,       setOpen]       = useState(false);
@@ -1924,13 +2069,17 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
     const token = localStorage.getItem("flexamarket_token") ?? sessionStorage.getItem("flexamarket_token") ?? "";
     setSubmitting(true);
     try {
+      const payload: { content: string; timestamp_seconds?: number } = { content: text.trim() };
+      if (typeof currentTime === "number" && Number.isFinite(currentTime) && currentTime >= 0) {
+        payload.timestamp_seconds = Math.floor(currentTime);
+      }
       const r = await fetch(`/api/music/${trackId}/comments`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content: text.trim() }),
+        body: JSON.stringify(payload),
       });
       if (r.ok) {
         const comment = await r.json();
@@ -1992,6 +2141,9 @@ function MusicCommentsSection({ trackId, user, isAdmin }: {
                   <div className="flex items-center gap-1.5">
                     <span className="text-white text-xs font-bold truncate">{c.user_name}</span>
                     <span className="text-white/30 text-[10px] shrink-0">{rel(c.created_at)}</span>
+                    {typeof c.timestamp_seconds === "number" && c.timestamp_seconds >= 0 && (
+                      <span className="text-[#00D9FF]/70 text-[10px] shrink-0 font-mono">{fmtDur(c.timestamp_seconds)}</span>
+                    )}
                     {(user?.id === c.user_id || isAdmin) && (
                       <button onClick={() => del(c.id)} className="ml-auto shrink-0 p-0.5">
                         <X size={11} className="text-white/20 hover:text-red-400 transition-colors" />
@@ -2158,6 +2310,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
   const [moreTrack, setMoreTrack] = useState<Track | null>(null);
   const { t } = useTranslation();
 
+  const [, navigateArtist] = useLocation();
   const currentTrack  = playerState.track;
   const isLiked       = currentTrack ? liked.has(currentTrack.id) : false;
   const totalDuration = fmtTotal(playlist);
@@ -2268,7 +2421,13 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-white font-black text-base leading-tight truncate">{currentTrack.title}</p>
-              <p className="text-white/50 text-sm truncate mt-0.5">{currentTrack.artist}</p>
+              <button type="button"
+                onClick={() => {
+                  if (currentTrack.artist_user_id) navigateArtist(`/music/artist/${currentTrack.artist_user_id}`);
+                }}
+                className="text-white/50 text-sm truncate mt-0.5 text-left hover:text-[#00D9FF] transition-colors">
+                {currentTrack.artist}
+              </button>
               {currentTrack.play_count > 0 && (
                 <div className="flex items-center gap-1 mt-1">
                   <Play size={9} className="text-white/30 fill-white/30" />
@@ -2298,7 +2457,8 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
       {/* ── Flexa Market Booster Ad ── */}
       <BoosterAdCard onTap={onAdTap} />
 
-      {/* ── Flexa Premium banner ── */}
+      {/* ── Flexa Premium banner (commerce only) ── */}
+      {MUSIC_COMMERCE_ENABLED && (
       <div className="mx-4 mb-5 rounded-2xl overflow-hidden flex items-center gap-3 px-4 py-3"
         style={{ background: "linear-gradient(135deg,#1a0040,#330066)" }}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(255,255,255,0.1)" }}>
@@ -2312,6 +2472,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
           {t("music.free")}
         </button>
       </div>
+      )}
 
       {/* ── Track list ── */}
       <div className="px-4 space-y-0">
@@ -2353,6 +2514,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
         trackId={currentTrack?.id ?? playlist[0]?.id ?? null}
         user={user}
         isAdmin={isAdmin}
+        currentTime={playerState.currentTime}
       />
 
       {/* More sheet — includes edit/delete for admins */}
@@ -2379,7 +2541,7 @@ function PlayerView({ playlist, playlistTitle, playlistCover, playlistGrad,
 // ARTIST PROFILE VIEW
 // ══════════════════════════════════════════════════════════════════════════════
 function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, currentTrackPlaying,
-  followedArtists, onBack, onPlay, onToggleLike, onToggleFollow }: {
+  followedArtists, onBack, onPlay, onToggleLike, onToggleFollow, setLocation }: {
   artistName: string;
   tracks: Track[];
   liked: Set<number>;
@@ -2391,12 +2553,19 @@ function ArtistView({ artistName, tracks, liked, purchasedIds, currentTrackId, c
   onPlay: (t: Track, q: Track[], i: number) => void;
   onToggleLike: (id: number) => void;
   onToggleFollow: (artistId: number, follow: boolean) => void;
+  setLocation?: (p: string) => void;
 }) {
   const { t } = useTranslation();
   const artistTracks = useMemo(() => tracks.filter(t => t.artist === artistName), [tracks, artistName]);
   const artistUserId = artistTracks.find(t => t.artist_user_id)?.artist_user_id ?? null;
   const isFollowed   = artistUserId ? followedArtists.has(artistUserId) : false;
   const totalPlays   = artistTracks.reduce((s, t) => s + (t.play_count ?? 0), 0);
+
+  useEffect(() => {
+    if (artistUserId && setLocation) {
+      setLocation(`/music/artist/${artistUserId}`);
+    }
+  }, [artistUserId, setLocation]);
 
   return (
     <div className="music-view-root" style={{ background: "transparent", minHeight: "100vh", color: "#fff", paddingBottom: 120 }}>
@@ -2528,7 +2697,7 @@ function NowPlayingModal({
   isPaidPreview?: boolean;
   radioMode: boolean;
   onToggleRadio: () => void;
-  onArtistClick: (name: string) => void;
+  onArtistClick: (name: string, artistUserId?: number | null) => void;
   onShowQueue?: () => void;
   onDownload?: () => void;
 }) {
@@ -2653,7 +2822,7 @@ function NowPlayingModal({
         <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0 flex-1">
             <h1 className="text-white text-xl font-black truncate leading-tight">{track.title}</h1>
-            <button onClick={() => { onClose(); onArtistClick(track.artist); }}
+            <button onClick={() => { onClose(); onArtistClick(track.artist, track.artist_user_id); }}
               className="text-sm truncate text-left mt-1 flex items-center gap-1.5"
               style={{ color: "#A1AEC4" }}>
               {track.artist}
@@ -3248,10 +3417,14 @@ export default function FlexaMusic() {
       musicRequestPlay().then(() => {
         // play() resolved → audio is definitely playing; mirror that into state
         setPlayerState(s => ({ ...s, playing: true }));
+        musicRecordPlay(track.id);
       }).catch(() => {
         // autoplay blocked or load error — state stays paused, that's correct
       });
-      if (track.id) startTimer(track.id, track);
+      if (track.id) {
+        musicRecordPlay(track.id);
+        startTimer(track.id, track);
+      }
     }
   }, [playerState.muted, playerState.volume]);
 
@@ -3490,6 +3663,12 @@ export default function FlexaMusic() {
         <div style={{ background: "transparent", minHeight: "100vh" }} className="music-view-root flex items-center justify-center">
           <Loader2 size={32} className="animate-spin" style={{ color: "#7c3aed" }} />
         </div>
+      ) : view === "library" ? (
+        <MusicLibraryPanel
+          likedTracks={tracks.filter(tr => liked.has(tr.id))}
+          onBack={() => setView("home")}
+          onPlayLiked={(tr, q, i) => openTrack(tr as Track, q as Track[], i)}
+        />
       ) : view === "artist" && artistViewName ? (
         <ArtistView
           artistName={artistViewName}
@@ -3503,6 +3682,7 @@ export default function FlexaMusic() {
           onPlay={openTrack}
           onToggleLike={toggleLike}
           onToggleFollow={toggleFollow}
+          setLocation={setLocation}
         />
       ) : view === "paywall" && paywallTrack ? (
         <SongPaywallView
@@ -3564,6 +3744,7 @@ export default function FlexaMusic() {
           autoFocusSearch={focusSearch}
           onFocusHandled={() => setFocusSearch(false)}
           searchLoading={searchLoading}
+          onOpenLibrary={() => setView("library")}
         />
       ) : (
         <PlayerView
@@ -3645,8 +3826,12 @@ export default function FlexaMusic() {
           }
           radioMode={radioMode}
           onToggleRadio={() => setRadioMode(r => !r)}
-          onArtistClick={(name) => {
+          onArtistClick={(name, artistUserId) => {
             setShowNowPlaying(false);
+            if (artistUserId) {
+              setLocation(`/music/artist/${artistUserId}`);
+              return;
+            }
             setArtistViewName(name);
             setView("artist");
           }}

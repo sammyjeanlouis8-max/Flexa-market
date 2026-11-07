@@ -2970,6 +2970,66 @@ export async function runStartupMigrations(): Promise<void> {
       WHERE client_message_id IS NOT NULL`,
   });
 
+  // ── Flexa Music Phase 2–5 schema ───────────────────────────────────────────
+  migrations.push({
+    name: "music_comments.timestamp_seconds",
+    sql: `ALTER TABLE music_comments ADD COLUMN IF NOT EXISTS timestamp_seconds INTEGER`,
+  });
+  migrations.push({
+    name: "music_tracks.visibility",
+    sql: `ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public'`,
+  });
+  migrations.push({
+    name: "music_tracks.content_hash",
+    sql: `ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS content_hash TEXT`,
+  });
+  migrations.push({
+    name: "music_tracks.copyright_declared",
+    sql: `ALTER TABLE music_tracks ADD COLUMN IF NOT EXISTS copyright_declared BOOLEAN NOT NULL DEFAULT FALSE`,
+  });
+  migrations.push({
+    name: "music_playlists.is_public",
+    sql: `ALTER TABLE music_playlists ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE`,
+  });
+  migrations.push({
+    name: "music_listening_history.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_listening_history (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      track_id INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      played_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      position_seconds REAL
+    )`,
+  });
+  migrations.push({
+    name: "music_listening_history.user_idx",
+    sql: `CREATE INDEX IF NOT EXISTS music_listening_history_user_idx ON music_listening_history(user_id)`,
+  });
+  migrations.push({
+    name: "music_listening_history.played_at_idx",
+    sql: `CREATE INDEX IF NOT EXISTS music_listening_history_played_at_idx ON music_listening_history(played_at DESC)`,
+  });
+  migrations.push({
+    name: "music_reposts.create",
+    sql: `CREATE TABLE IF NOT EXISTS music_reposts (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      track_id INTEGER NOT NULL REFERENCES music_tracks(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(user_id, track_id)
+    )`,
+  });
+  migrations.push({
+    name: "music_reposts.track_idx",
+    sql: `CREATE INDEX IF NOT EXISTS music_reposts_track_idx ON music_reposts(track_id)`,
+  });
+  // Note: blanket auto-activate of inactive music_tracks is retired.
+  // Moderation (is_active=FALSE) must stick; do not reactivate pending tracks on boot.
+  migrations.push({
+    name: "music_tracks.auto_activate_retired_v1",
+    sql: `SELECT 1`,
+  });
+
   for (const m of migrations) {
     try {
       await db.execute(sql.raw(m.sql));
@@ -2983,11 +3043,8 @@ export async function runStartupMigrations(): Promise<void> {
     }
   }
 
-  // One-time: activate all tracks that were uploaded before auto-approve was enabled
-  try {
-    await db.execute(sql.raw("UPDATE music_tracks SET is_active = TRUE WHERE is_active = FALSE"));
-    logger.info("Migration: activated all pending music tracks");
-  } catch { /* non-fatal */ }
+  // Retired: blanket reactivation of inactive music_tracks on boot was removed
+  // so moderation decisions stick (see music_tracks.auto_activate_retired_v1).
 
   // Ongoing: backfill name-based referral codes (proper-case + 2 digits, e.g. "Samuel37").
   // Converts two old formats:

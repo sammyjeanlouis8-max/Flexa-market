@@ -234,7 +234,8 @@ export default function GlobalMusicPlayer() {
       ref={cardRef}
       className="fixed left-0 right-0 mx-3 z-[60] rounded-2xl select-none"
       style={{
-        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + 8px)",
+        // Sit above bottom nav (≈4rem) + safe area so the mini-player never covers tabs
+        bottom: "calc(4rem + env(safe-area-inset-bottom, 0px) + max(8px, var(--flexa-android-bottom, 0px)))",
         background: "linear-gradient(135deg, rgba(8,16,40,0.94), rgba(12,20,48,0.96))",
         border: isDragging
           ? "1.5px solid rgba(0,217,255,0.55)"
@@ -243,6 +244,7 @@ export default function GlobalMusicPlayer() {
           ? "0 0 0 4px rgba(0,217,255,0.15), 0 16px 40px rgba(0,0,0,0.7)"
           : "0 0 0 1px rgba(160,32,240,0.12), 0 8px 28px rgba(0,0,0,0.45)",
         backdropFilter: "blur(18px)",
+        color: "#fff",
         transform,
         transition: isDragging || isSwiping ? "none" : "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)",
         touchAction: "none",

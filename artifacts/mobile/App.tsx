@@ -35,6 +35,17 @@ import {
   hasNativeBackgroundUploads,
   parseFlexaUploadMessage,
 } from "./native/backgroundUploads";
+import {
+  buildMusicNativeReplyScript,
+  buildNativeMusicCapabilityScript,
+  dispatchFlexaMusicMessage,
+  parseFlexaMusicMessage,
+} from "./native/musicBridge";
+import {
+  isNativeMusicReady,
+  isTrackPlayerModulePresent,
+  setupMusicPlayer,
+} from "./native/musicPlayback";
 
 const WEBSITE = "https://flexamarket.com";
 const INITIAL_LOAD_TIMEOUT_MS = 20_000;
@@ -87,6 +98,11 @@ export default function App() {
   // JWT received from the WebView (marketplace sends it via ReactNativeWebView.postMessage)
   const jwtRef = useRef<string | null>(null);
 
+  // Native music capability — set true after successful TrackPlayer setup.
+  const [nativeMusicReady, setNativeMusicReady] = useState(
+    () => isNativeMusicReady() || isTrackPlayerModulePresent(),
+  );
+
   // Holds an injection script that arrived before the WebView was ready
   const pendingScript = useRef<string | null>(null);
 
@@ -105,6 +121,25 @@ export default function App() {
         if (url) pendingNotifUrl.current = url;
       })
       .catch(() => {});
+  }, []);
+
+  // ── Native music (TrackPlayer) — once per process ──────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    setupMusicPlayer()
+      .then((ok) => {
+        if (cancelled) return;
+        setNativeMusicReady(ok);
+        if (ok && webRef.current && isTrustedFlexaUrl(currentUrlRef.current)) {
+          webRef.current.injectJavaScript(buildNativeMusicCapabilityScript());
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNativeMusicReady(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Push token registration ────────────────────────────────────────────
@@ -142,14 +177,20 @@ export default function App() {
     );
   }, []);
 
-  // ── onMessage: receive JWT + native background-upload bridge ───────────
+  const emitMusicNativeEvent = useCallback((event: Parameters<typeof buildMusicNativeReplyScript>[0]) => {
+    if (!webRef.current || !isTrustedFlexaUrl(currentUrlRef.current)) return;
+    webRef.current.injectJavaScript(buildMusicNativeReplyScript(event));
+  }, []);
+
+  // ── onMessage: JWT + music bridge + native background-upload bridge ────
   // The marketplace sends { type: "AUTH_TOKEN", token: jwt } after the user
   // loads.  We store it and, if we already have an Expo push token, call the
   // registration API immediately — no WebView injection timing issues.
   const onMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     if (!isTrustedFlexaUrl(currentUrlRef.current)) return;
+    const raw = event.nativeEvent.data;
     try {
-      const msg = JSON.parse(event.nativeEvent.data);
+      const msg = JSON.parse(raw);
 
       if (msg?.type === "AUTH_TOKEN" && typeof msg.token === "string") {
         jwtRef.current = msg.token;
@@ -161,7 +202,22 @@ export default function App() {
         return;
       }
 
-      const uploadMessage = parseFlexaUploadMessage(event.nativeEvent.data);
+      const musicMessage = parseFlexaMusicMessage(raw);
+      if (musicMessage) {
+        void dispatchFlexaMusicMessage(musicMessage)
+          .then((reply) => emitMusicNativeEvent(reply))
+          .catch((error: unknown) => {
+            emitMusicNativeEvent({
+              type: "flexa-music-native",
+              action: musicMessage.action,
+              state: "error",
+              error: error instanceof Error ? error.message : "music bridge error",
+            });
+          });
+        return;
+      }
+
+      const uploadMessage = parseFlexaUploadMessage(raw);
       if (!uploadMessage) return;
       void dispatchFlexaUpload(uploadMessage)
         .then((data) => emitUploadResult(uploadMessage.requestId, true, data))
@@ -172,7 +228,7 @@ export default function App() {
     } catch {
       // not our message
     }
-  }, [emitUploadResult]);
+  }, [emitMusicNativeEvent, emitUploadResult]);
 
   // ── Android hardware back button ───────────────────────────────────────
   useEffect(() => {
@@ -217,6 +273,11 @@ export default function App() {
           `window.__onExpoPushToken(${JSON.stringify(token)},${JSON.stringify(platform)});` +
         `})();true;`
       );
+    }
+
+    // Re-advertise native music after SPA navigations (flag can be wiped on full loads).
+    if (isNativeMusicReady() && isTrustedFlexaUrl(currentUrlRef.current)) {
+      webRef.current?.injectJavaScript(buildNativeMusicCapabilityScript());
     }
 
     // Navigate to URL from the notification that cold-started the app.
@@ -338,6 +399,7 @@ export default function App() {
           injectedJavaScriptBeforeContentLoaded={platformBridgeScript(
             Platform.OS,
             hasNativeBackgroundUploads,
+            nativeMusicReady,
           )}
           originWhitelist={["https://*"]}
           mixedContentMode="never"

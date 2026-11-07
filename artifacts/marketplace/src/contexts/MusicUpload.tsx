@@ -39,6 +39,8 @@ export interface UploadMeta {
   priceUsd?:         number;
   coverPreview?:     string;
   lyrics?:           string;
+  /** Required rights confirmation — sent as copyrightDeclared */
+  copyrightDeclared?: boolean;
 }
 
 interface MusicUploadCtx {
@@ -46,6 +48,8 @@ interface MusicUploadCtx {
   start:   (audioFile: File, coverFile: File | null, meta: UploadMeta,
             onDone?: (track: any) => void,
             onPlanRequired?: (songCount: number) => void) => void;
+  /** Re-POST /api/music/register using stored Wasabi keys after a failed register */
+  retryRegister: () => void;
   dismiss: () => void;
 }
 
@@ -57,8 +61,14 @@ const IDLE: UploadState = {
 const MusicUploadContext = createContext<MusicUploadCtx>({
   state:   IDLE,
   start:   () => {},
+  retryRegister: () => {},
   dismiss: () => {},
 });
+
+type PendingRegister = {
+  tk: string;
+  body: Record<string, string | number | boolean>;
+};
 
 async function requestMusicUploadUrls(
   audioFile: File,
@@ -132,10 +142,67 @@ function uploadToWasabi(
 export function MusicUploadProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [state, setState] = useState<UploadState>(IDLE);
+  const [canRetry, setCanRetry] = useState(false);
   const onDoneRef = useRef<((track: any) => void) | undefined>(undefined);
   const onPlanRef = useRef<((count: number) => void) | undefined>(undefined);
+  const pendingRegRef = useRef<PendingRegister | null>(null);
 
-  const dismiss = useCallback(() => setState(IDLE), []);
+  const dismiss = useCallback(() => {
+    pendingRegRef.current = null;
+    setCanRetry(false);
+    setState(IDLE);
+  }, []);
+
+  const postRegister = useCallback(async (
+    tk: string,
+    regBody: Record<string, string | number | boolean>,
+  ): Promise<boolean> => {
+    pendingRegRef.current = { tk, body: { ...regBody } };
+    setCanRetry(true);
+    const regRes = await fetch('/api/music/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` },
+      body: JSON.stringify(regBody),
+    });
+
+    if (!regRes.ok) {
+      const err = await regRes.json().catch(() => ({}));
+      if (err.error === 'ARTIST_PLAN_REQUIRED') {
+        onPlanRef.current?.(err.count ?? 0);
+        setState(prev => ({ ...prev, status: 'error', error: t('music.planRequired', 'Artist plan required') }));
+        return false;
+      }
+      if (regRes.status === 409 && err.error === 'POSSIBLE_DUPLICATE') {
+        const force = window.confirm(t('music.forceDuplicate'));
+        if (force) {
+          return postRegister(tk, { ...regBody, forceDuplicate: true });
+        }
+        setState(prev => ({
+          ...prev,
+          status: 'error',
+          error: t('music.forceDuplicate'),
+        }));
+        return false;
+      }
+      throw new Error(err.error ?? `Register failed: HTTP ${regRes.status}`);
+    }
+
+    const { track } = await regRes.json();
+    pendingRegRef.current = null;
+    setCanRetry(false);
+    setState(prev => ({ ...prev, status: 'done', progress: 100, track }));
+    onDoneRef.current?.(track);
+    return true;
+  }, [t]);
+
+  const retryRegister = useCallback(() => {
+    const pending = pendingRegRef.current;
+    if (!pending) return;
+    setState(prev => ({ ...prev, status: 'uploading', progress: 95, error: null }));
+    postRegister(pending.tk, pending.body).catch((err: any) => {
+      setState(prev => ({ ...prev, status: 'error', error: err?.message ?? 'Upload failed' }));
+    });
+  }, [postRegister]);
 
   const start = useCallback(async (
     audioFile: File,
@@ -146,6 +213,17 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
   ) => {
     onDoneRef.current = onDone;
     onPlanRef.current = onPlanRequired;
+    pendingRegRef.current = null;
+    setCanRetry(false);
+
+    if (!meta.copyrightDeclared) {
+      setState({
+        status: 'error', progress: 0, title: meta.title, artist: meta.artist,
+        coverPreview: meta.coverPreview ?? null,
+        error: t('music.copyrightRequired'), track: null,
+      });
+      return;
+    }
 
     setState({ status: 'uploading', progress: 0, title: meta.title, artist: meta.artist,
                coverPreview: meta.coverPreview ?? null, error: null, track: null });
@@ -191,8 +269,9 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
 
       setState(prev => ({ ...prev, progress: 95 }));
 
-      const regBody: Record<string, string | number> = {
+      const regBody: Record<string, string | number | boolean> = {
         title: meta.title, artist: meta.artist, storageKey,
+        copyrightDeclared: true,
         ...(coverStorageKey       ? { coverStorageKey }                          : {}),
         ...(meta.album            ? { album: meta.album }                        : {}),
         ...(meta.genre            ? { genre: meta.genre }                        : {}),
@@ -202,35 +281,17 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
         ...(meta.lyrics           ? { lyrics: meta.lyrics }                      : {}),
       };
 
-      const regRes = await fetch('/api/music/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` },
-        body: JSON.stringify(regBody),
-      });
-
-      if (!regRes.ok) {
-        const err = await regRes.json().catch(() => ({}));
-        if (err.error === 'ARTIST_PLAN_REQUIRED') {
-          onPlanRef.current?.(err.count ?? 0);
-          setState(prev => ({ ...prev, status: 'error', error: t('music.planRequired', 'Artist plan required') }));
-          return;
-        }
-        throw new Error(err.error ?? `Register failed: HTTP ${regRes.status}`);
-      }
-
-      const { track } = await regRes.json();
-      setState(prev => ({ ...prev, status: 'done', progress: 100, track }));
-      onDoneRef.current?.(track);
+      await postRegister(tk, regBody);
 
     } catch (err: any) {
       setState(prev => ({ ...prev, status: 'error', error: err?.message ?? 'Upload failed' }));
     }
-  }, [t]);
+  }, [t, postRegister]);
 
   const showToast = state.status !== 'idle';
 
   return (
-    <MusicUploadContext.Provider value={{ state, start, dismiss }}>
+    <MusicUploadContext.Provider value={{ state, start, retryRegister, dismiss }}>
       {children}
       {showToast && (
         <div className='fixed bottom-20 left-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-black/90 p-3 shadow-lg'>
@@ -254,6 +315,13 @@ export function MusicUploadProvider({ children }: { children: ReactNode }) {
           {state.status === 'uploading' ? <Loader2 className='h-4 w-4 shrink-0 animate-spin text-white/60' />
            : state.status === 'done'    ? <CheckCircle className='h-4 w-4 shrink-0 text-green-400' />
                                         : <AlertCircle className='h-4 w-4 shrink-0 text-red-400' />}
+          {state.status === 'error' && canRetry && (
+            <button type='button' onClick={retryRegister}
+              className='shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-bold text-white'
+              style={{ background: 'rgba(0,217,255,0.35)' }}>
+              {t('messages.retry', 'Retry')}
+            </button>
+          )}
           {state.status !== 'uploading' && (
             <button onClick={dismiss} className='ml-1 shrink-0 text-white/40 hover:text-white'>
               <X className='h-4 w-4' />

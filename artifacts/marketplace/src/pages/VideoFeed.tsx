@@ -25,6 +25,7 @@ import TikTokEmojiPanel from "@/components/TikTokEmojiPanel";
 import BoostWizard from "@/components/BoostWizard";
 import { isAndroidApp } from "@/lib/androidPurchasePolicy";
 import { isAudioUnlocked, setAudioUnlocked } from "@/lib/audioUnlocked";
+import { getMusicState, musicRequestPause } from "@/lib/musicStore";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -1060,6 +1061,10 @@ function VideoCard({
     activationGenerationRef.current += 1;
     cancelPendingReloadResume();
     if (isActive) {
+      // Conflict policy: marketplace video wins over Flexa Music (native or HTML).
+      if (getMusicState().playing || getMusicState().track) {
+        musicRequestPause();
+      }
       // A newly visible card always starts in autoplay mode. Do not carry the
       // previous card's paused UI into this one while its first frame buffers.
       setPausedByUser(false);

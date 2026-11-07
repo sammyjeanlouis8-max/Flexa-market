@@ -7,6 +7,7 @@ import { CreateConversationBody } from "@workspace/api-zod";
 import { sendPushToUser } from "../lib/push";
 import { sendExpoPushToUser } from "../lib/expo-push";
 import { emitNewMessage, emitConvUpdate, emitAudioListened, emitMsgDeleted } from "../lib/socketServer";
+import { publicDisplayName } from "../lib/publicDisplayName";
 import { z } from "zod";
 
 const SITE_BASE_URL = process.env["PUBLIC_BASE_URL"] ?? "https://flexamarket.com";
@@ -143,7 +144,9 @@ router.get("/conversations", requireAuth, async (req, res): Promise<void> => {
       listingImage: r.listing?.images?.[0] ?? null,
       listingPrice: r.listing?.price ?? 0,
       otherUserId,
-      otherUserName: isSystemNotifications ? "System Notifications" : (otherUser?.name ?? "Unknown"),
+      otherUserName: isSystemNotifications
+        ? "System Notifications"
+        : publicDisplayName(otherUser?.name),
       otherUserAvatar: isSystemNotifications
         ? (otherUser?.avatar || "/flexa-logo-v2.png")
         : (otherUser?.avatar ?? null),
@@ -199,7 +202,7 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
     const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.id, sellerId));
     res.json({
       id: existing.id, listingId: existing.listingId, listingTitle: listing?.title ?? "", listingImage: listing?.images?.[0] ?? null,
-      listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: otherUser?.name ?? "", otherUserAvatar: otherUser?.avatar ?? null,
+      listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
       lastMessage: existing.lastMessage ?? null, lastMessageAt: existing.lastMessageAt?.toISOString() ?? null, unreadCount: 0,
     });
     return;
@@ -210,7 +213,7 @@ router.post("/conversations", requireAuth, requireNotRestricted, async (req, res
   const [otherUser] = await db.select().from(usersTable).where(eq(usersTable.id, sellerId));
   res.json({
     id: conv.id, listingId: conv.listingId, listingTitle: listing?.title ?? "", listingImage: listing?.images?.[0] ?? null,
-    listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: otherUser?.name ?? "", otherUserAvatar: otherUser?.avatar ?? null,
+    listingPrice: listing?.price ?? 0, otherUserId: sellerId, otherUserName: publicDisplayName(otherUser?.name, ""), otherUserAvatar: otherUser?.avatar ?? null,
     lastMessage: null, lastMessageAt: null, unreadCount: 0,
   });
 });
@@ -232,7 +235,7 @@ router.get("/conversations/:id/messages", requireAuth, async (req, res): Promise
     const deleted = !!(r.messages as any).isDeleted;
     return {
       id: r.messages.id, conversationId: r.messages.conversationId, senderId: r.messages.senderId,
-      senderName: r.users?.name ?? "Unknown",
+      senderName: publicDisplayName(r.users?.name),
       senderAvatar: r.users?.avatar ?? null,
       senderIsAdmin,
       content: deleted ? "" : r.messages.content,
@@ -274,7 +277,7 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
     const [sender] = await db.select().from(usersTable).where(eq(usersTable.id, req.userId!));
     return {
       id: existing.id, conversationId: existing.conversationId, senderId: existing.senderId,
-      senderName: sender?.name ?? "Unknown", senderAvatar: sender?.avatar ?? null,
+      senderName: publicDisplayName(sender?.name), senderAvatar: sender?.avatar ?? null,
       content: existing.content, messageType: existing.messageType, mediaUrl: existing.mediaUrl ?? null,
       imageUrl: existing.imageUrl ?? null, isRead: existing.isRead, isListened: existing.isListened,
       isDeleted: !!(existing as any).isDeleted,
@@ -358,8 +361,9 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
 
   const msgPayload = {
     id: msg.id, conversationId: msg.conversationId, senderId: msg.senderId,
-    senderName: sender?.name ?? "Unknown",
+    senderName: publicDisplayName(sender?.name),
     senderAvatar: sender?.avatar ?? null,
+    senderIsAdmin,
     content: msg.content, messageType: msg.messageType, mediaUrl: msg.mediaUrl ?? null,
     imageUrl: msg.imageUrl ?? null,
     isRead: msg.isRead, isListened: msg.isListened,
@@ -386,7 +390,8 @@ router.post("/conversations/:id/messages", requireAuth, requireNotRestricted, as
       en: { from: (n: string) => `Message from ${n}`,  newMsg: "New message",     voice: "🎤 Voice message" },
     }[lang];
     const pushBody = messageType === "image" ? "📷 Photo" : messageType === "video" ? "🎥 Video" : messageType === "audio" ? L.voice : content.slice(0, 120);
-    const pushTitle = sender?.name ? L.from(sender.name) : L.newMsg;
+    const pushSenderName = publicDisplayName(sender?.name, "");
+    const pushTitle = pushSenderName ? L.from(pushSenderName) : L.newMsg;
 
     // Count all unread messages for the recipient across ALL conversations
     // (including the one we just inserted) so the badge reflects total unread.
